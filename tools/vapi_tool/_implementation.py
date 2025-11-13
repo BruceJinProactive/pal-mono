@@ -114,7 +114,14 @@ class VapiTool(Toolkit):
         # get last message, and get ctrl url from the message metadata
         if not conversation_id:
             error_msg = "No conversation ID available. Call transfer is not possible."
-            logger.error(f"[VapiTool.call_transfer] {error_msg}")
+            logger.error(
+                f"[VapiTool.call_transfer] {error_msg}",
+                extra={
+                    "project_id": str(self.tool_metadata.project_id),
+                    "account_name": self.tool_metadata.account_name,
+                    "user_id": str(self.tool_metadata.user_id),
+                },
+            )
             return error_msg
         logger.debug(
             f"[VapiTool.call_transfer] Initiating call transfer for conversation {conversation_id}"
@@ -128,7 +135,15 @@ class VapiTool(Toolkit):
 
             if not conversation:
                 error_msg = f"Conversation {conversation_id} not found. Call transfer is not possible."
-                logger.error(f"[VapiTool.call_transfer] {error_msg}")
+                logger.error(
+                    f"[VapiTool.call_transfer] {error_msg}",
+                    extra={
+                        "project_id": str(self.tool_metadata.project_id),
+                        "account_name": self.tool_metadata.account_name,
+                        "conversation_id": str(conversation_id),
+                        "user_id": str(self.tool_metadata.user_id),
+                    },
+                )
                 return error_msg
 
             # Get control URL from Vapi API if not stored in conversation
@@ -144,7 +159,15 @@ class VapiTool(Toolkit):
 
                 if not call_id:
                     error_msg = "No call ID available for this conversation. Call transfer is not possible."
-                    logger.error(f"[VapiTool.call_transfer] {error_msg}")
+                    logger.error(
+                        f"[VapiTool.call_transfer] {error_msg}",
+                        extra={
+                            "project_id": str(self.tool_metadata.project_id),
+                            "account_name": self.tool_metadata.account_name,
+                            "conversation_id": str(conversation_id),
+                            "user_id": str(self.tool_metadata.user_id),
+                        },
+                    )
                     return error_msg
 
                 control_url = _get_control_url_from_vapi(call_id)
@@ -155,7 +178,16 @@ class VapiTool(Toolkit):
 
         except Exception as e:
             error_msg = f"Error fetching call data: {e}"
-            logger.error(f"[VapiTool.call_transfer] {error_msg}", exc_info=True)
+            logger.error(
+                f"[VapiTool.call_transfer] {error_msg}",
+                extra={
+                    "project_id": str(self.tool_metadata.project_id),
+                    "account_name": self.tool_metadata.account_name,
+                    "conversation_id": str(conversation_id),
+                    "user_id": str(self.tool_metadata.user_id),
+                },
+                exc_info=True,
+            )
             return error_msg
         finally:
             db.close()
@@ -175,21 +207,55 @@ class VapiTool(Toolkit):
             response.raise_for_status()
 
             logger.debug(
-                f"[VapiTool.call_transfer] Successfully initiated call transfer to {self.destination_number}"
+                f"[VapiTool.call_transfer] Successfully initiated call transfer to {self.destination_number}",
+                extra={
+                    "project_id": str(self.tool_metadata.project_id),
+                    "account_name": self.tool_metadata.account_name,
+                    "conversation_id": str(conversation_id),
+                    "user_id": str(self.tool_metadata.user_id),
+                },
             )
             return "Call has been transfered"
 
         except httpx.RequestError as e:
             error_msg = f"Network error occurred while transferring call: {e}"
-            logger.error(f"[VapiTool.call_transfer] {error_msg}", exc_info=True)
+            logger.error(
+                f"[VapiTool.call_transfer] {error_msg}",
+                extra={
+                    "project_id": str(self.tool_metadata.project_id),
+                    "account_name": self.tool_metadata.account_name,
+                    "conversation_id": str(conversation_id),
+                    "user_id": str(self.tool_metadata.user_id),
+                },
+                exc_info=True,
+            )
             return error_msg
 
         except httpx.HTTPStatusError as e:
             error_msg = f"HTTP error {e.response.status_code} occurred while transferring call: {e.response.text}"
-            logger.error(f"[VapiTool.call_transfer] {error_msg}", exc_info=True)
+            logger.error(
+                f"[VapiTool.call_transfer] {error_msg}",
+                extra={
+                    "project_id": str(self.tool_metadata.project_id),
+                    "account_name": self.tool_metadata.account_name,
+                    "conversation_id": str(conversation_id),
+                    "user_id": str(self.tool_metadata.user_id),
+                    "http_status_code": e.response.status_code,
+                },
+                exc_info=True,
+            )
             return error_msg
 
         except Exception as e:
             error_msg = f"Unexpected error occurred while transferring call: {e}"
-            logger.error(f"[VapiTool.call_transfer] {error_msg}", exc_info=True)
+            logger.error(
+                f"[VapiTool.call_transfer] {error_msg}",
+                extra={
+                    "project_id": str(self.tool_metadata.project_id),
+                    "account_name": self.tool_metadata.account_name,
+                    "conversation_id": str(conversation_id),
+                    "user_id": str(self.tool_metadata.user_id),
+                },
+                exc_info=True,
+            )
             return error_msg
