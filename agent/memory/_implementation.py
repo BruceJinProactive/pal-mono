@@ -1,5 +1,5 @@
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import task
@@ -92,8 +92,8 @@ async def _fetch_and_cache_memories(user_id: str) -> None:
     try:
         start_time = time.perf_counter()
         client = AsyncMemoryClient()
-        memories: Dict[str, List] = await client.get_all(user_id=user_id)  # type: ignore
-        memories_string = ", ".join([item["memory"] for item in memories["results"]])
+        memories = await client.get_all(user_id=user_id)
+        memories_string = ", ".join([item["memory"] for item in memories])
         elapsed_time = time.perf_counter() - start_time
 
         # Cache the result
