@@ -55,6 +55,17 @@ class Project(Base):
     reservation_link: Mapped[str | None] = mapped_column(String, nullable=True)
     ordering_link: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Google Business Hours fields
+    google_place_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    business_hours: Mapped[Optional[Dict]] = mapped_column(
+        MutableDict.as_mutable(JSONB()),
+        nullable=True,
+        server_default=text("'{}'::jsonb"),
+    )
+    business_hours_last_updated: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
