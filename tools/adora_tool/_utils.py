@@ -1,6 +1,8 @@
 import re
 from typing import Any, Tuple
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from ddtrace.llmobs.decorators import task
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 from geopy.geocoders import Nominatim
@@ -50,11 +52,90 @@ def validate_order_type(order_type: str) -> str:
     raise ValueError(f"Invalid order type: {order_type}")
 
 
+def geocode_with_aws_location(
+    delivery_address: DeliveryAddress,
+) -> Tuple[float, float] | None:
+    """
+    Use AWS geo-places service to geocode an address (new 2024 API).
+
+    Prerequisites:
+        - AWS credentials must be configured (IAM role or environment variables)
+        - Required IAM permissions: geo-places:Geocode
+        - No Place Index setup required!
+
+    Args:
+        delivery_address: The delivery address to geocode
+
+    Returns:
+        Tuple of (latitude, longitude) if successful, None otherwise
+    """
+    try:
+        # Create AWS geo-places client (new service)
+        geo_places_client = boto3.client("geo-places")
+
+        # Build the address text
+        address_parts = [delivery_address.address]
+        if delivery_address.city != "N/A":
+            address_parts.append(delivery_address.city)
+        if delivery_address.state != "N/A":
+            address_parts.append(delivery_address.state)
+        if delivery_address.zip != "N/A":
+            address_parts.append(delivery_address.zip)
+        address_parts.append("USA")
+
+        address_text = ", ".join(address_parts)
+
+        logger.debug(
+            f"[AdoraTool.add_lat_long_to_address] Geocoding address: {address_text}"
+        )
+
+        # Use new AWS geo-places geocode API
+        response = geo_places_client.geocode(
+            QueryText=address_text,
+            MaxResults=1,
+            QueryComponents={"Country": "USA"},
+        )
+
+        if response["ResultItems"] and len(response["ResultItems"]) > 0:
+            result_item = response["ResultItems"][0]
+            position = result_item["Position"]
+            longitude, latitude = (
+                position  # AWS geo-places returns [longitude, latitude]
+            )
+
+            logger.debug(
+                f"[AdoraTool.add_lat_long_to_address] AWS geo-places result: {latitude}, {longitude}"
+            )
+            return latitude, longitude
+        else:
+            logger.debug(
+                "[AdoraTool.add_lat_long_to_address] No results from AWS geo-places service"
+            )
+            return None
+
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        logger.error(
+            f"[AdoraTool.add_lat_long_to_address] AWS geo-places service client error ({error_code}): {e}"
+        )
+        return None
+    except BotoCoreError as e:
+        logger.error(
+            f"[AdoraTool.add_lat_long_to_address] AWS geo-places service boto error: {e}"
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            f"[AdoraTool.add_lat_long_to_address] Unexpected error with AWS geo-places service: {e}"
+        )
+        return None
+
+
 @task
 def add_lat_long_to_address(delivery_address: DeliveryAddress) -> Tuple[bool, str]:
     """
     Add latitude and longitude to a delivery address. Modifies the delivery address
-    object in place.
+    object in place. Uses AWS Location Service as primary method with Nominatim as fallback.
 
     Args:
         delivery_address (DeliveryAddress): The delivery address to add latitude and
@@ -71,53 +152,79 @@ def add_lat_long_to_address(delivery_address: DeliveryAddress) -> Tuple[bool, st
             "Ask the user to provide at least a street address and city.",
         )
 
-    # setup Nominatim to convert address to lat long coordinates
-    # TODO: Usage limited to 1qps without API key. Upgrade to paid plan when needed.
-    # TODO: https://aws.amazon.com/location/
-    geolocator = Nominatim(user_agent="pal")
+    latitude, longitude = None, None
 
-    geo_payload = {
-        "street": delivery_address.address,
-        "city": delivery_address.city,
-        "state": (delivery_address.state if delivery_address.state != "N/A" else ""),
-        "country": "USA",
-        "postalcode": (delivery_address.zip if delivery_address.zip != "N/A" else ""),
-    }
+    # Try AWS geo-places service first
     logger.debug(
-        "[AdoraTool.add_lat_long_to_address] Geolocator payload: " + str(geo_payload)
+        "[AdoraTool.add_lat_long_to_address] Attempting geocoding with AWS geo-places service"
     )
+    aws_result = geocode_with_aws_location(delivery_address)
+    if aws_result:
+        latitude, longitude = aws_result
+        logger.debug(
+            f"[AdoraTool.add_lat_long_to_address] AWS geo-places service success: {latitude}, {longitude}"
+        )
+    else:
+        logger.debug(
+            "[AdoraTool.add_lat_long_to_address] AWS geo-places service failed, falling back to Nominatim"
+        )
 
-    try:
-        geocoded_loc: Any = geolocator.geocode(geo_payload)
-    except GeocoderTimedOut as e:
-        logger.error(
-            f"[AdoraTool.add_lat_long_to_address] Nominatim geocoding timed out: {e}"
+        # Fallback to Nominatim
+        geolocator = Nominatim(user_agent="pal")
+        geo_payload = {
+            "street": delivery_address.address,
+            "city": delivery_address.city,
+            "state": (
+                delivery_address.state if delivery_address.state != "N/A" else ""
+            ),
+            "country": "USA",
+            "postalcode": (
+                delivery_address.zip if delivery_address.zip != "N/A" else ""
+            ),
+        }
+        logger.debug(
+            "[AdoraTool.add_lat_long_to_address] Nominatim payload: " + str(geo_payload)
         )
-        return (
-            False,
-            "Address lookup service is temporarily unavailable. Please try again in a moment.",
-        )
-    except GeocoderServiceError as e:
-        logger.error(
-            f"[AdoraTool.add_lat_long_to_address] Nominatim geocoding service error: {e}"
-        )
-        return (
-            False,
-            "Address lookup service is experiencing issues. Please try again later.",
-        )
-    except Exception as e:
-        logger.error(
-            f"[AdoraTool.add_lat_long_to_address] Unexpected error during geocoding: {e}"
-        )
-        return (
-            False,
-            "An error occurred while validating your address. Please try again.",
-        )
-    logger.debug(
-        f"[AdoraTool.add_lat_long_to_address] Geocoded location: {bool(geocoded_loc)}"
-    )
-    if not geocoded_loc:
-        logger.debug("[AdoraTool.add_lat_long_to_address] Failed to geocode address.")
+
+        try:
+            geocoded_loc: Any = geolocator.geocode(geo_payload)
+            if geocoded_loc:
+                latitude, longitude = geocoded_loc.latitude, geocoded_loc.longitude
+                logger.debug(
+                    f"[AdoraTool.add_lat_long_to_address] Nominatim success: {latitude}, {longitude}"
+                )
+            else:
+                logger.debug(
+                    "[AdoraTool.add_lat_long_to_address] Nominatim returned no results"
+                )
+        except GeocoderTimedOut as e:
+            logger.error(
+                f"[AdoraTool.add_lat_long_to_address] Nominatim geocoding timed out: {e}"
+            )
+            return (
+                False,
+                "Address lookup service is temporarily unavailable. Please try again in a moment.",
+            )
+        except GeocoderServiceError as e:
+            logger.error(
+                f"[AdoraTool.add_lat_long_to_address] Nominatim geocoding service error: {e}"
+            )
+            return (
+                False,
+                "Address lookup service is experiencing issues. Please try again later.",
+            )
+        except Exception as e:
+            logger.error(
+                f"[AdoraTool.add_lat_long_to_address] Unexpected error during Nominatim geocoding: {e}"
+            )
+            return (
+                False,
+                "An error occurred while validating your address. Please try again.",
+            )
+
+    # Check if we got results from either service
+    if latitude is None or longitude is None:
+        logger.debug("[AdoraTool.add_lat_long_to_address] All geocoding methods failed")
         return (
             False,
             "The address provided is invalid. Please provide a valid address. "
@@ -127,13 +234,6 @@ def add_lat_long_to_address(delivery_address: DeliveryAddress) -> Tuple[bool, st
                 else ""
             ),
         )
-
-    logger.debug(
-        "[AdoraTool.add_lat_long_to_address] Nominatim API result: "
-        + str(geocoded_loc.latitude)
-        + ", "
-        + str(geocoded_loc.longitude)
-    )
 
     # auto-populate state and zipcode
     if delivery_address.state == "N/A" or delivery_address.zip == "N/A":
@@ -157,8 +257,10 @@ def add_lat_long_to_address(delivery_address: DeliveryAddress) -> Tuple[bool, st
             False,
             "Something went wrong with delivery address conversion. Please try again.",
         )
-    delivery_address.lat = geocoded_loc.latitude
-    delivery_address.lng = geocoded_loc.longitude
+
+    # Set the latitude and longitude on the delivery address object
+    delivery_address.lat = latitude
+    delivery_address.lng = longitude
     return (True, "Latitude and longitude added to delivery address.")
 
 
