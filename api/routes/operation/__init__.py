@@ -641,11 +641,11 @@ async def list_checkpoint_results_by_checkpoint(
     checkpoint_id: uuid.UUID,
     start_date: datetime | None = Query(
         None,
-        description="Optional start date in ISO 8601 format with timezone (e.g., 2025-01-01T00:00:00Z)",
+        description="Optional start date - filters by timestamp >= this value (ISO 8601 format with timezone, e.g., 2025-01-01T00:00:00Z)",
     ),
     end_date: datetime | None = Query(
         None,
-        description="Optional end date in ISO 8601 format with timezone (e.g., 2025-01-31T23:59:59Z)",
+        description="Optional end date - filters by timestamp <= this value (ISO 8601 format with timezone, e.g., 2025-01-31T23:59:59Z)",
     ),
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
@@ -660,8 +660,12 @@ async def list_checkpoint_results_by_checkpoint(
     - checkpoint_id: UUID of the checkpoint
 
     Query Parameters:
-    - start_date (optional): Filter results created on or after this date (ISO 8601 format)
-    - end_date (optional): Filter results created on or before this date (ISO 8601 format)
+    - start_date (optional): Filter results by timestamp >= this date (ISO 8601 format)
+    - end_date (optional): Filter results by timestamp <= this date (ISO 8601 format)
+
+    Note: Filtering uses the 'timestamp' column which represents:
+    - For camera checkpoints: The actual time the image was captured (from filename)
+    - For manual checkpoints: The time the checkpoint run was created
 
     Returns:
     - results: List of checkpoint results (filtered by date if parameters provided)

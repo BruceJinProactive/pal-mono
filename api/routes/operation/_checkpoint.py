@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import os
 import uuid
@@ -572,7 +573,8 @@ async def compare_checkpoint(
 
     This endpoint takes an uploaded image and compares it with the checkpoint's stored image
     using OpenAI's Vision API to determine if they match according to the checkpoint's
-    description and rules.
+    description and rules. The comparison runs in the background and returns immediately
+    with a processing status.
 
     Args:
         checkpoint_id: UUID of the checkpoint to compare against
@@ -582,7 +584,8 @@ async def compare_checkpoint(
         submission_id: Optional submission ID from frontend (UUID string)
 
     Returns:
-        dict: Comparison result with match status and explanation
+        dict: Response with checkpoint_result_id, submission_id, and status "processing".
+              Use the checkpoint_result_id to poll for results via get_checkpoint_run endpoint.
     """
     # Get checkpoint and validate it exists
     checkpoint = checkpoint_service.get_checkpoint(session, checkpoint_id)
@@ -651,30 +654,21 @@ async def compare_checkpoint(
             image_url=image_url,
         )
 
-        # Step 5: Run OpenAI comparison synchronously and wait for result
-        comparison_result = await checkpoint_service.compare_checkpoint_images_async(
-            checkpoint=checkpoint,
-            uploaded_image_base64=uploaded_image_base64,
+        # Step 5: Start OpenAI comparison in background (non-blocking)
+        asyncio.create_task(
+            checkpoint_service.compare_and_update_checkpoint_background(
+                checkpoint_result_id=checkpoint_run.id,
+                checkpoint=checkpoint,
+                uploaded_image_base64=uploaded_image_base64,
+            )
         )
 
-        # Step 6: Update checkpoint run with the comparison result
-        checkpoint_service.update_checkpoint_result(
-            session=session,
-            result_id=checkpoint_run.id,
-            result={
-                "status": "done",
-                "image_url": image_url,
-                **comparison_result,
-            },
-            status=CheckStatus.active,
-        )
-
-        # Step 7: Return the complete result immediately
+        # Step 6: Return immediately with processing status
         return {
             "checkpoint_result_id": str(checkpoint_run.id),
             "submission_id": str(submission_uuid),
-            "status": "done",
-            "result": comparison_result,
+            "status": "processing",
+            "message": "Comparison started in background. Poll for results using checkpoint_result_id.",
         }
 
     except HTTPException:

@@ -256,7 +256,7 @@ def get_latest_checkpoint_result_by_date_range(
 ) -> db.CheckpointRun | None:
     """
     Get the latest checkpoint result for a specific checkpoint, filtered by date range.
-    Returns only the most recent result (by created_at) within the date range.
+    Returns only the most recent result (by timestamp) within the date range.
 
     Args:
         session: Database session
@@ -277,7 +277,7 @@ def get_latest_checkpoint_result_by_date_range(
         end_date=end_date,
     )
 
-    # Return only the latest result (first one since results are ordered by created_at DESC)
+    # Return only the latest result (first one since results are ordered by timestamp DESC)
     return checkpoint_results[0] if checkpoint_results else None
 
 
@@ -695,6 +695,7 @@ def compare_camera_images_with_checkpoint(
         # Extract timestamp from URL filename (format: YYYYMMDD_HHMMSS.png)
         timestamp_iso = ""
         s3_key = ""
+        image_timestamp = None
         try:
             filename = url.split("/")[-1].split("?")[0]
             timestamp_str = filename.rsplit(".", 1)[0]
@@ -716,6 +717,7 @@ def compare_camera_images_with_checkpoint(
                     "image_url": s3_key,
                     "timestamp": timestamp_iso,
                 },
+                "timestamp": image_timestamp if image_timestamp else datetime.utcnow(),
             }
         )
 

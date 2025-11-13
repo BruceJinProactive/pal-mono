@@ -307,11 +307,11 @@ def list_checkpoint_results(
         submission_id: Optional filter by submission ID
         status: Optional filter by status
         project_id: Optional filter by project ID (via checkpoint)
-        start_date: Optional filter by created_at >= start_date (datetime object)
-        end_date: Optional filter by created_at <= end_date (datetime object)
+        start_date: Optional filter by timestamp >= start_date (datetime object)
+        end_date: Optional filter by timestamp <= end_date (datetime object)
 
     Returns:
-        list[CheckpointRun]: List of checkpoint results
+        list[CheckpointRun]: List of checkpoint results ordered by timestamp DESC
     """
     try:
         query = session.query(CheckpointRun)
@@ -331,13 +331,13 @@ def list_checkpoint_results(
             query = query.filter(CheckpointRun.status == status)
 
         if start_date:
-            query = query.filter(CheckpointRun.created_at >= start_date)
+            query = query.filter(CheckpointRun.timestamp >= start_date)
 
         if end_date:
-            query = query.filter(CheckpointRun.created_at <= end_date)
+            query = query.filter(CheckpointRun.timestamp <= end_date)
 
-        # Order by created_at descending (newest first)
-        query = query.order_by(CheckpointRun.created_at.desc())
+        # Order by timestamp descending (newest first)
+        query = query.order_by(CheckpointRun.timestamp.desc())
 
         return query.all()
     except SQLAlchemyError as e:
