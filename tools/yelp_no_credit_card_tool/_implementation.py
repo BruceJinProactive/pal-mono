@@ -28,7 +28,7 @@ _CACHED_BEARER_TOKEN_LOCK = threading.Lock()
 class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
     # Required fields for each tool method (BaseReservationTool interface)
     REQUIRED_CHECK_AVAILABILITY_FIELDS = ["party_size", "date", "time"]
-    REQUIRED_MAKE_RESERVATION_FIELDS = ["party_size", "date", "time"]
+    REQUIRED_MAKE_RESERVATION_FIELDS = ["name", "party_size", "date", "time"]
     REQUIRED_JOIN_WAITLIST_QUEUE_FIELDS = ["name", "party_size"]
 
     def __init__(
