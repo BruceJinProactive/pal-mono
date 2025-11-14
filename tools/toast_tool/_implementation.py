@@ -555,7 +555,12 @@ class ToastTool(Toolkit):
                 logger.debug(
                     f"[ToastTool.checkout_order_with_payment_iframe] Found existing unpaid order {existing_order.guid}, creating payment intent"
                 )
-                return self._begin_hosted_checkout_flow(existing_order)
+                price = Price(
+                    amount=existing_order.checks[0].amount,
+                    taxAmount=existing_order.checks[0].taxAmount,
+                    totalAmount=existing_order.checks[0].totalAmount,
+                )
+                return self._begin_hosted_checkout_flow(existing_order, price)
 
             # Construct order
             order = self._construct_order()
@@ -567,17 +572,10 @@ class ToastTool(Toolkit):
             if error_message:
                 return error_message
 
-            result = self._submit_order(order)
+            price = self._get_order_prices(order=order)
 
-            # Handle both success (tuple) and error (string) cases
-            if isinstance(result, tuple):
-                order, confirmation_message = result
-            else:
-                # If result is a string, it indicates an error message
-                return result
-
-            # Begin hosted checkout flow for the newly submitted order
-            return self._begin_hosted_checkout_flow(order)
+            # Begin hosted checkout flow - payment intent will be created, then order will be submitted
+            return self._begin_hosted_checkout_flow(order, price)
 
         except Exception as e:
             logger.error(f"[ToastTool.checkout_order_with_payment_iframe] Error: {e}")
@@ -1009,37 +1007,38 @@ class ToastTool(Toolkit):
             logger.error(f"[ToastTool._submit_order] Failed to submit the order: {e}")
             return "There was an error while submitting the order. Please try again."
 
-    def _get_order_prices(self, order: OrderInput) -> str:
+    def _get_order_prices(self, order: OrderInput) -> Price:
         # Retrieve the bearer token
         toast_bearer_token = self._toast_bearer_token
         if not toast_bearer_token:
-            return (
-                "Failed to authenticate ordering tool. "
+            logger.error(
+                "[ToastTool._get_order_prices] Toast bearer token is missing or invalid"
+            )
+            raise ValueError(
+                "[ToastTool._get_order_prices] Toast bearer token is missing or invalid. "
                 "Please reach out to our support team at help@palona.ai "
                 "for assistance."
             )
         try:
-            order = get_order_prices(
+            order_wt_prices = get_order_prices(
                 toast_bearer_token,
                 self.store_id,
                 order,
                 general_api_endpoint=self.general_api_endpoint,
             )
             return Price(
-                amount=order.checks[0].amount,
-                taxAmount=order.checks[0].taxAmount,
-                totalAmount=order.checks[0].totalAmount,
-            ).model_dump_json()
+                amount=order_wt_prices.checks[0].amount,
+                taxAmount=order_wt_prices.checks[0].taxAmount,
+                totalAmount=order_wt_prices.checks[0].totalAmount,
+            )
         except Exception as e:
             logger.error(
                 f"[ToastTool._get_order_prices] Failed to get the order prices: {e}"
             )
-            return (
-                "There was an error while getting the order prices. Please try again."
-            )
+            raise
 
     @tool
-    def get_order_prices_tool(self) -> str:
+    def get_order_prices_tool(self) -> Price:
         """
         Gets pricing information for the current order.
 
@@ -1047,37 +1046,36 @@ class ToastTool(Toolkit):
             None
 
         Returns:
-            str: JSON string containing order pricing details
+            Price: Price object containing pricing details (amount, taxAmount, totalAmount)
         """
         try:
             order = self._construct_order()
 
             # If the order is a string, it indicates an error message
-            # In this case, return the error message
+            # In this case, raise an exception with the error message
             if isinstance(order, str):
-                return order
+                raise ValueError(f"Failed to construct order: {order}")
 
             return self._get_order_prices(order)
         except Exception as e:
             logger.error(
                 f"[ToastTool.get_order_prices_tool] Error in get order prices: {e}"
             )
-            return (
-                "There was an error while getting the order prices. Please try again."
-            )
+            raise
 
-    def _create_payment_intent_for_order(
+    def _create_payment_intent(
         self,
-        order: OrderInput,
+        price: Price,
         external_reference_id: str | None = None,
         payments_api_endpoint: str | None = None,
     ) -> PaymentIntentResponse | str:
         """
-        Creates a payment intent for an order.
+        Creates a payment intent with the given price information.
 
         Args:
-            order: The order to create a payment intent for
+            price: Price object containing amount, taxAmount, and totalAmount
             external_reference_id: Optional unique identifier for this payment
+            payments_api_endpoint: Optional custom payments API endpoint
 
         Returns:
             PaymentIntentResponse with session secret, or error message string
@@ -1094,7 +1092,7 @@ class ToastTool(Toolkit):
         try:
 
             # Calculate total amount in cents
-            total_amount_cents = int(order.checks[0].totalAmount * 100)  # type: ignore
+            total_amount_cents = int(price.totalAmount * 100)  # type: ignore
 
             if not external_reference_id:
                 external_reference_id = str(uuid.uuid4())
@@ -1119,37 +1117,57 @@ class ToastTool(Toolkit):
             )
 
             logger.debug(
-                f"[ToastTool._create_payment_intent_for_order] Created payment intent: ID: {payment_intent_response.id}. Payment intent external Reference ID: {payment_intent_response.externalReferenceId}."
+                f"[ToastTool._create_payment_intent] Created payment intent: ID: {payment_intent_response.id}. Payment intent external Reference ID: {payment_intent_response.externalReferenceId}."
             )
 
             return payment_intent_response
 
         except Exception as e:
             logger.error(
-                f"[ToastTool._create_payment_intent_for_order] Error creating payment intent: {e}"
+                f"[ToastTool._create_payment_intent] Error creating payment intent: {e}"
             )
             return "Failed to create payment intent. Please try again."
 
-    def _begin_hosted_checkout_flow(self, order: Order) -> str:
+    def _begin_hosted_checkout_flow(self, order: OrderInput, price: Price) -> str:
         """
-        Begins the hosted checkout flow for an order (new or existing).
-        Creates payment intent, extracts order items, builds payment payload,
-        and generates the payment link.
+        Begins the hosted checkout flow for an order with priced information.
+
+        This method handles the complete payment flow:
+        1. Creates a payment intent with the calculated price information
+        2. Submits the order to Toast
+        3. Extracts order items from the submitted order
+        4. Builds the payment payload with order details
+        5. Generates and returns the hosted payment iframe link
+
+        If order submission fails after payment intent creation, the payment intent
+        will remain orphaned. A new payment intent can be created on subsequent calls.
 
         Args:
-            order: The Toast Order object (can be newly submitted or existing)
+            order: OrderInput object to be submitted to Toast.
+                   For existing unpaid orders, pass the Order object.
+            price: Price object containing calculated pricing (amount, taxAmount, totalAmount).
 
         Returns:
             str: Formatted message with payment link for the customer
         """
         # Create payment intent
         payment_intent_external_reference_id = str(uuid.uuid4())
-        payment_intent_result = self._create_payment_intent_for_order(
-            order, external_reference_id=payment_intent_external_reference_id
+        payment_intent_result = self._create_payment_intent(
+            price, external_reference_id=payment_intent_external_reference_id
         )
         # If payment intent result is a string, it indicates an error message
         if isinstance(payment_intent_result, str):
             return payment_intent_result
+
+        # After payment intent is successfully created, submit the order
+        result = self._submit_order(order)
+
+        # Handle both success (tuple) and error (string) cases
+        if isinstance(result, tuple):
+            order, _ = result
+        else:
+            # If result is a string, it indicates an error message
+            return result
 
         # Check if order.externalId is set after successful order submission. This absolutely must not be empty because we need it later to update the order's check.
         if order.externalId is None:
