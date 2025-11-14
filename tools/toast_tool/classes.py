@@ -411,7 +411,7 @@ class PaymentIntentRequest(BaseModel):
     )
     paymentMethodConfigurationId: str = Field(
         description="Identifier for the payment method configuration to be used",
-        default="f67a0093-e150-4a37-9dff-51732c39f037",
+        default="467f274b-86e1-460c-bdac-9e6e094a0980",
     )
 
 
