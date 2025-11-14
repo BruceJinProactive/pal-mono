@@ -19,3 +19,4 @@ class ProjectParams:
     transfer_phone_number: str | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
+    google_place_id: str | None = None

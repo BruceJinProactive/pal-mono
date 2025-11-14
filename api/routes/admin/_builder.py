@@ -170,6 +170,7 @@ def build_project(project: db.Project) -> Project:
         transfer_phone_number=project.transfer_phone_number,
         reservation_link=project.reservation_link,
         ordering_link=project.ordering_link,
+        google_place_id=project.google_place_id,
         created_at=int(project.created_at.timestamp()),
         updated_at=int(project.updated_at.timestamp() if project.updated_at else 0),
     )
@@ -183,6 +184,7 @@ def build_project_summary(project: db.Project) -> ProjectSummary:
         channel_identifiers=project.channel_identifiers,
         address=project.address,
         timezone=project.timezone,
+        google_place_id=project.google_place_id,
         created_at=int(project.created_at.timestamp()),
         updated_at=int(project.updated_at.timestamp() if project.updated_at else 0),
     )

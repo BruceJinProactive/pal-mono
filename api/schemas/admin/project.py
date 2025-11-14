@@ -25,6 +25,7 @@ class Project(BaseModel):
     transfer_phone_number: str | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
+    google_place_id: str | None = None
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
 
@@ -38,6 +39,7 @@ class ProjectSummary(BaseModel):
     channel_identifiers: list[str] | None
     timezone: str | None = None
     address: str | None = None
+    google_place_id: str | None = None
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
 
@@ -58,6 +60,7 @@ class UpdateProjectRequest(BaseModel):
     transfer_phone_number: str | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
+    google_place_id: str | None = None
     expected_version: int | None = None
 
     def to_project_params(self):
@@ -75,6 +78,7 @@ class UpdateProjectRequest(BaseModel):
             transfer_phone_number=self.transfer_phone_number,
             reservation_link=self.reservation_link,
             ordering_link=self.ordering_link,
+            google_place_id=self.google_place_id,
         )
 
 
@@ -109,6 +113,7 @@ class LocationProjectData(BaseModel):
     )
     ordering_link: str | None = Field(None, description="Online ordering link")
     reservation_link: str | None = Field(None, description="Reservation link")
+    google_place_id: str | None = Field(None, description="Google Place ID")
 
     def to_project_params(self, agent_id: uuid.UUID) -> ProjectParams:
         """Convert to ProjectParams for service layer"""
@@ -124,6 +129,7 @@ class LocationProjectData(BaseModel):
             service_instruction=self.service_instruction,
             ordering_link=self.ordering_link,
             reservation_link=self.reservation_link,
+            google_place_id=self.google_place_id,
         )
 
 
@@ -181,6 +187,7 @@ class ProjectUpdateData(BaseModel):
     transfer_phone_number: str | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
+    google_place_id: str | None = None
     expected_version: int | None = None
 
     def to_project_params(self):
@@ -198,6 +205,7 @@ class ProjectUpdateData(BaseModel):
             transfer_phone_number=self.transfer_phone_number,
             reservation_link=self.reservation_link,
             ordering_link=self.ordering_link,
+            google_place_id=self.google_place_id,
         )
 
 
