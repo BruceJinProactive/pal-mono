@@ -7,8 +7,10 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
-from geopy.geocoders import Nominatim
+from geopy.geocoders import GoogleV3
 from pydantic import ValidationError
 
 from tools.toast_tool._apis import BASE_URL, get_toast_access_token
@@ -20,7 +22,11 @@ from tools.toast_tool.classes import (
     ToastAccessToken,
 )
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback, upsert_client_secret
+from utils.secret import (
+    get_client_secret_with_fallback,
+    get_server_secret_with_fallback,
+    upsert_client_secret,
+)
 
 # Constants for better performance and maintainability
 _WEEKDAYS = [
@@ -98,105 +104,166 @@ def validate_item_modifier_quantity(selections: list) -> None:
                     )
 
 
+def geocode_with_google(
+    delivery_address: DeliveryAddress,
+) -> Tuple[float, float] | None:
+    """
+    Use Google Geocoding API to geocode an address.
+
+    Args:
+        delivery_address: The delivery address to geocode
+
+    Returns:
+        Tuple of (latitude, longitude) if successful, None otherwise
+    """
+    try:
+        # Get Google API key from secret manager with environment fallback
+        google_api_key = get_server_secret_with_fallback("GOOGLE_GEOCODE_API_KEY")
+        geolocator = GoogleV3(api_key=google_api_key)
+
+        # Build address string for Google Geocoding
+        address_parts = [delivery_address.address]
+        if delivery_address.city != "N/A":
+            address_parts.append(delivery_address.city)
+        if delivery_address.state != "N/A":
+            address_parts.append(delivery_address.state)
+        if delivery_address.zip != "N/A":
+            address_parts.append(delivery_address.zip)
+        address_parts.append("USA")
+
+        geo_address = ", ".join(address_parts)
+        logger.debug(
+            f"[ToastTool.add_lat_long_to_address] Google Geocoding address: {geo_address}"
+        )
+
+        # Use Google Geocoding API
+        geocoded_loc: Any = geolocator.geocode(geo_address)
+        if geocoded_loc:
+            latitude, longitude = geocoded_loc.latitude, geocoded_loc.longitude
+            logger.debug(
+                f"[ToastTool.add_lat_long_to_address] Google Geocoding result: {latitude}, {longitude}"
+            )
+            return latitude, longitude
+        else:
+            logger.debug(
+                "[ToastTool.add_lat_long_to_address] No results from Google Geocoding"
+            )
+            return None
+
+    except GeocoderTimedOut as e:
+        logger.error(
+            f"[ToastTool.add_lat_long_to_address] Google Geocoding timed out: {e}"
+        )
+        return None
+    except GeocoderServiceError as e:
+        logger.error(
+            f"[ToastTool.add_lat_long_to_address] Google Geocoding service error: {e}"
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            f"[ToastTool.add_lat_long_to_address] Unexpected error with Google Geocoding: {e}"
+        )
+        return None
+
+
+def geocode_with_aws_location(
+    delivery_address: DeliveryAddress,
+) -> Tuple[float, float] | None:
+    """
+    Use AWS geo-places service to geocode an address (new 2024 API).
+
+    Prerequisites:
+        - AWS credentials must be configured (IAM role or environment variables)
+        - Required IAM permissions: geo-places:Geocode
+        - No Place Index setup required!
+
+    Args:
+        delivery_address: The delivery address to geocode
+
+    Returns:
+        Tuple of (latitude, longitude) if successful, None otherwise
+    """
+    try:
+        # Create AWS geo-places client (new service)
+        geo_places_client = boto3.client("geo-places")
+
+        # Build the address text
+        address_parts = [delivery_address.address]
+        if delivery_address.city != "N/A":
+            address_parts.append(delivery_address.city)
+        if delivery_address.state != "N/A":
+            address_parts.append(delivery_address.state)
+        if delivery_address.zip != "N/A":
+            address_parts.append(delivery_address.zip)
+        address_parts.append("USA")
+
+        address_text = ", ".join(address_parts)
+
+        logger.debug(
+            f"[ToastTool.add_lat_long_to_address] Geocoding address: {address_text}"
+        )
+
+        # Use new AWS geo-places geocode API
+        response = geo_places_client.geocode(
+            QueryText=address_text,
+            MaxResults=1,
+            # Optional: Add country bias for better US results
+            QueryComponents={"Country": "USA"},
+        )
+
+        if response["ResultItems"] and len(response["ResultItems"]) > 0:
+            result_item = response["ResultItems"][0]
+            position = result_item["Position"]
+            longitude, latitude = (
+                position  # AWS geo-places returns [longitude, latitude]
+            )
+
+            logger.debug(
+                f"[ToastTool.add_lat_long_to_address] AWS geo-places result: {latitude}, {longitude}"
+            )
+            return latitude, longitude
+        else:
+            logger.debug(
+                "[ToastTool.add_lat_long_to_address] No results from AWS geo-places service"
+            )
+            return None
+
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        logger.error(
+            f"[ToastTool.add_lat_long_to_address] AWS geo-places service client error ({error_code}): {e}"
+        )
+        return None
+    except BotoCoreError as e:
+        logger.error(
+            f"[ToastTool.add_lat_long_to_address] AWS geo-places service boto error: {e}"
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            f"[ToastTool.add_lat_long_to_address] Unexpected error with AWS geo-places service: {e}"
+        )
+        return None
+
+
 def add_lat_long_to_address(
     delivery_address: DeliveryAddress,
 ) -> Tuple[bool, str, DeliveryAddress]:
     """
     Add latitude and longitude to a delivery address. Modifies the delivery address
-    object in place.
+    object in place. Uses AWS geo-places service as primary method with Google Geocoding as fallback.
 
     Args:
         delivery_address (DeliveryAddress): The delivery address to add latitude and
         longitude to.
 
     Returns:
-        Tuple[bool, str | DeliveryAddress]: A tuple containing a boolean indicating whether the latitude
-        and longitude were added successfully, and a string message summarizing the
-        result or the modified delivery address object.
+        Tuple[bool, str, DeliveryAddress]: A tuple containing a boolean indicating whether the latitude
+        and longitude were added successfully, a string message summarizing the
+        result, and the modified delivery address object.
     """
-    if delivery_address.address == "N/A" or delivery_address.city == "N/A":
-        return (
-            False,
-            "Ask the user to provide at least a street address and city.",
-            delivery_address,
-        )
-
-    # setup Nominatim to convert address to lat long coordinates
-    # TODO: Usage limited to 1qps without API key. Upgrade to paid plan when needed.
-    # TODO: https://aws.amazon.com/location/
-    geolocator = Nominatim(user_agent="pal")
-
-    geo_payload = {
-        "street": delivery_address.address,
-        "city": delivery_address.city,
-        "state": (delivery_address.state if delivery_address.state != "N/A" else ""),
-        "country": "USA",
-        "postalcode": (delivery_address.zip if delivery_address.zip != "N/A" else ""),
-    }
-    logger.debug(
-        "[ToastTool.add_lat_long_to_address] Geolocator payload: " + str(geo_payload)
-    )
-
-    try:
-        geocoded_loc: Any = geolocator.geocode(geo_payload)
-    except GeocoderTimedOut as e:
-        logger.error(
-            f"[ToastTool.add_lat_long_to_address] Nominatim geocoding timed out: {e}"
-        )
-        return (
-            False,
-            "Address lookup service is temporarily unavailable. Please try again in a moment.",
-            delivery_address,
-        )
-    except GeocoderServiceError as e:
-        logger.error(
-            f"[ToastTool.add_lat_long_to_address] Nominatim geocoding service error: {e}"
-        )
-        return (
-            False,
-            "Address lookup service is experiencing issues. Please try again later.",
-            delivery_address,
-        )
-    except Exception as e:
-        logger.error(
-            f"[ToastTool.add_lat_long_to_address] Unexpected error during geocoding: {e}"
-        )
-        return (
-            False,
-            "An error occurred while validating your address. Please try again.",
-            delivery_address,
-        )
-    logger.debug(
-        f"[ToastTool.add_lat_long_to_address] Geocoded location: {bool(geocoded_loc)}"
-    )
-    if not geocoded_loc:
-        logger.debug("[ToastTool.add_lat_long_to_address] Failed to geocode address.")
-        return (
-            False,
-            "The address provided is invalid. Please provide a valid address. "
-            + (
-                "Try providing a state and zipcode."
-                if delivery_address.state == "N/A" or delivery_address.zip == "N/A"
-                else ""
-            ),
-            delivery_address,
-        )
-
-    logger.debug(
-        "[ToastTool.add_lat_long_to_address] Nominatim API result: "
-        + str(geocoded_loc.latitude)
-        + ", "
-        + str(geocoded_loc.longitude)
-    )
-
-    # auto-populate state and zipcode
-    if delivery_address.state == "N/A" or delivery_address.zip == "N/A":
-        return (
-            False,
-            "Please provide your full address with zip code and state information.",
-            delivery_address,
-        )
-
+    # Validate all required fields upfront before making any API calls
     if (
         not delivery_address
         or delivery_address.address == "N/A"
@@ -204,17 +271,48 @@ def add_lat_long_to_address(
         or delivery_address.state == "N/A"
         or delivery_address.zip == "N/A"
     ):
-        logger.debug(
-            "[ToastTool.add_lat_long_to_address] Failed to convert address. "
-            f"Delivery address object: {delivery_address}"
-        )
         return (
             False,
-            "Something went wrong with delivery address conversion. Please try again.",
+            "Please provide your complete address including street, city, state, and zip code.",
             delivery_address,
         )
-    delivery_address.lat = geocoded_loc.latitude
-    delivery_address.lng = geocoded_loc.longitude
+
+    latitude, longitude = None, None
+
+    # Try AWS geo-places service first
+    logger.debug(
+        "[ToastTool.add_lat_long_to_address] Attempting geocoding with AWS geo-places service"
+    )
+    aws_result = geocode_with_aws_location(delivery_address)
+    if aws_result:
+        latitude, longitude = aws_result
+        logger.debug(
+            f"[ToastTool.add_lat_long_to_address] AWS geo-places service success: {latitude}, {longitude}"
+        )
+    else:
+        logger.debug(
+            "[ToastTool.add_lat_long_to_address] AWS geo-places service failed, falling back to Google Geocoding"
+        )
+
+        # Fallback to Google Geocoding
+        google_result = geocode_with_google(delivery_address)
+        if google_result:
+            latitude, longitude = google_result
+            logger.debug(
+                f"[ToastTool.add_lat_long_to_address] Google Geocoding success: {latitude}, {longitude}"
+            )
+
+    # Check if we got results from either service
+    if latitude is None or longitude is None:
+        logger.debug("[ToastTool.add_lat_long_to_address] All geocoding methods failed")
+        return (
+            False,
+            "The address provided could not be geocoded. Please verify the address is correct and try again.",
+            delivery_address,
+        )
+    # Set the latitude and longitude on the delivery address object
+    delivery_address.lat = latitude
+    delivery_address.lng = longitude
     return (True, "Latitude and longitude added to delivery address.", delivery_address)
 
 
