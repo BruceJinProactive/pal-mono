@@ -87,3 +87,22 @@ class CateringRequestCancelled(BaseEvent):
     account_id: UUID
     cancellation_reason: str | None
     cancelled_at: datetime
+
+
+@dataclass
+class GoogleBusinessHoursUpdateRequested(BaseEvent):
+    """Event published when business hours need updating from Google for a specific store."""
+
+    detail_type: ClassVar[str] = "integration.google.BusinessHoursUpdateRequested"
+
+    # Resource identifiers (required fields first)
+    project_id: UUID  # The store/location
+    project_name: str
+    account_id: UUID  # Parent account (for context)
+    account_name: str
+    google_place_id: str
+    requested_at: datetime
+
+    # Optional fields with defaults
+    requested_by: str = "scheduler"  # or "manual"
+    last_updated: datetime | None = None  # When hours were last fetched

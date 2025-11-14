@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, selectinload
@@ -434,3 +435,112 @@ class ProjectRepository:
             self.session.rollback()
             logger.error(f"Error retrieving projects by IDs: {e}")
             return []
+
+    def get_projects_with_google_place_id(self) -> List[Project]:
+        """
+        Get all projects (stores) that have a google_place_id configured.
+
+        Returns:
+            List[Project]: Projects with valid Google Place IDs.
+        """
+        try:
+            projects = (
+                self.session.query(Project)
+                .options(selectinload(Project.account))
+                .filter(
+                    Project.google_place_id.isnot(None), Project.google_place_id != ""
+                )
+                .all()
+            )
+            return projects
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving projects with google_place_id: {e}")
+            return []
+
+    def get_projects_needing_hours_update(
+        self, hours_threshold: int = 24
+    ) -> List[Project]:
+        """
+        Get projects whose hours haven't been updated recently.
+
+        Args:
+            hours_threshold: Hours since last update (default: 24)
+
+        Returns:
+            List[Project]: Projects that need hours updates.
+        """
+        try:
+            threshold_time = datetime.now(timezone.utc) - timedelta(
+                hours=hours_threshold
+            )
+
+            projects = (
+                self.session.query(Project)
+                .options(selectinload(Project.account))
+                .filter(
+                    Project.google_place_id.isnot(None),
+                    Project.google_place_id != "",
+                    or_(
+                        Project.business_hours_last_updated.is_(None),
+                        Project.business_hours_last_updated < threshold_time,
+                    ),
+                )
+                .all()
+            )
+            return projects
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving projects needing hours update: {e}")
+            return []
+
+    def update_project_business_hours(
+        self,
+        project_id: uuid.UUID,
+        business_hours: Dict[str, Any],
+        last_updated: Any,
+    ) -> Project:
+        """
+        Update business hours for a project (store location).
+
+        Args:
+            project_id: The project ID to update
+            business_hours: Structured hours data from Google Places API
+            last_updated: Timestamp of the update
+
+        Returns:
+            Project: The updated project
+
+        Raises:
+            ValueError: If project not found
+            SQLAlchemyError: If database error occurs
+        """
+        try:
+            project = self.get_project(project_id)
+            if not project:
+                raise ValueError(f"Project {project_id} not found")
+
+            project.business_hours = business_hours
+            project.business_hours_last_updated = last_updated
+            project.updated_at = datetime.now(timezone.utc)
+
+            # Also update the human-readable store_hours field
+            weekday_text = business_hours.get("regular_hours", {}).get(
+                "weekday_text", []
+            )
+            if weekday_text:
+                project.store_hours = "\n".join(weekday_text)
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(project)
+            return project
+        except ValueError:
+            raise
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating project business hours: {e}")
+            raise

@@ -1,5 +1,7 @@
 # Google Business Hours Updater - Detailed Implementation
 
+> **⚠️ NOTE:** This document describes a planned feature that was not implemented. The `get_place_details_by_place_id` function referenced in this document has been removed. This documentation is preserved for future reference.
+
 ## Overview
 
 The Google Business Hours Updater automatically syncs restaurant business hours from Google Places API to both the database and knowledge base. This ensures AI agents have accurate, up-to-date information about:
@@ -56,20 +58,24 @@ class PlaceResult(BaseModel):
 
 **Implementation (`_implementation.py`):**
 ```python
-async def get_place_details_by_place_id(place_id: str) -> PlaceResult:
-    """Get detailed place information from Google Places API."""
-    api_key = _get_api_key()
+# NOTE: The get_place_details_by_place_id function was removed as the feature was not implemented.
+# The internal _get_place_details() helper function is still available and used by search_places_by_name().
 
-    url = "https://maps.googleapis.com/maps/api/place/details/json"
-    params = {
-        "place_id": place_id,
-        "fields": "name,formatted_address,formatted_phone_number,opening_hours,website,...",
-        "key": api_key
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        # ... error handling, parsing
+# Example of how it would have been implemented:
+# async def get_place_details_by_place_id(place_id: str) -> PlaceResult:
+#     """Get detailed place information from Google Places API."""
+#     api_key = _get_api_key()
+#
+#     url = "https://maps.googleapis.com/maps/api/place/details/json"
+#     params = {
+#         "place_id": place_id,
+#         "fields": "name,formatted_address,formatted_phone_number,opening_hours,website,...",
+#         "key": api_key
+#     }
+#
+#     async with httpx.AsyncClient() as client:
+#         response = await client.get(url, params=params)
+#         # ... error handling, parsing
 ```
 
 ### Missing Pieces
@@ -1500,14 +1506,18 @@ async def update_project_google_place_id(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    # NOTE: get_place_details_by_place_id was removed. Would need to be re-implemented.
     # Validate place_id by fetching from Google
-    try:
-        place_data = await get_place_details_by_place_id(request.google_place_id)
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid Google Place ID: {str(e)}"
-        )
+    # try:
+    #     place_data = await get_place_details_by_place_id(request.google_place_id)
+    # except Exception as e:
+    #     raise HTTPException(
+    #         status_code=400,
+    #         detail=f"Invalid Google Place ID: {str(e)}"
+    #     )
+
+    # For now, skip validation:
+    place_data = None
 
     # Update project
     project.google_place_id = request.google_place_id
@@ -1517,8 +1527,8 @@ async def update_project_google_place_id(
         "success": True,
         "project_id": project_id,
         "google_place_id": request.google_place_id,
-        "place_name": place_data.name,
-        "place_address": place_data.formatted_address
+        # "place_name": place_data.name,
+        # "place_address": place_data.formatted_address
     }
 ```
 
