@@ -38,12 +38,23 @@ def send_meter_event(
         return True
 
     except Exception as e:
-        logger.error(
-            f"Failed to send meter event: {e}",
-            extra={
-                "event_name": event_name,
-                "stripe_customer_id": stripe_customer_id,
-                "value": value,
-            },
-        )
+        error_message = str(e)
+        if "No active meter found" in error_message:
+            logger.warning(
+                f"Meter not found for event (this is expected if project has no active billing meter): {e}",
+                extra={
+                    "event_name": event_name,
+                    "stripe_customer_id": stripe_customer_id,
+                    "value": value,
+                },
+            )
+        else:
+            logger.error(
+                f"Failed to send meter event: {e}",
+                extra={
+                    "event_name": event_name,
+                    "stripe_customer_id": stripe_customer_id,
+                    "value": value,
+                },
+            )
         return False

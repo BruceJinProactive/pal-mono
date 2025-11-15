@@ -561,8 +561,8 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 )
 
                 if not success:
-                    logger.error(
-                        f"Failed to track call usage for call {call_id}",
+                    logger.warning(
+                        f"Failed to track call usage for call {call_id} (meter may not be configured)",
                         extra={
                             "call_id": call_id,
                             "project_id": str(project.id),
