@@ -97,14 +97,31 @@ class VapiTool(Toolkit):
         )
         self.register(self.call_transfer)
 
+    def _build_transfer_payload(self) -> dict:
+        """Build transfer payload for SIP URI or phone number."""
+        if not self.destination_number:
+            raise ValueError("destination_number cannot be empty or None")
+        is_sip = self.destination_number.lower().startswith("sip:")
+        destination = (
+            {"type": "sip", "sipUri": self.destination_number}
+            if is_sip
+            else {"type": "number", "number": self.destination_number}
+        )
+        logger.debug(
+            f"[VapiTool._build_transfer_payload] Detected destination type: {'SIP' if is_sip else 'phone number'} for {self.destination_number}"
+        )
+        return {
+            "type": "transfer",
+            "destination": destination,
+            "content": self.transfer_message,
+        }
+
     @tool
     def call_transfer(self) -> str:
         """
-        Transfer the current call to another phone number.
+        Transfer the current call to a phone number or SIP address.
 
-        IMPORTANT: This tool is only available during voice calls and should NOT be used
-        in text/message conversations. It will only function when the user is on an
-        active voice call through the Vapi system.
+        Supports phone numbers ("+1234567890") or SIP URIs ("sip:+1234567890@sip.provider.com").
 
         Returns:
             str: Success or error message about the call transfer attempt.
@@ -192,11 +209,8 @@ class VapiTool(Toolkit):
         finally:
             db.close()
 
-        transfer_payload = {
-            "type": "transfer",
-            "destination": {"type": "number", "number": self.destination_number},
-            "content": self.transfer_message,
-        }
+        # Build transfer payload with auto-detection of SIP vs phone number
+        transfer_payload = self._build_transfer_payload()
 
         try:
             # Make the POST request to transfer the call
