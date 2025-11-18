@@ -2,7 +2,7 @@ import base64
 import json
 import re
 import urllib.error
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import cached_property
 from typing import Any, Dict, Optional, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -211,7 +211,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             last_name: Guest last name for the reservation.
             phone_number: Guest phone number in E.164 format
             email: Optional guest email address. (ignored by this tool)
-            notes: Optional notes supplied by the agent (ignored by this tool).
+            notes: Optional notes, if the user has allergies then mention that here. Otherwise leave it empty.
 
         Returns:
             A confirmation string describing the reservation status, or an error message.
@@ -314,6 +314,43 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             self._invalidate_operational_token()
             return "Unable to authenticate with Resy right now. "
 
+        normalized_customer_phone = _normalize_phone(phone_number)
+        if normalized_customer_phone:
+            try:
+                analytics_token, operational_token = self._ensure_analytics_token(
+                    api_key=api_key, operational_token=operational_token
+                )
+                existing_reservations = self._fetch_phone_reservations_for_date(
+                    api_key=api_key,
+                    analytics_token=analytics_token,
+                    target_date=target_dt.date(),
+                    normalized_phone=normalized_customer_phone,
+                )
+            except Exception:  # noqa: BLE001
+                logger.error(
+                    "[Resy Tool] Failed to check existing reservations before booking",
+                    exc_info=True,
+                )
+                existing_reservations = []
+
+            if existing_reservations:
+                existing_time = existing_reservations[0].get("Time") or "unknown time"
+                return (
+                    "This phone number already has a reservation on "
+                    f"{target_dt.date()} at {existing_time}. Perhaps ask the user if they would like to delete this reservation."
+                )
+
+        struct_notes: Optional[list[Dict[str, Any]]] = None
+        if notes and notes.strip():
+            struct_notes = [
+                {
+                    "id": None,
+                    "body": notes.strip(),
+                    "category_id": 1,
+                    "notable": False,
+                }
+            ]
+
         try:
             guest_user_id = self._find_or_create_guest(
                 api_key=api_key,
@@ -408,6 +445,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
                     last_name=last_name,
                     phone_number=phone_number,
                     struct_tags=self.default_struct_tags,
+                    struct_notes=struct_notes,
                 )
         except ResyAPIError as exc:
             logger.error(
@@ -514,38 +552,23 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             )
             return "I couldn't authenticate with Resy to manage reservations."
 
-        day_of_year = target_date.timetuple().tm_yday
-
-        analytics_token = self._analytics_token
-        if not analytics_token:
-            # force refresh to fetch analytics token
-            try:
-                operational_token = self._get_operational_token(
-                    api_key=api_key, force_refresh=True
-                )
-                analytics_token = self._analytics_token
-            except Exception:  # noqa: BLE001
-                logger.error(
-                    "[Resy Tool] Failed to refresh tokens for analytics access",
-                    exc_info=True,
-                )
-                return (
-                    "I couldn't refresh the credentials needed to look up reservations."
-                )
-
-        if not analytics_token:
-            logger.error(
-                "[Resy Tool] Missing analytics token after venue authorization",
-                extra={"venue_id": self.venue_id},
+        try:
+            analytics_token, operational_token = self._ensure_analytics_token(
+                api_key=api_key, operational_token=operational_token
             )
-            return "I couldn't locate the credentials needed to search the reservation list."
+        except Exception:  # noqa: BLE001
+            logger.error(
+                "[Resy Tool] Failed to refresh tokens for analytics access",
+                exc_info=True,
+            )
+            return "I couldn't refresh the credentials needed to look up reservations."
 
         try:
-            report = fetch_reservations_report(
+            phone_rows = self._fetch_phone_reservations_for_date(
                 api_key=api_key,
-                services_auth_token=analytics_token,
-                year=target_date.year,
-                day_of_year=day_of_year,
+                analytics_token=analytics_token,
+                target_date=target_date,
+                normalized_phone=normalized_customer,
             )
         except Exception:  # noqa: BLE001
             logger.error(
@@ -554,18 +577,6 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
                 exc_info=True,
             )
             return "I wasn't able to retrieve the reservation list from Resy."
-
-        rows = extract_reservation_rows(report)
-        customer_last_digits = normalized_customer[-10:]
-        phone_rows: list[Dict[str, Any]] = []
-        for row in rows:
-            row_phone = _normalize_phone(row.get("phone"))
-            if not row_phone:
-                continue
-            if row_phone == normalized_customer or row_phone.endswith(
-                customer_last_digits
-            ):
-                phone_rows.append(row)
 
         if not phone_rows:
             return "I didn't find any reservations for that date under the caller's phone number. Please verify that it's the correct date for the reservation to be cancelled."
@@ -796,6 +807,50 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         self._cached_operational_token = None
         self._operational_token_expiry = None
         self._analytics_token = None
+
+    def _ensure_analytics_token(
+        self, *, api_key: str, operational_token: str
+    ) -> tuple[str, str]:
+        analytics_token = self._analytics_token
+        if analytics_token:
+            return analytics_token, operational_token
+
+        operational_token = self._get_operational_token(
+            api_key=api_key, force_refresh=True
+        )
+        analytics_token = self._analytics_token
+        if not analytics_token:
+            raise RuntimeError("Resy analytics token not available after refresh")
+
+        return analytics_token, operational_token
+
+    def _fetch_phone_reservations_for_date(
+        self,
+        *,
+        api_key: str,
+        analytics_token: str,
+        target_date: date,
+        normalized_phone: str,
+    ) -> list[Dict[str, Any]]:
+        day_of_year = target_date.timetuple().tm_yday
+        report = fetch_reservations_report(
+            api_key=api_key,
+            services_auth_token=analytics_token,
+            year=target_date.year,
+            day_of_year=day_of_year,
+        )
+        rows = extract_reservation_rows(report)
+        customer_last_digits = normalized_phone[-10:]
+        phone_rows: list[Dict[str, Any]] = []
+        for row in rows:
+            row_phone = _normalize_phone(row.get("phone"))
+            if not row_phone:
+                continue
+            if row_phone == normalized_phone or row_phone.endswith(
+                customer_last_digits
+            ):
+                phone_rows.append(row)
+        return phone_rows
         self.base_auth_token = None
 
     def _ensure_base_token(self, *, api_key: str, force_refresh: bool = False) -> str:

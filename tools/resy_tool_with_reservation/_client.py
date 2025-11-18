@@ -229,6 +229,7 @@ def create_reservation(
     last_name: str | None = None,
     phone_number: str | None = None,
     struct_tags: Optional[Sequence[Dict[str, Any]]] = None,
+    struct_notes: Optional[Sequence[Dict[str, Any]]] = None,
     timeout: int = 30,
 ) -> Dict[str, Any]:
     """Submit a reservation request using the provided lock and guest identifiers."""
@@ -250,6 +251,9 @@ def create_reservation(
         payload["last_name"] = last_name
     if phone_number:
         payload["mobile_number"] = phone_number
+
+    if struct_notes:
+        payload["struct_notes"] = list(struct_notes)
 
     response = _post_to_control(
         endpoint="/reservation",
