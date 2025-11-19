@@ -9,10 +9,11 @@ This module provides functions to fetch detailed subscription information includ
 """
 
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 import stripe
+from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
 
 import db
@@ -21,6 +22,46 @@ from db.repositories.project_repository import ProjectRepository
 from db.tables.types import TargetTier
 from services.subscription_service._stripe_product import get_call_meter_event_name
 from utils.log import logger
+
+
+def calculate_current_billing_period(
+    start_date: datetime,
+) -> tuple[int, int]:
+    """
+    Calculate the current billing period based on subscription start date.
+
+    Args:
+        start_date: Subscription start date (timezone-aware)
+
+    Returns:
+        Tuple of (period_start_timestamp, period_end_timestamp) as Unix timestamps
+    """
+    now = datetime.now(timezone.utc)
+
+    # Ensure start_date is timezone-aware
+    if start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=timezone.utc)
+
+    # Calculate how many months have passed since start_date
+    months_elapsed = (now.year - start_date.year) * 12 + (now.month - start_date.month)
+
+    # Adjust if we haven't reached the billing day yet this month
+    if now.day < start_date.day:
+        months_elapsed -= 1
+
+    # Calculate current period start by adding months_elapsed to start_date
+    period_start = start_date + relativedelta(months=months_elapsed)
+
+    # Period end is one month later, but capped at current time
+    period_end_scheduled = period_start + relativedelta(months=1)
+    period_end = min(period_end_scheduled, now)  # Cap at current time
+
+    # Convert to Unix timestamps
+    period_start_ts = int(period_start.timestamp())
+    period_end_ts = int(period_end.timestamp())
+
+    return period_start_ts, period_end_ts
+
 
 # Define tier ordering for sorting upgrade options
 TIER_ORDER = {
@@ -63,18 +104,40 @@ def get_usage_metrics(
         return usage
 
     try:
-        # Get the current billing period from Stripe subscription
-        stripe_sub = stripe.Subscription.retrieve(subscription.stripe_subscription_id)
+        # Try to get the current billing period from Stripe subscription first
+        period_start = None
+        period_end = None
 
-        # Get period timestamps
-        if not (hasattr(stripe_sub, "current_period_start") and hasattr(stripe_sub, "current_period_end")):  # type: ignore
-            logger.warning(
-                f"Stripe subscription missing period attributes for {subscription.stripe_subscription_id}"
+        try:
+            stripe_sub = stripe.Subscription.retrieve(
+                subscription.stripe_subscription_id
             )
-            return usage
 
-        period_start = stripe_sub.current_period_start  # type: ignore
-        period_end = stripe_sub.current_period_end  # type: ignore
+            # Try to get period from Stripe subscription
+            if hasattr(stripe_sub, "current_period_start") and hasattr(stripe_sub, "current_period_end"):  # type: ignore
+                if stripe_sub.current_period_start and stripe_sub.current_period_end:  # type: ignore
+                    period_start = stripe_sub.current_period_start  # type: ignore
+                    period_end = stripe_sub.current_period_end  # type: ignore
+        except Exception as e:
+            logger.warning(
+                f"Failed to retrieve Stripe subscription {subscription.stripe_subscription_id}: {e}"
+            )
+
+        # Fallback: Calculate period from subscription start_date
+        if period_start is None or period_end is None:
+            if subscription.start_date:
+                period_start, period_end = calculate_current_billing_period(
+                    subscription.start_date
+                )
+            else:
+                logger.warning(
+                    "Cannot determine billing period: no Stripe period and no start_date",
+                    extra={
+                        "subscription_id": str(subscription.id),
+                        "stripe_subscription_id": subscription.stripe_subscription_id,
+                    },
+                )
+                return usage
 
         # Fetch meter event summaries for all projects under this account
         project_repo = ProjectRepository(session)
