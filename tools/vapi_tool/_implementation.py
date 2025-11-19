@@ -123,6 +123,8 @@ class VapiTool(Toolkit):
 
         Supports phone numbers ("+1234567890") or SIP URIs ("sip:+1234567890@sip.provider.com").
 
+        NEVER invoke this tool if user is NOT communicating via voice channel
+
         Returns:
             str: Success or error message about the call transfer attempt.
         """
