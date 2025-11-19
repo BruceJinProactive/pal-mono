@@ -1047,6 +1047,8 @@ class AdoraTool(Toolkit):
             elif not order.customer.first_name:
                 logger.debug("Customer first name is missing.")
                 return "We'll need your first name."
+            elif not order.customer.last_name:
+                return "We'll need your last name."
             elif not order.customer.phone_number:
                 logger.debug("Customer phone number is missing.")
                 return "We'll need your phone number."
