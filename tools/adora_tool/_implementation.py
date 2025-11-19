@@ -241,8 +241,9 @@ class AdoraTool(Toolkit):
             if not _utils.is_valid_date(date):
                 return f"The date {date} is invalid."
 
-            # Enforce that only current date is allowed
-            current_date = datetime.now().strftime("%Y-%m-%d")
+            # Enforce that only current date is allowed - use store timezone
+            store_tz = self.tool_metadata.timezone or "America/Los_Angeles"
+            current_date = datetime.now(ZoneInfo(store_tz)).strftime("%Y-%m-%d")
             if date != current_date:
                 return (
                     f"This tool can only be used for the current date ({current_date})."
