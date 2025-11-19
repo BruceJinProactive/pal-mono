@@ -1,7 +1,8 @@
+import re
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class CreateAffiliateRequest(BaseModel):
@@ -15,6 +16,22 @@ class CreateAffiliateRequest(BaseModel):
     stripe_customer_id: str | None = None
     paypal_email: EmailStr | None = None
     wise_email: EmailStr | None = None
+
+    @field_validator("token")
+    @classmethod
+    def validate_token(cls, v: str | None) -> str | None:
+        """
+        Validate and sanitize token to meet Rewardful requirements.
+        Token can only contain letters, numbers, and dashes.
+        """
+        if v is None:
+            return v
+
+        sanitized = re.sub(r"[^a-zA-Z0-9-]", "-", v)
+        sanitized = re.sub(r"-+", "-", sanitized)
+        sanitized = sanitized.strip("-")
+
+        return sanitized if sanitized else None
 
 
 class UpdateAffiliateRequest(BaseModel):
