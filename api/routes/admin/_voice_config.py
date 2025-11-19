@@ -1,19 +1,25 @@
+import logging
 import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.admin.voice_config import (
+    BatchUpdateVoiceConfigsRequest,
+    BatchUpdateVoiceConfigsResponse,
     CreateVoiceConfigRequest,
     ListVoiceConfigsResponse,
     UpdateVoiceConfigRequest,
     VoiceConfig,
+    VoiceConfigUpdateResult,
 )
-from services import project_service
+from services import account_service, project_service
 from services.voice_service import VoiceService
 
-from ._auth import authorize_user_account
-from ._utils import UserContext
+from ._auth import authorize_admin, authorize_user_account
+from ._utils import UserContext, not_found_error
+
+logger = logging.getLogger(__name__)
 
 
 async def create_voice_config(
@@ -140,3 +146,116 @@ async def delete_voice_config(
     authorize_user_account(context, project.account.name)
 
     return await voice_service.delete_voice_config(voice_config_id, async_session)
+
+
+async def batch_update_voice_configs(
+    request: BatchUpdateVoiceConfigsRequest,
+    context: UserContext,
+    async_session: AsyncSession,
+) -> BatchUpdateVoiceConfigsResponse:
+    """
+    Update voice configs for multiple projects in batch.
+    """
+    authorize_admin(context)
+
+    # Verify account exists
+    account = await account_service.get_account_async(
+        async_session, request.account_name
+    )
+    if not account:
+        raise not_found_error(f"Account '{request.account_name}' not found.")
+
+    try:
+        # Verify all projects belong to the account and collect project names
+        project_names: dict[uuid.UUID, str] = {}
+        results: list[VoiceConfigUpdateResult] = []
+        total_failed = 0
+
+        for voice_config_update in request.voice_config_updates:
+            try:
+                # Get project to verify ownership and get name
+                project = await project_service.get_project_by_id_async(
+                    async_session, voice_config_update.project_id
+                )
+                if not project:
+                    results.append(
+                        VoiceConfigUpdateResult(
+                            project_id=voice_config_update.project_id,
+                            project_name="Unknown",
+                            success=False,
+                            error_message="Project not found",
+                        )
+                    )
+                    total_failed += 1
+                    continue
+
+                # Store project name eagerly before any async operations that might fail
+                project_name = project.name
+
+                # Verify project belongs to the account
+                await async_session.refresh(project, ["account"])
+                if project.account.name != request.account_name:
+                    results.append(
+                        VoiceConfigUpdateResult(
+                            project_id=voice_config_update.project_id,
+                            project_name=project_name,
+                            success=False,
+                            error_message="Project does not belong to specified account",
+                        )
+                    )
+                    total_failed += 1
+                    continue
+
+                # Store project name for service layer
+                project_names[voice_config_update.project_id] = project_name
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to verify project {voice_config_update.project_id}: {e}",
+                    exc_info=True,
+                )
+                results.append(
+                    VoiceConfigUpdateResult(
+                        project_id=voice_config_update.project_id,
+                        project_name="Unknown",
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
+                total_failed += 1
+
+        # Filter out failed validation results to only process valid projects
+        valid_updates = [
+            update
+            for update in request.voice_config_updates
+            if update.project_id in project_names
+        ]
+
+        # Call service layer to perform batch updates
+        voice_service = VoiceService()
+        service_results, total_updated, service_failed = (
+            await voice_service.batch_update_voice_configs(
+                valid_updates, project_names, async_session
+            )
+        )
+
+        # Combine validation failures with service results
+        results.extend(service_results)
+        total_failed += service_failed
+
+        return BatchUpdateVoiceConfigsResponse(
+            account_name=request.account_name,
+            total_requested=len(request.voice_config_updates),
+            total_updated=total_updated,
+            total_failed=total_failed,
+            results=results,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Batch voice config update failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during batch voice config update",
+        )

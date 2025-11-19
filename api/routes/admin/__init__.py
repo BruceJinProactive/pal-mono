@@ -183,6 +183,8 @@ from api.schemas.admin.user_management import (
     UserInfo,
 )
 from api.schemas.admin.voice_config import (
+    BatchUpdateVoiceConfigsRequest,
+    BatchUpdateVoiceConfigsResponse,
     CreateVoiceConfigRequest,
     ListVoiceConfigsResponse,
     UpdateVoiceConfigRequest,
@@ -2703,6 +2705,30 @@ async def search_places(
 ---------- Voice Config Endpoints ----------
 --------------------------------------------
 """
+
+
+@admin_router.patch("/voice_configs/batch", status_code=status.HTTP_200_OK)
+async def batch_update_voice_configs(
+    request: BatchUpdateVoiceConfigsRequest,
+    context: UserContext = Depends(authenticate_user),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> BatchUpdateVoiceConfigsResponse:
+    """
+    Update voice configs for multiple projects in batch.
+
+    This endpoint allows you to update voice configurations for multiple projects at once.
+    For each project, it will update the first voice config found. If no voice config exists
+    for a project, it will be skipped with an error message.
+
+    Only fields that are provided in the request will be updated - fields set to null
+    or omitted will remain unchanged. This allows for partial updates of voice configs.
+
+    The response includes detailed results for each voice config update attempt,
+    including success/failure status and error messages for any failed updates.
+    """
+    return await _voice_config.batch_update_voice_configs(
+        request, context, async_session
+    )
 
 
 @admin_router.get("/projects/{project_id}/voice_configs")

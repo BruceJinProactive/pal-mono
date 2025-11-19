@@ -10,6 +10,7 @@ from api.schemas.admin.voice_config import (
     ListVoiceConfigsResponse,
     UpdateVoiceConfigRequest,
     VoiceConfig,
+    VoiceConfigUpdateResult,
 )
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from services.voice_service._builder import build_voice_config
@@ -195,3 +196,84 @@ class VoiceService:
                 detail=f"Failed to delete voice config: {str(e)}",
                 headers={"Content-Type": "application/json"},
             )
+
+    async def batch_update_voice_configs(
+        self,
+        voice_config_updates: list,
+        project_names: dict[uuid.UUID, str],
+        async_session: AsyncSession,
+    ) -> tuple[list[VoiceConfigUpdateResult], int, int]:
+        """
+        Update multiple voice configs in batch.
+
+        Args:
+            voice_config_updates: List of VoiceConfigUpdateData objects
+            project_names: Dict mapping project_id to project_name for result reporting
+            async_session: Database session
+
+        Returns:
+            Tuple of (results list, total_updated count, total_failed count)
+        """
+        results: list[VoiceConfigUpdateResult] = []
+        total_updated = 0
+        total_failed = 0
+
+        for voice_config_update in voice_config_updates:
+            project_name = project_names.get(voice_config_update.project_id, "Unknown")
+            try:
+                # Get existing voice configs for this project
+                voice_configs_response = await self.list_voice_configs_by_project(
+                    voice_config_update.project_id, async_session
+                )
+
+                if not voice_configs_response.voice_configs:
+                    results.append(
+                        VoiceConfigUpdateResult(
+                            project_id=voice_config_update.project_id,
+                            project_name=project_name,
+                            success=False,
+                            error_message="No voice config found for project",
+                        )
+                    )
+                    total_failed += 1
+                    continue
+
+                # Update the first voice config
+                first_voice_config = voice_configs_response.voice_configs[0]
+
+                # Create UpdateVoiceConfigRequest from the batch update data.
+                # Use exclude_unset/exclude_none so we don't overwrite fields with null
+                # when they were not provided in the batch payload.
+                update_data = voice_config_update.model_dump(
+                    exclude={"project_id"},
+                    exclude_unset=True,
+                    exclude_none=True,
+                )
+                update_request = UpdateVoiceConfigRequest(**update_data)
+
+                updated_config = await self.update_voice_config(
+                    first_voice_config.id, update_request, async_session
+                )
+
+                results.append(
+                    VoiceConfigUpdateResult(
+                        project_id=voice_config_update.project_id,
+                        project_name=project_name,
+                        success=True,
+                        voice_config_id=updated_config.id,
+                    )
+                )
+                total_updated += 1
+
+            except Exception as e:
+                results.append(
+                    VoiceConfigUpdateResult(
+                        project_id=voice_config_update.project_id,
+                        project_name=project_name,
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
+                total_failed += 1
+
+        return results, total_updated, total_failed
