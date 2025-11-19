@@ -34,6 +34,17 @@ You will be given the chat history and relevant context. You goal is to convert 
 - You must recognize user's implicit intent of takeout the order herself, and help the user place a takeout order. Here are a few examples how the user expresses their intention of taking out the order: "see you soon in the restaurant", "I will visit the restaurant", "see you at your place", "be there/around/ at the restaurant soon", "I will swing/pass/come/stop by"
 - If the user has not already specified their intent for takeout or delivery do not ASSUME ANYTHING.
 
+## ORDER TIMING INSTRUCTIONS:
+- IMPORTANT: Leave `promisedDate` as null for ASAP orders or if timing is not specified (default).
+- ONLY set `promisedDate` when the user explicitly requests a future time, such as:
+    * "I want it ready at 2:30 PM tomorrow"
+    * "Schedule for December 25th at noon"
+    * "Pick up at 6 PM tonight"
+    * "Deliver this at 7:30 PM on Friday"
+- Format: ISO 8601 datetime with timezone offset (e.g., '2025-05-01T14:30:00.000-0800')
+- Use the store's timezone from the <current_datetime> context when formatting the promisedDate
+- The `openedDate` should match `promisedDate` for scheduled orders
+
 # RULES FOR EXTRACTING THE ORDER ITEM'S MODIFIERS:
 - An order item's included ingredients are not considered modifiers.
 - Only include modifiers that were explicitly mentioned by the user in the Chat History.

@@ -5,8 +5,10 @@ import time
 import traceback
 import urllib.parse
 import uuid
+from datetime import datetime
 from functools import cached_property
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import polyline
 from agno.tools.toolkit import Toolkit
@@ -823,6 +825,19 @@ class ToastTool(Toolkit):
         chat_history: str = self._get_chat_history()  # type: ignore
         context = self._get_relevant_docs(chat_history)  # type: ignore
 
+        # Get current date and time in the store's timezone
+        store_tz = self.tool_metadata.timezone or "America/Los_Angeles"
+        current_dt_store = datetime.now(ZoneInfo(store_tz))
+
+        # Add current date/time to context for LLM to understand temporal references
+        current_time_info = (
+            f"\n\n<current_datetime>\n"
+            f"Current date and time: {current_dt_store.strftime('%A, %B %d, %Y at %I:%M %p')} ({store_tz})\n"
+            f"Use timezone: {store_tz}\n"
+            f"</current_datetime>"
+        )
+        context += current_time_info  # type: ignore
+
         # Get prompt overrides or defaults
         system_prompt = self.backdoor_tool_prompt.get(
             "system_prompt", EXTRACTOR_SYSTEM_PROMPT
@@ -906,6 +921,30 @@ class ToastTool(Toolkit):
 
         # TODO: Validate the address if the order is for delivery
         # PLACEHOLDER: Validate the address if the order is for delivery
+
+        # Handle scheduled orders: validate and set openedDate to match promisedDate
+        if order.promisedDate:
+            try:
+                # Validate ISO 8601 format by parsing
+                datetime.fromisoformat(order.promisedDate)
+
+                # Set openedDate to match promisedDate for scheduled orders
+                order.openedDate = order.promisedDate
+
+                logger.debug(
+                    f"[ToastTool._finalize_order_details] Scheduled order: "
+                    f"promisedDate={order.promisedDate}, openedDate={order.openedDate}"
+                )
+            except ValueError as e:
+                logger.error(
+                    f"[ToastTool._finalize_order_details] Invalid promisedDate format: {e}"
+                )
+                return f"Invalid scheduled time format: {str(e)}. Please provide the time in a valid format (e.g., '2025-05-01T14:30:00.000-0800')."
+            except Exception as e:
+                logger.error(
+                    f"[ToastTool._finalize_order_details] Error processing scheduled order: {e}"
+                )
+                return f"Error processing scheduled order: {str(e)}"
 
         logger.debug(
             f"[ToastTool._finalize_order_details] Extracted structured data: {order}"

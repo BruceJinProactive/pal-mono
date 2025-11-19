@@ -290,12 +290,19 @@ class OrderInput(BaseModel):
         default=None,
         description="An optional external identifier for the order, used to GET and check if the order exists.",
     )
+    promisedDate: Optional[str] = Field(
+        default=None,
+        description="For scheduled orders, the date and time that the order is scheduled to be fulfilled. Format: ISO 8601 datetime (e.g., '2025-05-01T08:00:00.000-0800'). For dine-in and ASAP orders, this should be null.",
+    )
+    openedDate: Optional[str] = Field(
+        default=None,
+        description="The business date of the order. For dine-in and ASAP orders, should match createdDate. For scheduled orders, should match promisedDate.",
+    )
 
 
 class Order(OrderInput):
     guid: Optional[str] = None  # Not required when submitting an order
     requiredPrepTime: Optional[str] = None  # Not required when submitting an order
-    openedDate: Optional[str] = None  # Not required when submitting an order
     entityType: Optional[str] = None  # Not required when submitting an order
     estimatedFulfillmentDate: SkipJsonSchema[Optional[str]] = None  # response only
     businessDate: SkipJsonSchema[Optional[int]] = None  # YYYYMMDD, response only
@@ -303,6 +310,7 @@ class Order(OrderInput):
     class Config:
         # Allow extra fields in case API response includes additional data
         extra = "allow"
+        use_enum_values = True
 
 
 class InventoryItem(BaseModel):
