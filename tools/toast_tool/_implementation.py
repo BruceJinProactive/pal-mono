@@ -746,8 +746,14 @@ class ToastTool(Toolkit):
                     node_text = textwrap.indent(node.text, 2 * "\t")
                     # If the metadata isDiningOptions boolean is True, prepend the DINING_OPTIONS_INSTRUCTION to the node_text
                     if node.metadata.get("isDiningOptions", False):
+                        dining_options_text = self.backdoor_tool_prompt.get(
+                            "dining_options_prompt", DINING_OPTIONS_INSTRUCTION
+                        )
                         node_text = (
-                            textwrap.indent(DINING_OPTIONS_INSTRUCTION, 2 * "\t")
+                            textwrap.indent(
+                                dining_options_text,
+                                2 * "\t",
+                            )
                             + "\n"
                             + node_text
                         )
