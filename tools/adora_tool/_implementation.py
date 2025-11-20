@@ -410,7 +410,7 @@ class AdoraTool(Toolkit):
                 return await asyncio.gather(*tasks)
             except Exception as e:
                 logger.error(
-                    f"Exception in run_all_queries: {e}, cancelling {len(tasks)} tasks"
+                    f"Exception in run_all_queries: {e}, cancelling {len(tasks)} tasks on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
                 )
                 # Cancel remaining tasks
                 for i, task in enumerate(tasks):
