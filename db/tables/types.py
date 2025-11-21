@@ -100,6 +100,8 @@ class IntegrationProvider(str, enum.Enum):
     adora = "adora"
     square = "square"
     opentable = "opentable"
+    resy = "resy"
+    minitable = "minitable"
 
 
 class IntegrationType(str, enum.Enum):
