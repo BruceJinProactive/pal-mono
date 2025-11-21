@@ -19,7 +19,7 @@ _API_KEY_PATTERN = re.compile(r'apiKey"?\s*:\s*["\']([^"\'\\]+)["\']')
 
 _VENUE_PAGE_TEMPLATE = "https://resy.com/cities/{city}/venues/{venue}"
 
-_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
+_CACHE_TTL_SECONDS = 60 * 60  # 1 hour
 _DEFAULT_USER_AGENT = "pal-mono/1.0"
 
 
