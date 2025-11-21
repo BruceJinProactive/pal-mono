@@ -14,6 +14,11 @@ from . import _implementation
 from .schema import AgentParams
 
 
+@traced("agent_service:construct_agent_spec()")
+async def construct_agent_spec():
+    return await _implementation.construct_agent_spec()
+
+
 @traced("Agent Service Constructing Config")
 async def construct_agent_config(
     session: AsyncSession,

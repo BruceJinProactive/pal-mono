@@ -94,8 +94,15 @@ async def get_chat_response_async(
         if not request_message:
             raise ValueError("Failed to create request message")
 
+        # **************** NEW Step 2: Construct agent, get input, and generate output ****************
+        if account_name in ["proactiveailab-transformer"]:
+            # TODO: Implement new flow with pal-agents
+            # spec = await agent_service.construct_agent_spec()
+            raise NotImplementedError(
+                "New pal-agents flow not yet implemented for transformer account"
+            )
+
         # ================= Step 2: Construct agent, get input, and generate output =================
-        # Get appropriate agent from account name
         agent_id = project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")

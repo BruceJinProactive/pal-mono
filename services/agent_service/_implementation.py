@@ -20,6 +20,11 @@ from . import _raw_config
 from .schema import AgentParams
 
 
+async def construct_agent_spec():
+    # Return mock spec for now
+    return {}
+
+
 async def construct_agent_config(
     db_session: AsyncSession,
     agent_id: uuid.UUID,
