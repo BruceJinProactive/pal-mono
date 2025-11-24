@@ -21,9 +21,50 @@ class MiniTableResponse:
         self.decoded_body = decoded_body
 
 
+def _get_minitable_credentials(
+    client_credentials: Optional[str],
+) -> tuple[str, str]:
+    """
+    Resolve MiniTable credentials using either provided secret or defaults.
+
+    Args:
+        client_credentials: Optional secret name containing JSON with client_id and client_secret
+
+    Returns:
+        Tuple of (username/client_id, password/client_secret)
+    """
+    if not client_credentials:
+        username = get_client_secret_with_fallback("MINITABLE_USERNAME")
+        password = get_client_secret_with_fallback("MINITABLE_PASSWORD")
+        return username, password
+
+    raw_secret = get_client_secret_with_fallback(client_credentials)
+    try:
+        secret_data = json.loads(raw_secret)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"Secret '{client_credentials}' is not valid JSON: {e.msg}"
+        ) from e
+
+    client_id = secret_data.get("client_id")
+    client_secret = secret_data.get("client_secret")
+
+    if not isinstance(client_id, str) or not client_id.strip():
+        raise ValueError(
+            f"Secret '{client_credentials}' is missing required field 'client_id'"
+        )
+    if not isinstance(client_secret, str) or not client_secret.strip():
+        raise ValueError(
+            f"Secret '{client_credentials}' is missing required field 'client_secret'"
+        )
+
+    return client_id.strip(), client_secret.strip()
+
+
 def connect_minitable_api(
     api_function: str,
     payload: Optional[dict] = None,
+    client_credentials: Optional[str] = None,
 ) -> MiniTableResponse:
     """
     Makes a request to the MiniTable API.
@@ -31,6 +72,7 @@ def connect_minitable_api(
     Args:
         api_function: API endpoint to call
         payload: JSON payload to include in the request
+        client_credentials: Optional secret name containing client_id and client_secret
 
     Returns:
         MiniTableResponse object containing the response data
@@ -41,8 +83,7 @@ def connect_minitable_api(
     logger.debug(f"[MiniTable API] Making POST request to {base_url}")
 
     try:
-        username = get_client_secret_with_fallback("MINITABLE_USERNAME")
-        password = get_client_secret_with_fallback("MINITABLE_PASSWORD")
+        username, password = _get_minitable_credentials(client_credentials)
     except Exception as e:
         logger.error(f"[MiniTable API] Failed to retrieve credentials: {str(e)}")
         return MiniTableResponse(

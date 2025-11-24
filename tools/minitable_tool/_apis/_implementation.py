@@ -7,6 +7,7 @@ def suggest_availability(
     party_size: int,
     start_sec: str,
     duration_sec: int = 1800,
+    client_credentials: str | None = None,
 ) -> dict:
     """
     Check availability for a specific time slot and get suggestions if not available.
@@ -38,6 +39,7 @@ def suggest_availability(
     response = connect_minitable_api(
         api_function=api_function,
         payload=request_body,
+        client_credentials=client_credentials,
     )
 
     # Handle the response
@@ -57,6 +59,7 @@ def suggest_availability(
 def create_reservation(
     restaurant_id: int,
     reservation_params: dict,
+    client_credentials: str | None = None,
 ) -> dict:
     """
     Create a reservation at a specific restaurant.
@@ -94,6 +97,7 @@ def create_reservation(
     response = connect_minitable_api(
         api_function=api_function,
         payload=request_body,
+        client_credentials=client_credentials,
     )
 
     if response.status != 200:
@@ -138,6 +142,7 @@ def create_waitlist(
     telephone: str,
     customer_name: str,
     note: str = "",
+    client_credentials: str | None = None,
 ) -> dict:
     """
     Create a waitlist entry for a restaurant.
@@ -168,6 +173,7 @@ def create_waitlist(
     response = connect_minitable_api(
         api_function=api_function,
         payload=request_body,
+        client_credentials=client_credentials,
     )
 
     if response.status != 200:
@@ -183,7 +189,9 @@ def create_waitlist(
     return data
 
 
-def check_waitlist_status(merchant_id: str) -> dict:
+def check_waitlist_status(
+    merchant_id: str, client_credentials: str | None = None
+) -> dict:
     """
     Check the current waitlist status for a restaurant.
 
@@ -204,6 +212,7 @@ def check_waitlist_status(merchant_id: str) -> dict:
     response = connect_minitable_api(
         api_function=api_function,
         payload=request_body,
+        client_credentials=client_credentials,
     )
 
     if response.status != 200:
@@ -219,7 +228,9 @@ def check_waitlist_status(merchant_id: str) -> dict:
     return data
 
 
-def get_user_wait_status(merchant_id: str, telephone: str) -> dict:
+def get_user_wait_status(
+    merchant_id: str, telephone: str, client_credentials: str | None = None
+) -> dict:
     """
     Get today's waitlist entries for a specific phone number.
 
@@ -242,6 +253,7 @@ def get_user_wait_status(merchant_id: str, telephone: str) -> dict:
     response = connect_minitable_api(
         api_function=api_function,
         payload=request_body,
+        client_credentials=client_credentials,
     )
 
     if response.status != 200:

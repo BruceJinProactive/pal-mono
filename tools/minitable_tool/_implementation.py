@@ -32,11 +32,13 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         self,
         restaurant_id: int,
         tool_metadata: ToolMetadata,
+        client_credentials: str | None = None,
     ):
         super().__init__(name="minitable_tool")
 
         self.restaurant_id = restaurant_id
         self.tool_metadata = tool_metadata
+        self.client_credentials = client_credentials
 
         self.register(self.check_availability)
         self.register(self.make_reservation)
@@ -82,6 +84,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                 party_size=party_size,
                 start_sec=requested_datetime_string,
                 duration_sec=1800,  # 30 minutes default
+                client_credentials=self.client_credentials,
             )
 
             slot_time_availability = result.get("slot_time_availability", {})
@@ -178,6 +181,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             result = create_reservation(
                 restaurant_id=self.restaurant_id,
                 reservation_params=reservation_params,
+                client_credentials=self.client_credentials,
             )
 
             # Check for booking failure first
@@ -222,7 +226,10 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                 f"[MiniTable] Getting waitlist status for restaurant {self.restaurant_id}"
             )
 
-            result = check_waitlist_status(merchant_id=str(self.restaurant_id))
+            result = check_waitlist_status(
+                merchant_id=str(self.restaurant_id),
+                client_credentials=self.client_credentials,
+            )
 
             status = result.get("status", "Unknown")
             reason = result.get("reason", "")
@@ -315,6 +322,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                 telephone=formatted_telephone,
                 customer_name=customer_name_with_phone,
                 note=notes,
+                client_credentials=self.client_credentials,
             )
 
             # Check for business logic failures
@@ -391,6 +399,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             result = get_user_wait_status(
                 merchant_id=str(self.restaurant_id),
                 telephone=formatted_telephone,
+                client_credentials=self.client_credentials,
             )
 
             waitlists = result.get("waitlists", [])
