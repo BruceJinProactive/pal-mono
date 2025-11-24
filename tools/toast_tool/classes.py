@@ -262,8 +262,9 @@ class ToastDeliveryInfo(BaseModel):
     address2: Optional[str] = Field(description="Extended address (if applicable)")
     city: str
     state: str
-    notes: str = Field(
-        description="Special notes that the user has provided, including but not limited to any adjustments to the menu items ordered. Notes must be between 2 and 100 characters in length."
+    notes: Optional[str] = Field(
+        default=None,
+        description="Special notes that the user has provided, including but not limited to any adjustments to the menu items ordered. Notes must be between 2 and 100 characters in length.",
     )
     zipCode: str
 

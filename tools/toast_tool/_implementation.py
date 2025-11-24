@@ -14,7 +14,7 @@ import polyline
 from agno.tools.toolkit import Toolkit
 from cryptography.fernet import Fernet
 from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import retrieval, tool
+from ddtrace.llmobs.decorators import retrieval, task, tool
 from pydantic import ValidationError
 from shapely import Point, Polygon
 
@@ -129,6 +129,7 @@ class ToastTool(Toolkit):
         # Do not register get_menu_inventory_tool and get_ordering_schedule_tool for now
         self.register(self.get_ordering_schedule_tool)
         self.register(self.is_online_order_available)
+        self.register(self.check_address)
         # TODO: Figure out how to check if an item is out of stock or has low quantity
         # self.register(self.get_menu_inventory_tool)
 
@@ -184,22 +185,93 @@ class ToastTool(Toolkit):
                 credential_name="TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS",
             )
 
+    def _get_delivery_area(self) -> str:
+        """
+        Retrieves the delivery area polyline string from store configuration.
+
+        Returns:
+            str: Either the polyline string or an error message
+        """
+        store_info_str = self.get_store_info()
+        if store_info_str == "Failed to get the store information, please try again.":
+            return store_info_str
+
+        try:
+            store_info = json.loads(store_info_str)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse store info JSON: {e}")
+            return "Failed to process store information."
+
+        polyline_str = (
+            store_info.get("delivery", {}).get("area")
+            if "delivery" in store_info
+            else None
+        )
+
+        if not polyline_str:
+            return "Delivery area information is not available."
+
+        return polyline_str
+
+    @task
+    def _validate_address(
+        self, canonical_address: DeliveryAddress | None
+    ) -> tuple[bool, str]:
+        """
+        Validates if an address is within the delivery zone polygon.
+
+        Args:
+            canonical_address: The address to validate with lat/lng
+
+        Returns:
+            tuple[bool, str]: (is_valid, message)
+        """
+        # Validate input
+        if not canonical_address:
+            return (False, "Could you provide your complete address?")
+
+        # Get store delivery area
+        polyline_str = self._get_delivery_area()
+        # Check if polyline_str is an error message
+        if polyline_str in [
+            "Failed to get the store information, please try again.",
+            "Failed to process store information.",
+            "Delivery area information is not available.",
+        ]:
+            return (False, polyline_str)
+
+        # Decode and validate
+        try:
+            decoded = polyline.decode(polyline_str, geojson=True)
+            polygon = Polygon([(lng, lat) for lng, lat in decoded])
+
+            point = Point(canonical_address.lng, canonical_address.lat)
+
+            if polygon.contains(point):
+                return (True, "Address is within the delivery area.")
+            else:
+                return (False, "Address is outside the delivery area.")
+
+        except Exception as e:
+            logger.error(f"Error validating delivery zone: {e}")
+            return (False, "Failed to validate delivery area.")
+
+    @tool
     def check_address(self, address: str) -> str:
         """
-        Validates if the given address (using x and y coordinates) is within the restaurant's delivery area.
-        Retrieves the store information (from cache or API), accesses the delivery area using dot notation,
-        decodes the polyline string into a list of Point objects, and creates a Polygon instance.
-        Finally, it checks whether the provided point lies inside the polygon area.
+        Validates if the given address is within the restaurant's delivery area.
+
         Args:
             address (str): The address to validate.
+
         Returns:
             str: A message indicating whether the address is within the delivery area.
         """
-        # Retrieve store information from cache if available.
-
+        # Step 1: Input validation
         if not address:
             return "Could you provide your address?"
 
+        # Step 2: Extract address using LLM
         delivery_address = llm_call(
             system_prompt="Extract the address into the given output format.",
             prompt=address,
@@ -213,44 +285,15 @@ class ToastTool(Toolkit):
                 "Please try again by providing the full address."
             )
 
+        # Step 3: Add lat/long to address (uses utility function)
         success, message, delivery_address = add_lat_long_to_address(delivery_address)
         if not success:
             return message
 
-        point = Point(delivery_address.lng, delivery_address.lat)
-        store_info_str = self.get_store_info()
-        if store_info_str == "Failed to get the store information, please try again.":
-            return store_info_str
-        try:
-            store_info = json.loads(store_info_str)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse store info JSON: {e}")
-            return "Failed to process store information."
+        # Step 4: Validate delivery zone (DELEGATED to helper method)
+        validate_success, validate_message = self._validate_address(delivery_address)  # type: ignore
 
-        polyline_str = (
-            store_info["delivery"]["area"]
-            if "delivery" in store_info and "area" in store_info["delivery"]
-            else None
-        )
-        if (
-            not polyline_str
-            or polyline_str == "Failed to get the store information, please try again."
-        ):
-            return "Delivery area is empty." if not polyline_str else polyline_str
-
-        # Decode the polyline string into a list of Point objects
-        try:
-            decoded = polyline.decode(polyline_str, geojson=True)
-            polygon = Polygon([(lng, lat) for lng, lat in decoded])
-        except Exception as e:
-            logger.error(f"Decode polyline to points failed: {e}")
-            return "Failed to decode the delivery area boundary."
-
-        # Validate the given point against the polygon's area using our helper method
-        if polygon.contains(point):
-            return "Address is within the delivery area."
-        else:
-            return "Address is outside the delivery area."
+        return validate_message
 
     @tool
     def get_store_info_tool(self) -> str:
@@ -861,7 +904,7 @@ class ToastTool(Toolkit):
             openai=True,
             order_construction_model_name=self.order_construction_model_name,
         )
-
+        print(f"Raw constructed order: {order}")
         # Check if the order is a string and convert it to an OrderInput object, catching any errors
         try:
             if order is None:
