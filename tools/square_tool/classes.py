@@ -1735,3 +1735,19 @@ class ExtractedOrderWithModifiers(BaseModel):
         None,
         description="Customer's phone number in 555-555-5555 format if provided in chat (no country code, no spaces, no parentheses, just dashes)",
     )
+    fulfillment_type: Optional[str] = Field(
+        "pickup",
+        description="Type of fulfillment: 'pickup' or 'delivery'. Defaults to 'pickup' if not specified.",
+    )
+    schedule_type: Optional[str] = Field(
+        "ASAP",
+        description="Schedule type: 'ASAP' for immediate orders or 'SCHEDULED' for future orders. Defaults to 'ASAP'.",
+    )
+    pickup_time: Optional[str] = Field(
+        None,
+        description="Desired pickup or delivery time in RFC 3339 format with timezone offset (e.g., '2025-01-26T14:00:00-08:00'). Only set when schedule_type is 'SCHEDULED', null for ASAP orders.",
+    )
+    prep_time_duration: Optional[str] = Field(
+        None,
+        description="Estimated preparation time in ISO 8601 duration format (e.g., 'PT30M' for 30 minutes). Used for ASAP orders.",
+    )

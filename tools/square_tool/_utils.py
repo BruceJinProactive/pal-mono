@@ -651,6 +651,10 @@ def create_square_order_with_modifiers(
     use_production: bool,
     customer_name: Optional[str] = None,
     phone_number: Optional[str] = None,
+    fulfillment_type: str = "pickup",
+    schedule_type: str = "ASAP",
+    pickup_time: Optional[str] = None,
+    prep_time_duration: Optional[str] = None,
 ) -> Optional[Order]:
     """Create Square order with modifiers support."""
     try:
@@ -686,20 +690,51 @@ def create_square_order_with_modifiers(
             display_name=customer_name, phone_number=phone_number
         )
 
-        # Create pickup details with recipient
-        pickup_details = FulfillmentPickupDetails(
-            recipient=recipient,
-            schedule_type="ASAP",
-            note=f"Order for {customer_name} (palona.ai)",
-        )
+        # Create fulfillment based on fulfillment_type (pickup or delivery)
+        if fulfillment_type.lower() == "delivery":
+            # Create delivery details
+            from tools.square_tool.classes import FulfillmentDeliveryDetails
 
-        # Create fulfillment - only set non-read-only fields
-        fulfillment = Fulfillment(
-            uid=str(uuid.uuid4())[:8],
-            type=FulfillmentType.PICKUP,
-            state=FulfillmentState.PROPOSED,
-            pickup_details=pickup_details,
-        )
+            delivery_details = FulfillmentDeliveryDetails(
+                recipient=recipient,
+                schedule_type=schedule_type,
+                deliver_at=pickup_time if schedule_type == "SCHEDULED" else None,
+                prep_time_duration=(
+                    prep_time_duration if schedule_type == "ASAP" else None
+                ),
+                note=f"Order for {customer_name} (palona.ai)",
+            )
+
+            fulfillment = Fulfillment(
+                uid=str(uuid.uuid4())[:8],
+                type=FulfillmentType.DELIVERY,
+                state=FulfillmentState.PROPOSED,
+                delivery_details=delivery_details,
+            )
+            logger.debug(
+                f"[SquareTool] Created DELIVERY fulfillment with schedule_type={schedule_type}"
+            )
+        else:
+            # Create pickup details (default)
+            pickup_details = FulfillmentPickupDetails(
+                recipient=recipient,
+                schedule_type=schedule_type,
+                pickup_at=pickup_time if schedule_type == "SCHEDULED" else None,
+                prep_time_duration=(
+                    prep_time_duration if schedule_type == "ASAP" else None
+                ),
+                note=f"Order for {customer_name} (palona.ai)",
+            )
+
+            fulfillment = Fulfillment(
+                uid=str(uuid.uuid4())[:8],
+                type=FulfillmentType.PICKUP,
+                state=FulfillmentState.PROPOSED,
+                pickup_details=pickup_details,
+            )
+            logger.debug(
+                f"[SquareTool] Created PICKUP fulfillment with schedule_type={schedule_type}"
+            )
 
         fulfillments = [fulfillment]
         logger.debug(f"[SquareTool] Created fulfillment for customer: {customer_name}")

@@ -21,7 +21,7 @@ Extract user's confirmed order items from chat history and match to Square catal
 1. **Identify Orders**: Only extract items user explicitly confirmed for ordering
 2. **Match Items**: Find exact item name in catalog documents (including foreign characters/typos)
 3. **Extract IDs**: Get exact item_id, variation_id, and modifier_id values from matched documents
-4. **Capture Details**: Extract quantities, customer info, and special notes as stated
+4. **Capture Details**: Extract quantities, customer info, special notes, and fulfillment preferences
 5. **Validate**: Ensure all IDs come from correct documents - never mix IDs between items
 
 # CRITICAL RULES:
@@ -31,6 +31,7 @@ Extract user's confirmed order items from chat history and match to Square catal
 - **Quantity Matching**: Modifier quantities must match item quantities
 - **No Fabrication**: Only extract explicitly stated information - leave fields null if missing
 - **Customer Data**: Extract names/phone numbers only if provided; format phone as 555-555-5555
+- **Fulfillment Details**: Capture pickup/delivery preference and timing (ASAP vs scheduled)
 
 # DOCUMENT FORMAT:
 ```
@@ -63,7 +64,8 @@ SQUARE_EXTRACTOR_USER_PROMPT = """
 2. Match each item to exact document name (including foreign characters)
 3. Extract exact IDs: item_id, variation_id, modifier_id from matched documents
 4. Capture customer info (name/phone) and special notes if provided
-5. Format phone numbers as 555-555-5555
+5. Determine fulfillment type (pickup/delivery) and schedule preference (ASAP/SCHEDULED)
+6. Format phone numbers as 555-555-5555
 
 **EXTRACTION EXAMPLES**:
 
@@ -80,6 +82,20 @@ SQUARE_EXTRACTOR_USER_PROMPT = """
 **CUSTOMER INFO EXAMPLES**:
 - "My name is John Smith, phone 5551234567" → customer_name: "John Smith", phone_number: "555-123-4567"
 - "Order for Sarah, (555)-1234567" → customer_name: "Sarah", phone_number: "555-123-4567"
+
+**FULFILLMENT EXAMPLES**:
+- "I'll pick it up" / "pickup" → fulfillment_type: "pickup", schedule_type: "ASAP", pickup_time: null
+- "I need it for pickup at 2pm today" → fulfillment_type: "pickup", schedule_type: "SCHEDULED", pickup_time: "2025-01-26T14:00:00-08:00" (RFC 3339 format with timezone offset)
+- "Can I get this delivered tomorrow at 5:30pm?" → fulfillment_type: "delivery", schedule_type: "SCHEDULED", pickup_time: "2025-01-27T17:30:00-08:00" (RFC 3339 format)
+- "Deliver ASAP" → fulfillment_type: "delivery", schedule_type: "ASAP", pickup_time: null
+- "Schedule for pickup in 2 hours" → fulfillment_type: "pickup", schedule_type: "SCHEDULED", pickup_time: "2025-01-26T16:00:00-08:00" (current time + 2 hours in RFC 3339)
+- No mention of timing → fulfillment_type: "pickup", schedule_type: "ASAP", pickup_time: null (default)
+
+**TIME FORMATTING RULES**:
+- pickup_time must be in RFC 3339 format with timezone offset (e.g., "2025-01-26T14:00:00-08:00")
+- Use the store's timezone from context when available (default to America/Los_Angeles if not specified)
+- For "ASAP" schedule_type, leave pickup_time as null
+- For "SCHEDULED" schedule_type, calculate the target time based on natural language and format as RFC 3339
 
 **CRITICAL**: Use exact document names and IDs. Never mix IDs between different items. Leave fields null if information missing.
 """

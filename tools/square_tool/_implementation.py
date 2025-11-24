@@ -1,9 +1,11 @@
 import json
+import re
 import uuid
 from datetime import datetime
 from decimal import Decimal
 from functools import cached_property
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs import LLMObs
@@ -291,6 +293,20 @@ class SquareTool(Toolkit):
             SubQueries,
         )
 
+        # Get current date and time in the store's timezone
+        store_tz = self.tool_metadata.timezone or "America/Los_Angeles"
+        current_dt_store = datetime.now(ZoneInfo(store_tz))
+
+        # Add current date/time to context for LLM to understand temporal references
+        current_time_info = (
+            f"\n\n<current_datetime>\n"
+            f"Current date and time: {current_dt_store.strftime('%A, %B %d, %Y at %I:%M %p')} ({store_tz})\n"
+            f"Timezone: {store_tz}\n"
+            f"Use this timezone when formatting pickup_time in RFC 3339 format\n"
+            f"</current_datetime>"
+        )
+        context += current_time_info  # type: ignore
+
         # Get prompt overrides or defaults
         system_prompt = self.backdoor_tool_prompt.get(
             "system_prompt", SQUARE_EXTRACTOR_SYSTEM_PROMPT
@@ -322,6 +338,16 @@ class SquareTool(Toolkit):
                     f"`order` object in type {type(order)} but expected type ExtractedOrderWithModifiers.\n"
                     f"`order` object: {order}"
                 )
+
+            # Validate RFC 3339 format for scheduled orders
+            if order.schedule_type == "SCHEDULED":
+                if not order.pickup_time:
+                    return "Scheduled order requires a pickup/delivery time. Please specify when you want to pick up or have the order delivered (e.g., '2pm today', 'tomorrow at 5:30pm')."
+                rfc3339_pattern = (
+                    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}([+-]\d{2}:\d{2}|Z)$"
+                )
+                if not re.match(rfc3339_pattern, order.pickup_time):
+                    return f"Invalid time format for scheduled order. Expected RFC 3339 format (e.g., '2025-01-26T14:00:00-08:00'), but got: '{order.pickup_time}'."
 
             logger.debug(f"Constructed order: {order}")
             return order
@@ -507,6 +533,12 @@ class SquareTool(Toolkit):
             customer_name = extracted_order.customer_name
             phone_number = extracted_order.phone_number
 
+            # Get fulfillment details
+            fulfillment_type = extracted_order.fulfillment_type or "pickup"
+            schedule_type = extracted_order.schedule_type or "ASAP"
+            pickup_time = extracted_order.pickup_time
+            prep_time_duration = extracted_order.prep_time_duration
+
             created_order = create_square_order_with_modifiers(
                 self._square_token,
                 self.location_id,
@@ -514,6 +546,10 @@ class SquareTool(Toolkit):
                 self.use_production,
                 customer_name=customer_name,
                 phone_number=phone_number,
+                fulfillment_type=fulfillment_type,
+                schedule_type=schedule_type,
+                pickup_time=pickup_time,
+                prep_time_duration=prep_time_duration,
             )
 
             if not created_order:
