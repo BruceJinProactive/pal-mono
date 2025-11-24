@@ -1013,6 +1013,9 @@ class ToastTool(Toolkit):
                 if VIA_AGENT_SUFFIX not in trimmed_lastname:
                     check.customer.lastName = f"{trimmed_lastname} {VIA_AGENT_SUFFIX}"
 
+            # Add tabName to check
+            setattr(check, "tabName", f"PalonaAI_{self.tool_metadata.session_id}")
+
     def _submit_order(self, order: OrderInput) -> str | tuple[Order, str]:
         # Retrieve the bearer token
         toast_bearer_token = self._toast_bearer_token
