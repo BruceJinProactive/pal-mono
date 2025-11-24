@@ -388,6 +388,7 @@ def build_integration(integration: IntegrationDetail) -> IntegrationResponse:
         client_id=integration.client_id,
         client_secret=integration.client_secret,
         api_key=integration.api_key,
+        secret_key=integration.secret_key,
         created_at=integration.created_at,
         updated_at=integration.updated_at,
         expires_at=integration.expires_at,

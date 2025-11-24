@@ -124,6 +124,9 @@ class IntegrationResponse(BaseModel):
     api_key: Optional[str] = Field(
         None, description="API key for API key authentication"
     )
+    secret_key: Optional[str] = Field(
+        None, description="Secret key used to resolve credentials in the secret store"
+    )
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
     expires_at: Optional[datetime] = Field(None, description="Expiration timestamp")

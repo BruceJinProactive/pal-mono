@@ -143,4 +143,5 @@ def build_integration_detail(integration: Integration):
         created_at=integration.created_at,
         updated_at=integration.updated_at,
         expires_at=integration.expires_at,
+        secret_key=integration.secret_key,
     )

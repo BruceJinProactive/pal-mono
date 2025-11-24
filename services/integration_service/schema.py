@@ -68,3 +68,4 @@ class IntegrationDetail:
     created_at: datetime
     updated_at: datetime | None
     expires_at: Optional[datetime] = None
+    secret_key: Optional[str] = None
