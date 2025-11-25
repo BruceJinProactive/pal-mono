@@ -1949,43 +1949,30 @@ def get_brand_extract_prompt() -> str:
 def scrape_brand_from_url(url: str):
     """
     Scrape a description of the brand from a URL using Firecrawl.
+
+    Args:
+        url: The URL to scrape
+
+    Returns:
+        The company description as a string, or empty string if not found
     """
-    ## Set up Firecrawl
     try:
         api_key = get_client_secret_with_fallback("FIRECRAWL_API_KEY")
-    except ValueError as e:
+    except KeyError as e:
         raise ValueError("Firecrawl API key required.") from e
+
     firecrawl = Firecrawl(api_key=api_key)
+    res = firecrawl.extract(
+        urls=[url],
+        prompt=get_brand_extract_prompt(),
+        schema=JsonSchema.model_json_schema(),
+    )
 
-    ## Firecrawl Map
-    mappedPage = None
-    search_queries = ["about", "story", "overview", "home"]
+    # Extract company_description from ExtractResponse
+    description = None
+    if hasattr(res, "data") and isinstance(res.data, dict):
+        description = res.data.get("company_description")
+    elif isinstance(res, dict):
+        description = res.get("company_description")
 
-    for search_query in search_queries:
-        res = firecrawl.map(url=url, limit=50, sitemap="include", search=search_query)
-        if res:
-            mappedPage = res
-            break
-
-    ## Firecrawl Scrape
-    if mappedPage and hasattr(mappedPage, "links") and mappedPage.links:
-        links = mappedPage.links
-        if links:
-            for link in links:
-                if "xml" not in link.url:
-                    res = firecrawl.scrape(
-                        link.url,
-                        formats=[
-                            {
-                                "type": "json",
-                                "schema": JsonSchema,
-                                "prompt": get_brand_extract_prompt(),
-                            }
-                        ],
-                        only_main_content=False,
-                        timeout=120000,
-                        proxy="auto",
-                    )
-                    if res and res.json and res.json.get("company_description"):
-                        return res.json["company_description"]
-    return ""
+    return description or ""
