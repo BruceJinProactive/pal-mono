@@ -13,6 +13,7 @@ with engagement metrics, conversion data, and call quality analytics.
 
 import re
 import threading
+import uuid
 from datetime import datetime, timedelta
 
 from fastapi.responses import JSONResponse, Response
@@ -86,13 +87,76 @@ _slack_init_lock = threading.Lock()
 # =============================================================================
 
 
-def parse_custom_date_range(message_text: str) -> tuple[datetime, datetime] | None:
+def parse_account_name_from_message(message_text: str) -> str | None:
+    """
+    Parse account name from message text like "daily for acme-restaurant".
+    Only supports "for" keyword format.
+
+    Args:
+        message_text: The full message text from Slack
+
+    Returns:
+        str | None: Account name if found, None otherwise
+    """
+    # Pattern: "for account_name" (case insensitive)
+    match = re.search(r"for\s+([a-zA-Z0-9_-]+)", message_text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+
+    return None
+
+
+def get_account_timezone(session: Session, account_name: str) -> str:
+    """
+    Get the timezone for an account by looking up its first project's timezone.
+
+    Args:
+        session: Database session
+        account_name: Account name to look up
+
+    Returns:
+        str: Timezone ID (e.g., 'America/Los_Angeles'), defaults to 'America/Los_Angeles' if not found
+    """
+    try:
+        from db.tables.accounts import Account
+
+        # Query account by name and join with projects to get timezone
+        account = (
+            session.query(Account).filter(Account.name.ilike(account_name)).first()
+        )
+
+        if account and account.projects:
+            # Use the first project's timezone
+            timezone = account.projects[0].timezone
+            if timezone:
+                logger.info(
+                    f"[Slackbot] Found timezone '{timezone}' for account '{account_name}'"
+                )
+                return timezone
+
+        logger.warning(
+            f"[Slackbot] No timezone found for account '{account_name}', using default 'America/Los_Angeles'"
+        )
+        return "America/Los_Angeles"
+
+    except Exception as e:
+        logger.error(
+            f"[Slackbot] Error looking up timezone for account '{account_name}': {e}"
+        )
+        return "America/Los_Angeles"
+
+
+def parse_custom_date_range(
+    message_text: str, session: Session | None = None, account_name: str | None = None
+) -> tuple[datetime, datetime] | None:
     """
     Parse custom date range from message text like "from 2024-01-01 to 2024-01-31".
     Supports YYYY-MM-DD format with case-insensitive matching.
 
     Args:
         message_text: The full message text from Slack
+        session: Database session (optional) - used to look up account timezone
+        account_name: Account name (optional) - if provided, dates are interpreted in account's timezone
 
     Returns:
         tuple[datetime, datetime] | None: (start_date, end_date) in UTC, or None if no match
@@ -108,10 +172,34 @@ def parse_custom_date_range(message_text: str) -> tuple[datetime, datetime] | No
     end_str = match.group(2).strip()
 
     try:
+        # Parse dates as naive datetime (no timezone)
         start_date = datetime.strptime(start_str, "%Y-%m-%d")
         end_date = datetime.strptime(end_str, "%Y-%m-%d")
-        start_date = normalize_datetime_to_utc(start_date)
-        end_date = normalize_datetime_to_utc(end_date)
+
+        # Get account timezone if available
+        timezone_id = None
+        if session and account_name:
+            timezone_id = get_account_timezone(session, account_name)
+
+        if timezone_id:
+            # Interpret dates in account's local timezone, then convert to UTC
+            from zoneinfo import ZoneInfo
+
+            tz = ZoneInfo(timezone_id)
+            start_date = start_date.replace(tzinfo=tz)
+            end_date = end_date.replace(tzinfo=tz)
+            start_date = normalize_datetime_to_utc(start_date)
+            end_date = normalize_datetime_to_utc(end_date)
+            logger.info(
+                f"[Slackbot] Parsed dates in timezone '{timezone_id}': {start_str} -> {start_date}, {end_str} -> {end_date}"
+            )
+        else:
+            # Fallback: assume UTC
+            start_date = normalize_datetime_to_utc(start_date)
+            end_date = normalize_datetime_to_utc(end_date)
+            logger.info(
+                f"[Slackbot] Parsed dates assuming UTC: {start_str} -> {start_date}, {end_str} -> {end_date}"
+            )
 
         return start_date, end_date
 
@@ -122,18 +210,39 @@ def parse_custom_date_range(message_text: str) -> tuple[datetime, datetime] | No
         return None
 
 
-def get_date_range_for_period(period: str) -> tuple[datetime, datetime]:
+def get_date_range_for_period(
+    period: str, session: Session | None = None, account_name: str | None = None
+) -> tuple[datetime, datetime]:
     """
     Generate start_date and end_date for different reporting periods.
 
     Args:
         period: "daily", "weekly", or "monthly"
+        session: Database session (optional) - used to look up account timezone
+        account_name: Account name (optional) - if provided, dates are calculated in account's timezone
 
     Returns:
         tuple[datetime, datetime]: (start_date, end_date) in UTC
     """
-    now = datetime.utcnow()
-    now = normalize_datetime_to_utc(now)
+    # Get account timezone if available
+    timezone_id = None
+    if session and account_name:
+        timezone_id = get_account_timezone(session, account_name)
+
+    if timezone_id:
+        # Get current time in account's timezone
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo(timezone_id)
+        now = datetime.now(tz)
+        logger.info(
+            f"[Slackbot] Calculating {period} date range in timezone '{timezone_id}': {now}"
+        )
+    else:
+        # Fallback to UTC
+        now = datetime.utcnow()
+        now = normalize_datetime_to_utc(now)
+        logger.info(f"[Slackbot] Calculating {period} date range in UTC: {now}")
 
     if period == "daily":
         # Daily: yesterday this time to now (24-hour rolling window)
@@ -859,6 +968,99 @@ def format_unified_report_for_slack(
 # SLACK INTEGRATION FUNCTIONS
 # =============================================================================
 
+# Internal channels that can see all account data
+INTERNAL_CHANNELS = {
+    "agent-performance",
+    "test-channel",
+    "#agent-performance",
+    "#test-channel",
+}
+
+
+def get_account_id_by_name(account_name: str, session: Session) -> uuid.UUID | None:
+    """
+    Look up account ID by account name from database.
+
+    Args:
+        account_name: Account name to look up
+        session: Database session
+
+    Returns:
+        uuid.UUID | None: Account ID if found, None otherwise
+    """
+    try:
+        from db.tables.accounts import Account
+
+        # Query account by name (case-insensitive)
+        account = (
+            session.query(Account).filter(Account.name.ilike(account_name)).first()
+        )
+
+        if account:
+            logger.info(
+                f"[Slackbot] Found account '{account.name}' with ID {account.id}"
+            )
+            return account.id
+        else:
+            logger.warning(f"[Slackbot] No account found with name '{account_name}'")
+            return None
+
+    except Exception as e:
+        logger.error(
+            f"[Slackbot] Error looking up account by name '{account_name}': {e}"
+        )
+        return None
+
+
+def determine_account_filter(
+    channel: str, session: Session, account_name: str | None = None
+) -> tuple[uuid.UUID | None, str | None]:
+    """
+    Determine which account(s) to show based on channel and optional account name.
+
+    Priority:
+    1. If account_name provided in message -> filter by that account
+    2. If in internal channel -> show all accounts (return None)
+    3. Otherwise -> require account name (return error)
+
+    Args:
+        channel: Slack channel ID or name
+        session: Database session
+        account_name: Optional account name from message (e.g., "daily for acme")
+
+    Returns:
+        tuple[uuid.UUID | None, str | None]: (account_id, error_message)
+        - (account_id, None) if successful
+        - (None, None) if showing all accounts (internal channel)
+        - (None, error_message) if error occurred
+    """
+    # Priority 1: If account name is explicitly provided in message, use that
+    if account_name:
+        account_id = get_account_id_by_name(account_name, session)
+        if account_id:
+            return account_id, None
+        else:
+            error_msg = f"Cannot find account info for '{account_name}'. Please check the account name and try again."
+            logger.warning(f"[Slackbot] Account '{account_name}' not found")
+            return None, error_msg
+
+    # Priority 2: Check if it's an internal channel (can see all accounts)
+    normalized_channel = channel.strip().lstrip("#")
+    if normalized_channel in INTERNAL_CHANNELS or channel in INTERNAL_CHANNELS:
+        logger.info(
+            f"[Slackbot] Channel '{channel}' is internal - showing all accounts"
+        )
+        return None, None
+
+    # Default: Require account name for non-internal channels
+    error_msg = (
+        "Please specify the account name using the format: `daily for account-name`"
+    )
+    logger.warning(
+        f"[Slackbot] Channel '{channel}' is not internal and no account specified - account name required"
+    )
+    return None, error_msg
+
 
 def get_slack_credentials() -> tuple[str, str]:
     """Get Slack bot token and channel from secrets."""
@@ -882,6 +1084,7 @@ async def send_report_to_slack(
     session: Session | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    account_name: str | None = None,
 ) -> dict:
     """
     Send a comprehensive analytics report to Slack.
@@ -892,6 +1095,7 @@ async def send_report_to_slack(
         session: Database session for fetching analytics data
         start_date: Start date for the report
         end_date: End date for the report
+        account_name: Optional account name to filter by (from message like "daily for acme")
 
     Returns:
         dict: Status of the operation
@@ -912,12 +1116,23 @@ async def send_report_to_slack(
         if client is None:
             client = AsyncWebClient(token=bot_token)
 
+        # Determine account filtering based on channel and message
+        account_id_filter, error_message = determine_account_filter(
+            target_channel, session, account_name
+        )
+
+        # Check for validation errors
+        if error_message:
+            logger.warning(f"[Slackbot] Account validation failed: {error_message}")
+            return {"status": "error", "message": error_message}
+
         # Fetch analytics reports
         logger.info(
-            f"[Slackbot] Fetching analytics reports from {start_date} to {end_date}"
+            f"[Slackbot] Fetching analytics reports from {start_date} to {end_date} "
+            f"for channel '{target_channel}' (account_id: {account_id_filter})"
         )
         reports = await get_reports(
-            session, None, start_date, end_date, group_by=["account_id"]
+            session, account_id_filter, start_date, end_date, group_by=["account_id"]
         )
         if not reports.reports:
             logger.warning("[Slackbot] No reports data returned from analytics service")
@@ -974,6 +1189,11 @@ async def handle_report_request(
     """
     Generic handler for all report requests (daily, weekly, monthly, custom).
 
+    Supports account filtering via message syntax:
+    - "daily" - shows all accounts (if in internal channel) or restricted
+    - "daily for acme-restaurant" - shows only acme-restaurant account
+    - "weekly for burger-place" - shows only burger-place account
+
     Args:
         period: The report period ("daily", "weekly", "monthly", "custom")
         message: Slack message object
@@ -983,28 +1203,35 @@ async def handle_report_request(
     try:
         slack_channel = message.get("channel")
         user = message["user"]
+        message_text = message.get("text", "")
+
+        # Parse account name from message if provided
+        account_name = parse_account_name_from_message(message_text)
 
         logger.info(
             f"[Slackbot] User {user} requested {period} report in channel {slack_channel}"
+            + (f" for account '{account_name}'" if account_name else "")
         )
-
-        # Get date range - either custom or predefined period
-        if custom_dates:
-            start_date, end_date = custom_dates
-            logger.info(
-                f"[Slackbot] Using custom date range: {start_date} to {end_date}"
-            )
-        else:
-            start_date, end_date = get_date_range_for_period(period)
-            logger.info(
-                f"[Slackbot] Using {period} date range: {start_date} to {end_date}"
-            )
 
         # Get database session for conversion data using proper context handling
         session = SyncSessionLocal()
         try:
+            # Get date range - either custom or predefined period
+            if custom_dates:
+                start_date, end_date = custom_dates
+                logger.info(
+                    f"[Slackbot] Using custom date range: {start_date} to {end_date}"
+                )
+            else:
+                start_date, end_date = get_date_range_for_period(
+                    period, session, account_name
+                )
+                logger.info(
+                    f"[Slackbot] Using {period} date range: {start_date} to {end_date}"
+                )
+
             result = await send_report_to_slack(
-                slack_channel, client, session, start_date, end_date
+                slack_channel, client, session, start_date, end_date, account_name
             )
         finally:
             session.close()
@@ -1014,12 +1241,31 @@ async def handle_report_request(
                 f"[Slackbot] {period.capitalize()} report completed successfully"
             )
         else:
+            # Send error message to Slack
             logger.error(
                 f"[Slackbot] {period.capitalize()} report failed: {result['message']}"
             )
+            try:
+                await client.chat_postMessage(
+                    channel=slack_channel, text=f"❌ {result['message']}", mrkdwn=True
+                )
+            except Exception as slack_error:
+                logger.error(
+                    f"[Slackbot] Failed to send error message to Slack: {slack_error}"
+                )
 
     except Exception as e:
         logger.error(f"[Slackbot] Error handling {period} request: {e}")
+        # Try to send error to Slack
+        try:
+            slack_channel = message.get("channel")
+            await client.chat_postMessage(
+                channel=slack_channel,
+                text=f"❌ An error occurred while processing your request: {str(e)}",
+                mrkdwn=True,
+            )
+        except Exception:
+            pass  # If we can't send to Slack, just log it
 
 
 async def handle_custom_date_request(message, client):
@@ -1032,22 +1278,31 @@ async def handle_custom_date_request(message, client):
     """
     try:
         message_text = message.get("text", "")
-        custom_dates = parse_custom_date_range(message_text)
 
-        if custom_dates:
-            await handle_report_request("custom", message, client, custom_dates)
-        else:
-            # Send help message if parsing failed
-            slack_channel = message.get("channel")
-            help_text = (
-                "📅 *Custom Date Range Help*\n\n"
-                "Please use the format: `From YYYY-MM-DD to YYYY-MM-DD`\n\n"
-                "Example: `From 2024-01-01 to 2024-01-31`"
-            )
+        # Parse account name from message if provided
+        account_name = parse_account_name_from_message(message_text)
 
-            await client.chat_postMessage(
-                channel=slack_channel, text=help_text, mrkdwn=True
-            )
+        # Get database session to look up timezone
+        session = SyncSessionLocal()
+        try:
+            custom_dates = parse_custom_date_range(message_text, session, account_name)
+
+            if custom_dates:
+                await handle_report_request("custom", message, client, custom_dates)
+            else:
+                # Send help message if parsing failed
+                slack_channel = message.get("channel")
+                help_text = (
+                    "📅 *Custom Date Range Help*\n\n"
+                    "Please use the format: `From YYYY-MM-DD to YYYY-MM-DD`\n\n"
+                    "Example: `From 2024-01-01 to 2024-01-31`"
+                )
+
+                await client.chat_postMessage(
+                    channel=slack_channel, text=help_text, mrkdwn=True
+                )
+        finally:
+            session.close()
 
     except Exception as e:
         logger.error(f"[Slackbot] Error handling custom date request: {e}")
