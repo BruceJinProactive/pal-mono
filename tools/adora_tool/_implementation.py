@@ -49,7 +49,7 @@ class AdoraTool(Toolkit):
         index_name: str = "agents",
         loyalty_enabled: bool = False,
         coupons_enabled: bool = False,
-        default_coupon_id: int | None = None,
+        default_coupon_id: int | list[int] | None = None,
         token_api_endpoint: str | None = None,
         general_api_endpoint: str | None = None,
         backdoor_tool_prompt: dict | None = None,
@@ -1023,11 +1023,16 @@ class AdoraTool(Toolkit):
 
             # Add default coupon ID if configured
             if self.default_coupon_id is not None:
-                order.coupon_ids.append(self.default_coupon_id)
-                logger.debug(
-                    f"[AdoraTool.checkout_order] Added default coupon ID: {self.default_coupon_id}"
-                )
-
+                if isinstance(self.default_coupon_id, list):
+                    order.coupon_ids.extend(self.default_coupon_id)
+                    logger.debug(
+                        f"[AdoraTool.checkout_order] Added default coupon IDs: {self.default_coupon_id}"
+                    )
+                else:
+                    order.coupon_ids.append(self.default_coupon_id)
+                    logger.debug(
+                        f"[AdoraTool.checkout_order] Added default coupon ID: {self.default_coupon_id}"
+                    )
             # Log final list of coupon IDs to be applied
             if order.coupon_ids:
                 logger.debug(
