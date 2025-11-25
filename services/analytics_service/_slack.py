@@ -1013,7 +1013,10 @@ def get_account_id_by_name(account_name: str, session: Session) -> uuid.UUID | N
 
 
 def determine_account_filter(
-    channel: str, session: Session, account_name: str | None = None
+    channel: str,
+    session: Session,
+    account_name: str | None = None,
+    channel_display_name: str | None = None,
 ) -> tuple[uuid.UUID | None, str | None]:
     """
     Determine which account(s) to show based on channel and optional account name.
@@ -1021,12 +1024,14 @@ def determine_account_filter(
     Priority:
     1. If account_name provided in message -> filter by that account
     2. If in internal channel -> show all accounts (return None)
-    3. Otherwise -> require account name (return error)
+    3. If channel starts with "client" -> require account name (return error)
+    4. Otherwise -> show all accounts (return None)
 
     Args:
         channel: Slack channel ID or name
         session: Database session
         account_name: Optional account name from message (e.g., "daily for acme")
+        channel_display_name: Optional human-readable channel name for logging
 
     Returns:
         tuple[uuid.UUID | None, str | None]: (account_id, error_message)
@@ -1034,6 +1039,9 @@ def determine_account_filter(
         - (None, None) if showing all accounts (internal channel)
         - (None, error_message) if error occurred
     """
+    # Use display name for logging if available, otherwise use channel ID
+    display_name = channel_display_name or channel
+
     # Priority 1: If account name is explicitly provided in message, use that
     if account_name:
         account_id = get_account_id_by_name(account_name, session)
@@ -1048,18 +1056,50 @@ def determine_account_filter(
     normalized_channel = channel.strip().lstrip("#")
     if normalized_channel in INTERNAL_CHANNELS or channel in INTERNAL_CHANNELS:
         logger.info(
-            f"[Slackbot] Channel '{channel}' is internal - showing all accounts"
+            f"[Slackbot] Channel '{display_name}' is internal - showing all accounts"
         )
         return None, None
 
-    # Default: Require account name for non-internal channels
-    error_msg = (
-        "Please specify the account name using the format: `daily for account-name`"
-    )
-    logger.warning(
-        f"[Slackbot] Channel '{channel}' is not internal and no account specified - account name required"
-    )
-    return None, error_msg
+    # Priority 3: Check if channel starts with "client" - require account name
+    normalized_display = display_name.strip().lstrip("#").lower()
+    if normalized_display.startswith("client"):
+        error_msg = (
+            "Please specify the account name using the format: `daily for account-name`"
+        )
+        logger.warning(
+            f"[Slackbot] Channel '{display_name}' is a client channel and no account specified - account name required"
+        )
+        return None, error_msg
+
+    # Priority 4: For other channels, allow showing all accounts
+    logger.info(f"[Slackbot] Channel '{display_name}' - showing all accounts")
+    return None, None
+
+
+async def get_channel_name(client: AsyncWebClient, channel_id: str) -> str:
+    """
+    Get human-readable channel name from channel ID.
+
+    Args:
+        client: Slack async web client
+        channel_id: Slack channel ID (e.g., 'C09BT1E5E7M')
+
+    Returns:
+        Channel name with # prefix (e.g., '#general') or original ID if lookup fails
+    """
+    try:
+        response = await client.conversations_info(channel=channel_id)
+        if response and response.get("ok"):
+            channel_info = response.get("channel")
+            if channel_info:
+                channel_name = channel_info.get("name")
+                if channel_name:
+                    return f"#{channel_name}"
+    except Exception as e:
+        logger.warning(f"[Slackbot] Failed to get channel name for {channel_id}: {e}")
+
+    # Fallback to channel ID if lookup fails
+    return channel_id
 
 
 def get_slack_credentials() -> tuple[str, str]:
@@ -1116,9 +1156,12 @@ async def send_report_to_slack(
         if client is None:
             client = AsyncWebClient(token=bot_token)
 
+        # Get human-readable channel name for logging
+        channel_display_name = await get_channel_name(client, target_channel)
+
         # Determine account filtering based on channel and message
         account_id_filter, error_message = determine_account_filter(
-            target_channel, session, account_name
+            target_channel, session, account_name, channel_display_name
         )
 
         # Check for validation errors
@@ -1129,7 +1172,7 @@ async def send_report_to_slack(
         # Fetch analytics reports
         logger.info(
             f"[Slackbot] Fetching analytics reports from {start_date} to {end_date} "
-            f"for channel '{target_channel}' (account_id: {account_id_filter})"
+            f"for channel '{channel_display_name}' (account_id: {account_id_filter})"
         )
         reports = await get_reports(
             session, account_id_filter, start_date, end_date, group_by=["account_id"]
@@ -1205,11 +1248,14 @@ async def handle_report_request(
         user = message["user"]
         message_text = message.get("text", "")
 
+        # Get human-readable channel name for logging
+        channel_name = await get_channel_name(client, slack_channel)
+
         # Parse account name from message if provided
         account_name = parse_account_name_from_message(message_text)
 
         logger.info(
-            f"[Slackbot] User {user} requested {period} report in channel {slack_channel}"
+            f"[Slackbot] User {user} requested {period} report in channel {channel_name}"
             + (f" for account '{account_name}'" if account_name else "")
         )
 
