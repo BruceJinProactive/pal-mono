@@ -1390,4 +1390,3 @@ class AdoraTool(Toolkit):
                 f"[AdoraTool.get_available_coupons] Error retrieving available coupons: {e}"
             )
             return "There was an error retrieving available coupons. Please try again."
-            return "There was an error retrieving available coupons. Please try again."

@@ -351,6 +351,7 @@ class AdoraCustomerReward(BaseModel):
     couponId: Optional[int] = None
     couponName: Optional[str] = None
     rewardName: Optional[str] = None
+    isAIOffer: Optional[bool] = None
 
 
 class AdoraNextOrderCredit(BaseModel):
@@ -364,6 +365,27 @@ class AdoraNextOrderCredit(BaseModel):
     discount: Optional[float] = None
     couponName: Optional[str] = None
     couponDescription: Optional[str] = None
+    isAIOffer: Optional[bool] = None
+
+
+class AdoraOfferCode(BaseModel):
+    """Represents a promotional code in customer offers"""
+
+    isSingleUseCoupon: Optional[bool] = None
+    isCouponPromotionCode: Optional[bool] = None
+    couponCode: Optional[str] = None
+    couponId: Optional[int] = None
+    expires: Optional[str] = None
+
+
+class AdoraOfferCoupon(BaseModel):
+    """Represents a coupon in customer offers"""
+
+    couponId: Optional[int] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    discount: Optional[float] = None
+    isAIOffer: Optional[bool] = None
 
 
 class AdoraCustomerOffers(BaseModel):
@@ -371,8 +393,21 @@ class AdoraCustomerOffers(BaseModel):
     Represents customer offers from the Adora API
     """
 
-    codes: Optional[List[dict]] = None
-    coupons: Optional[List[dict]] = None
+    codes: Optional[List[AdoraOfferCode]] = None
+    coupons: Optional[List[AdoraOfferCoupon]] = None
+
+
+class AdoraCustomerAddress(BaseModel):
+    """Represents a customer address from Adora API"""
+
+    streetNo: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    isPrimary: Optional[bool] = None
 
 
 class AdoraCustomerInfo(BaseModel):
@@ -382,7 +417,14 @@ class AdoraCustomerInfo(BaseModel):
 
     name: Optional[str] = None
     lastname: Optional[str] = None
+    addresses: Optional[List[AdoraCustomerAddress]] = None
+    lastorder: Optional["AdoraOrderDetail"] = None
     loyaltyMember: Optional[bool] = False
+    loyaltyPointCount: Optional[int] = 0
+    paymentSaved: Optional[bool] = False
+    emailMarketing: Optional[bool] = False
+    textMarketing: Optional[bool] = False
+    favoriteStores: Optional[List[str]] = None
     customerRewards: Optional[List[AdoraCustomerReward]] = None
     customerOffers: Optional[AdoraCustomerOffers] = None
     customerNextOrderCredits: Optional[List[AdoraNextOrderCredit]] = None

@@ -113,7 +113,8 @@ def _get_reward_info(customer_info: dict) -> str:
                 f"Earned Date: {formatted_date}\n"
                 f"Coupon ID: {reward.get('couponId', '')}\n"
                 f"Coupon Name: {reward.get('couponName', '')}\n"
-                f"Reward Name: {reward.get('rewardName', '')}\n\n"
+                f"Reward Name: {reward.get('rewardName', '')}\n"
+                f"AI Offer: {'Yes' if reward.get('isAIOffer', False) else 'No'}\n\n"
             )
 
     return rewards_info
@@ -139,13 +140,30 @@ def _get_offer_info(customer_info: dict) -> str:
         if "codes" in offers and offers["codes"]:
             offers_info += "Campaign Codes:\n"
             for code in offers["codes"]:
-                offers_info += f"{json.dumps(code, indent=2)}\n\n"
+                code_str = f"Coupon Code: {code.get('couponCode', '')}\n"
+                if code.get("couponId"):
+                    code_str += f"Coupon ID: {code.get('couponId')}\n"
+                if code.get("expires"):
+                    code_str += f"Expires: {code.get('expires')}\n"
+                code_str += f"Single Use: {'Yes' if code.get('isSingleUseCoupon', False) else 'No'}\n"
+                code_str += f"Promotion Code: {'Yes' if code.get('isCouponPromotionCode', False) else 'No'}\n"
+                offers_info += code_str + "\n"
 
         # Extract coupons
         if "coupons" in offers and offers["coupons"]:
             offers_info += "Coupons:\n"
             for coupon in offers["coupons"]:
-                offers_info += f"{json.dumps(coupon, indent=2)}\n\n"
+                coupon_str = f"Coupon Name: {coupon.get('name', '')}\n"
+                if coupon.get("couponId"):
+                    coupon_str += f"Coupon ID: {coupon.get('couponId')}\n"
+                if coupon.get("description"):
+                    coupon_str += f"Description: {coupon.get('description')}\n"
+                if coupon.get("discount"):
+                    coupon_str += f"Discount: {coupon.get('discount')}\n"
+                coupon_str += (
+                    f"AI Offer: {'Yes' if coupon.get('isAIOffer', False) else 'No'}\n"
+                )
+                offers_info += coupon_str + "\n"
 
     return offers_info
 
@@ -176,7 +194,8 @@ def _get_next_order_credits(customer_info: dict) -> str:
                 f"Coupon ID: {credit.get('couponId', '')}\n"
                 f"Discount: {credit.get('discount', '')}\n"
                 f"Coupon Name: {credit.get('couponName', '')}\n"
-                f"Coupon Description: {credit.get('couponDescription', '')}\n\n"
+                f"Coupon Description: {credit.get('couponDescription', '')}\n"
+                f"AI Offer: {'Yes' if credit.get('isAIOffer', False) else 'No'}\n\n"
             )
 
     return credits_info
@@ -196,17 +215,46 @@ def _format_customer_info(customer_info: AdoraCustomerInfo) -> str:
 
     # Basic customer information
     formatted_info = (
-        f"Customer: {info_dict.get('firstName', '')} {info_dict.get('lastName', '')}\n"
+        f"Customer: {info_dict.get('name', '')} {info_dict.get('lastname', '')}\n"
     )
 
-    # Loyalty status
+    # Loyalty status and points
     formatted_info += (
         f"Loyalty Member: {'Yes' if _get_loyalty_status(info_dict) else 'No'}\n"
     )
+    if (
+        "loyaltyPointCount" in info_dict
+        and info_dict.get("loyaltyPointCount") is not None
+    ):
+        formatted_info += f"Loyalty Points: {info_dict.get('loyaltyPointCount', 0)}\n"
+
+    # Payment and marketing preferences
+    formatted_info += (
+        f"Payment Saved: {'Yes' if info_dict.get('paymentSaved', False) else 'No'}\n"
+    )
+    formatted_info += f"Email Marketing: {'Yes' if info_dict.get('emailMarketing', False) else 'No'}\n"
+    formatted_info += (
+        f"Text Marketing: {'Yes' if info_dict.get('textMarketing', False) else 'No'}\n"
+    )
+
+    # Customer addresses
+    if info_dict.get("addresses"):
+        formatted_info += "\nAddresses:\n"
+        for addr in info_dict["addresses"]:
+            address_line = f"  {addr.get('address', '')}, {addr.get('city', '')}, {addr.get('state', '')} {addr.get('zip', '')}"
+            if addr.get("isPrimary"):
+                address_line += " (Primary)"
+            formatted_info += address_line + "\n"
+
+    # Favorite stores
+    if info_dict.get("favoriteStores"):
+        formatted_info += (
+            f"\nFavorite Stores: {', '.join(info_dict['favoriteStores'])}\n"
+        )
 
     # Add reward information
     if "customerRewards" in info_dict and info_dict["customerRewards"]:
-        formatted_info += _get_reward_info(info_dict)
+        formatted_info += "\n" + _get_reward_info(info_dict)
 
     # Add offer information
     if "customerOffers" in info_dict and info_dict["customerOffers"]:
