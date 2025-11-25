@@ -25,6 +25,33 @@ internal_router.include_router(events_router)
 internal_router.include_router(projects_router)
 
 
+@internal_router.post("/knowledge-discovery")
+async def trigger_knowledge_discovery(
+    _session: Session = Depends(db.get_db),
+):
+    """
+    Discovery endpoint for knowledge updates.
+
+    Queries database for accounts and projects that need knowledge updates
+    and publishes individual events for each project. Called by EventBridge Scheduler daily.
+
+    Args:
+        session: Database session
+
+    Returns:
+        dict: Summary of projects queried and events published
+    """
+    # TODO: Implement discovery logic to find projects needing knowledge updates
+    # TODO: Publish KnowledgeUpdateRequested events for each project
+    # TODO: Return summary of events published
+    return {
+        "success": True,
+        "events_published": 0,
+        "message": "Submitted 0 update knowledge events",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @internal_router.post("/business-hours-update")
 async def trigger_business_hours_update(
     force_update: bool = Query(

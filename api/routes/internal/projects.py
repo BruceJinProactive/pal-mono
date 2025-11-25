@@ -122,6 +122,37 @@ async def update_project_business_hours(
         )
 
 
+@projects_router.post("/{project_id}/knowledge-update")
+async def update_knowledge(
+    project_id: str,
+    _session: Session = Depends(db.get_db),
+):
+    """
+    Update knowledge base for a specific project.
+
+    Processes knowledge update for a single project, updating both
+    the knowledge base and menu data. Called by Lambda function consuming
+    knowledge update events.
+
+    Args:
+        project_id: UUID of the project to update
+        session: Database session
+
+    Returns:
+        dict: Status of the update operation
+    """
+    # TODO: Implement knowledge update logic for specific project
+    # TODO: Update knowledge base with latest information
+    # TODO: Update menu data in database
+    # TODO: Return update status
+    return {
+        "success": True,
+        "project_id": project_id,
+        "message": "Implementation pending",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def _hours_have_changed(old_data: Dict[str, Any], new_data: Dict[str, Any]) -> bool:
     """
     Compare old and new hours data to detect changes.
