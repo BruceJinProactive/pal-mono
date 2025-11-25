@@ -592,8 +592,8 @@ class ToastTool(Toolkit):
             logger.debug(
                 "[ToastTool.checkout_order_with_payment_iframe] Checking store status"
             )
-            # if not self._is_online_order_available():
-            #     return "The store is currently closed for online ordering. Please try again later."
+            if not self._is_online_order_available():
+                return "The store is currently closed for online ordering. Please try again later."
 
             # Check for existing order
             existing_order = self._get_existing_order_tool()
