@@ -74,9 +74,17 @@ class OloTool(Toolkit):
         backdoor_tool_prompt: dict | None = None,
         brand_access_id: str | None = None,
         general_api_endpoint: str = "ordering.api.olo.com",
-        order_construction_model_name: OrderConstructionModel = OrderConstructionModel.OPENAI,
+        order_construction_model: OrderConstructionModel = OrderConstructionModel.OPENAI,
+        **kwargs,
     ):
         super().__init__(name="olo_tool")
+
+        # Backward compatibility: handle old parameter name
+        if "order_construction_model_name" in kwargs:
+            order_construction_model = kwargs["order_construction_model_name"]
+            logger.warning(
+                "Parameter 'order_construction_model_name' is deprecated. Use 'order_construction_model' instead."
+            )
 
         self.store_id = store_id
         self.namespace = namespace
@@ -91,7 +99,7 @@ class OloTool(Toolkit):
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
         self._configured_brand_access_id = brand_access_id
         self._general_api_endpoint = general_api_endpoint
-        self.order_construction_model_name = order_construction_model_name
+        self.order_construction_model = order_construction_model
         # Set it as constant for now. If they want to make it dynamic later we can update it:
         ## Generate session-specific forwarded IP using session_id as seed
         ## This ensures the same session always gets the same IP, even if tool is reinitialized
@@ -405,7 +413,7 @@ class OloTool(Toolkit):
             ),
             response_format=OloProductInput,
             openai=True,
-            order_construction_model_name=self.order_construction_model_name,
+            order_construction_model=self.order_construction_model,
         )
 
     @tool

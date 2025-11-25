@@ -271,7 +271,7 @@ def construct_order(
     response_format: type[T],
     error_prefix: str = "Failed to construct order",
     openai: bool = False,
-    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
+    order_construction_model: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> Union[T, str]:
     """
     Constructs an order from LLM output using custom prompts and handles validation errors.
@@ -286,7 +286,7 @@ def construct_order(
         Either a validated instance of response_format or an error message string
     """
     try:
-        if order_construction_model_name == OrderConstructionModel.CLAUDE:
+        if order_construction_model == OrderConstructionModel.CLAUDE:
             return _call_anthropic_client(system_prompt, user_prompt, response_format)
 
         response = llm_call(

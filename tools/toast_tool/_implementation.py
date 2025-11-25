@@ -93,9 +93,17 @@ class ToastTool(Toolkit):
         enable_hosted_checkout: bool = False,
         payment_iframe_token_ttl_seconds: int = 15 * 60,
         backdoor_tool_prompt: dict | None = None,
-        order_construction_model_name: OrderConstructionModel = OrderConstructionModel.OPENAI,
+        order_construction_model: OrderConstructionModel = OrderConstructionModel.OPENAI,
+        **kwargs,
     ):
         super().__init__(name="toast_tool")
+
+        # Backward compatibility: handle old parameter name
+        if "order_construction_model_name" in kwargs:
+            order_construction_model = kwargs["order_construction_model_name"]
+            logger.warning(
+                "Parameter 'order_construction_model_name' is deprecated. Use 'order_construction_model' instead."
+            )
 
         # Log instance creation with built-in id
         instance_id = id(self)
@@ -118,7 +126,7 @@ class ToastTool(Toolkit):
         self.enable_hosted_checkout = enable_hosted_checkout
         self.payment_iframe_token_ttl_seconds = payment_iframe_token_ttl_seconds
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
-        self.order_construction_model_name = order_construction_model_name
+        self.order_construction_model = order_construction_model
 
         # Register tools
         if self.enable_hosted_checkout:
@@ -902,7 +910,7 @@ class ToastTool(Toolkit):
             ),
             response_format=OrderInput,
             openai=True,
-            order_construction_model_name=self.order_construction_model_name,
+            order_construction_model=self.order_construction_model,
         )
         print(f"Raw constructed order: {order}")
         # Check if the order is a string and convert it to an OrderInput object, catching any errors

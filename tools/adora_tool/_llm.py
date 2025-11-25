@@ -93,7 +93,7 @@ def llm_call(
     response_format: type[T],
     name: str = "tool",
     openai: bool = False,
-    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
+    order_construction_model: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> T | None: ...
 
 
@@ -104,7 +104,7 @@ def llm_call(
     response_format: None = None,
     name: str = "tool",
     openai: bool = False,
-    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
+    order_construction_model: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> str | None: ...
 
 
@@ -115,10 +115,10 @@ def llm_call(
     response_format: type[T] | None = None,
     name: str = "tool",
     openai: bool = False,
-    order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
+    order_construction_model: OrderConstructionModel = OrderConstructionModel.LLAMA,
 ) -> T | str | None:
 
-    if order_construction_model_name == OrderConstructionModel.CLAUDE:
+    if order_construction_model == OrderConstructionModel.CLAUDE:
         return _call_anthropic_client(
             system_prompt,
             prompt,

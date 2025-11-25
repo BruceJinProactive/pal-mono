@@ -53,9 +53,17 @@ class AdoraTool(Toolkit):
         token_api_endpoint: str | None = None,
         general_api_endpoint: str | None = None,
         backdoor_tool_prompt: dict | None = None,
-        order_construction_model_name: OrderConstructionModel = OrderConstructionModel.LLAMA,
+        order_construction_model: OrderConstructionModel = OrderConstructionModel.LLAMA,
+        **kwargs,
     ):
         super().__init__(name="adora_tool")
+
+        # Backward compatibility: handle old parameter name
+        if "order_construction_model_name" in kwargs:
+            order_construction_model = kwargs["order_construction_model_name"]
+            logger.warning(
+                "Parameter 'order_construction_model_name' is deprecated. Use 'order_construction_model' instead."
+            )
 
         # Log instance creation with built-in id
         instance_id = id(self)
@@ -73,7 +81,7 @@ class AdoraTool(Toolkit):
         self.token_api_endpoint = token_api_endpoint
         self.general_api_endpoint = general_api_endpoint
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
-        self.order_construction_model_name = order_construction_model_name
+        self.order_construction_model = order_construction_model
         if self.store_id in [ADORA_QA_STORE, ADORA_QA_STORE_2]:  # QA store
             self.qa_store = True
         else:
@@ -900,7 +908,7 @@ class AdoraTool(Toolkit):
                 ),
                 response_format=Order,
                 openai=False,
-                order_construction_model_name=self.order_construction_model_name,
+                order_construction_model=self.order_construction_model,
             )
 
             if not isinstance(order, Order):
