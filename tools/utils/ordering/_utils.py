@@ -1,7 +1,6 @@
 import asyncio
 import http.client
 import json
-import os
 import re
 import textwrap
 import urllib.parse
@@ -28,6 +27,7 @@ from tools.utils.ordering.classes import (
     SubQueries,
 )
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
 T = TypeVar("T", bound=BaseModel)
 S = TypeVar("S", bound=SubQueries)
@@ -179,7 +179,7 @@ def _call_anthropic_client(
     response_format: type[T] | None,
 ) -> T | str:
     """Helper function to call Anthropic's Claude Sonnet 4.5 directly."""
-    api_key = os.getenv("CLAUDE_API_KEY")
+    api_key = get_server_secret_with_fallback("CLAUDE_API_KEY")
     if not api_key:
         logger.error("CLAUDE_API_KEY environment variable is not set")
         return "There was an error processing your request."

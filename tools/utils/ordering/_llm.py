@@ -1,4 +1,3 @@
-import os
 from typing import TypeVar, overload
 
 from agno.agent.agent import Agent
@@ -11,6 +10,7 @@ from pydantic import BaseModel
 
 from tools.utils.ordering.classes import OrderConstructionModel
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -44,7 +44,7 @@ def _call_anthropic_client(
     name: str,
 ) -> T | str | None:
     """Helper function to call Anthropic's Claude Sonnet 4.5 directly."""
-    api_key = os.getenv("CLAUDE_API_KEY")
+    api_key = get_server_secret_with_fallback("CLAUDE_API_KEY")
     if not api_key:
         logger.error("CLAUDE_API_KEY environment variable is not set")
         return None
