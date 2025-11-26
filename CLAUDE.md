@@ -113,6 +113,53 @@ pal-mono/
 - **Agents**: AI agent configurations with persona and settings
 - **Users**: User accounts associated with accounts
 
+## Tools
+
+### Core Requirements
+
+- Inherit from `Toolkit`, initialize with `super().__init__(name="tool_name")`; without inheriting from Toolkit, the agent system wouldn't be able to discover or invoke the tool methods properly.
+- `@tool` decorator required for all registered methods; the @tool decorator is from ddtrace.llmobs.decorators, it is for Debugging/Tracing/Observability on Datadog
+- `@params_validate()` required only for methods with parameters
+- Register all tools in `tools/registry.py`
+- For complex tools only, decompose into smaller, focused, single-purpose helper functions; avoid unnecessary decomposition for simple tools or over-engineering
+
+### Docstrings (max 1024 chars)
+
+Must include:
+
+1. Concise description (1 line)
+2. When to use (triggering conditions)
+3. Do NOT use when (tool boundaries)
+4. Args (formats, constraints, examples)
+5. Returns (success/error formats)
+
+### Parameters
+
+- **Optional params:** Use defaults and `Optional[]` type hints, document clearly
+- **No LLM calls:** Don't make additional LLM calls inside tool methods
+
+### Validation
+
+- Validate ALL inputs before API calls using Pydantic models
+- Use `Field()` with clear descriptions for LLM guidance
+
+### Authentication (always ask which method to use upon new tool creation or changes)
+
+**Standard:** Fetch credentials from AWS Secrets Manager via `get_client_secret_with_fallback()`
+
+**Alternative (for development and testing purposes):** Accept tokens from `raw_config` as constructor parameters (e.g., Square's `access_token` fallback)
+
+### Tool Scale Guidelines
+
+- Guidance Principle: Register 1-3 tools per agent for optimal performance; up to 10 tools acceptable if necessary; avoid exceeding 15 tools as accuracy degrades
+- Note: Tool scope depends on the API documentation and client requirements; always consider and ask for context before implementation.
+
+### Context Management
+
+- Keep tool return messages concise yet complete; include all essential information without omitting important details; avoid unnecessarily large data structures.
+- For large datasets (menus, catalogs), use query engines instead of returning full data
+- Example: Return "Menu contains 50 items. Use search_menu(query) for specifics" instead of full catalog
+
 ## Development Workflow
 
 ### Making Changes
