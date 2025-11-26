@@ -1983,7 +1983,7 @@ def scrape_brand_from_url(url: str):
                             }
                         ],
                         only_main_content=False,
-                        timeout=120000,
+                        timeout=30000,
                         proxy="auto",
                     )
                     if res and res.json and res.json.get("company_description"):
