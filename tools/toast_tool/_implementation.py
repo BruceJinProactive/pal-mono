@@ -44,6 +44,7 @@ from tools.toast_tool._utils import (
     validate_item_modifier_quantity,
 )
 from tools.toast_tool.classes import (
+    AppliedServiceCharge,
     DeliveryAddress,
     DiningBehavior,
     Modifier,
@@ -1125,16 +1126,88 @@ class ToastTool(Toolkit):
                 order,
                 general_api_endpoint=self.general_api_endpoint,
             )
+
+            applied_service_charges: list[AppliedServiceCharge] | None = None
+            check_dict = order_wt_prices.checks[0].model_dump()
+            if (
+                "appliedServiceCharges" in check_dict
+                and check_dict["appliedServiceCharges"]
+            ):
+                applied_service_charges = [
+                    AppliedServiceCharge(**charge)
+                    for charge in check_dict["appliedServiceCharges"]
+                ]
+
             return Price(
                 amount=order_wt_prices.checks[0].amount,
                 taxAmount=order_wt_prices.checks[0].taxAmount,
                 totalAmount=order_wt_prices.checks[0].totalAmount,
+                appliedServiceCharges=applied_service_charges,
             )
         except Exception as e:
             logger.error(
                 f"[ToastTool._get_order_prices] Failed to get the order prices: {e}"
             )
             raise
+
+    def _calculate_gratuity_fee(
+        self,
+        *,
+        order: Order | OrderInput,
+        price: Price | None,
+    ) -> list[dict[str, Any]]:
+        """
+        Calculates the gratuity fees for an order based on dining behavior and gratuity flags.
+
+        Returns a list of fee items where each item has:
+        - name: The name of the fee (from appliedServiceCharge.name)
+        - total: The fee amount in cents (for display)
+
+        Includes charges where:
+        - For delivery orders: delivery=True OR gratuity=True
+        - For takeout orders: takeout=True OR gratuity=True
+        - For other dining behaviors: only gratuity=True charges
+
+        Args:
+            order: The Order or OrderInput object containing dining option info
+            price: Price object containing applied service charges
+
+        Returns:
+            list[dict[str, Any]]: List of fee items with {name: str, total: int (cents)}
+        """
+        if not price or not price.appliedServiceCharges:
+            return []
+
+        behavior = order.diningOption.behavior
+        is_delivery = behavior == DiningBehavior.DELIVERY
+        is_takeout = behavior == DiningBehavior.TAKE_OUT
+
+        fees: list[dict[str, Any]] = []
+
+        for charge in price.appliedServiceCharges:
+            if not charge.chargeAmount:
+                continue
+
+            should_include = False
+
+            # Check gratuity flag first (applies to all order types)
+            if charge.gratuity:
+                should_include = True
+            # Then check delivery/takeout flags based on order type
+            elif is_delivery and charge.delivery:
+                should_include = True
+            elif is_takeout and charge.takeout:
+                should_include = True
+
+            if should_include:
+                fees.append(
+                    {
+                        "name": charge.name or "Fee",
+                        "total": int(charge.chargeAmount * 100),
+                    }
+                )
+
+        return fees
 
     @tool
     def get_order_prices_tool(self) -> Price:
@@ -1302,10 +1375,14 @@ class ToastTool(Toolkit):
 
         order_summary = "\n".join(order_summary_lines)
 
+        # Calculate gratuity fees for the payment payload (list of {name, total} items)
+        gratuity_fees = self._calculate_gratuity_fee(order=order, price=price)
+
         # Create concise confirmation message using extracted order items
         concise_confirmation = (
             f"Order #{order.guid} submitted successfully! "
-            f"Your total is ${order.checks[0].totalAmount}.\n\n"
+            f"Your total is ${order.checks[0].totalAmount}.\n"
+            f"You can find tax and any applicable fees on the payment page.\n\n"
             f"Order summary:\n{order_summary}\n\n"
             f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
         )
@@ -1317,6 +1394,7 @@ class ToastTool(Toolkit):
             session_secret=payment_intent_result.sessionSecret,
             payment_intent_amount=payment_intent_result.amount,
             order_items=order_items,
+            gratuity_fees=gratuity_fees,
         )
 
         # Generate iframe payment link
@@ -1337,6 +1415,7 @@ class ToastTool(Toolkit):
         session_secret: str,
         payment_intent_amount: int,
         order_items: list[dict[str, Any]] | None = None,
+        gratuity_fees: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """
         Builds the payload for the hosted payment iframe.
@@ -1347,6 +1426,7 @@ class ToastTool(Toolkit):
             session_secret: Session secret from the payment intent
             payment_intent_amount: Total amount for the payment intent in cents
             order_items: Extracted order items for cart display
+            gratuity_fees: List of gratuity fee items with {name: str, total: int (cents)}
 
         Returns:
             Dictionary containing all payment payload data
@@ -1384,6 +1464,7 @@ class ToastTool(Toolkit):
             "tax": (
                 int(order.checks[0].taxAmount * 100) if order.checks[0].taxAmount else 0
             ),
+            "gratuityFees": gratuity_fees or [],
             "total": payment_intent_amount,
             "tips": 0,
             "sessionSecret": session_secret,
@@ -1398,6 +1479,7 @@ class ToastTool(Toolkit):
                 "store_id": payload["storeId"],
                 "order_external_id": payload["orderExternalId"],
                 "order_items": len(payload["orderItems"]),
+                "gratuity_fees_count": len(payload["gratuityFees"]),
             },
         )
 

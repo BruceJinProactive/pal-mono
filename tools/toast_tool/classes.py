@@ -232,10 +232,40 @@ class Customer(BaseModel):
     lastName: str = Field(default="(via PalonaAI)")
 
 
+class AppliedServiceCharge(BaseModel):
+    """
+    Represents a service charge applied to an order.
+    Service charges can be for delivery, takeout, gratuity, or other purposes.
+    """
+
+    guid: Optional[str] = Field(
+        None, description="Unique identifier for the service charge"
+    )
+    name: Optional[str] = Field(None, description="Name of the service charge")
+    chargeAmount: Optional[float] = Field(
+        None, description="The amount of the service charge"
+    )
+    delivery: Optional[bool] = Field(
+        None, description="Whether this is a delivery service charge"
+    )
+    takeout: Optional[bool] = Field(
+        None, description="Whether this is a takeout service charge"
+    )
+    gratuity: Optional[bool] = Field(
+        None, description="Whether this is a gratuity service charge"
+    )
+
+    class Config:
+        extra = "allow"
+
+
 class Price(BaseModel):
     amount: SkipJsonSchema[Optional[float]] = None  # response only
     taxAmount: SkipJsonSchema[Optional[float]] = None  # response only
     totalAmount: SkipJsonSchema[Optional[float]] = None  # response only
+    appliedServiceCharges: SkipJsonSchema[Optional[List[AppliedServiceCharge]]] = (
+        None  # response only
+    )
 
 
 class PaymentStatus(str, Enum):
