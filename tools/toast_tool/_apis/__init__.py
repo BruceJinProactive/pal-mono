@@ -489,6 +489,73 @@ def get_ordering_schedule(
         )
 
 
+def update_payment_intent(
+    bearer_token: ToastAccessToken,
+    store_id: str,
+    payment_intent_id: str,
+    amount: int,
+    tip_amount: int,
+    payments_api_endpoint: str | None = None,
+) -> PaymentIntentResponse:
+    """
+    Updates a Toast payment intent with new amount and tip.
+
+    Args:
+        bearer_token: Toast access token with payment credentials
+        store_id: External ID for the restaurant
+        payment_intent_id: The ID of the payment intent to update
+        amount: New total payment amount in cents (base + tip)
+        tip_amount: Tip amount in cents
+        payments_api_endpoint: Optional custom payments API endpoint
+
+    Returns:
+        PaymentIntentResponse: Updated payment intent with session secret
+
+    Raises:
+        ValueError: If payment intent update fails
+    """
+    endpoint = payments_api_endpoint or "payments.toasttab.com"
+
+    logger.debug(
+        f"[ToastAPI.update_payment_intent] Updating payment intent {payment_intent_id} for store {store_id}"
+    )
+
+    payload = {
+        "amount": amount,
+        "amountDetails": {"tip": tip_amount},
+    }
+
+    try:
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.POST,
+            bearer_token=bearer_token,
+            api_function=f"/v1/payment-intents/{payment_intent_id}",
+            store_id=store_id,
+            payload=payload,
+            general_api_endpoint=endpoint,
+        )
+
+        if response.status == 200:
+            data = json.loads(response.decoded_body)
+            logger.debug(
+                f"[ToastAPI.update_payment_intent] Successfully updated payment intent: {data.get('id')}"
+            )
+            return PaymentIntentResponse(**data)
+        else:
+            logger.error(
+                f"Payment intent update failed with status {response.status}: {response.decoded_body}"
+            )
+            raise ValueError(
+                f"Payment intent update failed with status {response.status}: {response.decoded_body}"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"[ToastAPI.update_payment_intent] Error updating payment intent: {e}"
+        )
+        raise
+
+
 def create_payment_intent(
     bearer_token: ToastAccessToken,
     store_id: str,

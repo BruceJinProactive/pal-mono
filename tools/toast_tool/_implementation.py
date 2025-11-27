@@ -1262,9 +1262,8 @@ class ToastTool(Toolkit):
             )
 
         try:
-
-            # Calculate total amount in cents
-            total_amount_cents = int(price.totalAmount * 100)  # type: ignore
+            # Calculate total amount in cents (use round() to avoid float truncation issues)
+            total_amount_cents = round(price.totalAmount * 100)  # type: ignore
 
             if not external_reference_id:
                 external_reference_id = str(uuid.uuid4())
@@ -1390,6 +1389,7 @@ class ToastTool(Toolkit):
         # Build hosted payment payload
         payment_payload = self._build_hosted_payment_payload(
             order=order,
+            payment_intent_id=payment_intent_result.id,
             payment_intent_external_reference_id=payment_intent_external_reference_id,
             session_secret=payment_intent_result.sessionSecret,
             payment_intent_amount=payment_intent_result.amount,
@@ -1411,6 +1411,7 @@ class ToastTool(Toolkit):
         self,
         *,
         order: Order,
+        payment_intent_id: str,
         payment_intent_external_reference_id: str,
         session_secret: str,
         payment_intent_amount: int,
@@ -1422,6 +1423,7 @@ class ToastTool(Toolkit):
 
         Args:
             order: The submitted Toast Order object
+            payment_intent_id: The actual Toast payment intent ID (used for updatePaymentIntent API)
             payment_intent_external_reference_id: External reference ID for the payment intent
             session_secret: Session secret from the payment intent
             payment_intent_amount: Total amount for the payment intent in cents
@@ -1457,12 +1459,15 @@ class ToastTool(Toolkit):
             "phone": customer.phone,
             "storeId": self.store_id,
             "orderExternalId": order.externalId,
+            "paymentIntentId": payment_intent_id,
             "paymentIntentExternalReferenceId": payment_intent_external_reference_id,
             "subtotal": (
-                int(order.checks[0].amount * 100) if order.checks[0].amount else 0
+                round(order.checks[0].amount * 100) if order.checks[0].amount else 0
             ),
             "tax": (
-                int(order.checks[0].taxAmount * 100) if order.checks[0].taxAmount else 0
+                round(order.checks[0].taxAmount * 100)
+                if order.checks[0].taxAmount
+                else 0
             ),
             "gratuityFees": gratuity_fees or [],
             "total": payment_intent_amount,

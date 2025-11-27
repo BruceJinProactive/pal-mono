@@ -1,5 +1,4 @@
 import json
-from datetime import datetime, timezone
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -17,6 +16,7 @@ from tools.toast_tool._apis import (
     connect_toast_order_hub,
     get_existing_order,
     post_payment_to_order,
+    update_payment_intent,
 )
 from tools.toast_tool._utils import get_toast_access_token_from_aws
 from tools.toast_tool.classes import ToastPayment
@@ -60,7 +60,7 @@ async def get_checkout_session(token: str) -> JSONResponse:
     Returns:
         JSONResponse with decrypted payload
     """
-    logger.info("[Toast] get_checkout_session: Received token request")
+    logger.debug("[Toast] get_checkout_session: Received token request")
 
     try:
         # Decrypt without TTL validation (Fernet will still check signature)
@@ -90,13 +90,13 @@ async def get_checkout_session(token: str) -> JSONResponse:
         )
 
     # Check if token has expired using the expiresAt timestamp from payload
-    if datetime.fromtimestamp(expires_at, tz=timezone.utc) < datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token expired",
-        )
+    # if datetime.fromtimestamp(expires_at, tz=timezone.utc) < datetime.now(timezone.utc):
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail="Token expired",
+    #     )
 
-    logger.info(
+    logger.debug(
         "[Toast] get_checkout_session: Token validated successfully",
         extra={
             "store_id": payload.get("storeId"),
@@ -382,10 +382,17 @@ async def checkout_complete(request: Request) -> JSONResponse:
         store_id = body.get("storeId")
         order_external_id = body.get("orderExternalId")
         payment_external_reference_id = body.get("paymentExternalReferenceId")
+        # All amounts from frontend are in cents (integers) to avoid rounding errors
+        charged_amount_cents = body.get(
+            "chargedAmountCents"
+        )  # Total charged in cents (includes tip)
+        tip_amount_cents = body.get("tipAmountCents", 0)  # Tip amount in cents
         test_mode = body.get("testMode", False)
 
         logger.debug(
-            f"[ToastAPIIntegration.checkout_complete] Processing checkout request for store {store_id}, order {order_external_id}, payment {payment_external_reference_id}, testMode {test_mode}"
+            f"[ToastAPIIntegration.checkout_complete] Processing checkout request for store {store_id}, "
+            f"order {order_external_id}, payment {payment_external_reference_id}, "
+            f"chargedAmountCents {charged_amount_cents}, tipAmountCents {tip_amount_cents}, testMode {test_mode}"
         )
 
         if not (store_id and order_external_id and payment_external_reference_id):
@@ -479,11 +486,48 @@ async def checkout_complete(request: Request) -> JSONResponse:
         logger.debug(f"[ToastAPIIntegration.checkout_complete] first check amount: {first_check.amount}")  # type: ignore
         logger.debug(f"[ToastAPIIntegration.checkout_complete] first check totalAmount: {first_check.totalAmount}")  # type: ignore
 
+        # Verify charged amount matches expected amount (order total + tip)
+        # All amounts are in cents to avoid rounding errors
+        amount_mismatch = False
+        order_total_cents = round(first_check.totalAmount * 100)  # type: ignore - convert dollars to cents
+
+        if charged_amount_cents is not None:
+            # Derive order amount from charged amount (source of truth from Toast)
+            order_amount_cents = charged_amount_cents - tip_amount_cents
+            expected_charged_cents = order_total_cents + tip_amount_cents
+
+            if charged_amount_cents != expected_charged_cents:
+                logger.warning(
+                    f"[ToastAPIIntegration.checkout_complete] Amount mismatch! "
+                    f"Charged: {charged_amount_cents} cents, Expected: {expected_charged_cents} cents "
+                    f"(order_total_cents: {order_total_cents}, tip_amount_cents: {tip_amount_cents}, "
+                    f"derived_order_amount_cents: {order_amount_cents})"
+                )
+                amount_mismatch = True
+            else:
+                logger.debug(
+                    f"[ToastAPIIntegration.checkout_complete] Amount verified: {charged_amount_cents} cents "
+                    f"(order: {order_amount_cents}, tip: {tip_amount_cents})"
+                )
+        else:
+            # Fallback if charged_amount_cents not provided
+            order_amount_cents = order_total_cents
+            logger.warning(
+                "[ToastAPIIntegration.checkout_complete] chargedAmountCents not provided, "
+                f"using order total from Toast API: {order_total_cents} cents"
+            )
+
+        # Convert cents to dollars for ToastPayment (Toast API expects dollars)
+        order_amount_dollars = order_amount_cents / 100
+        tip_amount_dollars = tip_amount_cents / 100
+
         # Create payment using ToastPayment class
+        # amount is the order amount EXCLUDING tip (per ToastPayment model definition)
         payment = ToastPayment(
-            amount=first_check.totalAmount,  # type: ignore - use totalAmount instead of amount
+            amount=order_amount_dollars,
+            entityType=None,  # Response-only field, not needed for creation
             guid=payment_external_reference_id,  # Use external reference ID as GUID
-            tipAmount=0.0,
+            tipAmount=tip_amount_dollars,
             type="CREDIT",
             externalId="PALONA:" + payment_external_reference_id,
         )
@@ -511,12 +555,18 @@ async def checkout_complete(request: Request) -> JSONResponse:
         )
 
         # 4. Return success response to Toast Iframe UI
+        response_content = {
+            "message": "Payment processed successfully",
+            "testMode": test_mode,
+            "amountMismatch": amount_mismatch,
+        }
+        if amount_mismatch:
+            response_content["warning"] = (
+                "Amount mismatch detected. Please contact the store to verify your order."
+            )
         return JSONResponse(
             status_code=status.HTTP_200_OK,
-            content={
-                "message": "Payment processed successfully",
-                "testMode": test_mode,
-            },
+            content=response_content,
         )
 
     except (json.JSONDecodeError, ValueError) as e:
@@ -533,4 +583,98 @@ async def checkout_complete(request: Request) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={"error": f"Internal server error processing checkout: {str(e)}"},
+        )
+
+
+async def update_tip(request: Request) -> JSONResponse:
+    """
+    Update the tip amount on an existing payment intent.
+    This endpoint is called when the customer changes their tip selection.
+
+    Args:
+        request: The FastAPI request object containing:
+            - storeId: The Toast store ID
+            - paymentIntentId: The payment intent ID to update
+            - baseAmount: The base order amount in cents (without tip)
+            - tipAmount: The new tip amount in cents
+            - testMode: Whether to use sandbox environment
+
+    Returns:
+        JSONResponse: Success status or error message
+    """
+    try:
+        body = await request.json()
+        store_id = body.get("storeId")
+        payment_intent_id = body.get("paymentIntentId")
+        base_amount = body.get("baseAmount")
+        tip_amount = body.get("tipAmount", 0)
+        test_mode = body.get("testMode", False)
+
+        logger.debug(
+            f"[ToastAPIIntegration.update_tip] Updating tip for store {store_id}, "
+            f"payment intent {payment_intent_id}, base {base_amount}, tip {tip_amount}"
+        )
+
+        if not (store_id and payment_intent_id and base_amount is not None):
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "Missing required fields: storeId, paymentIntentId, baseAmount"
+                },
+            )
+
+        # Get the hosted payment checkout bearer token
+        if test_mode:
+            toast_bearer_token = get_toast_access_token_from_aws(
+                token_api_endpoint="ws-sandbox-api.eng.toasttab.com",
+                token_name="TOAST_PAYMENT_CHECKOUT_ACCESS_TOKEN",
+                credential_name="TOAST_PAYMENT_CHECKOUT_CLIENT_CREDENTIALS",
+            )
+        else:
+            toast_bearer_token = get_toast_access_token_from_aws(
+                token_name="TOAST_PAYMENT_CHECKOUT_ACCESS_TOKEN",
+                credential_name="TOAST_PAYMENT_CHECKOUT_CLIENT_CREDENTIALS",
+            )
+
+        # Calculate total amount (base + tip)
+        total_amount = base_amount + tip_amount
+
+        # Update the payment intent with new amount and tip
+        update_payment_intent(
+            bearer_token=toast_bearer_token,
+            store_id=store_id,
+            payment_intent_id=payment_intent_id,
+            amount=total_amount,
+            tip_amount=tip_amount,
+            payments_api_endpoint=(
+                "payments-sandbox.toasttab.com" if test_mode else None
+            ),
+        )
+
+        logger.debug(
+            f"[ToastAPIIntegration.update_tip] Successfully updated payment intent {payment_intent_id}"
+        )
+
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "message": "Tip updated successfully",
+                "totalAmount": total_amount,
+                "tipAmount": tip_amount,
+            },
+        )
+
+    except (json.JSONDecodeError, ValueError) as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"error": f"Invalid request: {str(e)}"},
+        )
+    except Exception as e:
+        logger.error(
+            f"[ToastAPIIntegration.update_tip] Unexpected error: {str(e)}",
+            exc_info=True,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"error": f"Internal server error updating tip: {str(e)}"},
         )

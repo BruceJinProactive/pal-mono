@@ -3,7 +3,12 @@ from fastapi.responses import JSONResponse
 
 from api.schemas.error.error import ErrorResponse
 
-from ._implementation import api_toast_webhook, checkout_complete, get_checkout_session
+from ._implementation import (
+    api_toast_webhook,
+    checkout_complete,
+    get_checkout_session,
+    update_tip,
+)
 
 toast_router = APIRouter(prefix="/toast", tags=["Integrations"])
 
@@ -69,3 +74,20 @@ async def checkout_session_api(t: str) -> JSONResponse:
         JSONResponse with decrypted payload including orderItems
     """
     return await get_checkout_session(t)
+
+
+@toast_router.post(
+    "/checkout/update-tip",
+    status_code=status.HTTP_200_OK,
+    responses={
+        200: {"description": "Tip updated successfully", "model": dict},
+        400: {"description": "Invalid request"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def update_tip_api(request: Request) -> JSONResponse:
+    """
+    Update the tip amount on an existing payment intent.
+    Called when customer changes their tip selection on the checkout page.
+    """
+    return await update_tip(request)
