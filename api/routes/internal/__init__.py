@@ -10,6 +10,7 @@ from db.repositories.project_repository import ProjectRepository
 from events import GoogleBusinessHoursUpdateRequested, publish_event
 from utils.log import logger
 
+from . import _implementation
 from .events import events_router
 from .projects import projects_router
 
@@ -25,12 +26,12 @@ internal_router.include_router(events_router)
 internal_router.include_router(projects_router)
 
 
-@internal_router.post("/knowledge-discovery")
-async def trigger_knowledge_discovery(
+@internal_router.post("/start-knowledge-update-process")
+async def start_knowledge_update_process(
     _session: Session = Depends(db.get_db),
 ):
     """
-    Discovery endpoint for knowledge updates.
+    Start knowledge update process for all projects.
 
     Queries database for accounts and projects that need knowledge updates
     and publishes individual events for each project. Called by EventBridge Scheduler daily.
@@ -41,15 +42,7 @@ async def trigger_knowledge_discovery(
     Returns:
         dict: Summary of projects queried and events published
     """
-    # TODO: Implement discovery logic to find projects needing knowledge updates
-    # TODO: Publish KnowledgeUpdateRequested events for each project
-    # TODO: Return summary of events published
-    return {
-        "success": True,
-        "events_published": 0,
-        "message": "Submitted 0 update knowledge events",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    return await _implementation.start_knowledge_update_process(_session)
 
 
 @internal_router.post("/business-hours-update")

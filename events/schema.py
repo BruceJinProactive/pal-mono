@@ -106,3 +106,17 @@ class GoogleBusinessHoursUpdateRequested(BaseEvent):
     # Optional fields with defaults
     requested_by: str = "scheduler"  # or "manual"
     last_updated: datetime | None = None  # When hours were last fetched
+
+
+@dataclass
+class KnowledgeUpdateRequested(BaseEvent):
+    """Event published when knowledge base needs updating for a project with Adora POS integration."""
+
+    detail_type: ClassVar[str] = "KnowledgeUpdateRequest"
+
+    # Resource identifiers (required fields first)
+    project_id: UUID  # The store/location
+    account_id: UUID  # Parent account (for context)
+    integration_id: UUID  # The integration
+    project_integration_id: UUID  # The project integration
+    requested_at: datetime
