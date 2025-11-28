@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import datetime, timedelta
 
 from tools.opentable_tool._apis._utils import connect_opentable_api
@@ -28,10 +29,18 @@ def search_availability(
         AvailabilitySearchResponse object or raises an exception if request fails
     """
     # Construct API endpoint
-    api_function = "/dapi/fe/gql?optype=query&opname=RestRefAvailability"
+    api_function = "/dapi/fe/gql?optype=query&opname=RestaurantsAvailability"
 
     variables = {
-        "forwardDays": 3,
+        "onlyPop": False,
+        "forwardDays": 0,
+        "requireTimes": False,
+        "requireTypes": ["Standard", "Experience", "PrivateDining"],
+        "privilegedAccess": [
+            "VisaDiningProgram",
+            "VisaEventsProgram",
+            "ChaseDiningProgram",
+        ],
         "restaurantIds": [restaurant_id],
         "date": datetime.fromisoformat(search_params.start_date_time).strftime(
             "%Y-%m-%d"
@@ -39,17 +48,20 @@ def search_availability(
         "time": datetime.fromisoformat(search_params.start_date_time).strftime("%H:%M"),
         "partySize": search_params.party_size,
         "databaseRegion": "NA",
-        "rid": restaurant_id,
+        "restaurantAvailabilityTokens": [],
+        "loyaltyRedemptionTiers": [],
+        "attributionToken": "",
+        "correlationId": str(uuid.uuid4()),
     }
 
-    # Create the request body with deduplicated variables
+    # Create the request body
     request_body = {
-        "operationName": "RestRefAvailability",
+        "operationName": "RestaurantsAvailability",
         "variables": variables,
         "extensions": {
             "persistedQuery": {
                 "version": 1,
-                "sha256Hash": "49e1cc30a14ce4449b989941b1c618e1e7df0845188294883ed7f332ab938123",
+                "sha256Hash": "b2d05a06151b3cb21d9dfce4f021303eeba288fac347068b29c1cb66badc46af",
             }
         },
     }
