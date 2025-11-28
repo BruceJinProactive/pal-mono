@@ -95,6 +95,7 @@ class ToastTool(Toolkit):
         payment_iframe_token_ttl_seconds: int = 15 * 60,
         backdoor_tool_prompt: dict | None = None,
         order_construction_model: OrderConstructionModel = OrderConstructionModel.OPENAI,
+        revenue_center_id: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(name="toast_tool")
@@ -128,6 +129,7 @@ class ToastTool(Toolkit):
         self.payment_iframe_token_ttl_seconds = payment_iframe_token_ttl_seconds
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
         self.order_construction_model = order_construction_model
+        self.revenue_center_id = revenue_center_id
 
         # Register tools
         if self.enable_hosted_checkout:
@@ -1004,11 +1006,12 @@ class ToastTool(Toolkit):
                 )
                 return f"Error processing scheduled order: {str(e)}"
 
+        # Add revenue center id if it is provided
+        if self.revenue_center_id:
+            order.revenueCenter = {"guid": self.revenue_center_id}
+
         logger.debug(
             f"[ToastTool._finalize_order_details] Extracted structured data: {order}"
-        )
-        logger.debug(
-            f"[ToastTool._finalize_order_details] Extracted structured data type: {type(order)}"
         )
 
         ### Validate checks ###

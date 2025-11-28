@@ -329,6 +329,7 @@ class OrderInput(BaseModel):
         default=None,
         description="The business date of the order. For dine-in and ASAP orders, should match createdDate. For scheduled orders, should match promisedDate.",
     )
+    revenueCenter: Optional[dict] = None
 
 
 class Order(OrderInput):
