@@ -31,7 +31,8 @@ class CateringTool(Toolkit):
         event_fulfillment: Optional[str] = None,  # "DELIVERY" or "PICKUP"
     ) -> str:
         """
-        Create a new catering request for an event.
+        Create a new catering request for an event. Store all order and event details in `event_detail`,
+        including menu items, quantities, customizations, dietary notes, special requests, and any relevant context
 
         **WHEN TO USE THIS TOOL:**
         - When a customer wants to place a catering request for an event
@@ -46,7 +47,7 @@ class CateringTool(Toolkit):
         **OPTIONAL INFORMATION:**
         - event_time: Time of the event (HH:MM format, e.g., "14:30")
         - event_address: Address where the event will take place
-        - event_detail: Additional details about the event
+        - event_detail: Additional details about the event; **include all customer order details here**
         - event_fulfillment: How the catering will be fulfilled ("DELIVERY" or "PICKUP")
 
         Returns:
