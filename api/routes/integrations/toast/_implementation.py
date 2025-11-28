@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -90,11 +91,11 @@ async def get_checkout_session(token: str) -> JSONResponse:
         )
 
     # Check if token has expired using the expiresAt timestamp from payload
-    # if datetime.fromtimestamp(expires_at, tz=timezone.utc) < datetime.now(timezone.utc):
-    #     raise HTTPException(
-    #         status_code=status.HTTP_400_BAD_REQUEST,
-    #         detail="Token expired",
-    #     )
+    if datetime.fromtimestamp(expires_at, tz=timezone.utc) < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token expired",
+        )
 
     logger.debug(
         "[Toast] get_checkout_session: Token validated successfully",
