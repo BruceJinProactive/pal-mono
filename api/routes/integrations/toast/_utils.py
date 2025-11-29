@@ -506,6 +506,244 @@ async def update_stock_item_status(webhook_request: ToastWebhookRequest) -> None
     await run_in_threadpool(_process_stock_item_status_sync, webhook_request)
 
 
+def _format_time_12h(hour: int, minute: int) -> str:
+    """
+    Convert 24-hour time to 12-hour AM/PM format.
+
+    Args:
+        hour: Hour (0-23)
+        minute: Minute (0-59)
+
+    Returns:
+        Formatted time string (e.g., "11 AM", "8:30 PM")
+    """
+    period = "AM" if hour < 12 else "PM"
+    display_hour = hour if hour <= 12 else hour - 12
+    display_hour = 12 if display_hour == 0 else display_hour
+
+    if minute == 0:
+        return f"{display_hour} {period}"
+    return f"{display_hour}:{minute:02d} {period}"
+
+
+def _group_consecutive_days(day_schedules: dict[str, str]) -> list[str]:
+    """
+    Group consecutive days with the same hours together.
+
+    Args:
+        day_schedules: Map of day name to time range string
+
+    Returns:
+        List of formatted day/time strings
+    """
+    day_order = [
+        "MONDAY",
+        "TUESDAY",
+        "WEDNESDAY",
+        "THURSDAY",
+        "FRIDAY",
+        "SATURDAY",
+        "SUNDAY",
+    ]
+    grouped = []
+
+    # Group days by their time ranges
+    time_to_days: dict[str, list[str]] = {}
+    for day in day_order:
+        if day in day_schedules:
+            time_str = day_schedules[day]
+            if time_str not in time_to_days:
+                time_to_days[time_str] = []
+            time_to_days[time_str].append(day)
+
+    # Format grouped days
+    for time_str, days in time_to_days.items():
+        if len(days) == 1:
+            day_label = days[0].capitalize()
+        else:
+            # Check if consecutive
+            indices = [day_order.index(d) for d in days]
+            if indices == list(range(min(indices), max(indices) + 1)):
+                # Consecutive days
+                day_label = f"{days[0].capitalize()}-{days[-1].capitalize()}"
+            else:
+                # Non-consecutive, list them
+                day_label = ", ".join(d.capitalize() for d in days)
+
+        grouped.append(f"{day_label}: {time_str}")
+
+    return grouped
+
+
+def _format_ordering_schedule(
+    service_periods: list,
+    overrides: list,
+) -> str:
+    """
+    Format ordering schedule into human-readable text.
+
+    Args:
+        service_periods: List of ServicePeriod objects
+        overrides: List of Override objects
+
+    Returns:
+        Formatted schedule string
+        Example:
+            "
+            Delivery:
+            Monday-Thursday: 11 AM-8 PM
+            Friday: 11 AM-9 PM
+            Saturday-Sunday: 11 AM-9 PM
+
+            Take Out:
+            Monday-Thursday: 11 AM-8 PM
+            Friday: 11 AM-9 PM, 2 PM-5 PM
+            Saturday-Sunday: 10 AM-9 PM
+
+            Special Events:
+
+            Thanksgiving Day - Thursday, November 27, 2025
+              Delivery, Take Out: 9:30 AM-3 PM
+
+            Christmas - Wednesday, December 25, 2025
+              Delivery, Take Out: CLOSED
+            "
+    """
+    from datetime import date, datetime
+
+    result = []
+
+    # Process service periods by dining option
+    dining_options: dict[str, dict[str, str]] = {}
+    for period in service_periods:
+        option = period.diningOptionBehavior.replace("_", " ").title()
+        day_schedules: dict[str, str] = {}
+
+        for day_period in period.dayPeriods:
+            day = day_period.day
+            time_ranges = []
+
+            for tr in day_period.timeRanges:
+                start_h, start_m = tr.start[0], tr.start[1]
+                end_h, end_m = tr.end[0], tr.end[1]
+                start_str = _format_time_12h(start_h, start_m)
+                end_str = _format_time_12h(end_h, end_m)
+                time_ranges.append(f"{start_str}-{end_str}")
+
+            if time_ranges:
+                day_schedules[day] = ", ".join(time_ranges)
+
+        dining_options[option] = day_schedules
+
+    # Format regular schedule
+    for option, schedules in dining_options.items():
+        result.append(f"\n{option}:")
+        grouped = _group_consecutive_days(schedules)
+        for line in grouped:
+            result.append(f"{line}")
+
+    # Process overrides (special events)
+    today = date.today()
+    future_overrides = []
+
+    for override in overrides:
+        # Parse business date from YYYYMMDD format
+        date_str = str(override.businessDate)
+        event_date = datetime.strptime(date_str, "%Y%m%d").date()
+
+        if event_date >= today:
+            # Format time ranges
+            if not override.timeRanges:
+                hours = "CLOSED"
+            else:
+                time_strs = []
+                for tr in override.timeRanges:
+                    start_h, start_m = tr.start[0], tr.start[1]
+                    end_h, end_m = tr.end[0], tr.end[1]
+                    start_str = _format_time_12h(start_h, start_m)
+                    end_str = _format_time_12h(end_h, end_m)
+                    time_strs.append(f"{start_str}-{end_str}")
+                hours = ", ".join(time_strs)
+
+            # Format dining options
+            options = ", ".join(
+                opt.replace("_", " ").title() for opt in override.diningOptionBehavior
+            )
+
+            future_overrides.append(
+                {
+                    "date": event_date,
+                    "name": override.description,
+                    "hours": hours,
+                    "options": options,
+                }
+            )
+
+    # Add special events section
+    if future_overrides:
+        result.append("\n\nSpecial Events:")
+        # Sort by date
+        future_overrides.sort(key=lambda x: x["date"])
+
+        for event in future_overrides:
+            date_str = event["date"].strftime("%A, %B %d, %Y")
+            result.append(f"\n{event['name']} - {date_str}")
+            result.append(f"  {event['options']}: {event['hours']}")
+
+    return "\n".join(result)
+
+
+def _store_ordering_schedule_in_db(
+    restaurant_guid: str,
+    formatted_schedule: str,
+) -> None:
+    """
+    Store formatted ordering schedule in project store_hours field.
+
+    Args:
+        restaurant_guid: Toast restaurant GUID
+        formatted_schedule: Formatted schedule string
+    """
+    with SyncSessionLocal() as session:
+        try:
+            # Find projects
+            projects = _find_projects_by_restaurant_guid(restaurant_guid, session)
+
+            if not projects:
+                logger.warning(
+                    f"[ToastWebhook._store_ordering_schedule_in_db] No projects found for restaurant {restaurant_guid}"
+                )
+                return
+
+            # Update each project
+            for project in projects:
+                locked = (
+                    session.query(Project)
+                    .filter(Project.id == project.id)
+                    .with_for_update(nowait=False)
+                    .one()
+                )
+
+                locked.store_hours = formatted_schedule
+                session.add(locked)
+
+                logger.debug(
+                    f"[ToastWebhook._store_ordering_schedule_in_db] Updated ordering schedule for project '{project.name}'"
+                )
+
+            session.commit()
+            logger.debug(
+                f"[ToastWebhook._store_ordering_schedule_in_db] Successfully updated ordering schedule for {len(projects)} projects"
+            )
+
+        except Exception as e:
+            session.rollback()
+            logger.error(
+                f"[ToastWebhook._store_ordering_schedule_in_db] Error storing schedule: {e}"
+            )
+            raise
+
+
 async def update_ordering_schedule(webhook_request: ToastWebhookRequest) -> None:
     """
     Update the ordering schedule for a given store.
@@ -526,13 +764,26 @@ async def update_ordering_schedule(webhook_request: ToastWebhookRequest) -> None
 
     restaurant_guid = ordering_schedule_details.restaurantGuid
     ordering_schedule = ordering_schedule_details.orderingSchedule
-    scheduled_order_max_days = ordering_schedule.scheduledOrderMaxDays
-    last_order_configuration = ordering_schedule.lastOrderConfiguration
 
     logger.debug(
-        f"[ToastWebhook.update_ordering_schedule] Restaurant {restaurant_guid} updated ordering schedule to {ordering_schedule}. "
-        f"Scheduled order max days: {scheduled_order_max_days}. "
-        f"Last order configuration: {last_order_configuration}."
+        f"[ToastWebhook.update_ordering_schedule] Restaurant {restaurant_guid} updating ordering schedule"
+    )
+
+    # Format the schedule into human-readable text
+    formatted_schedule = _format_ordering_schedule(
+        ordering_schedule.servicePeriods,
+        ordering_schedule.overrides,
+    )
+
+    logger.debug(
+        f"[ToastWebhook.update_ordering_schedule] Formatted schedule:\n{formatted_schedule}"
+    )
+
+    # Store in database (run in threadpool to avoid blocking)
+    await run_in_threadpool(
+        _store_ordering_schedule_in_db,
+        restaurant_guid,
+        formatted_schedule,
     )
 
 
