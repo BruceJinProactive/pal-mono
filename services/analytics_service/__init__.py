@@ -80,6 +80,7 @@ async def send_report_to_slack(
     session: Session | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    account_name: str | None = None,
     show_time: bool = False,
     timezone_id: str | None = None,
     timezone_name: str | None = None,
@@ -93,9 +94,10 @@ async def send_report_to_slack(
         session (Session): Database session
         start_date (datetime | None): Start date for the calculation (in UTC)
         end_date (datetime | None): End date for the calculation (in UTC)
+        account_name (str | None): Optional account name to filter by
         show_time (bool): If True, show full datetime with time and timezone in report title
-        timezone_id (str | None): Timezone ID to convert UTC times to local (e.g., 'America/New_York')
-        timezone_name (str | None): Timezone abbreviation to display (e.g., 'EST', 'PST')
+        timezone_id (str | None): Timezone ID to convert UTC times to local time
+        timezone_name (str | None): Timezone abbreviation to display
 
     Returns:
         dict: Status of the operation
@@ -106,7 +108,7 @@ async def send_report_to_slack(
         session,
         start_date,
         end_date,
-        None,
+        account_name,
         show_time,
         timezone_id,
         timezone_name,

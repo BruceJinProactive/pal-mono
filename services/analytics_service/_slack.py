@@ -850,16 +850,23 @@ def build_engagement_summary(totals_summary: dict) -> list[str]:
     if "Call Time Metrics" in totals_summary:
         total_calls = totals_summary["Call Time Metrics"].get("total_calls", 0)
         avg_duration = totals_summary["Call Time Metrics"].get("avg_duration", 0)
+        transfer_rate = totals_summary["Call Time Metrics"].get(
+            "overall_transfer_rate", 0
+        )
         avg_duration_formatted = safe_float_format(avg_duration, 1)
+        transfer_rate_formatted = safe_float_format(transfer_rate, 1)
         summary_lines.append(
-            f"• Calls: *{total_calls}* (Avg {avg_duration_formatted}s)"
+            f"• Calls: *{total_calls}* (Avg {avg_duration_formatted}s, Transfer Rate {transfer_rate_formatted}%)"
         )
 
     return summary_lines
 
 
 def build_conversion_section(
-    totals_summary: dict, unified_accounts: dict
+    totals_summary: dict,
+    unified_accounts: dict,
+    account_id_filter: uuid.UUID | None = None,
+    account_name: str | None = None,
 ) -> list[dict]:
     """Build conversion summary section and table blocks."""
     blocks = []
@@ -902,21 +909,40 @@ def build_conversion_section(
             ]
         )
 
-    conversion_summary_text = "*💰 Conversion Summary*\n" + "\n".join(
-        conversion_summary_lines
-    )
-
-    # Add divider, summary, and conversion details
-    blocks.extend(
-        [
-            {"type": "divider"},
+    # For single-account reports, skip the conversion summary header (already covered by main header)
+    # For multi-account reports, show separate "Conversion Summary" header
+    if account_id_filter is None:
+        conversion_summary_text = "*💰 Conversion Summary*\n" + "\n".join(
+            conversion_summary_lines
+        )
+        # Add divider and summary for multi-account reports
+        blocks.extend(
+            [
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": conversion_summary_text},
+                },
+            ]
+        )
+    else:
+        # Single account - no header, no divider, just the metrics
+        conversion_summary_text = "\n".join(conversion_summary_lines)
+        # Add summary without divider for single-account reports
+        blocks.append(
             {
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": conversion_summary_text},
-            },
-            create_conversion_section(unified_accounts),
-        ]
-    )
+            }
+        )
+
+    # Add conversion table ONLY if NOT filtering by single account
+    if account_id_filter is None:
+        blocks.append(create_conversion_section(unified_accounts))
+    else:
+        logger.info(
+            f"[Slackbot] Skipping conversion table - single account report (account_id: {account_id_filter})"
+        )
 
     return blocks
 
@@ -951,6 +977,8 @@ def format_unified_report_for_slack(
     show_time: bool = False,
     timezone_id: str | None = None,
     timezone_name: str | None = None,
+    account_id_filter: uuid.UUID | None = None,
+    account_name: str | None = None,
 ) -> dict:
     """
     Format unified analytics report into Slack blocks with configurable columns.
@@ -1017,7 +1045,14 @@ def format_unified_report_for_slack(
 
         # Build engagement summary
         summary_lines = build_engagement_summary(totals_summary)
-        summary_text = "*📊 Engagement Summary*\n" + "\n".join(summary_lines)
+
+        # Use account-specific header for single-account reports
+        if account_id_filter is not None and account_name:
+            summary_header = f"*📊 {account_name.title()}'s Report*"
+        else:
+            summary_header = "*📊 Engagement Summary*"
+
+        summary_text = summary_header + "\n" + "\n".join(summary_lines)
 
         blocks.append(
             {"type": "section", "text": {"type": "mrkdwn", "text": summary_text}}
@@ -1036,18 +1071,23 @@ def format_unified_report_for_slack(
             )
             return {"blocks": blocks}
 
-        # Add engagement details section
-        logger.info(
-            f"[Slackbot] Creating engagement section with {len(unified_accounts)} accounts"
-        )
-        engagement_section = create_engagement_section(unified_accounts, columns)
-        blocks.append(engagement_section)
+        # Add engagement details section ONLY if NOT filtering by single account
+        if account_id_filter is None:
+            logger.info(
+                f"[Slackbot] Creating engagement section with {len(unified_accounts)} accounts"
+            )
+            engagement_section = create_engagement_section(unified_accounts, columns)
+            blocks.append(engagement_section)
+        else:
+            logger.info(
+                f"[Slackbot] Skipping engagement table - single account report (account_id: {account_id_filter})"
+            )
 
         # Add conversion section if data exists
         if has_conversion_data(totals_summary, unified_accounts):
             logger.info("[Slackbot] Adding conversion section - conversion data found")
             conversion_blocks = build_conversion_section(
-                totals_summary, unified_accounts
+                totals_summary, unified_accounts, account_id_filter, account_name
             )
             blocks.extend(conversion_blocks)
         else:
@@ -1371,9 +1411,11 @@ async def send_report_to_slack(
             None,
             start_date,
             end_date,
-            show_time,
-            timezone_id,
-            timezone_name,
+            show_time=show_time,
+            timezone_id=timezone_id,
+            timezone_name=timezone_name,
+            account_id_filter=account_id_filter,
+            account_name=account_name,
         )
         if not message_blocks or "blocks" not in message_blocks:
             logger.error("[Slackbot] Failed to generate valid Slack blocks structure")
@@ -1463,8 +1505,33 @@ async def handle_report_request(
                     f"[Slackbot] Using {period} date range: {start_date} to {end_date}"
                 )
 
+            # Get timezone name for display
+            if account_name:
+                timezone_id = get_account_timezone(session, account_name)
+            else:
+                # Default to PST when no account specified
+                timezone_id = "America/Los_Angeles"
+
+            # Extract short timezone name (e.g., 'EST', 'PST')
+            timezone_name = None
+            if timezone_id:
+                from zoneinfo import ZoneInfo
+
+                tz = ZoneInfo(timezone_id)
+                # Get timezone abbreviation
+                now_in_tz = datetime.now(tz)
+                timezone_name = now_in_tz.strftime("%Z")
+
             result = await send_report_to_slack(
-                slack_channel, client, session, start_date, end_date, account_name
+                slack_channel,
+                client,
+                session,
+                start_date,
+                end_date,
+                account_name,
+                show_time=True,
+                timezone_id=timezone_id,
+                timezone_name=timezone_name,
             )
         finally:
             session.close()
@@ -1557,9 +1624,11 @@ async def handle_last_hours_request(message, client):
             )
 
             # Get timezone name for display
-            timezone_id = None
             if account_name:
                 timezone_id = get_account_timezone(session, account_name)
+            else:
+                # Default to PST when no account specified
+                timezone_id = "America/Los_Angeles"
 
             # Extract short timezone name (e.g., 'EST', 'PST')
             timezone_name = None
@@ -1670,28 +1739,36 @@ def create_slack_app():
 
     app = AsyncApp(token=bot_token, signing_secret=signing_secret)
 
-    # Register message handlers for different report periods
-    @app.message("daily")
-    async def handle_daily_request(message, client):
-        """Handle daily report requests."""
-        await handle_report_request("daily", message, client)
+    # Register app_mention handler to only respond when bot is @mentioned
+    @app.event("app_mention")
+    async def handle_app_mention(event, client):
+        """Handle all app mentions and route to appropriate handler."""
+        message_text = event.get("text", "").lower()
 
-    @app.message("weekly")
-    async def handle_weekly_request(message, client):
-        """Handle weekly report requests."""
-        await handle_report_request("weekly", message, client)
-
-    @app.message("monthly")
-    async def handle_monthly_request(message, client):
-        """Handle monthly report requests."""
-        await handle_report_request("monthly", message, client)
-
-    @app.message(
-        re.compile(r"from\s+\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2}", re.IGNORECASE)
-    )
-    async def handle_custom_date_message(message, client):
-        """Handle custom date range requests like 'From 2024-01-01 to 2024-01-31'."""
-        await handle_custom_date_request(message, client)
+        # Check for daily report
+        if "daily" in message_text:
+            await handle_report_request("daily", event, client)
+        # Check for weekly report
+        elif "weekly" in message_text:
+            await handle_report_request("weekly", event, client)
+        # Check for monthly report
+        elif "monthly" in message_text:
+            await handle_report_request("monthly", event, client)
+        # Check for last X hours
+        elif re.search(r"last\s+\d+\s+hours?", message_text, re.IGNORECASE):
+            await handle_last_hours_request(event, client)
+        # Check for custom date range
+        elif re.search(
+            r"from\s+\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2}",
+            message_text,
+            re.IGNORECASE,
+        ):
+            await handle_custom_date_request(event, client)
+        else:
+            # Unknown command - send simple error message
+            channel = event.get("channel")
+            error_text = "Please try again."
+            await client.chat_postMessage(channel=channel, text=error_text, mrkdwn=True)
 
     @app.message(re.compile(r"last\s+\d+\s+hours?", re.IGNORECASE))
     async def handle_last_hours_message(message, client):
