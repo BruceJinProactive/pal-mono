@@ -87,7 +87,6 @@ class VapiTool(Toolkit):
         tool_metadata: ToolMetadata,
         destination_number: str,
         transfer_message: str | None = None,
-        warm_transfer: bool = False,
     ):
         super().__init__(name="vapi_tool")
         self.tool_metadata = tool_metadata
@@ -96,15 +95,10 @@ class VapiTool(Toolkit):
             transfer_message
             or "I'll transfer you to our customer support. Just hang tight for a moment."
         )
-        self.warm_transfer = warm_transfer
         self.register(self.call_transfer)
 
     def _build_transfer_payload(self) -> dict:
-        """Build transfer payload for SIP URI or phone number.
-
-        When warm_transfer is enabled, includes a transferPlan with summary
-        generation to help the receiving operator understand the call context.
-        """
+        """Build transfer payload for SIP URI or phone number."""
         if not self.destination_number:
             raise ValueError("destination_number cannot be empty or None")
         is_sip = self.destination_number.lower().startswith("sip:")
@@ -116,44 +110,11 @@ class VapiTool(Toolkit):
         logger.debug(
             f"[VapiTool._build_transfer_payload] Detected destination type: {'SIP' if is_sip else 'phone number'} for {self.destination_number}"
         )
-
-        payload: dict = {
+        return {
             "type": "transfer",
             "destination": destination,
             "content": self.transfer_message,
         }
-
-        if self.warm_transfer:
-            payload["transferPlan"] = {
-                "mode": "warm-transfer-with-summary",
-                "summaryPlan": {
-                    "enabled": True,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are preparing a concise handoff summary for a staff member "
-                                "who is about to take over this call from an AI agent. "
-                                "Read the transcript and summarize only the information the staff "
-                                "member needs to continue the call smoothly, including: "
-                                "what the caller wants (order, reservation, question, etc.), "
-                                "key details (items, quantities, date/time, party size, special requests), "
-                                "and what has been confirmed vs. what still needs action. "
-                                "Keep it brief and actionable."
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": "Here is the transcript:\n\n{{transcript}}\n\n",
-                        },
-                    ],
-                },
-            }
-            logger.debug(
-                "[VapiTool._build_transfer_payload] Warm transfer enabled, added transferPlan"
-            )
-
-        return payload
 
     @tool
     def call_transfer(self) -> str:
