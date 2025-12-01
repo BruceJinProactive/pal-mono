@@ -525,9 +525,8 @@ class ProjectRepository:
             project.updated_at = datetime.now(timezone.utc)
 
             # Also update the human-readable store_hours field
-            weekday_text = business_hours.get("regular_hours", {}).get(
-                "weekday_text", []
-            )
+            regular_hours = business_hours.get("regular_hours") or {}
+            weekday_text = regular_hours.get("weekday_text", [])
             if weekday_text:
                 project.store_hours = "\n".join(weekday_text)
 
