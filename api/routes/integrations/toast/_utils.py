@@ -1,26 +1,17 @@
-import os
+import json
 import re
 
-from llama_index.core import VectorStoreIndex
-from llama_index.core.vector_stores.types import (
-    FilterOperator,
-    MetadataFilter,
-    MetadataFilters,
-)
-from llama_index.embeddings.cohere import CohereEmbedding
-from llama_index.vector_stores.pinecone import PineconeVectorStore
-from pinecone import Pinecone
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from db.repositories.agent_repository import AgentRepository
 from db.session import SyncSessionLocal
 from db.tables.integration import Integration, ProjectIntegration
 from db.tables.projects import Project
 from db.tables.types import IntegrationProvider
-from services.admin_service._utils import _get_agent_knowledge_settings
-from services.auth_types import UserContext, UserRole
+from tools.toast_tool._apis import connect_toast_order_hub
+from tools.toast_tool._utils import get_toast_access_token_from_aws
+from tools.utils.ordering.classes import HttpMethod
 from utils.log import logger
 
 from .schema import (
@@ -93,65 +84,6 @@ def _find_projects_by_restaurant_guid(
         return []
 
 
-def _get_project_pinecone_settings(
-    project: Project, session: Session
-) -> tuple[str | None, str | None]:
-    """
-    Get Pinecone index name and namespace from project's agent configuration.
-
-    Args:
-        project: The project object
-        session: Database session
-
-    Returns:
-        Tuple of (index_name, namespace) or (None, None) if not found
-    """
-    try:
-        if not project.agent_id:
-            logger.warning(
-                f"[ToastWebhook._get_project_pinecone_settings] No agent_id found in project: {project.id}"
-            )
-            return None, None
-
-        # Get the agent
-        agent_repo = AgentRepository(session, auto_commit=False)
-        agent = agent_repo.get_agent(project.agent_id)
-
-        if not agent:
-            logger.warning(
-                f"[ToastWebhook._get_project_pinecone_settings] No agent found for agent_id: {project.agent_id}"
-            )
-            return None, None
-
-        # Create a mock UserContext for the admin service function
-        mock_context = UserContext(
-            username="toast-webhook-system",
-            email="noreply@toast-webhook",
-            groups=[],
-            display_name="Toast Webhook System",
-            account_names=[agent.account.name],
-            role=UserRole.Admin,
-        )
-
-        index_name, namespace = _get_agent_knowledge_settings(
-            session=session,
-            context=mock_context,
-            target=agent,
-            auto_create=False,  # Don't auto-create in webhook context
-        )
-
-        logger.debug(
-            f"[ToastWebhook._get_project_pinecone_settings] Project {project.name} Pinecone settings - Index: {index_name}, Namespace: {namespace}"
-        )
-        return index_name, namespace
-
-    except Exception as e:
-        logger.error(
-            f"[ToastWebhook._get_project_pinecone_settings] Error getting Pinecone settings for project {project.id}: {e}"
-        )
-        return None, None
-
-
 def _update_stock_section(
     content: str,
     item_name: str,
@@ -202,8 +134,11 @@ def _update_stock_section(
 
     # Extract current section content
     section = content[section_start:section_end]
+    # Pattern matches both old format (with ID) and new format (without ID)
+    # Old: "- Item Name (ID: guid) is OUT OF STOCK..."
+    # New: "- Item Name is OUT OF STOCK..."
     item_pattern = (
-        rf"- {re.escape(item_name)} \(ID: {re.escape(item_guid)}\).*?(\r?\n|$)"
+        rf"- {re.escape(item_name)}(?: \(ID: {re.escape(item_guid)}\))?.*?(\r?\n|$)"
     )
 
     if stock_message is not None:
@@ -251,77 +186,50 @@ def _update_stock_section(
                 )
 
 
-def _get_item_name_from_pinecone(
-    item_guid: str, index_name: str, namespace: str
-) -> str:
+def _get_item_name_from_toast_api(item_guid: str, restaurant_guid: str) -> str:
     """
-    Retrieve item name from Pinecone knowledge base using itemGuid.
+    Retrieve item name from Toast Config API using item GUID.
 
     Args:
         item_guid: Toast item GUID
-        index_name: Pinecone index name
-        namespace: Pinecone namespace
+        restaurant_guid: Toast restaurant GUID
 
     Returns:
-        Item name from file_name metadata or fallback name
+        Item name from Toast API or fallback name
     """
     try:
-        # Initialize Pinecone and vector store
-        pc = Pinecone(os.getenv("PINECONE_API_KEY"))
-        pinecone_index = pc.Index(index_name)
-        vector_store = PineconeVectorStore(
-            pinecone_index=pinecone_index, namespace=namespace
+        # Get Toast access token from AWS
+        bearer_token = get_toast_access_token_from_aws()
+
+        # Call Toast Config API to get menu item details
+        response = connect_toast_order_hub(
+            http_method=HttpMethod.GET,
+            bearer_token=bearer_token,
+            api_function=f"/config/v2/menuItems/{item_guid}",
+            store_id=restaurant_guid,
+            query_params=None,
+            payload=None,
         )
 
-        cohere_key = os.getenv("COHERE_API_KEY")
-        if not cohere_key:
-            logger.warning(
-                "[ToastWebhook._get_item_name_from_pinecone] COHERE_API_KEY is missing; falling back to Unknown Item."
+        if response.status == 200:
+            # Parse the response to get the item name
+            item_data = json.loads(response.decoded_body)
+            item_name = item_data.get("name", f"Toast Item {item_guid}")
+            logger.debug(
+                f"[ToastWebhook._get_item_name_from_toast_api] Found item name from Toast API: {item_name} for itemGuid: {item_guid}"
             )
-            return f"Unknown Item ({item_guid})"
-
-        embed_model = CohereEmbedding(
-            api_key=cohere_key,
-            model_name="embed-english-v3.0",
-        )
-
-        index = VectorStoreIndex.from_vector_store(
-            vector_store=vector_store,
-            embed_model=embed_model,
-        )
-
-        # Create retriever with metadata filter for itemGuid
-        retriever = index.as_retriever(
-            similarity_top_k=1,
-            filters=MetadataFilters(
-                filters=[
-                    MetadataFilter(
-                        key="itemGuid", value=item_guid, operator=FilterOperator.EQ
-                    )
-                ]
-            ),
-        )
-
-        # Query for the item
-        nodes = retriever.retrieve("menu item")
-        if not nodes:
+            return item_name
+        else:
             logger.warning(
-                f"[ToastWebhook._get_item_name_from_pinecone] No menu item found for itemGuid: {item_guid}"
+                f"[ToastWebhook._get_item_name_from_toast_api] Failed to get item from Toast API (status {response.status}): {response.decoded_body}"
             )
-            return f"Unknown Item ({item_guid})"
-
-        # Extract item name from metadata
-        item_name = nodes[0].metadata.get("file_name", f"Item ({item_guid})")
-        logger.debug(
-            f"[ToastWebhook._get_item_name_from_pinecone] Found item name from Pinecone: {item_name} for itemGuid: {item_guid}"
-        )
-        return item_name
+            return f"Toast Item {item_guid}"
 
     except Exception as e:
         logger.warning(
-            f"[ToastWebhook._get_item_name_from_pinecone] Could not retrieve item from Pinecone vector store: {e}"
+            f"[ToastWebhook._get_item_name_from_toast_api] Could not retrieve item from Toast API: {e}"
         )
-        return f"Unknown Item ({item_guid})"
+        return f"Toast Item {item_guid}"
 
 
 def _update_stock_in_project_product_info(
@@ -354,7 +262,7 @@ def _update_stock_in_project_product_info(
             current_content = locked.product_info or ""
 
             if status == ToastStockItemStatus.OUT_OF_STOCK:
-                stock_message = f"- {item_name} (ID: {item_guid}) is OUT OF STOCK. You MUST NOT accept orders for this item under any circumstances."
+                stock_message = f"- {item_name} is OUT OF STOCK. You MUST NOT accept orders for this item under any circumstances."
                 new_content = _update_stock_section(
                     current_content, item_name, item_guid, stock_message
                 )
@@ -414,7 +322,7 @@ async def update_menu_content(webhook_request: ToastWebhookRequest) -> None:
 def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> None:
     """
     Synchronous helper function to process stock item status updates.
-    This function contains all the blocking DB and Pinecone operations.
+    This function contains all the blocking DB and Toast API operations.
     """
     try:
         stock_item_details = ToastWebhookStockItemDetails(**webhook_request.details)
@@ -447,29 +355,14 @@ def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> Non
                 )
                 return
 
-            # Get item name from Pinecone knowledge base using the first project's settings
+            # Get item name from Toast Config API
             item_name = f"Toast Item {item_guid}"  # fallback
 
             try:
-                # Use the first project to get Pinecone settings
-                # (all projects for same restaurant should have same knowledge base)
-                first_project = projects[0]
-                index_name, namespace = _get_project_pinecone_settings(
-                    first_project, session
-                )
-
-                if index_name and namespace:
-                    item_name = _get_item_name_from_pinecone(
-                        item_guid, index_name, namespace
-                    )
-                else:
-                    logger.warning(
-                        f"[ToastWebhook._process_stock_item_status_sync] Could not get Pinecone settings for project {first_project.name}, using fallback item name"
-                    )
-
+                item_name = _get_item_name_from_toast_api(item_guid, restaurant_guid)
             except Exception as e:
                 logger.warning(
-                    f"[ToastWebhook._process_stock_item_status_sync] Error retrieving item name from Pinecone, using fallback: {e}"
+                    f"[ToastWebhook._process_stock_item_status_sync] Error retrieving item name from Toast API, using fallback: {e}"
                 )
 
             logger.debug(
