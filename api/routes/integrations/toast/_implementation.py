@@ -530,7 +530,7 @@ async def checkout_complete(request: Request) -> JSONResponse:
             guid=payment_external_reference_id,  # Use external reference ID as GUID
             tipAmount=tip_amount_dollars,
             type="CREDIT",
-            externalId="PALONA:" + payment_external_reference_id,
+            externalId="TPC-PALONA:" + payment_external_reference_id,
         )
         logger.debug(
             f"[ToastAPIIntegration.checkout_complete] constructed payment object: {payment.model_dump(exclude_none=True)}"
