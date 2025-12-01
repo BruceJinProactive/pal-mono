@@ -76,9 +76,8 @@ async def trigger_business_hours_update(
             )
         else:
             # Only update if not updated in last 24 hours
-            projects = project_repo.get_projects_needing_hours_update(
-                hours_threshold=24
-            )
+            # Temporarily set to 0 for testing purposes
+            projects = project_repo.get_projects_needing_hours_update(hours_threshold=0)
             logger.info(
                 f"[BusinessHoursUpdate] Found {len(projects)} projects needing hours update"
             )
@@ -91,19 +90,6 @@ async def trigger_business_hours_update(
             # Skip if missing place_id (shouldn't happen with query filters)
             if not project.google_place_id:
                 skipped += 1
-                continue
-
-            # Get namespace from project's raw_config
-            knowledge_config = project.raw_config.get("knowledge", {})
-            settings = knowledge_config.get("settings", {})
-            namespace = settings.get("namespace")
-
-            # Skip if no namespace (can't update KB)
-            if not namespace:
-                skipped += 1
-                logger.warning(
-                    f"[BusinessHoursUpdate] Skipping project {project.id}: no namespace configured"
-                )
                 continue
 
             # Get account info for context
