@@ -11,6 +11,19 @@ logging.getLogger("watchdog").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
+class DatadogJsonFormatter(jsonlogger.JsonFormatter):
+    """Custom JSON formatter that adds Datadog reserved attributes at top level."""
+
+    def add_fields(self, log_record, record, message_dict):
+        super().add_fields(log_record, record, message_dict)
+        # Add Datadog reserved attributes as top-level fields for filtering
+        # Only set if not already present
+        if "env" not in log_record:
+            log_record["env"] = os.getenv("DD_ENV") or os.getenv("RUNTIME_ENV", "dev")
+        if "service" not in log_record:
+            log_record["service"] = os.getenv("DD_SERVICE") or "pal-mono"
+
+
 def configure_global_logger():
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     root_logger = logging.getLogger()
@@ -21,7 +34,7 @@ def configure_global_logger():
         root_logger.removeHandler(handler)
 
     handler = logging.StreamHandler()
-    formatter = jsonlogger.JsonFormatter(
+    formatter = DatadogJsonFormatter(
         fmt="%(asctime)s %(name)s %(levelname)s %(message)s"
     )
     handler.setFormatter(formatter)
