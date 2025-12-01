@@ -35,14 +35,16 @@ from tools.resy_tool_with_reservation._utils import (
     normalize_reservation_datetime,
 )
 from utils.log import logger
+from utils.secret import get_client_secret
 
 
 class ResyToolWithReservation(Toolkit, BaseReservationTool):
     """
     Reservation assistant that surfaces Resy availability and can complete bookings.
 
-    The tool expects a Resy universal auth token in its configuration. It refreshes that
-    token and scopes it to the venue on each booking attempt before calling the Control API.
+    The tool expects a secret name containing Resy credentials (client_id/client_secret).
+    It resolves that secret, refreshes a universal auth token, and scopes it to the venue
+    on each booking attempt before calling the Control API.
     """
 
     REQUIRED_CHECK_AVAILABILITY_FIELDS = ["party_size", "date", "time"]
@@ -61,8 +63,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         venue_id: int | str,
         city: str,
         venue_name: str,
-        username: str,
-        password: str,
+        client_credentials: str,
         default_struct_tags: Optional[Sequence[Dict[str, Any]]] = None,
         tool_metadata: ToolMetadata | None = None,
     ):
@@ -84,16 +85,16 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         if not venue_name:
             raise ValueError("Resy venue name is required")
 
-        username = (username or "").strip()
-        password = (password or "").strip()
-        if not username or not password:
-            raise ValueError("Resy username and password are required")
+        client_credentials = (client_credentials or "").strip()
+        if not client_credentials:
+            raise ValueError("Resy client_credentials (secret name) is required")
 
         self.venue_id = parsed_venue_id
         self.city = city
         self.venue_name = venue_name
-        self.username = username
-        self.password = password
+        self.client_credentials = client_credentials
+        self._client_id: Optional[str] = None
+        self._client_secret: Optional[str] = None
         self.base_auth_token: Optional[str] = None
         self._cached_operational_token: Optional[str] = None
         self._operational_token_expiry: Optional[datetime] = None
@@ -857,10 +858,11 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         if self.base_auth_token and not force_refresh:
             return self.base_auth_token
 
+        client_id, client_secret = self._resolve_resy_credentials()
         auth_response = login_resy_account(
             api_key=api_key,
-            email=self.username,
-            password=self.password,
+            email=client_id,
+            password=client_secret,
             legacy=True,
         )
         token = auth_response.get("token")
@@ -869,6 +871,40 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         self.base_auth_token = token
         return token
+
+    def _resolve_resy_credentials(self) -> tuple[str, str]:
+        if self._client_id and self._client_secret:
+            return self._client_id, self._client_secret
+
+        try:
+            raw_secret = get_client_secret(self.client_credentials)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                f"Unable to retrieve Resy credentials for '{self.client_credentials}'"
+            ) from exc
+
+        try:
+            secret_data = json.loads(raw_secret)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Secret '{self.client_credentials}' is not valid JSON: {exc.msg}"
+            ) from exc
+
+        client_id = secret_data.get("client_id")
+        client_secret = secret_data.get("client_secret")
+
+        if not isinstance(client_id, str) or not client_id.strip():
+            raise ValueError(
+                f"Secret '{self.client_credentials}' is missing required field 'client_id'"
+            )
+        if not isinstance(client_secret, str) or not client_secret.strip():
+            raise ValueError(
+                f"Secret '{self.client_credentials}' is missing required field 'client_secret'"
+            )
+
+        self._client_id = client_id.strip()
+        self._client_secret = client_secret.strip()
+        return self._client_id, self._client_secret
 
     @staticmethod
     def _extract_token_expiry(token: str) -> Optional[datetime]:
