@@ -146,6 +146,38 @@ def get_account_timezone(session: Session, account_name: str) -> str:
         return "America/Los_Angeles"
 
 
+def parse_last_hours(message_text: str) -> int | None:
+    """
+    Parse "last X hours" from message text.
+
+    Args:
+        message_text: The full message text from Slack
+
+    Returns:
+        int | None: Number of hours if found, None otherwise
+
+    Examples:
+        "last 6 hours" -> 6
+        "last 12 hours for romeo" -> 12
+        "last 24 hours" -> 24
+    """
+    # Pattern: "last <number> hours" (case insensitive)
+    pattern = r"last\s+(\d+)\s+hours?"
+    match = re.search(pattern, message_text, re.IGNORECASE)
+
+    if match:
+        hours = int(match.group(1))
+        if hours > 0 and hours <= 168:  # Max 7 days (168 hours)
+            return hours
+        else:
+            logger.warning(
+                f"[Slackbot] Invalid hours value: {hours}. Must be between 1 and 168."
+            )
+            return None
+
+    return None
+
+
 def parse_custom_date_range(
     message_text: str, session: Session | None = None, account_name: str | None = None
 ) -> tuple[datetime, datetime] | None:
@@ -208,6 +240,51 @@ def parse_custom_date_range(
             f"[Slackbot] Failed to parse date range '{start_str}' to '{end_str}': {e}"
         )
         return None
+
+
+def get_date_range_for_hours(
+    hours: int, session: Session | None = None, account_name: str | None = None
+) -> tuple[datetime, datetime]:
+    """
+    Generate start_date and end_date for custom hour range.
+
+    Args:
+        hours: Number of hours to look back
+        session: Database session (optional) - used to look up account timezone
+        account_name: Account name (optional) - if provided, dates are calculated in account's timezone
+
+    Returns:
+        tuple[datetime, datetime]: (start_date, end_date) in UTC
+    """
+    # Get account timezone if available
+    timezone_id = None
+    if session and account_name:
+        timezone_id = get_account_timezone(session, account_name)
+
+    if timezone_id:
+        # Get current time in account's timezone
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo(timezone_id)
+        now = datetime.now(tz)
+        logger.info(
+            f"[Slackbot] Calculating last {hours} hours in timezone '{timezone_id}': {now}"
+        )
+    else:
+        # Fallback to UTC
+        now = datetime.utcnow()
+        now = normalize_datetime_to_utc(now)
+        logger.info(f"[Slackbot] Calculating last {hours} hours in UTC: {now}")
+
+    # Calculate start date by subtracting hours
+    start_date = now - timedelta(hours=hours)
+    end_date = now
+
+    # Normalize both dates to ensure they are timezone-aware UTC
+    start_date = normalize_datetime_to_utc(start_date)
+    end_date = normalize_datetime_to_utc(end_date)
+
+    return start_date, end_date
 
 
 def get_date_range_for_period(
@@ -871,6 +948,9 @@ def format_unified_report_for_slack(
     columns: list[str] | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    show_time: bool = False,
+    timezone_id: str | None = None,
+    timezone_name: str | None = None,
 ) -> dict:
     """
     Format unified analytics report into Slack blocks with configurable columns.
@@ -878,8 +958,11 @@ def format_unified_report_for_slack(
     Args:
         reports: List of report objects to merge
         columns: List of column keys to include (defaults to all available)
-        start_date: Start date of the report period
-        end_date: End date of the report period
+        start_date: Start date of the report period (in UTC)
+        end_date: End date of the report period (in UTC)
+        show_time: If True, show full datetime with time and timezone (for hourly reports)
+        timezone_id: Timezone ID to convert UTC times to local time (e.g., 'America/New_York')
+        timezone_name: Timezone abbreviation to display (e.g., 'EST', 'PST')
 
     Returns:
         dict: Slack blocks structure
@@ -896,11 +979,38 @@ def format_unified_report_for_slack(
         # Create date range header if dates are provided
         blocks = []
         if start_date and end_date:
-            start_formatted = start_date.strftime("%Y-%m-%d")
-            end_formatted = end_date.strftime("%Y-%m-%d")
-            date_range_text = (
-                f"*📅 Report Period: {start_formatted} to {end_formatted}*"
-            )
+            if show_time:
+                # Format with time and timezone for hourly reports
+                if timezone_id:
+                    # Convert UTC times to local timezone before formatting
+                    from zoneinfo import ZoneInfo
+
+                    tz = ZoneInfo(timezone_id)
+                    start_local = start_date.astimezone(tz)
+                    end_local = end_date.astimezone(tz)
+
+                    start_formatted = start_local.strftime("%Y-%m-%d %I:%M %p")
+                    end_formatted = end_local.strftime("%Y-%m-%d %I:%M %p")
+
+                    # Use timezone_name if provided, otherwise use timezone abbreviation
+                    tz_label = (
+                        timezone_name if timezone_name else start_local.strftime("%Z")
+                    )
+                    date_range_text = f"*📅 Report Period: {start_formatted} to {end_formatted} {tz_label}*"
+                else:
+                    # Show in UTC
+                    start_formatted = start_date.strftime("%Y-%m-%d %I:%M %p UTC")
+                    end_formatted = end_date.strftime("%Y-%m-%d %I:%M %p UTC")
+                    date_range_text = (
+                        f"*📅 Report Period: {start_formatted} to {end_formatted}*"
+                    )
+            else:
+                # Format with date only for daily/weekly/monthly reports
+                start_formatted = start_date.strftime("%Y-%m-%d")
+                end_formatted = end_date.strftime("%Y-%m-%d")
+                date_range_text = (
+                    f"*📅 Report Period: {start_formatted} to {end_formatted}*"
+                )
             blocks.append(
                 {"type": "section", "text": {"type": "mrkdwn", "text": date_range_text}}
             )
@@ -1190,6 +1300,9 @@ async def send_report_to_slack(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
     account_name: str | None = None,
+    show_time: bool = False,
+    timezone_id: str | None = None,
+    timezone_name: str | None = None,
 ) -> dict:
     """
     Send a comprehensive analytics report to Slack.
@@ -1198,9 +1311,12 @@ async def send_report_to_slack(
         slack_channel: Slack channel to send to (optional, uses secret manager if not provided)
         client: Optional async Slack client to reuse (creates new one if not provided)
         session: Database session for fetching analytics data
-        start_date: Start date for the report
-        end_date: End date for the report
+        start_date: Start date for the report (in UTC)
+        end_date: End date for the report (in UTC)
         account_name: Optional account name to filter by (from message like "daily for acme")
+        show_time: If True, show full datetime with time and timezone in report title
+        timezone_id: Timezone ID to convert UTC times to local time (e.g., 'America/New_York')
+        timezone_name: Timezone abbreviation to display (e.g., 'EST', 'PST')
 
     Returns:
         dict: Status of the operation
@@ -1251,7 +1367,13 @@ async def send_report_to_slack(
             f"[Slackbot] Converting {len(reports.reports)} reports to Slack blocks"
         )
         message_blocks = format_unified_report_for_slack(
-            reports.reports, None, start_date, end_date
+            reports.reports,
+            None,
+            start_date,
+            end_date,
+            show_time,
+            timezone_id,
+            timezone_name,
         )
         if not message_blocks or "blocks" not in message_blocks:
             logger.error("[Slackbot] Failed to generate valid Slack blocks structure")
@@ -1379,6 +1501,117 @@ async def handle_report_request(
             pass  # If we can't send to Slack, just log it
 
 
+async def handle_last_hours_request(message, client):
+    """
+    Handle "last X hours" requests like "last 6 hours" or "last 12 hours for romeo".
+
+    Args:
+        message: Slack message object
+        client: Slack client object
+    """
+    try:
+        message_text = message.get("text", "")
+
+        # Parse hours and account name from message
+        hours = parse_last_hours(message_text)
+        account_name = parse_account_name_from_message(message_text)
+
+        if not hours:
+            # Send help message if parsing failed
+            slack_channel = message.get("channel")
+            help_text = (
+                "⏰ *Last X Hours Help*\n\n"
+                "Please use the format: `last <number> hours`\n\n"
+                "Examples:\n"
+                "• `last 6 hours`\n"
+                "• `last 12 hours for romeo`\n"
+                "• `last 24 hours`\n\n"
+                "Note: Maximum is 168 hours (7 days)"
+            )
+
+            await client.chat_postMessage(
+                channel=slack_channel, text=help_text, mrkdwn=True
+            )
+            return
+
+        # Get database session for timezone lookup
+        session = SyncSessionLocal()
+        try:
+            slack_channel = message.get("channel")
+            user = message["user"]
+
+            # Get human-readable channel name for logging
+            channel_name = await get_channel_name(client, slack_channel)
+
+            logger.info(
+                f"[Slackbot] User {user} requested last {hours} hours report in channel {channel_name}"
+                + (f" for account '{account_name}'" if account_name else "")
+            )
+
+            # Calculate date range
+            start_date, end_date = get_date_range_for_hours(
+                hours, session, account_name
+            )
+            logger.info(
+                f"[Slackbot] Using last {hours} hours range: {start_date} to {end_date}"
+            )
+
+            # Get timezone name for display
+            timezone_id = None
+            if account_name:
+                timezone_id = get_account_timezone(session, account_name)
+
+            # Extract short timezone name (e.g., 'EST', 'PST')
+            timezone_name = None
+            if timezone_id:
+                from zoneinfo import ZoneInfo
+
+                tz = ZoneInfo(timezone_id)
+                # Get timezone abbreviation
+                now_in_tz = datetime.now(tz)
+                timezone_name = now_in_tz.strftime("%Z")
+
+            result = await send_report_to_slack(
+                slack_channel,
+                client,
+                session,
+                start_date,
+                end_date,
+                account_name,
+                show_time=True,
+                timezone_id=timezone_id,
+                timezone_name=timezone_name,
+            )
+
+            if result["status"] == "success":
+                logger.info(
+                    f"[Slackbot] Last {hours} hours report completed successfully"
+                )
+            else:
+                # Send error message to Slack
+                logger.error(
+                    f"[Slackbot] Last {hours} hours report failed: {result['message']}"
+                )
+                await client.chat_postMessage(
+                    channel=slack_channel, text=f"❌ {result['message']}", mrkdwn=True
+                )
+
+        finally:
+            session.close()
+
+    except Exception as e:
+        logger.error(f"[Slackbot] Error handling last hours request: {e}")
+        try:
+            slack_channel = message.get("channel")
+            await client.chat_postMessage(
+                channel=slack_channel,
+                text=f"❌ An error occurred while processing your request: {str(e)}",
+                mrkdwn=True,
+            )
+        except Exception:
+            pass
+
+
 async def handle_custom_date_request(message, client):
     """
     Handle custom date range requests like "From 2024-01-01 to 2024-01-31".
@@ -1459,6 +1692,11 @@ def create_slack_app():
     async def handle_custom_date_message(message, client):
         """Handle custom date range requests like 'From 2024-01-01 to 2024-01-31'."""
         await handle_custom_date_request(message, client)
+
+    @app.message(re.compile(r"last\s+\d+\s+hours?", re.IGNORECASE))
+    async def handle_last_hours_message(message, client):
+        """Handle 'last X hours' requests like 'last 6 hours' or 'last 12 hours for romeo'."""
+        await handle_last_hours_request(message, client)
 
     return app
 

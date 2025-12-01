@@ -80,6 +80,9 @@ async def send_report_to_slack(
     session: Session | None = None,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    show_time: bool = False,
+    timezone_id: str | None = None,
+    timezone_name: str | None = None,
 ) -> dict:
     """
     Send report to Slack with conversion analytics.
@@ -88,14 +91,25 @@ async def send_report_to_slack(
         channel (str): Slack channel to send to (optional, uses env variable if not provided)
         client: Optional Slack client to reuse
         session (Session): Database session
-        start_date (datetime | None): Start date for the calculation
-        end_date (datetime | None): End date for the calculation
+        start_date (datetime | None): Start date for the calculation (in UTC)
+        end_date (datetime | None): End date for the calculation (in UTC)
+        show_time (bool): If True, show full datetime with time and timezone in report title
+        timezone_id (str | None): Timezone ID to convert UTC times to local (e.g., 'America/New_York')
+        timezone_name (str | None): Timezone abbreviation to display (e.g., 'EST', 'PST')
 
     Returns:
         dict: Status of the operation
     """
     return await _slack.send_report_to_slack(
-        slack_channel, client, session, start_date, end_date
+        slack_channel,
+        client,
+        session,
+        start_date,
+        end_date,
+        None,
+        show_time,
+        timezone_id,
+        timezone_name,
     )
 
 
