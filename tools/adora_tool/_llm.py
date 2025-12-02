@@ -48,7 +48,13 @@ requests a future time, such as:
 # RULES FOR EXTRACTING THE DELIVERY ADDRESS:
 - Extract the last delivery address from the context.
 - Use only 2-letter U.S. state abbreviations for the state field.
-- If the user provides a full state name (like “Texas”), convert it to its abbreviation (“TX”).
+- If the user provides a full state name (like "Texas"), convert it to its abbreviation ("TX").
+- IMPORTANT: Remove any spaces within the street number. Due to voice recognition, street numbers may be incorrectly split with spaces.
+  For example:
+  - "12 34 Main St" should become address="1234 Main St" (remove space within street number)
+  - "51 32 Deerskin Drive" should become address="5132 Deerskin Drive" (remove space within street number)
+  - "1 2 3 Oak Ave" should become address="123 Oak Ave" (remove all spaces within street number)
+  Always combine digits at the start of the address into a single street number without spaces.
 - If any field is missing, output "N/A" for that field, i.e., if the user did not provide a delivery address, output "N/A" for all fields.
 
 # RULES FOR EXTRACTING THE ORDER ITEM'S MODIFIERS:
