@@ -93,6 +93,7 @@ async def update_project_business_hours(
             f"[BusinessHoursUpdate] Updated business hours for project {project_id}",
             extra={
                 "project_id": project_id,
+                "project_name": project.name,
                 "hours_changed": hours_changed,
                 "phone_changed": phone_changed,
             },
