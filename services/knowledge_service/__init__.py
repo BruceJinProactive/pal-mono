@@ -154,6 +154,7 @@ def update_agent_kb(
     debug: bool = False,
     include_category_in_doc_name: bool = False,
     menu_last_updated: Optional[str] = None,
+    menus: Optional[list[str]] = None,
 ) -> dict:
     """Update the knowledge base for an agent based on the POS provider.
 

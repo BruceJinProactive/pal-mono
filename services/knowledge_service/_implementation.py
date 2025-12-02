@@ -372,6 +372,7 @@ def update_agent_kb(
     debug: bool = False,
     include_category_in_doc_name: bool = False,
     menu_last_updated: Optional[str] = None,
+    selected_menus: Optional[list[str]] = None,
 ) -> dict:
     """Update the knowledge base for an agent based on the POS provider."""
 
@@ -477,6 +478,7 @@ def update_agent_kb(
                 token_api_endpoint=token_api_endpoint,
                 general_api_endpoint=general_api_endpoint,
                 menu_last_updated=menu_last_updated,
+                selected_menus=selected_menus,
             )
 
             logger.info(

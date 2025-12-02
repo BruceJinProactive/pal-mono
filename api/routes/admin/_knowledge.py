@@ -157,6 +157,7 @@ async def update_agent_kb(
     debug: bool = False,
     include_category_in_doc_name: bool = False,
     menu_last_updated: Optional[str] = None,
+    selected_menus: Optional[list[str]] = None,
 ) -> dict:
     """
     Update the knowledge base for an agent by downloading menu data, generating embeddings, and storing in Pinecone.
@@ -170,6 +171,7 @@ async def update_agent_kb(
         debug: Enable debug mode to return additional metadata
         include_category_in_doc_name: Include category name in document names
         menu_last_updated: Last updated date of the menu
+        selected_menus: List of menu names to process (optional)
     Returns:
         dict: Contains system_prompt_menu, pinecone_namespace, and pinecone_index_name.
               When debug=True, also includes POS integration details.
@@ -325,6 +327,7 @@ async def update_agent_kb(
             debug,
             include_category_in_doc_name,
             menu_last_updated,
+            selected_menus,
         )
     except ValueError as e:
         raise HTTPException(

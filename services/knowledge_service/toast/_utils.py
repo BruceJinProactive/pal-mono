@@ -877,12 +877,16 @@ def _process_menu_group(
 
 def parse_menu(
     json_data: Dict[str, Any],
+    selected_menus: Optional[List[str]] = None,
 ) -> Tuple[List[Dict[str, str]], str, List[Dict[str, str]]]:
     """
     Parse the menu JSON data and extract item details with pricing and modifier information.
 
     Args:
         json_data: The JSON data containing menu information returned from the Toast API.
+        selected_menus: Optional list of menu names to process. If provided and not empty, only menus
+                        with names in this list will be processed. If None or empty, all menus will be
+                        processed.
 
     Returns:
         Tuple containing:
@@ -902,9 +906,10 @@ def parse_menu(
     for menu in json_data.get("menus", []):
         menu_name = menu.get("name", "")
 
-        # We only add first party menu and skip third party delivery menus for now.
-        if "(delivery)" in menu_name.lower():
-            continue
+        # Filter menus based on the selected_menus parameter
+        if selected_menus is not None and len(selected_menus) > 0:
+            if menu_name not in selected_menus:
+                continue
 
         # Create temporary list to check if menu has any items [[memory:5262012]]
         temp_system_prompt_results: List[str] = []

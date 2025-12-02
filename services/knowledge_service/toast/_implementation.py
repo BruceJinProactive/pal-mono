@@ -67,6 +67,7 @@ class ToastMenuProcessor:
         store_id: str,
         save_debug_files: bool = False,
         debug_output_dir: Optional[str] = None,
+        selected_menus: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Process Toast menu and index it to Pinecone.
 
@@ -77,6 +78,7 @@ class ToastMenuProcessor:
             store_id: Store ID for metadata
             save_debug_files: Whether to save debug files to disk
             debug_output_dir: Directory to save debug files (optional)
+            selected_menus: Optional list of menu names to process
 
         Returns:
             dict: Processing results with menu data and indexing information
@@ -88,7 +90,7 @@ class ToastMenuProcessor:
 
             # Step 1: Parse menu JSON using migrated logic
             individual_items, system_prompt_menu, infinite_loop_items = parse_menu(
-                menu_json
+                menu_json, selected_menus
             )
 
             logger.debug(
@@ -342,6 +344,7 @@ class ToastMenuProcessor:
         bearer_token: ToastAccessToken,
         restaurant_external_id: str,
         general_api_endpoint: Optional[str] = None,
+        selected_menus: Optional[List[str]] = None,
     ) -> tuple[list[Dict[str, str]], str, list[Dict[str, str]]]:
         """Download menu data from Toast API and process it.
 
@@ -349,6 +352,7 @@ class ToastMenuProcessor:
             bearer_token: Bearer token for API authentication
             restaurant_external_id: Restaurant external ID
             general_api_endpoint: Optional custom API endpoint
+            selected_menus: Optional list of menu names to process
 
         Returns:
             tuple: (individual_items, system_prompt_menu, infinite_loop_items)
@@ -370,7 +374,7 @@ class ToastMenuProcessor:
 
         # Process menu using the existing logic
         individual_items, system_prompt_menu, infinite_loop_items = parse_menu(
-            menu_json
+            menu_json, selected_menus
         )
 
         logger.debug(
@@ -467,6 +471,7 @@ class ToastMenuProcessor:
         save_debug_files: bool = False,
         debug_output_dir: Optional[str] = None,
         menu_last_updated: Optional[str] = None,
+        selected_menus: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Process Toast menu from API and index it to Pinecone.
 
@@ -487,6 +492,8 @@ class ToastMenuProcessor:
             general_api_endpoint: Optional custom API endpoint for menu calls
             save_debug_files: Whether to save debug files to disk
             debug_output_dir: Directory to save debug files (optional)
+            menu_last_updated: Optional timestamp of when menu was last updated
+            selected_menus: Optional list of menu names to process
 
         Returns:
             dict: Processing results with menu data and indexing information
@@ -522,7 +529,10 @@ class ToastMenuProcessor:
             # Step 3: Download and process menu data
             individual_items, system_prompt_menu, infinite_loop_items = (
                 self._download_and_process_menu(
-                    access_token, restaurant_external_id, general_api_endpoint
+                    access_token,
+                    restaurant_external_id,
+                    general_api_endpoint,
+                    selected_menus,
                 )
             )
 

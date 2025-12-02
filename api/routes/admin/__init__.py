@@ -1887,6 +1887,9 @@ async def update_agent_kb(
     menu_last_updated: Optional[str] = Query(
         None, description="Last updated date of the menu"
     ),
+    selected_menus: Optional[list[str]] = Query(
+        None, description="List of menu names to process"
+    ),
     context: UserContext = Depends(authenticate_user),
     db_session: Session = Depends(db.get_db),
 ) -> dict:
@@ -1917,6 +1920,7 @@ async def update_agent_kb(
         debug,
         include_category_in_doc_name,
         menu_last_updated,
+        selected_menus,
     )
 
 
