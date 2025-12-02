@@ -5,7 +5,7 @@ phases:
     commands:
       - echo Logging in to Amazon ECR...
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
-      
+
       - echo "Preparing to create the RELEASE_TAG..."
       - COMMIT_SHA=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -18,7 +18,10 @@ phases:
       - RUNTIME_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${STAGE_NAME}"
 
       - echo Building the Docker image...
-      - docker build -t $IMAGE_REPO_NAME:$RELEASE_TAG .
+      - export DOCKER_BUILDKIT=1
+      - echo "$PAL_GITHUB_TOKEN" > /tmp/github_token
+      - docker build --secret id=github_token,src=/tmp/github_token -t $IMAGE_REPO_NAME:$RELEASE_TAG .
+      - rm -f /tmp/github_token
       - docker tag $IMAGE_REPO_NAME:$RELEASE_TAG $UNIQUE_IMAGE_URL
       - docker tag $IMAGE_REPO_NAME:$RELEASE_TAG $RUNTIME_IMAGE_URL
   post_build:

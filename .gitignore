@@ -156,3 +156,4 @@ cython_debug/
 
 # mem0 configuration
 .mem0/config.json
+.github_token

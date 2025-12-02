@@ -33,8 +33,17 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Configure Git for private repos
+        run: |
+          git config --global url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Install dependencies with uv
         run: uv sync --all-extras
+
+      - name: Clean up Git config
+        if: always()
+        run: |
+          git config --global --unset url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf || true
 
       - name: Add .venv/bin to PATH
         run: |
@@ -90,8 +99,17 @@ jobs:
         with:
           enable-cache: false  # Disable cache since main branch may not have uv.lock yet
 
+      - name: Configure Git for private repos
+        run: |
+          git config --global url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Install dependencies with uv
         run: uv sync --all-extras
+
+      - name: Clean up Git config
+        if: always()
+        run: |
+          git config --global --unset url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf || true
 
       - name: Run main pytest report
         id: get_main_coverage
@@ -125,8 +143,17 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Configure Git for private repos
+        run: |
+          git config --global url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Install dependencies with uv
         run: uv sync --all-extras
+
+      - name: Clean up Git config
+        if: always()
+        run: |
+          git config --global --unset url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf || true
 
       - name: Run new pytest report
         id: get_new_coverage
@@ -164,6 +191,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      - name: Create GitHub token file for BuildKit secret
+        run: echo "${{ secrets.PAL_GITHUB_TOKEN }}" > /tmp/github_token
+
       - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
@@ -171,8 +201,14 @@ jobs:
           push: false
           load: true
           tags: myapp:${{ github.sha }}
+          secrets: |
+            github_token=/tmp/github_token
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Clean up token file
+        if: always()
+        run: rm -f /tmp/github_token
 
       - name: Test Docker image
         run: |
