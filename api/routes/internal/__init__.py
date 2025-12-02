@@ -76,8 +76,9 @@ async def trigger_business_hours_update(
             )
         else:
             # Only update if not updated in last 24 hours
-            # Temporarily set to 0 for testing purposes
-            projects = project_repo.get_projects_needing_hours_update(hours_threshold=0)
+            projects = project_repo.get_projects_needing_hours_update(
+                hours_threshold=24
+            )
             logger.info(
                 f"[BusinessHoursUpdate] Found {len(projects)} projects needing hours update"
             )
