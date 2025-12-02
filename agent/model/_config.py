@@ -4,21 +4,21 @@ from pydantic import BaseModel
 
 
 class ModelProvider(StrEnum):
-    OPENAI = auto()
+    TRUEFOUNDRY = auto()
 
 
 class ModelConfig(BaseModel):
-    provider: ModelProvider = ModelProvider.OPENAI
+    provider: ModelProvider = ModelProvider.TRUEFOUNDRY
     identifier: str = "gpt-4o"
 
 
 class ModelOptions(Enum):
     """
-    Enum that lists all available Azure OpenAI deployments
+    Enum that lists all available TrueFoundry deployments
     and their corresponding model names
     """
 
-    GPT_4O = ("gpt-4o", "AZURE_OPENAI_DEPLOYMENT_GPT4O")
+    GPT_4O = ("gpt-4o", "TRUEFOUNDRY_MODEL_ID")
 
     @property
     def model_name(self) -> str:
@@ -30,6 +30,6 @@ class ModelOptions(Enum):
     @property
     def env_key(self) -> str:
         """
-        Return the environment variable key for the Azure deployment name
+        Return the environment variable key for the provider
         """
         return self.value[1]

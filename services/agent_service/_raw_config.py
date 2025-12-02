@@ -344,7 +344,7 @@ class RawConfig:
 
     def _get_agent_model_config(self) -> ModelConfig:
         raw_model = self.agent.raw_config.get("model", {})
-        provider = raw_model.get("provider") or ModelProvider.OPENAI
+        provider = raw_model.get("provider") or ModelProvider.TRUEFOUNDRY
         identifier = raw_model.get("identifier") or "gpt-4o"
 
         return ModelConfig(provider=provider, identifier=identifier)
