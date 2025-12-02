@@ -162,6 +162,7 @@ def build_project(project: db.Project) -> Project:
         agent_id=project.agent_id,
         account_id=project.account_id,
         store_hours=project.store_hours,
+        business_hours=project.business_hours,
         address=project.address,
         product_info=project.product_info,
         service_instruction=project.service_instruction,

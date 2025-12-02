@@ -17,6 +17,7 @@ class Project(BaseModel):
     agent_id: uuid.UUID
     account_id: uuid.UUID
     store_hours: str | None = None
+    business_hours: dict | None = None
     address: str | None = None
     product_info: str | None = None
     service_instruction: str | None = None
