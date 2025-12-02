@@ -33,8 +33,8 @@ from services.admin_service import (
 )
 from utils.log import logger
 
-from . import UserContext, _auth, _utils
-from ._auth import authorize_admin, authorize_user_account
+from . import UserContext, _utils
+from ._auth import authorize_admin
 from ._builder import build_project
 from ._utils import not_found_error
 
@@ -221,8 +221,6 @@ async def list_account_projects(
     context: UserContext,
     session: Session,
 ) -> list[Project]:
-    authorize_user_account(context, account_name)
-
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found")
@@ -242,7 +240,6 @@ def get_project(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
-    _auth.authorize_user_account(context, project.account.name)
     return build_project(project)
 
 
@@ -251,7 +248,6 @@ async def create_project(
     context: UserContext,
     session: Session,
 ) -> Project:
-    authorize_user_account(context, create_request.account_name)
     project_params = create_request.to_project_params()
     try:
         db_project = project_service.create_project(
@@ -334,7 +330,6 @@ async def update_project(
             detail=f"Project {project_id} not found",
             headers={"Content-Type": "application/json"},
         )
-    authorize_user_account(context, project.account.name)
     project_params = update_request.to_project_params()
     try:
         db_project = project_service.update_project(

@@ -16,7 +16,6 @@ from fastapi import HTTPException
 from fastapi import status as http_status
 from sqlalchemy.orm import Session
 
-from api.routes.admin._auth import authorize_user_account
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.team import (
     AcceptInvitationRequest,
@@ -61,14 +60,10 @@ async def invite_team_member(
     Invite a new team member with specified role.
 
     Route handler that:
-    1. Authorizes user is owner
-    2. Calls team service to create invitation
-    3. Converts DB model to API response
+    1. Calls team service to create invitation
+    2. Converts DB model to API response
     """
-    # 1. Authorize - owner only (TODO: check actual owner role via RBAC)
-    authorize_user_account(context, account_name)
-
-    # 2. Call service to create invitation
+    # Call service to create invitation
     try:
         invitation = team_service.create_invitation(
             session=session,
@@ -119,14 +114,10 @@ async def list_team_members(
     List all team members and pending invitations for an account.
 
     Route handler that:
-    1. Authorizes user has access to account
-    2. Calls team service to list members and invitations
-    3. Converts DB models to API response
+    1. Calls team service to list members and invitations
+    2. Converts DB models to API response
     """
-    # 1. Authorize - any authenticated user with account access
-    authorize_user_account(context, account_name)
-
-    # 2. Call service to list team members and invitations
+    # Call service to list team members and invitations
     try:
         account_users, roles, emails, names, pending_invitations = (
             team_service.list_team_members(
@@ -193,14 +184,10 @@ async def update_team_member_role(
     Update a team member's role.
 
     Route handler that:
-    1. Authorizes user is owner
-    2. Calls team service to update role
-    3. Converts result to API response
+    1. Calls team service to update role
+    2. Converts result to API response
     """
-    # 1. Authorize - owner only
-    authorize_user_account(context, account_name)
-
-    # 2. Call service to update member role
+    # Call service to update member role
     try:
         user_id, updated_at = team_service.update_member_role(
             session=session,
@@ -242,14 +229,10 @@ async def remove_team_member(
     Remove a team member from the account.
 
     Route handler that:
-    1. Authorizes user is owner
-    2. Calls team service to remove member
-    3. Returns 204 No Content
+    1. Calls team service to remove member
+    2. Returns 204 No Content
     """
-    # 1. Authorize - owner only
-    authorize_user_account(context, account_name)
-
-    # 2. Call service to remove team member
+    # Call service to remove team member
     try:
         team_service.remove_team_member(
             session=session,
@@ -368,14 +351,10 @@ async def resend_invitation(
     Resend invitation email.
 
     Route handler that:
-    1. Authorizes user is owner
-    2. Calls team service to resend invitation
-    3. Returns success message
+    1. Calls team service to resend invitation
+    2. Returns success message
     """
-    # 1. Authorize - owner only
-    authorize_user_account(context, account_name)
-
-    # 2. Call service to resend invitation
+    # Call service to resend invitation
     try:
         team_service.resend_invitation(session=session, invitation_id=invitation_id)
     except ValueError as e:

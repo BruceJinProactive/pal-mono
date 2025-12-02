@@ -162,9 +162,9 @@ def require_account_permission(
     """
     Factory for account-level permission checking.
 
-    Creates a FastAPI dependency that automatically extracts account identifier from
-    path parameters (name or UUID), constructs the resource_id, and checks permissions.
-    Supports both account names (e.g., "palona") and UUIDs.
+    Creates a FastAPI dependency that automatically extracts account name from
+    path parameters, constructs the resource_id, and checks permissions.
+    Supports both legacy (account membership) and RBAC modes via feature flag.
 
     Args:
         permission: Permission name (e.g., "project.create", "account.read")
@@ -177,21 +177,23 @@ def require_account_permission(
         from api.routes.admin._auth import authenticate_user
 
         # Works with account name
-        @router.get("/accounts/{account_identifier}/settings")
+        @router.get("/accounts/{account_name}/settings")
         async def get_settings(
-            account_identifier: str,  # Can be "palona" or UUID
+            account_name: str,  # Can be "palona" or UUID
             context: UserContext = Depends(
                 require_account_permission("account.read", authenticate_user)
             ),
             session: Session = Depends(db.get_db)
         ):
-            # context is authenticated AND has account.read permission
-            # account_identifier is resolved to UUID internally
+            # context is authenticated AND has account.read/write permission
             pass
     """
+    # Import here to avoid circular import
+    from services.auth_service.feature_flags import is_rbac_enabled
+    from services.auth_types import UserRole
 
     async def dependency(
-        account_identifier: str,
+        account_name: str,
         current_user: UserContext = Depends(auth_dependency),
         session: Session = Depends(db.get_db),
     ) -> UserContext:
@@ -206,10 +208,20 @@ def require_account_permission(
                 headers={"Content-Type": "application/json"},
             ) from err
 
-        # Construct resource_id (resolution happens in check_permission)
-        resource_id = f"accounts/{account_identifier}"
+        # Legacy mode: fall back to account membership check
+        if not is_rbac_enabled():
+            if account_name not in current_user.account_names:
+                if current_user.role != UserRole.Admin:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="User does not have permission for the requested account",
+                        headers={"Content-Type": "application/json"},
+                    )
+            return current_user
 
-        # Check permission (with resolution and hierarchy)
+        # RBAC mode: check permission via RBAC system
+        resource_id = f"accounts/{account_name}"
+
         has_permission = check_permission(
             user_id=user_id,
             resource_id=resource_id,
@@ -240,6 +252,7 @@ def require_project_permission(
 
     Creates a FastAPI dependency that automatically extracts project_id from
     path parameters, constructs the resource_id, and checks permissions.
+    Supports both legacy (account membership) and RBAC modes via feature flag.
 
     Args:
         permission: Permission name (e.g., "project.read")
@@ -262,6 +275,9 @@ def require_project_permission(
             # context is authenticated AND has project.read permission
             pass
     """
+    # Import here to avoid circular import
+    from services.auth_service.feature_flags import is_rbac_enabled
+    from services.auth_types import UserRole
 
     async def dependency(
         project_id: UUID,
@@ -279,10 +295,30 @@ def require_project_permission(
                 headers={"Content-Type": "application/json"},
             ) from err
 
-        # Construct resource_id
+        # Legacy mode: look up project's account and check membership
+        if not is_rbac_enabled():
+            from services import project_service
+
+            project = project_service.get_project(session, project_id)
+            if not project:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Project not found",
+                    headers={"Content-Type": "application/json"},
+                )
+            account_name = project.account.name
+            if account_name not in current_user.account_names:
+                if current_user.role != UserRole.Admin:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="User does not have permission for the requested account",
+                        headers={"Content-Type": "application/json"},
+                    )
+            return current_user
+
+        # RBAC mode: check permission via RBAC system
         resource_id = f"projects/{project_id}"
 
-        # Check permission
         has_permission = check_permission(
             user_id=user_id,
             resource_id=resource_id,
@@ -386,6 +422,7 @@ def require_agent_permission(
 
     Creates a FastAPI dependency that automatically extracts agent_id from
     path parameters, constructs the resource_id, and checks permissions.
+    Supports both legacy (account membership) and RBAC modes via feature flag.
 
     Args:
         permission: Permission name (e.g., "agent.read")
@@ -408,6 +445,9 @@ def require_agent_permission(
             # context is authenticated AND has agent.read permission
             pass
     """
+    # Import here to avoid circular import
+    from services.auth_service.feature_flags import is_rbac_enabled
+    from services.auth_types import UserRole
 
     async def dependency(
         agent_id: UUID,
@@ -425,10 +465,30 @@ def require_agent_permission(
                 headers={"Content-Type": "application/json"},
             ) from err
 
-        # Construct resource_id
+        # Legacy mode: look up agent's account and check membership
+        if not is_rbac_enabled():
+            from services import agent_service
+
+            agent = agent_service.get_agent(session, agent_id)
+            if not agent:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Agent not found",
+                    headers={"Content-Type": "application/json"},
+                )
+            account_name = agent.account.name
+            if account_name not in current_user.account_names:
+                if current_user.role != UserRole.Admin:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="User does not have permission for the requested account",
+                        headers={"Content-Type": "application/json"},
+                    )
+            return current_user
+
+        # RBAC mode: check permission via RBAC system
         resource_id = f"agents/{agent_id}"
 
-        # Check permission
         has_permission = check_permission(
             user_id=user_id,
             resource_id=resource_id,

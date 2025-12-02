@@ -10,7 +10,6 @@ from api.schemas.admin.project import ProjectSummary
 from db.tables.types import Channel
 from services import agent_service, project_service
 
-from ._auth import authorize_user_account
 from ._builder import build_agent, build_project_summary
 from ._utils import UserContext, not_found_error
 
@@ -28,7 +27,6 @@ def get_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Agent not found",
         )
-    authorize_user_account(context, agent.account.name)
     return build_agent(agent)
 
 
@@ -37,7 +35,6 @@ async def create_agent(
     context: UserContext,
     session: Session,
 ) -> Agent:
-    authorize_user_account(context, create_request.account_name)
     agent_params = create_request.to_agent_params()
     try:
         db_agent = agent_service.create_agent(
@@ -65,8 +62,6 @@ async def update_agent(
             detail=f"Agent {agent_id} not found",
             headers={"Content-Type": "application/json"},
         )
-    authorize_user_account(context, agent.account.name)
-
     agent_params = update_request.to_agent_params()
     try:
         db_agent = agent_service.update_agent(
@@ -88,7 +83,6 @@ async def delete_agent(
 ):
     agent = agent_service.get_agent(session, agent_id)
     if agent:
-        authorize_user_account(context, agent.account.name)
         agent_service.delete_agent(session, context, agent_id)
 
 
@@ -101,7 +95,6 @@ async def list_agent_projects(
     if not agent:
         raise not_found_error(f"Agent {agent_id} not found")
 
-    authorize_user_account(context, agent.account.name)
     return [build_project_summary(project) for project in agent.projects]
 
 
@@ -138,7 +131,6 @@ async def get_agent_config(
     if not project:
         raise not_found_error(f"Project {project_id} not found")
 
-    authorize_user_account(context, agent.account.name)
     if project.agent_id != agent.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

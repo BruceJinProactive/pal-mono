@@ -194,6 +194,11 @@ from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from db.tables.types import Channel, CheckStatus
 from services.admin_service.schema import CognitoUser
+from services.auth_service import (
+    require_account_permission,
+    require_agent_permission,
+    require_project_permission,
+)
 from services.auth_types import UserContext
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
 from services.google_maps_service import search_places_by_name
@@ -321,7 +326,9 @@ async def create_account(
 @admin_router.get("/accounts/{account_name}")
 def get_account(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Account:
     """
@@ -334,7 +341,9 @@ def get_account(
 async def update_account(
     account_name: str,
     account: UpdateAccountRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Account:
     """
@@ -349,7 +358,9 @@ async def delete_account(
     hard_delete: bool = Query(
         False, description="Whether to hard delete the account from the database"
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -361,7 +372,9 @@ async def delete_account(
 @admin_router.post("/accounts/{account_name}/close")
 async def close_account(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -373,7 +386,9 @@ async def close_account(
 @admin_router.get("/accounts/{account_name}/agents")
 async def list_account_agents(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> list[AgentSummary]:
     """
@@ -385,7 +400,9 @@ async def list_account_agents(
 @admin_router.get("/accounts/{account_name}/projects")
 async def list_account_projects(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> list[Project]:
     """
@@ -405,7 +422,9 @@ async def get_account_statistics(
         default=None,
         description="End date for statistics (inclusive). If not provided, defaults to now.",
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> AccountStatisticsResponse:
     """
@@ -424,7 +443,9 @@ async def get_account_statistics(
 @admin_router.get("/accounts/{account_name}/status")
 def get_account_status(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> AccountStatusResponse:
     """
@@ -436,7 +457,9 @@ def get_account_status(
 @admin_router.get("/accounts/{account_name}/terms_status")
 def get_account_terms_status(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> TermsStatusResponse:
     """
@@ -449,7 +472,9 @@ def get_account_terms_status(
 async def initiate_terms_signing_endpoint(
     account_name: str,
     request: InitiateTermsSigningRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> dict:
     """
@@ -471,7 +496,9 @@ async def initiate_terms_signing_endpoint(
 async def complete_terms_signing_endpoint(
     account_name: str,
     envelope_id: str = Query(..., description="DocuSign envelope ID"),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> dict:
     """
@@ -489,7 +516,9 @@ async def complete_terms_signing_endpoint(
 @admin_router.put("/accounts/{account_name}/accept_terms")
 async def accept_account_terms(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> AcceptTermsResponse:
     """
@@ -580,7 +609,9 @@ async def delete_integration(
 @admin_router.get("/projects/{project_id}/integrations")
 def list_project_integrations(
     project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListProjectIntegrationsResponse:
     """
@@ -593,7 +624,9 @@ def list_project_integrations(
 def get_project_integration(
     project_id: uuid.UUID,
     project_integration_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ProjectIntegrationResponse:
     """
@@ -610,7 +643,9 @@ def get_project_integration(
 async def create_project_integration(
     project_id: uuid.UUID,
     project_integration: CreateProjectIntegrationRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ProjectIntegrationResponse:
     """
@@ -626,7 +661,9 @@ async def update_project_integration(
     project_id: uuid.UUID,
     project_integration_id: uuid.UUID,
     project_integration: UpdateProjectIntegrationRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ProjectIntegrationResponse:
     """
@@ -641,7 +678,9 @@ async def update_project_integration(
 async def delete_project_integration(
     project_id: uuid.UUID,
     project_integration_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -674,7 +713,9 @@ async def create_agent(
 @admin_router.get("/agents/{agent_id}")
 def get_agent(
     agent_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_agent_permission("agent.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Agent:
     """
@@ -687,7 +728,9 @@ def get_agent(
 async def update_agent(
     agent_id: uuid.UUID,
     agent: UpdateAgentRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_agent_permission("agent.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Agent:
     """
@@ -700,7 +743,9 @@ async def update_agent(
 @admin_router.delete("/agents/{agent_id}")
 async def delete_agent(
     agent_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_agent_permission("agent.delete", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -712,7 +757,9 @@ async def delete_agent(
 @admin_router.get("/agents/{agent_id}/projects")
 async def list_agent_projects(
     agent_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_agent_permission("agent.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> list[ProjectSummary]:
     """
@@ -730,7 +777,9 @@ async def get_agent_config(
     channel: Channel = Query(
         Channel.VOICE, description="The channel to build the agent config for"
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_agent_permission("agent.read", authenticate_user)
+    ),
     sync_session: Session = Depends(db.get_db),
     async_session: AsyncSession = Depends(db.get_db_async),
 ) -> AgentConfig:
@@ -1158,7 +1207,9 @@ async def batch_delete_projects(
 @admin_router.get("/projects/{project_id}")
 def get_project(
     project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Project:
     """
@@ -1171,7 +1222,9 @@ def get_project(
 async def update_project(
     project_id: uuid.UUID,
     project: UpdateProjectRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Project:
     """
@@ -1184,7 +1237,9 @@ async def update_project(
 @admin_router.delete("/projects/{project_id}")
 async def delete_project(
     project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.delete", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -1602,7 +1657,9 @@ def backfill_role_assignments(
 async def invite_team_member(
     account_name: str,
     request: InviteTeamMemberRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.team_manage", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> InvitationResponse:
     """
@@ -1622,7 +1679,9 @@ async def list_team_members(
         None, description="Filter by status (active, deactivated)"
     ),
     search: str | None = Query(None, description="Search by email or name"),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> TeamMembersListResponse:
     """
@@ -1641,7 +1700,9 @@ async def update_team_member_role(
     account_name: str,
     user_email: str,
     request: UpdateTeamMemberRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.team_manage", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> UpdateTeamMemberResponse:
     """
@@ -1660,7 +1721,9 @@ async def update_team_member_role(
 async def remove_team_member(
     account_name: str,
     user_email: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.team_manage", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -1709,7 +1772,9 @@ async def accept_invitation(
 async def resend_invitation(
     account_name: str,
     invitation_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.team_manage", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ResendInvitationResponse:
     """
@@ -2738,7 +2803,9 @@ async def batch_update_voice_configs(
 @admin_router.get("/projects/{project_id}/voice_configs")
 async def list_voice_configs(
     project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
     async_session: AsyncSession = Depends(db.get_db_async),
 ) -> ListVoiceConfigsResponse:
     """

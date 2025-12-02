@@ -28,7 +28,6 @@ from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUserSession
 from utils.log import logger
 
-from ._auth import authorize_user_account
 from ._builder import build_account, build_account_summary, build_agent_summary
 from ._utils import UserContext, not_found_error
 
@@ -55,7 +54,6 @@ def get_account(
     context: UserContext,
     session: Session,
 ) -> Account:
-    authorize_user_account(context, account_name)
     account = account_service.get_account(session, account_name)
     if not account:
         raise HTTPException(
@@ -71,7 +69,6 @@ async def create_account(
     context: UserContext,
     session: Session,
 ) -> Account:
-    authorize_user_account(context, create_request.name)
     account_params = create_request.to_account_params()
     try:
         db_account = account_service.create_account(
@@ -96,7 +93,6 @@ async def update_account(
     context: UserContext,
     session: Session,
 ) -> Account:
-    authorize_user_account(context, account_name)
     account_params = update_request.to_account_params()
     try:
         db_account = account_service.update_account(
@@ -121,8 +117,6 @@ async def delete_account(
     context: UserContext,
     session: Session,
 ):
-    authorize_user_account(context, account_name)
-
     account = account_service.get_account(session, account_name)
     if not account:
         return
@@ -148,7 +142,6 @@ async def get_account_statistics(
     context: UserContext,
     session: Session,
 ):
-    authorize_user_account(context, account_name)
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found.")
@@ -177,8 +170,6 @@ async def list_account_agents(
     context: UserContext,
     session: Session,
 ) -> list[AgentSummary]:
-    authorize_user_account(context, account_name)
-
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found")
@@ -194,7 +185,6 @@ def get_account_status(
     context: UserContext,
     session: Session,
 ) -> AccountStatusResponse:
-    authorize_user_account(context, account_name)
     account = account_service.get_account(session, account_name)
     if not account:
         raise HTTPException(
@@ -215,7 +205,6 @@ def get_account_terms_status(
     context: UserContext,
     session: Session,
 ) -> TermsStatusResponse:
-    authorize_user_account(context, account_name)
     account = account_service.get_account(session, account_name)
     if not account:
         raise HTTPException(
@@ -244,7 +233,6 @@ async def initiate_terms_signing(
     Initiate terms of service signing via DocuSign.
     Returns signing URL for embedded signing.
     """
-    authorize_user_account(context, account_name)
     account = account_service.get_account(session, account_name)
 
     if not account:
@@ -311,7 +299,6 @@ async def complete_terms_signing(
     Mark terms as accepted after user completes signing.
     Frontend calls this after DocuSign JS fires 'signing_complete' event.
     """
-    authorize_user_account(context, account_name)
     account = account_service.get_account(session, account_name)
 
     if not account:
@@ -371,7 +358,6 @@ async def accept_account_terms(
     context: UserContext,
     session: Session,
 ) -> AcceptTermsResponse:
-    authorize_user_account(context, account_name)
     account_params = AccountParams(terms_accepted=True)
     try:
         account_service.update_account(session, context, account_name, account_params)
@@ -423,8 +409,6 @@ async def close_account(
     context: UserContext,
     session: Session,
 ):
-    authorize_user_account(context, account_name)
-
     account = account_service.get_account(session, account_name)
     if not account:
         raise HTTPException(
