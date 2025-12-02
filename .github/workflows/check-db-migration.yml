@@ -27,17 +27,8 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Configure Git for private repos
-        run: |
-          git config --global url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
-
       - name: Install dependencies with uv
         run: uv sync --all-extras
-
-      - name: Clean up Git config
-        if: always()
-        run: |
-          git config --global --unset url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf || true
 
       - name: Set up Git
         run: |

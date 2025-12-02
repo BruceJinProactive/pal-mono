@@ -50,14 +50,7 @@ Note: Basic DB configuration is already set in docker-compose.yml. The `local.en
 
 5. Build and run both API and database locally.
 
-Use ./scripts/docker_build.sh
-
-This will load the GITHUB_TOKEN from local.env and build then run the docker containers locally
-
-Below are the commands if not using docker_build.sh, however you will need to manually add the GITHUB_TOKEN to your shell for the build to run.
-
 ```bash
-
 docker-compose up -d --build
 
 # Force rebuild from scratch

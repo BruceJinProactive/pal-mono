@@ -1,9 +1,5 @@
 version: '3.8'
 
-secrets:
-  github_token:
-    environment: GITHUB_TOKEN
-
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -26,8 +22,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      secrets:
-        - github_token
     container_name: pal-mono-api
     ports:
       - "8000:8000"
