@@ -787,19 +787,27 @@ class ToastTool(Toolkit):
             results = asyncio.run(run_all_queries())
         except Exception as e:
             logger.error(f"[ToastTool._get_relevant_docs] Error executing queries: {e}")
-            results = []
+            # Raise exception when it throws error as no documents were retrieved
+            raise RuntimeError(
+                "[ToastTool._get_relevant_docs] run_all_queries failed to retrieve relevant documents."
+            ) from e
 
         context = ""
         output_data = []
         found_doc_names = set()
+        found_dining_options = False
         # Iterate through the results and extract relevant information
         for res in results:
             for node in res.source_nodes:
                 if node.metadata:
+                    # Check if this is a dining options document
+                    is_dining_options = node.metadata.get("isDiningOptions", False)
+
                     # Indent the text
                     node_text = textwrap.indent(node.text, 2 * "\t")
                     # If the metadata isDiningOptions boolean is True, prepend the DINING_OPTIONS_INSTRUCTION to the node_text
-                    if node.metadata.get("isDiningOptions", False):
+                    if is_dining_options:
+                        found_dining_options = True
                         dining_options_text = self.backdoor_tool_prompt.get(
                             "dining_options_prompt", DINING_OPTIONS_INSTRUCTION
                         )
@@ -832,6 +840,15 @@ class ToastTool(Toolkit):
                         "</document>\n\n"
                     )
                     output_data.append({"id": node.id_, "text": node.text})
+
+        # Check if dining options were found
+        if not found_dining_options:
+            logger.error(
+                "[ToastTool._get_relevant_docs] Dining options file not found in menu knowledge base"
+            )
+            raise ValueError(
+                "Dining options file not found in the menu knowledge base."
+            )
 
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
         return context
@@ -1101,7 +1118,7 @@ class ToastTool(Toolkit):
             )
             return (
                 order,
-                f"Order #{order.guid} submitted successfully! "
+                f"Order #{order.externalId} submitted successfully! "
                 f"Your total is ${order.checks[0].totalAmount}. "
                 f"Your order summary: {order.checks[0].selections}.\n\n"
                 f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}",
@@ -1382,7 +1399,7 @@ class ToastTool(Toolkit):
 
         # Create concise confirmation message using extracted order items
         concise_confirmation = (
-            f"Order #{order.guid} submitted successfully! "
+            f"Order #{order.externalId} submitted successfully! "
             f"Your total is ${order.checks[0].totalAmount}.\n"
             f"You can find tax and any applicable fees on the payment page.\n\n"
             f"Order summary:\n{order_summary}\n\n"
