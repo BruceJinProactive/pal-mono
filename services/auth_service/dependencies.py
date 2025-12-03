@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 import db
 from services.auth_service.authorization import check_permission
-from services.auth_types import UserContext
+from services.auth_types import UserContext, UserRole
 from utils.log import logger
 
 
@@ -190,7 +190,6 @@ def require_account_permission(
     """
     # Import here to avoid circular import
     from services.auth_service.feature_flags import is_rbac_enabled
-    from services.auth_types import UserRole
 
     async def dependency(
         account_name: str,
@@ -282,7 +281,6 @@ def require_project_permission(
     """
     # Import here to avoid circular import
     from services.auth_service.feature_flags import is_rbac_enabled
-    from services.auth_types import UserRole
 
     async def dependency(
         project_id: UUID,
@@ -335,6 +333,10 @@ def require_project_permission(
             logger.warning(
                 f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
             )
+
+        is_admin = current_user.role == UserRole.Admin
+
+        if not has_permission and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing required permission: {permission}",
@@ -408,6 +410,10 @@ def require_checklist_permission(
             logger.warning(
                 f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
             )
+
+        is_admin = current_user.role == UserRole.Admin
+
+        if not has_permission and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing required permission: {permission}",
@@ -452,7 +458,6 @@ def require_agent_permission(
     """
     # Import here to avoid circular import
     from services.auth_service.feature_flags import is_rbac_enabled
-    from services.auth_types import UserRole
 
     async def dependency(
         agent_id: UUID,
@@ -505,6 +510,10 @@ def require_agent_permission(
             logger.warning(
                 f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
             )
+
+        is_admin = current_user.role == UserRole.Admin
+
+        if not has_permission and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing required permission: {permission}",
@@ -591,6 +600,10 @@ def require_resource_permission(
             logger.warning(
                 f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
             )
+
+        is_admin = current_user.role == UserRole.Admin
+
+        if not has_permission and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing required permission: {permission}",
