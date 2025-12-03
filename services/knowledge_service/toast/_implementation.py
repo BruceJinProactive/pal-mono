@@ -160,7 +160,7 @@ class ToastMenuProcessor:
 
         Args:
             individual_items: List of menu item dictionaries
-            system_prompt_menu: System prompt menu text
+            system_prompt_menu: System prompt menu text (structured markdown format)
             infinite_loop_items: Items with infinite loops
             debug_output_dir: Directory to save files (optional)
             dining_options_json: Raw JSON string of dining options (optional)
@@ -187,7 +187,7 @@ class ToastMenuProcessor:
                 ) as f:
                     f.write(information)
 
-        # Save system prompt menu to a file
+        # Save system prompt menu to a file (now uses structured markdown format)
         with open(
             os.path.join(dirname, "system_prompt_menu.md"), "w", encoding="utf-8"
         ) as f:

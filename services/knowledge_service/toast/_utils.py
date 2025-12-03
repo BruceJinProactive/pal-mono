@@ -202,7 +202,7 @@ def _format_pricing_info(item: Dict[str, Any]) -> List[str]:
 
 
 def _format_system_prompt_pricing(item: Dict[str, Any]) -> str:
-    """Format pricing information for system prompt (clean, no GUIDs)."""
+    """Format pricing information for system prompt."""
     pricing_strategy = item.get("pricingStrategy")
     price = item.get("price")
     pricing_rules = item.get("pricingRules") or {}
@@ -235,24 +235,24 @@ def _format_system_prompt_pricing(item: Dict[str, Any]) -> str:
     return "Price varies"
 
 
-def _format_nested_system_prompt_modifiers(
+def _format_nested_structured_modifiers(
     option: Dict[str, Any],
     modifier_groups: Dict[str, Any],
     modifier_options: Dict[str, Any],
     visited_options: Optional[set] = None,
-    indent_level: int = 0,
+    indent_level: int = 1,
 ) -> List[str]:
-    """Format nested modifier options for system prompt (clean, user-friendly) with cycle detection.
+    """Format nested modifier options for structured prompt format with cycle detection.
 
     Args:
         option: The modifier option that may have nested modifiers
         modifier_groups: Dictionary of all modifier groups
         modifier_options: Dictionary of all modifier options
         visited_options: Set of visited option GUIDs for cycle detection
-        indent_level: Current indentation level (for recursive nesting)
+        indent_level: Current indentation level (1 = first level nested)
 
     Returns:
-        List of formatted strings for nested modifiers, already indented with tabs
+        List of formatted strings for nested modifiers with proper indentation
     """
     if visited_options is None:
         visited_options = set()
@@ -322,7 +322,7 @@ def _format_nested_system_prompt_modifiers(
                     nested_options.append(nested_option_name)
 
                 # Recursively handle further nesting (with cycle detection)
-                further_nested = _format_nested_system_prompt_modifiers(
+                further_nested = _format_nested_structured_modifiers(
                     nested_option,
                     modifier_groups,
                     modifier_options,
@@ -332,14 +332,15 @@ def _format_nested_system_prompt_modifiers(
                 further_nested_modifiers.extend(further_nested)
 
         # Format this nested group with proper indentation
-        tabs = "\t" * indent_level
+        # Base indent is 2 spaces, each level adds 2 more
+        indent = "  " * (indent_level + 1)
         if nested_options:
             nested_modifier_info.append(
-                f"{tabs}{nested_group_name}{nested_constraint_text}: {', '.join(nested_options)}"
+                f"{indent}- {nested_group_name}{nested_constraint_text}: {', '.join(nested_options)}"
             )
         else:
             nested_modifier_info.append(
-                f"{tabs}{nested_group_name}{nested_constraint_text}"
+                f"{indent}- {nested_group_name}{nested_constraint_text}"
             )
 
         # Add any further nested modifiers
@@ -348,12 +349,21 @@ def _format_nested_system_prompt_modifiers(
     return nested_modifier_info
 
 
-def _format_system_prompt_modifiers(
+def _format_structured_modifiers(
     item: Dict[str, Any],
     modifier_groups: Dict[str, Any],
     modifier_options: Dict[str, Any],
 ) -> List[str]:
-    """Format modifier information for system prompt (clean, user-friendly)."""
+    """Format modifier information for structured prompt format (bullet points).
+
+    Args:
+        item: Menu item dictionary
+        modifier_groups: Dictionary of all modifier groups
+        modifier_options: Dictionary of all modifier options
+
+    Returns:
+        List of formatted modifier strings with bullet points
+    """
     modifier_info = []
     modifier_refs = item.get("modifierGroupReferences", [])
 
@@ -385,82 +395,6 @@ def _format_system_prompt_modifiers(
         else:
             constraint_parts.append(f"Select {min_selections}-{max_selections} options")
 
-        # Add sequence pricing info to constraints if applicable
-        if pricing_strategy in ["SEQUENCE_PRICE", "SIZE_SEQUENCE_PRICE"]:
-            pricing_rules = mod_group.get("pricingRules", {})
-            sequence_rules = pricing_rules.get("sizeSequencePricingRules", [])
-            if sequence_rules:
-                # Handle SIZE_SEQUENCE_PRICE with multiple size rules
-                if (
-                    pricing_strategy == "SIZE_SEQUENCE_PRICE"
-                    and len(sequence_rules) > 1
-                ):
-                    size_pricing_info = []
-                    for rule in sequence_rules:
-                        size_name = rule.get("sizeName", "Unknown Size")
-                        sequence_prices = rule.get("sequencePrices", [])
-                        if sequence_prices:
-                            size_prices = []
-                            for seq_price in sequence_prices[
-                                :2
-                            ]:  # Show first 2 for each size
-                                seq_num = seq_price.get("sequence", 1)
-                                price = seq_price.get("price", 0.0)
-                                if seq_num == 1:
-                                    size_prices.append(f"1st: ${price}")
-                                elif seq_num == 2:
-                                    size_prices.append(f"2nd: ${price}")
-                            if size_prices:
-                                # Add fallback for this size
-                                if len(sequence_prices) > 0:
-                                    last_price = sequence_prices[-1].get("price", 0.0)
-                                    last_sequence = sequence_prices[-1].get(
-                                        "sequence", 1
-                                    )
-                                    if last_sequence < 10:
-                                        size_prices.append(
-                                            f"{last_sequence + 1}+: ${last_price}"
-                                        )
-                                size_pricing_info.append(
-                                    f"{size_name}: {', '.join(size_prices)}"
-                                )
-                    if size_pricing_info:
-                        constraint_parts.append(
-                            f"Size/sequence pricing: {'; '.join(size_pricing_info)}"
-                        )
-                else:
-                    # Handle regular SEQUENCE_PRICE or single size rule
-                    sequence_prices = (
-                        sequence_rules[0].get("sequencePrices", [])
-                        if sequence_rules
-                        else []
-                    )
-                    if sequence_prices:
-                        price_info = []
-                        for seq_price in sequence_prices[
-                            :3
-                        ]:  # Show first 3 sequence prices
-                            seq_num = seq_price.get("sequence", 1)
-                            price = seq_price.get("price", 0.0)
-                            if seq_num == 1:
-                                price_info.append(f"1st: ${price}")
-                            elif seq_num == 2:
-                                price_info.append(f"2nd: ${price}")
-                            elif seq_num == 3:
-                                price_info.append(f"3rd: ${price}")
-                        if price_info:
-                            # Add note about additional sequences if there are defined sequences
-                            if len(sequence_prices) > 0:
-                                last_price = sequence_prices[-1].get("price", 0.0)
-                                last_sequence = sequence_prices[-1].get("sequence", 1)
-                                if last_sequence < 10:  # Only show if reasonable
-                                    price_info.append(
-                                        f"{last_sequence + 1}+: ${last_price}"
-                                    )
-                            constraint_parts.append(
-                                f"Sequence pricing: {', '.join(price_info)}"
-                            )
-
         constraint_text = " (" + ", ".join(constraint_parts) + ")"
 
         # Get options - separate those with nested modifiers from those without
@@ -473,7 +407,7 @@ def _format_system_prompt_modifiers(
                 option_name = option["name"]
                 option_price = option.get("price")
 
-                # Format option display string
+                # Format option display string (skip sequence pricing details)
                 if pricing_strategy in ["SEQUENCE_PRICE", "SIZE_SEQUENCE_PRICE"]:
                     option_display = option_name
                 elif option_price is not None:
@@ -482,8 +416,7 @@ def _format_system_prompt_modifiers(
                     option_display = option_name
 
                 # Check for nested modifiers on this option
-                # Start at indent_level=1 since these are nested under the parent option
-                nested_modifier_info = _format_nested_system_prompt_modifiers(
+                nested_modifier_info = _format_nested_structured_modifiers(
                     option, modifier_groups, modifier_options, None, 1
                 )
 
@@ -498,23 +431,21 @@ def _format_system_prompt_modifiers(
         # Format the modifier group line with only non-nested options
         if options_without_nested:
             modifier_info.append(
-                f"{mod_group_name}{constraint_text}: {', '.join(options_without_nested)}"
+                f"  - {mod_group_name}{constraint_text}: {', '.join(options_without_nested)}"
             )
         elif not options_with_nested:
             # No options at all
-            modifier_info.append(f"{mod_group_name}{constraint_text}")
+            modifier_info.append(f"  - {mod_group_name}{constraint_text}")
         else:
             # Only has nested options - show the group header without inline options
-            modifier_info.append(f"{mod_group_name}{constraint_text}:")
+            modifier_info.append(f"  - {mod_group_name}{constraint_text}:")
 
         # Add options with nested modifiers on separate lines
         for opt_with_nested in options_with_nested:
-            # Show the parent option on its own line
-            modifier_info.append(f"\t{opt_with_nested['display']}")
-            # Then show its nested modifiers indented further
-            for nested_line in opt_with_nested["nested"]:
-                # nested_line already has proper indentation from _format_nested_system_prompt_modifiers
-                modifier_info.append(f"\t{nested_line}")
+            # Show the parent option on its own line with 4-space indent
+            modifier_info.append(f"    {opt_with_nested['display']}")
+            # Then show its nested modifiers (they have proper indentation already)
+            modifier_info.extend(opt_with_nested["nested"])
 
     return modifier_info
 
@@ -760,49 +691,35 @@ def _process_menu_item_system_prompt(
     modifier_options: Dict[str, Any],
     system_prompt_results: List[str],
 ) -> None:
-    """Process a single menu item for system prompt format (clean, no GUIDs)."""
+    """Process a single menu item for system prompt format (structured markdown format)."""
     item_name = item["name"]
+    description = item.get("description", "")
 
-    # Get pricing info
+    # Build header: ### {name} - {description}
+    if description:
+        header = f"### {item_name} - {description}"
+    else:
+        header = f"### {item_name}"
+
+    # Get pricing
     price_info = _format_system_prompt_pricing(item)
+    price_line = f"Prices: {price_info}"
 
-    # Get modifier info
-    modifier_info = _format_system_prompt_modifiers(
+    # Get modifiers using structured format
+    modifier_lines = _format_structured_modifiers(
         item, modifier_groups, modifier_options
     )
 
-    # Build clean menu item description
-    item_line = f"{item_name}"
-    if group_name:
-        item_line += f" ({group_name})"
-    item_line += f" - {price_info}"
+    # Build output
+    system_prompt_results.append(header)
+    system_prompt_results.append(price_line)
 
-    if modifier_info:
-        # Add all modifiers with proper formatting
-        # The first line of customizations (with no tabs) are joined with semicolons
-        # Lines with tabs are nested modifiers shown on separate lines
-        item_line += "\n  Customizations: "
+    if modifier_lines:
+        system_prompt_results.append("Customizations:")
+        system_prompt_results.extend(modifier_lines)
 
-        first_line_parts = []
-        nested_lines = []
-
-        for mod in modifier_info:
-            if mod.startswith("\t"):
-                # This is a nested modifier - already has proper indentation from formatting
-                nested_lines.append(mod)
-            else:
-                # This is a top-level modifier
-                first_line_parts.append(mod)
-
-        # Join top-level modifiers with semicolons
-        item_line += "; ".join(first_line_parts)
-
-        # Add nested modifiers on separate lines (they already have proper indentation from _format_system_prompt_modifiers)
-        for nested_line in nested_lines:
-            item_line += "\n" + nested_line
-
-    system_prompt_results.append(item_line)
-    system_prompt_results.append("#" * 50)
+    # Add blank line separator
+    system_prompt_results.append("")
 
 
 def _process_menu_group(
@@ -850,7 +767,7 @@ def _process_menu_group(
                 results,
             )
 
-            # Process for system prompt format if requested
+            # Process for system prompt format if requested (now uses structured markdown format)
             if system_prompt_results is not None:
                 _process_menu_item_system_prompt(
                     item,
@@ -891,7 +808,7 @@ def parse_menu(
     Returns:
         Tuple containing:
         - List of dictionaries with detailed menu information (with GUIDs)
-        - String with clean system prompt menu format (without GUIDs)
+        - String with system prompt menu in structured markdown format
         - List of dictionaries with infinite loop items (excluded from main menu)
     """
     # Load references for efficient lookup
@@ -914,7 +831,17 @@ def parse_menu(
         # Create temporary list to check if menu has any items [[memory:5262012]]
         temp_system_prompt_results: List[str] = []
 
+        # Add menu-level header (markdown format)
+        if menu_name:
+            temp_system_prompt_results.append(f"# {menu_name}\n")
+
         for menu_group in menu.get("menuGroups", []):
+            group_name = menu_group.get("name", "")
+
+            # Add group-level header (markdown format)
+            if group_name:
+                temp_system_prompt_results.append(f"## {group_name}\n")
+
             _process_menu_group(
                 menu_group,
                 menu_name,
@@ -926,12 +853,11 @@ def parse_menu(
                 infinite_loop_items,
             )
 
-        # Only add menu header if there are actually items in this menu
-        if temp_system_prompt_results and menu_name:
-            system_prompt_results.append(f"\n=== {menu_name} ===")
+        # Only add menu if there are actually items in this menu
+        if temp_system_prompt_results:
             system_prompt_results.extend(temp_system_prompt_results)
 
-    # Create clean system prompt menu string
+    # Create system prompt menu string (now uses structured markdown format)
     system_prompt_menu = "\n".join(system_prompt_results).strip()
 
     return results, system_prompt_menu, infinite_loop_items
