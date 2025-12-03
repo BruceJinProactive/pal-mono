@@ -193,6 +193,7 @@ def update_agent_kb(
         debug=debug,
         include_category_in_doc_name=include_category_in_doc_name,
         menu_last_updated=menu_last_updated,
+        selected_menus=menus,
     )
 
 
