@@ -18,7 +18,8 @@ phases:
       - RUNTIME_IMAGE_URL="${IMAGE_REPO}/${IMAGE_REPO_NAME}:${STAGE_NAME}"
 
       - echo Building the Docker image...
-      - docker build -t $IMAGE_REPO_NAME:$RELEASE_TAG .
+      - export DOCKER_BUILDKIT=1
+      - docker build --secret id=github_token,env=PAL_GITHUB_TOKEN -t $IMAGE_REPO_NAME:$RELEASE_TAG .
       - docker tag $IMAGE_REPO_NAME:$RELEASE_TAG $UNIQUE_IMAGE_URL
       - docker tag $IMAGE_REPO_NAME:$RELEASE_TAG $RUNTIME_IMAGE_URL
   post_build:

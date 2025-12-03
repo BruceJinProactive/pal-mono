@@ -33,8 +33,17 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Configure Git for private repos
+        run: |
+          git config --global url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Install dependencies with uv
         run: uv sync --all-extras
+
+      - name: Clean up Git config
+        if: always()
+        run: |
+          git config --global --unset-all url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf || true
 
       - name: Add .venv/bin to PATH
         run: |
@@ -90,8 +99,17 @@ jobs:
         with:
           enable-cache: false  # Disable cache since main branch may not have uv.lock yet
 
+      - name: Configure Git for private repos
+        run: |
+          git config --global url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Install dependencies with uv
         run: uv sync --all-extras
+
+      - name: Clean up Git config
+        if: always()
+        run: |
+          git config --global --unset-all url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf || true
 
       - name: Run main pytest report
         id: get_main_coverage
@@ -125,8 +143,17 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Configure Git for private repos
+        run: |
+          git config --global url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
       - name: Install dependencies with uv
         run: uv sync --all-extras
+
+      - name: Clean up Git config
+        if: always()
+        run: |
+          git config --global --unset-all url."https://${{ secrets.PAL_GITHUB_TOKEN }}@github.com/".insteadOf || true
 
       - name: Run new pytest report
         id: get_new_coverage
@@ -171,6 +198,8 @@ jobs:
           push: false
           load: true
           tags: myapp:${{ github.sha }}
+          secrets: |
+            github_token=${{ secrets.PAL_GITHUB_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

@@ -3,6 +3,8 @@ import uuid
 from dataclasses import asdict
 from typing import Any, Dict, Optional
 
+from pal_agents import Spec
+from pal_agents.spec import PromptSpec
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -20,9 +22,13 @@ from . import _raw_config
 from .schema import AgentParams
 
 
-async def construct_agent_spec():
-    # Return mock spec for now
-    return {}
+async def construct_agent_spec() -> Spec:
+    """Build a pal_agents.Spec with hardcoded instructions for testing."""
+    return Spec(
+        prompt=PromptSpec(
+            instructions="You are a helpful assistant. Respond concisely and helpfully to user messages."
+        )
+    )
 
 
 async def construct_agent_config(

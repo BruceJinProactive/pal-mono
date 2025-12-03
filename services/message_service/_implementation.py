@@ -7,6 +7,8 @@ from agno.run.response import RunResponse
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
+from pal_agents import Agent as PalAgent
+from pal_agents import Input as PalInput
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -94,44 +96,54 @@ async def get_chat_response_async(
         if not request_message:
             raise ValueError("Failed to create request message")
 
-        # **************** NEW Step 2: Construct agent, get input, and generate output ****************
-        if account_name in ["proactiveailab-transformer"]:
-            # TODO: Implement new flow with pal-agents
-            # spec = await agent_service.construct_agent_spec()
-            raise NotImplementedError(
-                "New pal-agents flow not yet implemented for transformer account"
-            )
-
-        # ================= Step 2: Construct agent, get input, and generate output =================
+        # Get agent_id (needed for metadata regardless of which flow)
         agent_id = project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
 
-        # Construct agent config
-        config = await agent_service.construct_agent_config(
-            session=session,
-            agent_id=agent_id,
-            user_id=user.id,
-            project_id=project_id,
-            conversation_id=request_message.conversation_id,
-            channel=message.channel,
-            sender_identifier=message.sender_identifier,
-        )
+        # **************** Step 2: Construct agent, get input, and generate output ****************
+        if account_name in ["proactiveailab-transformer"]:
+            # NEW FLOW: Use pal-agents
+            spec = await agent_service.construct_agent_spec()
+            pal_agent = PalAgent(spec=spec)
+            pal_input = PalInput(content=message.text.body if message.text else "")
+            pal_output = await pal_agent.run(pal_input)
 
-        logger.debug(f"Agent config: {config}")
-        agent = Agent(config=config)
+            # Convert to old Output format (pal-agents Output only has content)
+            output = Output(
+                content=pal_output.content,
+                escalated=False,  # Default - pal-agents doesn't provide this
+                closing_conversation=False,  # Default - pal-agents doesn't provide this
+            )
+            logger.debug(f"pal-agents Output: {output}")
+        else:
+            # EXISTING FLOW: Use current agent system
 
-        # Get Input with conversation history
-        input = await _utils.get_agent_input_from_message(
-            message=message,
-            stream=False,
-            request_context=request_context,
-        )
-        logger.debug(f"Input: {input}")
+            # Construct agent config
+            config = await agent_service.construct_agent_config(
+                session=session,
+                agent_id=agent_id,
+                user_id=user.id,
+                project_id=project_id,
+                conversation_id=request_message.conversation_id,
+                channel=message.channel,
+                sender_identifier=message.sender_identifier,
+            )
 
-        # Get Output
-        output: Output = await agent.arun(input)  # type: ignore # Temporarily disable specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
-        logger.debug(f"Output: {output}")
+            logger.debug(f"Agent config: {config}")
+            agent = Agent(config=config)
+
+            # Get Input with conversation history
+            input = await _utils.get_agent_input_from_message(
+                message=message,
+                stream=False,
+                request_context=request_context,
+            )
+            logger.debug(f"Input: {input}")
+
+            # Get Output
+            output: Output = await agent.arun(input)  # type: ignore # Temporarily disable specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
+            logger.debug(f"Output: {output}")
 
         # Process output for URL updates
         await _utils.process_output_for_url_updates(
