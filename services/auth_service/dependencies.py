@@ -233,6 +233,11 @@ def require_account_permission(
             logger.warning(
                 f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
             )
+
+        # TODO: admin override should be explicit
+        is_admin = current_user.role == UserRole.Admin
+
+        if not has_permission and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing required permission: {permission}",
