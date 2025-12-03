@@ -1,5 +1,6 @@
 import logging
 import uuid
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,12 +15,51 @@ from api.schemas.admin.voice_config import (
     VoiceConfigUpdateResult,
 )
 from services import account_service, project_service
+from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_types import UserRole
 from services.voice_service import VoiceService
 
-from ._auth import authorize_admin, authorize_user_account
+from ._auth import authorize_admin
 from ._utils import UserContext, not_found_error
 
 logger = logging.getLogger(__name__)
+
+
+def _check_project_access(
+    context: UserContext,
+    project,
+    permission: str = "project.read",
+) -> None:
+    """Check if user has access to the project using RBAC or legacy mode."""
+    if not is_rbac_enabled():
+        # Legacy: check account membership
+        if project.account.name not in context.account_names:
+            if context.role != UserRole.Admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User does not have permission for the requested project",
+                    headers={"Content-Type": "application/json"},
+                )
+    else:
+        # RBAC: Admin has full access
+        if context.role == UserRole.Admin:
+            return
+        # RBAC: check permission on project (needs sync session)
+        import db
+
+        sync_session = next(db.get_db())
+        try:
+            user_id = UUID(context.username)
+            if not check_permission(
+                user_id, f"projects/{project.id}", permission, sync_session
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Missing required permission: {permission}",
+                    headers={"Content-Type": "application/json"},
+                )
+        finally:
+            sync_session.close()
 
 
 async def create_voice_config(
@@ -38,7 +78,7 @@ async def create_voice_config(
             detail="Project not found",
         )
     await async_session.refresh(project, ["account"])
-    authorize_user_account(context, project.account.name)
+    _check_project_access(context, project, "project.write")
 
     voice_service = VoiceService()
     return await voice_service.create_voice_config(create_request, async_session)
@@ -64,7 +104,7 @@ async def get_voice_config(
         )
 
     await async_session.refresh(project, ["account"])
-    authorize_user_account(context, project.account.name)
+    _check_project_access(context, project, "project.read")
 
     return voice_config
 
@@ -74,16 +114,17 @@ async def list_voice_configs_by_project(
     context: UserContext,
     async_session: AsyncSession,
 ) -> ListVoiceConfigsResponse:
-    """List all voice configs for a project."""
-    # Verify project exists and user has access
+    """
+    List all voice configs for a project.
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    # Verify project exists
     project = await project_service.get_project_by_id_async(async_session, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found",
         )
-    await async_session.refresh(project, ["account"])
-    authorize_user_account(context, project.account.name)
 
     voice_service = VoiceService()
     return await voice_service.list_voice_configs_by_project(project_id, async_session)
@@ -113,7 +154,7 @@ async def update_voice_config(
             detail="Project not found",
         )
     await async_session.refresh(project, ["account"])
-    authorize_user_account(context, project.account.name)
+    _check_project_access(context, project, "project.write")
 
     return await voice_service.update_voice_config(
         voice_config_id, update_request, async_session
@@ -143,7 +184,7 @@ async def delete_voice_config(
             detail="Project not found",
         )
     await async_session.refresh(project, ["account"])
-    authorize_user_account(context, project.account.name)
+    _check_project_access(context, project, "project.write")
 
     return await voice_service.delete_voice_config(voice_config_id, async_session)
 

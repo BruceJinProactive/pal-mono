@@ -17,7 +17,6 @@ from api.schemas.admin.integration import (
     UpdateProjectIntegrationRequest,
 )
 
-from ._auth import authorize_user_account
 from ._builder import (
     build_integration,
     build_integration_summary,
@@ -30,14 +29,13 @@ from ._utils import UserContext, not_found_error
 def list_integrations(
     account_name: str, context: UserContext, session: Session
 ) -> ListIntegrationsResponse:
-    """Get all integrations for an account."""
-    # Verify user can access this account
+    """Get all integrations for an account.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account_repository = db.AccountRepository(session)
     account = account_repository.get_account(account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found")
-
-    authorize_user_account(context, account_name)
 
     integrations = integration_service.get_integrations_by_account_id(
         session, account.id
@@ -53,11 +51,9 @@ def list_integrations(
 def get_integration(
     account_name: str, integration_id: uuid.UUID, context: UserContext, session: Session
 ) -> IntegrationResponse:
-    """Get a specific integration."""
-    # Verify user can access this account
-    authorize_user_account(context, account_name)
-
-    # Get account to pass to service
+    """Get a specific integration.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account_repository = db.AccountRepository(session)
     account = account_repository.get_account(account_name)
     if not account:
@@ -79,14 +75,13 @@ def get_integration_by_project_and_type(
     context: UserContext,
     session: Session,
 ) -> IntegrationResponse:
-    """Get an integration by project ID and type."""
-    # Verify user can access this account
+    """Get an integration by project ID and type.
+    Authorization is handled by require_account_permission in route decorator if exposed via API.
+    """
     account_repository = db.AccountRepository(session)
     account = account_repository.get_account(account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found")
-
-    authorize_user_account(context, account_name)
 
     integration = integration_service.get_integration_by_project_and_type(
         session, account.id, project_id, integration_type
@@ -105,14 +100,13 @@ async def create_integration(
     context: UserContext,
     session: Session,
 ) -> IntegrationResponse:
-    """Create a new integration."""
-    # Verify user can access this account
+    """Create a new integration.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account_repository = db.AccountRepository(session)
     account = account_repository.get_account(account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found")
-
-    authorize_user_account(context, account_name)
 
     # Create integration with direct token storage
     created_integration = integration_service.create_integration(
@@ -131,11 +125,9 @@ async def update_integration(
     context: UserContext,
     session: Session,
 ) -> IntegrationResponse:
-    """Update an integration."""
-    # Verify user can access this account
-    authorize_user_account(context, account_name)
-
-    # Get account first
+    """Update an integration.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account_repository = db.AccountRepository(session)
     account = account_repository.get_account(account_name)
     if not account:
@@ -168,11 +160,9 @@ async def delete_integration(
     context: UserContext,
     session: Session,
 ) -> dict:
-    """Delete an integration."""
-    # Verify user can access this account
-    authorize_user_account(context, account_name)
-
-    # Get account first
+    """Delete an integration.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account_repository = db.AccountRepository(session)
     account = account_repository.get_account(account_name)
     if not account:
@@ -200,19 +190,13 @@ async def delete_integration(
 def list_project_integrations(
     project_id: uuid.UUID, context: UserContext, session: Session
 ) -> ListProjectIntegrationsResponse:
-    """Get all project integrations for a project."""
+    """Get all project integrations for a project.
+    Authorization is handled by require_project_permission in route decorator.
+    """
     project_repository = db.ProjectRepository(session)
     project = project_repository.get_project(project_id)
     if not project:
         raise not_found_error(f"Project {project_id} not found")
-
-    # Get account name for authorization
-    account_repository = db.AccountRepository(session)
-    account = account_repository.get_account_by_id(project.account_id)
-    if not account:
-        raise not_found_error(f"Account for project {project_id} not found")
-
-    authorize_user_account(context, account.name)
 
     project_integrations = integration_service.get_project_integrations_by_project_id(
         session, project_id
@@ -231,19 +215,13 @@ def get_project_integration(
     context: UserContext,
     session: Session,
 ) -> ProjectIntegrationResponse:
-    """Get a project integration by ID."""
+    """Get a project integration by ID.
+    Authorization is handled by require_project_permission in route decorator.
+    """
     project_repository = db.ProjectRepository(session)
     project = project_repository.get_project(project_id)
     if not project:
         raise not_found_error(f"Project {project_id} not found")
-
-    # Get account name for authorization
-    account_repository = db.AccountRepository(session)
-    account = account_repository.get_account_by_id(project.account_id)
-    if not account:
-        raise not_found_error(f"Account for project {project_id} not found")
-
-    authorize_user_account(context, account.name)
 
     db_project_integration = integration_service.get_project_integration_by_id(
         session, project_integration_id
@@ -267,19 +245,13 @@ async def create_project_integration(
     context: UserContext,
     session: Session,
 ) -> ProjectIntegrationResponse:
-    """Create a new project integration."""
+    """Create a new project integration.
+    Authorization is handled by require_project_permission in route decorator.
+    """
     project_repository = db.ProjectRepository(session)
     project = project_repository.get_project(project_id)
     if not project:
         raise not_found_error(f"Project {project_id} not found")
-
-    # Get account name for authorization
-    account_repository = db.AccountRepository(session)
-    account = account_repository.get_account_by_id(project.account_id)
-    if not account:
-        raise not_found_error(f"Account for project {project_id} not found")
-
-    authorize_user_account(context, account.name)
 
     created_project_integration = integration_service.create_project_integration(
         session=session,
@@ -296,19 +268,13 @@ async def update_project_integration(
     context: UserContext,
     session: Session,
 ) -> ProjectIntegrationResponse:
-    """Update a project integration."""
+    """Update a project integration.
+    Authorization is handled by require_project_permission in route decorator.
+    """
     project_repository = db.ProjectRepository(session)
     project = project_repository.get_project(project_id)
     if not project:
         raise not_found_error(f"Project {project_id} not found")
-
-    # Get account name for authorization
-    account_repository = db.AccountRepository(session)
-    account = account_repository.get_account_by_id(project.account_id)
-    if not account:
-        raise not_found_error(f"Account for project {project_id} not found")
-
-    authorize_user_account(context, account.name)
 
     # Verify project integration exists and belongs to project
     db_project_integration = integration_service.get_project_integration_by_id(
@@ -343,19 +309,13 @@ async def delete_project_integration(
     context: UserContext,
     session: Session,
 ) -> dict:
-    """Delete a project integration."""
+    """Delete a project integration.
+    Authorization is handled by require_project_permission in route decorator.
+    """
     project_repository = db.ProjectRepository(session)
     project = project_repository.get_project(project_id)
     if not project:
         raise not_found_error(f"Project {project_id} not found")
-
-    # Get account name for authorization
-    account_repository = db.AccountRepository(session)
-    account = account_repository.get_account_by_id(project.account_id)
-    if not account:
-        raise not_found_error(f"Account for project {project_id} not found")
-
-    authorize_user_account(context, account.name)
 
     # Verify project integration exists and belongs to project
     db_project_integration = integration_service.get_project_integration_by_id(

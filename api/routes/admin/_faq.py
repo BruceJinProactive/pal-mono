@@ -13,7 +13,6 @@ from api.schemas.admin.faq import (
 from services import account_service, faq_service
 
 from . import UserContext, _builder
-from ._auth import authorize_user_account
 
 
 async def create_faq(
@@ -22,13 +21,13 @@ async def create_faq(
     context: UserContext,
     session: Session,
 ) -> FAQ:
+    """Authorization is handled by require_account_permission in route decorator."""
     account = account_service.get_account(session, account_name)
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Account {account_name} does not exist.",
         )
-    authorize_user_account(context, account.name)
 
     project_uuid = UUID(faq_create.project_id) if faq_create.project_id else None
 
@@ -48,13 +47,13 @@ async def get_faqs(
     session: Session,
     project_id: str | None = None,
 ) -> ListFAQsResponse:
+    """Authorization is handled by require_account_permission in route decorator."""
     account = account_service.get_account(session, account_name)
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Account {account_name} does not exist.",
         )
-    authorize_user_account(context, account.name)
 
     project_uuid = UUID(project_id) if project_id else None
 
@@ -72,13 +71,13 @@ async def update_faq(
     context: UserContext,
     session: Session,
 ) -> FAQ:
+    """Authorization is handled by require_account_permission in route decorator."""
     account = account_service.get_account(session, account_name)
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Account {account_name} does not exist.",
         )
-    authorize_user_account(context, account.name)
 
     existing_faq = faq_service.get_faq_by_id(session, faq_id)
     if not existing_faq:
@@ -109,13 +108,13 @@ async def delete_faq(
     context: UserContext,
     session: Session,
 ) -> None:
+    """Authorization is handled by require_account_permission in route decorator."""
     account = account_service.get_account(session, account_name)
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Account {account_name} does not exist.",
         )
-    authorize_user_account(context, account.name)
 
     existing_faq = faq_service.get_faq_by_id(session, faq_id)
     if not existing_faq:

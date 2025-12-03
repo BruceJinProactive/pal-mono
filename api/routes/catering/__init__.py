@@ -16,6 +16,7 @@ from api.schemas.catering.catering import (
     EventBridgeEvent,
     UpdateCateringRequestRequest,
 )
+from services.auth_service.dependencies import require_project_permission
 from services.auth_types import UserContext
 
 from . import _implementation
@@ -41,7 +42,9 @@ async def handle_catering_event(
 def create_project_catering_request(
     project_id: uuid.UUID,
     request: CreateCateringRequestRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
 ) -> CateringRequest:
     """
     Create a new catering request for a project.
@@ -52,7 +55,9 @@ def create_project_catering_request(
 @catering_router.get("/projects/{project_id}/requests")
 def list_project_catering_requests(
     project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
 ) -> CateringRequestListResponse:
     """
     List all catering requests for a project.
@@ -83,7 +88,9 @@ async def update_catering_request(
 async def create_project_contact(
     project_id: uuid.UUID,
     request: CreateContactRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
     session: AsyncSession = Depends(db.get_db_async),
 ) -> Contact:
     """
@@ -97,7 +104,9 @@ async def create_project_contact(
 @catering_router.get("/projects/{project_id}/contacts")
 async def list_project_contacts(
     project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
     session: AsyncSession = Depends(db.get_db_async),
 ) -> ContactListResponse:
     """
@@ -110,7 +119,9 @@ async def list_project_contacts(
 async def delete_project_contact(
     project_id: uuid.UUID,
     contact_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
     session: AsyncSession = Depends(db.get_db_async),
 ):
     """

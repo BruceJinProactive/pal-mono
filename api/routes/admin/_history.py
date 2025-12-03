@@ -1,14 +1,16 @@
 import math
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.routes.admin import _auth, _builder
+from api.routes.admin import _builder
 from api.routes.admin._utils import not_found_error
 from api.schemas.admin.history import ChangeLogDetails, ListChangeLogsResponse
 from db.tables.change_log import ChangeResourceType
 from services import account_service, history_service
-from services.auth_types import UserContext
+from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_types import UserContext, UserRole
 from utils.log import logger
 
 
@@ -21,7 +23,7 @@ async def list_account_change_logs(
     resource_types: list[ChangeResourceType] | None,
     resource_id: str | None,
 ) -> ListChangeLogsResponse:
-    _auth.authorize_user_account(context, account_name)
+    """Authorization is handled by require_account_permission in route decorator."""
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found.")
@@ -55,7 +57,30 @@ async def get_change_log_details(
 
     account = account_service.get_account_by_id(session, change_log.account_id)
     if account:
-        _auth.authorize_user_account(context, account.name)
+        # RBAC check using account resource
+        if not is_rbac_enabled():
+            # Legacy: check account membership
+            if account.name not in context.account_names:
+                if context.role != UserRole.Admin:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="User does not have permission for the requested account",
+                        headers={"Content-Type": "application/json"},
+                    )
+        else:
+            # RBAC: Admin has full access
+            if context.role == UserRole.Admin:
+                return _builder.build_change_log_details(change_log)
+            # RBAC: check permission on account
+            user_id = UUID(context.username)
+            if not check_permission(
+                user_id, f"accounts/{account.id}", "account.read", session
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Missing required permission: account.read",
+                    headers={"Content-Type": "application/json"},
+                )
     else:
         logger.error("Account does not exist for the change log.")
 

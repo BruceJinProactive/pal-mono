@@ -12,7 +12,6 @@ from services.analytics_service import get_account_reports, get_reports
 from utils.log import logger
 
 from . import UserContext
-from ._auth import authorize_user_account
 from ._utils import not_found_error
 
 
@@ -45,7 +44,6 @@ async def get_accounts_reports(
             )
             return GetAllReportsResponse(reports=[])
 
-        authorize_user_account(context, account_name)
         account = get_account(session, account_name)
         if not account:
             raise not_found_error(f"Account {account_name} not found.")

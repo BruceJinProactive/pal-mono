@@ -536,7 +536,9 @@ async def accept_account_terms(
 @admin_router.get("/accounts/{account_name}/integrations")
 def list_integrations(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListIntegrationsResponse:
     """
@@ -549,7 +551,9 @@ def list_integrations(
 def get_integration(
     account_name: str,
     integration_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> IntegrationResponse:
     """
@@ -564,7 +568,9 @@ def get_integration(
 async def create_integration(
     account_name: str,
     integration: IntegrationRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> IntegrationResponse:
     """
@@ -580,7 +586,9 @@ async def update_integration(
     account_name: str,
     integration_id: uuid.UUID,
     integration: UpdateIntegrationRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> IntegrationResponse:
     """
@@ -595,7 +603,9 @@ async def update_integration(
 async def delete_integration(
     account_name: str,
     integration_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -810,7 +820,9 @@ async def get_agent_config(
 async def create_campaign(
     account_name: str,
     campaign_request: CreateCampaignRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> CreateCampaignResponse:
     """
@@ -842,7 +854,9 @@ async def list_account_campaigns(
     ),
     page: int = Query(1, gt=0, description="Page number"),
     page_size: int = Query(20, gt=0, le=100, description="Number of items per page"),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListCampaignsResponse:
     """
@@ -898,7 +912,9 @@ async def list_account_conversations(
         None,
         description="Filter by customer conversion status. True for converted, False for not converted, None for all",
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListUserSessionsResponse:
     """
@@ -928,7 +944,9 @@ async def list_account_conversations(
 async def get_conversation_detail(
     account_name: str,
     conversation_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ConversationDetail:
     """
@@ -951,7 +969,9 @@ async def list_conversation_messages(
         SortOrder.desc,
         description="The order in which messages are sorted by on the timestamp field",
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListConversationMessagesResponse:
     """
@@ -970,7 +990,9 @@ async def update_conversation(
     account_name: str,
     conversation_id: uuid.UUID,
     update_request: UpdateConversationRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -994,7 +1016,9 @@ async def update_conversation(
 @admin_router.get("/accounts/{account_name}/feedbacks")
 async def list_account_feedbacks(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListFeedbacksResponse:
     """
@@ -1065,7 +1089,9 @@ async def delete_feedback(
 @admin_router.get("/accounts/{account_name}/faqs")
 async def get_faqs(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
     project_id: str | None = Query(None, description="Optional project ID"),
 ) -> ListFAQsResponse:
@@ -1079,7 +1105,9 @@ async def get_faqs(
 async def create_faq(
     account_name: str,
     faq: CreateFAQRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> FAQ:
     """
@@ -1093,7 +1121,9 @@ async def update_faq(
     account_name: str,
     faq_id: uuid.UUID,
     update_faq: UpdateFAQRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> FAQ:
     """
@@ -1106,7 +1136,9 @@ async def update_faq(
 async def delete_faq(
     account_name: str,
     faq_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> None:
     """
@@ -1551,7 +1583,9 @@ async def get_project_instagram_username(
 @admin_router.get("/accounts/{account_name}/users")
 async def list_account_users(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
 ) -> ListUsersResponse:
     """
     Retrieve a list of admin users for a specific account.
@@ -1564,7 +1598,9 @@ async def list_account_users(
 async def create_account_user(
     account_name: str,
     user: CreateUserRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.team_manage", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> UserInfo:
     """
@@ -1578,7 +1614,9 @@ async def create_account_user(
 async def delete_account_user(
     account_name: str,
     email: str = Query(..., description="Email address for the user to be deleted"),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.team_manage", authenticate_user)
+    ),
 ):
     """
     Delete an admin user for a specific account by user email
@@ -2002,7 +2040,9 @@ async def list_account_changes(
     page_size: int = Query(25, gt=0, le=1000),
     resource_types: list[ChangeResourceType] | None = Query(None),
     resource_id: str | None = Query(None),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListChangeLogsResponse:
     """
@@ -2332,7 +2372,9 @@ async def delete_subscription_plan(
 async def create_account_subscription(
     account_name: str,
     request: CreateSubscriptionRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -2346,7 +2388,9 @@ async def create_account_subscription(
 @admin_router.get("/accounts/{account_name}/subscriptions")
 def list_account_subscriptions(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListAccountSubscriptionsResponse:
     """
@@ -2360,7 +2404,9 @@ def list_account_subscriptions(
 @admin_router.get("/accounts/{account_name}/subscriptions/current")
 def get_current_account_subscription(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> GetCurrentSubscriptionResponse:
     """
@@ -2372,7 +2418,9 @@ def get_current_account_subscription(
 @admin_router.get("/accounts/{account_name}/subscriptions/details")
 def get_subscription_details(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -2397,7 +2445,9 @@ def update_account_subscription(
     force_update: bool = Query(
         False, description="Whether to allow updates on non-active subscriptions"
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Subscription:
     """
@@ -2415,7 +2465,9 @@ def update_account_subscription_status(
     account_name: str,
     external_id: uuid.UUID,
     request: UpdateAccountSubscriptionStatusRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> UpdateAccountSubscriptionStatusResponse:
     """
@@ -2432,7 +2484,9 @@ def update_account_subscription_status(
 def cancel_account_subscription(
     account_name: str,
     external_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> dict:
     """
@@ -2450,7 +2504,9 @@ def create_subscription_checkout_session(
     account_name: str,
     external_id: uuid.UUID,
     request: CreateCheckoutSessionRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> str:
     """
@@ -2478,7 +2534,9 @@ def handle_subscription_checkout_callback(
 def list_project_subscriptions_by_subscription_external_id(
     account_name: str,
     external_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     db_session: Session = Depends(db.get_db),
 ):
     """List all project subscriptions for a given subscription external ID."""
@@ -2492,7 +2550,9 @@ def create_project_subscription(
     account_name: str,
     external_id: uuid.UUID,
     request: CreateProjectSubscriptionRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     db_session: Session = Depends(db.get_db),
 ):
     """Create a new project subscription."""
@@ -2508,7 +2568,9 @@ def remove_project_subscription(
     account_name: str,
     external_id: uuid.UUID,
     project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     db_session: Session = Depends(db.get_db),
 ):
     """Remove a project subscription."""
@@ -2523,7 +2585,9 @@ def remove_project_subscription(
 def switch_subscription_plan(
     account_name: str,
     request: SwitchPlanRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> SwitchPlanResponse:
     return _subscription.switch_subscription_plan(
@@ -2575,7 +2639,9 @@ def create_stripe_customer(
 @admin_router.get("/accounts/{account_name}/stripe_customer")
 def get_stripe_customer(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> StripeCustomer:
     """
@@ -2588,7 +2654,9 @@ def get_stripe_customer(
 def update_stripe_customer(
     account_name: str,
     request: UpdateStripeCustomerRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> StripeCustomer:
     """
@@ -2623,7 +2691,9 @@ def grant_account_credit(
 @admin_router.get("/accounts/{account_name}/credits", status_code=status.HTTP_200_OK)
 def get_account_credit(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> GetAccountCreditResponse:
     return _subscription.get_credit_amount(context, session, account_name)
@@ -2923,7 +2993,9 @@ async def get_account_reports(
         default=None,
         description="Optional list of project IDs to filter the reports by.",
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> GetAllReportsResponse:
     """

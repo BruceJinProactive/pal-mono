@@ -1,11 +1,12 @@
 import uuid
 from typing import Optional
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 import db
-from api.routes.admin._auth import authorize_admin, authorize_user_account
+from api.routes.admin._auth import authorize_admin
 from api.routes.admin._builder import (
     build_project_subscription,
     build_stripe_customer,
@@ -41,7 +42,8 @@ from api.schemas.admin.subscription import (
 )
 from services import account_service, project_service, subscription_service
 from services.account_service import AccountParams
-from services.auth_types import UserContext
+from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_types import UserContext, UserRole
 from services.subscription_service.schema import SubscriptionPlanParams
 from utils.log import logger
 
@@ -183,9 +185,8 @@ def create_account_subscription(
 ):
     """
     Creates a new subscription for an account.
+    Authorization is handled by require_account_permission in route decorator.
     """
-    authorize_user_account(context, account_name)
-
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} does not exist")
@@ -223,7 +224,7 @@ def get_current_subscription(
     session: Session,
     account_name: str,
 ) -> GetCurrentSubscriptionResponse:
-    authorize_user_account(context, account_name)
+    """Authorization is handled by require_account_permission in route decorator."""
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} does not exist")
@@ -241,6 +242,7 @@ def get_subscription_details(
 ):
     """
     Get comprehensive subscription and billing details.
+    Authorization is handled by require_account_permission in route decorator.
 
     Returns detailed information including:
     - Current subscription and plan features
@@ -250,7 +252,6 @@ def get_subscription_details(
     - Payment method information
     - Upgrade/downgrade options with featured benefits
     """
-    authorize_user_account(context, account_name)
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} does not exist")
@@ -284,9 +285,9 @@ def list_account_subscriptions(
     session: Session,
     account_name: str,
 ) -> ListAccountSubscriptionsResponse:
-    """Get all active subscriptions for an account."""
-    authorize_user_account(context, account_name)
-
+    """Get all active subscriptions for an account.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} does not exist")
@@ -318,8 +319,9 @@ def update_account_subscription(
     request: UpdateAccountSubscriptionRequest,
     force_update: bool = False,
 ) -> Subscription:
-    """Update an account subscription by external_id, creating a new version."""
-    authorize_user_account(context, account_name)
+    """Update an account subscription by external_id, creating a new version.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     if force_update:
         # Only admins can perform force updates
         authorize_admin(context)
@@ -365,9 +367,9 @@ def update_account_subscription_status(
     external_id: uuid.UUID,
     request: UpdateAccountSubscriptionStatusRequest,
 ) -> UpdateAccountSubscriptionStatusResponse:
-    """Update the status of an account subscription."""
-    authorize_user_account(context, account_name)
-
+    """Update the status of an account subscription.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found.")
@@ -415,9 +417,9 @@ def cancel_account_subscription(
     account_name: str,
     external_id: uuid.UUID,
 ) -> dict:
-    """Cancel an account subscription."""
-    authorize_user_account(context, account_name)
-
+    """Cancel an account subscription.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     try:
         cancelled_subscription = subscription_service.cancel_account_subscription(
             session, context, account_name, external_id
@@ -442,9 +444,9 @@ def create_checkout_session(
     external_id: uuid.UUID,
     request: CreateCheckoutSessionRequest,
 ) -> str:
-    """Create a Stripe checkout session for a subscription."""
-    authorize_user_account(context, account_name)
-
+    """Create a Stripe checkout session for a subscription.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     # Get account to validate it exists
     account = account_service.get_account(session, account_name)
     if not account:
@@ -499,7 +501,29 @@ def handle_subscription_checkout_callback(
             detail="The account linked in the checkout session does not exist",
         )
 
-    authorize_user_account(context, account.name)
+    # RBAC check using account resource
+    if not is_rbac_enabled():
+        # Legacy: check account membership
+        if account.name not in context.account_names:
+            if context.role != UserRole.Admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User does not have permission for the requested account",
+                    headers={"Content-Type": "application/json"},
+                )
+    else:
+        # RBAC: Admin has full access
+        if context.role != UserRole.Admin:
+            # RBAC: check permission on account
+            user_id = UUID(context.username)
+            if not check_permission(
+                user_id, f"accounts/{account.id}", "account.write", session
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Missing required permission: account.write",
+                    headers={"Content-Type": "application/json"},
+                )
 
     account_service.update_account(
         session,
@@ -517,9 +541,9 @@ def list_project_subscriptions_by_subscription_external_id(
     account_name: str,
     external_id: uuid.UUID,
 ) -> ListProjectSubscriptionsResponse:
-    """List all project subscriptions for a given subscription external ID."""
-    authorize_user_account(context, account_name)
-
+    """List all project subscriptions for a given subscription external ID.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error("Account not found")
@@ -571,9 +595,9 @@ def create_project_subscription(
     external_id: uuid.UUID,
     request: CreateProjectSubscriptionRequest,
 ) -> CreateProjectSubscriptionResponse:
-    """Create a new project subscription."""
-    authorize_user_account(context, account_name)
-
+    """Create a new project subscription.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     # Validate project exists
     project = project_service.get_project(session, request.project_id)
     if not project:
@@ -608,9 +632,9 @@ def remove_project_subscription(
     external_id: uuid.UUID,
     project_id: uuid.UUID,
 ) -> RemoveProjectSubscriptionResponse:
-    """Remove a project subscription."""
-    authorize_user_account(context, account_name)
-
+    """Remove a project subscription.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     # Validate project exists
     project = project_service.get_project(session, project_id)
     if not project:
@@ -704,9 +728,9 @@ def get_credit_amount(
     session: Session,
     account_name: str,
 ) -> GetAccountCreditResponse:
-    # Both admin and account manager can see the current credit balance
-    authorize_user_account(context, account_name)
-
+    """Both admin and account manager can see the current credit balance.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account = account_service.get_account(session, account_name)
     if not account:
         raise ValueError("Account not found")
@@ -766,9 +790,9 @@ def switch_subscription_plan(
     account_name: str,
     request: SwitchPlanRequest,
 ) -> SwitchPlanResponse:
-    """Switch an account's subscription plan to a new plan."""
-    authorize_user_account(context, account_name)
-
+    """Switch an account's subscription plan to a new plan.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error("Account not found")
@@ -884,9 +908,9 @@ def get_stripe_customer_info(
     session: Session,
     account_name: str,
 ) -> StripeCustomer:
-    """Get Stripe customer information for an account."""
-    authorize_user_account(context, account_name)
-
+    """Get Stripe customer information for an account.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error("Account not found")
@@ -916,9 +940,9 @@ def update_stripe_customer_info(
     account_name: str,
     request: UpdateStripeCustomerRequest,
 ) -> StripeCustomer:
-    """Update Stripe customer information for an account."""
-    authorize_user_account(context, account_name)
-
+    """Update Stripe customer information for an account.
+    Authorization is handled by require_account_permission in route decorator.
+    """
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error("Account not found")

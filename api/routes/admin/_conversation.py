@@ -15,7 +15,6 @@ from db.tables.types import Channel
 from services import account_service, admin_service
 
 from . import _builder
-from ._auth import authorize_user_account
 from ._utils import SortOrder, UserContext, not_found_error
 
 
@@ -36,7 +35,7 @@ async def list_account_conversations(
     context: UserContext,
     session: Session,
 ) -> ListUserSessionsResponse:
-    authorize_user_account(context, account_name)
+    """Authorization is handled by require_account_permission in route decorator."""
     account = account_service.get_account(session, account_name)
     if not account:
         raise not_found_error(f"Account {account_name} not found")
@@ -101,10 +100,7 @@ async def list_conversation_messages(
     context: UserContext,
     session: Session,
 ) -> ListConversationMessagesResponse:
-    # Validate request
-    if account_name:
-        authorize_user_account(context, account_name)
-
+    """Authorization is handled by require_account_permission in route decorator."""
     conversation = admin_service.get_conversation_by_id(session, conversation_id)
     if not conversation:
         raise not_found_error(f"Conversation not found for id: {conversation_id}")
@@ -112,9 +108,6 @@ async def list_conversation_messages(
 
     if account_name and account_name != account.name:
         raise not_found_error(f"Conversation not found for id: {conversation_id}")
-
-    if not account_name:
-        authorize_user_account(context, account.name)
 
     # Retrieve conversation messages
     all_messages = admin_service.get_conversation_messages(
@@ -143,9 +136,8 @@ async def get_conversation_detail(
 ):
     """
     Get conversation details without messages.
+    Authorization is handled by require_account_permission in route decorator.
     """
-    authorize_user_account(context, account_name)
-
     conversation = admin_service.get_conversation_by_id(session, conversation_id)
     if not conversation:
         raise not_found_error(f"Conversation not found for id: {conversation_id}")
@@ -164,8 +156,7 @@ async def update_conversation(
     conversation_id: uuid.UUID,
     update_request: UpdateConversationRequest,
 ):
-    authorize_user_account(context, account_name)
-
+    """Authorization is handled by require_account_permission in route decorator."""
     # Fetch first to validate ownership
     conversation = admin_service.get_conversation_by_id(session, conversation_id)
 

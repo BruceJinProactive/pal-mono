@@ -3,13 +3,13 @@ import base64
 import os
 import uuid
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 import db
 from api.routes.admin import _builder
-from api.routes.admin._auth import authorize_user_account
 from api.routes.admin._utils import not_found_error
 from api.schemas.admin.checkpoint import (
     Checkpoint,
@@ -23,8 +23,40 @@ from db.tables.types import CheckStatus
 from services import account_service, asset_service, checkpoint_service, project_service
 from services.asset_service import map_uri_to_s3_url, write_asset
 from services.asset_service._implementation import WriteAssetRequest
-from services.auth_types import UserContext
+from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_types import UserContext, UserRole
 from utils.log import logger
+
+
+def _check_account_access(
+    context: UserContext,
+    account,
+    project_id: uuid.UUID,
+    session: Session,
+    permission: str = "project.read",
+) -> None:
+    """Check if user has access to the project using RBAC or legacy mode."""
+    if not is_rbac_enabled():
+        # Legacy: check account membership
+        if account.name not in context.account_names:
+            if context.role != UserRole.Admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User does not have permission for the requested project",
+                    headers={"Content-Type": "application/json"},
+                )
+    else:
+        # RBAC: Admin has full access
+        if context.role == UserRole.Admin:
+            return
+        # RBAC: check permission on project
+        user_id = UUID(context.username)
+        if not check_permission(user_id, f"projects/{project_id}", permission, session):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required permission: {permission}",
+                headers={"Content-Type": "application/json"},
+            )
 
 
 async def _upload_checkpoint_image(
@@ -214,7 +246,7 @@ async def create_checkpoint(
     """
     import json
 
-    # Validate & authorize checkpoint create request
+    # Validate project exists (authorization handled by route decorator)
     project = project_service.get_project(session, project_id)
     if not project:
         raise not_found_error(f"Project {project_id} does not exist.")
@@ -222,8 +254,6 @@ async def create_checkpoint(
     account = account_service.get_account_by_id(session, project.account_id)
     if not account:
         raise not_found_error(f"Account for project {project_id} does not exist.")
-
-    authorize_user_account(context, account.name)
 
     # Parse rules from JSON string if provided
     parsed_rules = None
@@ -283,16 +313,10 @@ async def list_checkpoints(
     Returns:
         ListCheckpointsResponse with all checkpoints for the project
     """
-    # Validate & authorize
+    # Validate project exists (authorization handled by route decorator)
     project = project_service.get_project(session, project_id)
     if not project:
         raise not_found_error(f"Project {project_id} does not exist.")
-
-    account = account_service.get_account_by_id(session, project.account_id)
-    if not account:
-        raise not_found_error(f"Account for project {project_id} does not exist.")
-
-    authorize_user_account(context, account.name)
 
     # Get checkpoints
     checkpoints = checkpoint_service.list_checkpoints(session, project_id)
@@ -338,7 +362,7 @@ async def list_checkpoints_by_checklist(
                 f"Account for project {checklist.project_id} does not exist."
             )
 
-        authorize_user_account(context, account.name)
+        _check_account_access(context, account, checklist.project_id, session)
 
     # Get checkpoints for this checklist
     checkpoints = checkpoint_service.list_checkpoints_by_checklist(
@@ -409,7 +433,9 @@ async def update_checkpoint(
             f"Account for project {checkpoint.project_id} does not exist."
         )
 
-    authorize_user_account(context, account.name)
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
 
     # Parse rules from JSON string if provided
     parsed_rules = None
@@ -530,7 +556,9 @@ async def delete_checkpoint(
             f"Account for project {checkpoint.project_id} does not exist."
         )
 
-    authorize_user_account(context, account.name)
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
 
     # Delete checkpoint image from S3 if it exists
     if checkpoint.image_url:
@@ -603,7 +631,9 @@ async def compare_checkpoint(
             f"Account for project {checkpoint.project_id} does not exist."
         )
 
-    authorize_user_account(context, account.name)
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
 
     # Check if checkpoint has an image
     if not checkpoint.image_url:
@@ -717,7 +747,7 @@ async def list_checkpoint_results_by_submission(
     if not account:
         raise not_found_error(f"Account for project {project_id} does not exist.")
 
-    authorize_user_account(context, account.name)
+    _check_account_access(context, account, project_id, session, "project.read")
 
     # Get all checkpoint results with status and project filters
     checkpoint_results = checkpoint_service.list_checkpoint_results(
@@ -783,7 +813,9 @@ async def list_checkpoint_results_by_checkpoint(
             f"Account for project {checkpoint.project_id} does not exist."
         )
 
-    authorize_user_account(context, account.name)
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
 
     # Get checkpoint results for this checkpoint with optional date filtering
     checkpoint_results = checkpoint_service.list_checkpoint_results(
@@ -854,7 +886,9 @@ async def get_checkpoint_run(
             detail=f"Account {project.account_id} not found",
         )
 
-    authorize_user_account(context, account.name)
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
 
     # Build checkpoint result with presigned URL
     # Extract image URL from result JSON if available
@@ -932,7 +966,9 @@ async def record_checkpoint_run(
             detail=f"Account {project.account_id} not found",
         )
 
-    authorize_user_account(context, account.name)
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
 
     # Record the run first to get the run_id (creates exactly ONE run)
     try:
@@ -1033,7 +1069,9 @@ async def update_checkpoint_run_review_fields(
             detail=f"Account {project.account_id} not found",
         )
 
-    authorize_user_account(context, account.name)
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
 
     # Update the review fields
     try:
@@ -1160,7 +1198,9 @@ async def delete_checkpoint_run(
             detail=f"Account {project.account_id} not found",
         )
 
-    authorize_user_account(context, account.name)
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
 
     # Delete the run
     deleted = checkpoint_service.delete_checkpoint_run(session, run_id)
@@ -1233,7 +1273,9 @@ async def delete_checkpoint_runs_by_submission(
             detail=f"Account {project.account_id} not found",
         )
 
-    authorize_user_account(context, account.name)
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
 
     # Delete all runs with this submission_id
     deleted_count = checkpoint_service.delete_checkpoint_runs_by_submission(
@@ -1319,7 +1361,9 @@ async def compare_camera_checkpoint_handler(
 
         # Authorize user access to the project's account
         session.refresh(project, ["account"])
-        authorize_user_account(context, project.account.name)
+        _check_account_access(
+            context, project.account, project_id, session, "project.read"
+        )
 
         # Parse datetime strings
         try:

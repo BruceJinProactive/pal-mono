@@ -10,7 +10,6 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.routes.admin._auth import authorize_user_account
 from api.schemas.admin.checklist import (
     BatchChecklistHistoryResponse,
     Checklist,
@@ -20,16 +19,18 @@ from api.schemas.admin.checklist import (
     UpdateChecklistRequest,
 )
 from services import account_service, checklist_service, project_service
-from services.auth_types import UserContext
+from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_types import UserContext, UserRole
 
 
 def _authorize_project_access(
     session: Session,
     project_id: UUID,
     context: UserContext,
+    permission: str = "project.read",
 ) -> None:
     """
-    Authorize user access to a project.
+    Authorize user access to a project using RBAC or legacy mode.
 
     Raises 403 FORBIDDEN if project/account not found or user lacks permission.
     This prevents information leakage about resource existence.
@@ -38,6 +39,7 @@ def _authorize_project_access(
         session: Database session
         project_id: Project UUID
         context: User authentication context
+        permission: The permission to check (default: project.read)
 
     Raises:
         HTTPException: 403 if authorization fails
@@ -56,16 +58,37 @@ def _authorize_project_access(
             detail="Access denied",
         )
 
-    authorize_user_account(context, account.name)
+    if not is_rbac_enabled():
+        # Legacy: check account membership
+        if account.name not in context.account_names:
+            if context.role != UserRole.Admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied",
+                    headers={"Content-Type": "application/json"},
+                )
+    else:
+        # RBAC: Admin has full access
+        if context.role == UserRole.Admin:
+            return
+        # RBAC: check permission on project
+        user_id = UUID(context.username)
+        if not check_permission(user_id, f"projects/{project_id}", permission, session):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required permission: {permission}",
+                headers={"Content-Type": "application/json"},
+            )
 
 
 def _authorize_checklist_access(
     session: Session,
     checklist: Checklist,
     context: UserContext,
+    permission: str = "project.read",
 ) -> None:
     """
-    Authorize user access to a checklist via its project.
+    Authorize user access to a checklist via its project using RBAC or legacy mode.
 
     Raises 403 FORBIDDEN if project/account not found or user lacks permission.
     This prevents information leakage about resource existence.
@@ -74,6 +97,7 @@ def _authorize_checklist_access(
         session: Database session
         checklist: Checklist schema object
         context: User authentication context
+        permission: The permission to check (default: project.read)
 
     Raises:
         HTTPException: 403 if authorization fails
@@ -93,7 +117,29 @@ def _authorize_checklist_access(
                 detail="Access denied",
             )
 
-        authorize_user_account(context, account.name)
+        if not is_rbac_enabled():
+            # Legacy: check account membership
+            if account.name not in context.account_names:
+                if context.role != UserRole.Admin:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied",
+                        headers={"Content-Type": "application/json"},
+                    )
+        else:
+            # RBAC: Admin has full access
+            if context.role == UserRole.Admin:
+                return
+            # RBAC: check permission on project
+            user_id = UUID(context.username)
+            if not check_permission(
+                user_id, f"projects/{checklist.project_id}", permission, session
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Missing required permission: {permission}",
+                    headers={"Content-Type": "application/json"},
+                )
 
 
 async def create_checklist(
@@ -104,11 +150,8 @@ async def create_checklist(
 ) -> Checklist:
     """
     Create a new checklist for a project.
-    Authorization happens here before delegating to checklist_service.
+    Authorization is handled by require_project_permission in route decorator.
     """
-    # Authorize project access
-    _authorize_project_access(session, project_id, context)
-
     # Delegate to service for business logic
     return await checklist_service.create_checklist(
         project_id, checklist_request, context, session
@@ -141,11 +184,8 @@ async def list_checklists_by_project(
 ) -> ListChecklistsResponse:
     """
     List all checklists for a specific project.
-    Authorization happens here before delegating to checklist_service.
+    Authorization is handled by require_project_permission in route decorator.
     """
-    # Authorize project access
-    _authorize_project_access(session, project_id, context)
-
     # Delegate to service for business logic
     return await checklist_service.list_checklists_by_project(
         project_id, context, session, exclude
@@ -165,8 +205,8 @@ async def update_checklist(
     # Get checklist to determine project for authorization
     checklist = await checklist_service.get_checklist(checklist_id, context, session)
 
-    # Authorize based on checklist's project
-    _authorize_checklist_access(session, checklist, context)
+    # Authorize based on checklist's project (write permission for mutations)
+    _authorize_checklist_access(session, checklist, context, "project.write")
 
     # Delegate to service for business logic
     return await checklist_service.update_checklist(
@@ -186,8 +226,8 @@ async def delete_checklist(
     # Get checklist to determine project for authorization
     checklist = await checklist_service.get_checklist(checklist_id, context, session)
 
-    # Authorize based on checklist's project
-    _authorize_checklist_access(session, checklist, context)
+    # Authorize based on checklist's project (write permission for mutations)
+    _authorize_checklist_access(session, checklist, context, "project.write")
 
     # Delegate to service for business logic
     await checklist_service.delete_checklist(checklist_id, context, session)

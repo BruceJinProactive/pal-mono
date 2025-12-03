@@ -4,7 +4,6 @@ from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.routes.admin._auth import authorize_user_account
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.camera import (
     GetCameraImageUrlsResponse,
@@ -165,9 +164,7 @@ async def get_camera_images_by_time_interval_handler(
                 ).model_dump(),
             )
 
-        # Authorize user access to the project's account
-        session.refresh(project, ["account"])
-        authorize_user_account(context, project.account.name)
+        # Authorization handled by require_project_permission in route decorator
 
         logger.info(
             f"[Camera] User {context.email} getting images for project `{project_id}`, "

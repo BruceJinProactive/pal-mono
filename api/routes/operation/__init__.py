@@ -31,6 +31,7 @@ from api.schemas.admin.checkpoint import (
 )
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import CheckStatus
+from services.auth_service.dependencies import require_project_permission
 from services.auth_types import UserContext
 
 from . import _checklist, _checkpoint, _implementation
@@ -125,7 +126,9 @@ async def get_camera_images_by_time_interval(
         ...,
         description="End time in ISO 8601 format (e.g., 2025-11-03T18:00:00Z)",
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> GetCameraImageUrlsResponse:
     """
@@ -241,7 +244,9 @@ async def compare_camera_checkpoint(
 async def create_checklist(
     project_id: uuid.UUID,
     checklist: CreateChecklistRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Checklist:
     """
@@ -325,7 +330,9 @@ async def list_project_checklists(
     exclude: uuid.UUID | None = Query(
         None, description="Optional checklist ID to exclude from results"
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListChecklistsResponse:
     """
@@ -389,7 +396,9 @@ async def list_checklist_checkpoints(
 @operation_router.get("/projects/{project_id}/checkpoints")
 async def list_checkpoints(
     project_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListCheckpointsResponse:
     """
@@ -411,7 +420,9 @@ async def create_checkpoint(
     rules: str | None = Form(None),
     requires_image: bool = Form(False),
     image: UploadFile | None = File(None),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Checkpoint:
     """

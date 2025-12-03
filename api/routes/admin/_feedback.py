@@ -1,5 +1,6 @@
 import uuid
 from collections import defaultdict
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -19,11 +20,39 @@ from services import (
     message_service,
     user_service,
 )
+from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_types import UserRole
 from utils.log import logger
 
 from . import UserContext, _builder
-from ._auth import authorize_user_account
 from ._utils import not_found_error
+
+
+def _check_account_access(context: UserContext, account, session: Session) -> None:
+    """Check if user has access to the account using RBAC or legacy mode."""
+    if not is_rbac_enabled():
+        # Legacy: check account membership
+        if account.name not in context.account_names:
+            if context.role != UserRole.Admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User does not have permission for the requested account",
+                    headers={"Content-Type": "application/json"},
+                )
+    else:
+        # RBAC: Admin has full access
+        if context.role == UserRole.Admin:
+            return
+        # RBAC: check permission on account
+        user_id = UUID(context.username)
+        if not check_permission(
+            user_id, f"accounts/{account.id}", "account.read", session
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Missing required permission: account.read",
+                headers={"Content-Type": "application/json"},
+            )
 
 
 async def list_account_feedbacks(
@@ -35,9 +64,8 @@ async def list_account_feedbacks(
     To get the feedbacks for the given account, it's a long journey.
     TODO (frankie.liu): add an account foreign key relation in feedback
     to make it simpler.
+    Authorization is handled by require_account_permission in route decorator.
     """
-    authorize_user_account(context, account_name)
-
     default_page = 1
     max_conversations_to_search = 1000
     # Validate account first
@@ -112,7 +140,7 @@ async def retrieve_feedback_by_id(
     # TODO (frankie.liu): update here once account fk is added to feedback
     conversation = feedback.message.conversation
     account = conversation.user.account
-    authorize_user_account(context, account.name)
+    _check_account_access(context, account, session)
 
     if feedback.author_identifier:
         author_name = admin_service.get_user_name_by_email(feedback.author_identifier)
@@ -135,7 +163,7 @@ async def create_feedback(
     if not message:
         raise not_found_error(f"Message {feedback_create.message_id} does not exist.")
     account = message.conversation.user.account
-    authorize_user_account(context, account.name)
+    _check_account_access(context, account, session)
 
     # Process create - store user's email in author_identifier
     feedback = _to_db_feedback(feedback_create)
@@ -156,7 +184,7 @@ async def update_feedback(
     if not curr_feedback:
         raise not_found_error(f"Feedback {feedback_id} not found.")
     account = curr_feedback.message.conversation.user.account
-    authorize_user_account(context, account.name)
+    _check_account_access(context, account, session)
 
     # Process update
     new_feedback = _to_db_feedback(feedback_update)
@@ -178,7 +206,7 @@ async def delete_feedback(
         # fail the request.
         return
     account = curr_feedback.message.conversation.user.account
-    authorize_user_account(context, account.name)
+    _check_account_access(context, account, session)
 
     # Process delete
     feedback_service.delete_feedback_by_id(session, feedback_id)
