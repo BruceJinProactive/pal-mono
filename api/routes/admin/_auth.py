@@ -191,6 +191,12 @@ def get_account_name(id_token):
         return None
 
 
+POOL_SOURCE_KEY = "_auth_pool_source"
+POOL_ADMIN_CONSOLE = "admin_console"
+POOL_MANAGE_APP = "manage_app"
+PAL_ADMIN_GROUP = "pal-admin"
+
+
 def decrypt_id_token(request: Request) -> dict[str, Any]:
     """
     Decrypts the ID token from the request headers.
@@ -200,11 +206,14 @@ def decrypt_id_token(request: Request) -> dict[str, Any]:
     It tries authenticating against the admin console pool first, and if that fails,
     it tries the manage app pool.
 
+    The returned token dict includes a '_auth_pool_source' field indicating which
+    pool was used for authentication ('admin_console' or 'manage_app').
+
     Args:
         request (Request): The FastAPI request object containing the headers with the authorization token.
 
     Returns:
-        dict: The decrypted ID token.
+        dict: The decrypted ID token with '_auth_pool_source' field.
 
     Raises:
         HTTPException: If the ID token is invalid or missing, or if authentication fails against both pools.
@@ -218,11 +227,15 @@ def decrypt_id_token(request: Request) -> dict[str, Any]:
         )
 
     try:
-        return parse_admin_console_cognito_token(auth_token)
+        token = parse_admin_console_cognito_token(auth_token)
+        token[POOL_SOURCE_KEY] = POOL_ADMIN_CONSOLE
+        return token
     except ValueError as admin_error:
         if AWS_MANAGE_APP_USER_POOL_ID and AWS_MANAGE_APP_APP_CLIENT_ID:
             try:
-                return parse_manage_app_cognito_token(auth_token)
+                token = parse_manage_app_cognito_token(auth_token)
+                token[POOL_SOURCE_KEY] = POOL_MANAGE_APP
+                return token
             except ValueError as manage_error:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -365,11 +378,31 @@ def authenticate_user(
 
 
 def get_user_role(token: dict[str, Any]) -> UserRole:
-    email = token.get("email", "").lower()
-    if email.endswith("@proactiveailab.com") or email.endswith("@palona.ai"):
+    """
+    Determines the user's role based on their authentication source and group membership.
+
+    Admin access is granted if:
+    1. User authenticated via the manage app pool, OR
+    2. User authenticated via the admin console pool AND is in the 'pal-admin' cognito group
+
+    Args:
+        token: The decrypted ID token containing '_auth_pool_source' and 'cognito:groups'.
+
+    Returns:
+        UserRole.Admin if user meets admin criteria, otherwise UserRole.AccountManager.
+    """
+    pool_source = token.get(POOL_SOURCE_KEY, "")
+    cognito_groups = token.get("cognito:groups", [])
+
+    # Users in manage app pool are admins
+    if pool_source == POOL_MANAGE_APP:
         return UserRole.Admin
-    else:
-        return UserRole.AccountManager
+
+    # Users in admin console pool with pal-admin group are admins
+    if pool_source == POOL_ADMIN_CONSOLE and PAL_ADMIN_GROUP in cognito_groups:
+        return UserRole.Admin
+
+    return UserRole.AccountManager
 
 
 def authorize_user_account(context: UserContext, account_name: str):
