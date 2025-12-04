@@ -16,7 +16,7 @@ from api.schemas.admin.knowledge import (
 )
 from db.tables.types import IntegrationProvider
 from services import admin_service, agent_service, knowledge_service, project_service
-from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_service import check_permission
 from services.auth_types import UserRole
 from utils.log import logger
 from utils.secret import get_client_secret
@@ -127,30 +127,18 @@ async def delete_knowledge_file(
 
 
 def _check_account_access(context: UserContext, account, session: Session) -> None:
-    """Check if user has access to the account using RBAC or legacy mode."""
-    if not is_rbac_enabled():
-        # Legacy: check account membership
-        if account.name not in context.account_names:
-            if context.role != UserRole.Admin:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User does not have permission for the requested account",
-                    headers={"Content-Type": "application/json"},
-                )
-    else:
-        # RBAC: Admin has full access
-        if context.role == UserRole.Admin:
-            return
-        # RBAC: check permission on account
-        user_id = UUID(context.username)
-        if not check_permission(
-            user_id, f"accounts/{account.id}", "account.read", session
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Missing required permission: account.read",
-                headers={"Content-Type": "application/json"},
-            )
+    """Check if user has access to the account using RBAC."""
+    # Admin has full access
+    if context.role == UserRole.Admin:
+        return
+    # Check permission on account
+    user_id = UUID(context.username)
+    if not check_permission(user_id, f"accounts/{account.id}", "account.read", session):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing required permission: account.read",
+            headers={"Content-Type": "application/json"},
+        )
 
 
 def get_and_authorize(

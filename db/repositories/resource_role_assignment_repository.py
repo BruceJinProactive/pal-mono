@@ -22,6 +22,11 @@ class ResourceType(str, Enum):
     CHECKLIST = "checklist"
     PLAN = "plan"
     DATA = "data"
+    HISTORY = "history"
+    FEEDBACK = "feedback"
+    CAMPAIGN = "campaign"
+    KNOWLEDGE = "knowledge"
+    SUBSCRIPTION = "subscription"
 
     @classmethod
     def from_plural(cls, plural: str) -> "ResourceType":
@@ -43,6 +48,11 @@ class ResourceType(str, Enum):
             "checklists": cls.CHECKLIST,
             "plans": cls.PLAN,
             "data": cls.DATA,
+            "histories": cls.HISTORY,
+            "feedbacks": cls.FEEDBACK,
+            "campaigns": cls.CAMPAIGN,
+            "knowledges": cls.KNOWLEDGE,
+            "subscriptions": cls.SUBSCRIPTION,
         }
         if plural not in mapping:
             raise ValueError(f"Unknown resource type: {plural}")
@@ -61,6 +71,11 @@ class ResourceType(str, Enum):
             self.CHECKLIST: "checklists",
             self.PLAN: "plans",
             self.DATA: "data",
+            self.HISTORY: "histories",
+            self.FEEDBACK: "feedbacks",
+            self.CAMPAIGN: "campaigns",
+            self.KNOWLEDGE: "knowledges",
+            self.SUBSCRIPTION: "subscriptions",
         }
         return mapping[self]
 

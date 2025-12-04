@@ -20,7 +20,7 @@ from services import (
     message_service,
     user_service,
 )
-from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_service import check_permission
 from services.auth_types import UserRole
 from utils.log import logger
 
@@ -29,30 +29,18 @@ from ._utils import not_found_error
 
 
 def _check_account_access(context: UserContext, account, session: Session) -> None:
-    """Check if user has access to the account using RBAC or legacy mode."""
-    if not is_rbac_enabled():
-        # Legacy: check account membership
-        if account.name not in context.account_names:
-            if context.role != UserRole.Admin:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User does not have permission for the requested account",
-                    headers={"Content-Type": "application/json"},
-                )
-    else:
-        # RBAC: Admin has full access
-        if context.role == UserRole.Admin:
-            return
-        # RBAC: check permission on account
-        user_id = UUID(context.username)
-        if not check_permission(
-            user_id, f"accounts/{account.id}", "account.read", session
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Missing required permission: account.read",
-                headers={"Content-Type": "application/json"},
-            )
+    """Check if user has access to the account using RBAC."""
+    # Admin has full access
+    if context.role == UserRole.Admin:
+        return
+    # Check permission on account
+    user_id = UUID(context.username)
+    if not check_permission(user_id, f"accounts/{account.id}", "account.read", session):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Missing required permission: account.read",
+            headers={"Content-Type": "application/json"},
+        )
 
 
 async def list_account_feedbacks(
@@ -134,13 +122,11 @@ async def list_account_feedbacks(
 async def retrieve_feedback_by_id(
     feedback_id: uuid.UUID, context: UserContext, session: Session
 ) -> FeedbackDetail:
+    """Authorization handled by require_feedback_permission in route decorator."""
     feedback = feedback_service.get_feedback_by_id(session, feedback_id)
     if not feedback:
         raise not_found_error(f"Feedback not found for id: {feedback_id}")
-    # TODO (frankie.liu): update here once account fk is added to feedback
     conversation = feedback.message.conversation
-    account = conversation.user.account
-    _check_account_access(context, account, session)
 
     if feedback.author_identifier:
         author_name = admin_service.get_user_name_by_email(feedback.author_identifier)
@@ -179,12 +165,10 @@ async def update_feedback(
     context: UserContext,
     session: Session,
 ):
-    # Validate & authorize feedback update request
+    """Authorization handled by require_feedback_permission in route decorator."""
     curr_feedback = feedback_service.get_feedback_by_id(session, feedback_id)
     if not curr_feedback:
         raise not_found_error(f"Feedback {feedback_id} not found.")
-    account = curr_feedback.message.conversation.user.account
-    _check_account_access(context, account, session)
 
     # Process update
     new_feedback = _to_db_feedback(feedback_update)
@@ -199,14 +183,12 @@ async def delete_feedback(
     context: UserContext,
     session: Session,
 ):
-    # Validate & authorize feedback delete request
+    """Authorization handled by require_feedback_permission in route decorator."""
     curr_feedback = feedback_service.get_feedback_by_id(session, feedback_id)
     if not curr_feedback:
         # If feedback doesn't exist, this is a no-op, and it shouldn't
         # fail the request.
         return
-    account = curr_feedback.message.conversation.user.account
-    _check_account_access(context, account, session)
 
     # Process delete
     feedback_service.delete_feedback_by_id(session, feedback_id)

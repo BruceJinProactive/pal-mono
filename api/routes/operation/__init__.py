@@ -33,7 +33,10 @@ from api.schemas.admin.checkpoint import (
 from api.schemas.asset.asset import AssetResponse
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import CheckStatus
-from services.auth_service.dependencies import require_project_permission
+from services.auth_service.dependencies import (
+    require_checklist_permission,
+    require_project_permission,
+)
 from services.auth_types import UserContext
 
 from . import _checklist, _checkpoint, _implementation
@@ -348,7 +351,9 @@ async def get_checklist_history(
 @operation_router.get("/checklists/{checklist_id}")
 async def get_checklist(
     checklist_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_checklist_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Checklist:
     """
@@ -381,7 +386,9 @@ async def list_project_checklists(
 async def update_checklist(
     checklist_id: uuid.UUID,
     update_request: UpdateChecklistRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_checklist_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Checklist:
     """
@@ -397,7 +404,9 @@ async def update_checklist(
 )
 async def delete_checklist(
     checklist_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_checklist_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> None:
     """
@@ -409,7 +418,9 @@ async def delete_checklist(
 @operation_router.get("/checklists/{checklist_id}/checkpoints")
 async def list_checklist_checkpoints(
     checklist_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_checklist_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ListCheckpointsResponse:
     """

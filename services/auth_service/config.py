@@ -52,6 +52,11 @@ RESOURCE_HIERARCHY: Dict[str, Optional[str]] = {
     "accounts": None,  # Account is top-level (no parent)
     "plans": None,  # Plans are top-level for now
     "data": None,  # Data resources are top-level for now
+    "histories": "accounts",  # History belongs to account
+    "feedbacks": "accounts",  # Feedback belongs to account
+    "campaigns": "accounts",  # Campaign belongs to account
+    "knowledges": "accounts",  # Knowledge belongs to account
+    "subscriptions": "accounts",  # Subscription belongs to account
 }
 
 # =============================================================================

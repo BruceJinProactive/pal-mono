@@ -24,12 +24,16 @@ from services.auth_service.dependencies import (
     PermissionChecker,
     require_account_permission,
     require_agent_permission,
+    require_campaign_permission,
     require_checklist_permission,
+    require_feedback_permission,
+    require_history_permission,
+    require_knowledge_permission,
     require_permission,
     require_project_permission,
     require_resource_permission,
+    require_subscription_permission,
 )
-from services.auth_service.feature_flags import is_rbac_enabled
 from services.auth_service.resolution import (
     get_parent_resource,
     resolve_account_identifier,
@@ -55,8 +59,11 @@ __all__ = [
     "require_checklist_permission",
     "require_agent_permission",
     "require_resource_permission",
-    # Feature flags
-    "is_rbac_enabled",
+    "require_history_permission",
+    "require_feedback_permission",
+    "require_campaign_permission",
+    "require_knowledge_permission",
+    "require_subscription_permission",
     # Config and constants
     "ROLE_PERMISSIONS",
     "PERMISSION_REGISTRY",

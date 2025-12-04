@@ -42,7 +42,7 @@ from api.schemas.admin.subscription import (
 )
 from services import account_service, project_service, subscription_service
 from services.account_service import AccountParams
-from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_service import check_permission
 from services.auth_types import UserContext, UserRole
 from services.subscription_service.schema import SubscriptionPlanParams
 from utils.log import logger
@@ -502,28 +502,18 @@ def handle_subscription_checkout_callback(
         )
 
     # RBAC check using account resource
-    if not is_rbac_enabled():
-        # Legacy: check account membership
-        if account.name not in context.account_names:
-            if context.role != UserRole.Admin:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User does not have permission for the requested account",
-                    headers={"Content-Type": "application/json"},
-                )
-    else:
-        # RBAC: Admin has full access
-        if context.role != UserRole.Admin:
-            # RBAC: check permission on account
-            user_id = UUID(context.username)
-            if not check_permission(
-                user_id, f"accounts/{account.id}", "account.write", session
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Missing required permission: account.write",
-                    headers={"Content-Type": "application/json"},
-                )
+    # Admin has full access
+    if context.role != UserRole.Admin:
+        # Check permission on account
+        user_id = UUID(context.username)
+        if not check_permission(
+            user_id, f"accounts/{account.id}", "account.write", session
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Missing required permission: account.write",
+                headers={"Content-Type": "application/json"},
+            )
 
     account_service.update_account(
         session,

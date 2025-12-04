@@ -197,6 +197,9 @@ from services.admin_service.schema import CognitoUser
 from services.auth_service import (
     require_account_permission,
     require_agent_permission,
+    require_campaign_permission,
+    require_feedback_permission,
+    require_history_permission,
     require_project_permission,
 )
 from services.auth_types import UserContext
@@ -837,7 +840,9 @@ async def create_campaign(
 @admin_router.get("/campaigns/{campaign_id}")
 async def get_campaign_detail(
     campaign_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_campaign_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> CampaignDetails:
     """
@@ -1044,7 +1049,9 @@ async def create_feedback(
 @admin_router.get("/feedbacks/{feedback_id}")
 async def get_feedback(
     feedback_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_feedback_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> FeedbackDetail:
     """
@@ -1057,7 +1064,9 @@ async def get_feedback(
 async def update_feedback(
     feedback_id: uuid.UUID,
     feedback: UpdateFeedbackRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_feedback_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> Feedback:
     """
@@ -1070,7 +1079,9 @@ async def update_feedback(
 @admin_router.delete("/feedbacks/{feedback_id}")
 async def delete_feedback(
     feedback_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_feedback_permission("account.write", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ):
     """
@@ -2062,7 +2073,9 @@ async def list_account_changes(
 @admin_router.get("/changes/{change_log_id}")
 async def get_change_log(
     change_log_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_history_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> ChangeLogDetails:
     """

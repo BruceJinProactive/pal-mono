@@ -15,7 +15,7 @@ from api.schemas.admin.voice_config import (
     VoiceConfigUpdateResult,
 )
 from services import account_service, project_service
-from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_service import check_permission
 from services.auth_types import UserRole
 from services.voice_service import VoiceService
 
@@ -30,36 +30,26 @@ def _check_project_access(
     project,
     permission: str = "project.read",
 ) -> None:
-    """Check if user has access to the project using RBAC or legacy mode."""
-    if not is_rbac_enabled():
-        # Legacy: check account membership
-        if project.account.name not in context.account_names:
-            if context.role != UserRole.Admin:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User does not have permission for the requested project",
-                    headers={"Content-Type": "application/json"},
-                )
-    else:
-        # RBAC: Admin has full access
-        if context.role == UserRole.Admin:
-            return
-        # RBAC: check permission on project (needs sync session)
-        import db
+    """Check if user has access to the project using RBAC."""
+    # Admin has full access
+    if context.role == UserRole.Admin:
+        return
+    # Check permission on project (needs sync session)
+    import db
 
-        sync_session = next(db.get_db())
-        try:
-            user_id = UUID(context.username)
-            if not check_permission(
-                user_id, f"projects/{project.id}", permission, sync_session
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Missing required permission: {permission}",
-                    headers={"Content-Type": "application/json"},
-                )
-        finally:
-            sync_session.close()
+    sync_session = next(db.get_db())
+    try:
+        user_id = UUID(context.username)
+        if not check_permission(
+            user_id, f"projects/{project.id}", permission, sync_session
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required permission: {permission}",
+                headers={"Content-Type": "application/json"},
+            )
+    finally:
+        sync_session.close()
 
 
 async def create_voice_config(

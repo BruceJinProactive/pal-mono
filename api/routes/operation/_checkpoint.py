@@ -23,7 +23,7 @@ from db.tables.types import CheckStatus
 from services import account_service, asset_service, checkpoint_service, project_service
 from services.asset_service import map_uri_to_s3_url, write_asset
 from services.asset_service._implementation import WriteAssetRequest
-from services.auth_service import check_permission, is_rbac_enabled
+from services.auth_service import check_permission
 from services.auth_types import UserContext, UserRole
 from utils.log import logger
 
@@ -35,28 +35,18 @@ def _check_account_access(
     session: Session,
     permission: str = "project.read",
 ) -> None:
-    """Check if user has access to the project using RBAC or legacy mode."""
-    if not is_rbac_enabled():
-        # Legacy: check account membership
-        if account.name not in context.account_names:
-            if context.role != UserRole.Admin:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="User does not have permission for the requested project",
-                    headers={"Content-Type": "application/json"},
-                )
-    else:
-        # RBAC: Admin has full access
-        if context.role == UserRole.Admin:
-            return
-        # RBAC: check permission on project
-        user_id = UUID(context.username)
-        if not check_permission(user_id, f"projects/{project_id}", permission, session):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
+    """Check if user has access to the project using RBAC."""
+    # Admin has full access
+    if context.role == UserRole.Admin:
+        return
+    # Check permission on project
+    user_id = UUID(context.username)
+    if not check_permission(user_id, f"projects/{project_id}", permission, session):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing required permission: {permission}",
+            headers={"Content-Type": "application/json"},
+        )
 
 
 async def _upload_checkpoint_image(
@@ -334,6 +324,7 @@ async def list_checkpoints_by_checklist(
 ) -> ListCheckpointsResponse:
     """
     List all checkpoints for a checklist.
+    Authorization handled by require_checklist_permission in route decorator.
 
     Args:
         checklist_id: UUID of the checklist
@@ -343,26 +334,12 @@ async def list_checkpoints_by_checklist(
     Returns:
         ListCheckpointsResponse with all checkpoints for the checklist
     """
-    # Get the checklist first to verify it exists and get its project_id
+    # Get the checklist first to verify it exists
     from db.repositories import checklist_repository
 
     checklist = checklist_repository.get_checklist_by_id(session, checklist_id)
     if not checklist:
         raise not_found_error(f"Checklist {checklist_id} does not exist.")
-
-    # Validate & authorize via project
-    if checklist.project_id:
-        project = project_service.get_project(session, checklist.project_id)
-        if not project:
-            raise not_found_error(f"Project {checklist.project_id} does not exist.")
-
-        account = account_service.get_account_by_id(session, project.account_id)
-        if not account:
-            raise not_found_error(
-                f"Account for project {checklist.project_id} does not exist."
-            )
-
-        _check_account_access(context, account, checklist.project_id, session)
 
     # Get checkpoints for this checklist
     checkpoints = checkpoint_service.list_checkpoints_by_checklist(
