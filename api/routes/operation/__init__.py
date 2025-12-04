@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 import db
 from api.routes.admin._auth import authenticate_user
+from api.routes.asset import _implementation as asset_implementation
 from api.routes.endpoints import endpoints
 from api.schemas.admin.camera import (
     CompareCameraCheckpointResponse,
@@ -29,6 +30,7 @@ from api.schemas.admin.checkpoint import (
     RecordCheckpointRunResponse,
     UpdateCheckpointRunReviewRequest,
 )
+from api.schemas.asset.asset import AssetResponse
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import CheckStatus
 from services.auth_service.dependencies import require_project_permission
@@ -37,6 +39,37 @@ from services.auth_types import UserContext
 from . import _checklist, _checkpoint, _implementation
 
 operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
+
+
+@operation_router.post(
+    "/accounts/{account_id}/projects/{project_id}/cameras/{camera_name}/upload",
+    response_model=AssetResponse,
+    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+)
+async def upload_camera_image(
+    account_id: str,
+    project_id: str,
+    camera_name: str,
+    image: UploadFile = File(...),
+) -> AssetResponse:
+    """
+    Upload a camera image to S3 without authentication.
+
+    This endpoint is designed for camera devices to upload images directly.
+
+    Path Parameters:
+    - account_id: The account ID
+    - project_id: The project ID
+    - camera_name: The camera name/ID
+
+    Request body (multipart/form-data):
+    - image: The image file to upload
+
+    Returns:
+    - url: S3 URL of the uploaded image
+    """
+    path = f"{account_id}/{project_id}/{camera_name}"
+    return await asset_implementation.upload_asset(image, path, {})
 
 
 @operation_router.get("/health")
