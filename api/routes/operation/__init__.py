@@ -856,3 +856,45 @@ async def batch_delete_checkpoint_runs(
     Authorization: Via checkpoint → project → account
     """
     return await _checkpoint.delete_checkpoint_runs(run_ids, context, session)
+
+
+@operation_router.post(
+    "/checkpoints/runs/{run_id}/rerun", status_code=status.HTTP_200_OK
+)
+async def rerun_checkpoint_run(
+    run_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> dict:
+    """
+    Rerun checkpoint analysis for an existing run (in-place update).
+
+    Fetches the existing image from S3 and re-runs the OpenAI comparison.
+    Updates the run in-place with new results.
+
+    Path Parameters:
+    - run_id (required): UUID of the checkpoint run to rerun
+
+    Returns:
+    - run_id: The run ID being rerun
+    - status: "processing"
+    - message: Instructions to poll for results
+
+    Example request:
+    POST /checkpoints/runs/123e4567-e89b-12d3-a456-426614174000/rerun
+
+    Example response:
+    {
+      "run_id": "123e4567-e89b-12d3-a456-426614174000",
+      "status": "processing",
+      "message": "Rerun started. Poll for results using GET /checkpoints/runs/{run_id}"
+    }
+
+    Error responses:
+    - 404: Run not found
+    - 409: Run is already processing
+    - 400: Image no longer available in storage
+
+    Authorization: Via checkpoint → project → account
+    """
+    return await _checkpoint.rerun_checkpoint_run(run_id, context, session)

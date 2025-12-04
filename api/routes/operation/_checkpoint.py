@@ -1190,12 +1190,151 @@ async def delete_checkpoint_runs(
         context, account, checkpoint.project_id, session, "project.write"
     )
 
+    # Delete images from S3 before deleting database records
+    for run in runs:
+        image_url = run.result.get("image_url") if run.result else None
+        if image_url:
+            try:
+                deleted_from_s3 = asset_service.delete_asset(image_url)
+                if deleted_from_s3:
+                    logger.info(f"Deleted checkpoint run image from S3: {image_url}")
+                else:
+                    logger.warning(f"Image not found in S3: {image_url}")
+            except Exception as e:
+                # Log but don't fail the operation
+                logger.warning(f"Failed to delete checkpoint run image from S3: {e}")
+
     # Delete all runs in batch
     deleted_count = checkpoint_service.delete_checkpoint_runs(session, run_ids)
 
     return {
         "message": f"Successfully deleted {deleted_count} checkpoint run(s)",
         "deleted_count": deleted_count,
+    }
+
+
+async def rerun_checkpoint_run(
+    run_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> dict:
+    """
+    Rerun checkpoint analysis for an existing run (in-place update).
+
+    Fetches the existing image from S3 and re-runs the OpenAI comparison.
+    Updates the run in-place with new results.
+
+    Args:
+        run_id: UUID of the checkpoint run to rerun
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        dict: Response with run_id and processing status
+
+    Raises:
+        HTTPException: If run not found, already processing, image missing, or authorization fails
+    """
+    import asyncio
+    import base64
+
+    from db.tables.types import CheckStatus
+
+    # Get the checkpoint run
+    run = checkpoint_service.get_checkpoint_result(session, run_id)
+    if not run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint run {run_id} not found",
+        )
+
+    # Check if already processing
+    if run.status == CheckStatus.processing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Run is already processing. Please wait for it to complete.",
+        )
+
+    # Get checkpoint and validate
+    checkpoint = checkpoint_service.get_checkpoint(session, run.checkpoint_id)
+    if not checkpoint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Checkpoint {run.checkpoint_id} not found",
+        )
+
+    # Validate & authorize via project
+    project = project_service.get_project(session, checkpoint.project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {checkpoint.project_id} not found",
+        )
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {project.account_id} not found",
+        )
+
+    _check_account_access(
+        context, account, checkpoint.project_id, session, "project.write"
+    )
+
+    # Extract image URL from run result
+    if not run.result or "image_url" not in run.result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Run does not have an associated image to rerun analysis",
+        )
+
+    image_s3_key = run.result["image_url"]
+
+    # Generate presigned URL from S3 key and download image
+    # Same approach as camera checkpoint analysis
+    presigned_url = asset_service.map_uri_to_s3_url(image_s3_key)
+    if not presigned_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to generate presigned URL for image. Image may no longer exist.",
+        )
+
+    try:
+        # Download image using requests (same as camera analysis)
+        import requests
+
+        response = requests.get(presigned_url, timeout=(10, 30))
+        response.raise_for_status()
+        uploaded_image_base64 = base64.b64encode(response.content).decode("utf-8")
+    except Exception as e:
+        logger.error(f"Failed to retrieve image from S3: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image no longer available in storage. Cannot rerun analysis.",
+        )
+
+    # Update run status to processing
+    checkpoint_service.update_checkpoint_result(
+        session=session,
+        result_id=run_id,
+        result=run.result,  # Keep existing result for now
+        status=CheckStatus.processing,
+    )
+
+    # Start background task to rerun comparison
+    asyncio.create_task(
+        checkpoint_service.compare_and_update_checkpoint_background(
+            checkpoint_result_id=run_id,
+            checkpoint=checkpoint,
+            uploaded_image_base64=uploaded_image_base64,
+        )
+    )
+
+    return {
+        "run_id": str(run_id),
+        "status": "processing",
+        "message": "Rerun started. Poll for results using GET /checkpoints/runs/{run_id}",
     }
 
 
