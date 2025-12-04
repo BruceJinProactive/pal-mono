@@ -443,32 +443,34 @@ def compare_camera_images_with_checkpoint(
     )
 
 
-def delete_checkpoint_run(session: Session, run_id: UUID) -> bool:
+def get_checkpoint_results_by_ids(
+    session: Session, result_ids: list[UUID]
+) -> list[db.CheckpointRun]:
     """
-    Delete a checkpoint run by run ID.
+    Get multiple checkpoint results by their IDs in a single query.
 
     Args:
         session: Database session
-        run_id: UUID of the checkpoint run to delete
+        result_ids: List of UUIDs of checkpoint results
 
     Returns:
-        bool: True if deleted, False if not found
+        list[db.CheckpointRun]: List of checkpoint results
     """
-    return _implementation.delete_checkpoint_run(session, run_id)
+    return _implementation.get_checkpoint_results_by_ids(session, result_ids)
 
 
-def delete_checkpoint_runs_by_submission(session: Session, submission_id: UUID) -> int:
+def delete_checkpoint_runs(session: Session, run_ids: list[UUID]) -> int:
     """
-    Delete all checkpoint runs for a given submission ID.
+    Delete multiple checkpoint runs by their run IDs (batch delete).
 
     Args:
         session: Database session
-        submission_id: UUID of the submission
+        run_ids: List of UUIDs of checkpoint runs to delete
 
     Returns:
         int: Number of checkpoint runs deleted
     """
-    return _implementation.delete_checkpoint_runs_by_submission(session, submission_id)
+    return _implementation.delete_checkpoint_runs(session, run_ids)
 
 
 __all__ = [
@@ -487,11 +489,11 @@ __all__ = [
     "list_checkpoint_results",
     "get_latest_checkpoint_result_by_date_range",
     "get_checkpoint_result",
+    "get_checkpoint_results_by_ids",
     "update_checkpoint_result",
     "record_checkpoint_run",
     "update_checkpoint_run_image",
     "update_checkpoint_run_review",
     "compare_camera_images_with_checkpoint",
-    "delete_checkpoint_run",
-    "delete_checkpoint_runs_by_submission",
+    "delete_checkpoint_runs",
 ]

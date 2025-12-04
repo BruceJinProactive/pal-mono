@@ -368,6 +368,32 @@ def get_checkpoint_result(
         raise
 
 
+def get_checkpoint_results_by_ids(
+    session: Session,
+    result_ids: list[UUID],
+) -> list[CheckpointRun]:
+    """
+    Get multiple checkpoint results by their IDs in a single query.
+
+    Args:
+        session: Database session
+        result_ids: List of UUIDs of checkpoint results
+
+    Returns:
+        list[CheckpointRun]: List of checkpoint results (may be fewer than requested if some IDs don't exist)
+    """
+    try:
+        if not result_ids:
+            return []
+
+        return (
+            session.query(CheckpointRun).filter(CheckpointRun.id.in_(result_ids)).all()
+        )
+    except SQLAlchemyError as e:
+        logger.error(f"Error getting checkpoint results by IDs: {e}")
+        raise
+
+
 def update_checkpoint_result(
     session: Session,
     result_id: UUID,
@@ -531,60 +557,26 @@ def update_checkpoint_run_review(
         raise
 
 
-def delete_checkpoint_run(
+def delete_checkpoint_runs(
     session: Session,
-    run_id: UUID,
-) -> bool:
-    """
-    Delete a checkpoint run by run ID.
-
-    Args:
-        session: Database session
-        run_id: UUID of the checkpoint run to delete
-
-    Returns:
-        bool: True if deleted, False if not found
-    """
-    try:
-        checkpoint_run = (
-            session.query(CheckpointRun).filter(CheckpointRun.id == run_id).first()
-        )
-
-        if not checkpoint_run:
-            return False
-
-        session.delete(checkpoint_run)
-        session.commit()
-
-        logger.info(f"Deleted checkpoint run {run_id}")
-        return True
-    except SQLAlchemyError as e:
-        session.rollback()
-        logger.error(f"Error deleting checkpoint run: {e}")
-        raise
-
-
-def delete_checkpoint_runs_by_submission(
-    session: Session,
-    submission_id: UUID,
+    run_ids: list[UUID],
 ) -> int:
     """
-    Delete all checkpoint runs for a given submission ID.
+    Delete multiple checkpoint runs by their run IDs (batch delete).
 
     Args:
         session: Database session
-        submission_id: UUID of the submission
+        run_ids: List of UUIDs of checkpoint runs to delete
 
     Returns:
         int: Number of checkpoint runs deleted
     """
     try:
-        # Get all runs with this submission_id
-        runs = (
-            session.query(CheckpointRun)
-            .filter(CheckpointRun.submission_id == submission_id)
-            .all()
-        )
+        if not run_ids:
+            return 0
+
+        # Get all runs with these run_ids
+        runs = session.query(CheckpointRun).filter(CheckpointRun.id.in_(run_ids)).all()
 
         if not runs:
             return 0
@@ -597,9 +589,9 @@ def delete_checkpoint_runs_by_submission(
 
         session.commit()
 
-        logger.info(f"Deleted {count} checkpoint runs for submission {submission_id}")
+        logger.info(f"Deleted {count} checkpoint runs (batch delete)")
         return count
     except SQLAlchemyError as e:
         session.rollback()
-        logger.error(f"Error deleting checkpoint runs by submission: {e}")
+        logger.error(f"Error deleting checkpoint runs (batch): {e}")
         raise

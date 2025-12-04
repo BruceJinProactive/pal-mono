@@ -298,6 +298,23 @@ def get_checkpoint_result(
     return checkpoint_repository.get_checkpoint_result(session, result_id)
 
 
+def get_checkpoint_results_by_ids(
+    session: Session,
+    result_ids: list[UUID],
+) -> list[db.CheckpointRun]:
+    """
+    Get multiple checkpoint results by their IDs in a single query.
+
+    Args:
+        session: Database session
+        result_ids: List of UUIDs of checkpoint results
+
+    Returns:
+        list[db.CheckpointRun]: List of checkpoint results (may be fewer than requested if some IDs don't exist)
+    """
+    return checkpoint_repository.get_checkpoint_results_by_ids(session, result_ids)
+
+
 def update_checkpoint_result(
     session: Session,
     result_id: UUID,
@@ -983,31 +1000,15 @@ async def _compare_and_update_camera_runs_background(
     )
 
 
-def delete_checkpoint_run(session: Session, run_id: UUID) -> bool:
+def delete_checkpoint_runs(session: Session, run_ids: list[UUID]) -> int:
     """
-    Delete a checkpoint run by run ID.
+    Delete multiple checkpoint runs by their run IDs (batch delete).
 
     Args:
         session: Database session
-        run_id: UUID of the checkpoint run to delete
-
-    Returns:
-        bool: True if deleted, False if not found
-    """
-    return checkpoint_repository.delete_checkpoint_run(session, run_id)
-
-
-def delete_checkpoint_runs_by_submission(session: Session, submission_id: UUID) -> int:
-    """
-    Delete all checkpoint runs for a given submission ID.
-
-    Args:
-        session: Database session
-        submission_id: UUID of the submission
+        run_ids: List of UUIDs of checkpoint runs to delete
 
     Returns:
         int: Number of checkpoint runs deleted
     """
-    return checkpoint_repository.delete_checkpoint_runs_by_submission(
-        session, submission_id
-    )
+    return checkpoint_repository.delete_checkpoint_runs(session, run_ids)
