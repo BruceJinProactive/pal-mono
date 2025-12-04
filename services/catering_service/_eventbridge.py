@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 import boto3
 from botocore.exceptions import ClientError
 
+from events._eventbridge import DEFAULT_EVENT_BUS_NAME
 from utils.log import logger
 
 
@@ -49,7 +50,7 @@ def publish_catering_event(
                     "Source": "pal.catering",
                     "DetailType": detail_type,
                     "Detail": json.dumps(detail),
-                    "EventBusName": "pal-main-event-bus",
+                    "EventBusName": DEFAULT_EVENT_BUS_NAME,
                 }
             ]
         )
