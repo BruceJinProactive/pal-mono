@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Boolean, Enum
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
@@ -125,6 +125,14 @@ class Account(Base):
         ARRAY(String),
         nullable=True,
     )
+
+    # Notification preferences
+    notification_preferences: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{\"email_enabled\": true}'::jsonb"),
+    )
+    notification_email: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Metadata columns
     status: Mapped[AccountStatus] = mapped_column(
