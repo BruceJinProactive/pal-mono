@@ -321,7 +321,7 @@ class SquareTool(Toolkit):
                 context=context, chat_history=chat_history
             ),
             response_format=ExtractedOrderWithModifiers,
-            openai=True,
+            openai=False,
         )
 
         # Check if the order is a string and convert it to an ExtractedOrderWithModifiers object
