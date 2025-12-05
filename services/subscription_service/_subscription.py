@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -15,6 +16,7 @@ from db.repositories.subscription_repository import (
     ProjectSubscriptionRepository,
     SubscriptionPlanRepository,
 )
+from db.session import AsyncSessionLocal
 from db.tables.accounts import OnboardingMethod
 from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus
@@ -22,6 +24,11 @@ from services import account_service, project_service
 from services.account_service import AccountParams
 from services.auth_types import UserContext
 from services.history_service import change_log_context
+from services.notification_service import (
+    BillingEvent,
+    BillingEventType,
+    handle_billing_event,
+)
 from services.subscription_service import (
     _stripe_customer,
     _stripe_product,
@@ -34,6 +41,80 @@ from services.subscription_service.schema import (
     SubscriptionParams,
 )
 from utils.log import logger
+
+
+def _send_subscription_activated_notification(
+    account: db.Account,
+    subscription: db.AccountSubscription,
+    plan: db.SubscriptionPlan,
+) -> None:
+    """Send subscription activated notification."""
+
+    async def _send_notification():
+        async with AsyncSessionLocal() as async_session:
+            # Calculate trial end date from subscription's trial_start_date + plan's free_trial_days
+            trial_end_formatted = None
+            if subscription.trial_start_date and plan.free_trial_days:
+                trial_end = subscription.trial_start_date + timedelta(
+                    days=plan.free_trial_days
+                )
+                trial_end_formatted = trial_end.strftime("%B %d, %Y")
+
+            event = BillingEvent(
+                type=BillingEventType.SUBSCRIPTION_ACTIVATED,
+                account_id=account.id,
+                payload={
+                    "plan_name": plan.name,
+                    "price": float(plan.monthly_fee or 0),
+                    "currency": "USD",
+                    "trial_end": trial_end_formatted,
+                },
+            )
+            await handle_billing_event(async_session, event)
+
+    try:
+        asyncio.run(_send_notification())
+    except Exception as e:
+        logger.warning(
+            f"Failed to send subscription activated notification: {e}",
+            extra={
+                "account_id": str(account.id),
+                "subscription_id": str(subscription.id),
+            },
+        )
+
+
+def _send_subscription_cancelled_notification(
+    account: db.Account,
+    subscription: db.AccountSubscription,
+    plan: db.SubscriptionPlan,
+) -> None:
+    """Send subscription cancelled notification."""
+
+    async def _send_notification():
+        async with AsyncSessionLocal() as async_session:
+            # Calculate cancellation effective date
+            cancel_date = subscription.end_date or datetime.now(UTC)
+            event = BillingEvent(
+                type=BillingEventType.SUBSCRIPTION_CANCELLED,
+                account_id=account.id,
+                payload={
+                    "plan_name": plan.name,
+                    "cancel_effective_date": cancel_date.strftime("%B %d, %Y"),
+                },
+            )
+            await handle_billing_event(async_session, event)
+
+    try:
+        asyncio.run(_send_notification())
+    except Exception as e:
+        logger.warning(
+            f"Failed to send subscription cancelled notification: {e}",
+            extra={
+                "account_id": str(account.id),
+                "subscription_id": str(subscription.id),
+            },
+        )
 
 
 def handle_stripe_checkout_success(
@@ -271,6 +352,9 @@ def create_account_subscription(
 
     for project in projects:
         add_project_to_subscription(session, account_subscription, project)
+
+    # Send subscription activated notification
+    _send_subscription_activated_notification(account, subscription, plan)
 
     return subscription
 
@@ -745,6 +829,17 @@ def cancel_account_subscription(
             "stripe_subscription_id": subscription_to_cancel.stripe_subscription_id,
         },
     )
+
+    # Send subscription cancelled notification
+    if cancelled_subscription:
+        subscription_plan_repository = SubscriptionPlanRepository(session)
+        plan = subscription_plan_repository.get_subscription_plan_by_id(
+            subscription_to_cancel.subscription_plan_id
+        )
+        if plan:
+            _send_subscription_cancelled_notification(
+                account, cancelled_subscription, plan
+            )
 
     return cancelled_subscription
 
