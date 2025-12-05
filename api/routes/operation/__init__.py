@@ -71,7 +71,7 @@ async def upload_camera_image(
     Returns:
     - url: S3 URL of the uploaded image
     """
-    path = f"{account_id}/{project_id}/{camera_name}"
+    path = f"security/cameras/{account_id}/{project_id}/{camera_name}"
     return await asset_implementation.upload_asset(image, path, {})
 
 
