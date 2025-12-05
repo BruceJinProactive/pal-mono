@@ -120,6 +120,7 @@ def upload_knowledge_file(
             node.metadata["file_name"] = file_name
             node.metadata["size_bytes"] = len(content)
             node.metadata["created_at"] = file_created_at
+            node.metadata["text"] = node.text
             if metadata:
                 reserved = {"file_name", "size_bytes", "created_at"}
                 dedup_metadata = {
