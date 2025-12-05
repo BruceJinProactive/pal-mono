@@ -1,7 +1,8 @@
+import asyncio
 import os
 import re
 import uuid
-from datetime import date, time
+from datetime import date, datetime, time
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,11 +17,12 @@ from db.repositories.catering_request_repository import (
 )
 from db.repositories.contact_repository import ContactRepositoryAsync
 from db.repositories.project_contact_repository import ProjectContactRepositoryAsync
+from db.repositories.project_repository import ProjectRepository
 from db.session import SyncSessionLocal
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from db.tables.contacts import Contact
 from db.tables.types import Channel
-from services.catering_service._eventbridge import publish_catering_event
+from events import CateringRequestCreated, publish_event
 from services.relay_service import send_message
 from utils.log import logger
 
@@ -128,12 +130,25 @@ def create_catering_request(
                 catering_request
             )
 
+            # Get project to retrieve account_id for the event
+            project_repo = ProjectRepository(session)
+            project = project_repo.get_project(project_id)
+            if not project:
+                logger.warning(
+                    f"Project {project_id} not found, skipping event publishing"
+                )
+                return created_request
+
             # Publish event for new catering request creation to EventBridge
-            event_published = publish_catering_event(
-                catering_request_id=str(created_request.id),
-                event_type="catering_request_created",
+            event = CateringRequestCreated(
+                catering_request_id=created_request.id,
+                account_id=project.account_id,
+                event_date=datetime.combine(created_request.event_date, time.min),
+                guest_count=created_request.party_size or 0,
                 idempotency_key=idempotency_key,
+                created_at=created_request.created_at or datetime.utcnow(),
             )
+            event_published = asyncio.run(publish_event(event))
             if not event_published:
                 logger.warning(
                     f"Failed to publish catering_request_created event for request {created_request.id}"

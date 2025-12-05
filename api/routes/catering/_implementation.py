@@ -42,7 +42,7 @@ async def handle_catering_event(
         f"[catering] Received catering event: {detail_type} from {event.source}"
     )
 
-    if detail_type == "CateringRequestCreated":
+    if detail_type in ("CateringRequestCreated", "catering.RequestCreated"):
         return await handle_catering_request_created(detail, session)
     else:
         logger.warning(f"[catering] Unknown event type received: {detail_type}")

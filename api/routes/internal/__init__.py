@@ -11,6 +11,7 @@ from events import GoogleBusinessHoursUpdateRequested, publish_event
 from utils.log import logger
 
 from . import _implementation
+from .catering import catering_router
 from .events import events_router
 from .projects import projects_router
 
@@ -22,6 +23,7 @@ internal_router = APIRouter(prefix="/internal", tags=["internal"])
 # Consider using AWS Signature V4 verification or VPC-only access controls
 # to prevent unauthorized external access to these internal endpoints
 
+internal_router.include_router(catering_router)
 internal_router.include_router(events_router)
 internal_router.include_router(projects_router)
 
