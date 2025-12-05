@@ -1780,10 +1780,8 @@ def create_slack_app():
 
     app = AsyncApp(token=bot_token, signing_secret=signing_secret)
 
-    # Register app_mention handler to only respond when bot is @mentioned
-    @app.event("app_mention")
-    async def handle_app_mention(event, client):
-        """Handle all app mentions and route to appropriate handler."""
+    async def process_message(event, client):
+        """Shared logic to process messages from both mentions and DMs."""
         message_text = event.get("text", "").lower()
 
         # Check for daily report
@@ -1810,6 +1808,20 @@ def create_slack_app():
             channel = event.get("channel")
             error_text = "Please try again."
             await client.chat_postMessage(channel=channel, text=error_text, mrkdwn=True)
+
+    # Register app_mention handler to only respond when bot is @mentioned
+    @app.event("app_mention")
+    async def handle_app_mention(event, client):
+        """Handle all app mentions and route to appropriate handler."""
+        await process_message(event, client)
+
+    # Register message handler to respond to direct messages
+    @app.event("message")
+    async def handle_message(event, client, say):
+        """Handle direct messages to the bot."""
+        # Ignore bot's own messages and threaded replies
+        if event.get("subtype") is None and event.get("bot_id") is None:
+            await process_message(event, client)
 
     return app
 

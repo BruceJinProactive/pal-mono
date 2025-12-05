@@ -431,7 +431,7 @@ def _calculate_aggregated_metric(metric_name: str, data: list) -> dict:
         total_transfers = sum((row[-5] if row[-5] is not None else 0) for row in data)
         total_calls = sum((row[-10] if row[-10] is not None else 0) for row in data)
         result["overall_transfer_rate"] = (
-            round(total_transfers / total_calls, 2) if total_calls > 0 else 0.0
+            round(total_transfers / total_calls * 100, 1) if total_calls > 0 else 0.0
         )
 
     elif "conversion_rate" in metric_name:
