@@ -28,8 +28,10 @@ from api.schemas.admin.account import (
     AccountStatusResponse,
     CreateAccountRequest,
     ListAccountsResponse,
+    NotificationPreferencesResponse,
     TermsStatusResponse,
     UpdateAccountRequest,
+    UpdateNotificationPreferencesRequest,
 )
 from api.schemas.admin.affiliate import (
     AffiliateResponse,
@@ -384,6 +386,37 @@ async def close_account(
     Close the account by canceling the Stripe subscription and updating status to disabled.
     """
     return await _account.close_account(account_name, context, session)
+
+
+@admin_router.get("/accounts/{account_name}/notification_preferences")
+def get_notification_preferences(
+    account_name: str,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> NotificationPreferencesResponse:
+    """
+    Get notification preferences for an account.
+    """
+    return _account.get_notification_preferences(account_name, context, session)
+
+
+@admin_router.post("/accounts/{account_name}/notification_preferences")
+async def update_notification_preferences(
+    account_name: str,
+    update_request: UpdateNotificationPreferencesRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> NotificationPreferencesResponse:
+    """
+    Update notification preferences for an account.
+    """
+    return await _account.update_notification_preferences(
+        account_name, update_request, context, session
+    )
 
 
 @admin_router.get("/accounts/{account_name}/agents")

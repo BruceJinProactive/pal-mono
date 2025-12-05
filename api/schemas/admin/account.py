@@ -154,3 +154,31 @@ class AcceptTermsResponse(BaseModel):
     """Accept Terms Response"""
 
     accepted: bool
+
+
+class NotificationPreferences(BaseModel):
+    """Notification Preferences"""
+
+    email_enabled: bool = Field(
+        default=True, description="Whether email notifications are enabled"
+    )
+
+
+class NotificationPreferencesResponse(BaseModel):
+    """Notification Preferences Response"""
+
+    notification_preferences: NotificationPreferences
+    notification_email: str | None = Field(
+        default=None, description="Override email address for notifications"
+    )
+
+
+class UpdateNotificationPreferencesRequest(BaseModel):
+    """Update Notification Preferences Request"""
+
+    email_enabled: bool | None = Field(
+        default=None, description="Whether email notifications are enabled"
+    )
+    notification_email: str | None = Field(
+        default=None, description="Override email address for notifications"
+    )

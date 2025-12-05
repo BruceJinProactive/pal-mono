@@ -33,3 +33,5 @@ class AccountParams:
     phone_number: str | None = None
     channels: list[str] | None = None
     onboarding_method: OnboardingMethod | None = None
+    notification_preferences: dict | None = None
+    notification_email: str | None = None

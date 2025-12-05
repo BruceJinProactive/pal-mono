@@ -11,8 +11,11 @@ from api.schemas.admin.account import (
     AccountStatusResponse,
     CreateAccountRequest,
     ListAccountsResponse,
+    NotificationPreferences,
+    NotificationPreferencesResponse,
     TermsStatusResponse,
     UpdateAccountRequest,
+    UpdateNotificationPreferencesRequest,
 )
 from api.schemas.admin.agent import AgentSummary
 from db import AccountRepository, ConversationStatus
@@ -428,3 +431,85 @@ async def close_account(
             detail=f"Failed to update account status: {str(e)}",
             headers={"Content-Type": "application/json"},
         )
+
+
+def get_notification_preferences(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+) -> NotificationPreferencesResponse:
+    """Get notification preferences for an account."""
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Parse notification preferences JSONB field
+    prefs = account.notification_preferences or {}
+    notification_prefs = NotificationPreferences(
+        email_enabled=prefs.get("email_enabled", True)
+    )
+
+    return NotificationPreferencesResponse(
+        notification_preferences=notification_prefs,
+        notification_email=account.notification_email,
+    )
+
+
+async def update_notification_preferences(
+    account_name: str,
+    update_request: UpdateNotificationPreferencesRequest,
+    context: UserContext,
+    session: Session,
+) -> NotificationPreferencesResponse:
+    """Update notification preferences for an account."""
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Get current preferences
+    current_prefs = account.notification_preferences or {}
+
+    # Update preferences if provided
+    if update_request.email_enabled is not None:
+        current_prefs["email_enabled"] = update_request.email_enabled
+
+    # Prepare account params
+    account_params = AccountParams(
+        notification_preferences=current_prefs,
+        notification_email=(
+            update_request.notification_email
+            if update_request.notification_email is not None
+            else account.notification_email
+        ),
+    )
+
+    try:
+        updated_account = account_service.update_account(
+            session, context, account_name, account_params
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Return updated preferences
+    notification_prefs = NotificationPreferences(
+        email_enabled=updated_account.notification_preferences.get(
+            "email_enabled", True
+        )
+    )
+
+    return NotificationPreferencesResponse(
+        notification_preferences=notification_prefs,
+        notification_email=updated_account.notification_email,
+    )
