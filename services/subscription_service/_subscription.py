@@ -1,4 +1,3 @@
-import asyncio
 import copy
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -16,7 +15,6 @@ from db.repositories.subscription_repository import (
     ProjectSubscriptionRepository,
     SubscriptionPlanRepository,
 )
-from db.session import AsyncSessionLocal
 from db.tables.accounts import OnboardingMethod
 from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus
@@ -27,7 +25,7 @@ from services.history_service import change_log_context
 from services.notification_service import (
     BillingEvent,
     BillingEventType,
-    handle_billing_event,
+    handle_billing_event_sync,
 )
 from services.subscription_service import (
     _stripe_customer,
@@ -44,36 +42,32 @@ from utils.log import logger
 
 
 def _send_subscription_activated_notification(
+    session: Session,
     account: db.Account,
     subscription: db.AccountSubscription,
     plan: db.SubscriptionPlan,
 ) -> None:
     """Send subscription activated notification."""
-
-    async def _send_notification():
-        async with AsyncSessionLocal() as async_session:
-            # Calculate trial end date from subscription's trial_start_date + plan's free_trial_days
-            trial_end_formatted = None
-            if subscription.trial_start_date and plan.free_trial_days:
-                trial_end = subscription.trial_start_date + timedelta(
-                    days=plan.free_trial_days
-                )
-                trial_end_formatted = trial_end.strftime("%B %d, %Y")
-
-            event = BillingEvent(
-                type=BillingEventType.SUBSCRIPTION_ACTIVATED,
-                account_id=account.id,
-                payload={
-                    "plan_name": plan.name,
-                    "price": float(plan.monthly_fee or 0),
-                    "currency": "USD",
-                    "trial_end": trial_end_formatted,
-                },
-            )
-            await handle_billing_event(async_session, event)
-
     try:
-        asyncio.run(_send_notification())
+        # Calculate trial end date from subscription's trial_start_date + plan's free_trial_days
+        trial_end_formatted = None
+        if subscription.trial_start_date and plan.free_trial_days:
+            trial_end = subscription.trial_start_date + timedelta(
+                days=plan.free_trial_days
+            )
+            trial_end_formatted = trial_end.strftime("%B %d, %Y")
+
+        event = BillingEvent(
+            type=BillingEventType.SUBSCRIPTION_ACTIVATED,
+            account_id=account.id,
+            payload={
+                "plan_name": plan.name,
+                "price": float(plan.monthly_fee or 0),
+                "currency": "USD",
+                "trial_end": trial_end_formatted,
+            },
+        )
+        handle_billing_event_sync(session, event)
     except Exception as e:
         logger.warning(
             f"Failed to send subscription activated notification: {e}",
@@ -85,28 +79,24 @@ def _send_subscription_activated_notification(
 
 
 def _send_subscription_cancelled_notification(
+    session: Session,
     account: db.Account,
     subscription: db.AccountSubscription,
     plan: db.SubscriptionPlan,
 ) -> None:
     """Send subscription cancelled notification."""
-
-    async def _send_notification():
-        async with AsyncSessionLocal() as async_session:
-            # Calculate cancellation effective date
-            cancel_date = subscription.end_date or datetime.now(UTC)
-            event = BillingEvent(
-                type=BillingEventType.SUBSCRIPTION_CANCELLED,
-                account_id=account.id,
-                payload={
-                    "plan_name": plan.name,
-                    "cancel_effective_date": cancel_date.strftime("%B %d, %Y"),
-                },
-            )
-            await handle_billing_event(async_session, event)
-
     try:
-        asyncio.run(_send_notification())
+        # Calculate cancellation effective date
+        cancel_date = subscription.end_date or datetime.now(UTC)
+        event = BillingEvent(
+            type=BillingEventType.SUBSCRIPTION_CANCELLED,
+            account_id=account.id,
+            payload={
+                "plan_name": plan.name,
+                "cancel_effective_date": cancel_date.strftime("%B %d, %Y"),
+            },
+        )
+        handle_billing_event_sync(session, event)
     except Exception as e:
         logger.warning(
             f"Failed to send subscription cancelled notification: {e}",
@@ -354,7 +344,7 @@ def create_account_subscription(
         add_project_to_subscription(session, account_subscription, project)
 
     # Send subscription activated notification
-    _send_subscription_activated_notification(account, subscription, plan)
+    _send_subscription_activated_notification(session, account, subscription, plan)
 
     return subscription
 
@@ -838,7 +828,7 @@ def cancel_account_subscription(
         )
         if plan:
             _send_subscription_cancelled_notification(
-                account, cancelled_subscription, plan
+                session, account, cancelled_subscription, plan
             )
 
     return cancelled_subscription

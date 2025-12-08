@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from db.repositories.account_repository import AccountRepositoryAsync
+from db.repositories.account_repository import AccountRepository, AccountRepositoryAsync
 from services.email_service import send_email_with_template
 from utils.log import logger
 
@@ -224,3 +225,122 @@ async def handle_billing_event(
     )
 
     await send_billing_email(async_session, event)
+
+
+def send_billing_email_sync(session: Session, event: BillingEvent) -> None:
+    """
+    Send billing notification email based on event type (sync version).
+
+    This is a synchronous version for use from sync contexts like subscription service.
+
+    Args:
+        session: The synchronous database session
+        event: The billing event to process
+
+    Raises:
+        No exceptions are raised. Errors are logged and gracefully handled.
+    """
+    try:
+        # 1. Load account
+        account_repository = AccountRepository(session)
+        account = account_repository.get_account_by_id(event.account_id)
+        if not account:
+            logger.warning(
+                "[send_billing_email_sync] Account not found for billing event",
+                extra={
+                    "account_id": str(event.account_id),
+                    "event_type": event.type,
+                },
+            )
+            return
+
+        # 2. Check notification preferences
+        prefs = account.notification_preferences or {}
+        email_enabled = prefs.get("email_enabled", True)
+        if not email_enabled:
+            logger.info(
+                "[send_billing_email_sync] Email notifications disabled for account",
+                extra={
+                    "account_id": str(event.account_id),
+                    "event_type": event.type,
+                },
+            )
+            return
+
+        # 3. Resolve recipient email
+        recipient = account.notification_email
+        if not recipient:
+            logger.warning(
+                "[send_billing_email_sync] No recipient email for account",
+                extra={
+                    "account_id": str(event.account_id),
+                    "event_type": event.type,
+                },
+            )
+            return
+
+        # 4. Build template variables
+        template_variables = _build_template_variables(event, account.name)
+
+        # 5. Send email via Postmark
+        logger.info(
+            "[send_billing_email_sync] Sending billing notification",
+            extra={
+                "account_id": str(event.account_id),
+                "event_type": event.type,
+                "recipient": recipient,
+            },
+        )
+
+        send_email_with_template(
+            to_email=recipient,
+            template_id=POSTMARK_TEMPLATES[event.type],
+            template_model=template_variables,
+            tag=f"billing-{event.type}",
+        )
+
+        logger.info(
+            "[send_billing_email_sync] Billing notification sent successfully",
+            extra={
+                "account_id": str(event.account_id),
+                "event_type": event.type,
+            },
+        )
+
+    except Exception:
+        # Log error but don't raise
+        logger.warning(
+            "[send_billing_email_sync] Failed to send billing notification",
+            extra={"account_id": str(event.account_id), "event_type": event.type},
+            exc_info=True,
+        )
+
+
+def handle_billing_event_sync(session: Session, event: BillingEvent) -> None:
+    """
+    Central handler for all billing events (sync version).
+
+    This is the sync entry point for sync contexts like subscription service.
+
+    Args:
+        session: The synchronous database session
+        event: The billing event to handle
+
+    Example:
+        >>> from services.notification_service import BillingEvent, BillingEventType, handle_billing_event_sync
+        >>> event = BillingEvent(
+        ...     type=BillingEventType.PAYMENT_SUCCEEDED,
+        ...     account_id=UUID("..."),
+        ...     payload={"amount_paid": 99.00, "currency": "USD", ...}
+        ... )
+        >>> handle_billing_event_sync(session, event)
+    """
+    logger.info(
+        "[handle_billing_event_sync] Processing billing event",
+        extra={
+            "account_id": str(event.account_id),
+            "event_type": event.type,
+        },
+    )
+
+    send_billing_email_sync(session, event)
