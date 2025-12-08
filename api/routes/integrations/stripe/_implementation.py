@@ -152,9 +152,20 @@ async def handle_stripe_webhook(request: Request) -> dict[str, str]:
     try:
         # Get raw body for signature verification
         payload = await request.body()
-        sig_header = request.headers.get("stripe-signature")
 
+        # Try multiple header name variations (AWS API Gateway may transform headers)
+        sig_header = (
+            request.headers.get("stripe-signature")
+            or request.headers.get("Stripe-Signature")
+            or request.headers.get("X-Stripe-Signature")
+        )
+
+        # Debug: Log all headers if signature is missing
         if not sig_header:
+            logger.warning(
+                "[Stripe Webhook] Missing stripe-signature header. Available headers: %s",
+                dict(request.headers),
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Missing stripe-signature header",
