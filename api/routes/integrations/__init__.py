@@ -8,6 +8,7 @@ from api.routes.endpoints import endpoints
 from api.routes.integrations.adora import adora_router
 from api.routes.integrations.olo import olo_router
 from api.routes.integrations.square import _implementation as square_implementation
+from api.routes.integrations.stripe import stripe_router
 from api.routes.integrations.toast import _implementation as toast_implementation
 from api.routes.integrations.toast import toast_router
 from api.routes.integrations.vapi import vapi_router
@@ -25,6 +26,9 @@ integrations_router.include_router(toast_router)
 
 # Include the Olo router
 integrations_router.include_router(olo_router)
+
+# Include the Stripe router
+integrations_router.include_router(stripe_router)
 
 
 @integrations_router.get("/square/install", status_code=status.HTTP_200_OK)

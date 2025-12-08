@@ -45,6 +45,23 @@ class AccountRepositoryAsync:
             logger.error(f"Error retrieving account by ID: {e}")
             return None
 
+    async def get_account_by_stripe_customer_id(
+        self, stripe_customer_id: str
+    ) -> Account | None:
+        """Retrieve an account by Stripe customer ID asynchronously."""
+        try:
+            query = (
+                select(Account)
+                .filter(Account.stripe_customer_id == stripe_customer_id)
+                .filter(Account.status != AccountStatus.deleted)
+            )
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error retrieving account by Stripe customer ID: {e}")
+            return None
+
 
 class AccountRepository:
     def __init__(self, session: Session, auto_commit: bool = True):
