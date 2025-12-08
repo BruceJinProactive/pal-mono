@@ -96,6 +96,7 @@ class ToastTool(Toolkit):
         backdoor_tool_prompt: dict | None = None,
         order_construction_model: OrderConstructionModel = OrderConstructionModel.OPENAI,
         revenue_center_id: Optional[str] = None,
+        skip_order_submission: bool = False,
         **kwargs,
     ):
         super().__init__(name="toast_tool")
@@ -130,6 +131,7 @@ class ToastTool(Toolkit):
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
         self.order_construction_model = order_construction_model
         self.revenue_center_id = revenue_center_id
+        self.skip_order_submission = skip_order_submission
 
         # Register tools
         if self.enable_hosted_checkout:
@@ -1350,22 +1352,38 @@ class ToastTool(Toolkit):
         if isinstance(payment_intent_result, str):
             return payment_intent_result
 
-        # After payment intent is successfully created, submit the order
-        result = self._submit_order(order)
-
-        # Handle both success (tuple) and error (string) cases
-        if isinstance(result, tuple):
-            order, _ = result
+        # Check if we are running tests and do not wish to submit orders
+        if self.skip_order_submission:
+            # Test mode: skip submission but continue with payment flow
+            logger.debug(
+                f"[ToastTool._begin_hosted_checkout_flow] TEST MODE: Skipping order submission. "
+                f"Payment intent created: {payment_intent_result.id}"
+            )
+            # Set externalId for skipped orders
+            order.externalId = (
+                f"TPC-PALONA:{self.tool_metadata.session_id}"
+                if "sandbox" not in str(self.general_api_endpoint)
+                else f"PALONA:{self.tool_metadata.session_id}"
+            )
+            # Extract items from OrderInput (before submission)
+            order_items = self._extract_order_items(order)
         else:
-            # If result is a string, it indicates an error message
-            return result
+            # After payment intent is successfully created, submit the order
+            result = self._submit_order(order)
 
-        # Check if order.externalId is set after successful order submission. This absolutely must not be empty because we need it later to update the order's check.
-        if order.externalId is None:
-            raise ValueError("Order externalId is None after submission")
+            # Handle both success (tuple) and error (string) cases
+            if isinstance(result, tuple):
+                order, _ = result
+            else:
+                # If result is a string, it indicates an error message
+                return result
 
-        # Extract order items from the submitted order
-        order_items = self._extract_order_items(order)
+            # Check if order.externalId is set after successful order submission
+            if order.externalId is None:
+                raise ValueError("Order externalId is None after submission")
+
+            # Extract order items from the submitted order
+            order_items = self._extract_order_items(order)
         logger.debug(
             f"[ToastTool._begin_hosted_checkout_flow] Extracted {len(order_items)} order items"
         )
@@ -1394,9 +1412,6 @@ class ToastTool(Toolkit):
 
         order_summary = "\n".join(order_summary_lines)
 
-        # Calculate gratuity fees for the payment payload (list of {name, total} items)
-        gratuity_fees = self._calculate_gratuity_fee(order=order, price=price)
-
         # Create concise confirmation message using extracted order items
         concise_confirmation = (
             f"Order #{order.externalId} submitted successfully! "
@@ -1404,7 +1419,14 @@ class ToastTool(Toolkit):
             f"You can find tax and any applicable fees on the payment page.\n\n"
             f"Order summary:\n{order_summary}\n\n"
             f"Your order will be ready for pickup at {order.estimatedFulfillmentDate}"
+            if isinstance(order, Order)
+            else f"Order #{order.externalId} submitted successfully! "
+            f"Your total is ${price.totalAmount}.\n"
+            f"You can find tax and any applicable fees on the payment page.\n\n"
+            f"Order summary:\n{order_summary}\n\n"
         )
+        # Calculate gratuity fees for the payment payload (list of {name, total} items)
+        gratuity_fees = self._calculate_gratuity_fee(order=order, price=price)
 
         # Build hosted payment payload
         payment_payload = self._build_hosted_payment_payload(
@@ -1430,7 +1452,7 @@ class ToastTool(Toolkit):
     def _build_hosted_payment_payload(
         self,
         *,
-        order: Order,
+        order: Order | OrderInput,
         payment_intent_id: str,
         payment_intent_external_reference_id: str,
         session_secret: str,
@@ -1555,12 +1577,12 @@ class ToastTool(Toolkit):
             traceback.print_exc()
             return "Failed to generate payment link. Please try again."
 
-    def _extract_order_items(self, order: Order) -> list[dict[str, Any]]:
+    def _extract_order_items(self, order: Order | OrderInput) -> list[dict[str, Any]]:
         """
-        Extracts order items from a Toast Order object into a simplified cart format.
+        Extracts order items from a Toast Order or OrderInput object into a simplified cart format.
 
         Args:
-            order: Toast Order object returned from submit_order
+            order: Toast Order object returned from submit_order, or OrderInput in test mode
 
         Returns:
             List of dictionaries containing simplified cart items with modifiers
