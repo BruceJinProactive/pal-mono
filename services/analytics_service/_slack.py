@@ -557,6 +557,9 @@ def get_account_integrations(
         List of integration provider names (e.g., ["toast", "opentable"]) or empty list
     """
     if not session:
+        logger.warning(
+            f"[Slackbot] get_account_integrations called with no session for account {account_id}"
+        )
         return []
 
     try:
@@ -569,14 +572,20 @@ def get_account_integrations(
         )
 
         if not integrations:
+            logger.info(f"[Slackbot] No integrations found for account {account_id}")
             return []
 
         # Return list of provider names (lowercase)
-        return [integration.provider.value for integration in integrations]
+        provider_list = [integration.provider.value for integration in integrations]
+        logger.info(
+            f"[Slackbot] Found {len(provider_list)} integrations for account {account_id}: {provider_list}"
+        )
+        return provider_list
 
     except Exception as e:
         logger.warning(
-            f"[Slackbot] Error looking up integrations for account {account_id}: {e}"
+            f"[Slackbot] Error looking up integrations for account {account_id}: {e}",
+            exc_info=True,
         )
         return []
 
@@ -698,13 +707,8 @@ def _create_conversion_table_generic(
     if not unified_data:
         return f"No {entity_label.lower()} data available."
 
-    # Check integrations for account-specific reports
-    integrations = []
-    if account_id and session:
-        integrations = get_account_integrations(account_id, session)
-
-    # Determine if Adora integration exists
-    has_adora_integration = "adora" in integrations
+    # Note: Adora integration check removed from table generation
+    # N/A values now only apply to summary section, not the table
 
     # Headers with conversation value and paid value
     headers = [
@@ -739,15 +743,10 @@ def _create_conversion_table_generic(
         conv = item_data.get("total_conversations", "0")
         orders = item_data.get("conversations_with_orders", "0")
 
-        # If Adora integration exists, set paid metrics to N/A
-        if has_adora_integration:
-            paid = "N/A"
-            paid_value = "N/A"
-            paid_rate = "N/A"
-        else:
-            paid = item_data.get("paid_orders", "0")
-            paid_value = safe_float_format(item_data.get("paid_total", 0), 1)
-            paid_rate = safe_float_format(item_data.get("paid_rate", 0), 1)
+        # Always show actual values in the table (no N/A)
+        paid = item_data.get("paid_orders", "0")
+        paid_value = safe_float_format(item_data.get("paid_total", 0), 1)
+        paid_rate = safe_float_format(item_data.get("paid_rate", 0), 1)
 
         conv_value = safe_float_format(item_data.get("total_subtotal", 0), 1)
         cvr = safe_float_format(item_data.get("conversion_rate", 0), 1)
@@ -1053,6 +1052,15 @@ def build_conversion_section(
     """Build conversion summary section and table blocks."""
     blocks = []
 
+    # Check if account has Adora integration (for summary N/A display)
+    has_adora_integration = False
+    if account_id_filter and session:
+        integrations = get_account_integrations(account_id_filter, session)
+        has_adora_integration = "adora" in integrations
+        logger.info(
+            f"[Slackbot] Conversion summary: has_adora={has_adora_integration}, integrations={integrations}"
+        )
+
     conversion_summary_lines = []
     if "Conversion Metrics" in totals_summary:
         conv_totals = totals_summary["Conversion Metrics"]
@@ -1074,17 +1082,28 @@ def build_conversion_section(
         avg_paid_total = (
             paid_revenue / total_paid_orders if total_paid_orders > 0 else 0
         )
-        # Format values safely
+
+        # Format values - use N/A for paid metrics if Adora integration exists
         total_transaction_formatted = safe_float_format(total_revenue, 2)
-        paid_revenue_formatted = safe_float_format(paid_revenue, 2)
         conversion_rate_formatted = safe_float_format(overall_conversion_rate, 1)
-        paid_rate_formatted = safe_float_format(overall_paid_rate, 1)
         avg_subtotal_formatted = safe_float_format(avg_subtotal, 2)
-        avg_paid_total_formatted = safe_float_format(avg_paid_total, 2)
+
+        if has_adora_integration:
+            # Show N/A for paid metrics in summary
+            paid_orders_display = "N/A"
+            paid_revenue_formatted = "N/A"
+            paid_rate_formatted = "N/A"
+            avg_paid_total_formatted = "N/A"
+        else:
+            # Show actual values
+            paid_orders_display = str(total_paid_orders)
+            paid_revenue_formatted = safe_float_format(paid_revenue, 2)
+            paid_rate_formatted = safe_float_format(overall_paid_rate, 1)
+            avg_paid_total_formatted = safe_float_format(avg_paid_total, 2)
 
         conversion_summary_lines.extend(
             [
-                f"• Orders: *{total_convs_with_orders}* (Paid: *{total_paid_orders}*)",
+                f"• Orders: *{total_convs_with_orders}* (Paid: *{paid_orders_display}*)",
                 f"• Subtotal Value: *${total_transaction_formatted}* | Paid Total: *${paid_revenue_formatted}*",
                 f"• Avg Subtotal: *${avg_subtotal_formatted}* | Avg Paid Total: *${avg_paid_total_formatted}*",
                 f"• Checkout Rate: *{conversion_rate_formatted}%* | Paid Rate: *{paid_rate_formatted}%*",
@@ -2017,12 +2036,22 @@ def create_slack_app():
         """Handle all app mentions and route to appropriate handler."""
         await process_message(event, client)
 
-    # Register message handler to respond to direct messages
+    # Register message handler to respond to direct messages only
     @app.event("message")
     async def handle_message(event, client, say):
-        """Handle direct messages to the bot."""
-        # Ignore bot's own messages and threaded replies
-        if event.get("subtype") is None and event.get("bot_id") is None:
+        """Handle direct messages to the bot only (not public channels)."""
+        # Only respond to direct messages, not public channel messages
+        # In DMs, channel_type is "im" (instant message)
+        # In public channels, channel_type is "channel"
+        # In private channels, channel_type is "group"
+        channel_type = event.get("channel_type")
+
+        # Only process if it's a direct message AND not from a bot
+        if (
+            channel_type == "im"
+            and event.get("subtype") is None
+            and event.get("bot_id") is None
+        ):
             await process_message(event, client)
 
     return app
