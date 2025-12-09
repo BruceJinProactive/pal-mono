@@ -511,36 +511,57 @@ def has_conversion_data(totals_summary: dict, unified_accounts: dict) -> bool:
 # =============================================================================
 
 
-def get_project_display_name(project_id: str, session: Session | None = None) -> str:
+def get_project_display_name(
+    project_name: str,
+    session: Session | None = None,
+    account_id: uuid.UUID | None = None,
+) -> str:
     """
-    Get project display_name from database, fallback to project_id if not found.
+    Get project display_name from database using project_name and account_id.
+
+    Uses service layer functions to query the database.
 
     Args:
-        project_id: Project UUID string
+        project_name: Project name string
         session: Database session (optional)
+        account_id: Account UUID to help identify the project (optional but recommended)
 
     Returns:
-        Project display_name if found, otherwise project_id
+        Project display_name if found, otherwise project_name
     """
     if not session:
-        return project_id
+        return project_name
 
     try:
-        from db.tables.projects import Project
+        from services import account_service, project_service
 
-        project = session.query(Project).filter(Project.id == project_id).first()
+        # If account_id provided, filter projects by account
+        if account_id:
+            # Get account by ID first
+            account = account_service.get_account_by_id(session, account_id)
+            if account:
+                # Get all projects for this account
+                projects = project_service.get_projects_by_account_id(
+                    session, account.id
+                )
+                # Find the specific project by name
+                for project in projects:
+                    if project.name == project_name and project.display_name:
+                        return project.display_name
+        else:
+            # No account_id provided, just search by project name
+            project = project_service.get_project_by_name(session, project_name)
+            if project and project.display_name:
+                return project.display_name
 
-        if project and project.display_name:
-            return project.display_name
-
-        # Fallback to project_id if display_name not set
-        return project_id
+        # Fallback to project_name if display_name not set or project not found
+        return project_name
 
     except Exception as e:
         logger.warning(
-            f"[Slackbot] Error looking up project display_name for {project_id}: {e}"
+            f"[Slackbot] Error looking up project display_name for project='{project_name}', account='{account_id}': {e}"
         )
-        return project_id
+        return project_name
 
 
 def get_account_integrations(
@@ -563,12 +584,11 @@ def get_account_integrations(
         return []
 
     try:
-        from db.tables.integration import Integration
+        from services import integration_service
 
-        integrations = (
-            session.query(Integration)
-            .filter(Integration.account_id == account_id)
-            .all()
+        # Use integration service instead of direct database query
+        integrations = integration_service.get_integrations_by_account_id(
+            session, account_id
         )
 
         if not integrations:
@@ -754,7 +774,7 @@ def _create_conversion_table_generic(
         # For projects, use display_name if available
         display_name = name
         if entity_label == "Project" and session:
-            display_name = get_project_display_name(name, session)
+            display_name = get_project_display_name(name, session, account_id)
 
         row = [
             truncate_account_name(display_name),
@@ -1055,10 +1075,17 @@ def build_conversion_section(
     # Check if account has Adora integration (for summary N/A display)
     has_adora_integration = False
     if account_id_filter and session:
+        logger.info(
+            f"[Slackbot DEBUG] Checking integrations for account_id={account_id_filter}, session={'present' if session else 'None'}"
+        )
         integrations = get_account_integrations(account_id_filter, session)
         has_adora_integration = "adora" in integrations
         logger.info(
-            f"[Slackbot] Conversion summary: has_adora={has_adora_integration}, integrations={integrations}"
+            f"[Slackbot] Conversion summary: has_adora={has_adora_integration}, integrations={integrations}, account_id={account_id_filter}"
+        )
+    else:
+        logger.warning(
+            f"[Slackbot DEBUG] Skipping integration check: account_id_filter={account_id_filter}, session={'present' if session else 'None'}"
         )
 
     conversion_summary_lines = []
@@ -1161,6 +1188,7 @@ def _create_conversion_section_generic(
     entity_label: str = "Account",
     session: Session | None = None,
     account_id: uuid.UUID | None = None,
+    account_name: str | None = None,
 ) -> dict | None:
     """Generic conversion section creator for both accounts and projects."""
     if not unified_data:
