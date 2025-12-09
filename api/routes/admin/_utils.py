@@ -102,13 +102,12 @@ def get_agent_type(agent: db.Agent) -> AgentType:
     return agent.agent_type
 
 
-def create_guest_context(account_name: str, user_email: str) -> UserContext:
+def create_guest_context(user_email: str) -> UserContext:
     """
     Create a guest user context for operations that need to be performed
     before a user is fully authenticated (e.g., during signup).
 
     Args:
-        account_name: The account name being created
         user_email: The email of the user being created
 
     Returns:
@@ -119,6 +118,5 @@ def create_guest_context(account_name: str, user_email: str) -> UserContext:
         email=user_email,
         groups=[],
         display_name="Guest User",
-        account_names=[account_name],
         role=UserRole.AccountManager,
     )

@@ -9,7 +9,6 @@ class User(BaseModel):
     id: str
     email: str
     display_name: str
-    account_name: str
 
 
 class SignUpRequest(BaseModel):

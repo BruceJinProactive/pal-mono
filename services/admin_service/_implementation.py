@@ -20,6 +20,10 @@ from db.repositories import LeadFilter as RepoLeadFilter
 from db.repositories.account_repository import AccountRepository
 from db.repositories.account_user_repository import AccountUserRepository
 from db.repositories.conversation_repository import ConversationUpdate
+from db.repositories.resource_role_assignment_repository import (
+    ResourceRoleAssignmentRepository,
+    ResourceType,
+)
 from db.tables.account_user import AccountUserStatus
 from services import (
     account_service,
@@ -1348,7 +1352,7 @@ def signup_self_onboarding_user(
     refresh_token = auth_response["AuthenticationResult"]["RefreshToken"]
     expires_in = auth_response["AuthenticationResult"]["ExpiresIn"]
 
-    # Create account_user record in database
+    # Create account_user record and assign owner role in database
     try:
         # Get account_id from account_name
         account_repo = AccountRepository(session)
@@ -1370,10 +1374,22 @@ def signup_self_onboarding_user(
         logger.info(
             f"Created account_user record for {user_email} in account {account_name}"
         )
+
+        role_repo = ResourceRoleAssignmentRepository(session)
+        role_repo.add_role(
+            user_id=uuid.UUID(user_sub),
+            resource_type=ResourceType.ACCOUNT,
+            resource_id=account.id,
+            role="owner",
+            assigned_by=None,  # Self-assigned during onboarding
+            reason="Self-onboarding account creator",
+        )
+        logger.info(f"Assigned owner role to {user_email} for account {account_name}")
     except Exception as e:
-        logger.error(f"Failed to create account_user record for {user_email}: {e}")
-        # Don't fail the entire operation if account_user creation fails
-        # The user still exists in Cognito
+        logger.error(
+            f"Failed to persist self-onboarding user membership/role for {user_email}: {e}"
+        )
+        raise
 
     return CognitoUser(
         email=user_email,

@@ -1,19 +1,12 @@
 import os
 from typing import Any
-from uuid import UUID
 
 import jwt
 import requests
-from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from fastapi import HTTPException, Request, status
 
-import db
 from api.schemas.admin.user import User
-from db.repositories.account_repository import AccountRepository
-from db.repositories.account_user_repository import AccountUserRepository
-from db.tables.account_user import AccountUserStatus
 from services.auth_types import UserContext, UserRole
-from utils.log import logger
 
 """
 This module provides authentication and authorization utilities for the admin console using AWS Cognito.
@@ -226,9 +219,7 @@ def decrypt_id_token(request: Request) -> dict[str, Any]:
             )
 
 
-def authenticate_user(
-    request: Request, session: Session = Depends(db.get_db)
-) -> UserContext:
+def authenticate_user(request: Request) -> UserContext:
     """
     Authenticates the user from the request. Returns a user context object
     that contains useful information about the user if they are authenticated.
@@ -236,7 +227,6 @@ def authenticate_user(
 
     Args:
         request: incoming HTTP request
-        session: SQLAlchemy database session for querying user account memberships
 
     Returns:
         UserContext: An object that contains various useful information about the user.
@@ -251,40 +241,12 @@ def authenticate_user(
             headers={"Content-Type": "application/json"},
         )
 
-    # Query database for accounts user has access to via AccountUser table
-    account_names = []
-    try:
-        user_id = UUID(token.get("cognito:username", ""))
-        account_user_repo = AccountUserRepository(session, auto_commit=False)
-        account_repo = AccountRepository(session, auto_commit=False)
-
-        # Get all active account memberships for this user
-        account_memberships = account_user_repo.get_accounts_for_user(
-            user_id, status=AccountUserStatus.active
-        )
-
-        # Resolve account IDs to account names
-        for membership in account_memberships:
-            account = account_repo.get_account_by_id(membership.account_id)
-            if account and account.name:
-                account_names.append(account.name)
-
-        logger.info(
-            f"Fetched {len(account_memberships)} accounts from database for user {user_id}"
-        )
-    except Exception as e:
-        logger.error(
-            f"Failed to fetch accounts from database for user authentication: {e}. "
-            "User will have no account access."
-        )
-
     user_role = get_user_role(token)
     return UserContext(
         username=token.get("cognito:username", ""),
         email=token.get("email", ""),
         groups=token.get("cognito:groups", []),
         display_name=token.get("name", ""),
-        account_names=account_names,
         role=user_role,
     )
 
@@ -317,35 +279,6 @@ def get_user_role(token: dict[str, Any]) -> UserRole:
     return UserRole.AccountManager
 
 
-def authorize_user_account(context: UserContext, account_name: str):
-    """
-    Authorize a user's access to a specific account. This function checks if the
-    provided account name matches the account name in the user's context. If the
-    account names match or the user's role is Admin, the function allows access.
-    Otherwise, an HTTPException is raised with a 403 Forbidden status, indicating
-    insufficient permissions.
-
-    Args:
-        context: A UserContext object containing the user's account name and role.
-        account_name: The name of the account that the user is attempting to access.
-
-    Returns:
-        None if the user is authorized to access the account.
-    Raises:
-        HTTPException: If the user does not have the required permissions to access
-        the provided account name.
-    """
-    if account_name in context.account_names:
-        return
-    if context.role == UserRole.Admin:
-        return
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="User does not have permission for the requested account",
-        headers={"Content-Type": "application/json"},
-    )
-
-
 def authorize_admin(context: UserContext):
     if context.role != UserRole.Admin:
         raise HTTPException(
@@ -360,5 +293,4 @@ def get_user_info(context: UserContext) -> User:
         id=context.username,
         email=context.email,
         display_name=context.display_name,
-        account_name=context.account_names[0] if context.account_names else "",
     )

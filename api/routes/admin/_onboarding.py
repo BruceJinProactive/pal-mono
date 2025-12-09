@@ -350,7 +350,7 @@ async def self_onboarding(
     """
     # Create a guest context for account creation (no authenticated user yet)
     account_name = request.account_name
-    guest_context = create_guest_context(account_name, request.email)
+    guest_context = create_guest_context(request.email)
 
     # Create Cognito user
 

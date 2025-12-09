@@ -36,7 +36,6 @@ class UserContext:
         email: User's email address
         groups: Cognito groups the user belongs to
         display_name: User's display name
-        account_names: List of account names the user has access to
         role: User's role (Admin or AccountManager)
     """
 
@@ -44,5 +43,4 @@ class UserContext:
     email: str
     groups: List[str]
     display_name: str
-    account_names: List[str]
     role: UserRole
