@@ -75,6 +75,14 @@ VIA_AGENT_SUFFIX = "(via PalonaAI)"
 # Fernet encryption key for payment iframe tokens (same as Olo for consistency)
 HARD_CODED_PAYMENT_IFRAME_SECRET = "xK8dP2m_QrZ7vN4wL9cF3bJ6hT5yU1gS0aE8iO-pMxA="
 
+# TODO: Fix type: ignore comments throughout this file
+# Issue: The @task decorator from ddtrace.llmobs.decorators wraps return values,
+# causing type mismatches. Current workaround uses # type: ignore to suppress warnings.
+# Proper fix options:
+#   1. Create a .pyi stub file for ddtrace to provide proper type hints
+#   2. Use typing.cast() to explicitly cast return values
+#   3. Update return type hints to reflect actual wrapped return types
+
 
 class ToastTool(Toolkit):
     def __init__(
@@ -170,7 +178,7 @@ class ToastTool(Toolkit):
                 "HARD_CODED_PAYMENT_IFRAME_SECRET must be a URL-safe base64-encoded 32-byte key"
             ) from exc
 
-    @property
+    @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_bearer_token"):
             if self.sandbox:
@@ -181,7 +189,7 @@ class ToastTool(Toolkit):
                 )
             return get_toast_access_token_from_aws(self.token_api_endpoint)
 
-    @property
+    @cached_property
     def _toast_hosted_payment_checkout_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_hosted_payment_checkout_bearer_token"):
             return get_toast_access_token_from_aws(
@@ -628,14 +636,14 @@ class ToastTool(Toolkit):
                 return order
 
             # Validate order
-            error_message = self._finalize_order_details(order)
+            error_message = self._finalize_order_details(order)  # type: ignore
             if error_message:
                 return error_message
 
-            price = self._get_order_prices(order=order)
+            price = self._get_order_prices(order=order)  # type: ignore
 
             # Begin hosted checkout flow - payment intent will be created, then order will be submitted
-            return self._begin_hosted_checkout_flow(order, price)
+            return self._begin_hosted_checkout_flow(order, price)  # type: ignore
 
         except Exception as e:
             logger.error(f"[ToastTool.checkout_order_with_payment_iframe] Error: {e}")
@@ -699,11 +707,11 @@ class ToastTool(Toolkit):
                 return order
 
             # Validate and check the order
-            error_message = self._finalize_order_details(order)
+            error_message = self._finalize_order_details(order)  # type: ignore
             if error_message:
                 return error_message
 
-            result = self._submit_order(order)
+            result = self._submit_order(order)  # type: ignore
 
             # Handle both success (tuple) and error (string) cases
             if isinstance(result, tuple):
@@ -711,7 +719,7 @@ class ToastTool(Toolkit):
                 return confirmation_message
             else:
                 # Error message string
-                return result
+                return result  # type: ignore
 
         except Exception as e:
             logger.error(f"[ToastTool.checkout_order] Error in submit order: {e}")
@@ -902,6 +910,7 @@ class ToastTool(Toolkit):
             )
             raise e
 
+    @task
     def _construct_order(self) -> OrderInput | str:
         chat_history: str = self._get_chat_history()  # type: ignore
         context = self._get_relevant_docs(chat_history)  # type: ignore
@@ -1090,8 +1099,13 @@ class ToastTool(Toolkit):
                     check.customer.lastName = f"{trimmed_lastname} {VIA_AGENT_SUFFIX}"
 
             # Add tabName to check
-            setattr(check, "tabName", f"PalonaAI_{self.tool_metadata.session_id}")
+            setattr(
+                check,
+                "tabName",
+                f"{check.customer.firstName} {check.customer.lastName}",
+            )
 
+    @task
     def _submit_order(self, order: OrderInput) -> str | tuple[Order, str]:
         # Retrieve the bearer token
         toast_bearer_token = self._toast_bearer_token
@@ -1252,13 +1266,14 @@ class ToastTool(Toolkit):
             if isinstance(order, str):
                 raise ValueError(f"Failed to construct order: {order}")
 
-            return self._get_order_prices(order)
+            return self._get_order_prices(order)  # type: ignore
         except Exception as e:
             logger.error(
                 f"[ToastTool.get_order_prices_tool] Error in get order prices: {e}"
             )
             raise
 
+    @task
     def _create_payment_intent(
         self,
         price: Price,
@@ -1348,7 +1363,7 @@ class ToastTool(Toolkit):
         # Create payment intent
         payment_intent_external_reference_id = str(uuid.uuid4())
         payment_intent_result = self._create_payment_intent(
-            price, external_reference_id=payment_intent_external_reference_id
+            price, external_reference_id=payment_intent_external_reference_id  # type: ignore
         )
         # If payment intent result is a string, it indicates an error message
         if isinstance(payment_intent_result, str):
@@ -1359,7 +1374,7 @@ class ToastTool(Toolkit):
             # Test mode: skip submission but continue with payment flow
             logger.debug(
                 f"[ToastTool._begin_hosted_checkout_flow] TEST MODE: Skipping order submission. "
-                f"Payment intent created: {payment_intent_result.id}"
+                f"Payment intent created: {payment_intent_result.id}"  # type: ignore
             )
             # Set externalId for skipped orders
             order.externalId = (
@@ -1371,14 +1386,14 @@ class ToastTool(Toolkit):
             order_items = self._extract_order_items(order)
         else:
             # After payment intent is successfully created, submit the order
-            result = self._submit_order(order)
+            result = self._submit_order(order)  # type: ignore
 
             # Handle both success (tuple) and error (string) cases
             if isinstance(result, tuple):
                 order, _ = result
             else:
                 # If result is a string, it indicates an error message
-                return result
+                return result  # type: ignore
 
             # Check if order.externalId is set after successful order submission
             if order.externalId is None:
@@ -1433,16 +1448,16 @@ class ToastTool(Toolkit):
         # Build hosted payment payload
         payment_payload = self._build_hosted_payment_payload(
             order=order,
-            payment_intent_id=payment_intent_result.id,
+            payment_intent_id=payment_intent_result.id,  # type: ignore
             payment_intent_external_reference_id=payment_intent_external_reference_id,
-            session_secret=payment_intent_result.sessionSecret,
-            payment_intent_amount=payment_intent_result.amount,
+            session_secret=payment_intent_result.sessionSecret,  # type: ignore
+            payment_intent_amount=payment_intent_result.amount,  # type: ignore
             order_items=order_items,
             gratuity_fees=gratuity_fees,
         )
 
         # Generate iframe payment link
-        payment_link = self._generate_iframe_payment_link(payment_payload)
+        payment_link = self._generate_iframe_payment_link(payment_payload)  # type: ignore
 
         # Return payment intent details with concise confirmation
         return_msg = (
@@ -1534,6 +1549,7 @@ class ToastTool(Toolkit):
 
         return payload
 
+    @task
     def _generate_iframe_payment_link(
         self,
         payload: dict[str, Any],
