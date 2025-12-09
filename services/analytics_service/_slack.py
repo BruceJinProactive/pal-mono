@@ -618,14 +618,16 @@ def create_account_metrics_table(unified_accounts: dict, columns: list[str]) -> 
     return "```\n" + "\n".join(lines) + "\n```"
 
 
-def create_conversion_table(unified_accounts: dict) -> str:
-    """Create a conversion table with conversation value and paid value columns, filtering out accounts with 0 orders."""
-    if not unified_accounts:
-        return "No account data available."
+def _create_conversion_table_generic(
+    unified_data: dict, entity_label: str = "Account"
+) -> str:
+    """Generic conversion table creator for both accounts and projects."""
+    if not unified_data:
+        return f"No {entity_label.lower()} data available."
 
     # Headers with conversation value and paid value
     headers = [
-        "Account",
+        entity_label,
         "Conv",
         "Orders",
         "Paid",
@@ -635,34 +637,34 @@ def create_conversion_table(unified_accounts: dict) -> str:
         "Paid%",
     ]
 
-    # First filter out accounts with 0 orders and sort by orders (high to low)
-    filtered_accounts = []
-    for account_name, account_data in unified_accounts.items():
-        orders = account_data.get("conversations_with_orders", "0")
+    # First filter out entries with 0 orders and sort by orders (high to low)
+    filtered_data = []
+    for name, data in unified_data.items():
+        orders = data.get("conversations_with_orders", "0")
         try:
             orders_int = int(orders)
             if orders_int > 0:
-                filtered_accounts.append((account_name, account_data, orders_int))
+                filtered_data.append((name, data, orders_int))
         except (ValueError, TypeError):
             continue
 
     # Sort by orders (high to low) and limit to first 15
-    filtered_accounts.sort(key=lambda x: x[2], reverse=True)
-    limited_accounts = filtered_accounts[:15]
+    filtered_data.sort(key=lambda x: x[2], reverse=True)
+    limited_data = filtered_data[:15]
 
     # Build data rows
     data_rows = []
-    for account_name, account_data, _ in limited_accounts:
-        conv = account_data.get("total_conversations", "0")
-        orders = account_data.get("conversations_with_orders", "0")
-        paid = account_data.get("paid_orders", "0")
-        conv_value = safe_float_format(account_data.get("total_subtotal", 0), 1)
-        paid_value = safe_float_format(account_data.get("paid_total", 0), 1)
-        cvr = safe_float_format(account_data.get("conversion_rate", 0), 1)
-        paid_rate = safe_float_format(account_data.get("paid_rate", 0), 1)
+    for name, item_data, _ in limited_data:
+        conv = item_data.get("total_conversations", "0")
+        orders = item_data.get("conversations_with_orders", "0")
+        paid = item_data.get("paid_orders", "0")
+        conv_value = safe_float_format(item_data.get("total_subtotal", 0), 1)
+        paid_value = safe_float_format(item_data.get("paid_total", 0), 1)
+        cvr = safe_float_format(item_data.get("conversion_rate", 0), 1)
+        paid_rate = safe_float_format(item_data.get("paid_rate", 0), 1)
 
         row = [
-            truncate_account_name(account_name),
+            truncate_account_name(name),
             str(conv),
             str(orders),
             str(paid),
@@ -673,9 +675,9 @@ def create_conversion_table(unified_accounts: dict) -> str:
         ]
         data_rows.append(row)
 
-    # Handle case where no accounts have orders
+    # Handle case where no entries have orders
     if not data_rows:
-        return "No accounts with orders found."
+        return f"No {entity_label.lower()}s with orders found."
 
     # Calculate column widths with minimum widths for numeric columns
     col_widths = []
@@ -686,7 +688,7 @@ def create_conversion_table(unified_accounts: dict) -> str:
                 max_width = max(max_width, len(str(row[i])))
 
         # Set minimum widths based on column type for conversion table
-        if i > 0:  # Skip account name column
+        if i > 0:  # Skip entity name column
             if header in ["Conv"]:
                 # Conversations: 10 digits (9,999,999,999)
                 max_width = max(max_width, 10)
@@ -705,7 +707,7 @@ def create_conversion_table(unified_accounts: dict) -> str:
     header_line = ""
     for i, header in enumerate(headers):
         if i == 0:
-            # Left-align account names
+            # Left-align entity names
             header_line += header.ljust(col_widths[i])
         else:
             # Right-align numeric columns
@@ -728,7 +730,7 @@ def create_conversion_table(unified_accounts: dict) -> str:
         for i, cell in enumerate(row):
             cell_str = str(cell)
             if i == 0:
-                # Left-align account names
+                # Left-align entity names
                 row_line += cell_str.ljust(col_widths[i])
             else:
                 # Right-align numeric values
@@ -740,26 +742,38 @@ def create_conversion_table(unified_accounts: dict) -> str:
     return "```\n" + "\n".join(lines) + "\n```"
 
 
-def create_engagement_table(unified_accounts: dict) -> str:
-    """Create an engagement table with key metrics including call quality."""
-    if not unified_accounts:
-        return "No account data available."
+def create_project_conversion_table(unified_projects: dict) -> str:
+    """Create a conversion table for projects with conversation value and paid value columns, filtering out projects with 0 orders."""
+    return _create_conversion_table_generic(unified_projects, "Project")
+
+
+def create_conversion_table(unified_accounts: dict) -> str:
+    """Create a conversion table with conversation value and paid value columns, filtering out accounts with 0 orders."""
+    return _create_conversion_table_generic(unified_accounts, "Account")
+
+
+def _create_engagement_table_generic(
+    unified_data: dict, entity_label: str = "Account"
+) -> str:
+    """Generic engagement table creator for both accounts and projects."""
+    if not unified_data:
+        return f"No {entity_label.lower()} data available."
 
     # Headers with key engagement metrics
-    headers = ["Account", "Users", "Conv", "Calls", "Dur", "Xfer%"]
+    headers = [entity_label, "Users", "Conv", "Calls", "Dur", "Xfer%"]
 
-    # Build data rows - limit to first 15 accounts
+    # Build data rows - limit to first 15 entries
     data_rows = []
-    account_count = 0
-    for account_name, account_data in unified_accounts.items():
-        if account_count >= 15:
+    count = 0
+    for name, item_data in unified_data.items():
+        if count >= 15:
             break
-        account_count += 1
-        users = account_data.get("active_users", "0")
-        conv = account_data.get("total_conversations", "0")
-        calls = account_data.get("total_calls", "0")
-        duration = account_data.get("avg_duration", "0")
-        transfer_rate = account_data.get("transfer_rate", "0")
+        count += 1
+        users = item_data.get("active_users", "0")
+        conv = item_data.get("total_conversations", "0")
+        calls = item_data.get("total_calls", "0")
+        duration = item_data.get("avg_duration", "0")
+        transfer_rate = item_data.get("transfer_rate", "0")
 
         # Format numeric values to consistent format
         # Duration: format to 1 decimal place, remove 's' suffix
@@ -779,7 +793,7 @@ def create_engagement_table(unified_accounts: dict) -> str:
             transfer_rate = str(transfer_rate)
 
         row = [
-            truncate_account_name(account_name),
+            truncate_account_name(name),
             str(users),
             str(conv),
             str(calls),
@@ -797,7 +811,7 @@ def create_engagement_table(unified_accounts: dict) -> str:
                 max_width = max(max_width, len(str(row[i])))
 
         # Set minimum widths based on column type for engagement table
-        if i > 0:  # Skip account name column
+        if i > 0:  # Skip entity name column
             if header in ["Users"]:
                 # Users: 6 digits (999,999)
                 max_width = max(max_width, 6)
@@ -816,7 +830,7 @@ def create_engagement_table(unified_accounts: dict) -> str:
     header_line = ""
     for i, header in enumerate(headers):
         if i == 0:
-            # Left-align account names
+            # Left-align entity names
             header_line += header.ljust(col_widths[i])
         else:
             # Right-align numeric columns
@@ -839,7 +853,7 @@ def create_engagement_table(unified_accounts: dict) -> str:
         for i, cell in enumerate(row):
             cell_str = str(cell)
             if i == 0:
-                # Left-align account names
+                # Left-align entity names
                 row_line += cell_str.ljust(col_widths[i])
             else:
                 # Right-align numeric values
@@ -851,17 +865,41 @@ def create_engagement_table(unified_accounts: dict) -> str:
     return "```\n" + "\n".join(lines) + "\n```"
 
 
+def create_project_engagement_table(unified_projects: dict) -> str:
+    """Create an engagement table for projects with key metrics including call quality."""
+    return _create_engagement_table_generic(unified_projects, "Project")
+
+
+def create_engagement_table(unified_accounts: dict) -> str:
+    """Create an engagement table with key metrics including call quality."""
+    return _create_engagement_table_generic(unified_accounts, "Account")
+
+
 # =============================================================================
 # REPORT SECTION BUILDERS
 # =============================================================================
 
 
-def create_engagement_section(unified_accounts: dict, columns: list[str]) -> dict:
-    """Create engagement metrics section block with compact table formatting."""
-    table_text = create_engagement_table(unified_accounts)
-    section_text = "*📈 Account Details*\n\n" + table_text
+def _create_engagement_section_generic(
+    unified_data: dict, columns: list[str], entity_label: str = "Account"
+) -> dict:
+    """Generic engagement section creator for both accounts and projects."""
+    table_text = _create_engagement_table_generic(unified_data, entity_label)
+    section_text = f"*📈 {entity_label} Details*\n\n" + table_text
 
     return {"type": "section", "text": {"type": "mrkdwn", "text": section_text}}
+
+
+def create_project_engagement_section(
+    unified_projects: dict, columns: list[str]
+) -> dict:
+    """Create engagement metrics section block for projects with compact table formatting."""
+    return _create_engagement_section_generic(unified_projects, columns, "Project")
+
+
+def create_engagement_section(unified_accounts: dict, columns: list[str]) -> dict:
+    """Create engagement metrics section block with compact table formatting."""
+    return _create_engagement_section_generic(unified_accounts, columns, "Account")
 
 
 def build_engagement_summary(totals_summary: dict) -> list[str]:
@@ -973,32 +1011,48 @@ def build_conversion_section(
             }
         )
 
-    # Add conversion table ONLY if NOT filtering by single account
+    # Add conversion table
+    # For multi-account reports: show account-level table
+    # For single-account reports: show project-level table
     if account_id_filter is None:
         blocks.append(create_conversion_section(unified_accounts))
     else:
         logger.info(
-            f"[Slackbot] Skipping conversion table - single account report (account_id: {account_id_filter})"
+            f"[Slackbot] Creating project conversion table for single account (account_id: {account_id_filter})"
         )
+        # Use unified_accounts as unified_projects since we grouped by project_id
+        blocks.append(create_project_conversion_section(unified_accounts))
 
     return blocks
 
 
-def create_conversion_section(unified_accounts: dict) -> dict | None:
-    """Create conversion metrics section block using the conversion table format."""
-    if not unified_accounts:
+def _create_conversion_section_generic(
+    unified_data: dict, entity_label: str = "Account"
+) -> dict | None:
+    """Generic conversion section creator for both accounts and projects."""
+    if not unified_data:
         return {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*📊 Conversion Details*\n\nNo account data available.",
+                "text": f"*📊 Conversion Details*\n\nNo {entity_label.lower()} data available.",
             },
         }
 
-    table_text = create_conversion_table(unified_accounts)
+    table_text = _create_conversion_table_generic(unified_data, entity_label)
     section_text = "*📊 Conversion Details*\n\n" + table_text
 
     return {"type": "section", "text": {"type": "mrkdwn", "text": section_text}}
+
+
+def create_project_conversion_section(unified_projects: dict) -> dict | None:
+    """Create conversion metrics section block for projects using the conversion table format."""
+    return _create_conversion_section_generic(unified_projects, "Project")
+
+
+def create_conversion_section(unified_accounts: dict) -> dict | None:
+    """Create conversion metrics section block using the conversion table format."""
+    return _create_conversion_section_generic(unified_accounts, "Account")
 
 
 # =============================================================================
@@ -1108,7 +1162,9 @@ def format_unified_report_for_slack(
             )
             return {"blocks": blocks}
 
-        # Add engagement details section ONLY if NOT filtering by single account
+        # Add engagement details section
+        # For multi-account reports: show account-level table
+        # For single-account reports: show project-level table
         if account_id_filter is None:
             logger.info(
                 f"[Slackbot] Creating engagement section with {len(unified_accounts)} accounts"
@@ -1117,8 +1173,13 @@ def format_unified_report_for_slack(
             blocks.append(engagement_section)
         else:
             logger.info(
-                f"[Slackbot] Skipping engagement table - single account report (account_id: {account_id_filter})"
+                f"[Slackbot] Creating project engagement table for single account (account_id: {account_id_filter})"
             )
+            # Use unified_accounts as unified_projects since we grouped by project_id
+            project_engagement_section = create_project_engagement_section(
+                unified_accounts, columns
+            )
+            blocks.append(project_engagement_section)
 
         # Add conversion section if data exists
         if has_conversion_data(totals_summary, unified_accounts):
@@ -1428,12 +1489,16 @@ async def send_report_to_slack(
             return {"status": "error", "message": error_message}
 
         # Fetch analytics reports
+        # For single account reports, group by project_id to show project-level breakdown
+        # For multi-account reports, group by account_id to show account-level breakdown
+        group_by_fields = ["project_id"] if account_id_filter else ["account_id"]
+
         logger.info(
             f"[Slackbot] Fetching analytics reports from {start_date} to {end_date} "
-            f"for channel '{channel_display_name}' (account_id: {account_id_filter})"
+            f"for channel '{channel_display_name}' (account_id: {account_id_filter}, group_by: {group_by_fields})"
         )
         reports = await get_reports(
-            session, account_id_filter, start_date, end_date, group_by=["account_id"]
+            session, account_id_filter, start_date, end_date, group_by=group_by_fields
         )
         if not reports.reports:
             logger.warning("[Slackbot] No reports data returned from analytics service")
