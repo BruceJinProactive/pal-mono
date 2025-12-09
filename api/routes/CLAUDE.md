@@ -4,7 +4,7 @@
 
 ### ALWAYS
 1. Use `context: UserContext = Depends(authenticate_user)` for authentication
-2. Call `authorize_user_account(context, account_name)` before accessing account resources
+2. Use `require_account_permission()` or `require_project_permission()` dependencies for authorization
 3. Use `session: Session = Depends(db.get_db)` for sync DB operations
 4. Use `session: AsyncSession = Depends(db.get_db_async)` for async DB operations
 5. Raise `HTTPException` with `headers={"Content-Type": "application/json"}`
@@ -17,7 +17,7 @@
 ### NEVER
 1. Manually manage database sessions with `next(db.get_db())` - use `Depends(db.get_db)` instead
 2. Mix sync and async inconsistently - match async endpoint with `AsyncSession = Depends(db.get_db_async)`, sync endpoint with `Session = Depends(db.get_db)`
-3. Skip authorization checks after authentication - always call `authorize_user_account(context, account_name)` after `Depends(authenticate_user)`
+3. Skip authorization checks after authentication - always use `require_account_permission()` or `require_project_permission()` dependencies
 4. Use manual HTML escaping with `html.escape()` - use Pydantic `Field` validation and SQLAlchemy parameterization instead
 5. Create monolithic `__init__.py` files over 500 lines - split into separate `_<resource>.py` implementation files
 6. Use hardcoded status codes like `404` - use `status.HTTP_404_NOT_FOUND` constants instead
@@ -88,7 +88,7 @@ def get_account(
 ```python
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from api.routes.admin._utils import UserContext, authorize_user_account
+from api.routes.admin._utils import UserContext
 from api.routes.admin._builder import build_account
 from services import account_service
 from api.schemas.admin.account import Account
@@ -98,8 +98,7 @@ def get_account(
     context: UserContext,
     session: Session,
 ) -> Account:
-    # ALWAYS authorize first
-    authorize_user_account(context, account_name)
+    # Authorization handled by require_account_permission in route decorator
 
     # Business logic
     db_account = account_service.get_account(session, account_name)
@@ -176,17 +175,7 @@ class UserContext:
     email: str
     groups: list[str]
     display_name: str
-    account_names: list[str]
     role: UserRole
-
-def authorize_user_account(context: UserContext, account_name: str) -> None:
-    """Verify user has access to account."""
-    if account_name not in context.account_names:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User does not have permission to access this account",
-            headers={"Content-Type": "application/json"},
-        )
 
 def authorize_admin(context: UserContext) -> None:
     """Verify user has admin role."""
@@ -240,16 +229,17 @@ v1_router.include_router(status_router)
 ### Required Pattern for All Protected Endpoints
 ```python
 from api.routes.admin._auth import authenticate_user
-from api.routes.admin._utils import UserContext, authorize_user_account
+from services.auth_service.dependencies import require_account_permission
 
 @router.get("/accounts/{account_name}/resource")
 def get_resource(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),  # Step 1: Authenticate
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),  # Authentication + Authorization in one step
     session: Session = Depends(db.get_db),
 ):
-    authorize_user_account(context, account_name)  # Step 2: Authorize
-    # Step 3: Business logic
+    # Business logic - authorization already handled by dependency
 ```
 
 ### UserContext Structure
@@ -260,14 +250,14 @@ class UserContext:
     email: str                 # User email
     groups: list[str]          # Cognito groups
     display_name: str          # Display name
-    account_names: list[str]   # Accounts user can access
     role: UserRole             # Admin or AccountManager
 ```
 
 ### Authorization Helpers
 | Function | Purpose | When to Use |
 |----------|---------|-------------|
-| `authorize_user_account(context, account_name)` | Check account access | All account-scoped endpoints |
+| `require_account_permission(permission, auth_dep)` | Check account access via RBAC | All account-scoped endpoints |
+| `require_project_permission(permission, auth_dep)` | Check project access via RBAC | All project-scoped endpoints |
 | `authorize_admin(context)` | Restrict to Admin role | Admin-only operations |
 
 ## HTTP METHOD CONVENTIONS
@@ -735,7 +725,7 @@ async def create_resource(
 @router.get("/accounts/{account_name}/data")
 def get_data(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),  # Authenticated
+    context: UserContext = Depends(authenticate_user),  # Only authenticated, not authorized!
 ):
     return get_account_data(account_name)  # No authorization check!
 ```
@@ -745,9 +735,10 @@ def get_data(
 @router.get("/accounts/{account_name}/data")
 def get_data(
     account_name: str,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),  # Authorization via RBAC
 ):
-    authorize_user_account(context, account_name)  # Check access
     return get_account_data(account_name)
 ```
 
@@ -861,7 +852,9 @@ import db
 
 # Authentication & Authorization
 from api.routes.admin._auth import authenticate_user
-from api.routes.admin._utils import UserContext, authorize_user_account, authorize_admin
+from api.routes.admin._utils import UserContext
+from api.routes.admin._auth import authorize_admin
+from services.auth_service.dependencies import require_account_permission, require_project_permission
 
 # Schemas
 from api.schemas.admin.<resource> import (
@@ -890,7 +883,8 @@ from sqlalchemy.orm import Session
 import db
 
 from api.routes.admin._auth import authenticate_user
-from api.routes.admin._utils import UserContext, authorize_user_account
+from api.routes.admin._utils import UserContext
+from services.auth_service.dependencies import require_account_permission
 from api.schemas.admin.resource import CreateResourceRequest, UpdateResourceRequest, Resource, ListResourcesResponse
 from api.schemas.error.error import ErrorResponse
 from api.routes.endpoints import endpoints
