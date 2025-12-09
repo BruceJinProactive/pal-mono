@@ -6,7 +6,6 @@ from .schema import (
     CateringRequestCancelled,
     CateringRequestCreated,
     CateringRequestUpdated,
-    DatasetGenerationRequested,
     GoogleBusinessHoursUpdateRequested,
     KnowledgeUpdateRequested,
     SampleEvent,
@@ -75,7 +74,6 @@ __all__ = [
     "CateringRequestCreated",
     "CateringRequestUpdated",
     "CateringRequestCancelled",
-    "DatasetGenerationRequested",
     "GoogleBusinessHoursUpdateRequested",
     "KnowledgeUpdateRequested",
 ]
