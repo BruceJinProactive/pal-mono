@@ -1001,54 +1001,38 @@ def get_attr(attrs, key):
     return next((a["Value"] for a in attrs if a["Name"] == key), "")
 
 
-def list_account_users(account_name: str) -> list[CognitoUser]:
-    user_pool_id = AWS_ADMIN_CONSOLE_USER_POOL_ID
-    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
-    users = []
-    pagination_token = None
+def list_account_users(account_name: str, session: Session) -> list[CognitoUser]:
+    """
+    List all users for an account from the database.
 
-    try:
-        while True:
-            # Unfortunately we can't search by custom attributes, therefore we
-            # must first list all users, then manually filter by account name
-            # to only return the users for this account.
-            if pagination_token:
-                response = cognito_client.list_users(
-                    UserPoolId=user_pool_id,
-                    PaginationToken=pagination_token,
-                )
-            else:
-                response = cognito_client.list_users(
-                    UserPoolId=user_pool_id,
-                )
+    Args:
+        account_name: The name of the account to list users for
+        session: Database session
 
-            fetched_users = response.get("Users", [])
-            for user in fetched_users:
-                attributes = user.get("Attributes")
-                if not attributes:
-                    logger.warn(
-                        "User has no attributes!",
-                        extra={"user_pool_id": user_pool_id, "user_data": user},
-                    )
-                    continue
+    Returns:
+        list[CognitoUser]: List of users in the account
 
-                account = get_attr(attributes, "custom:account_name")
-                if account != account_name:
-                    continue
+    Raises:
+        ValueError: If account not found
+    """
+    account_repo = AccountRepository(session)
+    account = account_repo.get_account(account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} not found")
 
-                email = get_attr(attributes, "email")
-                name = get_attr(attributes, "name")
-                status = user.get("UserStatus")
+    account_user_repo = AccountUserRepository(session)
+    account_users = account_user_repo.get_users_for_account(
+        account.id, status=AccountUserStatus.active
+    )
 
-                users.append(CognitoUser(email=email, name=name, status=status))
-
-            pagination_token = response.get("PaginationToken")
-            if not pagination_token or not fetched_users:
-                break
-        return users
-    except ClientError as e:
-        logger.error(f"Error listing Cognito users: {e}")
-        raise ValueError(f"Failed to list Cognito users: {str(e)}")
+    return [
+        CognitoUser(
+            email=au.email or "",
+            name=au.name or "",
+            status="CONFIRMED",
+        )
+        for au in account_users
+    ]
 
 
 CREATE_USER_TEMPLATE_ID = 40701112
@@ -1072,7 +1056,6 @@ def create_account_user(
                 {"Name": "email", "Value": user_email},
                 {"Name": "email_verified", "Value": "true"},
                 {"Name": "name", "Value": user_name},
-                {"Name": "custom:account_name", "Value": account_name},
             ],
         )
         logger.info(f"Created user account for {user_email} using AdminCreateUser")
@@ -1174,7 +1157,6 @@ def signup_account_user(
             UserAttributes=[
                 {"Name": "email", "Value": user_email},
                 {"Name": "name", "Value": user_name},
-                {"Name": "custom:account_name", "Value": account_name},
             ],
         )
     except ClientError as e:
@@ -1288,7 +1270,6 @@ def signup_self_onboarding_user(
                     {"Name": "email", "Value": user_email},
                     {"Name": "name", "Value": user_name},
                     {"Name": "custom:is_google_user", "Value": "true"},
-                    {"Name": "custom:account_name", "Value": account_name},
                 ],
             )
         else:
@@ -1301,7 +1282,6 @@ def signup_self_onboarding_user(
                     # Only set email_verified if you truly verified it out-of-band:
                     # {"Name": "email_verified", "Value": "true"},
                     {"Name": "name", "Value": user_name},
-                    {"Name": "custom:account_name", "Value": account_name},
                 ],
             )
 
@@ -1551,7 +1531,25 @@ def is_google_user(email: str) -> bool:
             raise ValueError(f"Failed to check if user is Google user: {str(e)}")
 
 
-def delete_account_user(account_name: str, user_email: str) -> None:
+def delete_account_user(account_name: str, user_email: str, session: Session) -> None:
+    """
+    Delete a user from an account. Removes from both database (AccountUser) and Cognito.
+
+    Args:
+        account_name: The name of the account
+        user_email: The email of the user to delete
+        session: Database session
+
+    Raises:
+        ValueError: If account or user not found, or user not in account
+    """
+    # Verify account exists
+    account_repo = AccountRepository(session)
+    account = account_repo.get_account(account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} not found")
+
+    # Find user in Cognito to get their user_id
     cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
     try:
         response = cognito_client.list_users(
@@ -1563,18 +1561,29 @@ def delete_account_user(account_name: str, user_email: str) -> None:
             raise ValueError(f"User not found for email: {user_email}")
 
         user = users[0]
-        user_account_name = get_attr(user.get("Attributes", []), "custom:account_name")
+        user_sub = get_attr(user.get("Attributes", []), "sub")
+        if not user_sub:
+            raise ValueError(f"User sub not found for {user_email}")
 
-        if user_account_name != account_name:
+        # Verify user is member of this account via database
+        account_user_repo = AccountUserRepository(session)
+        account_user = account_user_repo.get_by_user_and_account(
+            uuid.UUID(user_sub), account.id
+        )
+        if not account_user:
             logger.error(f"User {user_email} not found in account {account_name}")
             raise ValueError(f"User {user_email} not found in account {account_name}")
 
+        # Delete from database
+        account_user_repo.delete(uuid.UUID(user_sub), account.id)
+
+        # Delete from Cognito
         cognito_client.admin_delete_user(
             UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
             Username=user_email,
         )
 
-        logger.info(f"Deleted cognito user from account {account_name}")
+        logger.info(f"Deleted user {user_email} from account {account_name}")
     except ClientError as e:
         if e.response["Error"]["Code"] == "UserNotFoundException":
             logger.error(f"User {user_email} not found: {e}")
@@ -1582,128 +1591,6 @@ def delete_account_user(account_name: str, user_email: str) -> None:
         else:
             logger.error(f"Error deleting Cognito user: {e}")
             raise ValueError(f"Failed to delete Cognito user: {str(e)}")
-
-
-def get_user_account_names(user_email: str) -> list[str]:
-    """
-    Get the account_names attribute for a Cognito user.
-
-    This function retrieves the custom:account_names attribute from Cognito
-    and returns it as a list of account names.
-
-    Args:
-        user_email: The email address of the user to retrieve account names for
-
-    Returns:
-        list[str]: List of account names associated with the user
-
-    Raises:
-        ValueError: If user not found
-    """
-    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
-
-    try:
-        # Find the user by email
-        response = cognito_client.list_users(
-            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
-            Filter=f'email="{user_email}"',
-        )
-        users = response.get("Users", [])
-        if not users:
-            raise ValueError(f"User not found for email: {user_email}")
-
-        user = users[0]
-        attributes = user.get("Attributes", [])
-
-        # Get the custom:account_names attribute
-        account_names_str = get_attr(attributes, "custom:account_names")
-
-        if not account_names_str:
-            return []
-
-        account_names = [
-            name.strip() for name in account_names_str.split(",") if name.strip()
-        ]
-
-        logger.info(
-            f"Retrieved account_names for user (count: {len(account_names)} accounts)"
-        )
-        return account_names
-
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "UserNotFoundException":
-            logger.error(f"User not found: {e}")
-            raise ValueError(f"User not found for email: {user_email}") from e
-        else:
-            logger.error(f"Error retrieving user account_names: {e}")
-            raise ValueError(
-                f"Failed to retrieve account_names for user: {str(e)}"
-            ) from e
-
-
-def update_user_account_names(
-    user_email: str,
-    account_names: list[str],
-) -> None:
-    """
-    Update the account_names attribute for a Cognito user.
-
-    This function updates the custom:account_names attribute in Cognito with
-    a comma-separated list of account names. This allows users to have access
-    to multiple accounts.
-
-    Args:
-        user_email: The email address of the user to update
-        account_names: List of account names to associate with the user
-
-    Raises:
-        ValueError: If user not found or update fails
-    """
-    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
-
-    if not account_names:
-        raise ValueError("account_names list cannot be empty")
-
-    account_names_str = ",".join(account_names)
-
-    try:
-        # Verify the user exists
-        response = cognito_client.list_users(
-            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
-            Filter=f'email="{user_email}"',
-        )
-        users = response.get("Users", [])
-        if not users:
-            raise ValueError(f"User not found for email: {user_email}")
-
-        user = users[0]
-        username = user.get("Username")
-
-        # Update the custom:account_names attribute
-        cognito_client.admin_update_user_attributes(
-            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
-            Username=username,
-            UserAttributes=[
-                {
-                    "Name": "custom:account_names",
-                    "Value": account_names_str,
-                }
-            ],
-        )
-
-        logger.info(
-            f"Updated account_names for user {user_email} to: {account_names_str}"
-        )
-
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "UserNotFoundException":
-            logger.error(f"User {user_email} not found: {e}")
-            raise ValueError(f"User {user_email} not found") from e
-        else:
-            logger.error(f"Error updating user account_names: {e}")
-            raise ValueError(
-                f"Failed to update account_names for {user_email}: {str(e)}"
-            ) from e
 
 
 def get_user_name_by_email(email: str) -> str | None:

@@ -22,16 +22,3 @@ class CreateUserRequest(BaseModel):
 
     email: str
     name: str
-
-
-class UpdateUserAccountNamesRequest(BaseModel):
-    """Request model for updating user's account names"""
-
-    account_names: List[str]
-
-
-class UserAccountNamesResponse(BaseModel):
-    """Response model for getting user's account names"""
-
-    email: str
-    account_names: List[str]

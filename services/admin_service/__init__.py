@@ -525,20 +525,21 @@ def delete_knowledge_file(
     return _implementation.delete_knowledge_file(session, context, target, filename)
 
 
-def list_account_users(account_name: str) -> list[CognitoUser]:
+def list_account_users(account_name: str, session: Session) -> list[CognitoUser]:
     """
     List all admin users for a specific account.
 
     Args:
         account_name: The name of the account to list users for
+        session: Database session
 
     Returns:
         list[CognitoUser]: A list of admin users for the account
 
     Raises:
-        ValueError: If there's an error listing Cognito users
+        ValueError: If account not found
     """
-    return _implementation.list_account_users(account_name)
+    return _implementation.list_account_users(account_name, session)
 
 
 def create_account_user(
@@ -617,55 +618,19 @@ def signup_google_user(
     )
 
 
-def delete_account_user(account_name: str, user_email: str) -> None:
+def delete_account_user(account_name: str, user_email: str, session: Session) -> None:
     """
     Delete an admin user for a specific account.
 
     Args:
         account_name: The name of the account the user belongs to
         user_email: The user ID (email) to delete
+        session: Database session
 
     Raises:
         ValueError: If the user is not found or there's an error deleting the user
     """
-    return _implementation.delete_account_user(account_name, user_email)
-
-
-def get_user_account_names(user_email: str) -> list[str]:
-    """
-    Get the account_names attribute for a Cognito user.
-
-    This function retrieves the custom:account_names attribute from Cognito
-    and returns it as a list of account names.
-
-    Args:
-        user_email: The email address of the user to retrieve account names for
-
-    Returns:
-        list[str]: List of account names associated with the user
-
-    Raises:
-        ValueError: If user not found
-    """
-    return _implementation.get_user_account_names(user_email)
-
-
-def update_user_account_names(user_email: str, account_names: list[str]) -> None:
-    """
-    Update the account_names attribute for a Cognito user.
-
-    This function updates the custom:account_names attribute in Cognito with
-    a comma-separated list of account names, allowing users to have access
-    to multiple accounts.
-
-    Args:
-        user_email: The email address of the user to update
-        account_names: List of account names to associate with the user
-
-    Raises:
-        ValueError: If user not found, account_names is empty, or update fails
-    """
-    return _implementation.update_user_account_names(user_email, account_names)
+    return _implementation.delete_account_user(account_name, user_email, session)
 
 
 def get_user_name_by_email(email: str) -> str | None:
@@ -895,8 +860,6 @@ __all__ = [
     "signin_google_user",
     "is_google_user",
     "delete_account_user",
-    "get_user_account_names",
-    "update_user_account_names",
     "get_user_name_by_email",
     "update_conversation",
     "list_leads",

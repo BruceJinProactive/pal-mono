@@ -166,7 +166,6 @@ def create_invitation(
                         {"Name": "email", "Value": params.email},
                         {"Name": "email_verified", "Value": "true"},
                         {"Name": "name", "Value": user_name},
-                        {"Name": "custom:account_name", "Value": account.name},
                     ],
                 )
                 cognito_user_created = True
@@ -817,7 +816,6 @@ def resend_invitation(
                         {"Name": "email", "Value": invitation.email},
                         {"Name": "email_verified", "Value": "true"},
                         {"Name": "name", "Value": user_name},
-                        {"Name": "custom:account_name", "Value": account.name},
                     ],
                 )
                 logger.info(f"Recreated Cognito user for resend: {invitation.email}")

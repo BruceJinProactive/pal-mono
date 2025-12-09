@@ -12,7 +12,6 @@ from api.schemas.admin.user import User
 from db.repositories.account_repository import AccountRepository
 from db.repositories.account_user_repository import AccountUserRepository
 from db.tables.account_user import AccountUserStatus
-from services.account_service import get_account
 from services.auth_types import UserContext, UserRole
 from utils.log import logger
 
@@ -119,8 +118,6 @@ def parse_cognito_token(id_token, user_pool_id, app_client_id: str) -> dict[str,
     {
         "sub": "<UUID = cognito:username>",                        # Same as 'cognito:username'
         "cognito:groups": ["<organization>-admins"],               # User group for administrative or marketing privileges
-        "custom:account_name": "<organization-name>",              # User's immutable organization identifier
-        "custom:account_display_name": "<organization-name>",      # User's public facing organization name
         "iss": "<URL of Issuer>",
         "cognito:username": "<UUID = sub>",                        # Same as 'sub'
         "origin_jti": "<UUID>",
@@ -133,6 +130,9 @@ def parse_cognito_token(id_token, user_pool_id, app_client_id: str) -> dict[str,
         "jti": "<UUID>",
         "email": "<name>@<organization-domain>.com",
     }
+
+    Note: User-account mappings are stored in the AccountUser database table,
+    not in Cognito custom attributes.
 
     Args:
         id_token (str): The ID token to be parsed and verified.
@@ -165,30 +165,6 @@ def parse_manage_app_cognito_token(id_token: str) -> dict:
         AWS_MANAGE_APP_USER_POOL_ID or "",
         AWS_MANAGE_APP_APP_CLIENT_ID or "",
     )
-
-
-def get_account_name(id_token):
-    """
-    Extracts the account name from an AWS Cognito ID token.
-
-    This function parses and verifies the provided ID token to extract the custom account name claim.
-    If the token is invalid or the account name cannot be extracted, it returns None.
-
-    Args:
-        id_token (str): The ID token to be parsed and verified.
-
-    Returns:
-        str: The account name extracted from the ID token, or None if an error occurs.
-
-    Raises:
-        Exception: If there is an error parsing or verifying the ID token.
-    """
-    try:
-        claims = parse_admin_console_cognito_token(id_token)
-        return claims["custom:account_name"]
-    except Exception as e:
-        logger.error(f"Error parsing ID token: {e}")
-        return None
 
 
 POOL_SOURCE_KEY = "_auth_pool_source"
@@ -250,50 +226,6 @@ def decrypt_id_token(request: Request) -> dict[str, Any]:
             )
 
 
-def get_account_from_id_token(request: Request, session: Session) -> db.Account:
-    """
-    Retrieves the account associated with the ID token from the request headers.
-
-    This function decrypts the ID token from the 'Authorization' header,
-    retrieves the account information from the database using the account name
-    in the decrypted token, and returns the account.
-
-    Args:
-        request (Request): The FastAPI request object containing the headers with the authorization token.
-        session (Session): The SQLAlchemy session for database access.
-
-    Returns:
-        db.Account: The account associated with the ID token.
-
-    Raises:
-        HTTPException: If the ID token is invalid or missing, or if the account is not found.
-    """
-    try:
-        decrypted_id_token = decrypt_id_token(request)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Get Account from ID Token
-    account = get_account(
-        session, account_name=decrypted_id_token["custom:account_name"]
-    )
-
-    if account is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account not found.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    return account
-
-
 def authenticate_user(
     request: Request, session: Session = Depends(db.get_db)
 ) -> UserContext:
@@ -319,19 +251,8 @@ def authenticate_user(
             headers={"Content-Type": "application/json"},
         )
 
-    # Combine both custom:account_name and custom:account_names
-    account_names = []
-
-    # Extract account names from JWT custom attributes (fallback/legacy)
-    account_name = token.get("custom:account_name", "")
-    if account_name:
-        account_names.extend(account_name.split(","))
-
-    account_names_str = token.get("custom:account_names", "")
-    if account_names_str:
-        account_names.extend(account_names_str.split(","))
-
     # Query database for accounts user has access to via AccountUser table
+    account_names = []
     try:
         user_id = UUID(token.get("cognito:username", ""))
         account_user_repo = AccountUserRepository(session, auto_commit=False)
@@ -352,19 +273,10 @@ def authenticate_user(
             f"Fetched {len(account_memberships)} accounts from database for user {user_id}"
         )
     except Exception as e:
-        logger.warning(
+        logger.error(
             f"Failed to fetch accounts from database for user authentication: {e}. "
-            "Falling back to JWT custom attributes only."
+            "User will have no account access."
         )
-
-    # Deduplicate account names (combine JWT + database sources)
-    seen = set()
-    unique_account_names = []
-    for name in account_names:
-        name = name.strip()
-        if name and name not in seen:
-            seen.add(name)
-            unique_account_names.append(name)
 
     user_role = get_user_role(token)
     return UserContext(
@@ -372,7 +284,7 @@ def authenticate_user(
         email=token.get("email", ""),
         groups=token.get("cognito:groups", []),
         display_name=token.get("name", ""),
-        account_names=unique_account_names,
+        account_names=account_names,
         role=user_role,
     )
 

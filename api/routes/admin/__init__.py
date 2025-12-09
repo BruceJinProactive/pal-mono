@@ -45,10 +45,6 @@ from api.schemas.admin.agent import (
     UpdateAgentRequest,
 )
 from api.schemas.admin.analytics import GetAllReportsResponse
-from api.schemas.admin.backfill import (
-    BackfillRoleAssignmentsRequest,
-    BackfillRoleAssignmentsResponse,
-)
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
 from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
@@ -180,8 +176,6 @@ from api.schemas.admin.user import SignUpRequest
 from api.schemas.admin.user_management import (
     CreateUserRequest,
     ListUsersResponse,
-    UpdateUserAccountNamesRequest,
-    UserAccountNamesResponse,
     UserInfo,
 )
 from api.schemas.admin.voice_config import (
@@ -218,7 +212,6 @@ from . import (
     _agent,
     _analytics,
     _auth,
-    _backfill,
     _campaign,
     _conversation,
     _email,
@@ -1630,12 +1623,12 @@ async def list_account_users(
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
     ),
+    session: Session = Depends(db.get_db),
 ) -> ListUsersResponse:
     """
     Retrieve a list of admin users for a specific account.
-    Filters users by the custom:account_name attribute in Cognito.
     """
-    return await _users.list_account_users(account_name, context)
+    return await _users.list_account_users(account_name, context, session)
 
 
 @admin_router.put("/accounts/{account_name}/users")
@@ -1661,72 +1654,12 @@ async def delete_account_user(
     context: UserContext = Depends(
         require_account_permission("account.team_manage", authenticate_user)
     ),
+    session: Session = Depends(db.get_db),
 ):
     """
     Delete an admin user for a specific account by user email
     """
-    await _users.delete_account_user(account_name, email, context)
-
-
-@admin_router.get("/users/{user_email}/account_names")
-async def get_user_account_names(
-    user_email: str,
-    context: UserContext = Depends(authenticate_user),
-) -> UserAccountNamesResponse:
-    """
-    Get the account_names attribute for a Cognito user.
-
-    This endpoint allows admins and account managers to retrieve the list of accounts
-    a user has access to. The account names are stored as a comma-separated string in
-    the custom:account_names Cognito attribute.
-
-    Only Admin and AccountManager users can call this endpoint.
-    """
-    return await _users.get_user_account_names(user_email, context)
-
-
-@admin_router.patch("/users/{user_email}/account_names")
-async def update_user_account_names(
-    user_email: str,
-    request: UpdateUserAccountNamesRequest,
-    context: UserContext = Depends(authenticate_user),
-):
-    """
-    Update the account_names attribute for a Cognito user.
-
-    This endpoint allows admins to update the list of accounts a user has access to.
-    The account names will be stored as a comma-separated string in the
-    custom:account_names Cognito attribute.
-
-    Only Admin users can call this endpoint.
-    """
-    await _users.update_user_account_names(user_email, request, context)
-
-
-@admin_router.post("/backfill-role-assignments")
-def backfill_role_assignments(
-    request: BackfillRoleAssignmentsRequest,
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> BackfillRoleAssignmentsResponse:
-    """
-    Backfill role assignments from Cognito custom:account_names to ResourceRoleAssignment table.
-
-    This endpoint reads all users from Cognito (or a specific user if email_filter is provided),
-    extracts their custom:account_names attribute, and creates corresponding ResourceRoleAssignment
-    records with owner role.
-
-    Only Admin users can call this endpoint.
-
-    Features:
-    - dry_run=True by default (safe preview mode)
-    - email_filter parameter for testing on specific user
-    - Creates ResourceRoleAssignment records only (does not create AccountUser records)
-    - Idempotent (safe to run multiple times)
-    - Skips accounts not found in database (logs warnings)
-    - Returns detailed results for each user processed
-    """
-    return _backfill.backfill_role_assignments(request, context, session)
+    await _users.delete_account_user(account_name, email, context, session)
 
 
 """
