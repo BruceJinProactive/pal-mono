@@ -131,6 +131,7 @@ class ToastTool(Toolkit):
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
         self.order_construction_model = order_construction_model
         self.revenue_center_id = revenue_center_id
+        # New parameter to skip order submission during checkout for evaluation/testing
         self.skip_order_submission = skip_order_submission
 
         # Register tools
@@ -597,7 +598,8 @@ class ToastTool(Toolkit):
             logger.debug(
                 "[ToastTool.checkout_order_with_payment_iframe] Checking store status"
             )
-            if not self._is_online_order_available():
+            # Check if the store is open for ordering if skip_order_submission is False
+            if not self.skip_order_submission and not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
 
             # Check for existing order
@@ -671,11 +673,11 @@ class ToastTool(Toolkit):
             str: Order checkout confirmation details
         """
         try:
-            # First check if the store is open for ordering
+            # First check if the store is open for ordering if skip_order_submission is False
             logger.debug(
                 "[ToastTool.checkout_order] Checking if the store is open for ordering"
             )
-            if not self._is_online_order_available():
+            if not self.skip_order_submission and not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
 
             # Check if an order with the current conversationId (externalId) already exists.
