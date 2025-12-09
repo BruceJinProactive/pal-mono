@@ -1,16 +1,21 @@
 """Internal API endpoints for project updates."""
 
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
 
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import db
 from db.repositories.project_repository import ProjectRepository
+from db.tables.types import IntegrationProvider, IntegrationType
+from services import knowledge_service, project_service
 from utils.log import logger
+from utils.secret import get_client_secret
 
 projects_router = APIRouter(prefix="/projects")
 
@@ -126,39 +131,242 @@ async def update_project_business_hours(
 @projects_router.post("/{project_id}/knowledge-update")
 async def update_knowledge(
     project_id: str,
-    _session: Session = Depends(db.get_db),
+    session: Session = Depends(db.get_db),
 ):
     """
     Update knowledge base for a specific project.
 
-    Processes knowledge update for a single project, updating both
-    the knowledge base and menu data. Called by Lambda function consuming
-    knowledge update events.
+    Processes knowledge update for a single project with Adora POS integration.
+    Fetches menu data from Adora API and updates the Pinecone knowledge base.
+    Called by Lambda function consuming knowledge update events.
 
     Args:
         project_id: UUID of the project to update
         session: Database session
 
     Returns:
-        dict: Status of the update operation
+        dict: Status of the update operation including items processed
     """
-    # TODO: Implement knowledge update logic for specific project
-    # TODO: Validate project_id and get project
-    # TODO: Update knowledge base with latest information
-    # TODO: Update menu data in database
-    # TODO: Handle errors and rollback if needed
+    logger.debug(
+        f"[Adora Menu Updater] Starting knowledge update for project {project_id}"
+    )
 
-    logger.info(f"[KnowledgeUpdate] Starting knowledge update for project {project_id}")
+    try:
+        # Validate and convert project_id to UUID
+        try:
+            project_uuid = uuid.UUID(project_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid project_id format: {project_id}",
+                headers={"Content-Type": "application/json"},
+            )
 
-    # Placeholder implementation
-    logger.info(f"[KnowledgeUpdate] Knowledge update complete for project {project_id}")
+        # Get project
+        project = project_service.get_project(session, project_uuid)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+                headers={"Content-Type": "application/json"},
+            )
 
-    return {
-        "success": True,
-        "project_id": project_id,
-        "message": "Implementation pending",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+        # Get knowledge config from project raw_config
+        raw_config = project.raw_config or {}
+        knowledge_config = raw_config.get("knowledge", {})
+        knowledge_settings = knowledge_config.get("settings", {})
+
+        pinecone_index_name = knowledge_settings.get("index_name")
+        pinecone_namespace = knowledge_settings.get("namespace")
+
+        if not pinecone_index_name:
+            raise ValueError(
+                f"Project {project_id} does not have knowledge.settings.index_name configured"
+            )
+
+        if not pinecone_namespace:
+            raise ValueError(
+                f"Project {project_id} does not have knowledge.settings.namespace configured"
+            )
+
+        # Get POS integration for this project
+        project_integration_repository = db.ProjectIntegrationRepository(session)
+        project_integrations = (
+            project_integration_repository.get_project_integrations_by_project_id(
+                project_uuid
+            )
+        )
+
+        # Find the Adora POS integration
+        pos_project_integration = None
+        pos_integration = None
+        integration_repository = db.IntegrationRepository(session)
+        for pi in project_integrations:
+            integration = integration_repository.get_integration_by_id(
+                project.account_id, pi.integration_id
+            )
+            if (
+                integration
+                and integration.integration_type == IntegrationType.pos
+                and integration.provider == IntegrationProvider.adora
+            ):
+                pos_project_integration = pi
+                pos_integration = integration
+                break
+
+        if not pos_project_integration or not pos_integration:
+            raise ValueError(
+                f"Project {project_id} does not have an Adora POS integration"
+            )
+
+        # Get store identifier
+        store_id = pos_project_integration.store_identifier
+        if not store_id:
+            raise ValueError(
+                f"Project {project_id} integration does not have a store_identifier"
+            )
+
+        # Get credentials from AWS Secrets Manager
+        secret_key = pos_integration.secret_key
+        if not secret_key:
+            raise ValueError(
+                f"Adora integration for project {project_id} does not have a secret_key"
+            )
+
+        try:
+            secrets_json = get_client_secret(secret_key)
+            credentials = json.loads(secrets_json)
+            client_id = (credentials.get("client_id") or "").strip()
+            client_secret = (credentials.get("client_secret") or "").strip()
+        except ClientError:
+            raise ValueError(f"Secret '{secret_key}' not found in AWS Secrets Manager")
+        except (KeyError, json.JSONDecodeError) as e:
+            raise ValueError(f"Invalid secret format for key '{secret_key}': {e}")
+
+        if not client_id:
+            raise ValueError("Adora client_id missing in secret manager")
+        if not client_secret:
+            raise ValueError("Adora client_secret missing in secret manager")
+
+        # Get API endpoints from integration raw_config
+        integration_config = pos_integration.raw_config or {}
+        api_endpoints = integration_config.get("api_endpoints", {}) or {}
+        token_api_endpoint = (api_endpoints.get("token_api_endpoint") or "").strip()
+        general_api_endpoint = (api_endpoints.get("general_api_endpoint") or "").strip()
+
+        if not token_api_endpoint:
+            raise ValueError("Adora token_api_endpoint missing in integration config")
+        if not general_api_endpoint:
+            raise ValueError("Adora general_api_endpoint missing in integration config")
+
+        logger.debug(
+            f"[Adora Menu Updater] Updating menu for project {project_id}",
+            extra={
+                "project_id": project_id,
+                "project_name": project.name,
+                "store_id": store_id,
+                "pinecone_index": pinecone_index_name,
+                "pinecone_namespace": pinecone_namespace,
+            },
+        )
+
+        # Delete existing vectors in namespace before re-indexing
+        # This prevents duplicate vectors since LlamaIndex generates new IDs each run
+        try:
+            delete_result = knowledge_service.delete_namespace(
+                pinecone_index_name, pinecone_namespace
+            )
+            logger.debug(
+                "[Adora Menu Updater] Cleared namespace before re-indexing",
+                extra={
+                    "project_id": project_id,
+                    "pinecone_namespace": pinecone_namespace,
+                    "delete_result": delete_result,
+                },
+            )
+        except Exception as e:
+            # Log but don't fail - namespace might not exist yet or be empty
+            logger.warning(
+                f"[Adora Menu Updater] Could not clear namespace (may be empty): {e}",
+                extra={
+                    "project_id": project_id,
+                    "pinecone_namespace": pinecone_namespace,
+                },
+            )
+
+        # Call knowledge service to update the menu
+        result = knowledge_service.update_agent_kb(
+            pos_provider=IntegrationProvider.adora,
+            store_id=store_id,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_api_endpoint=token_api_endpoint,
+            general_api_endpoint=general_api_endpoint,
+            pinecone_namespace=pinecone_namespace,
+            pinecone_index_name=pinecone_index_name,
+            debug=False,
+            include_category_in_doc_name=False,
+        )
+
+        # Update project's product_info with the system_prompt_menu
+        system_prompt_menu = result.get("system_prompt_menu", "")
+        product_info_updated = False
+        if system_prompt_menu:
+            project_repo = ProjectRepository(session)
+            project_repo.update_project(project_uuid, product_info=system_prompt_menu)
+            product_info_updated = True
+            logger.debug(
+                f"[Adora Menu Updater] Updated product_info for project {project_id}",
+                extra={
+                    "project_id": project_id,
+                    "product_info_length": len(system_prompt_menu),
+                },
+            )
+
+        logger.debug(
+            f"[Adora Menu Updater] Knowledge update complete for project {project_id}",
+            extra={
+                "project_id": project_id,
+                "project_name": project.name,
+                "items_processed": result.get("processed_items", 0),
+                "product_info_updated": product_info_updated,
+            },
+        )
+
+        return {
+            "success": True,
+            "project_id": project_id,
+            "project_name": project.name,
+            "pinecone_index_name": pinecone_index_name,
+            "pinecone_namespace": pinecone_namespace,
+            "items_processed": result.get("processed_items", 0),
+            "product_info_updated": product_info_updated,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning(
+            f"[Adora Menu Updater] Validation error for project {project_id}: {e}",
+            extra={"project_id": project_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception as e:
+        logger.error(
+            f"[Adora Menu Updater] Error updating knowledge for project {project_id}",
+            exc_info=True,
+            extra={"project_id": project_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update knowledge base: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
 
 
 def _hours_have_changed(old_data: Dict[str, Any], new_data: Dict[str, Any]) -> bool:
