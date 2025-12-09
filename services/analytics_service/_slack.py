@@ -511,6 +511,76 @@ def has_conversion_data(totals_summary: dict, unified_accounts: dict) -> bool:
 # =============================================================================
 
 
+def get_project_display_name(project_id: str, session: Session | None = None) -> str:
+    """
+    Get project display_name from database, fallback to project_id if not found.
+
+    Args:
+        project_id: Project UUID string
+        session: Database session (optional)
+
+    Returns:
+        Project display_name if found, otherwise project_id
+    """
+    if not session:
+        return project_id
+
+    try:
+        from db.tables.projects import Project
+
+        project = session.query(Project).filter(Project.id == project_id).first()
+
+        if project and project.display_name:
+            return project.display_name
+
+        # Fallback to project_id if display_name not set
+        return project_id
+
+    except Exception as e:
+        logger.warning(
+            f"[Slackbot] Error looking up project display_name for {project_id}: {e}"
+        )
+        return project_id
+
+
+def get_account_integrations(
+    account_id: uuid.UUID, session: Session | None = None
+) -> list[str]:
+    """
+    Get integrations for an account as a list of provider names.
+
+    Args:
+        account_id: Account UUID
+        session: Database session (optional)
+
+    Returns:
+        List of integration provider names (e.g., ["toast", "opentable"]) or empty list
+    """
+    if not session:
+        return []
+
+    try:
+        from db.tables.integration import Integration
+
+        integrations = (
+            session.query(Integration)
+            .filter(Integration.account_id == account_id)
+            .all()
+        )
+
+        if not integrations:
+            return []
+
+        # Return list of provider names (lowercase)
+        return [integration.provider.value for integration in integrations]
+
+    except Exception as e:
+        logger.warning(
+            f"[Slackbot] Error looking up integrations for account {account_id}: {e}"
+        )
+        return []
+
+
 def truncate_account_name(account_name: str, max_length: int = 15) -> str:
     """
     Truncate account name for table display while keeping it readable.
@@ -619,16 +689,27 @@ def create_account_metrics_table(unified_accounts: dict, columns: list[str]) -> 
 
 
 def _create_conversion_table_generic(
-    unified_data: dict, entity_label: str = "Account"
+    unified_data: dict,
+    entity_label: str = "Account",
+    session: Session | None = None,
+    account_id: uuid.UUID | None = None,
 ) -> str:
     """Generic conversion table creator for both accounts and projects."""
     if not unified_data:
         return f"No {entity_label.lower()} data available."
 
+    # Check integrations for account-specific reports
+    integrations = []
+    if account_id and session:
+        integrations = get_account_integrations(account_id, session)
+
+    # Determine if Adora integration exists
+    has_adora_integration = "adora" in integrations
+
     # Headers with conversation value and paid value
     headers = [
         entity_label,
-        "Conv",
+        "Call&Text",
         "Orders",
         "Paid",
         "Subtotal",
@@ -657,14 +738,27 @@ def _create_conversion_table_generic(
     for name, item_data, _ in limited_data:
         conv = item_data.get("total_conversations", "0")
         orders = item_data.get("conversations_with_orders", "0")
-        paid = item_data.get("paid_orders", "0")
+
+        # If Adora integration exists, set paid metrics to N/A
+        if has_adora_integration:
+            paid = "N/A"
+            paid_value = "N/A"
+            paid_rate = "N/A"
+        else:
+            paid = item_data.get("paid_orders", "0")
+            paid_value = safe_float_format(item_data.get("paid_total", 0), 1)
+            paid_rate = safe_float_format(item_data.get("paid_rate", 0), 1)
+
         conv_value = safe_float_format(item_data.get("total_subtotal", 0), 1)
-        paid_value = safe_float_format(item_data.get("paid_total", 0), 1)
         cvr = safe_float_format(item_data.get("conversion_rate", 0), 1)
-        paid_rate = safe_float_format(item_data.get("paid_rate", 0), 1)
+
+        # For projects, use display_name if available
+        display_name = name
+        if entity_label == "Project" and session:
+            display_name = get_project_display_name(name, session)
 
         row = [
-            truncate_account_name(name),
+            truncate_account_name(display_name),
             str(conv),
             str(orders),
             str(paid),
@@ -689,8 +783,8 @@ def _create_conversion_table_generic(
 
         # Set minimum widths based on column type for conversion table
         if i > 0:  # Skip entity name column
-            if header in ["Conv"]:
-                # Conversations: 10 digits (9,999,999,999)
+            if header in ["Call&Text"]:
+                # Call&Text: 10 digits (9,999,999,999)
                 max_width = max(max_width, 10)
             elif header in ["Subtotal", "Paidtotal"]:
                 # Revenue columns: wider for currency values (e.g., "123,456.7")
@@ -742,9 +836,15 @@ def _create_conversion_table_generic(
     return "```\n" + "\n".join(lines) + "\n```"
 
 
-def create_project_conversion_table(unified_projects: dict) -> str:
+def create_project_conversion_table(
+    unified_projects: dict,
+    session: Session | None = None,
+    account_id: uuid.UUID | None = None,
+) -> str:
     """Create a conversion table for projects with conversation value and paid value columns, filtering out projects with 0 orders."""
-    return _create_conversion_table_generic(unified_projects, "Project")
+    return _create_conversion_table_generic(
+        unified_projects, "Project", session, account_id
+    )
 
 
 def create_conversion_table(unified_accounts: dict) -> str:
@@ -753,14 +853,14 @@ def create_conversion_table(unified_accounts: dict) -> str:
 
 
 def _create_engagement_table_generic(
-    unified_data: dict, entity_label: str = "Account"
+    unified_data: dict, entity_label: str = "Account", session: Session | None = None
 ) -> str:
     """Generic engagement table creator for both accounts and projects."""
     if not unified_data:
         return f"No {entity_label.lower()} data available."
 
     # Headers with key engagement metrics
-    headers = [entity_label, "Users", "Conv", "Calls", "Dur", "Xfer%"]
+    headers = [entity_label, "Users", "Call&Text", "Calls", "Dur", "Xfer%"]
 
     # Build data rows - limit to first 15 entries
     data_rows = []
@@ -792,8 +892,13 @@ def _create_engagement_table_generic(
         except (ValueError, TypeError):
             transfer_rate = str(transfer_rate)
 
+        # For projects, use display_name if available
+        display_name = name
+        if entity_label == "Project" and session:
+            display_name = get_project_display_name(name, session)
+
         row = [
-            truncate_account_name(name),
+            truncate_account_name(display_name),
             str(users),
             str(conv),
             str(calls),
@@ -815,8 +920,8 @@ def _create_engagement_table_generic(
             if header in ["Users"]:
                 # Users: 6 digits (999,999)
                 max_width = max(max_width, 6)
-            elif header in ["Conv", "Calls"]:
-                # Conversations and Calls: 10 digits (9,999,999,999)
+            elif header in ["Call&Text", "Calls"]:
+                # Call&Text and Calls: 10 digits (9,999,999,999)
                 max_width = max(max_width, 10)
             else:
                 # Other numeric columns: keep existing 6 digit width
@@ -865,9 +970,11 @@ def _create_engagement_table_generic(
     return "```\n" + "\n".join(lines) + "\n```"
 
 
-def create_project_engagement_table(unified_projects: dict) -> str:
+def create_project_engagement_table(
+    unified_projects: dict, session: Session | None = None
+) -> str:
     """Create an engagement table for projects with key metrics including call quality."""
-    return _create_engagement_table_generic(unified_projects, "Project")
+    return _create_engagement_table_generic(unified_projects, "Project", session)
 
 
 def create_engagement_table(unified_accounts: dict) -> str:
@@ -881,20 +988,25 @@ def create_engagement_table(unified_accounts: dict) -> str:
 
 
 def _create_engagement_section_generic(
-    unified_data: dict, columns: list[str], entity_label: str = "Account"
+    unified_data: dict,
+    columns: list[str],
+    entity_label: str = "Account",
+    session: Session | None = None,
 ) -> dict:
     """Generic engagement section creator for both accounts and projects."""
-    table_text = _create_engagement_table_generic(unified_data, entity_label)
+    table_text = _create_engagement_table_generic(unified_data, entity_label, session)
     section_text = f"*📈 {entity_label} Details*\n\n" + table_text
 
     return {"type": "section", "text": {"type": "mrkdwn", "text": section_text}}
 
 
 def create_project_engagement_section(
-    unified_projects: dict, columns: list[str]
+    unified_projects: dict, columns: list[str], session: Session | None = None
 ) -> dict:
     """Create engagement metrics section block for projects with compact table formatting."""
-    return _create_engagement_section_generic(unified_projects, columns, "Project")
+    return _create_engagement_section_generic(
+        unified_projects, columns, "Project", session
+    )
 
 
 def create_engagement_section(unified_accounts: dict, columns: list[str]) -> dict:
@@ -914,13 +1026,7 @@ def build_engagement_summary(totals_summary: dict) -> list[str]:
         total_convs = totals_summary["Message Turn Distribution"].get(
             "total_conversations", 0
         )
-        avg_turns = totals_summary["Message Turn Distribution"].get(
-            "avg_turns_per_conversation", 0
-        )
-        avg_turns_formatted = safe_float_format(avg_turns, 1)
-        summary_lines.append(
-            f"• Conversations: *{total_convs}* (Avg {avg_turns_formatted} turns)"
-        )
+        summary_lines.append(f"• Call&Text: *{total_convs}*")
 
     if "Call Time Metrics" in totals_summary:
         total_calls = totals_summary["Call Time Metrics"].get("total_calls", 0)
@@ -942,6 +1048,7 @@ def build_conversion_section(
     unified_accounts: dict,
     account_id_filter: uuid.UUID | None = None,
     account_name: str | None = None,
+    session: Session | None = None,
 ) -> list[dict]:
     """Build conversion summary section and table blocks."""
     blocks = []
@@ -1021,13 +1128,20 @@ def build_conversion_section(
             f"[Slackbot] Creating project conversion table for single account (account_id: {account_id_filter})"
         )
         # Use unified_accounts as unified_projects since we grouped by project_id
-        blocks.append(create_project_conversion_section(unified_accounts))
+        blocks.append(
+            create_project_conversion_section(
+                unified_accounts, session, account_id_filter
+            )
+        )
 
     return blocks
 
 
 def _create_conversion_section_generic(
-    unified_data: dict, entity_label: str = "Account"
+    unified_data: dict,
+    entity_label: str = "Account",
+    session: Session | None = None,
+    account_id: uuid.UUID | None = None,
 ) -> dict | None:
     """Generic conversion section creator for both accounts and projects."""
     if not unified_data:
@@ -1039,15 +1153,23 @@ def _create_conversion_section_generic(
             },
         }
 
-    table_text = _create_conversion_table_generic(unified_data, entity_label)
+    table_text = _create_conversion_table_generic(
+        unified_data, entity_label, session, account_id
+    )
     section_text = "*📊 Conversion Details*\n\n" + table_text
 
     return {"type": "section", "text": {"type": "mrkdwn", "text": section_text}}
 
 
-def create_project_conversion_section(unified_projects: dict) -> dict | None:
+def create_project_conversion_section(
+    unified_projects: dict,
+    session: Session | None = None,
+    account_id: uuid.UUID | None = None,
+) -> dict | None:
     """Create conversion metrics section block for projects using the conversion table format."""
-    return _create_conversion_section_generic(unified_projects, "Project")
+    return _create_conversion_section_generic(
+        unified_projects, "Project", session, account_id
+    )
 
 
 def create_conversion_section(unified_accounts: dict) -> dict | None:
@@ -1070,6 +1192,7 @@ def format_unified_report_for_slack(
     timezone_name: str | None = None,
     account_id_filter: uuid.UUID | None = None,
     account_name: str | None = None,
+    session: Session | None = None,
 ) -> dict:
     """
     Format unified analytics report into Slack blocks with configurable columns.
@@ -1177,7 +1300,7 @@ def format_unified_report_for_slack(
             )
             # Use unified_accounts as unified_projects since we grouped by project_id
             project_engagement_section = create_project_engagement_section(
-                unified_accounts, columns
+                unified_accounts, columns, session
             )
             blocks.append(project_engagement_section)
 
@@ -1185,7 +1308,11 @@ def format_unified_report_for_slack(
         if has_conversion_data(totals_summary, unified_accounts):
             logger.info("[Slackbot] Adding conversion section - conversion data found")
             conversion_blocks = build_conversion_section(
-                totals_summary, unified_accounts, account_id_filter, account_name
+                totals_summary,
+                unified_accounts,
+                account_id_filter,
+                account_name,
+                session,
             )
             blocks.extend(conversion_blocks)
         else:
@@ -1441,6 +1568,7 @@ async def send_report_to_slack(
     show_time: bool = False,
     timezone_id: str | None = None,
     timezone_name: str | None = None,
+    thread_ts: str | None = None,
 ) -> dict:
     """
     Send a comprehensive analytics report to Slack.
@@ -1455,6 +1583,7 @@ async def send_report_to_slack(
         show_time: If True, show full datetime with time and timezone in report title
         timezone_id: Timezone ID to convert UTC times to local time (e.g., 'America/New_York')
         timezone_name: Timezone abbreviation to display (e.g., 'EST', 'PST')
+        thread_ts: Optional thread timestamp to reply in thread
 
     Returns:
         dict: Status of the operation
@@ -1518,6 +1647,7 @@ async def send_report_to_slack(
             timezone_name=timezone_name,
             account_id_filter=account_id_filter,
             account_name=account_name,
+            session=session,
         )
         if not message_blocks or "blocks" not in message_blocks:
             logger.error("[Slackbot] Failed to generate valid Slack blocks structure")
@@ -1529,9 +1659,14 @@ async def send_report_to_slack(
 
         # Send to Slack
         logger.info(f"[Slackbot] Sending report to Slack channel: {target_channel}")
-        response = await client.chat_postMessage(
-            channel=target_channel, text="Analytics Report", **message_blocks
-        )
+        post_params = {
+            "channel": target_channel,
+            "text": "Analytics Report",
+            **message_blocks,
+        }
+        if thread_ts:
+            post_params["thread_ts"] = thread_ts
+        response = await client.chat_postMessage(**post_params)
 
         if response["ok"]:
             logger.info(f"[Slackbot] Report sent successfully to {target_channel}")
@@ -1634,6 +1769,7 @@ async def handle_report_request(
                 show_time=True,
                 timezone_id=timezone_id,
                 timezone_name=timezone_name,
+                thread_ts=message.get("ts"),
             )
         finally:
             session.close()
@@ -1752,6 +1888,7 @@ async def handle_last_hours_request(message, client):
                 show_time=True,
                 timezone_id=timezone_id,
                 timezone_name=timezone_name,
+                thread_ts=message.get("ts"),
             )
 
             if result["status"] == "success":
