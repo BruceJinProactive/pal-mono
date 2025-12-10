@@ -40,6 +40,9 @@ from services.team_service.schema import (
 )
 from utils.log import logger
 
+AWS_REGION = os.environ["AWS_REGION"]
+AWS_ADMIN_CONSOLE_USER_POOL_ID = os.environ["AWS_ADMIN_CONSOLE_USER_POOL_ID"]
+
 # Postmark template IDs for team invitation emails
 TEAM_INVITATION_NEW_USER_TEMPLATE_ID = 42139611  # For new users (with password)
 TEAM_INVITATION_EXISTING_USER_TEMPLATE_ID = 42173053  # For existing confirmed users
@@ -893,6 +896,93 @@ def list_user_accounts(
     account_memberships = account_user_repo.get_accounts_for_user(user_id)
 
     # 2. For each membership, get account details and role
+    account_repo = AccountRepository(session)
+    role_repo = ResourceRoleAssignmentRepository(session)
+    result = []
+
+    for membership in account_memberships:
+        account = account_repo.get_account_by_id(membership.account_id)
+        if not account:
+            continue
+
+        # Get user's role on this account
+        user_roles = role_repo.get_roles_for_resource(
+            user_id, ResourceType.ACCOUNT, account.id
+        )
+
+        # Get primary role
+        primary_role = None
+        for r in ["owner", "manager", "viewer"]:
+            if r in user_roles:
+                primary_role = r
+                break
+
+        # TODO: Track actual last access
+        last_accessed = membership.added_at
+
+        result.append((account, primary_role, last_accessed))
+
+    return result
+
+
+def list_user_accounts_by_email(
+    session: Session,
+    user_email: str,
+) -> list[tuple[db.Account, str | None, datetime]]:
+    """
+    List all accounts a user has access to by their email address.
+
+    This is an admin function that allows looking up account memberships
+    by user email instead of requiring authentication context.
+
+    Steps:
+    1. Get user_id from Cognito by email
+    2. Get all account memberships for user
+    3. For each membership, get account details and role
+    4. Return list of (account, role, last_accessed) tuples
+
+    Args:
+        session: Database session
+        user_email: Email address of the user to look up
+
+    Returns:
+        List of tuples: (account, primary_role, last_accessed)
+
+    Raises:
+        ValueError: If user not found in Cognito
+    """
+    # 1. Get user_id from Cognito by email
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+
+    try:
+        user_response = cognito_client.admin_get_user(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID, Username=user_email
+        )
+
+        # Extract user_sub (user_id) from attributes
+        user_sub = None
+        for attr in user_response["UserAttributes"]:
+            if attr["Name"] == "sub":
+                user_sub = attr["Value"]
+                break
+
+        if not user_sub:
+            raise ValueError(f"User sub not found for email: {user_email}")
+
+        user_id = UUID(user_sub)
+
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "UserNotFoundException":
+            raise ValueError(f"User not found with email: {user_email}") from e
+        else:
+            logger.error(f"Error retrieving user from Cognito: {e}")
+            raise ValueError(f"Failed to retrieve user: {e}") from e
+
+    # 2. Get all account memberships for user
+    account_user_repo = AccountUserRepository(session)
+    account_memberships = account_user_repo.get_accounts_for_user(user_id)
+
+    # 3. For each membership, get account details and role
     account_repo = AccountRepository(session)
     role_repo = ResourceRoleAssignmentRepository(session)
     result = []

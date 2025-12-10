@@ -413,6 +413,63 @@ async def list_user_accounts(
     return UserAccountsListResponse(accounts=accounts)
 
 
+async def list_user_accounts_by_email(
+    user_email: str,
+    session: Session,
+) -> UserAccountsListResponse:
+    """
+    List all accounts a user has access to by their email address.
+
+    This is an admin endpoint that allows looking up account memberships
+    for any user by their email address.
+
+    Route handler that:
+    1. Calls team service to list user accounts by email
+    2. Converts DB models to API response
+
+    Args:
+        user_email: Email address of the user to look up
+        session: Database session
+
+    Returns:
+        UserAccountsListResponse: List of accounts with roles
+
+    Raises:
+        HTTPException: If user not found or error occurs
+    """
+    try:
+        # 1. Call service to list user accounts by email
+        account_data = team_service.list_user_accounts_by_email(
+            session=session, user_email=user_email
+        )
+
+        # 2. Convert DB models to API response
+        accounts = []
+        for account, primary_role, last_accessed in account_data:
+            accounts.append(
+                UserAccountResponse(
+                    account_id=account.id,
+                    account_name=account.name,
+                    role=UserRole(primary_role) if primary_role else None,
+                    last_accessed=last_accessed,
+                )
+            )
+
+        return UserAccountsListResponse(accounts=accounts)
+
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=str(e),
+            )
+        else:
+            raise HTTPException(
+                status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e),
+            )
+
+
 async def switch_account(
     request: SwitchAccountRequest,
     context: UserContext,

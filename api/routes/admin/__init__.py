@@ -1819,6 +1819,31 @@ async def list_user_accounts(
     return await _team.list_user_accounts(context, session)
 
 
+@admin_router.get("/users/{email}/accounts")
+async def list_user_accounts_by_email(
+    email: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> UserAccountsListResponse:
+    """
+    List all accounts a specific user has access to by their email.
+
+    This is an admin endpoint for looking up account memberships by user email.
+    Useful for support, user management, and account administration.
+
+    Args:
+        email: Email address of the user to look up
+
+    Returns:
+        UserAccountsListResponse: List of accounts with roles and last access time
+
+    Raises:
+        404: User not found
+        500: Error retrieving accounts
+    """
+    return await _team.list_user_accounts_by_email(email, session)
+
+
 @admin_router.post("/users/me/switch-account")
 async def switch_account(
     request: SwitchAccountRequest,
