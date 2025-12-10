@@ -120,3 +120,17 @@ class KnowledgeUpdateRequested(BaseEvent):
     integration_id: UUID  # The integration
     project_integration_id: UUID  # The project integration
     requested_at: datetime
+
+
+@dataclass
+class DatasetGenerationRequested(BaseEvent):
+    """Event published when dataset generation is requested from orchestrator."""
+
+    detail_type: ClassVar[str] = "datasets.GenerationRequested"
+
+    job_id: str  # UUID string generated for this job
+    agent_id: UUID  # Agent identifier
+    project: str  # Project name
+    account_name: str  # Account identifier
+    actions: Dict[str, Any]  # Dataset actions (create/update/delete/noop)
+    requested_at: datetime
