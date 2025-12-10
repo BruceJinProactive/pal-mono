@@ -481,15 +481,12 @@ class AdoraTool(Toolkit):
         """
         # Create a new database session using the project's session factory
         session = SyncSessionLocal()
-        try:
-            # Get customer phone number safely
-            user_phone = ""
-            if order.customer and order.customer.phone_number:
-                user_phone = order.customer.phone_number
+        store_tz = self.tool_metadata.timezone or "America/Los_Angeles"
 
+        try:
             # Create a new order record
             db_order = DBOrder(
-                user_phone_number=user_phone,
+                user_phone_number=self.tool_metadata.customer_phone,
                 store_phone_number="PLACE_HOLDER",
                 order_number=str(validated_order.key) if validated_order.key else "",
                 transaction_id=(
@@ -499,7 +496,7 @@ class AdoraTool(Toolkit):
                 tracking_link=None,  # Tracking link will be updated later when available
                 status="pending",
                 vendor=IntegrationProvider.adora,
-                order_date=datetime.now(),
+                order_date=datetime.now(ZoneInfo(store_tz)),
             )
 
             # Add and commit the order

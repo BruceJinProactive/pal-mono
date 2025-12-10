@@ -1,7 +1,8 @@
 import asyncio
+from datetime import datetime
 
 from fastapi import Request
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import services.relay_service as relay_service
@@ -37,6 +38,15 @@ def is_dev_mode(request: Request) -> bool:
     return dev_header == "true"
 
 
+def format_phone_number(phone_number: str | None) -> str:
+    # Remove non-digit characters
+    if not phone_number or not phone_number.isdigit() or len(phone_number) != 10:
+        logger.warning(f"[AdoraWebhook] Invalid phone number: {phone_number}")
+        return ""
+
+    return "+1" + phone_number
+
+
 async def update_order_status(
     session: AsyncSession, webhook_request: AdoraWebhookRequest
 ) -> AdoraOrder:
@@ -56,24 +66,54 @@ async def update_order_status(
     # Find the existing order using store_id and order_number
 
     logger.debug(f"[AdoraWebhook]Update order status: {webhook_request.OrderNumber}")
-    order_query = select(AdoraOrder).where(
-        AdoraOrder.store_id == webhook_request.storeId,
-        AdoraOrder.order_number == webhook_request.OrderNumber,
-    )
-    result = await session.execute(order_query)
-    order = result.scalar_one_or_none()
 
-    if not order:
+    phone_number = format_phone_number(webhook_request.PhoneNumber)
+    if not phone_number:
+        raise ValueError(
+            f"[AdoraWebhook] PhoneNumber must be valid: {webhook_request.PhoneNumber}"
+        )
+
+    raw_date = webhook_request.OrderDate
+    if raw_date is None:
+        raise ValueError("[AdoraWebhook] OrderDate must not be None")
+    dt = datetime.strptime(raw_date, "%m/%d/%Y %I:%M:%S %p")
+    order_date = dt.date()
+    start = datetime.combine(order_date, datetime.min.time())
+
+    pending_order_query = (
+        select(AdoraOrder)
+        .where(
+            AdoraOrder.store_id == webhook_request.storeId,
+            AdoraOrder.status == "pending",
+            AdoraOrder.user_phone_number == phone_number,
+            AdoraOrder.order_date >= start,
+        )
+        .order_by(desc(AdoraOrder.created_at))
+    )
+    result = await session.execute(pending_order_query)
+    rows = result.scalars().all()
+    if len(rows) == 0:
         raise ValueError(
             f"Order not found with store_id: {webhook_request.storeId} "
-            f"and order_number: {webhook_request.OrderNumber}"
+            f"and phone_number: {webhook_request.PhoneNumber} "
+            f"and OrderDate: {webhook_request.OrderDate}"
         )
+    elif len(rows) == 1:
+        order = rows[0]
+    else:
+        logger.warning(
+            f"[AdoraWebhook] found multiple matched orders: {len(rows)}",
+            extra={
+                "store_id": webhook_request.storeId,
+                "phone_number": webhook_request.PhoneNumber,
+                "OrderDate": webhook_request.OrderDate,
+            },
+        )
+        order = rows[0]
 
     # Update the order status in orders table (event should not be None for order type)
     if webhook_request.event is not None:
         order.status = webhook_request.event
-    else:
-        raise ValueError("Event field is required for order status updates")
 
     # If there's a tracking link in the webhook, update it
     if webhook_request.trackingLink:

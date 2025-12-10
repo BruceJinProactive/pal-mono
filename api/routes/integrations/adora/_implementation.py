@@ -101,6 +101,11 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                             webhook_request.storeId,
                         ]
                     ):
+                        logger.error(
+                            f"[AdoraWebhook] Missing required payload for event: {webhook_request.event}",
+                            extra={"webhook_body": body},
+                        )
+
                         return JSONResponse(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             content={
