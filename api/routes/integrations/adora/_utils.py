@@ -55,10 +55,10 @@ async def update_order_status(
     """
     # Find the existing order using store_id and order_number
 
-    logger.debug(f"[AdoraWebhook]Update order status: {webhook_request.orderNumber}")
+    logger.debug(f"[AdoraWebhook]Update order status: {webhook_request.OrderNumber}")
     order_query = select(AdoraOrder).where(
         AdoraOrder.store_id == webhook_request.storeId,
-        AdoraOrder.order_number == webhook_request.orderNumber,
+        AdoraOrder.order_number == webhook_request.OrderNumber,
     )
     result = await session.execute(order_query)
     order = result.scalar_one_or_none()
@@ -66,7 +66,7 @@ async def update_order_status(
     if not order:
         raise ValueError(
             f"Order not found with store_id: {webhook_request.storeId} "
-            f"and order_number: {webhook_request.orderNumber}"
+            f"and order_number: {webhook_request.OrderNumber}"
         )
 
     # Update the order status in orders table (event should not be None for order type)

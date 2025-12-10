@@ -36,8 +36,8 @@ async def adora_webhook(
         "PhoneNumber": string,     // Customer phone number
         "trackingLink": string,    // Optional tracking link
         "transactionId": string,   // Transaction identifier
-        "orderNumber": string,     // Order number
-        "orderDate": string        // Order date
+        "OrderNumber": string,     // Order number
+        "OrderDate": string        // Order date
     }
 
     For menu updates:

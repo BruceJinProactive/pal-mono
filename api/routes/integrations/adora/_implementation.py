@@ -57,6 +57,11 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
             try:
                 # Route based on event type
                 if webhook_request.event == "update_menu":
+                    logger.debug(
+                        f"[AdoraWebhook] handling Adora webhook {webhook_request.event} event",
+                        extra={"webhook_body": body},
+                    )
+
                     # Handle menu update
                     if not webhook_request.brandId:
                         return JSONResponse(
@@ -79,21 +84,27 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                             content=result,
                         )
 
-                else:
-                    # Handle order status events (all other event types)
+                elif webhook_request.event == "Paid":
+                    # Handle order status events ("Paid")
                     # Validate required fields for order events
+                    logger.debug(
+                        f"[AdoraWebhook] handling Adora webhook {webhook_request.event} event",
+                        extra={"webhook_body": body},
+                    )
+
                     if not all(
                         [
                             webhook_request.PhoneNumber,
                             webhook_request.transactionId,
-                            webhook_request.orderNumber,
-                            webhook_request.orderDate,
+                            webhook_request.OrderNumber,
+                            webhook_request.OrderDate,
+                            webhook_request.storeId,
                         ]
                     ):
                         return JSONResponse(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             content={
-                                "error": "Missing required fields for order events: PhoneNumber, transactionId, orderNumber, orderDate"
+                                "error": "Missing required fields for order events: PhoneNumber, transactionId, OrderNumber, OrderDate"
                             },
                         )
 
@@ -117,6 +128,19 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                         content={
                             "status": "success",
                             "message": "Order status updated successfully",
+                        },
+                    )
+                else:
+                    logger.debug(
+                        f"[AdoraWebhook] Can not handle Adora webhook event: {webhook_request.event}",
+                        extra={"webhook_body": body},
+                    )
+                    # Return success response
+                    return JSONResponse(
+                        status_code=status.HTTP_200_OK,
+                        content={
+                            "status": "success",
+                            "message": f"Adora webhook event:{webhook_request.event} received successfully",
                         },
                     )
 
