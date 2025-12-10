@@ -414,6 +414,7 @@ async def list_user_accounts(
 
 
 async def list_user_accounts_by_email(
+    context: UserContext,
     user_email: str,
     session: Session,
 ) -> UserAccountsListResponse:
@@ -440,7 +441,7 @@ async def list_user_accounts_by_email(
     try:
         # 1. Call service to list user accounts by email
         account_data = team_service.list_user_accounts_by_email(
-            session=session, user_email=user_email
+            context=context, session=session, user_email=user_email
         )
 
         # 2. Convert DB models to API response

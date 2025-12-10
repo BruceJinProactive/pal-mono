@@ -298,16 +298,18 @@ def list_user_accounts(
 
 
 def list_user_accounts_by_email(
+    context: UserContext,
     session: Session,
     user_email: str,
 ) -> list[tuple[db.Account, str | None, datetime]]:
     """
     List all accounts a user has access to by their email address.
 
-    This is an admin function that allows looking up account memberships
-    by user email instead of requiring authentication context.
+    This is an admin-only function that allows looking up account memberships
+    by user email. Requires admin role to prevent cross-tenant information leaks.
 
     Args:
+        context: User context for authorization (must be admin).
         session: Database session for the query.
         user_email: Email address of the user to look up.
 
@@ -315,14 +317,15 @@ def list_user_accounts_by_email(
         List of tuples: (account, primary_role, last_accessed).
 
     Raises:
-        ValueError: If user not found in Cognito.
+        ValueError: If user is not an admin, AWS Cognito not configured,
+                    or user not found in Cognito.
 
     Example:
-        >>> accounts = list_user_accounts_by_email(session, "user@example.com")
+        >>> accounts = list_user_accounts_by_email(context, session, "user@example.com")
         >>> for account, role, last_accessed in accounts:
         ...     print(f"{account.name}: {role}")
     """
-    return _implementation.list_user_accounts_by_email(session, user_email)
+    return _implementation.list_user_accounts_by_email(context, session, user_email)
 
 
 def validate_account_access(

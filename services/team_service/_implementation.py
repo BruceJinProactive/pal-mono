@@ -30,7 +30,7 @@ from db.repositories.resource_role_assignment_repository import ResourceType
 from db.tables.types import AccountUserStatus, InvitationStatus
 from services import email_service
 from services.admin_service._utils import generate_password
-from services.auth_types import UserContext
+from services.auth_types import UserContext, UserRole
 from services.team_service.schema import (
     AcceptInvitationParams,
     InvitationParams,
@@ -926,22 +926,26 @@ def list_user_accounts(
 
 
 def list_user_accounts_by_email(
+    context: UserContext,
     session: Session,
     user_email: str,
 ) -> list[tuple[db.Account, str | None, datetime]]:
     """
     List all accounts a user has access to by their email address.
 
-    This is an admin function that allows looking up account memberships
+    This is an admin-only function that allows looking up account memberships
     by user email instead of requiring authentication context.
 
     Steps:
-    1. Get user_id from Cognito by email
-    2. Get all account memberships for user
-    3. For each membership, get account details and role
-    4. Return list of (account, role, last_accessed) tuples
+    1. Verify caller is an admin
+    2. Verify AWS Cognito user pool is configured
+    3. Get user_id from Cognito by email
+    4. Get all account memberships for user
+    5. For each membership, get account details and role
+    6. Return list of (account, role, last_accessed) tuples
 
     Args:
+        context: User context for authorization
         session: Database session
         user_email: Email address of the user to look up
 
@@ -949,9 +953,21 @@ def list_user_accounts_by_email(
         List of tuples: (account, primary_role, last_accessed)
 
     Raises:
-        ValueError: If user not found in Cognito
+        ValueError: If user is not an admin, AWS Cognito not configured,
+                    or user not found in Cognito
     """
-    # 1. Get user_id from Cognito by email
+    # 1. Verify caller is an admin to prevent cross-tenant info leak
+    if context.role != UserRole.Admin:
+        raise ValueError("Only admin users can look up accounts by email")
+
+    # 2. Verify AWS Cognito user pool is configured
+    if not AWS_ADMIN_CONSOLE_USER_POOL_ID:
+        raise ValueError(
+            "AWS_ADMIN_CONSOLE_USER_POOL_ID is not configured; "
+            "cannot retrieve user from Cognito"
+        )
+
+    # 3. Get user_id from Cognito by email
     cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
 
     try:
@@ -978,11 +994,11 @@ def list_user_accounts_by_email(
             logger.error(f"Error retrieving user from Cognito: {e}")
             raise ValueError(f"Failed to retrieve user: {e}") from e
 
-    # 2. Get all account memberships for user
+    # 4. Get all account memberships for user
     account_user_repo = AccountUserRepository(session)
     account_memberships = account_user_repo.get_accounts_for_user(user_id)
 
-    # 3. For each membership, get account details and role
+    # 5. For each membership, get account details and role
     account_repo = AccountRepository(session)
     role_repo = ResourceRoleAssignmentRepository(session)
     result = []

@@ -1828,20 +1828,25 @@ async def list_user_accounts_by_email(
     """
     List all accounts a specific user has access to by their email.
 
-    This is an admin endpoint for looking up account memberships by user email.
+    This is an admin-only endpoint for looking up account memberships by user email.
+    The email is converted to user_id internally for the lookup.
     Useful for support, user management, and account administration.
 
+    Admin authorization is enforced at the service layer to prevent cross-tenant
+    information leaks.
+
     Args:
-        email: Email address of the user to look up
+        email: Email address of the user to look up (converted to user_id internally)
 
     Returns:
         UserAccountsListResponse: List of accounts with roles and last access time
 
     Raises:
+        403: User is not an admin (enforced in service layer)
         404: User not found
         500: Error retrieving accounts
     """
-    return await _team.list_user_accounts_by_email(email, session)
+    return await _team.list_user_accounts_by_email(context, email, session)
 
 
 @admin_router.post("/users/me/switch-account")
