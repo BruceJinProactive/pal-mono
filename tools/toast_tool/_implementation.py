@@ -363,6 +363,26 @@ class ToastTool(Toolkit):
             logger.error(f"[ToastTool.store_info] Error getting store info: {e}")
             return "Failed to get the store information, please try again."
 
+    def _get_store_name(self) -> str | None:
+        """
+        Extracts the store/restaurant name from the store info.
+
+        Returns:
+            str | None: The store name if available, None otherwise
+        """
+        store_info_str = self.get_store_info()
+        if not store_info_str or store_info_str.startswith("Failed to "):
+            return None
+
+        try:
+            store_info = json.loads(store_info_str)
+        except json.JSONDecodeError:
+            logger.error("[ToastTool._get_store_name] Failed to parse store_info JSON")
+            return None
+
+        general = store_info.get("general") or {}
+        return general.get("name")
+
     @tool
     def check_online_ordering_status(self) -> str:
         """
@@ -1448,6 +1468,7 @@ class ToastTool(Toolkit):
         # Build hosted payment payload
         payment_payload = self._build_hosted_payment_payload(
             order=order,
+            price=price,
             payment_intent_id=payment_intent_result.id,  # type: ignore
             payment_intent_external_reference_id=payment_intent_external_reference_id,
             session_secret=payment_intent_result.sessionSecret,  # type: ignore
@@ -1470,6 +1491,7 @@ class ToastTool(Toolkit):
         self,
         *,
         order: Order | OrderInput,
+        price: Price,
         payment_intent_id: str,
         payment_intent_external_reference_id: str,
         session_secret: str,
@@ -1482,6 +1504,7 @@ class ToastTool(Toolkit):
 
         Args:
             order: The submitted Toast Order object
+            price: Price object containing amount (subtotal), taxAmount, and totalAmount
             payment_intent_id: The actual Toast payment intent ID (used for updatePaymentIntent API)
             payment_intent_external_reference_id: External reference ID for the payment intent
             session_secret: Session secret from the payment intent
@@ -1512,22 +1535,19 @@ class ToastTool(Toolkit):
                 "[ToastTool._build_hosted_payment_payload] Failed to retrieve iframe bearer token."
             )
 
+        store_name = self._get_store_name()
+
         payload: dict[str, Any] = {
             "email": customer.email,
             "name": full_name,
             "phone": customer.phone,
             "storeId": self.store_id,
+            "storeName": store_name,
             "orderExternalId": order.externalId,
             "paymentIntentId": payment_intent_id,
             "paymentIntentExternalReferenceId": payment_intent_external_reference_id,
-            "subtotal": (
-                round(order.checks[0].amount * 100) if order.checks[0].amount else 0
-            ),
-            "tax": (
-                round(order.checks[0].taxAmount * 100)
-                if order.checks[0].taxAmount
-                else 0
-            ),
+            "subtotal": (round(price.amount * 100) if price.amount else 0),
+            "tax": (round(price.taxAmount * 100) if price.taxAmount else 0),
             "gratuityFees": gratuity_fees or [],
             "total": payment_intent_amount,
             "tips": 0,
