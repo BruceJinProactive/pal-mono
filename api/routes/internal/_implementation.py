@@ -14,8 +14,8 @@ from utils.log import logger
 # Set to False for production to update all stores
 SAFE_MODE = True
 SAFE_MODE_MAX_PROJECTS = 1
-# When set, safe mode will ONLY process this specific project (by name)
-SAFE_MODE_PROJECT_NAME = "pizzamyheart-exp"
+# When set, safe mode will ONLY process this specific project (by UUID)
+SAFE_MODE_PROJECT_ID = "a20b5f98-9dcf-4a2f-99c1-16e931ce8fd8"
 
 
 def _has_adora_tool_configured(project: Project) -> bool:
@@ -72,18 +72,18 @@ async def start_knowledge_update_process(session: Session) -> dict:
 
         # Safe mode: filter to specific project or limit count for testing
         if SAFE_MODE:
-            if SAFE_MODE_PROJECT_NAME:
-                # Filter to only the specified project by name
+            if SAFE_MODE_PROJECT_ID:
+                # Filter to only the specified project by UUID
                 projects_with_adora_pos = [
                     (pi, i, p)
                     for pi, i, p in projects_with_adora_pos
-                    if p.name == SAFE_MODE_PROJECT_NAME
+                    if str(p.id) == SAFE_MODE_PROJECT_ID
                 ]
                 logger.warning(
-                    f"[Adora Menu Updater] SAFE_MODE enabled: filtering to project '{SAFE_MODE_PROJECT_NAME}', found {len(projects_with_adora_pos)} match(es)",
+                    f"[Adora Menu Updater] SAFE_MODE enabled: filtering to project ID '{SAFE_MODE_PROJECT_ID}', found {len(projects_with_adora_pos)} match(es)",
                     extra={
                         "safe_mode": True,
-                        "safe_mode_project_name": SAFE_MODE_PROJECT_NAME,
+                        "safe_mode_project_id": SAFE_MODE_PROJECT_ID,
                         "total_found": total_found,
                     },
                 )
