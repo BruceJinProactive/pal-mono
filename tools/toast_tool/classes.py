@@ -228,7 +228,7 @@ class Payment(BaseModel):
 class Customer(BaseModel):
     firstName: str
     phone: str
-    email: str
+    email: str = Field(default="orderingagent@palona.ai")
     lastName: str = Field(default="(via PalonaAI)")
 
 
