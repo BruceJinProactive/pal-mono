@@ -10,10 +10,12 @@ from db.tables.types import IntegrationProvider, IntegrationType
 from events import KnowledgeUpdateRequested, publish_event
 from utils.log import logger
 
-# Safe mode: When True, limits knowledge updates to only the first few stores
+# Safe mode: When True, limits knowledge updates for testing
 # Set to False for production to update all stores
 SAFE_MODE = True
-SAFE_MODE_MAX_PROJECTS = 3
+SAFE_MODE_MAX_PROJECTS = 1
+# When set, safe mode will ONLY process this specific project (by name)
+SAFE_MODE_PROJECT_NAME = "pizzamyheart-exp"
 
 
 def _has_adora_tool_configured(project: Project) -> bool:
@@ -68,17 +70,36 @@ async def start_knowledge_update_process(session: Session) -> dict:
 
         total_found = len(projects_with_adora_pos)
 
-        # Safe mode: limit to first N projects for testing
+        # Safe mode: filter to specific project or limit count for testing
         if SAFE_MODE:
-            projects_with_adora_pos = projects_with_adora_pos[:SAFE_MODE_MAX_PROJECTS]
-            logger.warning(
-                f"[Adora Menu Updater] SAFE_MODE enabled: processing {len(projects_with_adora_pos)}/{total_found} projects",
-                extra={
-                    "safe_mode": True,
-                    "max_projects": SAFE_MODE_MAX_PROJECTS,
-                    "total_found": total_found,
-                },
-            )
+            if SAFE_MODE_PROJECT_NAME:
+                # Filter to only the specified project by name
+                projects_with_adora_pos = [
+                    (pi, i, p)
+                    for pi, i, p in projects_with_adora_pos
+                    if p.name == SAFE_MODE_PROJECT_NAME
+                ]
+                logger.warning(
+                    f"[Adora Menu Updater] SAFE_MODE enabled: filtering to project '{SAFE_MODE_PROJECT_NAME}', found {len(projects_with_adora_pos)} match(es)",
+                    extra={
+                        "safe_mode": True,
+                        "safe_mode_project_name": SAFE_MODE_PROJECT_NAME,
+                        "total_found": total_found,
+                    },
+                )
+            else:
+                # Limit to first N projects
+                projects_with_adora_pos = projects_with_adora_pos[
+                    :SAFE_MODE_MAX_PROJECTS
+                ]
+                logger.warning(
+                    f"[Adora Menu Updater] SAFE_MODE enabled: processing {len(projects_with_adora_pos)}/{total_found} projects",
+                    extra={
+                        "safe_mode": True,
+                        "max_projects": SAFE_MODE_MAX_PROJECTS,
+                        "total_found": total_found,
+                    },
+                )
 
         events_published = 0
         errors = []
@@ -144,7 +165,7 @@ async def start_knowledge_update_process(session: Session) -> dict:
             "total_processed": len(projects_with_adora_pos),
             "events_published": events_published,
             "errors": errors,
-            "message": f"Submitted {events_published} update knowledge events"
+            "summary": f"Submitted {events_published} update knowledge events"
             + (
                 f" (SAFE_MODE: limited to {SAFE_MODE_MAX_PROJECTS})"
                 if SAFE_MODE
@@ -170,6 +191,6 @@ async def start_knowledge_update_process(session: Session) -> dict:
             "safe_mode": SAFE_MODE,
             "events_published": 0,
             "errors": [f"Process error: {str(e)}"],
-            "message": "Discovery process failed",
+            "summary": "Discovery process failed",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
