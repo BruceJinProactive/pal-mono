@@ -682,7 +682,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             )
 
     except Exception as e:
-        logger.error(f"Error in handle_assistant_request: {str(e)}")
+        logger.error(f"Error in handle_assistant_request: {str(e)}", exc_info=True)
         return {"error": str(e)}
 
 
