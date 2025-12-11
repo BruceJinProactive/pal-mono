@@ -445,8 +445,12 @@ async def update_knowledge(
                 include_category_in_doc_name=False,
             )
 
-            # Verify namespace was populated
-            if _verify_namespace_populated(pinecone_index_name, pinecone_namespace):
+            # Verify namespace was populated (2x delay for populate check)
+            if _verify_namespace_populated(
+                pinecone_index_name,
+                pinecone_namespace,
+                retry_delay=NAMESPACE_RETRY_DELAY_SECONDS * 2,
+            ):
                 namespace_populated = True
                 break
 
