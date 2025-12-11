@@ -462,7 +462,7 @@ async def update_checkpoint(
                     )
             except Exception as e:
                 # Log but don't fail the operation if S3 deletion fails
-                logger.warning(f"Failed to delete checkpoint image from S3: {e}")
+                logger.error(f"Failed to delete checkpoint image from S3: {e}")
 
         # Set image_url to None
         updates["image_url"] = None
@@ -477,7 +477,7 @@ async def update_checkpoint(
                     )
             except Exception as e:
                 # Log but don't fail the operation if old image deletion fails
-                logger.warning(f"Failed to delete old checkpoint image from S3: {e}")
+                logger.error(f"Failed to delete old checkpoint image from S3: {e}")
 
         # Upload new image
         new_image_url = await _upload_checkpoint_image(
@@ -1202,7 +1202,7 @@ async def delete_checkpoint_runs(
                     logger.warning(f"Image not found in S3: {image_url}")
             except Exception as e:
                 # Log but don't fail the operation
-                logger.warning(f"Failed to delete checkpoint run image from S3: {e}")
+                logger.error(f"Failed to delete checkpoint run image from S3: {e}")
 
     # Delete all runs in batch
     deleted_count = checkpoint_service.delete_checkpoint_runs(session, run_ids)

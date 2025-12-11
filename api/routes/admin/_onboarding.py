@@ -212,7 +212,7 @@ async def process_menu_upload_background(
         # Update the project with the menu
         project_params = ProjectParams()
         project_params.product_info = result
-        logger.info("Project result: %s", result)
+        logger.debug("Project result: %s", result)
         project_service.update_project(session, context, project_id, project_params)
 
         # Commit the transaction
@@ -397,7 +397,7 @@ async def self_onboarding(
             headers={"Content-Type": "application/json"},
         )
 
-    logger.info(f"[SelfOnboarding] Completed self onboarding for user {request.email}")
+    logger.debug(f"[SelfOnboarding] Completed self onboarding for user {request.email}")
 
     session.commit()
     _set_user_session(response, user.email, user.session)
@@ -441,7 +441,7 @@ def self_onboard_account(
             lead_id=None,
             auto_commit=False,  # Don't commit yet, in case Cognito creation fails
         )
-        logger.info(f"[SelfOnboarding] Created account {account_name} for user signup")
+        logger.debug(f"[SelfOnboarding] Created account {account_name} for user signup")
     except ValueError as e:
         session.rollback()
         raise HTTPException(
@@ -486,7 +486,7 @@ def self_onboard_agent(
             params=agent_params,
             auto_commit=False,
         )
-        logger.info(f"[SelfOnboarding] Created agent {new_agent.name} for user signup")
+        logger.debug(f"[SelfOnboarding] Created agent {new_agent.name} for user signup")
     except ValueError as e:
         session.rollback()
         raise HTTPException(
@@ -535,7 +535,7 @@ def self_onboard_project(
             params=project_params,
             auto_commit=False,
         )
-        logger.info(
+        logger.debug(
             f"[SelfOnboarding] Created project {new_project.name} for user signup"
         )
         self_onboard_phone_number(new_project.name, new_project.id, context, session)
@@ -586,7 +586,7 @@ def self_onboard_phone_number(
             detail=f"Failed to assign phone number to project {project_name}: {e}",
             headers={"Content-Type": "application/json"},
         )
-    logger.info(
+    logger.debug(
         f"[SelfOnboarding] Assigned phone number {phone_number} to project {project_name}"
     )
     return phone_number
@@ -679,7 +679,7 @@ async def self_onboard_voice_config(
                 async_session=async_session,
             )
 
-            logger.info(
+            logger.debug(
                 f"[SelfOnboarding] Created voice config {voice_config.id} for project {project_id}"
             )
             return
@@ -704,7 +704,7 @@ async def self_onboard_voice_config(
                     create_request=voice_config_request,
                     async_session=async_session,
                 )
-                logger.info(
+                logger.debug(
                     f"[SelfOnboarding] Created voice config {voice_config.id} for project {project_id}"
                 )
             return
@@ -745,7 +745,7 @@ def self_onboard_user(request: SelfOnboardingRequest, session: Session) -> Cogni
             password=request.password,
             session=session,
         )
-        logger.info(f"[SelfOnboarding] Created Cognito user for {request.email}")
+        logger.debug(f"[SelfOnboarding] Created Cognito user for {request.email}")
     except ValueError as e:
         session.rollback()
         raise HTTPException(

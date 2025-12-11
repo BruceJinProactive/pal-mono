@@ -112,6 +112,12 @@ def index_to_pinecone(
         transformations=[node_parser],
     )
 
-    logger.debug("Successfully indexed to Pinecone namespace: %s", pinecone_namespace)
+    logger.info(
+        "Successfully indexed to Pinecone",
+        extra={
+            "namespace": pinecone_namespace,
+            "document_count": len(documents),
+        },
+    )
 
     return len(documents)

@@ -50,7 +50,7 @@ def is_test_request(request: Request) -> bool:
     test_header = "test_mode"
 
     if request.headers.get(test_header):
-        logger.info(
+        logger.debug(
             f"[Square Webhook] Development/test request detected via '{test_header}' header - bypassing signature verification"
         )
         return True
@@ -71,7 +71,7 @@ def validate_oauth_request(request: Request, is_callback=False):
         # Decrypt the state to get the account name
         try:
             account_name = decrypt_account_name(state)
-            logger.info(f"[Square OAuth] Decrypted account name: {account_name}")
+            logger.debug(f"[Square OAuth] Decrypted account name: {account_name}")
             return account_name
         except ValueError as e:
             logger.error(f"[Square OAuth] Failed to decrypt state: {e}")
@@ -97,11 +97,11 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
     Returns:
         bool: True if webhook signature is valid, False otherwise
     """
-    logger.info("[Square Webhook DEBUG] validate_square_webhook_request called")
+    logger.debug("[Square Webhook] validate_square_webhook_request called")
     try:
         # Check if this is a development or test request that should bypass verification
         is_test = is_test_request(request)
-        logger.info(f"[Square Webhook DEBUG] is_test_request returned: {is_test}")
+        logger.debug(f"[Square Webhook] is_test_request returned: {is_test}")
         if is_test:
             return True
 
@@ -117,12 +117,10 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
         # Get Square webhook signature key and URL from secrets manager
         try:
             signature_key, webhook_url = get_square_webhook_credentials()
-            logger.info(
-                "[Square Webhook DEBUG] Successfully retrieved webhook credentials"
-            )
+            logger.debug("[Square Webhook] Successfully retrieved webhook credentials")
         except ValueError as e:
-            logger.warning(f"[Square Webhook] {e}")
-            logger.info("[Square Webhook DEBUG] Returning False due to ValueError")
+            logger.error(f"[Square Webhook] {e}")
+            logger.debug("[Square Webhook] Returning False due to ValueError")
             return False  # Reject requests without signature key in production
 
         # Decode the request body
@@ -132,8 +130,8 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
         message = webhook_url + raw_body
 
         # Debug logging for signature verification
-        logger.info(
-            "[Square Webhook Debug] Signature verification details",
+        logger.debug(
+            "[Square Webhook] Signature verification details",
             extra={
                 "webhook_url": webhook_url,
                 "payload_length": len(raw_body),

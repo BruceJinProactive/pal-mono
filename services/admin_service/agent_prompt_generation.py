@@ -76,7 +76,7 @@ def scrape_website(url: str) -> str | None:
             html_content = result.stdout
         else:
             # Fallback to requests if curl fails
-            logger.info(f"⚠️ Curl failed for {url}, falling back to requests")
+            logger.debug(f"Curl failed for {url}, falling back to requests")
             response = requests.get(
                 url,
                 timeout=8,
@@ -107,10 +107,10 @@ def scrape_website(url: str) -> str | None:
         return text
 
     except subprocess.TimeoutExpired:
-        logger.warning(f"⚠️ Curl timeout for {url}")
+        logger.error(f"Curl timeout for {url}")
         return None
     except Exception as e:
-        logger.warning(f"⚠️ Could not scrape {url}: {e}")
+        logger.error(f"Could not scrape {url}: {e}")
         return None
 
 
@@ -137,11 +137,11 @@ def scrape_multiple_urls_parallel(urls: list[str]) -> str:
                 content = future.result()
                 if content:
                     scraped_contents.append(f"Content from {url}:\n{content}")
-                    logger.info(
-                        f"✅ Successfully scraped {len(content)} characters from {url}"
+                    logger.debug(
+                        f"Successfully scraped {len(content)} characters from {url}"
                     )
             except Exception as e:
-                logger.warning(f"⚠️ Could not scrape {url}: {e}")
+                logger.error(f"Could not scrape {url}: {e}")
 
     return "\n---\n".join(scraped_contents) if scraped_contents else ""
 
@@ -200,12 +200,12 @@ Format as a clean, organized summary that an AI agent can reference when helping
         summary = content.strip() if isinstance(content, str) else ""
 
         # Log the summarization results
-        logger.info(f"📋 LLM menu summary: {len(summary)} characters")
+        logger.debug(f"LLM menu summary: {len(summary)} characters")
 
         return summary
 
     except Exception as e:
-        logger.warning(f"⚠️ Menu summarization failed: {e}")
+        logger.error(f"Menu summarization failed: {e}")
         # Fallback to basic extraction if LLM fails
         return "Menu provided - please reference the original menu content below."
 
@@ -498,26 +498,26 @@ async def generate_agent_prompts(
     )
 
     if specific_instructions:
-        logger.info(
-            f"📝 Specific instructions provided: {len(specific_instructions)} characters"
+        logger.debug(
+            f"Specific instructions provided: {len(specific_instructions)} characters"
         )
 
     # Handle menu content
     if menu_content:
-        logger.info(f"📋 Menu provided: {len(menu_content)} characters")
+        logger.debug(f"Menu provided: {len(menu_content)} characters")
     else:
-        logger.info("📋 No menu provided - using general approach")
+        logger.debug("No menu provided - using general approach")
 
     # Scrape additional URLs for context (in parallel for better performance)
     additional_context = ""
     if additional_urls and any(url.strip() for url in additional_urls):
         valid_urls = [url.strip() for url in additional_urls if url.strip()]
-        logger.info(f"🌐 Scraping {len(valid_urls)} additional URLs for context")
+        logger.debug(f"Scraping {len(valid_urls)} additional URLs for context")
         additional_context = scrape_multiple_urls_parallel(valid_urls)
 
     try:
-        logger.info(
-            f"🤖 Sending request to LLM for agent '{agent_name if agent_name else 'unnamed'}' ({agent_type})..."
+        logger.debug(
+            f"Sending request to LLM for agent '{agent_name if agent_name else 'unnamed'}' ({agent_type})..."
         )
 
         prompt = await build_prompt(

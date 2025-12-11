@@ -53,7 +53,10 @@ async def update_memory(
         model="gpt-4o-mini",
     )
 
-    logger.debug(f"Successfully added memory for user {user_id}")
+    logger.info(
+        "Successfully added memory for user",
+        extra={"user_id": user_id},
+    )
 
 
 @task(name="Get All Memories")
@@ -98,8 +101,13 @@ async def _fetch_and_cache_memories(user_id: str) -> None:
 
         # Cache the result
         _set_cached_memories(user_id, memories_string)
-        logger.debug(
-            f"Background fetch completed for user {user_id} ({elapsed_time:.4f}s): {memories_string}"
+        logger.info(
+            "Background memory fetch completed",
+            extra={
+                "user_id": user_id,
+                "elapsed_time_s": round(elapsed_time, 4),
+                "memory_count": len(memories),
+            },
         )
     except Exception as e:
         logger.error(f"Background memory fetch failed for user {user_id}: {e}")

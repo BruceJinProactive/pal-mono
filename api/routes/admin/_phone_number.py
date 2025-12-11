@@ -319,7 +319,7 @@ async def purchase_number(
         )
 
     except ValueError as e:
-        logger.info("Purchase failed with business error", extra={"detail": str(e)})
+        logger.error("Purchase failed with business error", extra={"detail": str(e)})
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.exception("Failed to purchase phone number")
@@ -362,7 +362,7 @@ async def release_standalone_number(
         )
 
     except ValueError as e:
-        logger.info("Release failed with business error", extra={"detail": str(e)})
+        logger.error("Release failed with business error", extra={"detail": str(e)})
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.exception("Failed to release standalone phone number")

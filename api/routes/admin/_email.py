@@ -21,7 +21,7 @@ async def send_email(
     Send a single email using a Postmark template.
     """
 
-    logger.info(
+    logger.debug(
         "Attempting to send email with template",
         extra={
             "to_email": request.to_email,
@@ -50,7 +50,7 @@ async def send_email(
             detail=f"Failed to send email: {err}",
         )
 
-    logger.info(
+    logger.debug(
         "Successfully sent email with template",
         extra={
             "to_email": request.to_email,
@@ -71,7 +71,7 @@ async def send_batch_emails(
     Send multiple emails using Postmark templates in a single API call.
     """
 
-    logger.info(
+    logger.debug(
         "Attempting to send batch emails with templates",
         extra={
             "email_count": len(request.emails),
@@ -106,7 +106,7 @@ async def send_batch_emails(
             detail=f"Failed to send batch emails: {err}",
         )
 
-    logger.info(
+    logger.debug(
         "Successfully sent batch emails with templates",
         extra={
             "email_count": len(request.emails),
@@ -126,7 +126,7 @@ async def get_template_info(
     Get information about a Postmark template.
     """
 
-    logger.info(
+    logger.debug(
         "Attempting to get template info",
         extra={
             "template_id": request.template_id,
@@ -143,7 +143,7 @@ async def get_template_info(
             detail=f"Failed to get template info: {err}",
         )
 
-    logger.info(
+    logger.debug(
         "Successfully retrieved template info",
         extra={
             "template_id": request.template_id,
@@ -163,7 +163,7 @@ async def list_templates(
     List available Postmark templates.
     """
 
-    logger.info(
+    logger.debug(
         "Attempting to list templates",
         extra={
             "count": request.count,
@@ -184,7 +184,7 @@ async def list_templates(
             detail=f"Failed to list templates: {err}",
         )
 
-    logger.info(
+    logger.debug(
         "Successfully listed templates",
         extra={
             "count": request.count,

@@ -693,7 +693,7 @@ class AdoraTool(Toolkit):
                 f"Finished adding loyalty discounts: {order.loyalty_discounts}"
             )
         except Exception as e:
-            logger.warning(f"Error adding loyalty discounts: {e}")
+            logger.error(f"Error adding loyalty discounts: {e}")
             # Continue without loyalty discounts if there's an error
 
     def _add_loyalty_rewards(self, order: Order, customer_data: dict) -> None:
@@ -926,7 +926,7 @@ class AdoraTool(Toolkit):
                 # Adora requires a string 'Delivery' or 'TakeOut' as the order type
                 order.order_type = _utils.validate_order_type(order.order_type)
             except Exception as e:
-                logger.warning(f"Could not validate order type: {e}")
+                logger.error(f"Could not validate order type: {e}")
                 return "Sorry, do you want that for Takeout or Delivery?"
 
             # Validate the address if the order is for delivery
@@ -1084,8 +1084,8 @@ class AdoraTool(Toolkit):
             return self._fulfill_order(order, bearer_token)
 
         except Exception as e:
-            logger.warning(f"Error in extracting structured data: {e}")
-            logger.warning(traceback.format_exc())
+            logger.error(f"Error in extracting structured data: {e}")
+            logger.error(traceback.format_exc())
             return "Please try again."
 
     @tool
