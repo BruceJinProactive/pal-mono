@@ -469,6 +469,12 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         call_data = message_data.get("call", {})
         call_id = call_data.get("id")
 
+        monitor_data = call_data.get("monitor", {})
+
+        logger.debug(
+            f"[vapi._implementation.handle_assistant_request] Processing assistant request. Monitor Data: {monitor_data}"
+        )
+
         # Extract phone number information
         phone_number_data = message_data.get("phoneNumber", {})
         phone_number = phone_number_data.get("number", "")
