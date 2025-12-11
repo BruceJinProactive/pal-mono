@@ -20,14 +20,15 @@ from services import knowledge_service, project_service
 from utils.log import logger
 from utils.secret import get_client_secret
 
-# Delay before retrying namespace deletion (Pinecone eventual consistency)
-NAMESPACE_DELETE_RETRY_DELAY_SECONDS = 1.0
+# Pinecone eventual consistency settings
+NAMESPACE_RETRY_DELAY_SECONDS = 1.0
+NAMESPACE_POPULATE_MAX_ATTEMPTS = 5
 
 
 def _ensure_namespace_deleted(
     index_name: str,
     namespace: str,
-    retry_delay: float = NAMESPACE_DELETE_RETRY_DELAY_SECONDS,
+    retry_delay: float = NAMESPACE_RETRY_DELAY_SECONDS,
 ) -> None:
     """
     Ensure a Pinecone namespace is fully deleted by retrying deletion.
@@ -81,6 +82,61 @@ def _ensure_namespace_deleted(
             extra={"index_name": index_name, "namespace": namespace},
         )
         # Proceed anyway
+
+
+def _verify_namespace_populated(
+    index_name: str,
+    namespace: str,
+    retry_delay: float = NAMESPACE_RETRY_DELAY_SECONDS,
+) -> bool:
+    """
+    Verify that a Pinecone namespace has been populated with vectors.
+
+    Args:
+        index_name: Name of the Pinecone index
+        namespace: Namespace to check
+        retry_delay: Seconds to wait before checking
+
+    Returns:
+        bool: True if namespace exists and has vectors, False if not populated
+
+    Raises:
+        PineconeException: For Pinecone infrastructure errors (should be 500)
+        Exception: For unexpected errors (should be 500)
+    """
+    pc = Pinecone()
+    index = pc.Index(index_name)
+
+    # Wait before checking
+    time.sleep(retry_delay)
+
+    stats = index.describe_index_stats()
+    namespaces = stats.get("namespaces", {})
+
+    if namespace not in namespaces:
+        logger.warning(
+            f"[Adora Menu Updater] Namespace '{namespace}' not found after indexing",
+            extra={"index_name": index_name, "namespace": namespace},
+        )
+        return False
+
+    vector_count = namespaces[namespace].get("vector_count", 0)
+    if vector_count == 0:
+        logger.warning(
+            f"[Adora Menu Updater] Namespace '{namespace}' exists but has 0 vectors",
+            extra={"index_name": index_name, "namespace": namespace},
+        )
+        return False
+
+    logger.info(
+        f"[Adora Menu Updater] Namespace '{namespace}' verified with {vector_count} vectors",
+        extra={
+            "index_name": index_name,
+            "namespace": namespace,
+            "vector_count": vector_count,
+        },
+    )
+    return True
 
 
 projects_router = APIRouter(prefix="/projects")
@@ -362,19 +418,53 @@ async def update_knowledge(
                 },
             )
 
-        # Call knowledge service to update the menu
-        result = knowledge_service.update_agent_kb(
-            pos_provider=IntegrationProvider.adora,
-            store_id=store_id,
-            client_id=client_id,
-            client_secret=client_secret,
-            token_api_endpoint=token_api_endpoint,
-            general_api_endpoint=general_api_endpoint,
-            pinecone_namespace=pinecone_namespace,
-            pinecone_index_name=pinecone_index_name,
-            debug=False,
-            include_category_in_doc_name=False,
-        )
+        # Call knowledge service to update the menu with retry logic
+        result: dict = {}
+        namespace_populated = False
+
+        for attempt in range(1, NAMESPACE_POPULATE_MAX_ATTEMPTS + 1):
+            logger.info(
+                f"[Adora Menu Updater] Indexing attempt {attempt}/{NAMESPACE_POPULATE_MAX_ATTEMPTS} for project {project_id}",
+                extra={
+                    "project_id": project_id,
+                    "pinecone_namespace": pinecone_namespace,
+                    "attempt": attempt,
+                },
+            )
+
+            result = knowledge_service.update_agent_kb(
+                pos_provider=IntegrationProvider.adora,
+                store_id=store_id,
+                client_id=client_id,
+                client_secret=client_secret,
+                token_api_endpoint=token_api_endpoint,
+                general_api_endpoint=general_api_endpoint,
+                pinecone_namespace=pinecone_namespace,
+                pinecone_index_name=pinecone_index_name,
+                debug=False,
+                include_category_in_doc_name=False,
+            )
+
+            # Verify namespace was populated
+            if _verify_namespace_populated(pinecone_index_name, pinecone_namespace):
+                namespace_populated = True
+                break
+
+            # Log retry if more attempts remaining
+            if attempt < NAMESPACE_POPULATE_MAX_ATTEMPTS:
+                logger.warning(
+                    f"[Adora Menu Updater] Indexing attempt {attempt} failed for project {project_id}, retrying...",
+                    extra={
+                        "project_id": project_id,
+                        "pinecone_namespace": pinecone_namespace,
+                        "attempt": attempt,
+                    },
+                )
+
+        if not namespace_populated:
+            raise ValueError(
+                f"Failed to populate namespace '{pinecone_namespace}' after {NAMESPACE_POPULATE_MAX_ATTEMPTS} attempts"
+            )
 
         # Update project's product_info with the system_prompt_menu
         system_prompt_menu = result.get("system_prompt_menu", "")
