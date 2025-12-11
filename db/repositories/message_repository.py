@@ -140,6 +140,67 @@ class MessageRepositoryAsync:
 
         return message
 
+    async def create_voice_message(
+        self,
+        user_id: uuid.UUID,
+        project_id: uuid.UUID,
+        message_body: dict,
+        call_id: str,
+    ) -> Message:
+        """
+        Create a message for a voice call. Always creates a new conversation.
+
+        Voice calls are distinct sessions - no conversation reuse logic.
+        Each call gets its own conversation with a unique call_id.
+
+        Args:
+            user_id: The ID of the user making the call
+            project_id: The project ID
+            message_body: The message content as a dict
+            call_id: The VAPI call ID (required for voice calls)
+
+        Returns:
+            Message: The created message
+
+        Raises:
+            ValueError: If user not found
+        """
+        logger.debug(
+            f"[db.message_repository.create_voice_message] Creating voice message with call_id: {call_id}"
+        )
+
+        # Get the user from the database
+        result = await self.session.execute(select(User).filter(User.id == user_id))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise ValueError(f"No user found with id {user_id}")
+
+        # Always create a new conversation for voice calls
+        metadata = message_body.get("metadata", {})
+        is_test_message = metadata.get("testing", False)
+
+        new_conversation = Conversation(
+            user_id=user.id,
+            project_id=project_id,
+            is_test=is_test_message,
+            call_id=call_id,
+        )
+        self.session.add(new_conversation)
+        await self.session.flush()
+
+        logger.debug(
+            f"[db.message_repository.create_voice_message] Created conversation {new_conversation.id} for call {call_id}"
+        )
+
+        # Create the message
+        message = Message(conversation_id=new_conversation.id, body=message_body)
+        self.session.add(message)
+        await self.session.commit()
+        await self.session.refresh(message)
+
+        return message
+
     async def get_messages_by_conversation(
         self, conversation_id: uuid.UUID, limit: int = 20
     ):

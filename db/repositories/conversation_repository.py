@@ -40,6 +40,26 @@ class ConversationRepositoryAsync:
 
         return conversation
 
+    async def get_conversation_by_call_id(self, call_id: str) -> Conversation | None:
+        """
+        Retrieve a conversation by its VAPI call ID.
+
+        Args:
+            call_id: The VAPI call ID associated with the conversation.
+
+        Returns:
+            Conversation | None: The conversation if found, None otherwise.
+        """
+        try:
+            result = await self.session.execute(
+                select(Conversation).filter(Conversation.call_id == call_id)
+            )
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error retrieving conversation by call_id: {e}")
+            return None
+
     async def get_open_conversations_by_user_id(
         self, user_id: uuid.UUID, limit: int = 5
     ):

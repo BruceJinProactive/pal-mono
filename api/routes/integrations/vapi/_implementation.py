@@ -523,7 +523,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         logger.debug(
             f"[vapi._implementation.handle_assistant_request] Saving request message {message.id} for user {user.id} and call {call_id} in project {project.id}"
         )
-        request_message = await message_repo.create_message(
+        request_message = await message_repo.create_voice_message(
             user_id=user.id,
             project_id=project.id,
             message_body=message.to_dict(),
@@ -693,94 +693,33 @@ async def handle_status_update(message_data, session: AsyncSession):
 
         logger.debug(f"Call {call_id} status updated to: {status}")
 
-        # if squad is enabled, look for model block in squad members language assistant
-        squad_data = call_data.get("squad", {})
-        model_block = None
-        if squad_data:
-            try:
-                model_block = _get_squad_model(squad_data)
-            except Exception as e:
-                logger.error(
-                    f"Failed to extract model from squad data; falling back to assistant: {str(e)}"
-                )
-        if not isinstance(model_block, dict):
-            assistant_data = call_data.get("assistant", {})
-            model_block = assistant_data.get("model")
-
-        raw_model_data = None
-        if isinstance(model_block, dict):
-            raw_model_data = model_block.get("model")
-
-        try:
-            model_data = json.loads(raw_model_data) if raw_model_data else {}
-        except (TypeError, json.JSONDecodeError):
-            logger.warning("Unable to decode model_data from VAPI payload")
-            model_data = {}
-
         # Extract control URL from monitor data if available
         monitor_data = call_data.get("monitor", {})
         control_url = monitor_data.get("controlUrl")
 
-        if control_url and model_data:
-            customer_number = model_data.get("sender_identifier", "")
-            phone_number = model_data.get("recipient_identifier", "")
+        # Store control URL using call_id to find the conversation
+        # The conversation is created with call_id during handle_assistant_request
+        if control_url and call_id:
+            conversation_repo = db.ConversationRepositoryAsync(session)
+            conversation = await conversation_repo.get_conversation_by_call_id(call_id)
 
-            if customer_number and phone_number:
-                # Find the conversation using the same logic as handle_session_closure
-                channel_identifier = f"voice:{customer_number}"
-                project_channel_identifier = f"voice:{phone_number}"
-
-                project_repo = db.ProjectRepositoryAsync(session)
-                project = await project_repo.get_project_by_channel_identifier(
-                    project_channel_identifier
+            if conversation:
+                await conversation_repo.update_conversation(
+                    conversation_id=conversation.id,
+                    update_data=ConversationUpdate(
+                        vapi_control_url=control_url,
+                    ),
                 )
-                if not project:
-                    raise ValueError(
-                        f"Project not found for this message: {project_channel_identifier}"
-                    )
-                user = await user_service.get_user_by_channel_identifier_async(
-                    session=session,
-                    account_id=project.account_id,
-                    channel_identifier=channel_identifier,
+                logger.debug(
+                    f"Stored control URL for conversation {conversation.id} (call {call_id})"
                 )
-                if not user:
-                    raise ValueError(
-                        f"User not found for this message: account_id: {project.account_id}, channel_identifier:{channel_identifier}"
-                    )
-                conversation_repo = db.ConversationRepositoryAsync(session)
-
-                conversations = (
-                    await conversation_repo.get_open_conversations_by_user_id(user.id)
-                )
-                if not conversations:
-                    logger.warning(
-                        f"No matching active conversation found for call {call_id}"
-                    )
-                else:
-                    if len(conversations) > 1:
-                        logger.warning(
-                            f"There are more than one open conversations for user:{user.id}"
-                        )
-                    conversation = sorted(
-                        conversations, key=lambda c: c.created_at, reverse=True
-                    )[0]
-                    await conversation_repo.update_conversation(
-                        conversation_id=conversation.id,
-                        update_data=ConversationUpdate(
-                            vapi_control_url=control_url,
-                        ),
-                    )
-
-                    logger.debug(
-                        f"Found conversation: {conversation.id} with url: {conversation.vapi_control_url} for call {call_id}"
-                    )
             else:
                 logger.warning(
-                    f"Missing phone number data for customer_number: {customer_number} and phone_number: {phone_number}"
+                    f"No conversation found for call_id {call_id} - control URL not stored"
                 )
         else:
             logger.debug(
-                f"No control URL: {control_url} or model: {model_data} available for call {call_id}"
+                f"No control URL or call_id available: control_url={control_url}, call_id={call_id}"
             )
 
         # Acknowledge status updates
