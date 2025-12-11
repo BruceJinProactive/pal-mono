@@ -530,6 +530,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             call_id=call_id,
         )
         await session.refresh(user, attribute_names=["id"])
+        await session.refresh(project, attribute_names=["id"])
 
         logger.debug(
             f"[handle_assistant_request] Voice message created for call {call_id}",
@@ -550,7 +551,7 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             )
             raise ValueError("Failed to create request message")
 
-        await session.refresh(project, attribute_names=["account"])
+        await session.refresh(project, attribute_names=["id", "account"])
 
         try:
             stripe_customer_id = project.account.stripe_customer_id
