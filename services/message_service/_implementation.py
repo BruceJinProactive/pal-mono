@@ -263,6 +263,18 @@ async def get_chat_response_stream(
                     call_id=call_id,
                 )
             else:
+                # Warn if voice message is missing call_id - this shouldn't happen
+                if message.channel == Channel.VOICE and not call_id:
+                    logger.warning(
+                        "[get_chat_response_stream] Voice message missing call_id, "
+                        "falling back to text message conversation logic",
+                        extra={
+                            "user_id": str(user.id),
+                            "project_id": str(project.id),
+                            "sender_identifier": message.sender_identifier,
+                            "recipient_identifier": message.recipient_identifier,
+                        },
+                    )
                 # Existing text message logic with conversation reuse
                 request_message = await message_repo.create_message(
                     user_id=user.id,
