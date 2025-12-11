@@ -43,7 +43,10 @@ async def get_chat_response_async(
 
 # Cannot trace iterator consumption here
 async def get_chat_response_stream(
-    session: AsyncSession, message: Message, request_context: RequestContext
+    session: AsyncSession,
+    message: Message,
+    request_context: RequestContext,
+    call_id: str | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
     """
      Get a stream of chat responses for a given message.
@@ -56,6 +59,8 @@ async def get_chat_response_stream(
          session (AsyncSession): The asynchronous database session to use for the query.
          message (Message): The message object containing the details of the user's message.
          request_context (RequestContext): The request context containing metadata about the request.
+         call_id (str | None): The VAPI call ID for voice calls. When provided, the message will
+             be added to the existing conversation associated with this call_id.
 
      Returns:
         AsyncIterator[Message]: A stream of response messages from the agent.
@@ -64,7 +69,9 @@ async def get_chat_response_stream(
         ValueError: If any required information (account name, account, projects, user, agent ID) is not found.
         ValueError: If the response type from the agent is unexpected.
     """
-    return _implementation.get_chat_response_stream(session, message, request_context)
+    return _implementation.get_chat_response_stream(
+        session, message, request_context, call_id
+    )
 
 
 def get_chat_response(session: Session, message: Message) -> Message:

@@ -201,6 +201,59 @@ class MessageRepositoryAsync:
 
         return message
 
+    async def add_message_to_voice_conversation(
+        self,
+        user_id: uuid.UUID,
+        message_body: dict,
+        call_id: str,
+    ) -> Message:
+        """
+        Add a message to an existing voice conversation identified by call_id.
+
+        For voice calls, we want to reuse the conversation created during
+        handle_assistant_request rather than applying text message reuse logic.
+
+        Args:
+            user_id: The ID of the user
+            message_body: The message content as a dict
+            call_id: The VAPI call ID to look up the conversation
+
+        Returns:
+            Message: The created message
+
+        Raises:
+            ValueError: If conversation not found for call_id
+        """
+        logger.debug(
+            f"[db.message_repository.add_message_to_voice_conversation] "
+            f"Adding message to conversation with call_id: {call_id}"
+        )
+
+        # Look up existing conversation by call_id and user_id
+        result = await self.session.execute(
+            select(Conversation).filter(
+                Conversation.call_id == call_id,
+                Conversation.user_id == user_id,
+            )
+        )
+        conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            raise ValueError(f"No conversation found for call_id {call_id}")
+
+        logger.debug(
+            f"[db.message_repository.add_message_to_voice_conversation] "
+            f"Found conversation {conversation.id} for call_id {call_id}"
+        )
+
+        # Create the message in the existing conversation
+        message = Message(conversation_id=conversation.id, body=message_body)
+        self.session.add(message)
+        await self.session.commit()
+        await self.session.refresh(message)
+
+        return message
+
     async def get_messages_by_conversation(
         self, conversation_id: uuid.UUID, limit: int = 20
     ):

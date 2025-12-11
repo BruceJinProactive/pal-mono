@@ -225,7 +225,10 @@ async def get_chat_response_async(
 
 
 async def get_chat_response_stream(
-    session: AsyncSession, message: Message, request_context: RequestContext
+    session: AsyncSession,
+    message: Message,
+    request_context: RequestContext,
+    call_id: str | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
     logger.info(f"get_chat_response_stream received message: {message}")
 
@@ -250,9 +253,23 @@ async def get_chat_response_stream(
             logger.debug(
                 f"Persist streaming inbound message: {message.to_dict()} from user: {user.id}"
             )
-            request_message = await message_repo.create_message(
-                user_id=user.id, project_id=project.id, message_body=message.to_dict()
-            )
+
+            # For VOICE channel with call_id, use voice-specific message creation
+            # to reuse the conversation created during handle_assistant_request
+            if message.channel == Channel.VOICE and call_id:
+                request_message = await message_repo.add_message_to_voice_conversation(
+                    user_id=user.id,
+                    message_body=message.to_dict(),
+                    call_id=call_id,
+                )
+            else:
+                # Existing text message logic with conversation reuse
+                request_message = await message_repo.create_message(
+                    user_id=user.id,
+                    project_id=project.id,
+                    message_body=message.to_dict(),
+                )
+
             if not request_message:
                 raise ValueError("Failed to create request message")
 
