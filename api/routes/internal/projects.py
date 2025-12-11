@@ -49,6 +49,9 @@ def _wait_for_namespace_empty(
         pc = Pinecone()
         index = pc.Index(index_name)
 
+        # Mandatory initial delay before first check to allow deletion to propagate
+        time.sleep(retry_delay)
+
         for attempt in range(max_retries):
             stats = index.describe_index_stats()
             namespaces = stats.get("namespaces", {})
