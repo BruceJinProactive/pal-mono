@@ -7,8 +7,12 @@ from utils.log import logger
 
 
 class AdoraV2Tool(Toolkit):
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__(name="adora_v2_tool")
+
+        # Accept any kwargs to be compatible with registry
+        # Store metadata if provided
+        self.tool_metadata = kwargs.get("tool_metadata", None)
 
         # Log instance creation with built-in id
         instance_id = id(self)
