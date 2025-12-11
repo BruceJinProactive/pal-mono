@@ -529,7 +529,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             message_body=message.to_dict(),
             call_id=call_id,
         )
-        await session.refresh(user, attribute_names=["id"])
 
         logger.debug(
             f"[handle_assistant_request] Voice message created for call {call_id}",
@@ -550,8 +549,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             )
             raise ValueError("Failed to create request message")
 
-        await session.refresh(project, attribute_names=["account"])
-
+        # [IMPORTANT] The account relationship is already eagerly loaded via selectinload()
+        # in get_project_by_channel_identifier(). No need to refresh.
+        # Attempting to refresh can cause greenlet_spawn errors if the relationship gets detached.
         try:
             stripe_customer_id = project.account.stripe_customer_id
 
@@ -700,8 +700,25 @@ async def handle_status_update(message_data, session: AsyncSession):
         dict: Response for VAPI
     """
     try:
+        # Defensive validation: ensure message_data is a valid dictionary
+        if not message_data or not isinstance(message_data, dict):
+            logger.error(
+                "handle_status_update called with invalid message_data",
+                extra={"message_data": message_data},
+            )
+            return {"error": "Invalid message data"}
+
         status = message_data.get("status")
-        call_data = message_data.get("call", {})
+        call_data = message_data.get("call")
+
+        # Defensive check for call_data
+        if not call_data or not isinstance(call_data, dict):
+            logger.error(
+                "handle_status_update: missing or invalid call data",
+                extra={"message_data": message_data},
+            )
+            return {"error": "Invalid call data"}
+
         call_id = call_data.get("id")
 
         logger.debug(f"Call {call_id} status updated to: {status}")
@@ -756,9 +773,17 @@ async def handle_status_update(message_data, session: AsyncSession):
         # Acknowledge status updates
         return {"status": "acknowledged"}
     except Exception as e:
-        call_data = message_data.get("call", {})
-        call_id = call_data.get("id")
-        logger.error(f"Error in handle_status_update: {str(e)}, call: {call_id}")
+        # Safely extract call_id for logging, handling None message_data
+        call_id = None
+        if message_data and isinstance(message_data, dict):
+            call_data = message_data.get("call")
+            if call_data and isinstance(call_data, dict):
+                call_id = call_data.get("id")
+        logger.error(
+            f"Error in handle_status_update: {str(e)}",
+            extra={"call_id": call_id},
+            exc_info=True,
+        )
         return {"error": str(e)}
 
 
