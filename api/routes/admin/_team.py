@@ -34,6 +34,8 @@ from api.schemas.admin.team import (
     UpdateTeamMemberResponse,
     UserAccountResponse,
     UserAccountsListResponse,
+    UserAccountsWithUserIdListResponse,
+    UserAccountWithUserIdResponse,
     UserRole,
 )
 from services import team_service
@@ -417,7 +419,7 @@ async def list_user_accounts_by_email(
     context: UserContext,
     user_email: str,
     session: Session,
-) -> UserAccountsListResponse:
+) -> UserAccountsWithUserIdListResponse:
     """
     List all accounts a user has access to by their email address.
 
@@ -433,7 +435,7 @@ async def list_user_accounts_by_email(
         session: Database session
 
     Returns:
-        UserAccountsListResponse: List of accounts with roles
+        UserAccountsWithUserIdListResponse: List of accounts with user_id and roles
 
     Raises:
         HTTPException: If user not found or error occurs
@@ -446,9 +448,10 @@ async def list_user_accounts_by_email(
 
         # 2. Convert DB models to API response
         accounts = []
-        for account, primary_role, last_accessed in account_data:
+        for user_id, account, primary_role, last_accessed in account_data:
             accounts.append(
-                UserAccountResponse(
+                UserAccountWithUserIdResponse(
+                    user_id=user_id,
                     account_id=account.id,
                     account_name=account.name,
                     role=UserRole(primary_role) if primary_role else None,
@@ -456,7 +459,7 @@ async def list_user_accounts_by_email(
                 )
             )
 
-        return UserAccountsListResponse(accounts=accounts)
+        return UserAccountsWithUserIdListResponse(accounts=accounts)
 
     except ValueError as e:
         if "not found" in str(e).lower():

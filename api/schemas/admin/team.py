@@ -138,10 +138,26 @@ class UserAccountResponse(BaseModel):
     last_accessed: Optional[datetime] = None
 
 
+class UserAccountWithUserIdResponse(BaseModel):
+    """Account information with user_id (for admin lookup by email)."""
+
+    user_id: UUID
+    account_id: UUID
+    account_name: str
+    role: Optional[UserRole] = None
+    last_accessed: Optional[datetime] = None
+
+
 class UserAccountsListResponse(BaseModel):
     """List of accounts user has access to."""
 
     accounts: List[UserAccountResponse]
+
+
+class UserAccountsWithUserIdListResponse(BaseModel):
+    """List of accounts with user_id (for admin lookup by email)."""
+
+    accounts: List[UserAccountWithUserIdResponse]
 
 
 class SwitchAccountRequest(BaseModel):

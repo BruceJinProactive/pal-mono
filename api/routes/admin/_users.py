@@ -2,6 +2,8 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.user_management import (
+    AssignAccountRequest,
+    AssignAccountResponse,
     CreateUserRequest,
     ListUsersResponse,
     UserInfo,
@@ -101,6 +103,53 @@ async def delete_account_user(
         admin_service.delete_account_user(account_name, user_email, session)
     except ValueError as e:
         if "not found" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e),
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(e),
+            )
+
+
+async def assign_account_to_user(
+    request: AssignAccountRequest,
+    context: UserContext,
+    session: Session,
+) -> AssignAccountResponse:
+    """
+    Assign an existing user to an account with a specified role.
+
+    This creates:
+    1. AccountUser record (membership)
+    2. ResourceRoleAssignment record (role on account resource)
+
+    Args:
+        request: The assignment request containing user_id, account_name, and role
+        context: The user context for authorization (admin only)
+        session: Database session
+
+    Returns:
+        AssignAccountResponse: Status and message about the assignment
+
+    Raises:
+        HTTPException: 404 if account or user not found, 500 for other errors
+    """
+    try:
+        result = admin_service.assign_account_to_user(
+            user_id=request.user_id,
+            account_name=request.account_name,
+            role=request.role,
+            session=session,
+        )
+        return AssignAccountResponse(
+            status=result["status"],
+            message=result["message"],
+        )
+    except ValueError as e:
+        if "not found" in str(e).lower():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=str(e),

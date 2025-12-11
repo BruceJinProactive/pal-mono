@@ -171,9 +171,12 @@ from api.schemas.admin.team import (
     UpdateTeamMemberRequest,
     UpdateTeamMemberResponse,
     UserAccountsListResponse,
+    UserAccountsWithUserIdListResponse,
 )
 from api.schemas.admin.user import SignUpRequest
 from api.schemas.admin.user_management import (
+    AssignAccountRequest,
+    AssignAccountResponse,
     CreateUserRequest,
     ListUsersResponse,
     UserInfo,
@@ -1662,6 +1665,24 @@ async def delete_account_user(
     await _users.delete_account_user(account_name, email, context, session)
 
 
+@admin_router.post("/users/assign-account")
+async def assign_account_to_user(
+    request: AssignAccountRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> AssignAccountResponse:
+    """
+    Assign an existing user to an account with a specified role.
+
+    This is an admin-only endpoint that creates:
+    1. AccountUser record (membership)
+    2. ResourceRoleAssignment record (role on account resource)
+
+    The user must already exist in Cognito.
+    """
+    return await _users.assign_account_to_user(request, context, session)
+
+
 """
 ---------- Team Management Endpoints ----------
 -----------------------------------------------
@@ -1824,7 +1845,7 @@ async def list_user_accounts_by_email(
     email: str,
     context: UserContext = Depends(authenticate_user),
     session: Session = Depends(db.get_db),
-) -> UserAccountsListResponse:
+) -> UserAccountsWithUserIdListResponse:
     """
     List all accounts a specific user has access to by their email.
 
@@ -1839,7 +1860,7 @@ async def list_user_accounts_by_email(
         email: Email address of the user to look up (converted to user_id internally)
 
     Returns:
-        UserAccountsListResponse: List of accounts with roles and last access time
+        UserAccountsWithUserIdListResponse: List of accounts with user_id, roles and last access time
 
     Raises:
         403: User is not an admin (enforced in service layer)

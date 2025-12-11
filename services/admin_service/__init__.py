@@ -568,6 +568,38 @@ def create_account_user(
     )
 
 
+def assign_account_to_user(
+    user_id: uuid.UUID,
+    account_name: str,
+    role: str,
+    session: Session,
+    assigned_by: uuid.UUID | None = None,
+) -> dict[str, str]:
+    """
+    Assign an existing user to an account.
+
+    Creates:
+    1. AccountUser record (membership)
+    2. ResourceRoleAssignment record (role on account resource)
+
+    Args:
+        user_id: UUID of the existing user
+        account_name: Name of the account to assign
+        role: Role to assign (e.g., 'owner', 'manager', 'viewer')
+        session: Database session
+        assigned_by: Optional UUID of user making the assignment (defaults to None for admin operations)
+
+    Returns:
+        Dict with status message
+
+    Raises:
+        ValueError: If account not found or user doesn't exist in Cognito
+    """
+    return _implementation.assign_account_to_user(
+        user_id, account_name, role, session, assigned_by
+    )
+
+
 def signup_account_user(
     account_name: str,
     user_email: str,
@@ -854,6 +886,7 @@ __all__ = [
     "delete_knowledge_file",
     "list_account_users",
     "create_account_user",
+    "assign_account_to_user",
     "signup_account_user",
     "signup_self_onboarding_user",
     "signup_google_user",

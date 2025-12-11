@@ -1144,6 +1144,114 @@ def create_account_user(
             ) from e
 
 
+def assign_account_to_user(
+    user_id: uuid.UUID,
+    account_name: str,
+    role: str,
+    session: Session,
+    assigned_by: uuid.UUID | None = None,
+) -> dict[str, str]:
+    """
+    Assign an existing user to an account.
+
+    Creates:
+    1. AccountUser record (membership)
+    2. ResourceRoleAssignment record (role on account resource)
+
+    Args:
+        user_id: UUID of the existing user
+        account_name: Name of the account to assign
+        role: Role to assign (e.g., 'owner', 'manager', 'viewer')
+        assigned_by: UUID of user making the assignment (None for admin operations)
+        session: Database session
+
+    Returns:
+        Dict with status message
+
+    Raises:
+        ValueError: If account not found or user doesn't exist in Cognito
+    """
+    # 1. Get account by name
+    account_repo = AccountRepository(session)
+    account = account_repo.get_account(account_name)
+    if not account:
+        logger.error(f"Account {account_name} not found")
+        raise ValueError(f"Account {account_name} not found")
+
+    # 2. Verify user exists in Cognito and get their details
+    cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+    try:
+        response = cognito_client.list_users(
+            UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
+            Filter=f'sub="{user_id}"',
+        )
+        users = response.get("Users", [])
+        if not users:
+            logger.error(f"User {user_id} not found in Cognito")
+            raise ValueError(f"User {user_id} not found in Cognito")
+
+        cognito_user = users[0]
+        attrs = cognito_user.get("Attributes", [])
+        user_email = get_attr(attrs, "email")
+        user_name = get_attr(attrs, "name")
+
+        if not user_email:
+            logger.error(f"User email not found in Cognito for user_id {user_id}")
+            raise ValueError(f"User email not found for user_id {user_id}")
+
+    except ClientError as e:
+        logger.error(f"Error retrieving user {user_id} from Cognito: {e}")
+        raise ValueError(f"Failed to verify user in Cognito: {e}") from e
+
+    # 3. Create or update AccountUser record (membership)
+    account_user_repo = AccountUserRepository(session)
+    existing_account_user = account_user_repo.get_by_user_and_account(
+        user_id=user_id, account_id=account.id
+    )
+
+    if existing_account_user:
+        # Reactivate if deactivated
+        if existing_account_user.status != AccountUserStatus.active:
+            account_user_repo.update_status(
+                user_id=user_id,
+                account_id=account.id,
+                new_status=AccountUserStatus.active,
+            )
+            logger.info(
+                f"Reactivated account membership for user {user_id} in account {account_name}"
+            )
+    else:
+        # Create new account_user record
+        account_user_repo.create(
+            account_id=account.id,
+            user_id=user_id,
+            email=user_email,
+            name=user_name or "Unknown",
+            added_by=assigned_by,
+            status=AccountUserStatus.active,
+        )
+        logger.info(
+            f"Created account membership for user {user_id} in account {account_name}"
+        )
+
+    # 4. Assign role via ResourceRoleAssignment
+    role_repo = ResourceRoleAssignmentRepository(session)
+    role_repo.add_role(
+        user_id=user_id,
+        resource_type=ResourceType.ACCOUNT,
+        resource_id=account.id,
+        role=role,
+        assigned_by=assigned_by,
+        reason="Account assignment by admin",
+    )
+    logger.info(f"Assigned role '{role}' to user {user_id} on account {account_name}")
+
+    return {
+        "status": "success",
+        "message": f"User {user_id} assigned to account {account_name} with role {role}",
+    }
+
+
 def signup_account_user(
     account_name: str,
     user_email: str,
