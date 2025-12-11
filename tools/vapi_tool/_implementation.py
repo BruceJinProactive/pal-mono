@@ -167,11 +167,11 @@ class VapiTool(Toolkit):
 
             # Get control URL from Vapi API if not stored in conversation
             control_url = conversation.vapi_control_url
+            call_id = conversation.call_id
             if not control_url:
                 logger.debug(
                     f"[VapiTool.call_transfer] No control URL stored for conversation {conversation_id}. Fetching from Vapi API."
                 )
-                call_id = conversation.call_id
                 logger.debug(
                     f"[VapiTool.call_transfer] Call id for conversation {conversation_id}: {call_id}"
                 )
@@ -185,11 +185,27 @@ class VapiTool(Toolkit):
                             "account_name": self.tool_metadata.account_name,
                             "conversation_id": str(conversation_id),
                             "user_id": str(self.tool_metadata.user_id),
+                            "destination_number": self.destination_number,
+                            "vapi_control_url_present": bool(
+                                conversation.vapi_control_url
+                            ),
+                            "conversation_status": (
+                                str(conversation.status)
+                                if conversation.status
+                                else None
+                            ),
                         },
                     )
                     return error_msg
 
                 control_url = _get_control_url_from_vapi(call_id)
+                logger.info(
+                    "[VapiTool.call_transfer] Fetched control URL from VAPI API (fallback)",
+                    extra={
+                        "call_id": call_id,
+                        "conversation_id": str(conversation_id),
+                    },
+                )
 
             logger.debug(
                 f"[VapiTool.call_transfer] Retrieved control URL for conversation {conversation_id}: {control_url}"
@@ -222,13 +238,15 @@ class VapiTool(Toolkit):
             response = httpx.post(control_url, json=transfer_payload, timeout=30.0)
             response.raise_for_status()
 
-            logger.debug(
-                f"[VapiTool.call_transfer] Successfully initiated call transfer to {self.destination_number}",
+            logger.info(
+                "[VapiTool.call_transfer] Successfully initiated call transfer",
                 extra={
                     "project_id": str(self.tool_metadata.project_id),
                     "account_name": self.tool_metadata.account_name,
                     "conversation_id": str(conversation_id),
                     "user_id": str(self.tool_metadata.user_id),
+                    "call_id": call_id,
+                    "destination_number": self.destination_number,
                 },
             )
             return "Call has been transfered"

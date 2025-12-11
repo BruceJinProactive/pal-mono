@@ -531,6 +531,19 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         )
         await session.refresh(user, attribute_names=["id"])
 
+        logger.debug(
+            f"[handle_assistant_request] Voice message created for call {call_id}",
+            extra={
+                "call_id": call_id,
+                "conversation_id": str(request_message.conversation_id),
+                "message_id": str(request_message.id),
+                "project_id": str(project.id),
+                "user_id": str(user.id),
+                "customer_number": customer_number,
+                "phone_number": phone_number,
+            },
+        )
+
         if not request_message:
             logger.error(
                 f"[vapi._implementation.handle_assistant_request] Failed to create request message for user {user.id} and call {call_id} in project {project.id}",
@@ -700,6 +713,14 @@ async def handle_status_update(message_data, session: AsyncSession):
         # Store control URL using call_id to find the conversation
         # The conversation is created with call_id during handle_assistant_request
         if control_url and call_id:
+            logger.debug(
+                "[handle_status_update] Looking up conversation by call_id",
+                extra={
+                    "call_id": call_id,
+                    "status": status,
+                    "has_control_url": bool(control_url),
+                },
+            )
             conversation_repo = db.ConversationRepositoryAsync(session)
             conversation = await conversation_repo.get_conversation_by_call_id(call_id)
 
@@ -711,11 +732,21 @@ async def handle_status_update(message_data, session: AsyncSession):
                     ),
                 )
                 logger.debug(
-                    f"Stored control URL for conversation {conversation.id} (call {call_id})"
+                    "[handle_status_update] Stored control URL for conversation",
+                    extra={
+                        "call_id": call_id,
+                        "conversation_id": str(conversation.id),
+                        "status": status,
+                    },
                 )
             else:
-                logger.warning(
-                    f"No conversation found for call_id {call_id} - control URL not stored"
+                logger.error(
+                    "[handle_status_update] No conversation found for call_id - control URL not stored",
+                    extra={
+                        "call_id": call_id,
+                        "status": status,
+                        "has_control_url": bool(control_url),
+                    },
                 )
         else:
             logger.debug(
