@@ -1,12 +1,14 @@
 """Internal API endpoints for project updates."""
 
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
 
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, status
+from pinecone import Pinecone
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -16,6 +18,73 @@ from db.tables.types import IntegrationProvider, IntegrationType
 from services import knowledge_service, project_service
 from utils.log import logger
 from utils.secret import get_client_secret
+
+# Constants for namespace deletion verification
+NAMESPACE_DELETE_MAX_RETRIES = 10
+NAMESPACE_DELETE_RETRY_DELAY_SECONDS = 1.0
+
+
+def _wait_for_namespace_empty(
+    index_name: str,
+    namespace: str,
+    max_retries: int = NAMESPACE_DELETE_MAX_RETRIES,
+    retry_delay: float = NAMESPACE_DELETE_RETRY_DELAY_SECONDS,
+) -> bool:
+    """
+    Wait for a Pinecone namespace to be empty after deletion.
+
+    Pinecone deletions can have eventual consistency, so this function
+    polls until the namespace shows 0 vectors or doesn't exist.
+
+    Args:
+        index_name: Name of the Pinecone index
+        namespace: Namespace to check
+        max_retries: Maximum number of polling attempts
+        retry_delay: Seconds to wait between attempts
+
+    Returns:
+        bool: True if namespace is empty/gone, False if timeout
+    """
+    try:
+        pc = Pinecone()
+        index = pc.Index(index_name)
+
+        for attempt in range(max_retries):
+            stats = index.describe_index_stats()
+            namespaces = stats.get("namespaces", {})
+
+            # Namespace doesn't exist or has 0 vectors
+            if namespace not in namespaces:
+                logger.debug(
+                    f"[Adora Menu Updater] Namespace '{namespace}' confirmed deleted (not found)",
+                    extra={"attempt": attempt + 1},
+                )
+                return True
+
+            vector_count = namespaces[namespace].get("vector_count", 0)
+            if vector_count == 0:
+                logger.debug(
+                    f"[Adora Menu Updater] Namespace '{namespace}' confirmed empty",
+                    extra={"attempt": attempt + 1},
+                )
+                return True
+
+            logger.debug(
+                f"[Adora Menu Updater] Waiting for namespace deletion, {vector_count} vectors remaining",
+                extra={"attempt": attempt + 1, "vector_count": vector_count},
+            )
+            time.sleep(retry_delay)
+
+        logger.warning(
+            f"[Adora Menu Updater] Timeout waiting for namespace '{namespace}' to empty"
+        )
+        return False
+
+    except Exception as e:
+        logger.warning(f"[Adora Menu Updater] Error checking namespace stats: {e}")
+        # If we can't check, proceed anyway (namespace might not exist)
+        return True
+
 
 projects_router = APIRouter(prefix="/projects")
 
@@ -284,6 +353,8 @@ async def update_knowledge(
                     "delete_result": delete_result,
                 },
             )
+            # Wait for deletion to propagate (Pinecone eventual consistency)
+            _wait_for_namespace_empty(pinecone_index_name, pinecone_namespace)
         except Exception as e:
             # Log but don't fail - namespace might not exist yet or be empty
             logger.warning(
