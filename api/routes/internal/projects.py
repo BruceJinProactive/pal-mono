@@ -21,7 +21,7 @@ from utils.log import logger
 from utils.secret import get_client_secret
 
 # Pinecone eventual consistency settings
-NAMESPACE_RETRY_DELAY_SECONDS = 1.0
+NAMESPACE_RETRY_DELAY_SECONDS = 2.0
 NAMESPACE_POPULATE_MAX_ATTEMPTS = 5
 
 
