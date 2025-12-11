@@ -9,6 +9,7 @@ from typing import Any, Dict
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, status
 from pinecone import Pinecone
+from pinecone.exceptions import PineconeException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -19,74 +20,67 @@ from services import knowledge_service, project_service
 from utils.log import logger
 from utils.secret import get_client_secret
 
-# Constants for namespace deletion verification
-NAMESPACE_DELETE_MAX_RETRIES = 10
+# Delay before retrying namespace deletion (Pinecone eventual consistency)
 NAMESPACE_DELETE_RETRY_DELAY_SECONDS = 1.0
 
 
-def _wait_for_namespace_empty(
+def _ensure_namespace_deleted(
     index_name: str,
     namespace: str,
-    max_retries: int = NAMESPACE_DELETE_MAX_RETRIES,
     retry_delay: float = NAMESPACE_DELETE_RETRY_DELAY_SECONDS,
-) -> bool:
+) -> None:
     """
-    Wait for a Pinecone namespace to be empty after deletion.
+    Ensure a Pinecone namespace is fully deleted by retrying deletion.
 
-    Pinecone deletions can have eventual consistency, so this function
-    polls until the namespace shows 0 vectors or doesn't exist.
+    Waits, then attempts to delete again. If deletion fails because
+    namespace doesn't exist, we know it's gone and can proceed.
 
     Args:
         index_name: Name of the Pinecone index
-        namespace: Namespace to check
-        max_retries: Maximum number of polling attempts
-        retry_delay: Seconds to wait between attempts
-
-    Returns:
-        bool: True if namespace is empty/gone, False if timeout
+        namespace: Namespace to delete
+        retry_delay: Seconds to wait before retry
     """
     try:
         pc = Pinecone()
         index = pc.Index(index_name)
 
-        # Mandatory initial delay before first check to allow deletion to propagate
+        # Mandatory wait for deletion to propagate
         time.sleep(retry_delay)
 
-        for attempt in range(max_retries):
-            stats = index.describe_index_stats()
-            namespaces = stats.get("namespaces", {})
-
-            # Namespace doesn't exist or has 0 vectors
-            if namespace not in namespaces:
-                logger.debug(
-                    f"[Adora Menu Updater] Namespace '{namespace}' confirmed deleted (not found)",
-                    extra={"attempt": attempt + 1},
-                )
-                return True
-
-            vector_count = namespaces[namespace].get("vector_count", 0)
-            if vector_count == 0:
-                logger.debug(
-                    f"[Adora Menu Updater] Namespace '{namespace}' confirmed empty",
-                    extra={"attempt": attempt + 1},
-                )
-                return True
-
+        # Try to delete again - if it fails with 404, namespace is gone
+        try:
+            index.delete(delete_all=True, namespace=namespace)
             logger.debug(
-                f"[Adora Menu Updater] Waiting for namespace deletion, {vector_count} vectors remaining",
-                extra={"attempt": attempt + 1, "vector_count": vector_count},
+                f"[Adora Menu Updater] Second delete succeeded for namespace '{namespace}' - proceeding with indexing"
             )
-            time.sleep(retry_delay)
+        except PineconeException as e:
+            # Check if it's a 404 (namespace not found) - this is expected
+            if "(404)" in str(e) or "Not Found" in str(e):
+                logger.debug(
+                    f"[Adora Menu Updater] Namespace '{namespace}' confirmed deleted (404 not found) - proceeding with indexing"
+                )
+            else:
+                # Real error (network, auth, 5xx) - log warning but still proceed
+                logger.warning(
+                    f"[Adora Menu Updater] Unexpected Pinecone error during second delete for namespace '{namespace}': {e} - proceeding with indexing anyway",
+                    extra={"index_name": index_name, "namespace": namespace},
+                )
 
+        # Additional delay before indexing to ensure deletion is fully propagated
+        time.sleep(retry_delay)
+
+    except PineconeException as e:
         logger.warning(
-            f"[Adora Menu Updater] Timeout waiting for namespace '{namespace}' to empty"
+            f"[Adora Menu Updater] Pinecone error ensuring namespace deleted: {e}",
+            extra={"index_name": index_name, "namespace": namespace},
         )
-        return False
-
+        # Proceed anyway
     except Exception as e:
-        logger.warning(f"[Adora Menu Updater] Error checking namespace stats: {e}")
-        # If we can't check, proceed anyway (namespace might not exist)
-        return True
+        logger.warning(
+            f"[Adora Menu Updater] Unexpected error ensuring namespace deleted: {e}",
+            extra={"index_name": index_name, "namespace": namespace},
+        )
+        # Proceed anyway
 
 
 projects_router = APIRouter(prefix="/projects")
@@ -357,7 +351,7 @@ async def update_knowledge(
                 },
             )
             # Wait for deletion to propagate (Pinecone eventual consistency)
-            _wait_for_namespace_empty(pinecone_index_name, pinecone_namespace)
+            _ensure_namespace_deleted(pinecone_index_name, pinecone_namespace)
         except Exception as e:
             # Log but don't fail - namespace might not exist yet or be empty
             logger.warning(
