@@ -12,7 +12,7 @@ from utils.log import logger
 
 # Safe mode: When True, limits knowledge updates for testing
 # Set to False for production to update all stores
-SAFE_MODE = True
+SAFE_MODE = False
 SAFE_MODE_MAX_PROJECTS = 1
 # When set, safe mode will ONLY process this specific project (by UUID)
 SAFE_MODE_PROJECT_ID = "a20b5f98-9dcf-4a2f-99c1-16e931ce8fd8"
