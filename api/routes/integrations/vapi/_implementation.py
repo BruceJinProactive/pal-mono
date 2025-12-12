@@ -573,31 +573,12 @@ async def handle_assistant_request(message_data, session: AsyncSession):
                 )
             else:
                 event_name = _stripe_product.get_call_meter_event_name(project.id)
-                success = await asyncio.to_thread(
+                await asyncio.to_thread(
                     send_meter_event,
                     event_name=event_name,
                     stripe_customer_id=stripe_customer_id,
                     value=1,
                 )
-
-                if not success:
-                    logger.warning(
-                        f"Failed to track call usage for call {call_id} (meter may not be configured)",
-                        extra={
-                            "call_id": call_id,
-                            "project_id": str(project.id),
-                            "stripe_customer_id": stripe_customer_id,
-                        },
-                    )
-                else:
-                    logger.info(
-                        f"Successfully tracked call usage for call {call_id}",
-                        extra={
-                            "call_id": call_id,
-                            "project_id": str(project.id),
-                            "stripe_customer_id": stripe_customer_id,
-                        },
-                    )
         except Exception as e:
             logger.error(
                 f"Error tracking call usage for call {call_id}: {e}",

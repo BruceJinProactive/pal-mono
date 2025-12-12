@@ -40,8 +40,10 @@ def send_meter_event(
     except Exception as e:
         error_message = str(e)
         if "No active meter found" in error_message:
-            logger.warning(
-                f"Meter not found for event (this is expected if project has no active billing meter): {e}",
+            # This is expected when project doesn't have an active subscription
+            # Log at info level instead of warning to reduce noise
+            logger.info(
+                "No active meter configured for event - skipping usage tracking",
                 extra={
                     "event_name": event_name,
                     "stripe_customer_id": stripe_customer_id,
