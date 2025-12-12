@@ -142,11 +142,8 @@ class ToastTool(Toolkit):
         # New parameter to skip order submission during checkout for evaluation/testing
         self.skip_order_submission = skip_order_submission
 
-        # Register tools
-        if self.enable_hosted_checkout:
-            self.register(self.checkout_order_with_payment_iframe)
-        else:
-            self.register(self.checkout_order)
+        # Register tools - unified checkout tool handles both hosted and traditional flows
+        self.register(self.checkout_order)
 
         # Do not register get_menu_inventory_tool and get_ordering_schedule_tool for now
         self.register(self.get_ordering_schedule_tool)
@@ -594,38 +591,18 @@ class ToastTool(Toolkit):
 
     # TODO: decide if we want to use order.externalId for payment intent's externalReferenceId
     # TODO: Add tips
-    @tool
-    def checkout_order_with_payment_iframe(self) -> str:
+    @task
+    def _checkout_order_hosted(self) -> str:
         """
-        Creates a payment intent for an order with hosted checkout iframe support.
-
-        **WHEN TO USE THIS TOOL:**
-        - When the customer has CONFIRMED they want to place/complete their order
-        - When the customer says: "checkout", "pay now", "place order", "complete order"
-        - When all required ordering information has been collected
-        - IMPORTANT: Before using, ask for customer's name and phone number
-
-        **ORDERING PROCESS:**
-        1. Customer selects items from the menu
-        2. Customer confirms order items, modifiers, and quantities
-        3. Ask for customer name and phone number
-        4. Customer confirms they want to proceed with payment
-        5. Use this tool to create payment intent
-
-        **DO NOT USE WHEN:**
-        - Customer is browsing or asking questions
-        - Customer is still deciding what to order
-        - Customer hasn't confirmed payment
-        - Missing customer name and phone number
+        Internal method: Creates a payment intent for an order with hosted checkout iframe support.
+        This method is called by the unified checkout_order tool when hosted checkout is enabled.
 
         Returns:
             str: JSON with payment intent details including sessionSecret for iframe
         """
         try:
             # Check if store is open
-            logger.debug(
-                "[ToastTool.checkout_order_with_payment_iframe] Checking store status"
-            )
+            logger.debug("[ToastTool._checkout_order_hosted] Checking store status")
             # Check if the store is open for ordering if skip_order_submission is False
             if not self.skip_order_submission and not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
@@ -641,14 +618,14 @@ class ToastTool(Toolkit):
                     return f"Inform the customer their order has been successfully placed and is already paid. Order ID: {existing_order.guid}"
                 # Create payment intent for existing order and return payment link
                 logger.debug(
-                    f"[ToastTool.checkout_order_with_payment_iframe] Found existing unpaid order {existing_order.guid}, creating payment intent"
+                    f"[ToastTool._checkout_order_hosted] Found existing unpaid order {existing_order.guid}, creating payment intent"
                 )
                 price = Price(
                     amount=existing_order.checks[0].amount,
                     taxAmount=existing_order.checks[0].taxAmount,
                     totalAmount=existing_order.checks[0].totalAmount,
                 )
-                return self._begin_hosted_checkout_flow(existing_order, price)
+                return self._begin_hosted_checkout_flow(existing_order, price)  # type: ignore
 
             # Construct order
             order = self._construct_order()
@@ -658,7 +635,7 @@ class ToastTool(Toolkit):
             # Validate order
             error_message = self._finalize_order_details(order)  # type: ignore
             if error_message:
-                return error_message
+                return error_message  # type: ignore
 
             price = self._get_order_prices(order=order)  # type: ignore
 
@@ -666,11 +643,10 @@ class ToastTool(Toolkit):
             return self._begin_hosted_checkout_flow(order, price)  # type: ignore
 
         except Exception as e:
-            logger.error(f"[ToastTool.checkout_order_with_payment_iframe] Error: {e}")
+            logger.error(f"[ToastTool._checkout_order_hosted] Error: {e}")
             logger.error(traceback.format_exc())
             return "Failed to create payment intent. Please try again."
 
-    # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
     @tool
     def checkout_order(self) -> str:
         """
@@ -698,12 +674,39 @@ class ToastTool(Toolkit):
         **ONLY USE THIS TOOL ONCE PER ORDER!**
 
         Returns:
+            str: Order checkout confirmation details, and payment link if applicable
+        """
+        try:
+            # Route to appropriate checkout flow based on hosted checkout configuration
+            if self.enable_hosted_checkout:
+                logger.debug(
+                    "[ToastTool.checkout_order] Routing to hosted checkout flow"
+                )
+                return self._checkout_order_hosted()  # type: ignore
+            else:
+                logger.debug(
+                    "[ToastTool.checkout_order] Routing to traditional checkout flow"
+                )
+                return self._checkout_order_traditional()  # type: ignore
+        except Exception as e:
+            logger.error(f"[ToastTool.checkout_order] Error in checkout: {e}")
+            logger.error(traceback.format_exc())
+            return "Failed to process checkout. Please try again."
+
+    # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
+    @task
+    def _checkout_order_traditional(self) -> str:
+        """
+        Internal method: Processes traditional checkout flow (direct order submission).
+        This method is called by the unified checkout_order tool when hosted checkout is disabled.
+
+        Returns:
             str: Order checkout confirmation details
         """
         try:
             # First check if the store is open for ordering if skip_order_submission is False
             logger.debug(
-                "[ToastTool.checkout_order] Checking if the store is open for ordering"
+                "[ToastTool._checkout_order_traditional] Checking if the store is open for ordering"
             )
             if not self.skip_order_submission and not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
@@ -729,7 +732,7 @@ class ToastTool(Toolkit):
             # Validate and check the order
             error_message = self._finalize_order_details(order)  # type: ignore
             if error_message:
-                return error_message
+                return error_message  # type: ignore
 
             result = self._submit_order(order)  # type: ignore
 
@@ -742,7 +745,9 @@ class ToastTool(Toolkit):
                 return result  # type: ignore
 
         except Exception as e:
-            logger.error(f"[ToastTool.checkout_order] Error in submit order: {e}")
+            logger.error(
+                f"[ToastTool._checkout_order_traditional] Error in submit order: {e}"
+            )
             logger.error(traceback.format_exc())
             return "Please try again."
 
@@ -965,7 +970,6 @@ class ToastTool(Toolkit):
             openai=True,
             order_construction_model=self.order_construction_model,
         )
-        print(f"Raw constructed order: {order}")
         # Check if the order is a string and convert it to an OrderInput object, catching any errors
         try:
             if order is None:
@@ -1004,6 +1008,7 @@ class ToastTool(Toolkit):
             logger.error(e)
             return f"Failed to construct order: {e}"
 
+    @task
     def _finalize_order_details(self, order: OrderInput) -> str | None:
         """
         Validate order requirements and add agent suffix to customer lastName.
@@ -1165,6 +1170,7 @@ class ToastTool(Toolkit):
             logger.error(f"[ToastTool._submit_order] Failed to submit the order: {e}")
             return "There was an error while submitting the order. Please try again."
 
+    @task
     def _get_order_prices(self, order: OrderInput) -> Price:
         # Retrieve the bearer token
         toast_bearer_token = self._toast_bearer_token
@@ -1358,6 +1364,7 @@ class ToastTool(Toolkit):
             )
             return "Failed to create payment intent. Please try again."
 
+    @task
     def _begin_hosted_checkout_flow(self, order: OrderInput, price: Price) -> str:
         """
         Begins the hosted checkout flow for an order with priced information.
