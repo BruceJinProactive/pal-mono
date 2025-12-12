@@ -120,7 +120,8 @@ class PermissionChecker:
 
             if not has_permission:
                 logger.warning(
-                    f"Permission denied: User {user_id} lacks {required_permission} on {resource_id}"
+                    f"Permission denied: User {current_user.email} lacks {required_permission} on {resource_id}",
+                    extra={"user_id": str(user_id)},
                 )
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -217,7 +218,8 @@ def require_account_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         # TODO: admin override should be explicit
@@ -295,7 +297,8 @@ def require_project_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         is_admin = current_user.role == UserRole.Admin
@@ -372,7 +375,8 @@ def require_checklist_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         is_admin = current_user.role == UserRole.Admin
@@ -449,7 +453,8 @@ def require_agent_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         is_admin = current_user.role == UserRole.Admin
@@ -539,7 +544,8 @@ def require_resource_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         is_admin = current_user.role == UserRole.Admin
@@ -617,7 +623,8 @@ def require_history_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         is_admin = current_user.role == UserRole.Admin
@@ -695,7 +702,8 @@ def require_feedback_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         is_admin = current_user.role == UserRole.Admin
@@ -773,7 +781,8 @@ def require_campaign_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         is_admin = current_user.role == UserRole.Admin
@@ -851,7 +860,8 @@ def require_knowledge_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         is_admin = current_user.role == UserRole.Admin
@@ -929,7 +939,8 @@ def require_subscription_permission(
 
         if not has_permission:
             logger.warning(
-                f"Permission denied: User {user_id} lacks {permission} on {resource_id}"
+                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
+                extra={"user_id": str(user_id)},
             )
 
         is_admin = current_user.role == UserRole.Admin
