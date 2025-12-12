@@ -82,9 +82,8 @@ WRONG STRUCTURE (missing modifiers field):
 
 # RULES FOR EXTRACTING THE DELIVERY ADDRESS:
 - Extract the last delivery address from the context.
-- For the state field, if the user provides an abbreviation, output the full state name, i.e., if the user entered "CA", output "California".
-- If any field is missing, output "N/A" for that field, i.e., if the user did not
-provide a delivery address, output "N/A" for all fields.
+- For the state field, ALWAYS output the two-letter state abbreviation in ISO 3166-2 format (two capital letters). Examples: "CA" for California, "MA" for Massachusetts, "NY" for New York. If the user provides the full state name, convert it to the two-letter abbreviation.
+- If the user did not provide a delivery address, do not create a deliveryInfo object (set it to null/None).
 - If any modifier group id or modifier item id is missing, do not include them in the output.
 
 # RULES FOR ADDING SPECIAL NOTES TO THE ORDER:

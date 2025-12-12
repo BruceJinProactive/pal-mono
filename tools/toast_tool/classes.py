@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic.json_schema import SkipJsonSchema
 
 
@@ -287,16 +287,143 @@ class Check(Price):
         extra = "allow"
 
 
+# US state name to abbreviation mapping for ISO 3166-2 format
+# Includes 50 states, DC, US territories, and military addresses
+_US_STATE_MAPPING = {
+    # 50 US States
+    "alabama": "AL",
+    "alaska": "AK",
+    "arizona": "AZ",
+    "arkansas": "AR",
+    "california": "CA",
+    "colorado": "CO",
+    "connecticut": "CT",
+    "delaware": "DE",
+    "florida": "FL",
+    "georgia": "GA",
+    "hawaii": "HI",
+    "idaho": "ID",
+    "illinois": "IL",
+    "indiana": "IN",
+    "iowa": "IA",
+    "kansas": "KS",
+    "kentucky": "KY",
+    "louisiana": "LA",
+    "maine": "ME",
+    "maryland": "MD",
+    "massachusetts": "MA",
+    "michigan": "MI",
+    "minnesota": "MN",
+    "mississippi": "MS",
+    "missouri": "MO",
+    "montana": "MT",
+    "nebraska": "NE",
+    "nevada": "NV",
+    "new hampshire": "NH",
+    "new jersey": "NJ",
+    "new mexico": "NM",
+    "new york": "NY",
+    "north carolina": "NC",
+    "north dakota": "ND",
+    "ohio": "OH",
+    "oklahoma": "OK",
+    "oregon": "OR",
+    "pennsylvania": "PA",
+    "rhode island": "RI",
+    "south carolina": "SC",
+    "south dakota": "SD",
+    "tennessee": "TN",
+    "texas": "TX",
+    "utah": "UT",
+    "vermont": "VT",
+    "virginia": "VA",
+    "washington": "WA",
+    "west virginia": "WV",
+    "wisconsin": "WI",
+    "wyoming": "WY",
+    # District and Territories
+    "district of columbia": "DC",
+    "puerto rico": "PR",
+    "virgin islands": "VI",
+    "guam": "GU",
+    "american samoa": "AS",
+    "northern mariana islands": "MP",
+    # Military addresses
+    "armed forces americas": "AA",
+    "armed forces europe": "AE",
+    "armed forces pacific": "AP",
+}
+
+
 class ToastDeliveryInfo(BaseModel):
     address1: str = Field(description="Street address")
     address2: Optional[str] = Field(description="Extended address (if applicable)")
     city: str
-    state: str
+    state: str = Field(
+        description="State abbreviation in ISO 3166-2 format (two capital letters), e.g., 'CA', 'MA', 'NY'"
+    )
     notes: Optional[str] = Field(
         default=None,
         description="Special notes that the user has provided, including but not limited to any adjustments to the menu items ordered. Notes must be between 2 and 100 characters in length.",
     )
     zipCode: str
+
+    @field_validator("state")
+    @classmethod
+    def validate_state_format(cls, state_input: str) -> str:
+        """
+        Validates and converts state to ISO 3166-2 format (two capital letters).
+
+        Supports:
+        - 50 US states (e.g., "Massachusetts" → "MA")
+        - District of Columbia (e.g., "District of Columbia" → "DC")
+        - US territories (e.g., "Puerto Rico" → "PR", "Guam" → "GU")
+        - Military addresses (e.g., "Armed Forces Europe" → "AE")
+
+        Processing:
+        - If input is a full state/territory name, converts to abbreviation
+        - If input is already an abbreviation, ensures it's uppercase
+        - Validates against the official list of valid codes
+
+        Args:
+            state_input: State name or abbreviation (e.g., "Massachusetts", "MA", "Puerto Rico", "PR")
+
+        Returns:
+            Two-letter state abbreviation in uppercase
+
+        Raises:
+            ValueError: If state cannot be converted to valid format
+        """
+        if not state_input or not state_input.strip():
+            raise ValueError("State cannot be empty")
+
+        state_value = state_input.strip()
+
+        # Check if it's a full state name and convert to abbreviation
+        state_lower = state_value.lower()
+        if state_lower in _US_STATE_MAPPING:
+            return _US_STATE_MAPPING[state_lower]
+
+        # If it's already an abbreviation, ensure uppercase and validate it's a real state
+        state_upper = state_value.upper()
+
+        # Validate it's exactly 2 capital letters (ISO 3166-2 format)
+        if len(state_upper) == 2 and state_upper.isalpha():
+            # Check if it's a valid US state abbreviation
+            valid_state_codes = set(_US_STATE_MAPPING.values())
+            if state_upper in valid_state_codes:
+                return state_upper
+            else:
+                raise ValueError(
+                    f"Invalid state abbreviation: '{state_upper}'. Must be a valid US state code "
+                    f"(e.g., 'MA', 'CA', 'NY')"
+                )
+
+        # If we get here, the state format is invalid
+        raise ValueError(
+            f"Invalid state format: '{state_input}'. Must be either a full state name "
+            f"(e.g., 'Massachusetts') or a two-letter abbreviation (e.g., 'MA')"
+        )
 
 
 class ToastCurbsidePickupInfo(BaseModel):
