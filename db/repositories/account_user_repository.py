@@ -1,6 +1,7 @@
 import uuid
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -45,6 +46,38 @@ class AccountUserRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving account user: {e}")
+            return None
+
+    def get_by_email_and_account(
+        self, email: str, account_id: uuid.UUID
+    ) -> Optional[AccountUser]:
+        """Get active account user by email and account ID (case-insensitive).
+
+        Only returns active members. Deactivated members are not returned,
+        allowing them to be re-invited.
+
+        Args:
+            email: Email address to look up
+            account_id: UUID of the account
+
+        Returns:
+            AccountUser object or None if not found or not active
+        """
+        try:
+            normalized_email = email.strip().lower()
+            return (
+                self.session.query(AccountUser)
+                .filter(
+                    AccountUser.email.is_not(None),
+                    func.lower(AccountUser.email) == normalized_email,
+                    AccountUser.account_id == account_id,
+                    AccountUser.status == AccountUserStatus.active,
+                )
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving account user by email: {e}")
             return None
 
     def is_member(self, user_id: uuid.UUID, account_id: uuid.UUID) -> bool:

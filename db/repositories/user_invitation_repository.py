@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -145,6 +146,34 @@ class UserInvitationRepository:
             self.session.rollback()
             logger.error(f"Error retrieving pending invitations: {e}")
             return []
+
+    def has_pending_for_email(self, account_id: uuid.UUID, email: str) -> bool:
+        """Check if a pending invitation exists for an email in an account.
+
+        Case-insensitive email comparison.
+
+        Args:
+            account_id: UUID of the account
+            email: Email address to check
+
+        Returns:
+            True if a pending invitation exists, False otherwise
+        """
+        try:
+            count = (
+                self.session.query(UserInvitation)
+                .filter(
+                    UserInvitation.account_id == account_id,
+                    func.lower(UserInvitation.email) == email.lower(),
+                    UserInvitation.status == InvitationStatus.pending,
+                )
+                .count()
+            )
+            return count > 0
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error checking pending invitation: {e}")
+            return False
 
     def get_for_email(self, email: str) -> list[UserInvitation]:
         """Get all invitations for an email address (across accounts).

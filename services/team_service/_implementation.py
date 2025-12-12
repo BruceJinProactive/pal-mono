@@ -104,10 +104,13 @@ def create_invitation(
 
     Steps:
     1. Get account by name
-    2. Check for existing pending invitation
-    3. Generate secure token
-    4. Create invitation record
-    5. Return invitation
+    2. Check if user is already a member of the account
+    3. Check for existing pending invitation
+    4. Generate secure token
+    5. Check Cognito user status and create if needed
+    6. Create invitation record
+    7. Send invitation email
+    8. Return invitation
 
     Args:
         session: Database session
@@ -119,7 +122,7 @@ def create_invitation(
         db.UserInvitation: Created invitation record
 
     Raises:
-        ValueError: If account not found or duplicate invitation exists
+        ValueError: If account not found, user is already a member, or duplicate invitation exists
     """
     # 1. Get account
     account_repo = AccountRepository(session)
@@ -127,18 +130,24 @@ def create_invitation(
     if not account:
         raise ValueError(f"Account '{account_name}' not found")
 
-    # 2. Check for existing pending invitation
-    invitation_repo = UserInvitationRepository(session)
-    pending_invitations = invitation_repo.get_pending_for_account(account.id)
-    for inv in pending_invitations:
-        if inv.email.lower() == params.email.lower():
-            raise ValueError("Pending invitation already exists for this email")
+    # 2. Check if user is already a member of the account
+    account_user_repo = AccountUserRepository(session)
+    existing_member = account_user_repo.get_by_email_and_account(
+        params.email, account.id
+    )
+    if existing_member:
+        raise ValueError("User is already a member of this account")
 
-    # 3. Generate secure token
+    # 3. Check for existing pending invitation
+    invitation_repo = UserInvitationRepository(session)
+    if invitation_repo.has_pending_for_email(account.id, params.email):
+        raise ValueError("Pending invitation already exists for this email")
+
+    # 4. Generate secure token
     invitation_token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
 
-    # 4. Check Cognito user status and create if needed
+    # 5. Check Cognito user status and create if needed
     user_name = params.email.split("@")[0].replace(".", " ").title()
     password = generate_password()
 
@@ -188,7 +197,7 @@ def create_invitation(
                     logger.error(f"Failed to create Cognito user for invitation: {e}")
                     raise ValueError(f"Failed to create Cognito user: {error_code}")
 
-    # 5. Create invitation record
+    # 6. Create invitation record
     try:
         invitation = invitation_repo.create(
             account_id=account.id,
@@ -201,7 +210,7 @@ def create_invitation(
     except Exception as e:
         raise ValueError(f"Failed to create invitation: {str(e)}")
 
-    # 6. Send invitation email based on user status
+    # 7. Send invitation email based on user status
     try:
         # Get inviter name for personalization
         inviter_name = context.display_name or "A team member"
