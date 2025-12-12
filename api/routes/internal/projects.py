@@ -1,7 +1,7 @@
 """Internal API endpoints for project updates."""
 
+import asyncio
 import json
-import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -25,7 +25,7 @@ NAMESPACE_RETRY_DELAY_SECONDS = 2.0
 NAMESPACE_POPULATE_MAX_ATTEMPTS = 5
 
 
-def _ensure_namespace_deleted(
+async def _ensure_namespace_deleted(
     index_name: str,
     namespace: str,
     retry_delay: float = NAMESPACE_RETRY_DELAY_SECONDS,
@@ -46,7 +46,7 @@ def _ensure_namespace_deleted(
         index = pc.Index(index_name)
 
         # Mandatory wait for deletion to propagate
-        time.sleep(retry_delay)
+        await asyncio.sleep(retry_delay)
 
         # Try to delete again - if it fails with 404, namespace is gone
         try:
@@ -68,7 +68,7 @@ def _ensure_namespace_deleted(
                 )
 
         # Additional delay before indexing to ensure deletion is fully propagated
-        time.sleep(retry_delay)
+        await asyncio.sleep(retry_delay)
 
     except PineconeException as e:
         logger.warning(
@@ -84,7 +84,7 @@ def _ensure_namespace_deleted(
         # Proceed anyway
 
 
-def _verify_namespace_populated(
+async def _verify_namespace_populated(
     index_name: str,
     namespace: str,
     retry_delay: float = NAMESPACE_RETRY_DELAY_SECONDS,
@@ -108,7 +108,7 @@ def _verify_namespace_populated(
     index = pc.Index(index_name)
 
     # Wait before checking
-    time.sleep(retry_delay)
+    await asyncio.sleep(retry_delay)
 
     stats = index.describe_index_stats()
     namespaces = stats.get("namespaces", {})
@@ -407,7 +407,7 @@ async def update_knowledge(
                 },
             )
             # Wait for deletion to propagate (Pinecone eventual consistency)
-            _ensure_namespace_deleted(pinecone_index_name, pinecone_namespace)
+            await _ensure_namespace_deleted(pinecone_index_name, pinecone_namespace)
         except Exception as e:
             # Log but don't fail - namespace might not exist yet or be empty
             logger.warning(
@@ -446,7 +446,7 @@ async def update_knowledge(
             )
 
             # Verify namespace was populated (2x delay for populate check)
-            if _verify_namespace_populated(
+            if await _verify_namespace_populated(
                 pinecone_index_name,
                 pinecone_namespace,
                 retry_delay=NAMESPACE_RETRY_DELAY_SECONDS * 2,
