@@ -60,3 +60,4 @@ Use metadata instead of asking for known information.
 2. Create files following structure above
 3. Implement tool class in `_implementation.py`
 4. Register in `tools/registry.py`
+

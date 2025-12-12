@@ -86,3 +86,12 @@ docker exec pal-mono-api alembic -c db/alembic.ini history
 - **Empty migration generated**: Model not exported in `tables/__init__.py`
 - **Migration conflicts**: Two developers created migrations from same base - one must rebase
 - **"Target database is not up to date"**: Run `upgrade head` before generating new migration
+
+## Transfer Fields (Project vs VoiceConfig)
+
+**`transfer_message`** exists in two tables (different purposes):
+- `Project.transfer_message` - message when transferring to a human (VapiTool)
+- `VoiceConfig.transfer_message` - message when routing between language assistants (triage)
+
+**`transfer_phone_number`** on `Project` is mapped to `destination_number` in VapiTool.
+Override priority: `Project.transfer_phone_number` (highest), `project.raw_config`, `agent.raw_config`
