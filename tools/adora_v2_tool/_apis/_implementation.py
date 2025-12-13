@@ -23,7 +23,7 @@ async def get_adora_pos_auth_token(key: str, secret: str) -> str | None:
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
             response = await client.post(
-                "https://identity.adorapos.com/connect/token",
+                "https://identity.adorapos.net/connect/token",
                 data={
                     "grant_type": "client_credentials",
                     "client_id": key,
