@@ -5,7 +5,11 @@ from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
-from tools.adora_v2_tool._apis import check_store_status, get_adora_pos_auth_token
+from tools.adora_v2_tool._apis import (
+    api_check_store_ordering_status,
+    api_get_store_info,
+    get_adora_pos_auth_token,
+)
 from tools.adora_v2_tool._utils import get_adora_credentials
 from utils.log import logger
 
@@ -32,7 +36,7 @@ class AdoraV2Tool(Toolkit):
         logger.debug(f"[AdoraV2Tool] Tool instance created: id={instance_id}")
 
         # Register tools
-        self.register(self.check_online_ordering_status)
+        self.register(self.check_store_ordering_status)
         self.register(self.get_store_info)
         self.register(self.check_address)
 
@@ -80,11 +84,20 @@ class AdoraV2Tool(Toolkit):
             f"[AdoraV2Tool.get_store_info] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}), date: {date}"
         )
 
-        # Dummy implementation - simulate async behavior
-        return f"Store info retrieved for date: {date}"
+        bearer_token = await self._get_bearer_token()
+        if not bearer_token:
+            return "Failed to authenticate with Adora API."
+
+        store_info_response = await api_get_store_info(
+            bearer_token, self.store_id, date
+        )
+        if not store_info_response:
+            return "Failed to retrieve store information."
+
+        return str(store_info_response)
 
     @tool
-    async def check_online_ordering_status(self) -> str:
+    async def check_store_ordering_status(self) -> str:
         """
         Check the online ordering status of the store.
 
@@ -92,19 +105,21 @@ class AdoraV2Tool(Toolkit):
             str: The online ordering status of the store.
         """
         logger.debug(
-            f"[AdoraV2Tool.check_online_ordering_status] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+            f"[AdoraV2Tool.check_store_ordering_status] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
         )
 
         bearer_token = await self._get_bearer_token()
         if not bearer_token:
             return "Failed to authenticate with Adora API."
 
-        status_response = await check_store_status(bearer_token, self.store_id)
+        status_response = await api_check_store_ordering_status(
+            bearer_token, self.store_id
+        )
         if not status_response:
             return "Failed to retrieve store status."
 
         is_online = status_response.get("isOnline", False)
-        return str(is_online)
+        return f"Store online ordering status: {'Online' if is_online else 'Offline'}"
 
     @tool
     async def check_address(self, address: str) -> str:

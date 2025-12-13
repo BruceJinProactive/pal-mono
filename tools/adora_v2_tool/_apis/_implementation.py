@@ -50,7 +50,9 @@ async def get_adora_pos_auth_token(key: str, secret: str) -> str | None:
         return None
 
 
-async def check_store_status(bearer_token: str, store_id: str) -> dict | None:
+async def api_check_store_ordering_status(
+    bearer_token: str, store_id: str
+) -> dict | None:
     """Check the online ordering status of the store."""
     logger.debug(
         f"[AdoraV2Tool._apis.check_store_status] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
@@ -62,6 +64,32 @@ async def check_store_status(bearer_token: str, store_id: str) -> dict | None:
             bearer_token,
             "store/status",
             query_params={"sid": store_id},
+        )
+
+        if response["status"] == 200:
+            return response["body"]
+
+        logger.error(f"[AdoraV2Tool._apis] Error {response}")
+        return None
+    except Exception as e:
+        logger.error(f"[AdoraV2Tool._apis] Request error: {e}")
+        return None
+
+
+async def api_get_store_info(
+    bearer_token: str, store_id: str, date: str
+) -> dict | None:
+    """Get store information for a specific date."""
+    logger.debug(
+        f"[AdoraV2Tool._apis.api_get_store_info] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+    )
+
+    try:
+        response = await connect_adora_order_hub(
+            "GET",
+            bearer_token,
+            "store/info",
+            query_params={"sid": store_id, "date": date},
         )
 
         if response["status"] == 200:
