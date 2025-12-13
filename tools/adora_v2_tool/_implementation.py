@@ -1,27 +1,67 @@
+import asyncio
 import threading
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 
+from agent.tool import ToolMetadata
+from tools.adora_v2_tool._apis import check_store_status, get_adora_pos_auth_token
+from tools.adora_v2_tool._utils import get_adora_credentials
 from utils.log import logger
 
 
 class AdoraV2Tool(Toolkit):
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        store_id: str,
+        tool_metadata: ToolMetadata,
+        **kwargs,
+    ):
         super().__init__(name="adora_v2_tool")
 
-        # Accept any kwargs to be compatible with registry
-        # Store metadata if provided
-        self.tool_metadata = kwargs.get("tool_metadata", None)
+        # Store configuration
+        self.store_id = store_id
+        self.tool_metadata = tool_metadata
+
+        # Cache for bearer token with async lock
+        self._cached_bearer_token: str | None = None
+        self._token_lock = asyncio.Lock()
 
         # Log instance creation with built-in id
         instance_id = id(self)
-        logger.debug(f"AdoraV2 Tool instance created: id={instance_id}")
+        logger.debug(f"[AdoraV2Tool] Tool instance created: id={instance_id}")
 
         # Register tools
         self.register(self.check_online_ordering_status)
         self.register(self.get_store_info)
         self.register(self.check_address)
+
+    async def _get_bearer_token(self) -> str | None:
+        """Get cached bearer token or fetch new one if not cached."""
+        logger.debug(
+            f"[AdoraV2Tool._get_bearer_token] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+        )
+
+        async with self._token_lock:
+            if self._cached_bearer_token:
+                return self._cached_bearer_token
+
+            api_key, api_secret = get_adora_credentials(
+                self.tool_metadata.account_name or ""
+            )
+            if not api_key or not api_secret:
+                logger.error("[AdoraV2Tool] Failed to retrieve Adora credentials")
+                return None
+
+            token = await get_adora_pos_auth_token(api_key, api_secret)
+            if not token:
+                logger.error(
+                    "[AdoraV2Tool] Failed to retrieve bearer token from Adora API"
+                )
+                return None
+
+            self._cached_bearer_token = token
+            return self._cached_bearer_token
 
     @tool
     async def get_store_info(self, date: str) -> str:
@@ -37,7 +77,7 @@ class AdoraV2Tool(Toolkit):
                 business hours, and payment methods.
         """
         logger.debug(
-            f"get_store_info called with date: {date} on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+            f"[AdoraV2Tool.get_store_info] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}), date: {date}"
         )
 
         # Dummy implementation - simulate async behavior
@@ -48,18 +88,23 @@ class AdoraV2Tool(Toolkit):
         """
         Check the online ordering status of the store.
 
-        Args:
-            None
-
         Returns:
             str: The online ordering status of the store.
         """
         logger.debug(
-            f"check_online_ordering_status called on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+            f"[AdoraV2Tool.check_online_ordering_status] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
         )
 
-        # Dummy implementation - simulate async behavior
-        return "The store is open for online ordering."
+        bearer_token = await self._get_bearer_token()
+        if not bearer_token:
+            return "Failed to authenticate with Adora API."
+
+        status_response = await check_store_status(bearer_token, self.store_id)
+        if not status_response:
+            return "Failed to retrieve store status."
+
+        is_online = status_response.get("isOnline", False)
+        return str(is_online)
 
     @tool
     async def check_address(self, address: str) -> str:
@@ -76,7 +121,7 @@ class AdoraV2Tool(Toolkit):
             str: Validation result indicating if the address is within the delivery zone.
         """
         logger.debug(
-            f"check_address called with address: {address} on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+            f"[AdoraV2Tool.check_address] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}), address: {address}"
         )
 
         # Dummy implementation - simulate async behavior
