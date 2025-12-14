@@ -7,6 +7,43 @@ from utils.log import logger
 TIMEOUT_SECONDS = 10
 
 
+async def connect_adora_token_hub(
+    key: str,
+    secret: str,
+) -> dict:
+    """Utility function to connect to Adora Token Hub API."""
+    logger.debug(
+        f"[AdoraV2Tool._apis.connect_adora_token_hub] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+    )
+
+    endpoint = "https://identity.adorapos.net/connect/token"
+
+    try:
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": key,
+            "client_secret": secret,
+        }
+
+        async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+            response = await client.post(
+                url=endpoint,
+                data=data,
+                headers=headers,
+            )
+
+            return {
+                "status": response.status_code,
+                "reason": response.reason_phrase,
+                "body": response.json() if response.text else {},
+            }
+    except Exception as e:
+        logger.error(f"[AdoraV2Tool._apis] Token request failed: {e}")
+        return {"status": 500, "reason": str(e), "body": {}}
+
+
 async def connect_adora_order_hub(
     http_method: str,
     bearer_token: str,
