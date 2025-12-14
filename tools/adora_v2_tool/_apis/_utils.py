@@ -1,4 +1,6 @@
+import os
 import threading
+from enum import Enum
 
 import httpx
 
@@ -7,16 +9,35 @@ from utils.log import logger
 TIMEOUT_SECONDS = 10
 
 
+MARCOS_STORE_IDS = {
+    s.strip() for s in os.getenv("MARCOS_STORE_IDS", "").split(",") if s.strip()
+}
+
+
+class ApiFunction(Enum):
+    STORE_INFO = "store/info"
+    STORE_STATUS = "store/status"
+
+
+class HttpMethod(Enum):
+    GET = "GET"
+    POST = "POST"
+
+
+V1_API_FUNCTIONS = {ApiFunction.STORE_INFO, ApiFunction.STORE_STATUS}
+
+
 async def connect_adora_token_hub(
     key: str,
     secret: str,
+    store_id: str,
 ) -> dict:
     """Utility function to connect to Adora Token Hub API."""
     logger.debug(
-        f"[AdoraV2Tool._apis.connect_adora_token_hub] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+        f"[AdoraV2Tool._apis._utils] connect to adora token hub on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
     )
 
-    endpoint = "https://identity.adorapos.net/connect/token"
+    url = get_endpoint_url(store_id=store_id, request_token=True)
 
     try:
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -29,7 +50,7 @@ async def connect_adora_token_hub(
 
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
             response = await client.post(
-                url=endpoint,
+                url=url,
                 data=data,
                 headers=headers,
             )
@@ -40,25 +61,24 @@ async def connect_adora_token_hub(
                 "body": response.json() if response.text else {},
             }
     except Exception as e:
-        logger.error(f"[AdoraV2Tool._apis] Token request failed: {e}")
+        logger.error(f"[AdoraV2Tool._apis._utils] Token request failed: {e}")
         return {"status": 500, "reason": str(e), "body": {}}
 
 
 async def connect_adora_order_hub(
-    http_method: str,
+    http_method: HttpMethod,
     bearer_token: str,
-    api_function: str,
+    api_function: ApiFunction,
     query_params: dict | None = None,
     extra_headers: dict | None = None,
     payload: dict | None = None,
-    version: str = "v1",
 ) -> dict:
     """Utility function to connect to Adora Order Hub API."""
     logger.debug(
-        f"[AdoraV2Tool._apis.connect_adora_order_hub] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}), method: {http_method}, function: {api_function}"
+        f"[AdoraV2Tool._apis._utils] connect to adora order hub with function: {api_function} on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}), method: {http_method}, function: {api_function}"
     )
 
-    endpoint = "https://public.api.adorapos.net"
+    store_id = get_store_id(query_params, payload)
 
     try:
         headers = {
@@ -68,11 +88,10 @@ async def connect_adora_order_hub(
         if extra_headers:
             headers.update(extra_headers)
 
-        url = f"{endpoint}/api/{version}/OrderHub/{api_function}"
-
+        url = get_endpoint_url(store_id, api_function, request_token=False)
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
             response = await client.request(
-                method=http_method,
+                method=http_method.value,
                 url=url,
                 params=query_params,
                 json=payload,
@@ -85,5 +104,42 @@ async def connect_adora_order_hub(
                 "body": response.json() if response.text else {},
             }
     except Exception as e:
-        logger.error(f"[AdoraV2Tool._apis] Request failed: {e}")
+        logger.error(
+            f"[AdoraV2Tool._apis._utils] Request to adora order hub failed: {e}"
+        )
         return {"status": 500, "reason": str(e), "body": {}}
+
+
+def get_store_id(query_params: dict | None, payload: dict | None) -> str:
+    if query_params and "sid" in query_params:
+        return query_params["sid"]
+
+    if payload and "store_id" in payload:
+        return payload["store_id"]
+
+    error_msg = "store_id not found in query_params or payload"
+    logger.error(f"[AdoraV2Tool._apis._utils] {error_msg}")
+    raise ValueError(error_msg)
+
+
+def get_endpoint_url(
+    store_id: str, api_function: ApiFunction | None = None, *, request_token: bool
+) -> str:
+    if request_token:
+        if store_id in ("UQ5ZT", "LE5AR"):
+            return "https://identityqa.adorapos.net/connect/token"
+        elif store_id in MARCOS_STORE_IDS:
+            return "https://identity.marcosoms.com/connect/token"
+        else:
+            return "https://identity.adorapos.net/connect/token"
+    else:
+        if api_function is None:
+            raise ValueError("api_function is required when request_token=False")
+        if store_id in ("UQ5ZT", "LE5AR"):
+            base_url = "https://adora-qa-api-public.azurewebsites.net"
+        elif store_id in MARCOS_STORE_IDS:
+            base_url = "https://papi.marcosoms.com"
+        else:
+            base_url = "https://public.api.adorapos.net"
+        api_version = "v1" if api_function in V1_API_FUNCTIONS else "v2"
+        return f"{base_url}/api/{api_version}/OrderHub/{api_function.value}"

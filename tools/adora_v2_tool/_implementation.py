@@ -57,7 +57,7 @@ class AdoraV2Tool(Toolkit):
                 logger.error("[AdoraV2Tool] Failed to retrieve Adora credentials")
                 return None
 
-            token = await get_adora_pos_auth_token(api_key, api_secret)
+            token = await get_adora_pos_auth_token(api_key, api_secret, self.store_id)
             if not token:
                 logger.error(
                     "[AdoraV2Tool] Failed to retrieve bearer token from Adora API"

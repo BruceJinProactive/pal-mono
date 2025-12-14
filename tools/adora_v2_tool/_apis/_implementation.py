@@ -2,13 +2,18 @@ import threading
 
 from utils.log import logger
 
-from ._utils import connect_adora_order_hub, connect_adora_token_hub
+from ._utils import (
+    ApiFunction,
+    HttpMethod,
+    connect_adora_order_hub,
+    connect_adora_token_hub,
+)
 
 
-async def get_adora_pos_auth_token(key: str, secret: str) -> str | None:
+async def get_adora_pos_auth_token(key: str, secret: str, store_id: str) -> str | None:
     """Retrieve an Adora POS authentication token."""
     logger.debug(
-        f"[AdoraV2Tool._apis.get_adora_pos_auth_token] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+        f"[AdoraV2Tool._apis] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
     )
 
     if not key or not secret:
@@ -16,7 +21,7 @@ async def get_adora_pos_auth_token(key: str, secret: str) -> str | None:
         return None
 
     try:
-        response = await connect_adora_token_hub(key, secret)
+        response = await connect_adora_token_hub(key, secret, store_id)
 
         if response["status"] != 200:
             logger.error(
@@ -41,14 +46,14 @@ async def api_check_store_ordering_status(
 ) -> dict | None:
     """Check the online ordering status of the store."""
     logger.debug(
-        f"[AdoraV2Tool._apis.check_store_status] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+        f"[AdoraV2Tool._apis] Get store ordering status on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
     )
 
     try:
         response = await connect_adora_order_hub(
-            "GET",
+            HttpMethod.GET,
             bearer_token,
-            "store/status",
+            ApiFunction.STORE_STATUS,
             query_params={"sid": store_id},
         )
 
@@ -67,14 +72,14 @@ async def api_get_store_info(
 ) -> dict | None:
     """Get store information for a specific date."""
     logger.debug(
-        f"[AdoraV2Tool._apis.api_get_store_info] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
+        f"[AdoraV2Tool._apis] get store info on thread: {threading.current_thread().name} (ID: {threading.current_thread().ident})"
     )
 
     try:
         response = await connect_adora_order_hub(
-            "GET",
+            HttpMethod.GET,
             bearer_token,
-            "store/info",
+            ApiFunction.STORE_INFO,
             query_params={"sid": store_id, "date": date},
         )
 
