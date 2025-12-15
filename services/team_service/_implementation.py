@@ -31,6 +31,7 @@ from db.tables.types import AccountUserStatus, InvitationStatus
 from services import email_service
 from services.admin_service._utils import generate_password
 from services.auth_types import UserContext, UserRole
+from services.team_service.invitation_token import generate_invitation_jwt
 from services.team_service.schema import (
     AcceptInvitationParams,
     InvitationParams,
@@ -232,19 +233,26 @@ def create_invitation(
             if os.getenv("RUNTIME_ENV", "prd") == "prd"
             else f"https://{os.getenv('RUNTIME_ENV', 'lat')}-console.palona.ai"
         )
+
+        # Generate JWT token that includes temporary password for new users
+        jwt_token = generate_invitation_jwt(
+            invitation_token=invitation_token,
+            email=params.email,
+            temporary_password=password if cognito_user_created else None,
+            expires_at=expires_at,
+        )
         template_model["invitation_url"] = (
-            f"{base_url}/accept-invitation?token={invitation_token}"
+            f"{base_url}/accept-invitation?token={jwt_token}"
         )
 
         # Determine which email template to use based on user status
         if cognito_user_created:
-            # Case 1: Brand new user - send template with password
+            # Case 1: Brand new user - password embedded in JWT token, not in email
             template_id = TEAM_INVITATION_NEW_USER_TEMPLATE_ID
-            template_model["password"] = password
             template_model["email"] = params.email
             template_model["login_url"] = f"{base_url}/signin?email={params.email}"
             logger.info(
-                f"Sending new user invitation email to {params.email} with temporary password"
+                f"Sending new user invitation email to {params.email} (password embedded in token)"
             )
         elif user_status == "FORCE_CHANGE_PASSWORD":
             # Case 2: User created but never logged in - resend password reset instructions
@@ -803,11 +811,11 @@ def resend_invitation(
             if os.getenv("RUNTIME_ENV", "prd") == "prd"
             else f"https://{os.getenv('RUNTIME_ENV', 'lat')}-console.palona.ai"
         )
-        template_model["invitation_url"] = (
-            f"{base_url}/accept-invitation?token={invitation.invitation_token}"
-        )
 
         # Determine which email template to use based on user status
+        password = None
+        user_recreated = False
+
         if not user_exists:
             # User doesn't exist - recreate them
             if not user_pool_id:
@@ -830,13 +838,13 @@ def resend_invitation(
                         {"Name": "name", "Value": user_name},
                     ],
                 )
+                user_recreated = True
                 logger.info(f"Recreated Cognito user for resend: {invitation.email}")
             except ClientError as e:
                 logger.error(f"Failed to recreate Cognito user: {e}")
                 raise ValueError(f"Failed to recreate Cognito user: {e}") from e
 
             template_id = TEAM_INVITATION_NEW_USER_TEMPLATE_ID
-            template_model["password"] = password
             template_model["email"] = invitation.email
             template_model["login_url"] = f"{base_url}/signin?email={invitation.email}"
         elif user_status == "FORCE_CHANGE_PASSWORD":
@@ -857,6 +865,17 @@ def resend_invitation(
             logger.info(
                 f"Resending existing user invitation to {invitation.email} (already confirmed)"
             )
+
+        # Generate JWT token that includes temporary password for recreated users
+        jwt_token = generate_invitation_jwt(
+            invitation_token=invitation.invitation_token,
+            email=invitation.email,
+            temporary_password=password if user_recreated else None,
+            expires_at=invitation.expires_at,
+        )
+        template_model["invitation_url"] = (
+            f"{base_url}/accept-invitation?token={jwt_token}"
+        )
 
         email_service.send_email_with_template(
             to_email=invitation.email,

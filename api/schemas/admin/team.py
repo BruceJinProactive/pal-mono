@@ -128,6 +128,20 @@ class ResendInvitationResponse(BaseModel):
     invitation_id: UUID
 
 
+class DecodeInvitationTokenRequest(BaseModel):
+    """Request to decode an invitation JWT token."""
+
+    token: str
+
+
+class DecodeInvitationTokenResponse(BaseModel):
+    """Response with decoded invitation credentials."""
+
+    invitation_token: str
+    email: str
+    temporary_password: Optional[str] = None
+
+
 # Multi-Account Support Schemas
 class UserAccountResponse(BaseModel):
     """Account information for account switcher."""

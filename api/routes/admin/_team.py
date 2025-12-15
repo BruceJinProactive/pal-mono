@@ -12,6 +12,7 @@ Route handlers focus on authorization, service calls, and response conversion.
 
 from uuid import UUID
 
+import jwt
 from fastapi import HTTPException
 from fastapi import status as http_status
 from sqlalchemy.orm import Session
@@ -20,6 +21,8 @@ from api.routes.admin._utils import UserContext
 from api.schemas.admin.team import (
     AcceptInvitationRequest,
     AcceptInvitationResponse,
+    DecodeInvitationTokenRequest,
+    DecodeInvitationTokenResponse,
     InvitationDetailsResponse,
     InvitationResponse,
     InvitationStatus,
@@ -39,6 +42,7 @@ from api.schemas.admin.team import (
     UserRole,
 )
 from services import team_service
+from services.team_service.invitation_token import decode_invitation_jwt
 from services.team_service.schema import (
     AcceptInvitationParams,
     InvitationParams,
@@ -299,6 +303,35 @@ async def get_invitation_details(
         expires_at=invitation.expires_at,
         status=api_status,
     )
+
+
+async def decode_invitation_token(
+    request: DecodeInvitationTokenRequest,
+) -> DecodeInvitationTokenResponse:
+    """
+    Decode invitation JWT token to extract credentials (public endpoint, no auth).
+
+    This endpoint allows the frontend to extract the email and temporary password
+    from the JWT token for auto-populating the sign-in form.
+
+    Route handler that:
+    1. Decodes the JWT token
+    2. Returns email and temporary password if present
+    """
+    try:
+        decoded = decode_invitation_jwt(request.token)
+
+        return DecodeInvitationTokenResponse(
+            invitation_token=decoded["invitation_token"],
+            email=decoded["email"],
+            temporary_password=decoded.get("temp_password"),
+        )
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError) as e:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid or expired invitation token: {e!s}",
+            headers={"Content-Type": "application/json"},
+        ) from e
 
 
 async def accept_invitation(

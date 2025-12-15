@@ -170,6 +170,8 @@ from api.schemas.admin.subscription import (
 from api.schemas.admin.team import (
     AcceptInvitationRequest,
     AcceptInvitationResponse,
+    DecodeInvitationTokenRequest,
+    DecodeInvitationTokenResponse,
     InvitationDetailsResponse,
     InvitationResponse,
     InviteTeamMemberRequest,
@@ -1901,6 +1903,18 @@ async def get_invitation_details(
     Returns account name, invited by, role, and expiration info.
     """
     return await _team.get_invitation_details(token, session)
+
+
+@admin_router.post("/invitations/decode")
+async def decode_invitation_token(
+    request: DecodeInvitationTokenRequest,
+) -> DecodeInvitationTokenResponse:
+    """
+    Decode invitation JWT token to extract credentials (public endpoint, no auth required).
+
+    Returns email and temporary password (if present) for auto-populating sign-in form.
+    """
+    return await _team.decode_invitation_token(request)
 
 
 @admin_router.post("/invitations/accept")
