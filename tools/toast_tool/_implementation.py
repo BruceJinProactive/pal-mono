@@ -639,13 +639,23 @@ class ToastTool(Toolkit):
 
             price = self._get_order_prices(order=order)  # type: ignore
 
+            # Check if price is 0. 0$ orders imply there were issues constructing the order
+            if price.totalAmount <= 0:  # type: ignore
+                logger.error(
+                    "[ToastTool._checkout_order_hosted] Order total amount is 0 or negative"
+                )
+                return (
+                    "There was an issue calculating the order total. "
+                    "Please review your order items and try again."
+                )
+
             # Begin hosted checkout flow - payment intent will be created, then order will be submitted
             return self._begin_hosted_checkout_flow(order, price)  # type: ignore
 
         except Exception as e:
             logger.error(f"[ToastTool._checkout_order_hosted] Error: {e}")
             logger.error(traceback.format_exc())
-            return "Failed to create payment intent. Please try again."
+            return "Error processing checkout. Please try again."
 
     @tool
     def checkout_order(self) -> str:
@@ -1360,9 +1370,10 @@ class ToastTool(Toolkit):
 
         except Exception as e:
             logger.error(
-                f"[ToastTool._create_payment_intent] Error creating payment intent: {e}"
+                f"[ToastTool._create_payment_intent] Error creating payment intent: {e}",
+                exc_info=True,
             )
-            return "Failed to create payment intent. Please try again."
+            return "Error creating payment. Please try again."
 
     @task
     def _begin_hosted_checkout_flow(self, order: OrderInput, price: Price) -> str:
