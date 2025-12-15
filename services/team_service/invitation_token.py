@@ -5,26 +5,27 @@ This module provides JWT-based token generation for team invitations that
 securely embed temporary passwords for seamless sign-in experience.
 """
 
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import jwt
+
+from utils.secret import get_server_secret_with_fallback
 
 INVITATION_JWT_ALGORITHM = "HS256"
 
 
 def _get_jwt_secret() -> str:
     """
-    Get JWT secret from environment variable.
+    Get JWT secret from AWS Secrets Manager or environment variable.
+
+    Returns:
+        str: The JWT secret for signing invitation tokens
 
     Raises:
-        ValueError: If INVITATION_JWT_SECRET is not set
+        ValueError: If INVITATION_JWT_SECRET is not found in Secrets Manager or env vars
     """
-    secret = os.environ.get("INVITATION_JWT_SECRET")
-    if not secret:
-        raise ValueError("INVITATION_JWT_SECRET environment variable is required")
-    return secret
+    return get_server_secret_with_fallback("INVITATION_JWT_SECRET")
 
 
 def generate_invitation_jwt(
@@ -46,7 +47,7 @@ def generate_invitation_jwt(
         str: Encoded JWT token
 
     Raises:
-        ValueError: If INVITATION_JWT_SECRET environment variable is not set
+        ValueError: If INVITATION_JWT_SECRET is not found in AWS Secrets Manager or env vars
 
     Example:
         >>> token = generate_invitation_jwt("abc123", "user@example.com", "TempPass123")
@@ -84,7 +85,7 @@ def decode_invitation_jwt(token: str) -> dict[str, Any]:
         - temp_password: str | None (only for new users)
 
     Raises:
-        ValueError: If INVITATION_JWT_SECRET environment variable is not set
+        ValueError: If INVITATION_JWT_SECRET is not found in AWS Secrets Manager or env vars
         jwt.ExpiredSignatureError: If token has expired
         jwt.InvalidTokenError: If token is invalid or malformed
     """
