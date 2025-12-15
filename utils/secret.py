@@ -1,6 +1,7 @@
 import json
 import os
 
+import aioboto3
 from boto3.session import Session
 from botocore.exceptions import ClientError
 
@@ -263,3 +264,113 @@ def _get_client_secrets():
     secret_dict = json.loads(secret)
 
     return secret_dict
+
+
+# Async versions using aioboto3
+
+
+async def async_get_secret(secret_key: str, secret_store: str) -> str:
+    """
+    Async version: Retrieve a secret value from AWS Secrets Manager using a secret_key
+    """
+    session = aioboto3.Session()
+    async with session.client(
+        service_name="secretsmanager", region_name=AWS_REGION
+    ) as client:  # type: ignore[reportGeneralTypeIssues]
+        try:
+            get_secret_value_response = await client.get_secret_value(
+                SecretId=secret_store
+            )
+        except ClientError as e:
+            # For a list of exceptions thrown, see
+            # https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html
+            raise e
+
+        # Decrypts secret using the associated KMS key.
+        if "SecretString" in get_secret_value_response:
+            secret = get_secret_value_response["SecretString"]
+        else:
+            secret = get_secret_value_response["SecretBinary"]
+
+        # Parse the secret string as JSON and extract the value for the given key
+        secret_dict = json.loads(secret)
+
+        try:
+            return secret_dict[secret_key]
+        except KeyError:
+            runtime_env = os.getenv("RUNTIME_ENV", "")
+            if runtime_env == "" or runtime_env == "dev":
+                secret_value = os.getenv(secret_key, "")
+
+                if secret_value:
+                    return secret_value
+
+            raise KeyError(
+                f"Secret not found in AWS Secrets Manager for key: {secret_key}"
+            )
+
+
+async def async_get_client_secret(secret_key: str) -> str:
+    """
+    Async version: Retrieves secret value stored in the client secret store.
+    """
+    return await async_get_secret(secret_key, AWS_CLIENT_SECRET_NAME)
+
+
+async def async_get_server_secret(secret_key: str) -> str:
+    """
+    Async version: Retrieves secret value stored in the server secret store.
+    """
+    return await async_get_secret(secret_key, AWS_SERVER_SECRET_NAME)
+
+
+async def async_get_server_secret_with_fallback(secret_key: str) -> str:
+    """
+    Async version: Retrieve the value of a secret key from AWS Secrets Manager or fallback to an environment variables.
+
+    Args:
+        secret_key (str): The key of the secret to retrieve.
+    Returns:
+        str: The value of the secret.
+    """
+    try:
+        # Attempt to retrieve the secret from AWS Secrets Manager
+        secret_value = await async_get_server_secret(secret_key)
+    except Exception:
+        # Fallback to environment variable
+        secret_value = os.getenv(secret_key, "")
+
+    if not secret_value:
+        raise ValueError(
+            f"Secret not found in AWS Secrets Manager or environment variables for key: {secret_key}"
+        )
+
+    return secret_value
+
+
+async def async_get_client_secret_with_fallback(secret_key: str) -> str:
+    """
+    Async version: Retrieve the value of a secret key from AWS Secrets Manager or fallback to an environment variables.
+
+    Args:
+        secret_key (str): The key of the secret to retrieve.
+
+    Returns:
+        str: The value of the secret.
+
+    Raises:
+        ValueError: If the secret is not found in AWS Secrets Manager or environment variables.
+    """
+    try:
+        # Attempt to retrieve the secret from AWS Secrets Manager
+        secret_value = await async_get_client_secret(secret_key)
+    except Exception:
+        # Fallback to environment variable
+        secret_value = os.getenv(secret_key, "")
+
+    if not secret_value:
+        raise ValueError(
+            f"Secret not found in AWS Secrets Manager or environment variables for key: {secret_key}"
+        )
+
+    return secret_value
