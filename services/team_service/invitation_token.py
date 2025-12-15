@@ -11,12 +11,20 @@ from typing import Any
 
 import jwt
 
-_SECRET = os.environ.get("INVITATION_JWT_SECRET")
-if not _SECRET:
-    raise ValueError("INVITATION_JWT_SECRET environment variable is required")
-
-INVITATION_JWT_SECRET: str = _SECRET
 INVITATION_JWT_ALGORITHM = "HS256"
+
+
+def _get_jwt_secret() -> str:
+    """
+    Get JWT secret from environment variable.
+
+    Raises:
+        ValueError: If INVITATION_JWT_SECRET is not set
+    """
+    secret = os.environ.get("INVITATION_JWT_SECRET")
+    if not secret:
+        raise ValueError("INVITATION_JWT_SECRET environment variable is required")
+    return secret
 
 
 def generate_invitation_jwt(
@@ -37,6 +45,9 @@ def generate_invitation_jwt(
     Returns:
         str: Encoded JWT token
 
+    Raises:
+        ValueError: If INVITATION_JWT_SECRET environment variable is not set
+
     Example:
         >>> token = generate_invitation_jwt("abc123", "user@example.com", "TempPass123")
         >>> # Frontend receives: /accept-invitation?token={token}
@@ -55,9 +66,8 @@ def generate_invitation_jwt(
     if temporary_password:
         payload["temp_password"] = temporary_password
 
-    return jwt.encode(
-        payload, INVITATION_JWT_SECRET, algorithm=INVITATION_JWT_ALGORITHM
-    )
+    secret = _get_jwt_secret()
+    return jwt.encode(payload, secret, algorithm=INVITATION_JWT_ALGORITHM)
 
 
 def decode_invitation_jwt(token: str) -> dict[str, Any]:
@@ -74,13 +84,13 @@ def decode_invitation_jwt(token: str) -> dict[str, Any]:
         - temp_password: str | None (only for new users)
 
     Raises:
+        ValueError: If INVITATION_JWT_SECRET environment variable is not set
         jwt.ExpiredSignatureError: If token has expired
         jwt.InvalidTokenError: If token is invalid or malformed
     """
+    secret = _get_jwt_secret()
     try:
-        payload = jwt.decode(
-            token, INVITATION_JWT_SECRET, algorithms=[INVITATION_JWT_ALGORITHM]
-        )
+        payload = jwt.decode(token, secret, algorithms=[INVITATION_JWT_ALGORITHM])
 
         return {
             "invitation_token": payload["invitation_token"],
