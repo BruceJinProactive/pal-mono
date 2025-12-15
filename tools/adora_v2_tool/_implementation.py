@@ -8,9 +8,16 @@ from agent.tool import ToolMetadata
 from tools.adora_v2_tool._apis import (
     api_check_store_ordering_status,
     api_get_store_info,
+    api_validate_address,
     get_adora_pos_auth_token,
 )
-from tools.adora_v2_tool._utils import get_adora_credentials
+from tools.adora_v2_tool._utils import (
+    add_lat_long_to_address,
+    extract_street_parts,
+    get_adora_credentials,
+)
+from tools.adora_v2_tool.classes import DeliveryAddress
+from tools.utils.ordering._llm import async_llm_call
 from utils.log import logger
 
 
@@ -50,7 +57,7 @@ class AdoraV2Tool(Toolkit):
             if self._cached_bearer_token:
                 return self._cached_bearer_token
 
-            api_key, api_secret = get_adora_credentials(
+            api_key, api_secret = await get_adora_credentials(
                 self.tool_metadata.account_name or ""
             )
             if not api_key or not api_secret:
@@ -139,5 +146,45 @@ class AdoraV2Tool(Toolkit):
             f"[AdoraV2Tool.check_address] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}), address: {address}"
         )
 
-        # Dummy implementation - simulate async behavior
-        return f"Address validated: {address} is within the delivery zone."
+        # Use async_llm_call to extract address into DeliveryAddress format
+        delivery_address = await async_llm_call(
+            system_prompt="Extract the address into the given output format.",
+            prompt=address,
+            response_format=DeliveryAddress,
+            openai=False,
+        )
+
+        if not isinstance(delivery_address, DeliveryAddress):
+            return "Failed to identify address. Please try again by providing the full address."
+
+        if missing := [
+            f
+            for f, v in [
+                ("street address", delivery_address.address),
+                ("city", delivery_address.city),
+                ("state", delivery_address.state),
+                ("zip code", delivery_address.zip),
+            ]
+            if v == "N/A"
+        ]:
+            return f"Please provide the following: {', '.join(missing)}."
+
+        bearer_token, lat_lon_result = await asyncio.gather(
+            self._get_bearer_token(),
+            add_lat_long_to_address(delivery_address),
+        )
+
+        if not bearer_token or not lat_lon_result[0]:
+            return "Failed to authenticate." if not bearer_token else lat_lon_result[1]
+
+        street_no, street_name = extract_street_parts(delivery_address.address)
+
+        success, result = await api_validate_address(
+            bearer_token, self.store_id, delivery_address, street_no, street_name
+        )
+
+        return (
+            str(result)
+            if not success
+            else f"Address is valid and within delivery zone. {result}"
+        )

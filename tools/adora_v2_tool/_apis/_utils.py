@@ -17,6 +17,7 @@ MARCOS_STORE_IDS = {
 class ApiFunction(Enum):
     STORE_INFO = "store/info"
     STORE_STATUS = "store/status"
+    VALIDATE_ADDRESS = "validateAddress"
 
 
 class HttpMethod(Enum):
@@ -24,7 +25,11 @@ class HttpMethod(Enum):
     POST = "POST"
 
 
-V1_API_FUNCTIONS = {ApiFunction.STORE_INFO, ApiFunction.STORE_STATUS}
+V1_API_FUNCTIONS = {
+    ApiFunction.STORE_INFO,
+    ApiFunction.STORE_STATUS,
+    ApiFunction.VALIDATE_ADDRESS,
+}
 
 
 async def connect_adora_token_hub(

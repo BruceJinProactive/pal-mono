@@ -1,6 +1,15 @@
+import json
 import threading
+from json import JSONDecodeError
+from typing import Tuple
 
+import aioboto3
+import httpx
+from botocore.exceptions import BotoCoreError, ClientError
+
+from tools.adora_v2_tool.classes import DeliveryAddress
 from utils.log import logger
+from utils.secret import AWS_REGION, async_get_server_secret_with_fallback
 
 from ._utils import (
     ApiFunction,
@@ -62,7 +71,7 @@ async def api_check_store_ordering_status(
 
         logger.error(f"[AdoraV2Tool._apis] Error {response}")
         return None
-    except Exception as e:
+    except (KeyError, TypeError, httpx.RequestError) as e:
         logger.error(f"[AdoraV2Tool._apis] Request error: {e}")
         return None
 
@@ -88,6 +97,151 @@ async def api_get_store_info(
 
         logger.error(f"[AdoraV2Tool._apis] Error {response}")
         return None
-    except Exception as e:
+    except (KeyError, TypeError, httpx.RequestError) as e:
         logger.error(f"[AdoraV2Tool._apis] Request error: {e}")
+        return None
+
+
+async def api_validate_address(
+    bearer_token: str,
+    store_id: str,
+    delivery_address: DeliveryAddress,
+    street_no: str,
+    street_name: str,
+) -> tuple[bool, list[dict] | dict | str]:
+    """
+    Validate an address with Adora POS.
+
+    Returns:
+        tuple: (success: bool, result: list[dict] | dict | str)
+            Success: (True, [{"charge": 0.1, "minimumCharge": 0.1, "typeId": 0, ...}])
+            Failure: (False, "error message")
+    """
+    try:
+        payload = {
+            "storeId": store_id,
+            "lat": delivery_address.lat,
+            "lng": delivery_address.lng,
+            "streetNo": street_no,
+            "streetName": street_name,
+            "unitApt": delivery_address.extended_address,
+            "city": delivery_address.city,
+            "state": delivery_address.state,
+            "zip": delivery_address.zip,
+        }
+
+        response = await connect_adora_order_hub(
+            HttpMethod.POST, bearer_token, ApiFunction.VALIDATE_ADDRESS, payload=payload
+        )
+
+        body = response.get("body", {})
+
+        # Success case
+        if response["status"] == 200:
+            if isinstance(body, (list, dict)):
+                return True, body
+            if isinstance(body, str) and body:
+                return True, json.loads(body)  # JSONDecodeError caught by outer except
+            return False, f"Unexpected body type: {type(body).__name__}"
+
+        # Error case
+        error_msg = (
+            body.get("message", str(body))
+            if isinstance(body, dict)
+            else str(body or "Address validation failed")
+        )
+        return False, error_msg
+
+    except (KeyError, TypeError, ValueError, JSONDecodeError) as e:
+        logger.error(f"[api_validate_address] Error: {e}")
+        return False, "An error occurred while validating the address."
+
+
+async def geocode_with_google(
+    delivery_address: DeliveryAddress,
+) -> Tuple[float, float] | None:
+    """Async Google Geocoding API call using httpx."""
+    try:
+        GOOGLE_GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+        # Build address string
+        address_parts = [
+            p
+            for p in [
+                delivery_address.address,
+                delivery_address.city,
+                delivery_address.state,
+                delivery_address.zip,
+            ]
+            if p and p != "N/A"
+        ] + ["USA"]
+
+        address_string = ", ".join(address_parts)
+
+        # Get API key asynchronously
+        api_key = await async_get_server_secret_with_fallback("GOOGLE_GEOCODE_API_KEY")
+
+        # Make async request
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                GOOGLE_GEOCODING_URL,
+                params={
+                    "address": address_string,
+                    "key": api_key,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            # Parse response
+            if data.get("status") == "OK" and data.get("results"):
+                location = data["results"][0]["geometry"]["location"]
+                return location["lat"], location["lng"]
+
+            logger.warning(f"[geocode_with_google] No results: {data.get('status')}")
+            return None
+
+    except (httpx.TimeoutException, httpx.HTTPStatusError, Exception) as e:
+        logger.error(f"[geocode_with_google] Error: {e}")
+        return None
+
+
+async def geocode_with_aws_location(
+    delivery_address: DeliveryAddress,
+) -> Tuple[float, float] | None:
+    """Async AWS geo-places service call using aioboto3."""
+    try:
+        # Build address string
+        address_parts = [
+            p
+            for p in [
+                delivery_address.address,
+                delivery_address.city,
+                delivery_address.state,
+                delivery_address.zip,
+            ]
+            if p and p != "N/A"
+        ] + ["USA"]
+
+        address_string = ", ".join(address_parts)
+
+        # Make async AWS request
+        session = aioboto3.Session()
+        async with session.client(
+            "geo-places", region_name=AWS_REGION
+        ) as client:  # type: ignore[reportGeneralTypeIssues]
+            response = await client.geocode(
+                QueryText=address_string,
+                MaxResults=1,
+                QueryComponents={"Country": "USA"},
+            )
+
+            if response.get("ResultItems"):
+                longitude, latitude = response["ResultItems"][0]["Position"]
+                return latitude, longitude
+
+            logger.warning("[geocode_with_aws_location] No results found")
+            return None
+
+    except (ClientError, BotoCoreError) as e:
+        logger.error(f"[geocode_with_aws_location] Error: {e}")
         return None
