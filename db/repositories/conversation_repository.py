@@ -171,6 +171,27 @@ class ConversationRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    def get_conversation_by_call_id(self, call_id: str) -> Conversation | None:
+        """
+        Retrieve a conversation by its VAPI call ID.
+
+        Args:
+            call_id: The VAPI call ID associated with the conversation.
+
+        Returns:
+            Conversation | None: The conversation if found, None otherwise.
+        """
+        try:
+            return (
+                self.session.query(Conversation)
+                .filter(Conversation.call_id == call_id)
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving conversation by call_id: {e}")
+            return None
+
     def get_conversations(self, skip: int = 0, limit: int = 100):
         """
         Retrieve a paginated list of conversations.
