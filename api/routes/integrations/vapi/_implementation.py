@@ -559,33 +559,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         await session.refresh(project, attribute_names=["id", "account"])
 
-        try:
-            stripe_customer_id = project.account.stripe_customer_id
-
-            if not stripe_customer_id:
-                logger.warning(
-                    f"No Stripe customer ID found for project {project.id} - skipping call usage tracking",
-                    extra={
-                        "project_id": str(project.id),
-                        "call_id": call_id,
-                        "customer_number": customer_number,
-                    },
-                )
-            else:
-                event_name = _stripe_product.get_call_meter_event_name(project.id)
-                await asyncio.to_thread(
-                    send_meter_event,
-                    event_name=event_name,
-                    stripe_customer_id=stripe_customer_id,
-                    value=1,
-                )
-        except Exception as e:
-            logger.error(
-                f"Error tracking call usage for call {call_id}: {e}",
-                extra={"call_id": call_id, "project_id": str(project.id)},
-                exc_info=True,
-            )
-
         account_display_name = project.account.display_name
         # Fallback to account name if display name is not set
         if not account_display_name:
@@ -917,6 +890,112 @@ def handle_transcript_update(message_data):
         return {"error": str(e)}
 
 
+def _is_call_meaningful(call_data: dict) -> tuple[bool, str]:
+    """
+    Determine if a call is meaningful for billing purposes.
+
+    A call is considered meaningful if:
+    1. Duration is at least 10 seconds
+    2. User said something (has user messages in transcript)
+
+    Args:
+        call_data: Call data from VAPI end-of-call-report
+
+    Returns:
+        tuple[bool, str]: (is_meaningful, reason)
+    """
+    # Check duration (must be >= 10 seconds)
+    duration_seconds = call_data.get("durationSeconds", 0)
+    if duration_seconds < 10:
+        return False, f"duration_too_short ({duration_seconds}s < 10s)"
+
+    # Check if user spoke (look for user messages in artifact)
+    artifact = call_data.get("artifact", {})
+    messages = artifact.get("messages", [])
+
+    # Check if there are any user messages
+    user_spoke = False
+    for msg in messages:
+        if msg.get("role") == "user":
+            user_spoke = True
+            break
+
+    if not user_spoke:
+        return False, "no_user_speech"
+
+    return True, "meaningful"
+
+
+async def _track_call_usage_if_meaningful(
+    call_data: dict,
+    message_data: dict,
+    project: db.Project,
+    call_id: str,
+) -> None:
+    """
+    Track call usage only if the call is meaningful (>= 10s and user spoke).
+
+    Args:
+        call_data: Call data from VAPI end-of-call-report
+        message_data: Message data from VAPI end-of-call-report (unused, for compatibility)
+        project: Project object
+        call_id: Call ID
+    """
+    try:
+        # Check if call is meaningful
+        is_meaningful, reason = _is_call_meaningful(call_data)
+
+        if not is_meaningful:
+            logger.info(
+                f"Skipping usage tracking for non-meaningful call: {reason}",
+                extra={
+                    "call_id": call_id,
+                    "project_id": str(project.id),
+                    "reason": reason,
+                    "duration_seconds": call_data.get("durationSeconds", 0),
+                },
+            )
+            return
+
+        # Track usage for meaningful call
+        stripe_customer_id = project.account.stripe_customer_id
+
+        if not stripe_customer_id:
+            logger.info(
+                f"No Stripe customer ID found for project {project.id} - skipping call usage tracking",
+                extra={
+                    "project_id": str(project.id),
+                    "call_id": call_id,
+                },
+            )
+            return
+
+        event_name = _stripe_product.get_call_meter_event_name(project.id)
+
+        await asyncio.to_thread(
+            send_meter_event,
+            event_name=event_name,
+            stripe_customer_id=stripe_customer_id,
+            value=1,
+        )
+
+        logger.info(
+            "Successfully tracked meaningful call usage",
+            extra={
+                "call_id": call_id,
+                "project_id": str(project.id),
+                "duration_seconds": call_data.get("durationSeconds", 0),
+            },
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Error tracking call usage for call {call_id}: {e}",
+            extra={"call_id": call_id, "project_id": str(project.id)},
+            exc_info=True,
+        )
+
+
 async def handle_session_closure(message_data, session: AsyncSession):
     """
     Handle end-of-call-report message type.
@@ -1107,6 +1186,14 @@ async def handle_session_closure(message_data, session: AsyncSession):
                     "allowlist_size": len(allowed_numbers),
                 },
             )
+
+        # Track usage for meaningful calls only
+        await _track_call_usage_if_meaningful(
+            call_data=call_data,
+            message_data=message_data,
+            project=project,
+            call_id=call_id,
+        )
 
         return {
             "status": "session closed",
