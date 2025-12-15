@@ -1,7 +1,7 @@
+import asyncio
 import json
 import os
 import re
-import time
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
@@ -536,7 +536,7 @@ def get_instagram_username(session: Session, project_id: uuid.UUID) -> str:
     return secret_dict.get("username", "")
 
 
-def set_instagram_access_token(
+async def set_instagram_access_token(
     session: Session,
     project_id: uuid.UUID,
     access_token: str,
@@ -564,7 +564,7 @@ def set_instagram_access_token(
         secret.add_client_secret(project_secret_key, project_secret_value)
 
         # Temporary solution to try to avoid versioning errors
-        time.sleep(5)
+        await asyncio.sleep(5)
 
         try:
             secret.add_client_secret(user_secret_key, user_secret_value)
@@ -626,7 +626,9 @@ def set_instagram_access_token(
         raise RuntimeError("Unable to update project channel identifiers.") from e
 
 
-def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> None:
+async def remove_instagram_access_token(
+    session: Session, project_id: uuid.UUID
+) -> None:
     """
     Remove both project and user secrets using the project secret key
     """
@@ -663,7 +665,7 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
         secret.remove_client_secret(project_secret_key)
 
         # Temporary solution to try to avoid versioning errors
-        time.sleep(5)
+        await asyncio.sleep(5)
 
         try:
             secret.remove_client_secret(user_secret_key)
@@ -706,7 +708,7 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID) -> No
         raise RuntimeError("Unable to remove Instagram access token.") from e
 
 
-def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> None:
+async def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> None:
     """
     Remove both project and user secrets using the user secret key
     """
@@ -730,7 +732,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str) -> Non
         secret.remove_client_secret(project_secret_key)
 
         # Temporary solution to try to avoid versioning errors
-        time.sleep(5)
+        await asyncio.sleep(5)
 
         try:
             secret.remove_client_secret(user_secret_key)
@@ -1943,7 +1945,7 @@ class JsonSchema(BaseModel):
 
 def get_brand_extract_prompt() -> str:
     return """
-    Extract a concise company description from the given webpage text. 
+    Extract a concise company description from the given webpage text.
     The description should summarize:
     - What the company does (products/services)
     - The industry or sector it operates in
@@ -1951,8 +1953,8 @@ def get_brand_extract_prompt() -> str:
     - Any unique value proposition, mission, or vision
     - What food or items the company sells and are known for
 
-    Write the description in 2–5 clear professional sentences. 
-    Do not include irrelevant information, navigation text, or job postings. 
+    Write the description in 2-5 clear professional sentences.
+    Do not include irrelevant information, navigation text, or job postings.
     If no description can be found, respond with: "No clear company description found."
     """
 

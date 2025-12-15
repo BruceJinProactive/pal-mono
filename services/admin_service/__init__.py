@@ -269,7 +269,7 @@ def get_instagram_username(session: Session, project_id: uuid.UUID) -> str:
     return _implementation.get_instagram_username(session, project_id)
 
 
-def set_instagram_access_token(
+async def set_instagram_access_token(
     session: Session,
     project_id: uuid.UUID,
     access_token: str,
@@ -294,12 +294,12 @@ def set_instagram_access_token(
         RuntimeError: If there is an error storing the token.
     """
 
-    return _implementation.set_instagram_access_token(
+    return await _implementation.set_instagram_access_token(
         session, project_id, access_token, user_id, username
     )
 
 
-def remove_instagram_access_token(session: Session, project_id: uuid.UUID):
+async def remove_instagram_access_token(session: Session, project_id: uuid.UUID):
     """
     Remove the Instagram access token for a project from AWS Secrets Manager.
 
@@ -315,10 +315,10 @@ def remove_instagram_access_token(session: Session, project_id: uuid.UUID):
         RuntimeError: If there is an error removing the token.
     """
 
-    return _implementation.remove_instagram_access_token(session, project_id)
+    return await _implementation.remove_instagram_access_token(session, project_id)
 
 
-def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
+async def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
     """
     Deauthorize the Instagram access token for a project from AWS Secrets Manager
     using the Instagram user id.
@@ -335,7 +335,7 @@ def deauthorize_instagram_access_token(session: Session, ig_user_id: str):
         RuntimeError: If there is an error removing the token.
     """
 
-    return _implementation.deauthorize_instagram_access_token(session, ig_user_id)
+    return await _implementation.deauthorize_instagram_access_token(session, ig_user_id)
 
 
 def get_session_count_by_user_and_status(

@@ -65,7 +65,7 @@ async def connect_instagram(
         )
 
     try:
-        set_instagram_access_token(
+        await set_instagram_access_token(
             session, project_uuid, ig_access_token, ig_user_id, ig_username
         )
     except ValueError as e:
@@ -89,7 +89,7 @@ async def disconnect_instagram(
     session: Session,
 ):
     try:
-        remove_instagram_access_token(session, project_id)
+        await remove_instagram_access_token(session, project_id)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -199,7 +199,7 @@ async def handle_instagram_deauthorization(
         )
 
     try:
-        deauthorize_instagram_access_token(session, ig_user_id)
+        await deauthorize_instagram_access_token(session, ig_user_id)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
