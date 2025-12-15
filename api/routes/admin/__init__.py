@@ -45,6 +45,15 @@ from api.schemas.admin.agent import (
     UpdateAgentRequest,
 )
 from api.schemas.admin.analytics import GetAllReportsResponse
+from api.schemas.admin.billing import (
+    GenerateInvoiceRequest,
+    GenerateInvoiceResponse,
+    InvoiceActionRequest,
+    InvoiceActionResponse,
+    ListInvoicesResponse,
+    UpdatePaymentMethodRequest,
+    UpdatePaymentMethodResponse,
+)
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
 from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
@@ -215,6 +224,7 @@ from . import (
     _agent,
     _analytics,
     _auth,
+    _billing,
     _campaign,
     _conversation,
     _email,
@@ -1681,6 +1691,110 @@ async def assign_account_to_user(
     The user must already exist in Cognito.
     """
     return await _users.assign_account_to_user(request, context, session)
+
+
+"""
+---------- Billing & Invoice Management Endpoints ----------
+------------------------------------------------------------
+"""
+
+
+@admin_router.patch("/accounts/{account_name}/billing/payment-method")
+async def update_payment_method(
+    account_name: str,
+    request: UpdatePaymentMethodRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> UpdatePaymentMethodResponse:
+    """
+    Update the payment method for an account's subscription.
+
+    Switches between:
+    - 'autopay': Automatic credit card charges (default)
+    - 'invoice': Manual invoicing with payment terms
+    """
+    return await _billing.update_payment_method(account_name, request, context, session)
+
+
+@admin_router.post("/accounts/{account_name}/billing/invoices")
+async def generate_invoice(
+    account_name: str,
+    request: GenerateInvoiceRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> GenerateInvoiceResponse:
+    """
+    Manually generate and send an invoice for an account.
+
+    This endpoint:
+    1. Creates a draft invoice with all pending charges
+    2. Finalizes the invoice
+    3. Sends it to the customer via email
+
+    Only works for accounts with payment_method='invoice'.
+    """
+    return await _billing.generate_invoice(account_name, request, context, session)
+
+
+@admin_router.get("/accounts/{account_name}/billing/invoices")
+async def list_invoices(
+    account_name: str,
+    limit: int = Query(10, description="Maximum number of invoices to return"),
+    status: str | None = Query(
+        None,
+        description="Filter by status (draft, open, paid, void, uncollectible)",
+    ),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> ListInvoicesResponse:
+    """
+    List invoices for an account.
+
+    Args:
+        limit: Maximum number of invoices to return (default: 10)
+        status: Filter by status (draft, open, paid, void, uncollectible)
+    """
+    return await _billing.list_invoices(account_name, context, session, limit, status)
+
+
+@admin_router.post("/accounts/{account_name}/billing/invoices/{invoice_id}/finalize")
+async def finalize_invoice(
+    account_name: str,
+    invoice_id: str,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> InvoiceActionResponse:
+    """
+    Finalize and send a draft invoice.
+
+    This locks the invoice and emails it to the customer.
+    """
+    request = InvoiceActionRequest(invoice_id=invoice_id)
+    return await _billing.finalize_invoice(account_name, request, context, session)
+
+
+@admin_router.post("/accounts/{account_name}/billing/invoices/{invoice_id}/void")
+async def void_invoice(
+    account_name: str,
+    invoice_id: str,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> InvoiceActionResponse:
+    """
+    Void (cancel) an invoice.
+    """
+    request = InvoiceActionRequest(invoice_id=invoice_id)
+    return await _billing.void_invoice(account_name, request, context, session)
 
 
 """

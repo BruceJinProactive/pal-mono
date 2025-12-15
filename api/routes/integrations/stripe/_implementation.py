@@ -143,6 +143,57 @@ async def _handle_invoice_payment_succeeded(event_data: dict[str, Any]) -> None:
     )
 
 
+async def _handle_invoice_finalized(event_data: dict[str, Any]) -> None:
+    """
+    Handle invoice.finalized webhook event.
+
+    Sends an InvoiceSent notification to the account when invoice is finalized.
+    This event fires when an invoice is finalized and ready to be sent.
+    """
+    invoice = event_data.get("object", {})
+    stripe_customer_id = invoice.get("customer")
+
+    if not stripe_customer_id:
+        logger.warning("[Stripe Webhook] invoice.finalized missing customer ID")
+        return
+
+    async with AsyncSessionLocal() as async_session:
+        account_id = await _get_account_id_from_stripe_customer(
+            async_session, stripe_customer_id
+        )
+        if not account_id:
+            return
+
+        # Build event payload
+        due_date = invoice.get("due_date")
+
+        billing_event = BillingEvent(
+            type=BillingEventType.INVOICE_SENT,
+            account_id=account_id,
+            payload={
+                "invoice_number": invoice.get("number", ""),
+                "amount_due": float(invoice.get("amount_due", 0))
+                / 100,  # Convert cents to dollars
+                "currency": invoice.get("currency", "usd").upper(),
+                "due_date": (
+                    datetime.fromtimestamp(due_date, tz=timezone.utc).strftime(
+                        "%B %d, %Y"
+                    )
+                    if due_date
+                    else ""
+                ),
+                "invoice_url": invoice.get("hosted_invoice_url", ""),
+                "invoice_pdf": invoice.get("invoice_pdf", ""),
+            },
+        )
+
+        await handle_billing_event(async_session, billing_event)
+
+    logger.info(
+        f"[Stripe Webhook] Processed invoice.finalized for account {account_id}"
+    )
+
+
 async def handle_stripe_webhook(request: Request) -> dict[str, str]:
     """
     Handle incoming Stripe webhook events.
@@ -204,6 +255,8 @@ async def handle_stripe_webhook(request: Request) -> dict[str, str]:
             await _handle_invoice_payment_failed(event_data)
         elif event_type == "invoice.payment_succeeded":
             await _handle_invoice_payment_succeeded(event_data)
+        elif event_type == "invoice.finalized":
+            await _handle_invoice_finalized(event_data)
         else:
             logger.info(f"[Stripe Webhook] Unhandled event type: {event_type}")
 

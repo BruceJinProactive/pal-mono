@@ -411,6 +411,35 @@ class AccountSubscriptionRepository:
             logger.error(f"Error updating account subscription: {e}")
             raise
 
+    def update_payment_method(
+        self, subscription_id: uuid.UUID, payment_method
+    ) -> Optional[AccountSubscription]:
+        """Update the payment method of an account subscription."""
+        try:
+            subscription = (
+                self.session.query(AccountSubscription)
+                .filter(AccountSubscription.id == subscription_id)
+                .first()
+            )
+
+            if not subscription:
+                return None
+
+            subscription.payment_method = payment_method
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(subscription)
+            return subscription
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating payment method: {e}")
+            raise
+
 
 class ProjectSubscriptionRepository:
     def __init__(self, session: Session, auto_commit: bool = True):
