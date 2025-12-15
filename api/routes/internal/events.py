@@ -48,7 +48,7 @@ async def publish_sample_event():
 
 
 @events_router.post(
-    "/datasets",
+    "/generate-dataset",
     status_code=status.HTTP_202_ACCEPTED,
     responses={
         400: {"model": DatasetErrorResponse},
