@@ -9,15 +9,15 @@ class AdoraWebhookRequest(BaseModel):
     Required parameters by event:
 
     For order status events (e.g., 'Paid', 'Ready to pick up', 'Delivered'):
-    - event, storeId, PhoneNumber, transactionId, OrderNumber, OrderDate
+    - Event, storeId, PhoneNumber, transactionId, OrderNumber, OrderDate
     - trackingLink (optional)
 
     For menu update events ('update_menu'):
-    - event, storeId, brandId
+    - Event, storeId, brandId
     """
 
     # Required fields
-    event: str = Field(
+    Event: str = Field(
         ...,
         description="Webhook event: order status (e.g. 'Paid', 'Ready to pick up', 'Delivered') or 'update_menu'",
     )

@@ -112,8 +112,8 @@ async def update_order_status(
         order = rows[0]
 
     # Update the order status in orders table (event should not be None for order type)
-    if webhook_request.event is not None:
-        order.status = webhook_request.event
+    if webhook_request.Event is not None:
+        order.status = webhook_request.Event
 
     # If there's a tracking link in the webhook, update it
     if webhook_request.trackingLink:
@@ -127,7 +127,7 @@ async def update_order_status(
             order_id=order.order_number,
             store_id=webhook_request.storeId,
             vendor=IntegrationProvider.adora,
-            new_status=webhook_request.event,
+            new_status=webhook_request.Event,
             tracking_link=webhook_request.trackingLink,
             session=None,
         )
@@ -155,7 +155,7 @@ async def update_order_status(
     await session.refresh(order)
 
     logger.info(
-        f"[AdoraWebhook] Successfully updated order {order.order_number} status to {webhook_request.event}"
+        f"[AdoraWebhook] Successfully updated order {order.order_number} status to {webhook_request.Event}"
     )
 
     # Return the complete order object

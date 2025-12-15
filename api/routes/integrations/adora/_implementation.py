@@ -47,6 +47,9 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
         try:
             webhook_request = AdoraWebhookRequest(**body)
         except ValidationError as e:
+            error_msg = f"Validation error for webhook request: {e}"
+            logger.warning(error_msg)
+
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={"error": f"Invalid request body: {str(e)}"},
@@ -56,9 +59,9 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
         async with AsyncSessionLocal() as session:
             try:
                 # Route based on event type
-                if webhook_request.event == "update_menu":
+                if webhook_request.Event == "update_menu":
                     logger.debug(
-                        f"[AdoraWebhook] handling Adora webhook {webhook_request.event} event",
+                        f"[AdoraWebhook] handling Adora webhook {webhook_request.Event} event",
                         extra={"webhook_body": body},
                     )
 
@@ -84,11 +87,11 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                             content=result,
                         )
 
-                elif webhook_request.event == "Paid":
+                elif webhook_request.Event == "Paid":
                     # Handle order status events ("Paid")
                     # Validate required fields for order events
                     logger.debug(
-                        f"[AdoraWebhook] handling Adora webhook {webhook_request.event} event",
+                        f"[AdoraWebhook] handling Adora webhook {webhook_request.Event} event",
                         extra={"webhook_body": body},
                     )
 
@@ -102,7 +105,7 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                         ]
                     ):
                         logger.error(
-                            f"[AdoraWebhook] Missing required payload for event: {webhook_request.event}",
+                            f"[AdoraWebhook] Missing required payload for event: {webhook_request.Event}",
                             extra={"webhook_body": body},
                         )
 
@@ -137,7 +140,7 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                     )
                 else:
                     logger.debug(
-                        f"[AdoraWebhook] Can not handle Adora webhook event: {webhook_request.event}",
+                        f"[AdoraWebhook] Can not handle Adora webhook event: {webhook_request.Event}",
                         extra={"webhook_body": body},
                     )
                     # Return success response
@@ -145,14 +148,14 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                         status_code=status.HTTP_200_OK,
                         content={
                             "status": "success",
-                            "message": f"Adora webhook event:{webhook_request.event} received successfully",
+                            "message": f"Adora webhook event:{webhook_request.Event} received successfully",
                         },
                     )
 
             except ValueError as e:
                 # Handle validation errors with 400 status
                 await session.rollback()
-                error_msg = f"Validation error for {webhook_request.event} webhook: {e}"
+                error_msg = f"Validation error for {webhook_request.Event} webhook: {e}"
                 logger.warning(error_msg)
                 return JSONResponse(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -161,7 +164,7 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
             except (SQLAlchemyError, RuntimeError) as e:
                 # Handle system/database errors with 500 status
                 await session.rollback()
-                error_msg = f"Failed to process {webhook_request.event} webhook: {e}"
+                error_msg = f"Failed to process {webhook_request.Event} webhook: {e}"
                 logger.exception(error_msg)
                 return JSONResponse(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
