@@ -244,22 +244,12 @@ async def update_agent_kb(
         provider = pos_integration.provider
         cfg = pos_integration.raw_config or {}
 
-        if provider == IntegrationProvider.square:
-            # Square: need business_id (store_id) and an access token
-            access_token = (
-                pos_integration.access_token or pos_integration.client_secret or ""
-            ).strip()
-            if not access_token:
-                raise ValueError("Square: access token missing in POS integration")
-
-            client_id_value = (pos_integration.client_id or "").strip()
-            client_secret_value = access_token
-            token_api_endpoint = ""
-            general_api_endpoint = ""
-
-        elif provider in (IntegrationProvider.adora, IntegrationProvider.toast):
-            # Adora/Toast: require client_id, client_secret and API endpoints
-            # Get credentials from secret manager using secret_key
+        if provider in (
+            IntegrationProvider.square,
+            IntegrationProvider.adora,
+            IntegrationProvider.toast,
+        ):
+            # Square/Adora/Toast: Get credentials from secret manager using secret_key
             secret_key = pos_integration.secret_key
             if not secret_key:
                 raise ValueError(
@@ -269,8 +259,6 @@ async def update_agent_kb(
             try:
                 secrets_json = get_client_secret(secret_key)
                 credentials = json.loads(secrets_json)
-                client_id_value = (credentials.get("client_id") or "").strip()
-                client_secret_value = (credentials.get("client_secret") or "").strip()
             except KeyError:
                 raise ValueError(
                     f"{provider.value.capitalize()}: secret_key '{secret_key}' not found in secret manager"
@@ -280,28 +268,49 @@ async def update_agent_kb(
                     f"{provider.value.capitalize()}: invalid JSON format in secret manager for key '{secret_key}': {e}"
                 )
 
-            if not client_id_value:
-                raise ValueError(
-                    f"{provider.value.capitalize()}: client_id missing in secret manager"
-                )
-            if not client_secret_value:
-                raise ValueError(
-                    f"{provider.value.capitalize()}: client_secret missing in secret manager"
-                )
+            if provider == IntegrationProvider.square:
+                # Square uses OAuth: access_token + location_id (from store_identifier)
+                # The location_id is already captured in store_id variable
+                access_token = (credentials.get("access_token") or "").strip()
+                if not access_token:
+                    raise ValueError("Square: access_token missing in secret manager")
 
-            api_endpoints = cfg.get("api_endpoints", {}) or {}
-            token_api_endpoint = (api_endpoints.get("token_api_endpoint") or "").strip()
-            general_api_endpoint = (
-                api_endpoints.get("general_api_endpoint") or ""
-            ).strip()
-            if not token_api_endpoint:
-                raise ValueError(
-                    f"{provider.value.capitalize()}: token_api_endpoint missing in raw_config"
-                )
-            if not general_api_endpoint:
-                raise ValueError(
-                    f"{provider.value.capitalize()}: general_api_endpoint missing in raw_config"
-                )
+                # For Square, pass access token as client_secret_value
+                # The knowledge service will use store_id (location_id) + access_token
+                client_id_value = ""
+                client_secret_value = access_token
+                token_api_endpoint = ""
+                general_api_endpoint = ""
+
+            else:
+                # Adora/Toast use client_id/client_secret and require API endpoints
+                client_id_value = (credentials.get("client_id") or "").strip()
+                client_secret_value = (credentials.get("client_secret") or "").strip()
+
+                if not client_id_value:
+                    raise ValueError(
+                        f"{provider.value.capitalize()}: client_id missing in secret manager"
+                    )
+                if not client_secret_value:
+                    raise ValueError(
+                        f"{provider.value.capitalize()}: client_secret missing in secret manager"
+                    )
+
+                api_endpoints = cfg.get("api_endpoints", {}) or {}
+                token_api_endpoint = (
+                    api_endpoints.get("token_api_endpoint") or ""
+                ).strip()
+                general_api_endpoint = (
+                    api_endpoints.get("general_api_endpoint") or ""
+                ).strip()
+                if not token_api_endpoint:
+                    raise ValueError(
+                        f"{provider.value.capitalize()}: token_api_endpoint missing in raw_config"
+                    )
+                if not general_api_endpoint:
+                    raise ValueError(
+                        f"{provider.value.capitalize()}: general_api_endpoint missing in raw_config"
+                    )
 
         elif provider == IntegrationProvider.olo:
             # OLO: require client_id, client_secret and general_api_endpoint only
