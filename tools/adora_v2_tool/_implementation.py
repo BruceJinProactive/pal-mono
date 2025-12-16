@@ -9,6 +9,7 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.adora_v2_tool._apis import (
     api_check_store_ordering_status,
     api_get_store_info,
+    api_process_order,
     api_validate_address,
     api_validate_order,
     get_adora_pos_auth_token,
@@ -65,7 +66,7 @@ class AdoraV2Tool(Toolkit):
         self.register(self.check_store_ordering_status)
         self.register(self.get_store_info)
         self.register(self.check_address)
-        self.register(self.validate_order)
+        self.register(self.fulfill_order)
 
     async def _get_bearer_token(self) -> str | None:
         """Get cached bearer token or fetch new one if not cached."""
@@ -209,13 +210,13 @@ class AdoraV2Tool(Toolkit):
         )
 
     @tool
-    async def validate_order(self, order_items: list[str]) -> str:
+    async def fulfill_order(self, order_items: list[str]) -> str:
         """
-        Validates customer order and returns price breakdown with totals.
-        Does NOT submit order or return payment link.
+        Fulfills customer order by validating and processing it, returning confirmation.
+        This submits the order to the POS system and provides order confirmation.
 
-        Use when customer asks "how much?" or "what's the total?"
-        Do NOT use when ready to checkout (use checkout tool instead).
+        Use when customer is ready to place/complete their order.
+        Use when customer says "checkout", "place order", "complete order", etc.
 
         Args:
             order_items (list[str]): List of order items extracted from chat history.
@@ -226,10 +227,10 @@ class AdoraV2Tool(Toolkit):
                 - Output a JSON array of strings with **cleaned item names**.
 
         Returns:
-            str: Order totals including subtotal, tax, fees, and final total.
+            str: Order confirmation with order ID and final total.
         """
 
-        logger.debug(f"[AdoraV2Tool.validate_order] Order items: {order_items}")
+        logger.debug(f"[AdoraV2Tool.fulfill_order] Order items: {order_items}")
         bearer_token, chat_history_result = await asyncio.gather(
             self._get_bearer_token(),
             asyncio.to_thread(self.query_messages_tool.query_messages),
@@ -242,7 +243,7 @@ class AdoraV2Tool(Toolkit):
 
         # Build default prompts
         system_prompt = build_extraction_prompt(
-            ValidateOrderRequest, self.validate_order.__name__
+            ValidateOrderRequest, self.fulfill_order.__name__
         )
 
         # Apply backdoor overrides if present
@@ -270,7 +271,7 @@ class AdoraV2Tool(Toolkit):
             system_prompt=system_prompt,
             prompt=context_template.format(context=context, chat_history=chat_history),
             response_format=ValidateOrderRequest,
-            name=self.validate_order.__name__,
+            name=self.fulfill_order.__name__,
             openai=False,
         )
 
@@ -286,4 +287,36 @@ class AdoraV2Tool(Toolkit):
         if not email or not is_valid_email(email):
             order_request.customer.email = "orderingagent@palona.ai"
 
-        return str(await api_validate_order(bearer_token, order_request))
+        # Step 1: Validate the order
+        validate_result = await api_validate_order(bearer_token, order_request)
+        if isinstance(validate_result, str) or not validate_result.key:
+            return f"Validation failed: {validate_result if isinstance(validate_result, str) else 'No order key returned'}"
+
+        # Step 2: Process the order
+        process_result = await api_process_order(
+            bearer_token, order_request, validate_result
+        )
+        if isinstance(process_result, str):
+            return f"Processing failed: {process_result}"
+
+        # Step 3: Return confirmation
+        if not process_result.success:
+            return f"Order processing failed: {process_result}"
+
+        confirmation = (
+            f"Order successfully placed!\n"
+            f"Order ID: {process_result.order_id}\n"
+            f"Order Number: {process_result.order_no}\n"
+            f"Subtotal: ${validate_result.sub_total:.2f}\n"
+            f"Tax: ${validate_result.tax_amount:.2f}\n"
+            f"Service Charge: ${validate_result.service_charge:.2f}\n"
+            f"Delivery Charge: ${validate_result.delivery_charge:.2f}\n"
+            f"Total: ${validate_result.total:.2f}\n"
+        )
+
+        # Use payment URL from process result first, fallback to validate result
+        payment_url = process_result.payment_url or validate_result.payment_url
+        if payment_url:
+            confirmation += f"\nPayment URL: {payment_url}"
+
+        return confirmation

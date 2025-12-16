@@ -1,6 +1,7 @@
 from ._implementation import (
     api_check_store_ordering_status,
     api_get_store_info,
+    api_process_order,
     api_validate_address,
     api_validate_order,
     geocode_with_aws_location,
@@ -11,6 +12,7 @@ from ._implementation import (
 __all__ = [
     "api_check_store_ordering_status",
     "api_get_store_info",
+    "api_process_order",
     "api_validate_address",
     "api_validate_order",
     "geocode_with_aws_location",

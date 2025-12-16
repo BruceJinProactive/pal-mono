@@ -8,6 +8,9 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from tools.adora_v2_tool.classes import (
     DeliveryAddress,
+    PaymentDetails,
+    ProcessOrderRequest,
+    ProcessOrderResponse,
     ValidateOrderRequest,
     ValidateOrderResponse,
 )
@@ -273,7 +276,7 @@ async def api_validate_order(
 
         if response["status"] == 200:
             validated_response = ValidateOrderResponse(**body)
-            return f"Success:\n{validated_response}"
+            return validated_response
 
         return (
             body.get("message", "Order validation failed")
@@ -284,3 +287,69 @@ async def api_validate_order(
     except Exception as e:
         logger.error(f"[api_validate_order] Error: {e}")
         return "An error occurred while validating the order."
+
+
+async def api_process_order(
+    bearer_token: str,
+    order_request: ValidateOrderRequest,
+    validate_response: ValidateOrderResponse,
+) -> ProcessOrderResponse | str:
+    """
+    Process a customer order with Adora POS.
+
+    Args:
+        bearer_token: Bearer token for authentication
+        order_request: Original validate order request
+        validate_response: Response from validate order containing pricing and guid
+
+    Returns:
+        ProcessOrderResponse on success, error message string on failure
+    """
+    try:
+        if not validate_response.key:
+            logger.error(
+                f"[api_process_order] Missing order key from validation: {validate_response}"
+            )
+            return "Cannot process order: missing order key from validation."
+
+        process_request = ProcessOrderRequest(
+            store_id=order_request.store_id,
+            order_type=order_request.order_type,
+            payment_type=order_request.payment_type,
+            guid=validate_response.key,  # Use the key from validate response
+            promise_date_time=order_request.promise_date_time,
+            customer=order_request.customer,
+            delivery_address=order_request.delivery_address,
+            items=order_request.items,
+            payment_details=PaymentDetails(
+                sub_total=validate_response.sub_total,
+                tax=validate_response.tax_amount,
+                total=validate_response.total,
+            ),
+            order_comment=order_request.order_comment,
+        )
+
+        payload = process_request.model_dump(by_alias=True, exclude_none=True)
+
+        response = await connect_adora_order_hub(
+            HttpMethod.POST,
+            bearer_token,
+            ApiFunction.PROCESS_ORDER,
+            payload=payload,
+        )
+
+        body = response.get("body", {})
+
+        if response["status"] == 200 and isinstance(body, dict):
+            return ProcessOrderResponse(**body)
+
+        logger.error(f"[api_process_order] Failed response: {response}")
+        return (
+            body.get("msg", "Order processing failed")
+            if isinstance(body, dict)
+            else str(body)
+        )
+
+    except Exception as e:
+        logger.error(f"[api_process_order] Error: {e}")
+        return "An error occurred while processing the order."

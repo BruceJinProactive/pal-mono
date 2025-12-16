@@ -19,6 +19,7 @@ class ApiFunction(Enum):
     STORE_STATUS = "store/status"
     VALIDATE_ADDRESS = "validateAddress"
     VALIDATE_ORDER = "validateOrder"
+    PROCESS_ORDER = "processOrder"
 
 
 class HttpMethod(Enum):
@@ -34,6 +35,7 @@ V1_API_FUNCTIONS = {
 
 V2_API_FUNCTIONS = {
     ApiFunction.VALIDATE_ORDER,
+    ApiFunction.PROCESS_ORDER,
 }
 
 
