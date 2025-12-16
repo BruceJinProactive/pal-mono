@@ -48,6 +48,29 @@ class AccountUserRepository:
             logger.error(f"Error retrieving account user: {e}")
             return None
 
+    def get_by_user_id(self, user_id: uuid.UUID) -> Optional[AccountUser]:
+        """Get any AccountUser record for a user (first match).
+
+        Used for looking up user display information (name, email) when
+        we don't care which account membership we use.
+
+        Args:
+            user_id: UUID of the user
+
+        Returns:
+            AccountUser object or None if not found
+        """
+        try:
+            return (
+                self.session.query(AccountUser)
+                .filter(AccountUser.user_id == user_id)
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving account user by user_id: {e}")
+            return None
+
     def get_by_email_and_account(
         self, email: str, account_id: uuid.UUID
     ) -> Optional[AccountUser]:

@@ -1108,6 +1108,104 @@ def validate_account_access(
 # ASYNC VARIANTS
 # ============================================================================
 
+
+def get_pending_invitations_for_user(
+    session: Session,
+    email: str,
+) -> list[
+    tuple[
+        db.UserInvitation,
+        str,  # account_name
+        str | None,  # account_display_name
+        str,  # inviter_name or email
+    ]
+]:
+    """
+    Get all pending invitations for a user by email.
+
+    Args:
+        session: Database session
+        email: User's email address
+
+    Returns:
+        List of tuples containing (invitation, account_name, account_display_name, inviter_name)
+    """
+    # Initialize repositories
+    invitation_repo = UserInvitationRepository(session, auto_commit=False)
+    account_repo = AccountRepository(session, auto_commit=False)
+    account_user_repo = AccountUserRepository(session, auto_commit=False)
+
+    # Get all pending invitations for this email using repository
+    invitations = invitation_repo.get_pending_for_email(email)
+
+    results = []
+    for invitation in invitations:
+        # Get account using repository
+        account = account_repo.get_account_by_id(invitation.account_id)
+        if not account:
+            continue
+
+        # Get inviter info from AccountUser table using repository
+        inviter_account_user = account_user_repo.get_by_user_id(invitation.invited_by)
+
+        # Prefer name, fallback to email, then "Unknown"
+        inviter_name = "Unknown"
+        if inviter_account_user:
+            if inviter_account_user.name:
+                inviter_name = inviter_account_user.name
+            elif inviter_account_user.email:
+                inviter_name = inviter_account_user.email
+
+        results.append(
+            (
+                invitation,
+                account.name,
+                account.display_name,
+                inviter_name,
+            )
+        )
+
+    return results
+
+
+def accept_multiple_invitations(
+    session: Session,
+    context: UserContext,
+    invitation_tokens: list[str],
+) -> list[tuple[str, bool, db.Account | None, str | None, str | None]]:
+    """
+    Accept multiple invitations at once.
+
+    Args:
+        session: Database session
+        context: User context
+        invitation_tokens: List of invitation tokens to accept
+
+    Returns:
+        List of tuples: (token, success, account, role, error_message)
+    """
+    results = []
+
+    for token in invitation_tokens:
+        try:
+            # Try to accept the invitation
+            account, role = accept_invitation(
+                session=session,
+                context=context,
+                params=AcceptInvitationParams(invitation_token=token),
+            )
+            results.append((token, True, account, role, None))
+        except ValueError as e:
+            # Invitation failed - record error
+            results.append((token, False, None, None, str(e)))
+        except Exception as e:
+            # Unexpected error
+            logger.error(f"Error accepting invitation {token}: {e}", exc_info=True)
+            results.append((token, False, None, None, "An unexpected error occurred"))
+
+    return results
+
+
 # TODO: Implement async variants of all functions above
 # Follow pattern: async def function_name_async(session: AsyncSession, ...)
 #

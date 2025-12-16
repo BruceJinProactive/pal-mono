@@ -19,14 +19,18 @@ from sqlalchemy.orm import Session
 
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.team import (
+    AcceptedInvitationResult,
     AcceptInvitationRequest,
     AcceptInvitationResponse,
+    AcceptMultipleInvitationsRequest,
+    AcceptMultipleInvitationsResponse,
     DecodeInvitationTokenRequest,
     DecodeInvitationTokenResponse,
     InvitationDetailsResponse,
     InvitationResponse,
     InvitationStatus,
     InviteTeamMemberRequest,
+    PendingInvitationResponse,
     ResendInvitationResponse,
     SwitchAccountRequest,
     SwitchAccountResponse,
@@ -39,6 +43,7 @@ from api.schemas.admin.team import (
     UserAccountsListResponse,
     UserAccountsWithUserIdListResponse,
     UserAccountWithUserIdResponse,
+    UserPendingInvitationsResponse,
     UserRole,
 )
 from services import team_service
@@ -411,6 +416,105 @@ async def resend_invitation(
     return ResendInvitationResponse(
         message="Invitation email resent successfully",
         invitation_id=invitation_id,
+    )
+
+
+async def get_pending_invitations_for_user(
+    context: UserContext,
+    session: Session,
+) -> UserPendingInvitationsResponse:
+    """
+    Get all pending invitations for the authenticated user.
+
+    Route handler that:
+    1. Calls team service to get pending invitations
+    2. Converts DB models to API response
+    """
+    # 1. Call service to get pending invitations
+    invitations_data = team_service.get_pending_invitations_for_user(
+        session=session,
+        email=context.email,
+    )
+
+    # 2. Convert to API response
+    invitations = []
+    for (
+        invitation,
+        account_name,
+        account_display_name,
+        inviter_name,
+    ) in invitations_data:
+        invitations.append(
+            PendingInvitationResponse(
+                invitation_id=invitation.id,
+                invitation_token=invitation.invitation_token,
+                account_name=account_name,
+                account_display_name=account_display_name,
+                invited_by=inviter_name,
+                role=UserRole(invitation.account_role),
+                expires_at=invitation.expires_at,
+                status=InvitationStatus(invitation.status.value),
+            )
+        )
+
+    return UserPendingInvitationsResponse(invitations=invitations)
+
+
+async def accept_multiple_invitations(
+    request: AcceptMultipleInvitationsRequest,
+    context: UserContext,
+    session: Session,
+) -> AcceptMultipleInvitationsResponse:
+    """
+    Accept multiple invitations at once.
+
+    Route handler that:
+    1. Calls team service to accept multiple invitations
+    2. Converts results to API response
+    """
+    # 1. Call service to accept multiple invitations
+    results_data = team_service.accept_multiple_invitations(
+        session=session,
+        context=context,
+        invitation_tokens=request.invitation_tokens,
+    )
+
+    # 2. Convert to API response
+    results = []
+    successful = 0
+    failed = 0
+
+    for token, success, account, role, error in results_data:
+        if success and account is not None:
+            successful += 1
+            results.append(
+                AcceptedInvitationResult(
+                    invitation_token=token,
+                    account_id=account.id,
+                    account_name=account.name,
+                    account_role=UserRole(role),
+                    success=True,
+                    error=None,
+                )
+            )
+        else:
+            failed += 1
+            results.append(
+                AcceptedInvitationResult(
+                    invitation_token=token,
+                    account_id=None,
+                    account_name=None,
+                    account_role=None,
+                    success=False,
+                    error=error,
+                )
+            )
+
+    return AcceptMultipleInvitationsResponse(
+        results=results,
+        total=len(results_data),
+        successful=successful,
+        failed=failed,
     )
 
 

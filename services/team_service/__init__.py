@@ -359,6 +359,75 @@ def validate_account_access(
     return _implementation.validate_account_access(session, context, params)
 
 
+def get_pending_invitations_for_user(
+    session: Session,
+    email: str,
+) -> list[
+    tuple[
+        db.UserInvitation,
+        str,  # account_name
+        str | None,  # account_display_name
+        str,  # inviter_name or email
+    ]
+]:
+    """
+    Get all pending invitations for a user by email.
+
+    Retrieves all valid (pending, not expired) invitations for the given email address
+    along with related account and inviter information.
+
+    Args:
+        session: Database session for the query.
+        email: User's email address to look up invitations for.
+
+    Returns:
+        List of tuples: (invitation, account_name, account_display_name, inviter_name).
+
+    Example:
+        >>> invitations = get_pending_invitations_for_user(session, "user@example.com")
+        >>> for invitation, account_name, display_name, inviter in invitations:
+        ...     print(f"Invited to {account_name} by {inviter}")
+    """
+    return _implementation.get_pending_invitations_for_user(session, email)
+
+
+def accept_multiple_invitations(
+    session: Session,
+    context: UserContext,
+    invitation_tokens: list[str],
+) -> list[tuple[str, bool, db.Account | None, str | None, str | None]]:
+    """
+    Accept multiple invitations at once.
+
+    Attempts to accept each invitation and returns results for all.
+    Continues processing even if some invitations fail.
+
+    Args:
+        session: Database session for the transaction.
+        context: User context for the accepting user.
+        invitation_tokens: List of invitation tokens to accept.
+
+    Returns:
+        List of tuples: (token, success, account, role, error_message).
+        - token: The invitation token processed
+        - success: Whether acceptance was successful
+        - account: The account joined (if successful)
+        - role: The role assigned (if successful)
+        - error_message: Error description (if failed)
+
+    Example:
+        >>> results = accept_multiple_invitations(session, context, ["token1", "token2"])
+        >>> for token, success, account, role, error in results:
+        ...     if success:
+        ...         print(f"Joined {account.name} as {role}")
+        ...     else:
+        ...         print(f"Failed: {error}")
+    """
+    return _implementation.accept_multiple_invitations(
+        session, context, invitation_tokens
+    )
+
+
 # ============================================================================
 # EXPORTS
 # ============================================================================
@@ -374,6 +443,8 @@ __all__ = [
     "resend_invitation",
     "list_user_accounts",
     "validate_account_access",
+    "get_pending_invitations_for_user",
+    "accept_multiple_invitations",
     # Schemas
     "InvitationParams",
     "UpdateMemberRoleParams",

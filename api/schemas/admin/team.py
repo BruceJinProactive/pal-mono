@@ -142,6 +142,51 @@ class DecodeInvitationTokenResponse(BaseModel):
     temporary_password: Optional[str] = None
 
 
+class PendingInvitationResponse(BaseModel):
+    """Pending invitation for a user."""
+
+    invitation_id: UUID
+    invitation_token: str
+    account_name: str
+    account_display_name: Optional[str] = None
+    invited_by: str  # name or email of inviter
+    role: UserRole
+    expires_at: datetime
+    status: InvitationStatus
+
+
+class UserPendingInvitationsResponse(BaseModel):
+    """List of pending invitations for a user."""
+
+    invitations: List[PendingInvitationResponse]
+
+
+class AcceptMultipleInvitationsRequest(BaseModel):
+    """Request to accept multiple invitations at once."""
+
+    invitation_tokens: List[str]
+
+
+class AcceptedInvitationResult(BaseModel):
+    """Result of accepting a single invitation."""
+
+    invitation_token: str
+    account_id: Optional[UUID] = None
+    account_name: Optional[str] = None
+    account_role: Optional[UserRole] = None
+    success: bool
+    error: Optional[str] = None
+
+
+class AcceptMultipleInvitationsResponse(BaseModel):
+    """Response after accepting multiple invitations."""
+
+    results: List[AcceptedInvitationResult]
+    total: int
+    successful: int
+    failed: int
+
+
 # Multi-Account Support Schemas
 class UserAccountResponse(BaseModel):
     """Account information for account switcher."""

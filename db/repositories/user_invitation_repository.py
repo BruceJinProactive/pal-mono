@@ -196,6 +196,32 @@ class UserInvitationRepository:
             logger.error(f"Error retrieving invitations for email: {e}")
             return []
 
+    def get_pending_for_email(self, email: str) -> list[UserInvitation]:
+        """Get all pending (non-expired) invitations for an email address.
+
+        Args:
+            email: Email address
+
+        Returns:
+            List of pending UserInvitation objects, ordered by created_at desc
+        """
+        try:
+            now = datetime.now(timezone.utc)
+            return (
+                self.session.query(UserInvitation)
+                .filter(
+                    UserInvitation.email == email,
+                    UserInvitation.status == InvitationStatus.pending,
+                    UserInvitation.expires_at > now,
+                )
+                .order_by(UserInvitation.created_at.desc())
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving pending invitations for email: {e}")
+            return []
+
     def mark_as_accepted(self, invitation_id: uuid.UUID) -> Optional[UserInvitation]:
         """Mark invitation as accepted.
 

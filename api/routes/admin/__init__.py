@@ -170,6 +170,8 @@ from api.schemas.admin.subscription import (
 from api.schemas.admin.team import (
     AcceptInvitationRequest,
     AcceptInvitationResponse,
+    AcceptMultipleInvitationsRequest,
+    AcceptMultipleInvitationsResponse,
     DecodeInvitationTokenRequest,
     DecodeInvitationTokenResponse,
     InvitationDetailsResponse,
@@ -183,6 +185,7 @@ from api.schemas.admin.team import (
     UpdateTeamMemberResponse,
     UserAccountsListResponse,
     UserAccountsWithUserIdListResponse,
+    UserPendingInvitationsResponse,
 )
 from api.schemas.admin.user import SignUpRequest
 from api.schemas.admin.user_management import (
@@ -1892,6 +1895,19 @@ async def remove_team_member(
 """
 
 
+@admin_router.get("/invitations/pending")
+async def get_pending_invitations(
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> UserPendingInvitationsResponse:
+    """
+    Get all pending invitations for the authenticated user.
+
+    Returns list of invitations with account details and expiration info.
+    """
+    return await _team.get_pending_invitations_for_user(context, session)
+
+
 @admin_router.get("/invitations/{token}")
 async def get_invitation_details(
     token: str,
@@ -1930,6 +1946,21 @@ async def accept_invitation(
     User must be authenticated.
     """
     return await _team.accept_invitation(request, context, session)
+
+
+@admin_router.post("/invitations/accept-multiple")
+async def accept_multiple_invitations(
+    request: AcceptMultipleInvitationsRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> AcceptMultipleInvitationsResponse:
+    """
+    Accept multiple invitations at once.
+
+    Processes all invitations and returns results for each.
+    Continues processing even if some fail.
+    """
+    return await _team.accept_multiple_invitations(request, context, session)
 
 
 @admin_router.post("/accounts/{account_name}/team/invitations/{invitation_id}/resend")
