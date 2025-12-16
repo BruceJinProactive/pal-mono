@@ -1615,7 +1615,6 @@ async def send_report_to_slack(
     show_time: bool = False,
     timezone_id: str | None = None,
     timezone_name: str | None = None,
-    thread_ts: str | None = None,
 ) -> dict:
     """
     Send a comprehensive analytics report to Slack.
@@ -1630,7 +1629,6 @@ async def send_report_to_slack(
         show_time: If True, show full datetime with time and timezone in report title
         timezone_id: Timezone ID to convert UTC times to local time (e.g., 'America/New_York')
         timezone_name: Timezone abbreviation to display (e.g., 'EST', 'PST')
-        thread_ts: Optional thread timestamp to reply in thread
 
     Returns:
         dict: Status of the operation
@@ -1706,14 +1704,11 @@ async def send_report_to_slack(
 
         # Send to Slack
         logger.info(f"[Slackbot] Sending report to Slack channel: {target_channel}")
-        post_params = {
-            "channel": target_channel,
-            "text": "Analytics Report",
+        response = await client.chat_postMessage(
+            channel=target_channel,
+            text="Analytics Report",
             **message_blocks,
-        }
-        if thread_ts:
-            post_params["thread_ts"] = thread_ts
-        response = await client.chat_postMessage(**post_params)
+        )
 
         if response["ok"]:
             logger.info(f"[Slackbot] Report sent successfully to {target_channel}")
@@ -1816,7 +1811,6 @@ async def handle_report_request(
                 show_time=True,
                 timezone_id=timezone_id,
                 timezone_name=timezone_name,
-                thread_ts=message.get("ts"),
             )
         finally:
             session.close()
@@ -1935,7 +1929,6 @@ async def handle_last_hours_request(message, client):
                 show_time=True,
                 timezone_id=timezone_id,
                 timezone_name=timezone_name,
-                thread_ts=message.get("ts"),
             )
 
             if result["status"] == "success":
