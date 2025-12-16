@@ -32,6 +32,10 @@ V1_API_FUNCTIONS = {
     ApiFunction.VALIDATE_ADDRESS,
 }
 
+V2_API_FUNCTIONS = {
+    ApiFunction.VALIDATE_ORDER,
+}
+
 
 async def connect_adora_token_hub(
     key: str,
@@ -120,8 +124,12 @@ def get_store_id(query_params: dict | None, payload: dict | None) -> str:
     if query_params and "sid" in query_params:
         return query_params["sid"]
 
-    if payload and "store_id" in payload:
-        return payload["store_id"]
+    # Check for both camelCase (storeId) and snake_case (store_id) in payload
+    if payload:
+        if "storeId" in payload:
+            return payload["storeId"]
+        if "store_id" in payload:
+            return payload["store_id"]
 
     error_msg = "store_id not found in query_params or payload"
     logger.error(f"[AdoraV2Tool._apis._utils] {error_msg}")
@@ -147,5 +155,13 @@ def get_endpoint_url(
             base_url = "https://papi.marcosoms.com"
         else:
             base_url = "https://public.api.adorapos.net"
-        api_version = "v1" if api_function in V1_API_FUNCTIONS else "v2"
+
+        # Determine API version based on function
+        if api_function in V1_API_FUNCTIONS:
+            api_version = "v1"
+        elif api_function in V2_API_FUNCTIONS:
+            api_version = "v2"
+        else:
+            raise ValueError(f"Unknown API function: {api_function}")
+
         return f"{base_url}/api/{api_version}/OrderHub/{api_function.value}"
