@@ -5,19 +5,30 @@ from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
+from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from tools.adora_v2_tool._apis import (
     api_check_store_ordering_status,
     api_get_store_info,
     api_validate_address,
+    api_validate_order,
     get_adora_pos_auth_token,
 )
 from tools.adora_v2_tool._utils import (
     add_lat_long_to_address,
+    build_context,
+    build_extraction_prompt,
     extract_street_parts,
     get_adora_credentials,
 )
-from tools.adora_v2_tool.classes import DeliveryAddress
+from tools.adora_v2_tool.classes import (
+    BackdoorToolPrompt,
+    DeliveryAddress,
+    ValidateOrderRequest,
+)
 from tools.utils.ordering._llm import async_llm_call
+from tools.utils.ordering._query_engine import create_query_engine
+from tools.utils.ordering._utils import get_relevant_docs
+from tools.utils.ordering.classes import SubQueries
 from utils.log import logger
 
 
@@ -25,14 +36,18 @@ class AdoraV2Tool(Toolkit):
     def __init__(
         self,
         store_id: str,
+        namespace: str,
         tool_metadata: ToolMetadata,
+        backdoor_tool_prompt: dict | None = None,
         **kwargs,
     ):
         super().__init__(name="adora_v2_tool")
 
         # Store configuration
         self.store_id = store_id
+        self.namespace = namespace
         self.tool_metadata = tool_metadata
+        self.backdoor_tool_prompt = backdoor_tool_prompt or {}
 
         # Cache for bearer token with async lock
         self._cached_bearer_token: str | None = None
@@ -42,10 +57,15 @@ class AdoraV2Tool(Toolkit):
         instance_id = id(self)
         logger.debug(f"[AdoraV2Tool] Tool instance created: id={instance_id}")
 
+        # Create query engine and query messages tool
+        self.query_engine = create_query_engine(self.namespace, "agent")
+        self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
+
         # Register tools
         self.register(self.check_store_ordering_status)
         self.register(self.get_store_info)
         self.register(self.check_address)
+        self.register(self.validate_order)
 
     async def _get_bearer_token(self) -> str | None:
         """Get cached bearer token or fetch new one if not cached."""
@@ -187,3 +207,76 @@ class AdoraV2Tool(Toolkit):
             if isinstance(result, str)
             else f"Address is valid and within delivery zone. {result}"
         )
+
+    @tool
+    async def validate_order(self, order_items: list[str]) -> str:
+        """
+        Validates customer order and returns price breakdown with totals.
+        Does NOT submit order or return payment link.
+
+        Use when customer asks "how much?" or "what's the total?"
+        Do NOT use when ready to checkout (use checkout tool instead).
+
+        Args:
+            order_items (list[str]): List of order items extracted from chat history.
+                Requirements:
+                - Extract the **complete dish or drink name**, but **remove size or quantity information**.
+                - Do not shorten or generalize the dish.
+                - Only include items that the user **explicitly confirmed or finalized** as part of their order.
+                - Output a JSON array of strings with **cleaned item names**.
+
+        Returns:
+            str: Order totals including subtotal, tax, fees, and final total.
+        """
+        bearer_token, chat_history_result = await asyncio.gather(
+            self._get_bearer_token(),
+            asyncio.to_thread(self.query_messages_tool.query_messages),
+        )
+
+        if not bearer_token:
+            return "Failed to authenticate with Adora API."
+
+        chat_history: str = str(chat_history_result)  # type: ignore
+
+        # Build default prompts
+        system_prompt = build_extraction_prompt(
+            ValidateOrderRequest, self.validate_order.__name__
+        )
+
+        # Apply backdoor overrides if present
+        system_prompt = self.backdoor_tool_prompt.get(
+            BackdoorToolPrompt.SYSTEM_PROMPT, system_prompt
+        )
+
+        # Get menu context and build complete context
+        item_context = await asyncio.to_thread(
+            get_relevant_docs,
+            self.query_engine,
+            chat_history,
+            ", ".join(order_items),
+            SubQueries,
+        )
+        context, context_template = build_context(
+            item_context, self.tool_metadata.timezone
+        )
+        if self.backdoor_tool_prompt:
+            context_template = self.backdoor_tool_prompt.get(
+                BackdoorToolPrompt.USER_PROMPT, context_template
+            )
+
+        order_request = await async_llm_call(
+            system_prompt=system_prompt,
+            prompt=context_template.format(context=context, chat_history=chat_history),
+            response_format=ValidateOrderRequest,
+            name=self.validate_order.__name__,
+            openai=False,
+        )
+
+        if not isinstance(order_request, ValidateOrderRequest):
+            return (
+                "Failed to extract order information. Please provide all order details."
+            )
+
+        order_request.store_id = self.store_id
+
+        return str(await api_validate_order(bearer_token, order_request))

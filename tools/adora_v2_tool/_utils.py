@@ -1,6 +1,8 @@
 import asyncio
 import re
-from typing import Tuple
+from typing import Tuple, Type
+
+from pydantic import BaseModel
 
 from tools.adora_v2_tool._apis import geocode_with_aws_location, geocode_with_google
 from tools.adora_v2_tool.classes import DeliveryAddress
@@ -61,3 +63,74 @@ def extract_street_parts(full_address: str) -> Tuple[str, str]:
     """Split '123 Main St' into streetNo='123' and streetName='Main St'."""
     parts = full_address.strip().split(" ", 1)
     return (parts[0], parts[1]) if len(parts) == 2 else ("", full_address)
+
+
+def build_extraction_prompt(
+    model_class: Type[BaseModel], operation_name: str | None = None
+) -> str:
+    """
+    Build a system prompt for extracting structured data from conversation.
+
+    Args:
+        model_class: The Pydantic model class to extract into
+        operation_name: Optional name of the operation/function (e.g., "validate_order", "check_address")
+
+    Returns:
+        str: System prompt with schema details
+    """
+    class_name = model_class.__name__
+    schema = model_class.model_json_schema()
+
+    # Build operation context
+    if operation_name:
+        operation_context = (
+            f"You are extracting information for the '{operation_name}' operation. "
+            f"Analyze the conversation history carefully and extract all relevant details into the {class_name} format."
+        )
+    else:
+        operation_context = f"Extract all relevant information from the conversation history into the {class_name} format."
+
+    instructions = (
+        "Important instructions:\n"
+        "- Populate ALL required fields based on the conversation\n"
+        "- Use the exact field names and types specified in the schema\n"
+        "- Apply default values for optional fields when appropriate\n"
+        "- Ensure data formats match the schema constraints exactly"
+    )
+
+    return (
+        f"{operation_context}\n\n"
+        f"Required output format: {class_name}\n\n"
+        f"Schema specification:\n{schema}\n\n"
+        f"{instructions}"
+    )
+
+
+def build_context(menu_context: str, timezone: str | None = None) -> tuple[str, str]:
+    """
+    Build complete context and user prompt template for order extraction.
+
+    Args:
+        menu_context: Menu-related context from query engine
+        timezone: Store timezone (defaults to America/Los_Angeles)
+
+    Returns:
+        tuple[str, str]: (complete context with datetime, default user prompt template)
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    # Add current date/time to context for LLM to understand temporal references
+    store_tz = timezone or "America/Los_Angeles"
+    current_dt_store = datetime.now(ZoneInfo(store_tz))
+
+    current_time_info = (
+        f"\n\n<current_datetime>\n"
+        f"Current date and time: {current_dt_store.strftime('%A, %B %d, %Y at %I:%M %p')} ({store_tz})\n"
+        f"</current_datetime>"
+    )
+
+    context = menu_context + current_time_info
+    context_template = "{context}\n\n{chat_history}"
+
+    return context, context_template

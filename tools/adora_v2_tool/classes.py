@@ -1,4 +1,27 @@
+from enum import Enum
+
 from pydantic import BaseModel, Field
+
+
+class BackdoorToolPrompt(str, Enum):
+    ORDER_ITEM_PROMPT = "order_item_prompt"
+    SYSTEM_PROMPT = "system_prompt"
+    USER_PROMPT = "user_prompt"
+
+
+class OrderType(str, Enum):
+    UNDEFINED = "Undefined"
+    DINE_IN = "DineIn"
+    TAKE_OUT = "TakeOut"
+    DELIVERY = "Delivery"
+
+
+class PaymentType(str, Enum):
+    UNDEFINED = "Undefined"
+    PAID_ORDER = "PaidOrder"
+    CASH = "Cash"
+    PAY_IN_STORE = "PayInStore"
+    PAYMENT_LINK = "PaymentLink"
 
 
 class DeliveryAddress(BaseModel):
@@ -26,3 +49,112 @@ class DeliveryAddress(BaseModel):
         description="Extra field 2", default="", serialization_alias="extraField2"
     )
     zone_id: int = Field(default=0, serialization_alias="zoneId")
+
+
+class ClientCustomerInfo(BaseModel):
+    name: str = Field(description="Customer first name, non-empty, required")
+    lastname: str = Field(
+        description="Customer last name (optional), if not provided, use 'via Palona' as the last name",
+        default="via Palona",
+    )
+    phone: str = Field(
+        description="Customer phone number in format (123) 456-7890, non-empty, required"
+    )
+    email: str = Field(description="Customer email address, non-empty, required")
+
+
+class ClientModifier(BaseModel):
+    id: int = Field(description="Modifier ID, required")
+    is_default: bool = Field(
+        description="Whether this is a default modifier, required",
+        serialization_alias="isDefault",
+    )
+    price: float = Field(description="Modifier price", default=0.0)
+    weight_id: int = Field(
+        description="Weight ID for the modifier, required",
+        serialization_alias="weightId",
+    )
+
+
+class ClientGroup(BaseModel):
+    item_id: int = Field(description="Item ID, required", serialization_alias="itemId")
+    size_id: int = Field(description="Size ID, required", serialization_alias="sizeId")
+    quantity: int = Field(
+        description="Item quantity, required, range [1..1000]", ge=1, le=1000
+    )
+    comment: str | None = Field(
+        description="Special instructions or comments, optional, max 250 characters",
+        default=None,
+        max_length=250,
+    )
+    price: float = Field(description="Item price", default=0.0)
+    modifiers: list[ClientModifier] = Field(
+        description="List of modifiers for this item, required",
+        default_factory=list,
+    )
+
+
+class ClientItem(BaseModel):
+    group: list[ClientGroup] = Field(description="List of item groups, required")
+
+
+class ValidateOrderRequest(BaseModel):
+    store_id: str = Field(
+        description="Store ID, non-empty, required", serialization_alias="storeId"
+    )
+    order_type: OrderType = Field(
+        description="Type of order, required (Undefined/DineIn/TakeOut/Delivery)",
+        serialization_alias="OrderType",
+    )
+    payment_type: PaymentType = Field(
+        description="Payment type (Undefined/PaidOrder/Cash/PayInStore/PaymentLink)",
+        serialization_alias="paymentType",
+    )
+    guid: str | None = Field(
+        description="Order GUID (UUID format), optional", default=None
+    )
+    promise_date_time: str | None = Field(
+        description="Promise date and time in ISO date-time format, optional",
+        default=None,
+        serialization_alias="promiseDateTime",
+    )
+    customer: ClientCustomerInfo = Field(description="Customer information, required")
+    delivery_address: DeliveryAddress | None = Field(
+        description="Delivery address (required for delivery orders), optional",
+        default=None,
+        serialization_alias="deliveryAddress",
+    )
+    items: list[ClientItem] = Field(description="List of order items, required")
+    order_comment: str = Field(
+        description="Order comment, optional, max 500 characters",
+        default="(via PalonaAI)",
+        max_length=500,
+        serialization_alias="orderComment",
+    )
+
+
+class ValidateOrderResponse(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    key: str | None = Field(description="Order key/GUID", default=None)
+    is_payment_required: bool = Field(
+        description="Whether payment is required",
+        serialization_alias="isPaymentRequired",
+    )
+    sub_total: float = Field(
+        description="Order subtotal", serialization_alias="subTotal"
+    )
+    total: float = Field(description="Order total")
+    discount: float = Field(description="Total discount amount")
+    tax_amount: float = Field(description="Tax amount", serialization_alias="taxAmount")
+    service_charge: float = Field(
+        description="Service charge", serialization_alias="serviceCharge"
+    )
+    delivery_charge: float = Field(
+        description="Delivery charge", serialization_alias="deliveryCharge"
+    )
+    payment_url: str | None = Field(
+        description="Payment URL if payment link is required",
+        default=None,
+        serialization_alias="paymentUrl",
+    )

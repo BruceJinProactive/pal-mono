@@ -18,6 +18,7 @@ class ApiFunction(Enum):
     STORE_INFO = "store/info"
     STORE_STATUS = "store/status"
     VALIDATE_ADDRESS = "validateAddress"
+    VALIDATE_ORDER = "validateOrder"
 
 
 class HttpMethod(Enum):

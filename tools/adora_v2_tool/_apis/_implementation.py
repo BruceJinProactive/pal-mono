@@ -6,7 +6,11 @@ import aioboto3
 import httpx
 from botocore.exceptions import BotoCoreError, ClientError
 
-from tools.adora_v2_tool.classes import DeliveryAddress
+from tools.adora_v2_tool.classes import (
+    DeliveryAddress,
+    ValidateOrderRequest,
+    ValidateOrderResponse,
+)
 from utils.log import logger
 from utils.secret import AWS_REGION, async_get_server_secret_with_fallback
 
@@ -238,3 +242,43 @@ async def geocode_with_aws_location(
     except (ClientError, BotoCoreError) as e:
         logger.error(f"[geocode_with_aws_location] Error: {e}")
         return None
+
+
+async def api_validate_order(
+    bearer_token: str, order_request: ValidateOrderRequest
+) -> ValidateOrderResponse | str:
+    """
+    Validate a customer order with Adora POS.
+
+    Args:
+        bearer_token: Bearer token for authentication
+        order_request: ValidateOrderRequest containing all order details
+
+    Returns:
+        ValidateOrderResponse on success, error message string on failure
+    """
+    try:
+        payload = order_request.model_dump(by_alias=True, exclude_none=True)
+
+        response = await connect_adora_order_hub(
+            HttpMethod.POST,
+            bearer_token,
+            ApiFunction.VALIDATE_ORDER,
+            payload=payload,
+        )
+
+        body = response.get("body", {})
+
+        if response["status"] == 200:
+            validated_response = ValidateOrderResponse(**body)
+            return f"Success:\n{validated_response}"
+
+        return (
+            body.get("message", "Order validation failed")
+            if isinstance(body, dict)
+            else str(body)
+        )
+
+    except Exception as e:
+        logger.error(f"[api_validate_order] Error: {e}")
+        return "An error occurred while validating the order."
