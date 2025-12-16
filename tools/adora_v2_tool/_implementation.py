@@ -27,7 +27,7 @@ from tools.adora_v2_tool.classes import (
 )
 from tools.utils.ordering._llm import async_llm_call
 from tools.utils.ordering._query_engine import create_query_engine
-from tools.utils.ordering._utils import get_relevant_docs
+from tools.utils.ordering._utils import get_relevant_docs, is_valid_email
 from tools.utils.ordering.classes import SubQueries
 from utils.log import logger
 
@@ -228,6 +228,8 @@ class AdoraV2Tool(Toolkit):
         Returns:
             str: Order totals including subtotal, tax, fees, and final total.
         """
+
+        logger.debug(f"[AdoraV2Tool.validate_order] Order items: {order_items}")
         bearer_token, chat_history_result = await asyncio.gather(
             self._get_bearer_token(),
             asyncio.to_thread(self.query_messages_tool.query_messages),
@@ -278,5 +280,10 @@ class AdoraV2Tool(Toolkit):
             )
 
         order_request.store_id = self.store_id
+
+        # Set email to default if empty or invalid
+        email = order_request.customer.email
+        if not email or not is_valid_email(email):
+            order_request.customer.email = "orderingagent@palona.ai"
 
         return str(await api_validate_order(bearer_token, order_request))
