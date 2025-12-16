@@ -1,5 +1,6 @@
 """Internal API implementation for knowledge update system."""
 
+import os
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session, selectinload
@@ -10,12 +11,27 @@ from db.tables.types import IntegrationProvider, IntegrationType
 from events import KnowledgeUpdateRequested, publish_event
 from utils.log import logger
 
-# Safe mode: When True, limits knowledge updates for testing
+# Safe mode: When True, only processes projects specified in env vars
 # Set to False for production to update all stores
-SAFE_MODE = False
-SAFE_MODE_MAX_PROJECTS = 1
-# When set, safe mode will ONLY process this specific project (by UUID)
-SAFE_MODE_PROJECT_ID = "a20b5f98-9dcf-4a2f-99c1-16e931ce8fd8"
+SAFE_MODE = True
+
+
+def _get_safe_mode_project_ids() -> set[str]:
+    """
+    Collect project IDs from ADORA_MENU_PROJECTS_1/2/3 environment variables.
+
+    Each env var can contain a single ID or comma-separated IDs.
+    Returns empty set if no env vars are set.
+    """
+    project_ids: set[str] = set()
+    for env_var in [
+        "ADORA_MENU_PROJECTS_1",
+        "ADORA_MENU_PROJECTS_2",
+        "ADORA_MENU_PROJECTS_3",
+    ]:
+        value = os.getenv(env_var, "")
+        project_ids.update(s.strip() for s in value.split(",") if s.strip())
+    return project_ids
 
 
 def _has_adora_tool_configured(project: Project) -> bool:
@@ -70,36 +86,30 @@ async def start_knowledge_update_process(session: Session) -> dict:
 
         total_found = len(projects_with_adora_pos)
 
-        # Safe mode: filter to specific project or limit count for testing
+        # Safe mode: filter to projects specified in ADORA_MENU_PROJECTS_* env vars
         if SAFE_MODE:
-            if SAFE_MODE_PROJECT_ID:
-                # Filter to only the specified project by UUID
+            safe_mode_ids = _get_safe_mode_project_ids()
+            if safe_mode_ids:
                 projects_with_adora_pos = [
                     (pi, i, p)
                     for pi, i, p in projects_with_adora_pos
-                    if str(p.id) == SAFE_MODE_PROJECT_ID
+                    if str(p.id) in safe_mode_ids
                 ]
                 logger.warning(
-                    f"[Adora Menu Updater] SAFE_MODE enabled: filtering to project ID '{SAFE_MODE_PROJECT_ID}', found {len(projects_with_adora_pos)} match(es)",
+                    f"[Adora Menu Updater] SAFE_MODE enabled: filtering to {len(safe_mode_ids)} project IDs, found {len(projects_with_adora_pos)} match(es)",
                     extra={
                         "safe_mode": True,
-                        "safe_mode_project_id": SAFE_MODE_PROJECT_ID,
+                        "safe_mode_project_ids": list(safe_mode_ids),
+                        "matched_count": len(projects_with_adora_pos),
                         "total_found": total_found,
                     },
                 )
             else:
-                # Limit to first N projects
-                projects_with_adora_pos = projects_with_adora_pos[
-                    :SAFE_MODE_MAX_PROJECTS
-                ]
                 logger.warning(
-                    f"[Adora Menu Updater] SAFE_MODE enabled: processing {len(projects_with_adora_pos)}/{total_found} projects",
-                    extra={
-                        "safe_mode": True,
-                        "max_projects": SAFE_MODE_MAX_PROJECTS,
-                        "total_found": total_found,
-                    },
+                    "[Adora Menu Updater] SAFE_MODE enabled but no project IDs configured in ADORA_MENU_PROJECTS_1/2/3 - processing 0 projects",
+                    extra={"safe_mode": True, "total_found": total_found},
                 )
+                projects_with_adora_pos = []
 
         events_published = 0
         errors = []
@@ -166,11 +176,7 @@ async def start_knowledge_update_process(session: Session) -> dict:
             "events_published": events_published,
             "errors": errors,
             "summary": f"Submitted {events_published} update knowledge events"
-            + (
-                f" (SAFE_MODE: limited to {SAFE_MODE_MAX_PROJECTS})"
-                if SAFE_MODE
-                else ""
-            ),
+            + (" (SAFE_MODE enabled)" if SAFE_MODE else ""),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
