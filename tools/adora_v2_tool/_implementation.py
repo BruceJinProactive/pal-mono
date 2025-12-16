@@ -58,7 +58,7 @@ class AdoraV2Tool(Toolkit):
         logger.debug(f"[AdoraV2Tool] Tool instance created: id={instance_id}")
 
         # Create query engine and query messages tool
-        self.query_engine = create_query_engine(self.namespace, "agent")
+        self.query_engine = create_query_engine(self.namespace, "agents")
         self.query_messages_tool = QueryMessagesTool(self.tool_metadata)
 
         # Register tools
