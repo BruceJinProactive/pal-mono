@@ -267,6 +267,8 @@ async def api_validate_order(
             payload=payload,
         )
 
+        logger.debug(f"[AdoraV2Tool._apis] api_validate_order response: {response}")
+
         body = response.get("body", {})
 
         if response["status"] == 200:

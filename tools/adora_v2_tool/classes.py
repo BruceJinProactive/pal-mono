@@ -139,22 +139,23 @@ class ValidateOrderResponse(BaseModel):
     key: str | None = Field(description="Order key/GUID", default=None)
     is_payment_required: bool = Field(
         description="Whether payment is required",
-        serialization_alias="isPaymentRequired",
+        alias="isPaymentRequired",
+        default=False,
     )
     sub_total: float = Field(
-        description="Order subtotal", serialization_alias="subTotal"
+        description="Order subtotal", alias="subTotal", default=0.0
     )
-    total: float = Field(description="Order total")
-    discount: float = Field(description="Total discount amount")
-    tax_amount: float = Field(description="Tax amount", serialization_alias="taxAmount")
+    total: float = Field(description="Order total", default=0.0)
+    discount: float = Field(description="Total discount amount", default=0.0)
+    tax_amount: float = Field(description="Tax amount", alias="taxAmount", default=0.0)
     service_charge: float = Field(
-        description="Service charge", serialization_alias="serviceCharge"
+        description="Service charge", alias="serviceCharge", default=0.0
     )
     delivery_charge: float = Field(
-        description="Delivery charge", serialization_alias="deliveryCharge"
+        description="Delivery charge", alias="deliveryCharge", default=0.0
     )
     payment_url: str | None = Field(
         description="Payment URL if payment link is required",
         default=None,
-        serialization_alias="paymentUrl",
+        alias="paymentUrl",
     )
