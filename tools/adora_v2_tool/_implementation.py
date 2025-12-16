@@ -179,12 +179,11 @@ class AdoraV2Tool(Toolkit):
 
         street_no, street_name = extract_street_parts(delivery_address.address)
 
-        success, result = await api_validate_address(
+        result = await api_validate_address(
             bearer_token, self.store_id, delivery_address, street_no, street_name
         )
-
         return (
-            str(result)
-            if not success
+            result
+            if isinstance(result, str)
             else f"Address is valid and within delivery zone. {result}"
         )

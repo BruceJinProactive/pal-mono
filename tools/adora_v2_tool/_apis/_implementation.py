@@ -1,6 +1,5 @@
 import json
 import threading
-from json import JSONDecodeError
 from typing import Tuple
 
 import aioboto3
@@ -108,14 +107,12 @@ async def api_validate_address(
     delivery_address: DeliveryAddress,
     street_no: str,
     street_name: str,
-) -> tuple[bool, list[dict] | dict | str]:
+) -> list[dict] | dict | str:
     """
     Validate an address with Adora POS.
 
     Returns:
-        tuple: (success: bool, result: list[dict] | dict | str)
-            Success: (True, [{"charge": 0.1, "minimumCharge": 0.1, "typeId": 0, ...}])
-            Failure: (False, "error message")
+        Address validation result (list/dict) on success, error message string on failure
     """
     try:
         payload = {
@@ -136,25 +133,21 @@ async def api_validate_address(
 
         body = response.get("body", {})
 
-        # Success case
         if response["status"] == 200:
             if isinstance(body, (list, dict)):
-                return True, body
-            if isinstance(body, str) and body:
-                return True, json.loads(body)  # JSONDecodeError caught by outer except
-            return False, f"Unexpected body type: {type(body).__name__}"
+                return body
+            if isinstance(body, str):
+                return json.loads(body)
 
-        # Error case
-        error_msg = (
-            body.get("message", str(body))
+        return (
+            body.get("message", "Address validation failed")
             if isinstance(body, dict)
-            else str(body or "Address validation failed")
+            else str(body)
         )
-        return False, error_msg
 
-    except (KeyError, TypeError, ValueError, JSONDecodeError) as e:
+    except Exception as e:
         logger.error(f"[api_validate_address] Error: {e}")
-        return False, "An error occurred while validating the address."
+        return "An error occurred while validating the address."
 
 
 async def geocode_with_google(
