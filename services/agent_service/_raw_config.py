@@ -362,13 +362,13 @@ class RawConfig:
             return blocks
 
         brand_info_list = self._get_brand_info()
-        agent_info_list = self._get_agent_info(channel)
         store_info_list = self._get_store_info()
+        agent_info_list = self._get_agent_info(channel)
 
         sections = [self._build_agent_introduction()]
         sections.extend(build_section("# Brand Information", brand_info_list))
-        sections.extend(build_section("# Agent Information", agent_info_list))
         sections.extend(build_section("# Store Information", store_info_list))
+        sections.extend(build_section("# Agent Information", agent_info_list))
         return "\n".join(sections)
 
     def _build_agent_introduction(self):
