@@ -112,7 +112,6 @@ async def api_validate_address(
     bearer_token: str,
     store_id: str,
     delivery_address: DeliveryAddress,
-    lat_lon_result: Tuple[float, float],
     street_no: str,
     street_name: str,
 ) -> list[dict] | dict | str:
@@ -125,8 +124,8 @@ async def api_validate_address(
     try:
         payload = {
             "storeId": store_id,
-            "lat": lat_lon_result[0],
-            "lng": lat_lon_result[1],
+            "lat": delivery_address.lat,
+            "lng": delivery_address.lng,
             "streetNo": street_no,
             "streetName": street_name,
             "unitApt": delivery_address.extended_address,

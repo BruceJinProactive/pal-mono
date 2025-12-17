@@ -197,17 +197,17 @@ class AdoraV2Tool(Toolkit):
         ]:
             return f"Please provide the following: {', '.join(missing)}."
 
-        bearer_token, lat_lon_result = await asyncio.gather(
+        bearer_token, geocoding_result = await asyncio.gather(
             self._get_bearer_token(),
             add_lat_long_to_address(delivery_address),
         )
 
-        if not bearer_token or not lat_lon_result[0]:
-            return (
-                "Failed to authenticate."
-                if not bearer_token
-                else str(lat_lon_result[1])
-            )
+        if not bearer_token:
+            return "Failed to authenticate."
+
+        geocoding_success, geocoding_error = geocoding_result
+        if not geocoding_success:
+            return geocoding_error
 
         street_no, street_name = extract_street_parts(delivery_address.address)
 
@@ -215,7 +215,6 @@ class AdoraV2Tool(Toolkit):
             bearer_token,
             self.store_id,
             delivery_address,
-            lat_lon_result[1],  # type: ignore
             street_no,
             street_name,
         )

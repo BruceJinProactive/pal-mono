@@ -36,8 +36,14 @@ async def get_adora_credentials(account_name: str) -> tuple[str | None, str | No
 
 async def add_lat_long_to_address(
     delivery_address: DeliveryAddress,
-) -> Tuple[bool, str | Tuple[float, float]]:
-    """Add lat/long to address using AWS Location Service with Google Geocoding fallback."""
+) -> Tuple[bool, str]:
+    """Add lat/long to address using AWS Location Service with Google Geocoding fallback.
+
+    Mutates the delivery_address object by setting lat and lng attributes.
+
+    Returns:
+        Tuple[bool, str]: (success, error_message). If success is True, error_message is empty.
+    """
     if delivery_address.address == "N/A" or delivery_address.city == "N/A":
         return False, "Ask the user to provide at least a street address and city."
 
@@ -55,7 +61,11 @@ async def add_lat_long_to_address(
             "Please provide your full address with zip code and state information.",
         )
 
-    return True, result
+    # Assign lat/lng directly to the delivery_address object
+    delivery_address.lat = result[0]
+    delivery_address.lng = result[1]
+
+    return True, ""
 
 
 def extract_street_parts(full_address: str) -> Tuple[str, str]:
