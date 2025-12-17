@@ -523,6 +523,10 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             # Create new user record
             user = await user_service.create_user_async(session, project, message)
 
+        # Refresh project after user operations (which may commit and expire objects)
+        # to avoid MissingGreenlet error when accessing project.id
+        await session.refresh(project, attribute_names=["id"])
+
         # Save request message to database
         message_repo = db.MessageRepositoryAsync(session)
 
@@ -1129,6 +1133,10 @@ async def handle_session_closure(message_data, session: AsyncSession):
                     )
 
             await session.commit()
+
+        # Refresh project after commit to avoid MissingGreenlet error
+        # when accessing project.account in _track_call_usage_if_meaningful
+        await session.refresh(project, attribute_names=["account"])
 
         # Measure and record voice-to-voice latency metrics
         await _measure_voice_to_voice_latency(message_data)
