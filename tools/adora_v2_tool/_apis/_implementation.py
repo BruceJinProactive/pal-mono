@@ -140,7 +140,7 @@ async def api_validate_address(
         )
 
         body = response.get("body", {})
-
+        logger.debug(f"[AdoraV2Tool._apis] api_validate_address response: {response}")
         if response["status"] == 200:
             if isinstance(body, (list, dict)):
                 return body
