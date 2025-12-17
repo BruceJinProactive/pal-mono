@@ -30,6 +30,8 @@ VALID_RESOURCE_TYPES = {
     "checklists",
     "plans",
     "data",
+    "histories",
+    "feedbacks",
 }
 
 
