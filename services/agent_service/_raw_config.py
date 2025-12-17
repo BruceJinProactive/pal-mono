@@ -20,7 +20,6 @@ from agent import (
     ToolIdentifier,
     ToolMetadata,
 )
-from agent.knowledge import KnowledgeConfigSettings
 from agent.model import ModelProvider
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, TargetTier
@@ -448,9 +447,6 @@ class RawConfig:
         additional_context = ""
 
         timezone = self.project.timezone
-        if not timezone and self.project.raw_config:
-            timezone = self.project.raw_config.get("timezone")
-
         if timezone:
             # TODO: Once timezone PR is merged on Agno's side we can remove this
             # logic and use add_datetime_to_instructions + timezone_identifier instead
@@ -462,19 +458,6 @@ class RawConfig:
                 additional_context += f"The current time is {formatted_time}."
             except Exception:
                 raise ValueError(f"Timezone '{timezone}' is invalid.")
-
-        raw_knowledge = self.agent.raw_config.get("knowledge")
-        if raw_knowledge:
-            provider = self._get_knowledge_provider(raw_knowledge)
-            if provider == KnowledgeProvider.KNOWLEDGE_CONFIG:
-                settings = raw_knowledge.get("settings")
-                self._validate_settings(provider, settings)
-
-                additional_context += f"""
-                --- MENU START ---
-                {settings["content"]}
-                --- MENU END ---
-                """
 
         return additional_context
 
@@ -508,11 +491,4 @@ class RawConfig:
             except ValidationError as e:
                 raise ValueError(
                     "Invalid KnowledgeConfig settings for provider 'LlamaIndex'."
-                ) from e
-        elif provider == KnowledgeProvider.KNOWLEDGE_CONFIG:
-            try:
-                KnowledgeConfigSettings.model_validate(settings)
-            except ValidationError as e:
-                raise ValueError(
-                    "Invalid KnowledgeConfig settings for provider 'KnowledgeConfig'."
                 ) from e

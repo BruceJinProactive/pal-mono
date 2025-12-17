@@ -6,7 +6,6 @@ from pydantic import BaseModel, ValidationError, model_validator
 
 class KnowledgeProvider(StrEnum):
     LLAMAINDEX = auto()  # Default knowledge provider
-    KNOWLEDGE_CONFIG = auto()
 
 
 ### Settings for specific knowledge providers ###
