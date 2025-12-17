@@ -308,7 +308,7 @@ async def api_process_order(
     try:
         if not validate_response.key:
             logger.error(
-                f"[api_process_order] Missing order key from validation: {validate_response}"
+                f"[AdoraV2Tool.api_process_order] Missing order key from validation: {validate_response}"
             )
             return "Cannot process order: missing order key from validation."
 
@@ -340,10 +340,11 @@ async def api_process_order(
 
         body = response.get("body", {})
 
+        logger.debug(f"[AdoraV2Tool.api_process_order] response: {response}")
         if response["status"] == 200 and isinstance(body, dict):
             return ProcessOrderResponse(**body)
 
-        logger.error(f"[api_process_order] Failed response: {response}")
+        logger.error(f"[AdoraV2Tool.api_process_order] Failed response: {response}")
         return (
             body.get("msg", "Order processing failed")
             if isinstance(body, dict)
@@ -351,5 +352,5 @@ async def api_process_order(
         )
 
     except Exception as e:
-        logger.error(f"[api_process_order] Error: {e}")
+        logger.error(f"[AdoraV2Tool.api_process_order] Error: {e}")
         return "An error occurred while processing the order."

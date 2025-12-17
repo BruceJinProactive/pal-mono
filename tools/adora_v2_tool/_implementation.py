@@ -289,6 +289,7 @@ class AdoraV2Tool(Toolkit):
 
         # Step 1: Validate the order
         validate_result = await api_validate_order(bearer_token, order_request)
+        logger.debug(f"[AdoraV2Tool.fulfill_order] validate_result: {validate_result}")
         if isinstance(validate_result, str) or not validate_result.key:
             return f"Validation failed: {validate_result if isinstance(validate_result, str) else 'No order key returned'}"
 
@@ -296,6 +297,7 @@ class AdoraV2Tool(Toolkit):
         process_result = await api_process_order(
             bearer_token, order_request, validate_result
         )
+        logger.debug(f"[AdoraV2Tool.fulfill_order] process_result: {process_result}")
         if isinstance(process_result, str):
             return f"Processing failed: {process_result}"
 
