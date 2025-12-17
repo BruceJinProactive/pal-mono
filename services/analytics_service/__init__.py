@@ -6,7 +6,10 @@ from sqlalchemy.orm import Session
 
 from api.schemas.admin.analytics import GetAllReportsResponse
 
-from . import _implementation, _slack
+# Import from new slack_service for Slack functionality
+from services import slack_service
+
+from . import _implementation
 
 
 async def get_reports(
@@ -88,6 +91,9 @@ async def send_report_to_slack(
     """
     Send report to Slack with conversion analytics.
 
+    DEPRECATED: This function is maintained for backward compatibility.
+    New code should use slack_service.send_analytics_report() directly.
+
     Args:
         channel (str): Slack channel to send to (optional, uses env variable if not provided)
         client: Optional Slack client to reuse
@@ -102,7 +108,7 @@ async def send_report_to_slack(
     Returns:
         dict: Status of the operation
     """
-    return await _slack.send_report_to_slack(
+    return await slack_service.send_analytics_report(
         slack_channel,
         client,
         session,
@@ -119,10 +125,13 @@ async def handle_slack_events(request):
     """
     Handle Slack events including URL verification and message events.
 
+    DEPRECATED: This function is maintained for backward compatibility.
+    New code should use slack_service.handle_slack_events() directly.
+
     Args:
         request: FastAPI Request object
 
     Returns:
         FastAPI Response object for Slack
     """
-    return await _slack.handle_slack_events(request)
+    return await slack_service.handle_slack_events(request)
