@@ -316,7 +316,7 @@ class AdoraV2Tool(Toolkit):
                 if not self._cached_delivery_address:
                     return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
 
-                logger.info(
+                logger.debug(
                     f"[AdoraV2Tool.fulfill_order] Using cached delivery address: {self._cached_delivery_address}"
                 )
                 order_request.delivery_address = self._cached_delivery_address

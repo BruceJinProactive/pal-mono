@@ -262,7 +262,7 @@ async def api_validate_order(
     """
     try:
         payload = order_request.model_dump(by_alias=True, exclude_none=True)
-
+        logger.debug(f"[AdoraV2Tool._apis] api_validate_order payload: {payload}")
         response = await connect_adora_order_hub(
             HttpMethod.POST,
             bearer_token,
@@ -275,6 +275,7 @@ async def api_validate_order(
         body = response.get("body", {})
 
         if response["status"] == 200:
+            logger.debug("[AdoraV2Tool._apis] Order validated successfully")
             validated_response = ValidateOrderResponse(**body)
             return validated_response
 
