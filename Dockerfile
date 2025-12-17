@@ -4,9 +4,9 @@ FROM public.ecr.aws/docker/library/python:3.11-slim
 # Install uv using official binary (faster and no pip dependency)
 COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /uvx /bin/
 
-# Install git for private dependency installation and update system packages
+# Install git for private dependency installation, build tools for native extensions, and update system packages
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y git \
+    && apt-get install -y git build-essential \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ARG USER=app

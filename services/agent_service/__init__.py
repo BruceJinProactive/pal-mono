@@ -1,6 +1,7 @@
 import uuid
 from typing import Any, Dict, Optional
 
+from pal_agents import Spec
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -15,8 +16,25 @@ from .schema import AgentParams
 
 
 @traced("agent_service:construct_agent_spec()")
-async def construct_agent_spec():
-    return await _implementation.construct_agent_spec()
+async def construct_agent_spec(
+    session: AsyncSession,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+    project_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    channel: Channel,
+    sender_identifier: str | None = None,
+) -> Spec:
+    """Build a pal_agents.Spec from database configuration."""
+    return await _implementation.construct_agent_spec(
+        session,
+        agent_id,
+        user_id,
+        project_id,
+        conversation_id,
+        channel,
+        sender_identifier,
+    )
 
 
 @traced("Agent Service Constructing Config")
@@ -147,6 +165,8 @@ def delete_agent(
 
 
 __all__ = [
+    "construct_agent_spec",
+    "construct_agent_config",
     "get_agent",
     "get_agent_async",
     "replace_agent_config",

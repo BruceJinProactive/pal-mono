@@ -9,6 +9,7 @@ from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from pal_agents import Agent as PalAgent
 from pal_agents import Input as PalInput
+from pal_agents.input import RuntimeContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -104,16 +105,69 @@ async def get_chat_response_async(
         # **************** Step 2: Construct agent, get input, and generate output ****************
         if account_name in ["proactiveailab-transformer"]:
             # NEW FLOW: Use pal-agents
-            spec = await agent_service.construct_agent_spec()
+            spec = await agent_service.construct_agent_spec(
+                session=session,
+                agent_id=agent_id,
+                user_id=user.id,
+                project_id=project_id,
+                conversation_id=request_message.conversation_id,
+                channel=message.channel,
+                sender_identifier=message.sender_identifier,
+            )
+
             pal_agent = PalAgent(spec=spec)
-            pal_input = PalInput(content=message.text.body if message.text else "")
+
+            # Build RuntimeContext for tool execution
+            # Determines customer_phone based on channel type
+            customer_phone = None
+            if message.channel and message.channel.value.lower() in [
+                "sms",
+                "voice",
+                "whatsapp",
+            ]:
+                customer_phone = message.sender_identifier
+
+            runtime_context = RuntimeContext(
+                user_id=str(user.id),
+                session_id=str(request_message.conversation_id),
+                customer_phone=customer_phone,
+                project_id=str(project_id),
+                account_id=str(project.account_id),
+                account_name=account_name,
+                agent_id=str(agent_id),
+                timezone=project.timezone,
+                channel=message.channel.value if message.channel else None,
+            )
+
+            pal_input = PalInput(
+                content=message.text.body if message.text else "",
+                runtime_context=runtime_context,
+            )
+
             pal_output = await pal_agent.run(pal_input)
 
-            # Convert to old Output format (pal-agents Output only has content)
+            # Convert to old Output format
+            # ============================================================
+            # GAP: pal-agents Output only has `content` field.
+            # The old flow's `escalated` and `closing_conversation` flags
+            # are NOT available in pal-agents.
+            #
+            # MVP WORKAROUND: Default both to False.
+            # CONSEQUENCES:
+            #   - Escalation to human agents won't trigger automatically
+            #   - Conversations won't auto-close based on agent signals
+            #   - The closing_conversation check at line ~212 will never trigger
+            #
+            # FUTURE OPTIONS:
+            #   1. Add these fields to pal-agents Output class
+            #   2. Parse from content using regex/keywords
+            #   3. Use a dedicated tool that sets these flags
+            #   4. Use structured output extraction from LLM response
+            # ============================================================
             output = Output(
                 content=pal_output.content,
-                escalated=False,  # Default - pal-agents doesn't provide this
-                closing_conversation=False,  # Default - pal-agents doesn't provide this
+                escalated=False,
+                closing_conversation=False,
             )
             logger.debug(f"pal-agents Output: {output}")
         else:

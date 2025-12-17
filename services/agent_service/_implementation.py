@@ -4,13 +4,13 @@ from dataclasses import asdict
 from typing import Any, Dict, Optional
 
 from pal_agents import Spec
-from pal_agents.spec import PromptSpec
+from pal_agents.spec import KnowledgeSpec, MemorySpec, ModelSpec, PromptSpec, ToolSpec
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
-from agent import AgentConfig
+from agent import AgentConfig, KnowledgeConfig, LlamaIndexSettings, ToolConfig
 from db.tables.change_log import ChangeResourceType
 from db.tables.types import Channel, IntegrationType
 from services import account_service, integration_service
@@ -22,13 +22,180 @@ from . import _raw_config
 from .schema import AgentParams
 
 
-async def construct_agent_spec() -> Spec:
-    """Build a pal_agents.Spec with hardcoded instructions for testing."""
-    return Spec(
-        prompt=PromptSpec(
-            instructions="You are a helpful assistant. Respond concisely and helpfully to user messages."
+def _build_knowledge_spec(knowledge_config: KnowledgeConfig) -> KnowledgeSpec:
+    """Convert pal-mono KnowledgeConfig to pal-agents KnowledgeSpec.
+
+    Args:
+        knowledge_config: The pal-mono knowledge configuration.
+
+    Returns:
+        KnowledgeSpec: pal-agents knowledge specification.
+    """
+    if not knowledge_config.enabled:
+        return KnowledgeSpec(enabled=False)
+
+    # Extract index_name and namespace from LlamaIndexSettings
+    settings = knowledge_config.settings
+    if settings is None:
+        logger.warning("Knowledge enabled but settings is None, disabling knowledge")
+        return KnowledgeSpec(enabled=False)
+
+    if not isinstance(settings, LlamaIndexSettings):
+        logger.warning(
+            f"Knowledge settings is not LlamaIndexSettings (got {type(settings)}), "
+            "disabling knowledge"
         )
+        return KnowledgeSpec(enabled=False)
+
+    return KnowledgeSpec(
+        enabled=True,
+        identifier=knowledge_config.identifier,
+        index_name=settings.index_name,
+        namespace=settings.namespace,
     )
+
+
+def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
+    """Convert pal-mono ToolConfig to pal-agents ToolSpecs.
+
+    MVP Implementation:
+    - Only includes auto-registered pal-tools (Calculator, Weather, reverse_string)
+    - Skips pal-mono specific tools (toast, adora, square, etc.) that aren't
+      in pal-tools registry yet
+    - Excludes Yelp tools (require per-restaurant config)
+
+    Args:
+        tool_config: The pal-mono tool configuration.
+
+    Returns:
+        list[ToolSpec]: List of pal-agents tool specifications.
+    """
+    # Auto-registered tools in pal-tools that we can use for MVP
+    PAL_TOOLS_AVAILABLE = {"CalculatorTool", "WeatherTool", "reverse_string"}
+
+    tool_specs = []
+    for identifier in tool_config.identifiers:
+        tool_name = identifier.tool_name
+
+        if tool_name in PAL_TOOLS_AVAILABLE:
+            tool_specs.append(
+                ToolSpec(
+                    tool_name=tool_name,
+                    config=identifier.args,
+                )
+            )
+            logger.debug(f"Added pal-tools tool: {tool_name}")
+        else:
+            logger.debug(
+                f"Skipping tool '{tool_name}' - not available in pal-tools registry"
+            )
+
+    return tool_specs
+
+
+def _agent_config_to_spec(agent_config: AgentConfig) -> Spec:
+    """Convert pal-mono AgentConfig to pal-agents Spec.
+
+    This is a pure conversion function with no side effects or database access.
+    All data loading is handled by construct_agent_config().
+
+    Args:
+        agent_config: The fully-built pal-mono agent configuration.
+
+    Returns:
+        Spec: pal-agents specification ready for Agent instantiation.
+    """
+    # ========== Build PromptSpec ==========
+    # persona.description contains the full system prompt from _build_agent_prompt()
+    prompt_spec = PromptSpec(
+        instructions=agent_config.persona.description or "",
+        name=agent_config.persona.name,
+        role=agent_config.persona.role,
+    )
+
+    # ========== Build KnowledgeSpec ==========
+    knowledge_spec = _build_knowledge_spec(agent_config.knowledge)
+
+    if knowledge_spec.enabled:
+        logger.debug(
+            f"Knowledge enabled: index={knowledge_spec.index_name}, "
+            f"namespace={knowledge_spec.namespace}"
+        )
+
+    # ========== Build MemorySpec ==========
+    memory_spec = MemorySpec(
+        enabled=agent_config.memory.enabled,
+        scope_to_account=True,  # Always scope for multi-tenant isolation
+    )
+
+    if memory_spec.enabled:
+        logger.debug("Memory enabled with account scoping")
+
+    # ========== Build ToolSpecs ==========
+    tool_specs = _build_tool_specs(agent_config.tool)
+
+    if tool_specs:
+        logger.debug(f"Tools enabled: {[t.tool_name for t in tool_specs]}")
+
+    # ========== Build final Spec ==========
+    return Spec(
+        prompt=prompt_spec,
+        knowledge=knowledge_spec,
+        memory=memory_spec,
+        tools=tool_specs,
+        model=ModelSpec(size="m"),  # Hardcoded per requirements
+    )
+
+
+async def construct_agent_spec(
+    session: AsyncSession,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+    project_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    channel: Channel,
+    sender_identifier: str | None = None,
+) -> Spec:
+    """Build a pal_agents.Spec from database configuration.
+
+    This function reuses construct_agent_config() to load all database data
+    and build the AgentConfig, then converts it to a pal-agents Spec.
+
+    Args:
+        session: Async database session.
+        agent_id: The agent ID.
+        user_id: The user ID.
+        project_id: The project ID.
+        conversation_id: The conversation (session) ID.
+        channel: Communication channel (sms, voice, web).
+        sender_identifier: Phone number or user identifier.
+
+    Returns:
+        Spec: pal-agents specification with prompt, knowledge, memory, and tools.
+
+    Raises:
+        ValueError: If agent_id or project_id is invalid (from construct_agent_config).
+    """
+    # Reuse existing construct_agent_config - it handles all database operations:
+    # - Loads agent, project from database
+    # - Gets POS integration
+    # - Loads FAQs
+    # - Builds RawConfig with full prompt logic
+    # - Returns complete AgentConfig
+    agent_config = await construct_agent_config(
+        db_session=session,
+        agent_id=agent_id,
+        user_id=user_id,
+        project_id=project_id,
+        conversation_id=conversation_id,
+        channel=channel,
+        sender_identifier=sender_identifier,
+    )
+
+    logger.debug("Built AgentConfig, converting to pal-agents Spec")
+
+    # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
+    return _agent_config_to_spec(agent_config)
 
 
 async def construct_agent_config(

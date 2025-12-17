@@ -38,7 +38,7 @@ dependencies = [
   "llama-index-vector-stores-pinecone==0.7.1", # Pinecone vector database integration for LlamaIndex
   "mem0ai==0.1.48", # Personalized AI memory layer for context retention
   "openai==1.95.1", # Official OpenAI API client for GPT models
-  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.1.1.1", # Pal-agents AI agent framework (production)
+  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.0", # Pal-agents AI agent framework (production)
   "pgvector==0.3.2", # PostgreSQL extension for vector similarity search
   "pinecone==7.3.0", # Managed vector database for AI applications
   "polyline==2.0.2", # Google polyline encoding/decoding for GPS coordinates
@@ -111,3 +111,8 @@ exclude = [".git", ".venv*", "aienv*", "build"]
 [tool.tomlsort]
 # Disable inline array sorting for importlinter contracts to preserve layer order
 overrides."*.layers".inline_arrays = false
+
+[tool.uv]
+override-dependencies = [
+  "griffe>=1.5.6" # Override agenticmem's pinned griffe to resolve conflict with openai-agents
+]
