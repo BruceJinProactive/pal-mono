@@ -203,12 +203,21 @@ class AdoraV2Tool(Toolkit):
         )
 
         if not bearer_token or not lat_lon_result[0]:
-            return "Failed to authenticate." if not bearer_token else lat_lon_result[1]
+            return (
+                "Failed to authenticate."
+                if not bearer_token
+                else str(lat_lon_result[1])
+            )
 
         street_no, street_name = extract_street_parts(delivery_address.address)
 
         result = await api_validate_address(
-            bearer_token, self.store_id, delivery_address, street_no, street_name
+            bearer_token,
+            self.store_id,
+            delivery_address,
+            lat_lon_result[1],  # type: ignore
+            street_no,
+            street_name,
         )
 
         # If validation failed, return error message
