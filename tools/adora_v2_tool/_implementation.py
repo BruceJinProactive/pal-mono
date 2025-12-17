@@ -24,6 +24,8 @@ from tools.adora_v2_tool._utils import (
 from tools.adora_v2_tool.classes import (
     BackdoorToolPrompt,
     DeliveryAddress,
+    OrderType,
+    PaymentType,
     ValidateOrderRequest,
 )
 from tools.utils.ordering._llm import async_llm_call
@@ -53,6 +55,11 @@ class AdoraV2Tool(Toolkit):
         # Cache for bearer token with async lock
         self._cached_bearer_token: str | None = None
         self._token_lock = asyncio.Lock()
+
+        # Cache for most recently validated delivery address
+        # Security note: This cache is instance-scoped (per-request) and not shared across conversations
+        self._cached_delivery_address: DeliveryAddress | None = None
+        self._address_lock = asyncio.Lock()
 
         # Log instance creation with built-in id
         instance_id = id(self)
@@ -203,11 +210,19 @@ class AdoraV2Tool(Toolkit):
         result = await api_validate_address(
             bearer_token, self.store_id, delivery_address, street_no, street_name
         )
-        return (
-            result
-            if isinstance(result, str)
-            else f"Address is valid and within delivery zone. {result}"
-        )
+
+        # If validation failed, return error message
+        if isinstance(result, str):
+            return result
+
+        # Address is valid - cache it for use in fulfill_order (always refresh cache)
+        async with self._address_lock:
+            self._cached_delivery_address = delivery_address
+            logger.debug(
+                f"[AdoraV2Tool.check_address] Cached validated delivery address: {delivery_address}"
+            )
+
+        return f"Address is valid and within delivery zone. {result}"
 
     @tool
     async def fulfill_order(self, order_items: list[str]) -> str:
@@ -286,6 +301,18 @@ class AdoraV2Tool(Toolkit):
         email = order_request.customer.email
         if not email or not is_valid_email(email):
             order_request.customer.email = "orderingagent@palona.ai"
+
+        # Handle delivery address for delivery orders
+        if order_request.order_type == OrderType.DELIVERY:
+            async with self._address_lock:
+                if not self._cached_delivery_address:
+                    return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
+
+                logger.info(
+                    f"[AdoraV2Tool.fulfill_order] Using cached delivery address: {self._cached_delivery_address}"
+                )
+                order_request.delivery_address = self._cached_delivery_address
+                order_request.payment_type = PaymentType.PAYMENT_LINK
 
         # Step 1: Validate the order
         validate_result = await api_validate_order(bearer_token, order_request)
