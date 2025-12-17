@@ -312,21 +312,25 @@ async def api_process_order(
             )
             return "Cannot process order: missing order key from validation."
 
-        process_request = ProcessOrderRequest(
-            store_id=order_request.store_id,
-            order_type=order_request.order_type,
-            payment_type=order_request.payment_type,
-            guid=validate_response.key,  # Use the key from validate response
-            promise_date_time=order_request.promise_date_time,
-            customer=order_request.customer,
-            delivery_address=order_request.delivery_address,
-            items=order_request.items,
-            payment_details=PaymentDetails(
-                sub_total=validate_response.sub_total,
-                tax=validate_response.tax_amount,
-                total=validate_response.total,
-            ),
-            order_comment=order_request.order_comment,
+        process_request = ProcessOrderRequest.model_validate(
+            {
+                "store_id": order_request.store_id,
+                "order_type": order_request.order_type,
+                "payment_type": order_request.payment_type,
+                "guid": validate_response.key,  # Use the key from validate response
+                "promise_date_time": order_request.promise_date_time,
+                "customer": order_request.customer,
+                "delivery_address": order_request.delivery_address,
+                "items": order_request.items,
+                "payment_details": PaymentDetails.model_validate(
+                    {
+                        "sub_total": validate_response.sub_total,
+                        "tax": validate_response.tax_amount,
+                        "total": validate_response.total,
+                    }
+                ),
+                "order_comment": order_request.order_comment,
+            }
         )
 
         payload = process_request.model_dump(by_alias=True, exclude_none=True)

@@ -26,7 +26,7 @@ class DeliveryAddress(BaseModel):
     extended_address: str = Field(
         description="Extended address (if applicable)",
         default="",
-        serialization_alias="extendedAddress",
+        alias="extendedAddress",
     )
     city: str = Field(description="City name")
     state: str = Field(
@@ -38,14 +38,14 @@ class DeliveryAddress(BaseModel):
     instruction: str = Field(
         description="Special instructions for the delivery address", default=""
     )
-    type_id: int = Field(default=1, serialization_alias="typeId")
+    type_id: int = Field(default=1, alias="typeId")
     extra_field_1: str = Field(
-        description="Extra field 1", default="", serialization_alias="extraField1"
+        description="Extra field 1", default="", alias="extraField1"
     )
     extra_field_2: str = Field(
-        description="Extra field 2", default="", serialization_alias="extraField2"
+        description="Extra field 2", default="", alias="extraField2"
     )
-    zone_id: int = Field(default=0, serialization_alias="zoneId")
+    zone_id: int = Field(default=0, alias="zoneId")
 
 
 class ClientCustomerInfo(BaseModel):
@@ -64,18 +64,18 @@ class ClientModifier(BaseModel):
     id: int = Field(description="Modifier ID, required")
     is_default: bool = Field(
         description="Whether this is a default modifier, required",
-        serialization_alias="isDefault",
+        alias="isDefault",
     )
     price: float = Field(description="Modifier price", default=0.0)
     weight_id: int = Field(
         description="Weight ID for the modifier, required",
-        serialization_alias="weightId",
+        alias="weightId",
     )
 
 
 class ClientGroup(BaseModel):
-    item_id: int = Field(description="Item ID, required", serialization_alias="itemId")
-    size_id: int = Field(description="Size ID, required", serialization_alias="sizeId")
+    item_id: int = Field(description="Item ID, required", alias="itemId")
+    size_id: int = Field(description="Size ID, required", alias="sizeId")
     quantity: int = Field(
         description="Item quantity, required, range [1..1000]", ge=1, le=1000
     )
@@ -96,17 +96,17 @@ class ClientItem(BaseModel):
 
 
 class ValidateOrderRequest(BaseModel):
-    store_id: str = Field(
-        description="Store ID, non-empty, required", serialization_alias="storeId"
-    )
+    model_config = {"populate_by_name": True}
+
+    store_id: str = Field(description="Store ID, non-empty, required", alias="storeId")
     order_type: OrderType = Field(
         description=f"Type of order. Options: {', '.join([e.value for e in OrderType])}",
-        serialization_alias="OrderType",
+        alias="OrderType",
     )
     payment_type: PaymentType = Field(
         description=f"Payment type. Options: {', '.join([e.value for e in PaymentType])}",
         default=PaymentType.PAYMENT_LINK,
-        serialization_alias="paymentType",
+        alias="paymentType",
     )
     guid: str | None = Field(
         description="Order GUID (UUID format), optional", default=None
@@ -114,20 +114,20 @@ class ValidateOrderRequest(BaseModel):
     promise_date_time: str | None = Field(
         description="Promise date and time in ISO date-time format, optional",
         default=None,
-        serialization_alias="promiseDateTime",
+        alias="promiseDateTime",
     )
     customer: ClientCustomerInfo = Field(description="Customer information, required")
     delivery_address: DeliveryAddress | None = Field(
         description="Delivery address (required for delivery orders), optional",
         default=None,
-        serialization_alias="deliveryAddress",
+        alias="deliveryAddress",
     )
     items: list[ClientItem] = Field(description="List of order items, required")
     order_comment: str = Field(
         description="Order comment, optional, max 500 characters",
         default="(via PalonaAI)",
         max_length=500,
-        serialization_alias="orderComment",
+        alias="orderComment",
     )
 
 
@@ -160,37 +160,37 @@ class ValidateOrderResponse(BaseModel):
 
 
 class PaymentDetails(BaseModel):
-    sub_total: float = Field(
-        description="Subtotal amount", serialization_alias="sub_total"
-    )
+    model_config = {"populate_by_name": True}
+
+    sub_total: float = Field(description="Subtotal amount")
     tax: float = Field(description="Tax amount")
     total: float = Field(description="Total amount")
 
 
 class ProcessOrderRequest(BaseModel):
-    store_id: str = Field(
-        description="Store ID, non-empty, required", serialization_alias="storeId"
-    )
+    model_config = {"populate_by_name": True}
+
+    store_id: str = Field(description="Store ID, non-empty, required", alias="storeId")
     order_type: OrderType = Field(
         description=f"Type of order. Options: {', '.join([e.value for e in OrderType])}",
-        serialization_alias="OrderType",
+        alias="OrderType",
     )
     payment_type: PaymentType = Field(
         description=f"Payment type. Options: {', '.join([e.value for e in PaymentType])}",
         default=PaymentType.PAYMENT_LINK,
-        serialization_alias="paymentType",
+        alias="paymentType",
     )
     guid: str = Field(description="Order GUID from validate order response, required")
     promise_date_time: str | None = Field(
         description="Promise date and time in ISO date-time format, optional",
         default=None,
-        serialization_alias="promiseDateTime",
+        alias="promiseDateTime",
     )
     customer: ClientCustomerInfo = Field(description="Customer information, required")
     delivery_address: DeliveryAddress | None = Field(
         description="Delivery address (required for delivery orders), optional",
         default=None,
-        serialization_alias="deliveryAddress",
+        alias="deliveryAddress",
     )
     items: list[ClientItem] = Field(description="List of order items, required")
     payment_details: PaymentDetails = Field(
@@ -200,7 +200,7 @@ class ProcessOrderRequest(BaseModel):
         description="Order comment, optional, max 500 characters",
         default="(via PalonaAI)",
         max_length=500,
-        serialization_alias="orderComment",
+        alias="orderComment",
     )
 
 
