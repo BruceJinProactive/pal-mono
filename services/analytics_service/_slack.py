@@ -1,25 +1,37 @@
 """
-Analytics Report Formatting for Slack
+Slack Analytics Bot Service
 
-This module handles all analytics-specific formatting for Slack reports including:
-- Date range parsing and timezone handling
-- Report data merging and processing
-- Table creation (engagement, conversion)
-- Section builders for Slack blocks
-- Main report formatting function
+This module provides Slack integration for analytics reporting, including:
+- Automated report generation and formatting
+- Custom date range parsing
+- Interactive Slack bot commands
+- Professional table formatting for analytics data
 
-All analytics formatting logic is centralized here to keep it separate
-from generic Slack service infrastructure.
+The service supports daily, weekly, monthly, and custom date range reports
+with engagement metrics, conversion data, and call quality analytics.
 """
 
 import re
+import threading
 import uuid
 from datetime import datetime, timedelta
 
+from fastapi.responses import JSONResponse, Response
+from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
+from slack_bolt.async_app import AsyncApp
+from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy.orm import Session
 
+from db.session import SyncSessionLocal
+from services.analytics_service._implementation import get_reports
 from services.analytics_service._utils import normalize_datetime_to_utc
 from utils.log import logger
+from utils.secret import get_client_secret_with_fallback
+
+# =============================================================================
+# CONSTANTS AND CONFIGURATION
+# =============================================================================
 
 # Report name to data key mapping for cleaner code
 REPORT_DATA_KEYS = {
@@ -64,10 +76,34 @@ CONVERSION_COLUMNS = [
 
 ALL_COLUMNS = ENGAGEMENT_COLUMNS + CONVERSION_COLUMNS
 
+# Global Slack app instance and thread safety
+_slack_app = None
+_slack_handler = None
+_slack_init_lock = threading.Lock()
+
 
 # =============================================================================
 # DATE UTILITY FUNCTIONS
 # =============================================================================
+
+
+def parse_account_name_from_message(message_text: str) -> str | None:
+    """
+    Parse account name from message text like "daily for acme-restaurant".
+    Only supports "for" keyword format.
+
+    Args:
+        message_text: The full message text from Slack
+
+    Returns:
+        str | None: Account name if found, None otherwise
+    """
+    # Pattern: "for account_name" (case insensitive)
+    match = re.search(r"for\s+([a-zA-Z0-9_-]+)", message_text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+
+    return None
 
 
 def get_account_timezone(session: Session, account_name: str) -> str:
@@ -1348,3 +1384,746 @@ def format_unified_report_for_slack(
                 }
             ]
         }
+
+
+# =============================================================================
+# SLACK INTEGRATION FUNCTIONS
+# =============================================================================
+
+# Internal channels that can see all account data
+INTERNAL_CHANNELS = {
+    "agent-performance",
+    "test-channel",
+    "#agent-performance",
+    "#test-channel",
+}
+
+
+def get_account_id_by_name(account_name: str, session: Session) -> uuid.UUID | None:
+    """
+    Look up account ID by account name from database.
+
+    Args:
+        account_name: Account name to look up
+        session: Database session
+
+    Returns:
+        uuid.UUID | None: Account ID if found, None otherwise
+    """
+    try:
+        from db.tables.accounts import Account
+
+        # Query account by name (case-insensitive)
+        account = (
+            session.query(Account).filter(Account.name.ilike(account_name)).first()
+        )
+
+        if account:
+            logger.info(
+                f"[Slackbot] Found account '{account.name}' with ID {account.id}"
+            )
+            return account.id
+        else:
+            logger.warning(f"[Slackbot] No account found with name '{account_name}'")
+            return None
+
+    except Exception as e:
+        logger.error(
+            f"[Slackbot] Error looking up account by name '{account_name}': {e}"
+        )
+        return None
+
+
+def extract_account_from_channel(channel_display_name: str) -> str | None:
+    """
+    Extract account name from client channel names.
+
+    For channels in format "#client-account-name", extracts "account-name".
+
+    Args:
+        channel_display_name: Channel name (e.g., "#client-acme-restaurant")
+
+    Returns:
+        str | None: Account name if channel is a client channel, None otherwise
+    """
+    normalized = channel_display_name.strip().lstrip("#").lower()
+    if normalized.startswith("client-"):
+        # Extract everything after "client-"
+        account_name = normalized[7:]  # len("client-") = 7
+        return account_name if account_name else None
+    return None
+
+
+def determine_account_filter(
+    channel: str,
+    session: Session,
+    account_name: str | None = None,
+    channel_display_name: str | None = None,
+) -> tuple[uuid.UUID | None, str | None]:
+    """
+    Determine which account(s) to show based on channel and optional account name.
+
+    For client channels (starting with "client-"):
+    - Extracts account name from channel (e.g., #client-acme-restaurant -> acme-restaurant)
+    - If user provides account name via "for", validates first 3 characters match
+    - If no account name provided, auto-uses channel's account
+
+    Priority:
+    1. If in internal channel -> show all accounts (return None)
+    2. If channel starts with "client-" -> extract account from channel name
+       a. If account_name provided -> verify first 3 chars match channel account
+       b. If no account_name -> auto-use channel's account
+    3. Otherwise -> show all accounts (return None)
+
+    Args:
+        channel: Slack channel ID or name
+        session: Database session
+        account_name: Optional account name from message (e.g., "daily for acme")
+        channel_display_name: Optional human-readable channel name for logging
+
+    Returns:
+        tuple[uuid.UUID | None, str | None]: (account_id, error_message)
+        - (account_id, None) if successful
+        - (None, None) if showing all accounts (internal channel)
+        - (None, error_message) if error occurred
+    """
+    # Use display name for logging if available, otherwise use channel ID
+    display_name = channel_display_name or channel
+
+    # Priority 1: Check if it's an internal channel (can see all accounts)
+    normalized_channel = channel.strip().lstrip("#")
+    if normalized_channel in INTERNAL_CHANNELS or channel in INTERNAL_CHANNELS:
+        logger.info(
+            f"[Slackbot] Channel '{display_name}' is internal - showing all accounts"
+        )
+        return None, None
+
+    # Priority 2: Check if channel is a client channel (starts with "client-")
+    channel_account_name = extract_account_from_channel(display_name)
+    if channel_account_name:
+        # This is a client channel
+        if not account_name:
+            # No account specified - require user to specify
+            error_msg = (
+                f"Please specify the account name using the format: `daily for account-name`\n"
+                f"This channel is for accounts starting with '{channel_account_name[:3]}'."
+            )
+            logger.warning(
+                f"[Slackbot] Channel '{display_name}' is a client channel and no account specified - account name required"
+            )
+            return None, error_msg
+
+        # User specified account name - verify first 3 chars match
+        if len(account_name) < 3 or len(channel_account_name) < 3:
+            error_msg = f"Account name too short for validation. Channel account: '{channel_account_name}'"
+            logger.warning(f"[Slackbot] {error_msg}")
+            return None, error_msg
+
+        account_prefix = account_name[:3].lower()
+        channel_prefix = channel_account_name[:3].lower()
+
+        if account_prefix != channel_prefix:
+            error_msg = (
+                f"❌ Account '{account_name}' is not matched with this channel. "
+                f"This channel is for accounts starting with '{channel_prefix}'."
+            )
+            logger.warning(f"[Slackbot] Account name mismatch: {error_msg}")
+            return None, error_msg
+
+        # First 3 chars match - proceed with user-specified account
+        logger.info(
+            f"[Slackbot] Account name '{account_name}' matches channel '{display_name}'"
+        )
+
+        # Look up account ID
+        account_id = get_account_id_by_name(account_name, session)
+        if account_id:
+            return account_id, None
+        else:
+            error_msg = f"Cannot find account info for '{account_name}'. Please check the account name and try again."
+            logger.warning(f"[Slackbot] Account '{account_name}' not found in database")
+            return None, error_msg
+
+    # Priority 3: Not internal, not client channel - check if account name provided
+    if account_name:
+        # Allow explicit account filtering in non-client channels
+        account_id = get_account_id_by_name(account_name, session)
+        if account_id:
+            logger.info(
+                f"[Slackbot] Using explicit account filter '{account_name}' in channel '{display_name}'"
+            )
+            return account_id, None
+        else:
+            error_msg = f"Cannot find account info for '{account_name}'. Please check the account name and try again."
+            logger.warning(f"[Slackbot] Account '{account_name}' not found")
+            return None, error_msg
+
+    # Priority 4: For other channels without account name, allow showing all accounts
+    logger.info(f"[Slackbot] Channel '{display_name}' - showing all accounts")
+    return None, None
+
+
+async def get_channel_name(client: AsyncWebClient, channel_id: str) -> str:
+    """
+    Get human-readable channel name from channel ID.
+
+    Args:
+        client: Slack async web client
+        channel_id: Slack channel ID (e.g., 'C09BT1E5E7M')
+
+    Returns:
+        Channel name with # prefix (e.g., '#general') or original ID if lookup fails
+    """
+    try:
+        response = await client.conversations_info(channel=channel_id)
+        if response and response.get("ok"):
+            channel_info = response.get("channel")
+            if channel_info:
+                channel_name = channel_info.get("name")
+                if channel_name:
+                    return f"#{channel_name}"
+    except Exception as e:
+        logger.warning(f"[Slackbot] Failed to get channel name for {channel_id}: {e}")
+
+    # Fallback to channel ID if lookup fails
+    return channel_id
+
+
+def get_slack_credentials() -> tuple[str, str]:
+    """Get Slack bot token and channel from secrets."""
+    try:
+        bot_token = get_client_secret_with_fallback("SLACK_BOT_TOKEN")
+    except ValueError as e:
+        logger.error(f"[Slackbot] SLACK_BOT_TOKEN not found: {e}")
+        raise ValueError("Slack bot token not configured")
+
+    try:
+        slack_channel = get_client_secret_with_fallback("SLACK_CHANNEL")
+    except ValueError:
+        slack_channel = "#test-channel"  # Default fallback
+
+    return bot_token, slack_channel
+
+
+async def send_report_to_slack(
+    slack_channel: str | None = None,
+    client: AsyncWebClient | None = None,
+    session: Session | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    account_name: str | None = None,
+    show_time: bool = False,
+    timezone_id: str | None = None,
+    timezone_name: str | None = None,
+) -> dict:
+    """
+    Send a comprehensive analytics report to Slack.
+
+    Args:
+        slack_channel: Slack channel to send to (optional, uses secret manager if not provided)
+        client: Optional async Slack client to reuse (creates new one if not provided)
+        session: Database session for fetching analytics data
+        start_date: Start date for the report (in UTC)
+        end_date: End date for the report (in UTC)
+        account_name: Optional account name to filter by (from message like "daily for acme")
+        show_time: If True, show full datetime with time and timezone in report title
+        timezone_id: Timezone ID to convert UTC times to local time (e.g., 'America/New_York')
+        timezone_name: Timezone abbreviation to display (e.g., 'EST', 'PST')
+
+    Returns:
+        dict: Status of the operation
+    """
+    try:
+        # Validate required session
+        if session is None:
+            return {"status": "error", "message": "Database session not available"}
+
+        # Get Slack credentials
+        try:
+            bot_token, default_channel = get_slack_credentials()
+            target_channel = slack_channel or default_channel
+        except ValueError as e:
+            return {"status": "error", "message": str(e)}
+
+        # Create client if not provided
+        if client is None:
+            client = AsyncWebClient(token=bot_token)
+
+        # Get human-readable channel name for logging
+        channel_display_name = await get_channel_name(client, target_channel)
+
+        # Determine account filtering based on channel and message
+        account_id_filter, error_message = determine_account_filter(
+            target_channel, session, account_name, channel_display_name
+        )
+
+        # Check for validation errors
+        if error_message:
+            logger.warning(f"[Slackbot] Account validation failed: {error_message}")
+            return {"status": "error", "message": error_message}
+
+        # Fetch analytics reports
+        # For single account reports, group by project_id to show project-level breakdown
+        # For multi-account reports, group by account_id to show account-level breakdown
+        group_by_fields = ["project_id"] if account_id_filter else ["account_id"]
+
+        logger.info(
+            f"[Slackbot] Fetching analytics reports from {start_date} to {end_date} "
+            f"for channel '{channel_display_name}' (account_id: {account_id_filter}, group_by: {group_by_fields})"
+        )
+        reports = await get_reports(
+            session, account_id_filter, start_date, end_date, group_by=group_by_fields
+        )
+        if not reports.reports:
+            logger.warning("[Slackbot] No reports data returned from analytics service")
+            return {"status": "error", "message": "No reports data available"}
+
+        # Generate Slack blocks
+        logger.info(
+            f"[Slackbot] Converting {len(reports.reports)} reports to Slack blocks"
+        )
+        message_blocks = format_unified_report_for_slack(
+            reports.reports,
+            None,
+            start_date,
+            end_date,
+            show_time=show_time,
+            timezone_id=timezone_id,
+            timezone_name=timezone_name,
+            account_id_filter=account_id_filter,
+            account_name=account_name,
+            session=session,
+        )
+        if not message_blocks or "blocks" not in message_blocks:
+            logger.error("[Slackbot] Failed to generate valid Slack blocks structure")
+            return {"status": "error", "message": "Failed to generate Slack blocks"}
+
+        logger.info(
+            f"[Slackbot] Successfully converted {len(reports.reports)} reports to Slack blocks"
+        )
+
+        # Send to Slack
+        logger.info(f"[Slackbot] Sending report to Slack channel: {target_channel}")
+        response = await client.chat_postMessage(
+            channel=target_channel,
+            text="Analytics Report",
+            **message_blocks,
+        )
+
+        if response["ok"]:
+            logger.info(f"[Slackbot] Report sent successfully to {target_channel}")
+            return {
+                "status": "success",
+                "message": f"Report sent to {target_channel} successfully",
+            }
+        else:
+            error_msg = response.get("error", "Unknown error")
+            logger.error(f"[Slackbot] Slack API error: {error_msg}")
+            return {
+                "status": "error",
+                "message": f"Failed to send to Slack: {error_msg}",
+            }
+
+    except SlackApiError as e:
+        error_msg = f"Slack API error: {e.response['error']}"
+        logger.error(f"[Slackbot] {error_msg}")
+        return {"status": "error", "message": error_msg}
+    except Exception as e:
+        error_msg = f"Failed to send report: {str(e)}"
+        logger.error(f"[Slackbot] {error_msg}")
+        return {"status": "error", "message": error_msg}
+
+
+async def handle_report_request(
+    period: str, message, client, custom_dates: tuple[datetime, datetime] | None = None
+):
+    """
+    Generic handler for all report requests (daily, weekly, monthly, custom).
+
+    Supports account filtering via message syntax:
+    - "daily" - shows all accounts (if in internal channel) or restricted
+    - "daily for acme-restaurant" - shows only acme-restaurant account
+    - "weekly for burger-place" - shows only burger-place account
+
+    Args:
+        period: The report period ("daily", "weekly", "monthly", "custom")
+        message: Slack message object
+        client: Slack client object
+        custom_dates: Optional tuple of (start_date, end_date) for custom ranges
+    """
+    try:
+        slack_channel = message.get("channel")
+        user = message["user"]
+        message_text = message.get("text", "")
+
+        # Get human-readable channel name for logging
+        channel_name = await get_channel_name(client, slack_channel)
+
+        # Parse account name from message if provided
+        account_name = parse_account_name_from_message(message_text)
+
+        logger.info(
+            f"[Slackbot] User {user} requested {period} report in channel {channel_name}"
+            + (f" for account '{account_name}'" if account_name else "")
+        )
+
+        # Get database session for conversion data using proper context handling
+        session = SyncSessionLocal()
+        try:
+            # Get date range - either custom or predefined period
+            if custom_dates:
+                start_date, end_date = custom_dates
+                logger.info(
+                    f"[Slackbot] Using custom date range: {start_date} to {end_date}"
+                )
+            else:
+                start_date, end_date = get_date_range_for_period(
+                    period, session, account_name
+                )
+                logger.info(
+                    f"[Slackbot] Using {period} date range: {start_date} to {end_date}"
+                )
+
+            # Get timezone name for display
+            if account_name:
+                timezone_id = get_account_timezone(session, account_name)
+            else:
+                # Default to PST when no account specified
+                timezone_id = "America/Los_Angeles"
+
+            # Extract short timezone name (e.g., 'EST', 'PST')
+            timezone_name = None
+            if timezone_id:
+                from zoneinfo import ZoneInfo
+
+                tz = ZoneInfo(timezone_id)
+                # Get timezone abbreviation
+                now_in_tz = datetime.now(tz)
+                timezone_name = now_in_tz.strftime("%Z")
+
+            result = await send_report_to_slack(
+                slack_channel,
+                client,
+                session,
+                start_date,
+                end_date,
+                account_name,
+                show_time=True,
+                timezone_id=timezone_id,
+                timezone_name=timezone_name,
+            )
+        finally:
+            session.close()
+
+        if result["status"] == "success":
+            logger.info(
+                f"[Slackbot] {period.capitalize()} report completed successfully"
+            )
+        else:
+            # Send error message to Slack
+            logger.error(
+                f"[Slackbot] {period.capitalize()} report failed: {result['message']}"
+            )
+            try:
+                await client.chat_postMessage(
+                    channel=slack_channel, text=f"❌ {result['message']}", mrkdwn=True
+                )
+            except Exception as slack_error:
+                logger.error(
+                    f"[Slackbot] Failed to send error message to Slack: {slack_error}"
+                )
+
+    except Exception as e:
+        logger.error(f"[Slackbot] Error handling {period} request: {e}")
+        # Try to send error to Slack
+        try:
+            slack_channel = message.get("channel")
+            await client.chat_postMessage(
+                channel=slack_channel,
+                text=f"❌ An error occurred while processing your request: {str(e)}",
+                mrkdwn=True,
+            )
+        except Exception:
+            pass  # If we can't send to Slack, just log it
+
+
+async def handle_last_hours_request(message, client):
+    """
+    Handle "last X hours" requests like "last 6 hours" or "last 12 hours for romeo".
+
+    Args:
+        message: Slack message object
+        client: Slack client object
+    """
+    try:
+        message_text = message.get("text", "")
+
+        # Parse hours and account name from message
+        hours = parse_last_hours(message_text)
+        account_name = parse_account_name_from_message(message_text)
+
+        if not hours:
+            # Send help message if parsing failed
+            slack_channel = message.get("channel")
+            help_text = (
+                "⏰ *Last X Hours Help*\n\n"
+                "Please use the format: `last <number> hours`\n\n"
+                "Examples:\n"
+                "• `last 6 hours`\n"
+                "• `last 12 hours for romeo`\n"
+                "• `last 24 hours`\n\n"
+                "Note: Maximum is 168 hours (7 days)"
+            )
+
+            await client.chat_postMessage(
+                channel=slack_channel, text=help_text, mrkdwn=True
+            )
+            return
+
+        # Get database session for timezone lookup
+        session = SyncSessionLocal()
+        try:
+            slack_channel = message.get("channel")
+            user = message["user"]
+
+            # Get human-readable channel name for logging
+            channel_name = await get_channel_name(client, slack_channel)
+
+            logger.info(
+                f"[Slackbot] User {user} requested last {hours} hours report in channel {channel_name}"
+                + (f" for account '{account_name}'" if account_name else "")
+            )
+
+            # Calculate date range
+            start_date, end_date = get_date_range_for_hours(
+                hours, session, account_name
+            )
+            logger.info(
+                f"[Slackbot] Using last {hours} hours range: {start_date} to {end_date}"
+            )
+
+            # Get timezone name for display
+            if account_name:
+                timezone_id = get_account_timezone(session, account_name)
+            else:
+                # Default to PST when no account specified
+                timezone_id = "America/Los_Angeles"
+
+            # Extract short timezone name (e.g., 'EST', 'PST')
+            timezone_name = None
+            if timezone_id:
+                from zoneinfo import ZoneInfo
+
+                tz = ZoneInfo(timezone_id)
+                # Get timezone abbreviation
+                now_in_tz = datetime.now(tz)
+                timezone_name = now_in_tz.strftime("%Z")
+
+            result = await send_report_to_slack(
+                slack_channel,
+                client,
+                session,
+                start_date,
+                end_date,
+                account_name,
+                show_time=True,
+                timezone_id=timezone_id,
+                timezone_name=timezone_name,
+            )
+
+            if result["status"] == "success":
+                logger.info(
+                    f"[Slackbot] Last {hours} hours report completed successfully"
+                )
+            else:
+                # Send error message to Slack
+                logger.error(
+                    f"[Slackbot] Last {hours} hours report failed: {result['message']}"
+                )
+                await client.chat_postMessage(
+                    channel=slack_channel, text=f"❌ {result['message']}", mrkdwn=True
+                )
+
+        finally:
+            session.close()
+
+    except Exception as e:
+        logger.error(f"[Slackbot] Error handling last hours request: {e}")
+        try:
+            slack_channel = message.get("channel")
+            await client.chat_postMessage(
+                channel=slack_channel,
+                text=f"❌ An error occurred while processing your request: {str(e)}",
+                mrkdwn=True,
+            )
+        except Exception:
+            pass
+
+
+async def handle_custom_date_request(message, client):
+    """
+    Handle custom date range requests like "From 2024-01-01 to 2024-01-31".
+
+    Args:
+        message: Slack message object
+        client: Slack client object
+    """
+    try:
+        message_text = message.get("text", "")
+
+        # Parse account name from message if provided
+        account_name = parse_account_name_from_message(message_text)
+
+        # Get database session to look up timezone
+        session = SyncSessionLocal()
+        try:
+            custom_dates = parse_custom_date_range(message_text, session, account_name)
+
+            if custom_dates:
+                await handle_report_request("custom", message, client, custom_dates)
+            else:
+                # Send help message if parsing failed
+                slack_channel = message.get("channel")
+                help_text = (
+                    "📅 *Custom Date Range Help*\n\n"
+                    "Please use the format: `From YYYY-MM-DD [HH:MM] to YYYY-MM-DD [HH:MM]`\n\n"
+                    "Examples:\n"
+                    "• `From 2024-01-01 to 2024-01-31` (full days)\n"
+                    "• `From 2024-01-01 10:00 to 2024-01-31 15:30` (with specific times)\n"
+                    "• `From 2024-01-15 9:00 to 2024-01-15 17:00` (same day)\n\n"
+                    "Note: Times are in 24-hour format (HH:MM)"
+                )
+
+                await client.chat_postMessage(
+                    channel=slack_channel, text=help_text, mrkdwn=True
+                )
+        finally:
+            session.close()
+
+    except Exception as e:
+        logger.error(f"[Slackbot] Error handling custom date request: {e}")
+
+
+# =============================================================================
+# SLACK BOT CONFIGURATION
+# =============================================================================
+
+
+def create_slack_app():
+    """Create and configure Slack Bolt app with event handlers."""
+    try:
+        bot_token = get_client_secret_with_fallback("SLACK_BOT_TOKEN")
+        signing_secret = get_client_secret_with_fallback("SLACK_SIGNING_SECRET")
+    except ValueError as e:
+        logger.warning(
+            f"[Slackbot] Slack credentials not found: {e} - Event handling disabled"
+        )
+        return None
+
+    app = AsyncApp(token=bot_token, signing_secret=signing_secret)
+
+    async def process_message(event, client):
+        """Shared logic to process messages from both mentions and DMs."""
+        message_text = event.get("text", "").lower()
+
+        # Check for daily report
+        if "daily" in message_text:
+            await handle_report_request("daily", event, client)
+        # Check for weekly report
+        elif "weekly" in message_text:
+            await handle_report_request("weekly", event, client)
+        # Check for monthly report
+        elif "monthly" in message_text:
+            await handle_report_request("monthly", event, client)
+        # Check for last X hours
+        elif re.search(r"last\s+\d+\s+hours?", message_text, re.IGNORECASE):
+            await handle_last_hours_request(event, client)
+        # Check for custom date range (with optional time: HH:MM)
+        elif re.search(
+            r"from\s+\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?\s+to\s+\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?",
+            message_text,
+            re.IGNORECASE,
+        ):
+            await handle_custom_date_request(event, client)
+        else:
+            # Unknown command - send simple error message
+            channel = event.get("channel")
+            error_text = "Please try again."
+            await client.chat_postMessage(channel=channel, text=error_text, mrkdwn=True)
+
+    # Register app_mention handler to only respond when bot is @mentioned
+    @app.event("app_mention")
+    async def handle_app_mention(event, client):
+        """Handle all app mentions and route to appropriate handler."""
+        await process_message(event, client)
+
+    # Register message handler to respond to direct messages only
+    @app.event("message")
+    async def handle_message(event, client, say):
+        """Handle direct messages to the bot only (not public channels)."""
+        # Only respond to direct messages, not public channel messages
+        # In DMs, channel_type is "im" (instant message)
+        # In public channels, channel_type is "channel"
+        # In private channels, channel_type is "group"
+        channel_type = event.get("channel_type")
+
+        # Only process if it's a direct message AND not from a bot
+        if (
+            channel_type == "im"
+            and event.get("subtype") is None
+            and event.get("bot_id") is None
+        ):
+            await process_message(event, client)
+
+    return app
+
+
+# =============================================================================
+# SLACK EVENT HANDLING
+# =============================================================================
+
+
+async def handle_slack_events(request) -> Response:
+    """
+    Handle all Slack events by passing untouched request to Slack Bolt handler.
+    This allows proper signature verification and URL verification by Slack Bolt.
+
+    Args:
+        request: FastAPI Request object (untouched - no request.json() called)
+
+    Returns:
+        FastAPI Response object from Slack Bolt handler
+    """
+    try:
+        # Get Slack handler and let it handle everything (including URL verification)
+        # Important: Don't call request.json() as it breaks Bolt's signature verification
+        handler = _get_slack_handler()
+        if handler:
+            return await handler.handle(request)
+        else:
+            logger.error("[Slackbot] Slack handler not configured")
+            return JSONResponse(
+                status_code=503,
+                content={"status": "error", "message": "Slack handler not configured"},
+            )
+
+    except Exception as e:
+        logger.error(f"[Slackbot] Error handling Slack event: {e}")
+        return JSONResponse(
+            status_code=500, content={"status": "error", "message": str(e)}
+        )
+
+
+def _get_slack_handler():
+    """Internal function to get the Slack request handler."""
+    global _slack_app, _slack_handler
+
+    if _slack_handler is None:
+        with _slack_init_lock:
+            # Double-check pattern to prevent race conditions
+            if _slack_handler is None:
+                _slack_app = create_slack_app()
+                if _slack_app:
+                    _slack_handler = AsyncSlackRequestHandler(_slack_app)
+
+    return _slack_handler

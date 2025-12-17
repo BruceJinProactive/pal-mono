@@ -3158,9 +3158,9 @@ async def slack_events(request: Request):
     """
     Handle Slack events (including URL verification and messages with 'daily').
     """
-    from services import slack_service
+    from services import analytics_service
 
-    return await slack_service.handle_slack_events(request)
+    return await analytics_service.handle_slack_events(request)
 
 
 @admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
