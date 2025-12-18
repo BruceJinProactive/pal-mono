@@ -908,6 +908,22 @@ def _is_call_meaningful(call_data: dict) -> tuple[bool, str]:
     Returns:
         tuple[bool, str]: (is_meaningful, reason)
     """
+    # DEBUG: Log the entire call_data structure to understand what fields are available
+    call_id = call_data.get("id", "unknown")
+    logger.info(
+        "[DEBUG] Inspecting call_data structure",
+        extra={
+            "call_id": call_id,
+            "available_fields": list(call_data.keys()),
+            "durationSeconds": call_data.get("durationSeconds"),
+            "startedAt": call_data.get("startedAt"),
+            "endedAt": call_data.get("endedAt"),
+            "started_at": call_data.get("started_at"),
+            "ended_at": call_data.get("ended_at"),
+            "duration": call_data.get("duration"),
+        },
+    )
+
     # Check duration (must be >= 10 seconds)
     # VAPI may provide duration in different formats, try multiple fields
     duration_seconds = call_data.get("durationSeconds", 0)
@@ -917,20 +933,50 @@ def _is_call_meaningful(call_data: dict) -> tuple[bool, str]:
         started_at = call_data.get("startedAt")
         ended_at = call_data.get("endedAt")
 
+        logger.info(
+            "[DEBUG] durationSeconds is 0, attempting to calculate from timestamps",
+            extra={
+                "call_id": call_id,
+                "startedAt_exists": started_at is not None,
+                "endedAt_exists": ended_at is not None,
+                "startedAt_value": started_at,
+                "endedAt_value": ended_at,
+            },
+        )
+
         if started_at and ended_at:
             try:
                 start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
                 end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
                 duration_seconds = int((end - start).total_seconds())
-                logger.debug(
-                    f"Calculated duration from timestamps: {duration_seconds}s",
-                    extra={"call_id": call_data.get("id")},
+                logger.info(
+                    f"[DEBUG] Successfully calculated duration from timestamps: {duration_seconds}s",
+                    extra={
+                        "call_id": call_id,
+                        "startedAt": started_at,
+                        "endedAt": ended_at,
+                        "calculated_duration": duration_seconds,
+                    },
                 )
             except Exception as e:
                 logger.warning(
-                    f"Failed to calculate duration from timestamps: {e}",
-                    extra={"call_id": call_data.get("id")},
+                    f"[DEBUG] Failed to calculate duration from timestamps: {e}",
+                    extra={
+                        "call_id": call_id,
+                        "startedAt": started_at,
+                        "endedAt": ended_at,
+                        "error": str(e),
+                    },
                 )
+        else:
+            logger.warning(
+                "[DEBUG] Cannot calculate duration - timestamp fields missing",
+                extra={
+                    "call_id": call_id,
+                    "startedAt_present": started_at is not None,
+                    "endedAt_present": ended_at is not None,
+                },
+            )
 
     if duration_seconds < 10:
         return False, f"duration_too_short ({duration_seconds}s < 10s)"
