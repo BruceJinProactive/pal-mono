@@ -133,7 +133,7 @@ class OrderRequestBase(BaseModel):
         alias="paymentType",
     )
     promise_date_time: str | None = Field(
-        description="Promise date and time in ISO date-time format (only if customer requests scheduled/future order), set to null if not provided",
+        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to null if not provided (only if customer requests scheduled/future order)",
         default=None,
         alias="promiseDateTime",
     )
@@ -225,7 +225,7 @@ class ProcessOrderRequest(BaseModel):
     )
     guid: str = Field(description="Order GUID from validate order response, required")
     promise_date_time: str | None = Field(
-        description="Promise date and time in ISO date-time format (only if customer requests scheduled/future order), set to null if not provided",
+        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to null if not provided (only if customer requests scheduled/future order)",
         default=None,
         alias="promiseDateTime",
     )
