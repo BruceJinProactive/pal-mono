@@ -248,7 +248,7 @@ from . import (
     _users,
     _voice_config,
 )
-from ._auth import authenticate_user, authorize_admin
+from ._auth import authenticate_user, authorize_admin, require_admin
 
 """
 ######################################################
@@ -3038,7 +3038,7 @@ async def search_places(
 @admin_router.patch("/voice_configs/batch", status_code=status.HTTP_200_OK)
 async def batch_update_voice_configs(
     request: BatchUpdateVoiceConfigsRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(require_admin),
     async_session: AsyncSession = Depends(db.get_db_async),
 ) -> BatchUpdateVoiceConfigsResponse:
     """
@@ -3245,7 +3245,7 @@ async def get_reports(
 @admin_router.put("/affiliates", status_code=status.HTTP_201_CREATED)
 async def create_affiliate(
     request: CreateAffiliateRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(require_admin),
     async_session: AsyncSession = Depends(db.get_db_async),
 ) -> AffiliateResponse:
     """
@@ -3260,7 +3260,7 @@ async def get_affiliate(
     expand: list[str] | None = Query(
         None, description="Fields to expand (campaign, links, coupon)"
     ),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(require_admin),
     async_session: AsyncSession = Depends(db.get_db_async),
 ) -> AffiliateResponse:
     """
@@ -3275,7 +3275,7 @@ async def list_affiliates(
     page: int = Query(1, gt=0, description="Page number"),
     campaign_id: str | None = Query(None, description="Filter by campaign ID"),
     expand: list[str] | None = Query(None, description="Fields to expand"),
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(require_admin),
     async_session: AsyncSession = Depends(db.get_db_async),
 ) -> dict:
     """
@@ -3290,7 +3290,7 @@ async def list_affiliates(
 async def update_affiliate(
     affiliate_id: uuid.UUID,
     request: UpdateAffiliateRequest,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(require_admin),
     async_session: AsyncSession = Depends(db.get_db_async),
 ) -> AffiliateResponse:
     """
@@ -3304,7 +3304,7 @@ async def update_affiliate(
 @admin_router.delete("/affiliates/{affiliate_id}")
 async def delete_affiliate(
     affiliate_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
+    context: UserContext = Depends(require_admin),
     async_session: AsyncSession = Depends(db.get_db_async),
 ) -> dict:
     """

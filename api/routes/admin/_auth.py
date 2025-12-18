@@ -288,6 +288,16 @@ def authorize_admin(context: UserContext):
         )
 
 
+def require_admin(request: Request) -> UserContext:
+    """
+    Dependency that authenticates user AND requires admin role.
+    Use this instead of authenticate_user for admin-only endpoints.
+    """
+    context = authenticate_user(request)
+    authorize_admin(context)
+    return context
+
+
 def get_user_info(context: UserContext) -> User:
     return User(
         id=context.username,

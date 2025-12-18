@@ -19,7 +19,6 @@ from services.auth_service import check_permission
 from services.auth_types import UserRole
 from services.voice_service import VoiceService
 
-from ._auth import authorize_admin
 from ._utils import UserContext, not_found_error
 
 logger = logging.getLogger(__name__)
@@ -187,8 +186,6 @@ async def batch_update_voice_configs(
     """
     Update voice configs for multiple projects in batch.
     """
-    authorize_admin(context)
-
     # Verify account exists
     account = await account_service.get_account_async(
         async_session, request.account_name

@@ -6,7 +6,6 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.admin import UserContext
-from api.routes.admin._auth import authorize_admin
 from api.schemas.admin.affiliate import (
     AffiliateResponse,
     CreateAffiliateRequest,
@@ -44,7 +43,6 @@ async def create_affiliate(
     Returns:
         AffiliateResponse: Created affiliate data
     """
-    authorize_admin(context)
     service = _get_rewardful_service()
 
     try:
@@ -96,7 +94,6 @@ async def get_affiliate(
     Raises:
         HTTPException: If affiliate not found
     """
-    authorize_admin(context)
     service = _get_rewardful_service()
 
     try:
@@ -143,7 +140,6 @@ async def list_affiliates(
     Returns:
         dict: Paginated affiliate list from Rewardful
     """
-    authorize_admin(context)
     service = _get_rewardful_service()
 
     try:
@@ -180,7 +176,6 @@ async def update_affiliate(
     Raises:
         HTTPException: If affiliate not found
     """
-    authorize_admin(context)
     service = _get_rewardful_service()
 
     try:
@@ -233,7 +228,6 @@ async def delete_affiliate(
     Raises:
         HTTPException: If affiliate not found
     """
-    authorize_admin(context)
     service = _get_rewardful_service()
 
     try:
