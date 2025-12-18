@@ -317,9 +317,10 @@ class AdoraV2Tool(Toolkit):
                 "Failed to extract order information. Please provide all order details."
             )
 
-        # Convert to ValidateOrderRequest and add delivery address
-        order_request = ValidateOrderRequest(**order_request_base.model_dump())
-        order_request.store_id = self.store_id
+        # Convert to ValidateOrderRequest with store_id
+        order_request = ValidateOrderRequest(
+            storeId=self.store_id, **order_request_base.model_dump()
+        )
 
         # Set email to default if empty or invalid
         email = order_request.customer.email

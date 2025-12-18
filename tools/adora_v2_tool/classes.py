@@ -92,7 +92,7 @@ class ClientGroup(BaseModel):
     )
     price: float = Field(description="Item price", default=0.0)
     modifiers: list[ClientModifier] = Field(
-        description="List of modifiers for this item, required",
+        description="List of modifiers for this item. Only populate if the customer explicitly requested modifications to the item. Leave as empty list if no modifications were specified.",
         default_factory=list,
     )
 
@@ -106,7 +106,6 @@ class OrderRequestBase(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    store_id: str = Field(description="Store ID, non-empty, required", alias="storeId")
     order_type: OrderType = Field(
         description=f"Type of order. Options: {', '.join([e.value for e in OrderType])}",
         alias="OrderType",
@@ -137,6 +136,7 @@ class OrderRequestBase(BaseModel):
 class ValidateOrderRequest(OrderRequestBase):
     """Complete order request with delivery address (used for API calls)"""
 
+    store_id: str = Field(description="Store ID, non-empty, required", alias="storeId")
     delivery_address: DeliveryAddress | None = Field(
         description="Delivery address (required for delivery orders), optional",
         default=None,
