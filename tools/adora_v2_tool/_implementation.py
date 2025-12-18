@@ -32,7 +32,7 @@ from tools.adora_v2_tool.classes import (
 from tools.utils.ordering._llm import async_llm_call
 from tools.utils.ordering._query_engine import create_query_engine
 from tools.utils.ordering._utils import get_relevant_docs, is_valid_email
-from tools.utils.ordering.classes import SubQueries
+from tools.utils.ordering.classes import OrderConstructionModel, SubQueries
 from utils.log import logger
 
 
@@ -300,22 +300,28 @@ class AdoraV2Tool(Toolkit):
                 BackdoorToolPrompt.USER_PROMPT, context_template
             )
 
-        # LLM call without delivery address
+        # LLM call without delivery address - use Claude for better structured output
         order_request_base = await async_llm_call(
             system_prompt=system_prompt,
             prompt=context_template.format(context=context, chat_history=chat_history),
             response_format=OrderRequestBase,
             name=self.fulfill_order.__name__,
-            openai=False,
+            order_construction_model=OrderConstructionModel.CLAUDE,
         )
 
+        # Validate LLM response
         if not isinstance(order_request_base, OrderRequestBase):
-            logger.error(
-                f"[AdoraV2Tool.fulfill_order] Failed to extract order information: {order_request_base}"
-            )
-            return (
-                "Failed to extract order information. Please provide all order details."
-            )
+            if isinstance(order_request_base, dict):
+                try:
+                    order_request_base = OrderRequestBase(**order_request_base)
+                except Exception as e:
+                    logger.error(f"[AdoraV2Tool.fulfill_order] Parse failed: {e}")
+                    return "Failed to extract order information. Please provide all order details."
+            else:
+                logger.error(
+                    f"[AdoraV2Tool.fulfill_order] Invalid response type: {type(order_request_base)}"
+                )
+                return "Failed to extract order information. Please provide all order details."
 
         # Convert to ValidateOrderRequest with store_id
         order_request = ValidateOrderRequest(

@@ -72,7 +72,8 @@ class ClientModifier(BaseModel):
     )
     price: float = Field(description="Modifier price", default=0.0)
     weight_id: int = Field(
-        description="Weight ID for the modifier, required",
+        description="Weight ID for the modifier, set to 0 if not provided",
+        default=0,
         alias="weightId",
     )
 
@@ -115,11 +116,8 @@ class OrderRequestBase(BaseModel):
         default=PaymentType.PAYMENT_LINK,
         alias="paymentType",
     )
-    guid: str | None = Field(
-        description="Order GUID (UUID format), optional", default=None
-    )
     promise_date_time: str | None = Field(
-        description="Promise date and time in ISO date-time format, optional",
+        description="Promise date and time in ISO date-time format (only if customer requests scheduled/future order)",
         default=None,
         alias="promiseDateTime",
     )
