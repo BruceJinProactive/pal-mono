@@ -909,7 +909,29 @@ def _is_call_meaningful(call_data: dict) -> tuple[bool, str]:
         tuple[bool, str]: (is_meaningful, reason)
     """
     # Check duration (must be >= 10 seconds)
+    # VAPI may provide duration in different formats, try multiple fields
     duration_seconds = call_data.get("durationSeconds", 0)
+
+    # If durationSeconds is 0, try to calculate from timestamps
+    if duration_seconds == 0:
+        started_at = call_data.get("startedAt")
+        ended_at = call_data.get("endedAt")
+
+        if started_at and ended_at:
+            try:
+                start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+                duration_seconds = int((end - start).total_seconds())
+                logger.debug(
+                    f"Calculated duration from timestamps: {duration_seconds}s",
+                    extra={"call_id": call_data.get("id")},
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to calculate duration from timestamps: {e}",
+                    extra={"call_id": call_data.get("id")},
+                )
+
     if duration_seconds < 10:
         return False, f"duration_too_short ({duration_seconds}s < 10s)"
 
