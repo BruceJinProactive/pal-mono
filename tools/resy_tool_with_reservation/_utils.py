@@ -161,3 +161,33 @@ def normalize_reservation_datetime(date: str, time: str) -> str:
     raw = f"{date}T{time}"
     dt = datetime.datetime.fromisoformat(raw)
     return dt.replace(second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M")
+
+
+def extract_inventory_availability(
+    response: Dict[str, Any], *, party_size: int, day: str
+) -> List[str]:
+    """Extract available times from the inventory API response.
+
+    The inventory API returns availability grouped by date, service, and party size.
+    Structure: slots -> <date> -> <service> -> recommendations -> <party_size> -> <config_id> -> [times]
+
+    Returns a sorted, deduplicated list of datetime strings like "2025-12-21 07:00:00".
+    """
+    slots_by_date = response.get("slots") or {}
+    day_data = slots_by_date.get(day) or {}
+
+    available_times: set[str] = set()
+    party_size_key = str(party_size)
+
+    for service_data in day_data.values():
+        if not isinstance(service_data, dict):
+            continue
+
+        recommendations = service_data.get("recommendations") or {}
+        party_recommendations = recommendations.get(party_size_key) or {}
+
+        for times_list in party_recommendations.values():
+            if isinstance(times_list, list):
+                available_times.update(times_list)
+
+    return sorted(available_times)

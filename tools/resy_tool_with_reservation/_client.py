@@ -13,6 +13,7 @@ from tools.resy_tool_with_reservation._apikey import get_resy_api_key
 from utils.log import logger
 
 RESY_FIND_API_URL = "https://api.resy.com/4/find"
+RESY_INVENTORY_API_URL = "https://inventory.resy.com/4/availability"
 AUTH_REFRESH_URL = "https://auth.resy.com/1/auth/refresh"
 AUTH_VENUE_URL = "https://auth.resy.com/1/auth/venue"
 AUTH_LOGIN_URL = "https://auth.resy.com/1/auth"
@@ -84,6 +85,25 @@ def find_resy_availability(
         body = response.read().decode("utf-8")
 
     return json.loads(body or "{}")
+
+
+def fetch_inventory_availability(
+    *,
+    api_key: str,
+    auth_token: str,
+    day: str,
+    num_days: int = 1,
+    timeout: int = 30,
+) -> Dict[str, Any]:
+    """Call the Resy employee inventory API to fetch availability.
+
+    This uses the venue-scoped auth token (same as make/delete reservation)
+    rather than the public API key.
+    """
+    url = f"{RESY_INVENTORY_API_URL}?day={day}&num_days={num_days}"
+    headers = _build_control_headers(api_key=api_key, auth_token=auth_token)
+
+    return _request_json(url, headers=headers, data=None, timeout=timeout)
 
 
 def refresh_universal_token(

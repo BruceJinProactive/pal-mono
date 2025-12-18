@@ -22,6 +22,7 @@ from tools.resy_tool_with_reservation._client import (
     create_reservation,
     create_reservation_lock,
     extract_reservation_rows,
+    fetch_inventory_availability,
     fetch_reservations_report,
     find_resy_availability,
     get_reservation_refund_token,
@@ -30,8 +31,8 @@ from tools.resy_tool_with_reservation._client import (
     search_guest_by_phone,
 )
 from tools.resy_tool_with_reservation._utils import (
+    extract_inventory_availability,
     extract_resy_availability,
-    format_resy_availability,
     normalize_reservation_datetime,
 )
 from utils.log import logger
@@ -143,8 +144,36 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         )  # 2 people minimum for checking
 
         try:
-            with LLMObs.task(name="search_resy_availability"):
-                response = self._search_resy(day=date, party_size=party_size)
+            api_key = get_resy_api_key(city=self.city, venue_name=self.venue_name)
+        except Exception:  # noqa: BLE001
+            logger.error(
+                "[Resy Tool] Failed to retrieve API key for availability check",
+                exc_info=True,
+            )
+            return f"Error checking availability for venue {self.venue_id}: Failed to retrieve API key"
+
+        try:
+            operational_token = self._get_operational_token(api_key=api_key)
+        except ResyAPIError as exc:
+            logger.error(
+                "[Resy Tool] Resy API error during authentication",
+                extra={"status": exc.status, "reason": exc.reason},
+            )
+            return f"Error checking availability for venue {self.venue_id}: Authentication failed"
+        except Exception:  # noqa: BLE001
+            logger.error(
+                "[Resy Tool] Failed to acquire operational token",
+                exc_info=True,
+            )
+            return f"Error checking availability for venue {self.venue_id}: Authentication failed"
+
+        try:
+            with LLMObs.task(name="search_resy_inventory_availability"):
+                response = fetch_inventory_availability(
+                    api_key=api_key,
+                    auth_token=operational_token,
+                    day=date,
+                )
         except urllib.error.HTTPError as exc:
             body = (
                 exc.read().decode("utf-8", errors="ignore")
@@ -166,24 +195,81 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             )
             return f"Error searching availability for venue {self.venue_id}: {exc}"
 
-        slots = extract_resy_availability(response, party_size=party_size)
-        if not slots:
+        available_times = extract_inventory_availability(
+            response, party_size=party_size, day=date
+        )
+        if not available_times:
             logger.debug(
                 "[Resy Tool] No availability",
                 extra={"venue_id": self.venue_id, "party_size": party_size},
             )
             return f"No availability found for venue {self.venue_id} (Party of {party_size})."
 
-        try:
-            requested_dt = datetime.fromisoformat(f"{date}T{time}")
-        except ValueError:
-            requested_dt = None
-
-        formatted = format_resy_availability(
-            slots, party_size=party_size, requested_time=requested_dt
+        formatted = self._format_inventory_availability(
+            available_times,
+            party_size=party_size,
+            requested_date=date,
+            requested_time=time,
         )
         logger.debug("[Resy Tool] Formatted availability: %s", formatted)
         return formatted
+
+    def _format_inventory_availability(
+        self,
+        available_times: list[str],
+        *,
+        party_size: int,
+        requested_date: str,
+        requested_time: str,
+    ) -> str:
+        """Format inventory availability times for the agent reply."""
+
+        if not available_times:
+            return "No availability found."
+
+        header = f"Availability for {self.venue_name} (Party of {party_size}):"
+
+        requested_datetime_str = f"{requested_date} {requested_time}:00"
+
+        if requested_datetime_str in available_times:
+            try:
+                dt = datetime.fromisoformat(requested_datetime_str.replace(" ", "T"))
+                pretty = dt.strftime("%A, %B %d, %Y at %I:%M %p")
+                return f"{header}\n* {pretty} (requested time is available)"
+            except ValueError:
+                return f"{header}\n* {requested_datetime_str} (requested time is available)"
+
+        parsed_times: list[datetime] = []
+        for time_str in available_times:
+            try:
+                dt = datetime.fromisoformat(time_str.replace(" ", "T"))
+                parsed_times.append(dt)
+            except ValueError:
+                continue
+
+        if not parsed_times:
+            return "No availability found."
+
+        try:
+            requested_dt = datetime.fromisoformat(f"{requested_date}T{requested_time}")
+            parsed_times.sort(key=lambda dt: (abs(dt - requested_dt), dt))
+        except ValueError:
+            parsed_times.sort()
+
+        selected = sorted(parsed_times[:5])
+        lines = [header]
+        lines.extend(f"* {dt.strftime('%A, %B %d, %Y at %I:%M %p')}" for dt in selected)
+
+        try:
+            requested_dt = datetime.fromisoformat(f"{requested_date}T{requested_time}")
+            requested_str = requested_dt.strftime("%A, %B %d, %Y at %I:%M %p")
+            lines.append(
+                f"No exact availability at {requested_str}. Please mention these closest alternatives."
+            )
+        except ValueError:
+            pass
+
+        return "\n".join(lines)
 
     @tool
     @params_validate()
