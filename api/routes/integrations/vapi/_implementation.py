@@ -894,44 +894,14 @@ def handle_transcript_update(message_data):
         return {"error": str(e)}
 
 
-def _is_call_meaningful(call_data: dict) -> tuple[bool, str]:
-    """
-    Determine if a call is meaningful for billing purposes.
-
-    A call is considered meaningful if:
-    1. User said something (has user messages in transcript)
-
-    Args:
-        call_data: Call data from VAPI end-of-call-report
-
-    Returns:
-        tuple[bool, str]: (is_meaningful, reason)
-    """
-    # Check if user spoke (look for user messages in artifact)
-    artifact = call_data.get("artifact", {})
-    messages = artifact.get("messages", [])
-
-    # Check if there are any user messages
-    user_spoke = False
-    for msg in messages:
-        if msg.get("role") == "user":
-            user_spoke = True
-            break
-
-    if not user_spoke:
-        return False, "no_user_speech"
-
-    return True, "meaningful"
-
-
-async def _track_call_usage_if_meaningful(
+async def _track_call_usage(
     call_data: dict,
     message_data: dict,
     project: db.Project,
     call_id: str,
 ) -> None:
     """
-    Track call usage only if the call is meaningful (user spoke).
+    Track call usage for billing.
 
     Args:
         call_data: Call data from VAPI end-of-call-report
@@ -940,22 +910,7 @@ async def _track_call_usage_if_meaningful(
         call_id: Call ID
     """
     try:
-        # Check if call is meaningful
-        is_meaningful, reason = _is_call_meaningful(call_data)
-
-        if not is_meaningful:
-            logger.info(
-                f"Skipping usage tracking for non-meaningful call: {reason}",
-                extra={
-                    "call_id": call_id,
-                    "project_id": str(project.id),
-                    "reason": reason,
-                    "duration_seconds": call_data.get("durationSeconds", 0),
-                },
-            )
-            return
-
-        # Track usage for meaningful call
+        # Track usage for all calls
         stripe_customer_id = project.account.stripe_customer_id
 
         if not stripe_customer_id:
@@ -978,11 +933,10 @@ async def _track_call_usage_if_meaningful(
         )
 
         logger.info(
-            "Successfully tracked meaningful call usage",
+            "Successfully tracked call usage",
             extra={
                 "call_id": call_id,
                 "project_id": str(project.id),
-                "duration_seconds": call_data.get("durationSeconds", 0),
             },
         )
 
@@ -1129,7 +1083,7 @@ async def handle_session_closure(message_data, session: AsyncSession):
             await session.commit()
 
         # Refresh project after commit to avoid MissingGreenlet error
-        # when accessing project.account in _track_call_usage_if_meaningful
+        # when accessing project.account in _track_call_usage
         await session.refresh(project, attribute_names=["account"])
 
         # Measure and record voice-to-voice latency metrics
@@ -1189,8 +1143,8 @@ async def handle_session_closure(message_data, session: AsyncSession):
                 },
             )
 
-        # Track usage for meaningful calls only
-        await _track_call_usage_if_meaningful(
+        # Track usage for all calls
+        await _track_call_usage(
             call_data=call_data,
             message_data=message_data,
             project=project,
