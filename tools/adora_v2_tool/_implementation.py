@@ -300,13 +300,13 @@ class AdoraV2Tool(Toolkit):
                 BackdoorToolPrompt.USER_PROMPT, context_template
             )
 
-        # LLM call without delivery address - use Claude for better structured output
+        # LLM call without delivery address
         order_request_base = await async_llm_call(
             system_prompt=system_prompt,
             prompt=context_template.format(context=context, chat_history=chat_history),
             response_format=OrderRequestBase,
             name=self.fulfill_order.__name__,
-            order_construction_model=OrderConstructionModel.CLAUDE,
+            order_construction_model=OrderConstructionModel.LLAMA,
         )
 
         # Validate LLM response
