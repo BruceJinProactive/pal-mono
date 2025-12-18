@@ -1436,21 +1436,23 @@ def get_account_id_by_name(account_name: str, session: Session) -> uuid.UUID | N
 
 def extract_account_from_channel(channel_display_name: str) -> str | None:
     """
-    Extract account name from client channel names.
+    Extract account name from client or palona channel names.
 
-    For channels in format "#client-account-name", extracts "account-name".
+    For channels in format "#client-account-name" or "#palona-account-name",
+    extracts "account-name".
 
     Args:
-        channel_display_name: Channel name (e.g., "#client-acme-restaurant")
+        channel_display_name: Channel name (e.g., "#client-acme-restaurant" or "#palona-acme")
 
     Returns:
-        str | None: Account name if channel is a client channel, None otherwise
+        str | None: Account name if channel is a client/palona channel, None otherwise
     """
     normalized = channel_display_name.strip().lstrip("#").lower()
-    if normalized.startswith("client-"):
-        # Extract everything after "client-"
-        account_name = normalized[7:]  # len("client-") = 7
-        return account_name if account_name else None
+    for prefix in ["client-", "palona-"]:
+        if normalized.startswith(prefix):
+            # Extract everything after the prefix
+            account_name = normalized[len(prefix) :]
+            return account_name if account_name else None
     return None
 
 
@@ -1463,14 +1465,14 @@ def determine_account_filter(
     """
     Determine which account(s) to show based on channel and optional account name.
 
-    For client channels (starting with "client-"):
+    For client/palona channels (starting with "client-" or "palona-"):
     - Extracts account name from channel (e.g., #client-acme-restaurant -> acme-restaurant)
     - If user provides account name via "for", validates first 3 characters match
     - If no account name provided, auto-uses channel's account
 
     Priority:
     1. If in internal channel -> show all accounts (return None)
-    2. If channel starts with "client-" -> extract account from channel name
+    2. If channel starts with "client-" or "palona-" -> extract account from channel name
        a. If account_name provided -> verify first 3 chars match channel account
        b. If no account_name -> auto-use channel's account
     3. Otherwise -> show all accounts (return None)
