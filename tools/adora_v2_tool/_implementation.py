@@ -32,7 +32,7 @@ from tools.adora_v2_tool.classes import (
 from tools.utils.ordering._llm import async_llm_call
 from tools.utils.ordering._query_engine import create_query_engine
 from tools.utils.ordering._utils import get_relevant_docs, is_valid_email
-from tools.utils.ordering.classes import OrderConstructionModel, SubQueries
+from tools.utils.ordering.classes import SubQueries
 from utils.log import logger
 
 
@@ -306,21 +306,26 @@ class AdoraV2Tool(Toolkit):
             prompt=context_template.format(context=context, chat_history=chat_history),
             response_format=OrderRequestBase,
             name=self.fulfill_order.__name__,
-            order_construction_model=OrderConstructionModel.LLAMA,
+            openai=True,
         )
 
-        # Validate LLM response
+        # Validate and parse LLM response
         if not isinstance(order_request_base, OrderRequestBase):
-            if isinstance(order_request_base, dict):
-                try:
+            try:
+                import json
+
+                if isinstance(order_request_base, str):
+                    order_request_base = OrderRequestBase(
+                        **json.loads(order_request_base)
+                    )
+                elif isinstance(order_request_base, dict):
                     order_request_base = OrderRequestBase(**order_request_base)
-                except Exception as e:
-                    logger.error(f"[AdoraV2Tool.fulfill_order] Parse failed: {e}")
-                    return "Failed to extract order information. Please provide all order details."
-            else:
-                logger.error(
-                    f"[AdoraV2Tool.fulfill_order] Invalid response type: {type(order_request_base)}"
-                )
+                else:
+                    raise TypeError(
+                        f"[AdoraV2Tool.fulfill_order] Unexpected type: {type(order_request_base)}\nValue: {order_request_base}"
+                    )
+            except Exception as e:
+                logger.error(f"[AdoraV2Tool.fulfill_order] Parse failed: {e}")
                 return "Failed to extract order information. Please provide all order details."
 
         # Convert to ValidateOrderRequest with store_id
