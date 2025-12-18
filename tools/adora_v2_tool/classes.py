@@ -101,7 +101,9 @@ class ClientItem(BaseModel):
     group: list[ClientGroup] = Field(description="List of item groups, required")
 
 
-class ValidateOrderRequest(BaseModel):
+class OrderRequestBase(BaseModel):
+    """Base order request without delivery address (used for LLM extraction)"""
+
     model_config = {"populate_by_name": True}
 
     store_id: str = Field(description="Store ID, non-empty, required", alias="storeId")
@@ -123,17 +125,22 @@ class ValidateOrderRequest(BaseModel):
         alias="promiseDateTime",
     )
     customer: ClientCustomerInfo = Field(description="Customer information, required")
-    delivery_address: DeliveryAddress | None = Field(
-        description="Delivery address (required for delivery orders), optional",
-        default=None,
-        alias="deliveryAddress",
-    )
     items: list[ClientItem] = Field(description="List of order items, required")
     order_comment: str = Field(
         description="Order comment, optional, max 500 characters",
         default="(via PalonaAI)",
         max_length=500,
         alias="orderComment",
+    )
+
+
+class ValidateOrderRequest(OrderRequestBase):
+    """Complete order request with delivery address (used for API calls)"""
+
+    delivery_address: DeliveryAddress | None = Field(
+        description="Delivery address (required for delivery orders), optional",
+        default=None,
+        alias="deliveryAddress",
     )
 
 

@@ -24,6 +24,7 @@ from tools.adora_v2_tool._utils import (
 from tools.adora_v2_tool.classes import (
     BackdoorToolPrompt,
     DeliveryAddress,
+    OrderRequestBase,
     OrderType,
     PaymentType,
     ValidateOrderRequest,
@@ -275,7 +276,7 @@ class AdoraV2Tool(Toolkit):
 
         # Build default prompts
         system_prompt = build_extraction_prompt(
-            ValidateOrderRequest, self.fulfill_order.__name__
+            OrderRequestBase, self.fulfill_order.__name__
         )
 
         # Apply backdoor overrides if present
@@ -299,22 +300,25 @@ class AdoraV2Tool(Toolkit):
                 BackdoorToolPrompt.USER_PROMPT, context_template
             )
 
-        order_request = await async_llm_call(
+        # LLM call without delivery address
+        order_request_base = await async_llm_call(
             system_prompt=system_prompt,
             prompt=context_template.format(context=context, chat_history=chat_history),
-            response_format=ValidateOrderRequest,
+            response_format=OrderRequestBase,
             name=self.fulfill_order.__name__,
             openai=False,
         )
 
-        if not isinstance(order_request, ValidateOrderRequest):
+        if not isinstance(order_request_base, OrderRequestBase):
             logger.error(
-                f"[AdoraV2Tool.fulfill_order] Failed to extract order information: {order_request}"
+                f"[AdoraV2Tool.fulfill_order] Failed to extract order information: {order_request_base}"
             )
             return (
                 "Failed to extract order information. Please provide all order details."
             )
 
+        # Convert to ValidateOrderRequest and add delivery address
+        order_request = ValidateOrderRequest(**order_request_base.model_dump())
         order_request.store_id = self.store_id
 
         # Set email to default if empty or invalid
@@ -334,6 +338,9 @@ class AdoraV2Tool(Toolkit):
                 )
                 order_request.delivery_address = self._cached_delivery_address
                 order_request.payment_type = PaymentType.PAYMENT_LINK
+        else:
+            # Non-delivery orders: ensure delivery_address is None
+            order_request.delivery_address = None
 
         # Step 1: Validate the order
         validate_result = await api_validate_order(bearer_token, order_request)

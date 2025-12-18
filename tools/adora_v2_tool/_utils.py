@@ -74,45 +74,88 @@ def extract_street_parts(full_address: str) -> Tuple[str, str]:
     return (parts[0], parts[1]) if len(parts) == 2 else ("", full_address)
 
 
-def build_extraction_prompt(
-    model_class: Type[BaseModel], operation_name: str | None = None
-) -> str:
+def build_extraction_prompt(model_class: Type[BaseModel], operation_name: str) -> str:
     """
     Build a system prompt for extracting structured data from conversation.
+    Leverages model schema metadata to clearly specify output requirements.
 
     Args:
         model_class: The Pydantic model class to extract into
-        operation_name: Optional name of the operation/function (e.g., "validate_order", "check_address")
+        operation_name: Name of the operation/function (e.g., "fulfill_order", "check_address")
 
     Returns:
-        str: System prompt with schema details
+        str: System prompt with schema details optimized for LLM compliance
     """
-    class_name = model_class.__name__
-    schema = model_class.model_json_schema()
+    # Use by_alias=True to get API field names (camelCase) instead of Python names (snake_case)
+    schema = model_class.model_json_schema(by_alias=True)
+    properties = schema.get("properties", {})
+    required_fields = set(schema.get("required", []))
 
-    # Build operation context
-    if operation_name:
-        operation_context = (
-            f"You are extracting information for the '{operation_name}' operation. "
-            f"Analyze the conversation history carefully and extract all relevant details into the {class_name} format."
+    # Separate required vs optional fields with their descriptions
+    required_list = []
+    optional_list = []
+    enum_fields = []
+
+    for field_name, field_info in properties.items():
+        description = field_info.get("description", "")
+        field_type = field_info.get("type", "")
+
+        # Check for enum values
+        if "enum" in field_info:
+            enum_values = ", ".join(f"'{v}'" for v in field_info["enum"])
+            enum_fields.append(f"  • {field_name}: Must be one of [{enum_values}]")
+
+        # Format field info
+        field_desc = (
+            f"  • {field_name} ({field_type}): {description}"
+            if description
+            else f"  • {field_name} ({field_type})"
         )
-    else:
-        operation_context = f"Extract all relevant information from the conversation history into the {class_name} format."
 
-    instructions = (
-        "Important instructions:\n"
-        "- Populate ALL required fields based on the conversation\n"
-        "- Use the exact field names and types specified in the schema\n"
-        "- Apply default values for optional fields when appropriate\n"
-        "- Ensure data formats match the schema constraints exactly"
+        if field_name in required_fields:
+            required_list.append(field_desc)
+        else:
+            optional_list.append(field_desc)
+
+    # Build structured prompt
+    operation_context = (
+        f"You are extracting structured data for the '{operation_name}' operation.\n"
+        f"Use the information strictly from the conversation history and the provided documents to extract information.\n"
+        f"Output must be a valid JSON object matching the schema below."
     )
 
-    return (
-        f"{operation_context}\n\n"
-        f"Required output format: {class_name}\n\n"
-        f"Schema specification:\n{schema}\n\n"
-        f"{instructions}"
+    field_requirements = "# FIELD REQUIREMENTS:\n"
+    if required_list:
+        field_requirements += "\n## Required Fields (MUST be populated):\n" + "\n".join(
+            required_list
+        )
+    if optional_list:
+        field_requirements += (
+            "\n\n## Optional Fields (populate only if explicitly mentioned):\n"
+            + "\n".join(optional_list)
+        )
+    if enum_fields:
+        field_requirements += (
+            "\n\n## Valid Enum Values (use EXACTLY as shown):\n"
+            + "\n".join(enum_fields)
+        )
+
+    strict_instructions = (
+        "\n# STRICT COMPLIANCE RULES:\n"
+        "1. Use EXACT field names from schema (case-sensitive)\n"
+        "2. Match data types precisely (string, integer, float, boolean, array, object)\n"
+        "3. For enums, use ONLY the exact values listed above\n"
+        "4. Required fields: Extract from conversation or use appropriate defaults\n"
+        "5. Optional fields: Leave as null/None if not explicitly mentioned\n"
+        "6. Do NOT add extra fields not in the schema\n"
+        "7. Do NOT fabricate or assume information not stated\n"
+        "8. Respect field constraints (max_length, ranges, formats)\n"
+        "9. Follow field descriptions as extraction guidance"
     )
+
+    full_schema = f"\n# COMPLETE SCHEMA:\n{schema}"
+
+    return f"{operation_context}\n\n{field_requirements}\n{strict_instructions}\n{full_schema}"
 
 
 def build_context(menu_context: str, timezone: str | None = None) -> tuple[str, str]:
