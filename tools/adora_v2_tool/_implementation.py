@@ -158,33 +158,39 @@ class AdoraV2Tool(Toolkit):
         return f"Store online ordering status: {'Online' if is_online else 'Offline'}"
 
     @tool
-    async def check_address(self, address: str) -> str:
+    async def check_address(self, delivery_address: DeliveryAddress) -> str:
         """
         This tool can be used to validate whether or not an address is within a
         delivery zone. Call this tool whenever you need to confirm if a certain
         delivery address can be delivered to.
 
         Args:
-            address (str): A complete physical street address (e.g., "123 Main St, Springfield, IL 62704").
-                This must not include phone numbers, names, or unrelated info.
+            delivery_address (DeliveryAddress): A structured delivery address containing:
+                - address: Street address (e.g., "123 Main St")
+                - city: City name (e.g., "Springfield")
+                - state: Two-letter US state abbreviation (e.g., "IL")
+                - zip: ZIP code (e.g., "62704")
+                - extended_address: Apt/Suite number (optional)
+                - lat/lng: Coordinates (optional, defaults to 0)
+                - instruction: Delivery instructions (optional)
 
         Returns:
             str: Validation result indicating if the address is within the delivery zone.
         """
         logger.debug(
-            f"[AdoraV2Tool.check_address] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}), address: {address}"
+            f"[AdoraV2Tool.check_address] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}), address: {delivery_address}"
         )
 
-        # Use async_llm_call to extract address into DeliveryAddress format
-        delivery_address = await async_llm_call(
-            system_prompt="Extract the address into the given output format.",
-            prompt=address,
-            response_format=DeliveryAddress,
-            openai=False,
-        )
+        # # Use async_llm_call to extract address into DeliveryAddress format
+        # delivery_address = await async_llm_call(
+        #     system_prompt="Extract the address into the given output format.",
+        #     prompt=address,
+        #     response_format=DeliveryAddress,
+        #     openai=False,
+        # )
 
-        if not isinstance(delivery_address, DeliveryAddress):
-            return "Failed to identify address. Please try again by providing the full address."
+        # if not isinstance(delivery_address, DeliveryAddress):
+        #     return "Failed to identify address. Please try again by providing the full address."
 
         if missing := [
             f
