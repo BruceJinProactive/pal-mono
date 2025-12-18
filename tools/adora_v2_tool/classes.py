@@ -22,6 +22,8 @@ class PaymentType(str, Enum):
 
 
 class DeliveryAddress(BaseModel):
+    model_config = {"populate_by_name": True}
+
     address: str = Field(description="Street address")
     extended_address: str = Field(
         description="Extended address (if applicable)",
@@ -61,6 +63,8 @@ class ClientCustomerInfo(BaseModel):
 
 
 class ClientModifier(BaseModel):
+    model_config = {"populate_by_name": True}
+
     id: int = Field(description="Modifier ID, required")
     is_default: bool = Field(
         description="Whether this is a default modifier, required",
@@ -74,6 +78,8 @@ class ClientModifier(BaseModel):
 
 
 class ClientGroup(BaseModel):
+    model_config = {"populate_by_name": True}
+
     item_id: int = Field(description="Item ID, required", alias="itemId")
     size_id: int = Field(description="Size ID, required", alias="sizeId")
     quantity: int = Field(

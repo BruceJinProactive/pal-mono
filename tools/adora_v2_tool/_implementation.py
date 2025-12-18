@@ -223,6 +223,15 @@ class AdoraV2Tool(Toolkit):
         if isinstance(result, str):
             return result
 
+        # Extract typeId from validation response (required by Adora API)
+        if result:
+            address_data = result[0] if isinstance(result, list) else result
+            if isinstance(address_data, dict) and "typeId" in address_data:
+                delivery_address.type_id = address_data["typeId"]
+                logger.debug(
+                    f"[AdoraV2Tool.check_address] Set typeId={delivery_address.type_id} from validation response"
+                )
+
         # Address is valid - cache it for use in fulfill_order (always refresh cache)
         async with self._address_lock:
             self._cached_delivery_address = delivery_address
@@ -299,6 +308,9 @@ class AdoraV2Tool(Toolkit):
         )
 
         if not isinstance(order_request, ValidateOrderRequest):
+            logger.error(
+                f"[AdoraV2Tool.fulfill_order] Failed to extract order information: {order_request}"
+            )
             return (
                 "Failed to extract order information. Please provide all order details."
             )
@@ -311,6 +323,7 @@ class AdoraV2Tool(Toolkit):
             order_request.customer.email = "orderingagent@palona.ai"
 
         # Handle delivery address for delivery orders
+        logger.debug(f"[AdoraV2Tool.fulfill_order] Order: {order_request}")
         if order_request.order_type == OrderType.DELIVERY:
             async with self._address_lock:
                 if not self._cached_delivery_address:
