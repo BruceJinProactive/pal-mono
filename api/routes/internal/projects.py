@@ -293,22 +293,32 @@ async def update_knowledge(
                 headers={"Content-Type": "application/json"},
             )
 
-        # Get knowledge config from project raw_config
+        # Get index_name and namespace from adora_tool.tool_args
         raw_config = project.raw_config or {}
-        knowledge_config = raw_config.get("knowledge", {})
-        knowledge_settings = knowledge_config.get("settings", {})
+        tools_config = raw_config.get("tools", {})
+        identifiers = tools_config.get("identifiers") or []
 
-        pinecone_index_name = knowledge_settings.get("index_name")
-        pinecone_namespace = knowledge_settings.get("namespace")
+        # Find adora_tool and get its tool_args
+        adora_tool_args = {}
+        for identifier in identifiers:
+            if (
+                isinstance(identifier, dict)
+                and identifier.get("tool_name") == "adora_tool"
+            ):
+                adora_tool_args = identifier.get("tool_args", {})
+                break
+
+        pinecone_index_name = adora_tool_args.get("index_name")
+        pinecone_namespace = adora_tool_args.get("namespace")
 
         if not pinecone_index_name:
             raise ValueError(
-                f"Project {project_id} does not have knowledge.settings.index_name configured"
+                f"Project {project_id} does not have adora_tool.tool_args.index_name configured"
             )
 
         if not pinecone_namespace:
             raise ValueError(
-                f"Project {project_id} does not have knowledge.settings.namespace configured"
+                f"Project {project_id} does not have adora_tool.tool_args.namespace configured"
             )
 
         # Get POS integration for this project
