@@ -200,11 +200,6 @@ async def get_chat_response_async(
             output: Output = await agent.arun(input)  # type: ignore # Temporarily disable specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
             logger.debug(f"Output: {output}")
 
-        # Process output for URL updates
-        await _utils.process_output_for_url_updates(
-            output.content, message.recipient_identifier
-        )
-
         # ================ Step 3: Get response messages ================
         # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
         output_message_metadata = Metadata(
@@ -507,11 +502,6 @@ async def get_chat_response_stream(
                     )
 
                     full_response = "".join(collected_content)
-
-                    # Process output for URL updates
-                    await _utils.process_output_for_url_updates(
-                        full_response, message.recipient_identifier
-                    )
 
                     response_message = Message(
                         author_type=AuthorType.AGENT,

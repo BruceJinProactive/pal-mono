@@ -4,7 +4,6 @@ import os
 import re
 from email import policy
 from typing import Any, List
-from urllib.parse import parse_qs, urlparse
 
 import boto3
 
@@ -18,8 +17,6 @@ from api.schemas.chat.message import (
     TextObject,
     Type,
 )
-from db.session import AsyncSessionLocal
-from db.tables.adora_orders import AdoraOrder
 from db.tables.types import (
     CallEndedReason,
     CallLanguage,
@@ -275,24 +272,6 @@ async def _extract_email_body_from_s3(message_id: str) -> str:
         return message_id
 
 
-async def process_output_for_url_updates(content: str, store_phone_number: str) -> None:
-    """
-    Process output content to detect URLs and update store phone numbers in the database.
-
-    Args:
-        content (str): The output content to search for URLs
-        store_phone_number (str): The store phone number to update in the database
-    """
-    url_match = re.search(
-        r"(https://[^.\s]+\.[^/\s]+/OnlineOrdering/OrderHubPayment/\?storeKey=[^&\s]+&orderKey=[a-f0-9-]+)",
-        content,
-    )
-    if url_match:
-        await _update_store_phone_number_from_url(
-            url_match.group(1), store_phone_number
-        )
-
-
 def get_messages_from_agent_output(
     output: Output,
     input_message: Message,
@@ -420,87 +399,6 @@ def get_messages_from_agent_output(
         response_messages.append(response_message)
 
     return response_messages
-
-
-def _extract_store_and_order_id_from_url(url: str) -> tuple[str, str]:
-    """
-    Extract storeKey and orderKey from Adora payment URLs.
-
-    Args:
-        url (str): The URL to parse
-
-    Returns:
-        tuple[str, str]: A tuple containing (store_key, order_key)
-
-    Raises:
-        ValueError: If URL parsing fails or required keys are missing
-        Exception: If any other error occurs during URL parsing
-    """
-    try:
-        parsed_url = urlparse(url)
-        query_params = parse_qs(parsed_url.query)
-
-        store_key = query_params.get("storeKey", [None])[0]
-        order_key = query_params.get("orderKey", [None])[0]
-
-        if not store_key or not order_key:
-            raise ValueError(
-                f"Missing required URL parameters: storeKey={store_key}, orderKey={order_key}"
-            )
-
-        return store_key, order_key
-    except Exception as e:
-        logger.error(f"Error extracting URL parameters: {e}")
-        raise ValueError(f"Failed to parse URL parameters from {url}: {e}") from e
-
-
-async def _update_store_phone_number_from_url(
-    url: str, new_store_phone_number: str
-) -> bool:
-    """
-    Extract store ID and order ID from URL and update the store phone number in the database.
-
-    Args:
-        url (str): The URL containing storeKey and orderKey parameters
-        new_store_phone_number (str): The new store phone number to update
-
-    Returns:
-        bool: True if update was successful, False otherwise
-    """
-    try:
-        store_key, order_key = _extract_store_and_order_id_from_url(url)
-    except ValueError as e:
-        logger.warning(f"Could not extract store_key or order_key from URL: {e}")
-        return False
-
-    try:
-        async with AsyncSessionLocal() as session:
-            # Query the order using store_id and order_number (which maps to orderKey)
-            from sqlalchemy import select
-
-            query = select(AdoraOrder).where(
-                AdoraOrder.store_id == store_key, AdoraOrder.order_number == order_key
-            )
-            result = await session.execute(query)
-            order = result.scalar_one_or_none()
-
-            if order:
-                # Update the store phone number
-                order.store_phone_number = new_store_phone_number
-                await session.commit()
-                logger.info(
-                    f"Updated store phone number for order with store_id: {store_key}, order_number: {order_key} to: {new_store_phone_number}"
-                )
-                return True
-            else:
-                logger.warning(
-                    f"Order not found with store_id: {store_key}, order_number: {order_key}"
-                )
-                return False
-
-    except Exception as e:
-        logger.error(f"Error updating order: {e}")
-        return False
 
 
 # Phone Call Utilities
