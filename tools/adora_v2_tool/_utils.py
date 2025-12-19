@@ -5,7 +5,7 @@ from typing import Tuple, Type
 from pydantic import BaseModel
 
 from tools.adora_v2_tool._apis import geocode_with_aws_location, geocode_with_google
-from tools.adora_v2_tool.classes import DeliveryAddress
+from tools.adora_v2_tool.classes import BaseDeliveryAddress
 from utils.log import logger
 from utils.secret import async_get_client_secret_with_fallback
 
@@ -35,18 +35,15 @@ async def get_adora_credentials(account_name: str) -> tuple[str | None, str | No
 
 
 async def add_lat_long_to_address(
-    delivery_address: DeliveryAddress,
-) -> Tuple[bool, str]:
+    delivery_address: BaseDeliveryAddress,
+) -> Tuple[bool, str | tuple[float, float]]:
     """Add lat/long to address using AWS Location Service with Google Geocoding fallback.
 
-    Mutates the delivery_address object by setting lat and lng attributes.
-
     Returns:
-        Tuple[bool, str]: (success, error_message). If success is True, error_message is empty.
+        Tuple[bool, str | tuple[float, float]]:
+            - On success: (True, (lat, lng))
+            - On failure: (False, error_message)
     """
-    if delivery_address.address == "N/A" or delivery_address.city == "N/A":
-        return False, "Ask the user to provide at least a street address and city."
-
     # Try AWS first, fallback to Google
     result = await geocode_with_aws_location(
         delivery_address
@@ -61,11 +58,7 @@ async def add_lat_long_to_address(
             "Please provide your full address with zip code and state information.",
         )
 
-    # Assign lat/lng directly to the delivery_address object
-    delivery_address.lat = result[0]
-    delivery_address.lng = result[1]
-
-    return True, ""
+    return True, result
 
 
 def extract_street_parts(full_address: str) -> Tuple[str, str]:

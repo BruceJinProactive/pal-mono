@@ -18,7 +18,6 @@ from tools.adora_v2_tool._utils import (
     add_lat_long_to_address,
     build_context,
     build_extraction_prompt,
-    extract_street_parts,
     get_adora_credentials,
 )
 from tools.adora_v2_tool.classes import (
@@ -156,7 +155,7 @@ class AdoraV2Tool(Toolkit):
     @tool
     async def check_address(
         self, delivery_address: BaseDeliveryAddress
-    ) -> tuple[str, DeliveryAddress | None]:
+    ) -> tuple[str, dict | None]:
         """
         This tool can be used to validate whether or not an address is within a
         delivery zone. Call this tool whenever you need to confirm if a certain
@@ -179,7 +178,8 @@ class AdoraV2Tool(Toolkit):
         if missing := [
             f
             for f, v in [
-                ("street address", delivery_address.address),
+                ("street number", delivery_address.street_number),
+                ("street name", delivery_address.street_name),
                 ("city", delivery_address.city),
                 ("state", delivery_address.state),
                 ("zip code", delivery_address.zip),
@@ -188,52 +188,36 @@ class AdoraV2Tool(Toolkit):
         ]:
             return f"Please provide the following: {', '.join(missing)}.", None
 
-        # Convert BaseDeliveryAddress to full DeliveryAddress with defaults
-        full_delivery_address = DeliveryAddress(**delivery_address.model_dump())
-
         bearer_token, geocoding_result = await asyncio.gather(
             self._get_bearer_token(),
-            add_lat_long_to_address(full_delivery_address),
+            add_lat_long_to_address(delivery_address),
         )
 
         if not bearer_token:
             return "Failed to authenticate.", None
 
-        geocoding_success, geocoding_error = geocoding_result
-        if not geocoding_success:
-            return geocoding_error, None
-
-        street_no, street_name = extract_street_parts(full_delivery_address.address)
+        if not geocoding_result[0]:
+            return geocoding_result[1], None  # type: ignore
 
         result = await api_validate_address(
             bearer_token,
             self.store_id,
-            full_delivery_address,
-            street_no,
-            street_name,
+            delivery_address,
+            geocoding_result[1],  # type: ignore
         )
 
         # If validation failed, return error message
         if isinstance(result, str):
             return result, None
 
-        # Extract typeId from validation response (required by Adora API)
-        if result:
-            address_data = result[0] if isinstance(result, list) else result
-            if isinstance(address_data, dict) and "typeId" in address_data:
-                full_delivery_address.type_id = address_data["typeId"]
-                logger.debug(
-                    f"[AdoraV2Tool.check_address] Set typeId={full_delivery_address.type_id} from validation response"
-                )
-
         return (
             f"Address is valid and within delivery zone. {result}",
-            full_delivery_address,
+            {"lat_lng": geocoding_result[1], "type_id": result.type_id},
         )
 
     @tool
     async def fulfill_order(
-        self, order_items: list[str], address: BaseDeliveryAddress | None
+        self, order_items: list[str], delivery_address: BaseDeliveryAddress | None
     ) -> str:
         """
         Fulfills customer order by validating and processing it, returning confirmation.
@@ -249,7 +233,7 @@ class AdoraV2Tool(Toolkit):
                 - Do not shorten or generalize the dish.
                 - Only include items that the user **explicitly confirmed or finalized** as part of their order.
                 - Output a JSON array of strings with **cleaned item names**.
-            address (BaseDeliveryAddress | None): Delivery address for delivery orders.
+            delivery_address (BaseDeliveryAddress | None): Delivery address for delivery orders.
                 Required fields:
                 - address: Street address (e.g., "123 Main St")
                 - city: City name (e.g., "Springfield")
@@ -268,8 +252,8 @@ class AdoraV2Tool(Toolkit):
             self._get_bearer_token(),
             asyncio.to_thread(self.query_messages_tool.query_messages),
         ]
-        if address:
-            tasks.append(self.check_address(address))  # type: ignore
+        if delivery_address:
+            tasks.append(self.check_address(delivery_address))  # type: ignore
 
         results = await asyncio.gather(*tasks)
         bearer_token, chat_history_result = results[0], results[1]
@@ -277,8 +261,8 @@ class AdoraV2Tool(Toolkit):
         if not bearer_token:
             return "Failed to authenticate with Adora API."
 
-        full_delivery_address = results[2][1] if address else None
-        if address and not full_delivery_address:
+        validate_address_result = results[2][1] if delivery_address else None
+        if delivery_address and not validate_address_result:
             return results[2][0]
 
         chat_history: str = str(chat_history_result)  # type: ignore
@@ -350,9 +334,14 @@ class AdoraV2Tool(Toolkit):
 
         # Handle delivery orders
         if order_request.order_type == OrderType.DELIVERY:
-            if not full_delivery_address:
+            if not delivery_address:
                 return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
-            order_request.delivery_address = full_delivery_address
+            order_request.delivery_address = DeliveryAddress(
+                **delivery_address.model_dump(),
+                lat=validate_address_result["lat_lng"][0],  # type: ignore
+                lng=validate_address_result["lat_lng"][1],  # type: ignore
+                type_id=validate_address_result["type_id"],  # type: ignore
+            )
             order_request.payment_type = PaymentType.PAYMENT_LINK
         else:
             order_request.delivery_address = None

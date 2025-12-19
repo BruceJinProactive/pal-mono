@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class BackdoorToolPrompt(str, Enum):
@@ -10,8 +10,6 @@ class BackdoorToolPrompt(str, Enum):
 
 
 class OrderType(str, Enum):
-    UNDEFINED = "Undefined"
-    DINE_IN = "DineIn"
     TAKE_OUT = "TakeOut"
     DELIVERY = "Delivery"
 
@@ -26,22 +24,38 @@ class BaseDeliveryAddress(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    address: str = Field(description="Street address (required)")
+    street_number: str = Field(description="Street number (required)")
+    street_name: str = Field(description="Street name (required)")
+    extended_address: str = Field(
+        description="Extended address (if applicable), set to empty string if not provided"
+    )
     city: str = Field(description="City name (required)")
     state: str = Field(
         description="Two-letter US state abbreviation (e.g., 'CA', 'NY', 'TX') (required)"
     )
     zip: str = Field(description="ZIP code (required)")
 
+    def __str__(self) -> str:
+        """Convert to geocoding-compatible address string"""
+        return ", ".join(
+            [
+                p
+                for p in [
+                    self.street_number,
+                    self.street_name,
+                    self.city,
+                    self.state,
+                    self.zip,
+                ]
+                if p and p != "N/A"
+            ]
+            + ["USA"]
+        )
+
 
 class DeliveryAddress(BaseDeliveryAddress):
     """Extended delivery address with optional fields that have defaults"""
 
-    extended_address: str = Field(
-        description="Extended address (if applicable), set to empty string if not provided",
-        default="",
-        alias="extendedAddress",
-    )
     lat: float = Field(description="Latitude, set to 0 if not provided", default=0)
     lng: float = Field(description="Longitude, set to 0 if not provided", default=0)
     instruction: str = Field(
@@ -61,8 +75,25 @@ class DeliveryAddress(BaseDeliveryAddress):
         default="",
         alias="extraField2",
     )
-    zone_id: int = Field(
-        description="Zone ID, set to 0 if not provided", default=0, alias="zoneId"
+
+    @computed_field
+    @property
+    def address(self) -> str:
+        """Computed field that combines street_number and street_name"""
+        return f"{self.street_number} {self.street_name}"
+
+
+class ValidateAddressResponse(BaseModel):
+    """Response from address validation API"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    charge: float = Field(description="Delivery charge")
+    minimum_charge: float = Field(description="Minimum charge", alias="minimumCharge")
+    type_id: int = Field(description="Type ID", alias="typeId")
+    description: str | None = Field(description="Description", default=None)
+    delivery_scheduals: str | None = Field(
+        description="Delivery schedules", alias="deliveryScheduals", default=None
     )
 
 

@@ -1,4 +1,3 @@
-import json
 import threading
 from typing import Tuple
 
@@ -7,10 +6,11 @@ import httpx
 from botocore.exceptions import BotoCoreError, ClientError
 
 from tools.adora_v2_tool.classes import (
-    DeliveryAddress,
+    BaseDeliveryAddress,
     PaymentDetails,
     ProcessOrderRequest,
     ProcessOrderResponse,
+    ValidateAddressResponse,
     ValidateOrderRequest,
     ValidateOrderResponse,
 )
@@ -111,23 +111,22 @@ async def api_get_store_info(
 async def api_validate_address(
     bearer_token: str,
     store_id: str,
-    delivery_address: DeliveryAddress,
-    street_no: str,
-    street_name: str,
-) -> list[dict] | dict | str:
+    delivery_address: BaseDeliveryAddress,
+    lat_lng: Tuple[float, float],
+) -> ValidateAddressResponse | str:
     """
     Validate an address with Adora POS.
 
     Returns:
-        Address validation result (list/dict) on success, error message string on failure
+        ValidateAddressResponse on success, error message string on failure
     """
     try:
         payload = {
             "storeId": store_id,
-            "lat": delivery_address.lat,
-            "lng": delivery_address.lng,
-            "streetNo": street_no,
-            "streetName": street_name,
+            "lat": lat_lng[0],
+            "lng": lat_lng[1],
+            "streetNo": delivery_address.street_number,
+            "streetName": delivery_address.street_name,
             "unitApt": delivery_address.extended_address,
             "city": delivery_address.city,
             "state": delivery_address.state,
@@ -141,11 +140,9 @@ async def api_validate_address(
         body = response.get("body", {})
         logger.debug(f"[AdoraV2Tool._apis] api_validate_address response: {response}")
         if response["status"] == 200:
-            if isinstance(body, (list, dict)):
-                return body
-            if isinstance(body, str):
-                return json.loads(body)
+            return ValidateAddressResponse(**body[0])
 
+        logger.error(f"[AdoraV2Tool._apis.validate_address] Error {response}")
         return (
             body.get("message", "Address validation failed")
             if isinstance(body, dict)
@@ -158,24 +155,12 @@ async def api_validate_address(
 
 
 async def geocode_with_google(
-    delivery_address: DeliveryAddress,
+    delivery_address: BaseDeliveryAddress,
 ) -> Tuple[float, float] | None:
     """Async Google Geocoding API call using httpx."""
     try:
         GOOGLE_GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
-        # Build address string
-        address_parts = [
-            p
-            for p in [
-                delivery_address.address,
-                delivery_address.city,
-                delivery_address.state,
-                delivery_address.zip,
-            ]
-            if p and p != "N/A"
-        ] + ["USA"]
-
-        address_string = ", ".join(address_parts)
+        address_string = str(delivery_address)
 
         # Get API key asynchronously
         api_key = await async_get_server_secret_with_fallback("GOOGLE_GEOCODE_API_KEY")
@@ -206,23 +191,11 @@ async def geocode_with_google(
 
 
 async def geocode_with_aws_location(
-    delivery_address: DeliveryAddress,
+    delivery_address: BaseDeliveryAddress,
 ) -> Tuple[float, float] | None:
     """Async AWS geo-places service call using aioboto3."""
     try:
-        # Build address string
-        address_parts = [
-            p
-            for p in [
-                delivery_address.address,
-                delivery_address.city,
-                delivery_address.state,
-                delivery_address.zip,
-            ]
-            if p and p != "N/A"
-        ] + ["USA"]
-
-        address_string = ", ".join(address_parts)
+        address_string = str(delivery_address)
 
         # Make async AWS request
         session = aioboto3.Session()
