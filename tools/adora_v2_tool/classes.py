@@ -27,7 +27,7 @@ class BaseDeliveryAddress(BaseModel):
     street_number: str = Field(description="Street number (required)")
     street_name: str = Field(description="Street name (required)")
     extended_address: str = Field(
-        description="Extended address (if applicable), set to empty string if not provided"
+        description="Extended address (if applicable, ex unit apartment/suite, etc), set to empty string if not provided"
     )
     city: str = Field(description="City name (required)")
     state: str = Field(

@@ -1,3 +1,4 @@
+import json
 import threading
 from typing import Tuple
 
@@ -139,8 +140,16 @@ async def api_validate_address(
 
         body = response.get("body", {})
         logger.debug(f"[AdoraV2Tool._apis] api_validate_address response: {response}")
+
         if response["status"] == 200:
-            return ValidateAddressResponse(**body[0])
+            # Handle stringified JSON response
+            if isinstance(body, str):
+                body = json.loads(body)
+
+            if isinstance(body, list) and body:
+                return ValidateAddressResponse(**body[0])
+            elif isinstance(body, dict):
+                return ValidateAddressResponse(**body)
 
         logger.error(f"[AdoraV2Tool._apis.validate_address] Error {response}")
         return (
