@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, List, Optional
 
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from agent.tool import ToolMetadata
@@ -43,18 +44,18 @@ def _update_customer_converted(
 
         if updated_conversation:
             logger.info(
-                f"[OrderService] Updated customer_converted for conversation {conversation_id} with order {order_id}"
+                f"[TransactionService] Updated customer_converted for conversation {conversation_id} with order {order_id}"
             )
             return True
         else:
             logger.warning(
-                f"[OrderService] Failed to update customer_converted: conversation {conversation_id} not found"
+                f"[TransactionService] Failed to update customer_converted: conversation {conversation_id} not found"
             )
             return False
 
     except Exception as e:
         logger.error(
-            f"[OrderService] Error updating customer_converted for conversation {conversation_id}: {e}",
+            f"[TransactionService] Error updating customer_converted for conversation {conversation_id}: {e}",
             exc_info=True,
         )
         return False
@@ -154,7 +155,7 @@ def save_order(
         order = create_order(db_session, order_data)
 
         logger.info(
-            f"[OrderService] Saved order {order.id} "
+            f"[TransactionService] Saved order {order.id} "
             f"for {vendor} with order_id {order_id}"
         )
 
@@ -170,7 +171,7 @@ def save_order(
 
     except Exception as e:
         logger.error(
-            f"[OrderService] Failed to save order for {vendor}: {e}",
+            f"[TransactionService] Failed to save order for {vendor}: {e}",
             exc_info=True,
         )
         return None
@@ -210,7 +211,7 @@ def update_order_by_order_id(
 
     try:
         if not order_id:
-            logger.error("[OrderService] order_id must be provided")
+            logger.error("[TransactionService] order_id must be provided")
             return False
 
         # Use OrderRepository for centralized update logic
@@ -228,7 +229,7 @@ def update_order_by_order_id(
 
         if updated_order:
             logger.debug(
-                f"[OrderService] Updated order {updated_order.id} for order_id {order_id}"
+                f"[TransactionService] Updated order {updated_order.id} for order_id {order_id}"
             )
 
             # If new status is "paid", update customer_converted in conversation
@@ -243,14 +244,14 @@ def update_order_by_order_id(
         else:
             # Build descriptive error message
             criteria = f"order_id: {order_id}, vendor: {vendor}, store_id: {store_id}"
-            logger.warning(f"[OrderService] No order found with {criteria}")
+            logger.warning(f"[TransactionService] No order found with {criteria}")
             return False
 
     except Exception as e:
         # Always rollback on exceptions to avoid inconsistent state
         db_session.rollback()
         logger.error(
-            f"[OrderService] Error updating order {order_id}: {e}",
+            f"[TransactionService] Error updating order {order_id}: {e}",
             exc_info=True,
         )
         return False
@@ -258,3 +259,123 @@ def update_order_by_order_id(
     finally:
         if session_created_here:
             db_session.close()
+
+
+def update_order_by_phone(
+    store_id: str,
+    vendor: IntegrationProvider,
+    new_status: str,
+    user_phone_number: str,
+    order_date: Any,
+    tracking_link: Optional[str] = None,
+) -> bool:
+    """
+    Update an order by user phone number and order date.
+
+    This method is specifically designed for updating orders when the order_id
+    is not available, using phone number and date for matching instead.
+
+    Args:
+        store_id: The store ID to find
+        vendor: The integration provider (adora, square, toast, etc.)
+        new_status: The new status to set
+        user_phone_number: The user's phone number for matching
+        order_date: The date of the order for matching (can be date or datetime)
+        tracking_link: Optional new tracking link to set
+
+    Returns:
+        bool: True if order was found and updated, False otherwise
+    """
+    db_session = SyncSessionLocal()
+
+    try:
+        # Format phone number if needed (add +1 prefix for US numbers)
+        formatted_phone = user_phone_number
+        if (
+            user_phone_number
+            and user_phone_number.isdigit()
+            and len(user_phone_number) == 10
+        ):
+            # Raw 10-digit US phone number, add +1 prefix
+            formatted_phone = f"+1{user_phone_number}"
+        else:
+            logger.error(
+                f"[TransactionService] Phone number may not be properly formatted: {user_phone_number}"
+            )
+            raise ValueError("phone number is not formatted")
+
+        if order_date is None:
+            raise ValueError("order_date must not be None")
+        dt = datetime.strptime(order_date, "%m/%d/%Y %I:%M:%S %p")
+        order_date = dt.date()
+        start = datetime.combine(order_date, datetime.min.time())
+
+        # Query orders matching the criteria
+        query = (
+            db_session.query(Order)
+            .filter(
+                and_(
+                    Order.store_id == store_id,
+                    Order.status == "pending",
+                    Order.vendor == vendor,
+                    Order.user_phone_number == formatted_phone,
+                    Order.order_time >= start,
+                )
+            )
+            .order_by(Order.created_at.desc())
+        )  # Get most recent first
+
+        order = query.first()
+
+        if not order:
+            logger.warning(
+                f"[TransactionService] No order found with store_id: {store_id}, "
+                f"vendor: {vendor}, phone: {formatted_phone} (raw: {user_phone_number}), date: {start}"
+            )
+            return False
+
+        # Log if there are multiple matching orders
+        total_matches = query.count()
+        if total_matches > 1:
+            logger.warning(
+                f"[TransactionService] Found {total_matches} orders matching criteria, "
+                f"updating the most recent one (id: {order.id})"
+            )
+
+        # Update the order
+        order.status = new_status
+        if tracking_link is not None:
+            order.tracking_link = tracking_link
+
+        order_key = order.id
+        order_id = order.order_id
+        conversation_id = order.conversation_id
+
+        db_session.commit()
+
+        logger.info(
+            f"[TransactionService] Successfully updated order {order_key} "
+            f"(order_id: {order_id}) status to {new_status}"
+        )
+
+        # If new status is "paid", update customer_converted in conversation
+        if new_status and new_status.lower() == "paid":
+            _update_customer_converted(
+                session=db_session,
+                conversation_id=conversation_id,
+                order_id=order_key,
+            )
+
+        return True
+
+    except Exception as e:
+        # Always rollback on exceptions to avoid inconsistent state
+        db_session.rollback()
+        logger.error(
+            f"[TransactionService] Error updating order by phone {user_phone_number}: {e}",
+            exc_info=True,
+        )
+        return False
+
+    finally:
+        db_session.close()

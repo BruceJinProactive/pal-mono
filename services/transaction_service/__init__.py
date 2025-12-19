@@ -12,7 +12,6 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from db.tables.orders import Order
-from db.tables.types import IntegrationProvider
 
 from . import _implementation
 from ._utils import reconstruct_order_items
@@ -115,6 +114,41 @@ def update_order_by_order_id(
     )
 
 
+def update_order_by_phone(
+    store_id,
+    vendor,
+    new_status,
+    user_phone_number,
+    order_date,
+    tracking_link=None,
+):
+    """
+    Update an order by user phone number and order date.
+
+    This method is specifically designed for updating orders when the order_id
+    is not available, using phone number and date for matching instead.
+
+    Args:
+        store_id: The store ID to find
+        vendor: The integration provider (adora, square, toast, etc.)
+        new_status: The new status to set
+        user_phone_number: The user's phone number for matching
+        order_date: The date of the order for matching
+        tracking_link: Optional new tracking link to set
+
+    Returns:
+        bool: True if order was found and updated, False otherwise
+    """
+    return _implementation.update_order_by_phone(
+        store_id=store_id,
+        vendor=vendor,
+        new_status=new_status,
+        user_phone_number=user_phone_number,
+        order_date=order_date,
+        tracking_link=tracking_link,
+    )
+
+
 def get_order_by_id(
     session: Session,
     order_id: uuid.UUID,
@@ -139,6 +173,7 @@ __all__ = [
     # Helper functions for tools
     "save_order",
     "update_order_by_order_id",
+    "update_order_by_phone",
     "reconstruct_order_items",
     # Data schemas
     "OrderData",
