@@ -19,6 +19,7 @@ class ToolMetadata(BaseModel):
     project_id: uuid.UUID
     timezone: str | None = None
     customer_phone: str | None = None
+    store_phone: str | None = None
 
 
 class ToolIdentifier(BaseModel):

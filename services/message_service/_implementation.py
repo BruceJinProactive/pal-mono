@@ -182,6 +182,7 @@ async def get_chat_response_async(
                 conversation_id=request_message.conversation_id,
                 channel=message.channel,
                 sender_identifier=message.sender_identifier,
+                receiver_identifier=message.recipient_identifier,
             )
 
             logger.debug(f"Agent config: {config}")
@@ -363,6 +364,7 @@ async def get_chat_response_stream(
                 conversation_id=request_message.conversation_id,
                 channel=message.channel,
                 sender_identifier=message.sender_identifier,
+                receiver_identifier=message.recipient_identifier,
             )
             config.stream = True
 

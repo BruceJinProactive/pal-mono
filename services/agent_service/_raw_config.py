@@ -39,6 +39,7 @@ class RawConfig:
         channel: Channel,
         integration: IntegrationDetail | None = None,
         sender_identifier: str | None = None,
+        receiver_identifier: str | None = None,
         project_integrations: Sequence[db.ProjectIntegration] | None = None,
         faqs: Sequence[db.FAQ] | None = None,
     ):
@@ -50,6 +51,7 @@ class RawConfig:
         self.channel = channel
         self.integration = integration
         self.sender_identifier = sender_identifier
+        self.receiver_identifier = receiver_identifier
         self.project_integrations = list(project_integrations or [])
         self.faqs = list(faqs or [])
 
@@ -238,6 +240,17 @@ class RawConfig:
             if is_phone_channel:
                 customer_phone = self.sender_identifier
 
+        # Extract store phone from receiver_identifier based on channel type
+        store_phone = None
+        if self.receiver_identifier:
+            is_phone_channel = self.channel and self.channel.value.lower() in [
+                "sms",
+                "voice",
+                "whatsapp",
+            ]
+            if is_phone_channel:
+                store_phone = self.receiver_identifier
+
         metadata = ToolMetadata(
             agent_id=self.agent.id,
             account_id=self.account.id,
@@ -247,6 +260,7 @@ class RawConfig:
             project_id=self.project.id,
             timezone=self.project.timezone,
             customer_phone=customer_phone,
+            store_phone=store_phone,
         )
 
         raw_tools: Dict[str, Any] = self.agent.raw_config.get("tools", {})

@@ -155,6 +155,7 @@ async def construct_agent_spec(
     conversation_id: uuid.UUID,
     channel: Channel,
     sender_identifier: str | None = None,
+    receiver_identifier: str | None = None,
 ) -> Spec:
     """Build a pal_agents.Spec from database configuration.
 
@@ -169,6 +170,7 @@ async def construct_agent_spec(
         conversation_id: The conversation (session) ID.
         channel: Communication channel (sms, voice, web).
         sender_identifier: Phone number or user identifier.
+        receiver_identifier: Receiver identifier for phone channels (optional).
 
     Returns:
         Spec: pal-agents specification with prompt, knowledge, memory, and tools.
@@ -190,6 +192,7 @@ async def construct_agent_spec(
         conversation_id=conversation_id,
         channel=channel,
         sender_identifier=sender_identifier,
+        receiver_identifier=receiver_identifier,
     )
 
     logger.debug("Built AgentConfig, converting to pal-agents Spec")
@@ -206,6 +209,7 @@ async def construct_agent_config(
     conversation_id: uuid.UUID,
     channel: Channel,
     sender_identifier: str | None = None,
+    receiver_identifier: str | None = None,
 ) -> AgentConfig:
     """
     Builds an Agent Config based on the Raw Config.
@@ -218,6 +222,7 @@ async def construct_agent_config(
         conversation_id (uuid.UUID): The conversation (session) id of the user-agent interaction.
         channel (Channel): For which comm channel should this agent config build for, e.g. sms, voice
         sender_identifier (str | None): The sender identifier (phone for voice/sms, user ID for other channels) (optional).
+        receiver_identifier (str | None): The receiver identifier (store phone for voice/sms) (optional).
 
     Raises:
         ValueError: If the agent_id or project_id is invalid.
@@ -267,6 +272,7 @@ async def construct_agent_config(
         channel=channel,
         integration=integration,
         sender_identifier=sender_identifier,
+        receiver_identifier=receiver_identifier,
         project_integrations=project_integrations,
         faqs=faqs,
     )
