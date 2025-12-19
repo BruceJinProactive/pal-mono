@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BackdoorToolPrompt(str, Enum):
@@ -22,7 +22,7 @@ class PaymentType(str, Enum):
 
 
 class DeliveryAddress(BaseModel):
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     address: str = Field(description="Street address")
     extended_address: str = Field(
