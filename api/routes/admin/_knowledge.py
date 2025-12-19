@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -197,6 +198,7 @@ async def update_agent_kb(
     Raises:
         HTTPException: 400 for validation errors, 500 for processing errors
     """
+    start_time = time.time()
     try:
         # Authorize the user's access to the admin resource
         _auth.authorize_admin(context)
@@ -243,6 +245,16 @@ async def update_agent_kb(
         # Provider-aware validation and parameter selection
         provider = pos_integration.provider
         cfg = pos_integration.raw_config or {}
+
+        logger.info(
+            "[update_agent_kb] Processing menu update",
+            extra={
+                "account_name": account_name,
+                "project_id": str(project_id),
+                "provider": provider.value,
+                "store_id": store_id,
+            },
+        )
 
         if provider in (
             IntegrationProvider.square,
@@ -357,12 +369,29 @@ async def update_agent_kb(
             selected_menus,
         )
     except ValueError as e:
+        logger.warning(
+            "[update_agent_kb] Validation error",
+            extra={
+                "account_name": account_name,
+                "project_id": str(project_id),
+                "error": str(e),
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error updating knowledge base:\n{str(e)}",
             headers={"Content-Type": "application/json"},
         )
     except Exception as e:
+        logger.error(
+            "[update_agent_kb] Failed",
+            extra={
+                "account_name": account_name,
+                "project_id": str(project_id),
+                "elapsed_sec": round(time.time() - start_time, 2),
+                "error": str(e),
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating knowledge base:\n{str(e)}",
