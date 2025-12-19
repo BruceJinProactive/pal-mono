@@ -23,6 +23,7 @@ from tools.adora_v2_tool._utils import (
 )
 from tools.adora_v2_tool.classes import (
     BackdoorToolPrompt,
+    BaseDeliveryAddress,
     DeliveryAddress,
     OrderRequestBase,
     OrderType,
@@ -158,21 +159,18 @@ class AdoraV2Tool(Toolkit):
         return f"Store online ordering status: {'Online' if is_online else 'Offline'}"
 
     @tool
-    async def check_address(self, delivery_address: DeliveryAddress) -> str:
+    async def check_address(self, delivery_address: BaseDeliveryAddress) -> str:
         """
         This tool can be used to validate whether or not an address is within a
         delivery zone. Call this tool whenever you need to confirm if a certain
         delivery address can be delivered to.
 
         Args:
-            delivery_address (DeliveryAddress): A structured delivery address containing:
-                - address: Street address (e.g., "123 Main St")
-                - city: City name (e.g., "Springfield")
-                - state: Two-letter US state abbreviation (e.g., "IL")
-                - zip: ZIP code (e.g., "62704")
-                - extended_address: Apt/Suite number (optional)
-                - lat/lng: Coordinates (optional, defaults to 0)
-                - instruction: Delivery instructions (optional)
+            delivery_address (BaseDeliveryAddress): A structured delivery address containing:
+                - address: Street address (e.g., "123 Main St") (required)
+                - city: City name (e.g., "Springfield") (required)
+                - state: Two-letter US state abbreviation (e.g., "IL") (required)
+                - zip: ZIP code (e.g., "62704") (required)
 
         Returns:
             str: Validation result indicating if the address is within the delivery zone.
@@ -180,17 +178,6 @@ class AdoraV2Tool(Toolkit):
         logger.debug(
             f"[AdoraV2Tool.check_address] Thread: {threading.current_thread().name} (ID: {threading.current_thread().ident}), address: {delivery_address}"
         )
-
-        # # Use async_llm_call to extract address into DeliveryAddress format
-        # delivery_address = await async_llm_call(
-        #     system_prompt="Extract the address into the given output format.",
-        #     prompt=address,
-        #     response_format=DeliveryAddress,
-        #     openai=False,
-        # )
-
-        # if not isinstance(delivery_address, DeliveryAddress):
-        #     return "Failed to identify address. Please try again by providing the full address."
 
         if missing := [
             f
@@ -204,9 +191,12 @@ class AdoraV2Tool(Toolkit):
         ]:
             return f"Please provide the following: {', '.join(missing)}."
 
+        # Convert BaseDeliveryAddress to full DeliveryAddress with defaults
+        full_delivery_address = DeliveryAddress(**delivery_address.model_dump())
+
         bearer_token, geocoding_result = await asyncio.gather(
             self._get_bearer_token(),
-            add_lat_long_to_address(delivery_address),
+            add_lat_long_to_address(full_delivery_address),
         )
 
         if not bearer_token:
@@ -216,12 +206,12 @@ class AdoraV2Tool(Toolkit):
         if not geocoding_success:
             return geocoding_error
 
-        street_no, street_name = extract_street_parts(delivery_address.address)
+        street_no, street_name = extract_street_parts(full_delivery_address.address)
 
         result = await api_validate_address(
             bearer_token,
             self.store_id,
-            delivery_address,
+            full_delivery_address,
             street_no,
             street_name,
         )
@@ -234,16 +224,16 @@ class AdoraV2Tool(Toolkit):
         if result:
             address_data = result[0] if isinstance(result, list) else result
             if isinstance(address_data, dict) and "typeId" in address_data:
-                delivery_address.type_id = address_data["typeId"]
+                full_delivery_address.type_id = address_data["typeId"]
                 logger.debug(
-                    f"[AdoraV2Tool.check_address] Set typeId={delivery_address.type_id} from validation response"
+                    f"[AdoraV2Tool.check_address] Set typeId={full_delivery_address.type_id} from validation response"
                 )
 
         # Address is valid - cache it for use in fulfill_order (always refresh cache)
         async with self._address_lock:
-            self._cached_delivery_address = delivery_address
+            self._cached_delivery_address = full_delivery_address
             logger.debug(
-                f"[AdoraV2Tool.check_address] Cached validated delivery address: {delivery_address}"
+                f"[AdoraV2Tool.check_address] Cached validated delivery address: {full_delivery_address}"
             )
 
         return f"Address is valid and within delivery zone. {result}"

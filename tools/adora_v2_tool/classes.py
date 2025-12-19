@@ -21,20 +21,27 @@ class PaymentType(str, Enum):
     PAYMENT_LINK = "PaymentLink"
 
 
-class DeliveryAddress(BaseModel):
+class BaseDeliveryAddress(BaseModel):
+    """Base delivery address with core required fields for Azure OpenAI strict mode"""
+
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    address: str = Field(description="Street address")
+    address: str = Field(description="Street address (required)")
+    city: str = Field(description="City name (required)")
+    state: str = Field(
+        description="Two-letter US state abbreviation (e.g., 'CA', 'NY', 'TX') (required)"
+    )
+    zip: str = Field(description="ZIP code (required)")
+
+
+class DeliveryAddress(BaseDeliveryAddress):
+    """Extended delivery address with optional fields that have defaults"""
+
     extended_address: str = Field(
         description="Extended address (if applicable), set to empty string if not provided",
         default="",
         alias="extendedAddress",
     )
-    city: str = Field(description="City name")
-    state: str = Field(
-        description="Two-letter US state abbreviation (e.g., 'CA', 'NY', 'TX')"
-    )
-    zip: str = Field(description="ZIP code")
     lat: float = Field(description="Latitude, set to 0 if not provided", default=0)
     lng: float = Field(description="Longitude, set to 0 if not provided", default=0)
     instruction: str = Field(
