@@ -35,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write  # Required for OIDC AWS authentication
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -111,6 +112,107 @@ jobs:
         run: |
           echo "Created release tag: ${{ steps.set_release_tag.outputs.RELEASE_TAG }}"
 
+      - name: Set AWS Role ARN
+        id: set_aws_role
+        run: |
+          case "${{ steps.set_vars.outputs.STAGE }}" in
+            lat)
+              echo "role_arn=${{ secrets.LAT_AWS_ROLE_ARN }}" >> $GITHUB_OUTPUT
+              ;;
+            stg)
+              echo "role_arn=${{ secrets.STG_AWS_ROLE_ARN }}" >> $GITHUB_OUTPUT
+              ;;
+            prd)
+              echo "role_arn=${{ secrets.PRD_AWS_ROLE_ARN }}" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ steps.set_aws_role.outputs.role_arn }}
+          aws-region: us-east-1
+
+      - name: Wait for ECS deployment
+        id: ecs_deploy
+        run: |
+          STAGE="${{ steps.set_vars.outputs.STAGE }}"
+          BUILD_TAG="${{ steps.set_vars.outputs.BUILD_TAG }}"
+          CLUSTER="${STAGE}-pal-mono"
+          SERVICE="${STAGE}-pal-mono-api-service"
+
+          # Extract expected commit SHA from build tag (last 7 chars: build-123-abc1234 -> abc1234)
+          EXPECTED_SHA=$(echo "$BUILD_TAG" | grep -oE '[a-f0-9]{7}$')
+
+          # Validate EXPECTED_SHA is non-empty and exactly 7 hex characters
+          if [ -z "$EXPECTED_SHA" ] || ! echo "$EXPECTED_SHA" | grep -qE '^[a-f0-9]{7}$'; then
+            echo "Error: Failed to extract valid commit SHA from BUILD_TAG: $BUILD_TAG"
+            echo "Expected 7 hex characters at end of build tag (e.g., build-123-abc1234)"
+            exit 1
+          fi
+
+          echo "Expected commit SHA in image tag: $EXPECTED_SHA"
+          echo "expected_sha=$EXPECTED_SHA" >> $GITHUB_OUTPUT
+
+          echo "Waiting for CodePipeline to trigger deployment..."
+          sleep 180  # Wait 3 minutes for CodePipeline to start
+
+          echo "Polling ECS service: $SERVICE in cluster: $CLUSTER"
+
+          MAX_ATTEMPTS=36  # 36 * 20s = 12 minutes (after initial 3 min wait = 15 min total)
+          ATTEMPT=0
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS..."
+
+            # Get service info
+            SERVICE_INFO=$(aws ecs describe-services \
+              --cluster "$CLUSTER" \
+              --services "$SERVICE" \
+              --query 'services[0]' \
+              --output json)
+
+            RUNNING_COUNT=$(echo "$SERVICE_INFO" | jq -r '.runningCount')
+            DESIRED_COUNT=$(echo "$SERVICE_INFO" | jq -r '.desiredCount')
+            DEPLOYMENT_COUNT=$(echo "$SERVICE_INFO" | jq -r '.deployments | length')
+            ROLLOUT_STATE=$(echo "$SERVICE_INFO" | jq -r '.deployments[0].rolloutState // "UNKNOWN"')
+            TASK_DEF_ARN=$(echo "$SERVICE_INFO" | jq -r '.deployments[0].taskDefinition')
+
+            echo "Running: $RUNNING_COUNT, Desired: $DESIRED_COUNT, Deployments: $DEPLOYMENT_COUNT, State: $ROLLOUT_STATE"
+
+            # Get the image from the task definition
+            TASK_DEF=$(aws ecs describe-task-definition --task-definition "$TASK_DEF_ARN" --query 'taskDefinition' --output json)
+            IMAGE_TAG=$(echo "$TASK_DEF" | jq -r '.containerDefinitions[0].image' | grep -oE '[^:]+$')
+            echo "Current image tag: $IMAGE_TAG"
+            echo "deployed_image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+            # Check if the image tag contains our expected commit SHA
+            if echo "$IMAGE_TAG" | grep -q "$EXPECTED_SHA"; then
+              echo "Image tag contains expected SHA!"
+
+              # Check if deployment is complete and stable
+              if [ "$ROLLOUT_STATE" == "COMPLETED" ] && [ "$RUNNING_COUNT" == "$DESIRED_COUNT" ] && [ "$DEPLOYMENT_COUNT" == "1" ]; then
+                echo "ECS deployment verified successfully!"
+                echo "status=success" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            fi
+
+            # Check for failed deployment
+            if [ "$ROLLOUT_STATE" == "FAILED" ]; then
+              echo "ECS deployment failed!"
+              echo "status=failed" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+
+            sleep 20
+          done
+
+          echo "Timeout waiting for ECS deployment"
+          echo "status=timeout" >> $GITHUB_OUTPUT
+          exit 1
+
       - name: Set Slack Webhook URL
         id: set_slack_webhook
         run: |
@@ -140,6 +242,8 @@ jobs:
             Release Tag Creation Status: ${{ job.status }}
             Build Tag: ${{ steps.set_vars.outputs.BUILD_TAG }}
             Created Release Tag: ${{ steps.set_release_tag.outputs.RELEASE_TAG }}
+            ECS Deployment: ${{ steps.ecs_deploy.outputs.status || 'skipped' }}
+            Deployed Image: ${{ steps.ecs_deploy.outputs.deployed_image_tag || 'N/A' }}
         if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ steps.set_slack_webhook.outputs.webhook_url }}
