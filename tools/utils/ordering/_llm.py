@@ -164,8 +164,15 @@ def llm_call(
     if response_format:
         system_prompt += """
 \n
-Structure your response as a valid JSON object, do not include "json" in the beginning
-of the response.
+You MUST produce a response that conforms exactly to the provided response_format (Pydantic model). 
+The output will be validated automatically.  
+
+Rules:
+- Return only the JSON object; do not include explanations, comments, or the word "json".
+- Do not add fields not defined in the model.
+- Respect all nesting, arrays, and required fields as defined in the model.
+- If a value is unknown or optional, use null where allowed.
+- Ensure the JSON is parseable and valid; do not break structure.
 """
 
     # # Deepseek models works better if everything is passed in the user prompt
