@@ -31,6 +31,8 @@ class Order(Base):
     )  # order identifier from external system
 
     store_id: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
+    user_phone_number: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
+    store_phone_number: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
     tracking_link: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
     status: Mapped[Optional[str]] = mapped_column(
         String(), nullable=True
