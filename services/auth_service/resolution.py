@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from db.repositories import checklist_repository
 from db.repositories.account_repository import AccountRepository
 from db.repositories.agent_repository import AgentRepository
+from db.repositories.change_log_repository import ChangeLogRepository
+from db.repositories.feedback_repository import FeedbackRepository
 from db.repositories.project_repository import ProjectRepository
 from utils.log import logger
 
@@ -118,6 +120,18 @@ def resolve_resource_identifier(
         if not checklist:
             raise ValueError(f"Checklist with ID {resource_id} not found")
 
+    elif resource_type == "histories":
+        change_log_repo = ChangeLogRepository(session)
+        change_log = change_log_repo.get_change_log(resource_id)
+        if not change_log:
+            raise ValueError(f"History with ID {resource_id} not found")
+
+    elif resource_type == "feedbacks":
+        feedback_repo = FeedbackRepository(session)
+        feedback = feedback_repo.get_feedback_by_id(resource_id)
+        if not feedback:
+            raise ValueError(f"Feedback with ID {resource_id} not found")
+
     return resource_id
 
 
@@ -131,6 +145,8 @@ def get_parent_resource(
     - checklist → project → account
     - project → account
     - agent → account
+    - history → account
+    - feedback → account (via message → conversation → project)
     - account → None (top-level)
 
     Args:
@@ -168,6 +184,25 @@ def get_parent_resource(
             if agent and agent.account_id:
                 return ("accounts", agent.account_id)
             logger.debug(f"Agent {resource_id} has no parent account or not found")
+
+        elif resource_type == "histories":
+            change_log_repo = ChangeLogRepository(session)
+            change_log = change_log_repo.get_change_log(resource_id)
+            if change_log and change_log.account_id:
+                return ("accounts", change_log.account_id)
+            logger.debug(f"History {resource_id} has no parent account or not found")
+
+        elif resource_type == "feedbacks":
+            feedback_repo = FeedbackRepository(session)
+            feedback = feedback_repo.get_feedback_by_id(resource_id)
+            if feedback and feedback.message:
+                message = feedback.message
+                if message.conversation and message.conversation.project_id:
+                    project_repo = ProjectRepository(session, auto_commit=False)
+                    project = project_repo.get_project(message.conversation.project_id)
+                    if project and project.account_id:
+                        return ("accounts", project.account_id)
+            logger.debug(f"Feedback {resource_id} has no parent account or not found")
 
         elif resource_type == "accounts":
             # Top-level resource, no parent
