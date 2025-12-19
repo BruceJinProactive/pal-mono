@@ -58,11 +58,6 @@ class AdoraV2Tool(Toolkit):
         self._cached_bearer_token: str | None = None
         self._token_lock = asyncio.Lock()
 
-        # Cache for most recently validated delivery address
-        # Security note: This cache is instance-scoped (per-request) and not shared across conversations
-        self._cached_delivery_address: DeliveryAddress | None = None
-        self._address_lock = asyncio.Lock()
-
         # Log instance creation with built-in id
         instance_id = id(self)
         logger.debug(f"[AdoraV2Tool] Tool instance created: id={instance_id}")
@@ -159,7 +154,9 @@ class AdoraV2Tool(Toolkit):
         return f"Store online ordering status: {'Online' if is_online else 'Offline'}"
 
     @tool
-    async def check_address(self, delivery_address: BaseDeliveryAddress) -> str:
+    async def check_address(
+        self, delivery_address: BaseDeliveryAddress
+    ) -> tuple[str, DeliveryAddress | None]:
         """
         This tool can be used to validate whether or not an address is within a
         delivery zone. Call this tool whenever you need to confirm if a certain
@@ -189,7 +186,7 @@ class AdoraV2Tool(Toolkit):
             ]
             if v == "N/A"
         ]:
-            return f"Please provide the following: {', '.join(missing)}."
+            return f"Please provide the following: {', '.join(missing)}.", None
 
         # Convert BaseDeliveryAddress to full DeliveryAddress with defaults
         full_delivery_address = DeliveryAddress(**delivery_address.model_dump())
@@ -200,11 +197,11 @@ class AdoraV2Tool(Toolkit):
         )
 
         if not bearer_token:
-            return "Failed to authenticate."
+            return "Failed to authenticate.", None
 
         geocoding_success, geocoding_error = geocoding_result
         if not geocoding_success:
-            return geocoding_error
+            return geocoding_error, None
 
         street_no, street_name = extract_street_parts(full_delivery_address.address)
 
@@ -218,7 +215,7 @@ class AdoraV2Tool(Toolkit):
 
         # If validation failed, return error message
         if isinstance(result, str):
-            return result
+            return result, None
 
         # Extract typeId from validation response (required by Adora API)
         if result:
@@ -229,17 +226,15 @@ class AdoraV2Tool(Toolkit):
                     f"[AdoraV2Tool.check_address] Set typeId={full_delivery_address.type_id} from validation response"
                 )
 
-        # Address is valid - cache it for use in fulfill_order (always refresh cache)
-        async with self._address_lock:
-            self._cached_delivery_address = full_delivery_address
-            logger.debug(
-                f"[AdoraV2Tool.check_address] Cached validated delivery address: {full_delivery_address}"
-            )
-
-        return f"Address is valid and within delivery zone. {result}"
+        return (
+            f"Address is valid and within delivery zone. {result}",
+            full_delivery_address,
+        )
 
     @tool
-    async def fulfill_order(self, order_items: list[str]) -> str:
+    async def fulfill_order(
+        self, order_items: list[str], address: BaseDeliveryAddress | None
+    ) -> str:
         """
         Fulfills customer order by validating and processing it, returning confirmation.
         This submits the order to the POS system and provides order confirmation.
@@ -254,19 +249,37 @@ class AdoraV2Tool(Toolkit):
                 - Do not shorten or generalize the dish.
                 - Only include items that the user **explicitly confirmed or finalized** as part of their order.
                 - Output a JSON array of strings with **cleaned item names**.
+            address (BaseDeliveryAddress | None): Delivery address for delivery orders.
+                Required fields:
+                - address: Street address (e.g., "123 Main St")
+                - city: City name (e.g., "Springfield")
+                - state: Two-letter US state abbreviation (e.g., "IL")
+                - zip: ZIP code (e.g., "62704")
+                Set to None for pickup/dine-in orders.
 
         Returns:
             str: Order confirmation with order ID and final total.
         """
 
         logger.debug(f"[AdoraV2Tool.fulfill_order] Order items: {order_items}")
-        bearer_token, chat_history_result = await asyncio.gather(
+
+        # Gather common tasks with optional address validation
+        tasks = [
             self._get_bearer_token(),
             asyncio.to_thread(self.query_messages_tool.query_messages),
-        )
+        ]
+        if address:
+            tasks.append(self.check_address(address))  # type: ignore
+
+        results = await asyncio.gather(*tasks)
+        bearer_token, chat_history_result = results[0], results[1]
 
         if not bearer_token:
             return "Failed to authenticate with Adora API."
+
+        full_delivery_address = results[2][1] if address else None
+        if address and not full_delivery_address:
+            return results[2][0]
 
         chat_history: str = str(chat_history_result)  # type: ignore
 
@@ -330,25 +343,23 @@ class AdoraV2Tool(Toolkit):
         )
 
         # Set email to default if empty or invalid
-        email = order_request.customer.email
-        if not email or not is_valid_email(email):
+        if not order_request.customer.email or not is_valid_email(
+            order_request.customer.email
+        ):
             order_request.customer.email = "orderingagent@palona.ai"
 
-        # Handle delivery address for delivery orders
-        logger.debug(f"[AdoraV2Tool.fulfill_order] Order: {order_request}")
+        # Handle delivery orders
         if order_request.order_type == OrderType.DELIVERY:
-            async with self._address_lock:
-                if not self._cached_delivery_address:
-                    return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
-
-                logger.debug(
-                    f"[AdoraV2Tool.fulfill_order] Using cached delivery address: {self._cached_delivery_address}"
-                )
-                order_request.delivery_address = self._cached_delivery_address
-                order_request.payment_type = PaymentType.PAYMENT_LINK
+            if not full_delivery_address:
+                return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
+            order_request.delivery_address = full_delivery_address
+            order_request.payment_type = PaymentType.PAYMENT_LINK
         else:
-            # Non-delivery orders: ensure delivery_address is None
             order_request.delivery_address = None
+
+        logger.debug(
+            f"[AdoraV2Tool.fulfill_order] Final order request: {order_request.model_dump()}"
+        )
 
         # Step 1: Validate the order
         validate_result = await api_validate_order(bearer_token, order_request)
