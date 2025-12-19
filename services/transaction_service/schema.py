@@ -23,6 +23,8 @@ class OrderData:
     # Optional common fields
     order_id: Optional[str] = None  # Order identifier from external system
     store_id: Optional[str] = None
+    user_phone_number: Optional[str] = None
+    store_phone_number: Optional[str] = None
     tracking_link: Optional[str] = None
     status: Optional[str] = None
     fulfillment_strategy: Optional[str] = None

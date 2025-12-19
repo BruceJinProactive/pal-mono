@@ -26,6 +26,8 @@ class OrderRepository:
         vendor: Optional[IntegrationProvider] = None,
         order_id: Optional[str] = None,
         store_id: Optional[str] = None,
+        user_phone_number: Optional[str] = None,
+        store_phone_number: Optional[str] = None,
         tracking_link: Optional[str] = None,
         status: Optional[str] = None,
         fulfillment_strategy: Optional[str] = None,
@@ -40,6 +42,8 @@ class OrderRepository:
             vendor: The integration provider/vendor
             order_id: Order identifier from external system
             store_id: Store/location identifier
+            user_phone_number: Customer's phone number
+            store_phone_number: Store's phone number
             tracking_link: Link to track the order
             status: Current status of the order
             fulfillment_strategy: Strategy for fulfilling the order
@@ -52,6 +56,8 @@ class OrderRepository:
         order = Order(
             order_id=order_id,
             store_id=store_id,
+            user_phone_number=user_phone_number,
+            store_phone_number=store_phone_number,
             tracking_link=tracking_link,
             status=status,
             fulfillment_strategy=fulfillment_strategy,

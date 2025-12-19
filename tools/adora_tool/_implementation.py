@@ -487,7 +487,7 @@ class AdoraTool(Toolkit):
             # Create a new order record
             db_order = DBOrder(
                 user_phone_number=self.tool_metadata.customer_phone,
-                store_phone_number="PLACE_HOLDER",
+                store_phone_number=self.tool_metadata.store_phone,
                 order_number=str(validated_order.key) if validated_order.key else "",
                 transaction_id=(
                     str(validated_order.key) if validated_order.key else ""
