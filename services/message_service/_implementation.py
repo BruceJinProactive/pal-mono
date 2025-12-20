@@ -83,7 +83,10 @@ async def get_chat_response_async(
 
         # Save request message to database
         request_message = await message_repo.create_message(
-            user_id=user.id, project_id=project_id, message_body=message.to_dict()
+            user_id=user.id,
+            project_id=project_id,
+            message_body=message.to_dict(),
+            channel=message.channel.value if message.channel else "unknown",
         )
 
         # Get account info for metadata
@@ -221,6 +224,11 @@ async def get_chat_response_async(
                         user_id=user.id,
                         project_id=project_id,
                         message_body=opt_in_message.to_dict(),
+                        channel=(
+                            opt_in_message.channel.value
+                            if opt_in_message.channel
+                            else "unknown"
+                        ),
                     )
 
                     await session.refresh(user, attribute_names=["id"])
@@ -251,7 +259,10 @@ async def get_chat_response_async(
             response_messages.append(message)
             # Save response message to database
             await message_repo.create_message(
-                user_id=user_id, project_id=project_id, message_body=message.to_dict()
+                user_id=user_id,
+                project_id=project_id,
+                message_body=message.to_dict(),
+                channel=message.channel.value if message.channel else "unknown",
             )
 
         await session.refresh(user, attribute_names=["id"])
@@ -330,6 +341,7 @@ async def get_chat_response_stream(
                     user_id=user.id,
                     project_id=project.id,
                     message_body=message.to_dict(),
+                    channel=message.channel.value if message.channel else "unknown",
                 )
 
             if not request_message:
@@ -521,6 +533,11 @@ async def get_chat_response_stream(
                         user_id=user.id,
                         project_id=project.id,
                         message_body=response_message.to_dict(),
+                        channel=(
+                            response_message.channel.value
+                            if response_message.channel
+                            else "unknown"
+                        ),
                     )
 
                     await session.refresh(user, attribute_names=["id"])

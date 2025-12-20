@@ -469,6 +469,14 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         call_data = message_data.get("call", {})
         call_id = call_data.get("id")
 
+        # Validate call_id is present and non-empty
+        if not call_id or not isinstance(call_id, str) or not call_id.strip():
+            logger.error(
+                "[handle_assistant_request] Invalid or missing call_id",
+                extra={"call_data": call_data},
+            )
+            return {"error": "Invalid or missing call_id"}
+
         monitor_data = call_data.get("monitor", {})
 
         logger.debug(
@@ -484,7 +492,15 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         customer_number = customer_data.get("number", "")
 
         logger.debug(
-            f"[vapi._implementation.handle_assistant_request] Handling assistant request for call {call_id} from {customer_number} to {phone_number}"
+            f"[vapi._implementation.handle_assistant_request] Handling assistant request for call {call_id} from {customer_number} to {phone_number}",
+            extra={
+                "call_id": call_id,
+                "customer_number": customer_number,
+                "phone_number": phone_number,
+                "phone_number_data": phone_number_data,
+                "customer_data": customer_data,
+                "call_data": call_data,
+            },
         )
 
         # Create a Message object for this call request
@@ -509,7 +525,13 @@ async def handle_assistant_request(message_data, session: AsyncSession):
 
         # Log the created message
         logger.debug(
-            f"[vapi._implementation.handle_assistant_request] Created message: {message.id} for call {call_id}"
+            f"[vapi._implementation.handle_assistant_request] Created message: {message.id} for call {call_id}",
+            extra={
+                "message_id": message.id,
+                "call_id": call_id,
+                "customer_number": customer_number,
+                "phone_number": phone_number,
+            },
         )
 
         # ==== Step 1: Get project, user, and save request message ====
@@ -522,6 +544,18 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         if not user:
             # Create new user record
             user = await user_service.create_user_async(session, project, message)
+            # Refresh to avoid MissingGreenlet error when accessing attributes after commit
+            await session.refresh(user, attribute_names=["id"])
+            await session.refresh(project, attribute_names=["id"])
+            logger.debug(
+                "[handle_assistant_request] Created new user for voice call",
+                extra={
+                    "call_id": call_id,
+                    "user_id": str(user.id),
+                    "project_id": str(project.id),
+                    "customer_number": customer_number,
+                },
+            )
 
         # Refresh project after user operations (which may commit and expire objects)
         # to avoid MissingGreenlet error when accessing project.id
@@ -531,7 +565,13 @@ async def handle_assistant_request(message_data, session: AsyncSession):
         message_repo = db.MessageRepositoryAsync(session)
 
         logger.debug(
-            f"[vapi._implementation.handle_assistant_request] Saving request message {message.id} for user {user.id} and call {call_id} in project {project.id}"
+            f"[vapi._implementation.handle_assistant_request] Saving request message {message.id} for user {user.id} and call {call_id} in project {project.id}",
+            extra={
+                "message_id": message.id,
+                "user_id": str(user.id),
+                "call_id": call_id,
+                "project_id": str(project.id),
+            },
         )
         request_message = await message_repo.create_voice_message(
             user_id=user.id,
@@ -669,7 +709,20 @@ async def handle_status_update(message_data, session: AsyncSession):
         call_data = message_data.get("call", {})
         call_id = call_data.get("id")
 
-        logger.debug(f"Call {call_id} status updated to: {status}")
+        # Warn if call_id is missing (less critical for status updates)
+        if not call_id or not isinstance(call_id, str) or not call_id.strip():
+            logger.warning(
+                "[handle_status_update] Invalid or missing call_id",
+                extra={"call_data": call_data, "status": status},
+            )
+
+        logger.debug(
+            f"Call {call_id} status updated to: {status}",
+            extra={
+                "call_id": call_id,
+                "status": status,
+            },
+        )
 
         # Extract control URL from monitor data if available
         monitor_data = call_data.get("monitor", {})
@@ -679,7 +732,7 @@ async def handle_status_update(message_data, session: AsyncSession):
         # The conversation is created with call_id during handle_assistant_request
         if control_url and call_id:
             logger.debug(
-                "[handle_status_update] Looking up conversation by call_id",
+                "[handle_status_update] Storing monitor control URL",
                 extra={
                     "call_id": call_id,
                     "status": status,
@@ -715,7 +768,12 @@ async def handle_status_update(message_data, session: AsyncSession):
                 )
         else:
             logger.debug(
-                f"No control URL or call_id available: control_url={control_url}, call_id={call_id}"
+                "[handle_status_update] No control URL or call_id available",
+                extra={
+                    "call_id": call_id,
+                    "status": status,
+                    "has_control_url": bool(control_url),
+                },
             )
 
         # Acknowledge status updates
@@ -723,7 +781,14 @@ async def handle_status_update(message_data, session: AsyncSession):
     except Exception as e:
         call_data = message_data.get("call", {})
         call_id = call_data.get("id")
-        logger.error(f"Error in handle_status_update: {str(e)}, call: {call_id}")
+        logger.error(
+            "[handle_status_update] Error processing status update",
+            extra={
+                "call_id": call_id,
+                "error": str(e),
+            },
+            exc_info=True,
+        )
         return {"error": str(e)}
 
 
@@ -963,6 +1028,14 @@ async def handle_session_closure(message_data, session: AsyncSession):
         # Extract call information
         call_data = message_data.get("call", {})
         call_id = call_data.get("id")
+
+        # Validate call_id is present and non-empty
+        if not call_id or not isinstance(call_id, str) or not call_id.strip():
+            logger.error(
+                "[handle_session_closure] Invalid or missing call_id",
+                extra={"call_data": call_data},
+            )
+            return {"error": "Invalid or missing call_id"}
 
         # this is for deleting the temporary assistant from the admin console self-onboarding
         metadata = message_data.get("assistant", {}).get("metadata", {})

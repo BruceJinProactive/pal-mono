@@ -24,6 +24,7 @@ class MessageRepositoryAsync:
         user_id: uuid.UUID,
         project_id: uuid.UUID,
         message_body: dict,
+        channel: str,
         call_id: str | None = None,
     ):
         logger.debug(
@@ -32,6 +33,7 @@ class MessageRepositoryAsync:
                 "user_id": str(user_id),
                 "project_id": str(project_id),
                 "call_id": call_id,
+                "channel": channel,
             },
         )
 
@@ -126,6 +128,7 @@ class MessageRepositoryAsync:
                     "user_id": str(user_id),
                     "project_id": str(project_id),
                     "call_id": call_id,
+                    "channel": channel,
                 },
             )
             new_conversation = Conversation(
@@ -144,6 +147,7 @@ class MessageRepositoryAsync:
                     "project_id": str(project_id),
                     "conversation_id": str(conversation_id),
                     "call_id": call_id,
+                    "channel": channel,
                 },
             )
 
@@ -162,6 +166,7 @@ class MessageRepositoryAsync:
                 "conversation_id": str(conversation_id),
                 "message_id": str(message.id),
                 "call_id": call_id,
+                "channel": channel,
             },
         )
 
