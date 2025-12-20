@@ -266,6 +266,20 @@ class VapiTool(Toolkit):
             return error_msg
 
         except httpx.HTTPStatusError as e:
+            # Handle "Call Not Active" error gracefully - call has already ended
+            if e.response.status_code == 400 and "Not Active" in e.response.text:
+                logger.info(
+                    "[VapiTool.call_transfer] Call is no longer active - call has likely ended",
+                    extra={
+                        "project_id": str(self.tool_metadata.project_id),
+                        "account_name": self.tool_metadata.account_name,
+                        "conversation_id": str(conversation_id),
+                        "user_id": str(self.tool_metadata.user_id),
+                        "call_id": call_id,
+                    },
+                )
+                return "Call has already ended. Transfer is no longer possible."
+
             error_msg = f"HTTP error {e.response.status_code} occurred while transferring call: {e.response.text}"
             logger.error(
                 f"[VapiTool.call_transfer] {error_msg}",
