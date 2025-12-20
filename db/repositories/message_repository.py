@@ -27,7 +27,12 @@ class MessageRepositoryAsync:
         call_id: str | None = None,
     ):
         logger.debug(
-            f"[db.message_repository.create_message] Creating message with call_id: {call_id}"
+            "[db.message_repository.create_message] Creating message",
+            extra={
+                "user_id": str(user_id),
+                "project_id": str(project_id),
+                "call_id": call_id,
+            },
         )
 
         # Step 1: Get the user from the database
@@ -116,7 +121,12 @@ class MessageRepositoryAsync:
             metadata = message_body.get("metadata", {})
             is_test_message = metadata.get("testing", False)
             logger.debug(
-                f"[db.message_repository.create_message] Creating new conversation with call id: {call_id}"
+                "[db.message_repository.create_message] Creating new conversation",
+                extra={
+                    "user_id": str(user_id),
+                    "project_id": str(project_id),
+                    "call_id": call_id,
+                },
             )
             new_conversation = Conversation(
                 user_id=user.id,
@@ -128,7 +138,13 @@ class MessageRepositoryAsync:
             await self.session.flush()
             conversation_id = new_conversation.id
             logger.debug(
-                f"[db.message_repository.create_message] Successfully created conversation {conversation_id} with call id {call_id}"
+                "[db.message_repository.create_message] Successfully created conversation",
+                extra={
+                    "user_id": str(user_id),
+                    "project_id": str(project_id),
+                    "conversation_id": str(conversation_id),
+                    "call_id": call_id,
+                },
             )
 
         # Step 6: Create a message with message_body and add it to the conversation
@@ -137,6 +153,17 @@ class MessageRepositoryAsync:
         await self.session.commit()
         # Refresh to get the new message ID
         await self.session.refresh(message)
+
+        logger.debug(
+            "[db.message_repository.create_message] Successfully created message",
+            extra={
+                "user_id": str(user_id),
+                "project_id": str(project_id),
+                "conversation_id": str(conversation_id),
+                "message_id": str(message.id),
+                "call_id": call_id,
+            },
+        )
 
         return message
 
@@ -166,7 +193,12 @@ class MessageRepositoryAsync:
             ValueError: If user not found
         """
         logger.debug(
-            f"[db.message_repository.create_voice_message] Creating voice message with call_id: {call_id}"
+            "[db.message_repository.create_voice_message] Creating voice message",
+            extra={
+                "user_id": str(user_id),
+                "project_id": str(project_id),
+                "call_id": call_id,
+            },
         )
 
         # Get the user from the database
@@ -190,7 +222,13 @@ class MessageRepositoryAsync:
         await self.session.flush()
 
         logger.debug(
-            f"[db.message_repository.create_voice_message] Created conversation {new_conversation.id} for call {call_id}"
+            "[db.message_repository.create_voice_message] Created conversation",
+            extra={
+                "user_id": str(user_id),
+                "project_id": str(project_id),
+                "conversation_id": str(new_conversation.id),
+                "call_id": call_id,
+            },
         )
 
         # Create the message
@@ -198,6 +236,17 @@ class MessageRepositoryAsync:
         self.session.add(message)
         await self.session.commit()
         await self.session.refresh(message)
+
+        logger.debug(
+            "[db.message_repository.create_voice_message] Successfully created message",
+            extra={
+                "user_id": str(user_id),
+                "project_id": str(project_id),
+                "conversation_id": str(new_conversation.id),
+                "message_id": str(message.id),
+                "call_id": call_id,
+            },
+        )
 
         return message
 
@@ -225,8 +274,8 @@ class MessageRepositoryAsync:
             ValueError: If conversation not found for call_id
         """
         logger.debug(
-            f"[db.message_repository.add_message_to_voice_conversation] "
-            f"Adding message to conversation with call_id: {call_id}"
+            "[db.message_repository.add_message_to_voice_conversation] Adding message to conversation",
+            extra={"user_id": str(user_id), "call_id": call_id},
         )
 
         # Look up existing conversation by call_id and user_id
@@ -242,8 +291,12 @@ class MessageRepositoryAsync:
             raise ValueError(f"No conversation found for call_id {call_id}")
 
         logger.debug(
-            f"[db.message_repository.add_message_to_voice_conversation] "
-            f"Found conversation {conversation.id} for call_id {call_id}"
+            "[db.message_repository.add_message_to_voice_conversation] Found conversation",
+            extra={
+                "user_id": str(user_id),
+                "conversation_id": str(conversation.id),
+                "call_id": call_id,
+            },
         )
 
         # Create the message in the existing conversation
@@ -251,6 +304,16 @@ class MessageRepositoryAsync:
         self.session.add(message)
         await self.session.commit()
         await self.session.refresh(message)
+
+        logger.debug(
+            "[db.message_repository.add_message_to_voice_conversation] Successfully created message",
+            extra={
+                "user_id": str(user_id),
+                "conversation_id": str(conversation.id),
+                "message_id": str(message.id),
+                "call_id": call_id,
+            },
+        )
 
         return message
 
@@ -293,6 +356,56 @@ class MessageRepositoryAsync:
             logger.error(f"Error retrieving messages: {e}")
             return []
 
+    async def add_message_to_conversation(
+        self,
+        conversation_id: uuid.UUID,
+        message_body: dict,
+    ) -> Message:
+        """
+        Add a message directly to an existing conversation.
+
+        Unlike create_message(), this does not handle conversation
+        creation/lookup - it expects the conversation to already exist.
+
+        Args:
+            conversation_id: The conversation to add the message to
+            message_body: The message content as a dict
+
+        Returns:
+            Message: The created message
+
+        Raises:
+            ValueError: If conversation does not exist
+        """
+        logger.debug(
+            "[db.message_repository.add_message_to_conversation] Adding message",
+            extra={"conversation_id": str(conversation_id)},
+        )
+
+        # Verify conversation exists
+        result = await self.session.execute(
+            select(Conversation).filter(Conversation.id == conversation_id)
+        )
+        conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            raise ValueError(f"No conversation found with id {conversation_id}")
+
+        message = Message(conversation_id=conversation_id, body=message_body)
+        self.session.add(message)
+        await self.session.commit()
+        await self.session.refresh(message)
+
+        logger.debug(
+            "[db.message_repository.add_message_to_conversation] Created message",
+            extra={
+                "conversation_id": str(conversation_id),
+                "message_id": str(message.id),
+            },
+        )
+
+        return message
+
 
 class MessageRepository:
     def __init__(self, session: Session):
@@ -329,6 +442,57 @@ class MessageRepository:
         self.session.add(message)
         self.session.commit()
         self.session.refresh(message)  # Refresh to get the new message ID
+
+        return message
+
+    def add_message_to_conversation(
+        self,
+        conversation_id: uuid.UUID,
+        message_body: dict,
+    ) -> Message:
+        """
+        Add a message directly to an existing conversation.
+
+        Unlike create_message(), this does not handle conversation
+        creation/lookup - it expects the conversation to already exist.
+
+        Args:
+            conversation_id: The conversation to add the message to
+            message_body: The message content as a dict
+
+        Returns:
+            Message: The created message
+
+        Raises:
+            ValueError: If conversation does not exist
+        """
+        logger.debug(
+            "[db.message_repository.add_message_to_conversation] Adding message",
+            extra={"conversation_id": str(conversation_id)},
+        )
+
+        # Verify conversation exists
+        conversation = (
+            self.session.query(Conversation)
+            .filter(Conversation.id == conversation_id)
+            .first()
+        )
+
+        if not conversation:
+            raise ValueError(f"No conversation found with id {conversation_id}")
+
+        message = Message(conversation_id=conversation_id, body=message_body)
+        self.session.add(message)
+        self.session.commit()
+        self.session.refresh(message)
+
+        logger.debug(
+            "[db.message_repository.add_message_to_conversation] Created message",
+            extra={
+                "conversation_id": str(conversation_id),
+                "message_id": str(message.id),
+            },
+        )
 
         return message
 

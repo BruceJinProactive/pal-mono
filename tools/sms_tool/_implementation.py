@@ -9,6 +9,8 @@ from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from api.schemas.chat.message import AuthorType, Broker, Extras
 from api.schemas.chat.message import Message as RelayMessage
 from api.schemas.chat.message import Metadata, TextObject, Type
+from db.repositories.message_repository import MessageRepository
+from db.session import SyncSessionLocal
 from db.tables.types import Channel
 from services.relay_service import send_message as relay_send_message
 from tools.sms_tool._llm import generate_order_summary
@@ -105,6 +107,8 @@ class SMSTool(Toolkit):
             )
 
             if response.get("status") == "scheduled":
+                # Persist the outbound SMS message to the conversation
+                self._persist_message(relay_message)
                 return "Message sent successfully."
             else:
                 return f"Failed to send message: {response.get('error_message', 'Unknown error')}"
@@ -112,3 +116,29 @@ class SMSTool(Toolkit):
         except Exception as e:
             logger.error(f"[SMSTool._send_message] Error: {e}")
             return f"Failed to send message: {str(e)}"
+
+    def _persist_message(self, relay_message: RelayMessage) -> None:
+        """
+        Persist the outbound SMS message to the conversation.
+        Fails silently if persistence fails - SMS delivery takes priority.
+
+        Args:
+            relay_message: The message to persist
+        """
+        try:
+            conversation_id = self.tool_metadata.session_id
+
+            with SyncSessionLocal() as session:
+                message_repo = MessageRepository(session)
+                message_repo.add_message_to_conversation(
+                    conversation_id=conversation_id,
+                    message_body=relay_message.to_dict(),
+                )
+
+            logger.debug(
+                "[SMSTool._persist_message] Persisted outbound SMS",
+                extra={"conversation_id": str(conversation_id)},
+            )
+        except Exception as e:
+            # Fail silently - SMS delivery takes priority over persistence
+            logger.error(f"[SMSTool._persist_message] Failed to persist message: {e}")

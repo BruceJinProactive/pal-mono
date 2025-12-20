@@ -199,6 +199,8 @@ async def _send_urls_via_sms(
     collected_content: List[str],
     sender_identifier: str,
     recipient_identifier: str,
+    session: Optional[AsyncSession] = None,
+    call_id: Optional[str] = None,
 ) -> None:
     """
     Extract URLs from collected content and send them via SMS if found.
@@ -208,6 +210,8 @@ async def _send_urls_via_sms(
         collected_content: List of content strings to search for URLs
         sender_identifier: The sender identifier for the relay message
         recipient_identifier: The recipient identifier for the relay message
+        session: Database session for persisting the message
+        call_id: Call ID for looking up the conversation (for voice calls)
     """
     if not sender_identifier or not recipient_identifier:
         logger.error("Invalid sender or recipient identifier provided")
@@ -311,6 +315,38 @@ Instructions:
             )
             send_result = send_message(relay_message)
             logger.debug(f"Relay service result: {send_result}")
+
+            # Persist the outbound SMS message to the conversation
+            if send_result.get("status") == "scheduled" and session and call_id:
+                try:
+                    # Look up conversation by call_id
+                    conv_repo = db.ConversationRepositoryAsync(session)
+                    conversation = await conv_repo.get_conversation_by_call_id(call_id)
+
+                    if conversation:
+                        message_repo = db.MessageRepositoryAsync(session)
+                        await message_repo.add_message_to_conversation(
+                            conversation_id=conversation.id,
+                            message_body=relay_message.to_dict(),
+                        )
+                        logger.debug(
+                            "Persisted outbound payment link SMS",
+                            extra={
+                                "call_id": call_id,
+                                "conversation_id": str(conversation.id),
+                            },
+                        )
+                    else:
+                        logger.warning(
+                            f"No conversation found for call_id {call_id}, "
+                            "skipping message persistence"
+                        )
+                except Exception as persist_err:
+                    # Fail silently - SMS delivery takes priority over persistence
+                    logger.error(
+                        f"Failed to persist payment link SMS: {persist_err}",
+                        extra={"call_id": call_id},
+                    )
 
 
 async def chat_completions_agno(
@@ -440,6 +476,8 @@ async def chat_completions_agno(
                             collected_content,
                             sender_identifier,
                             recipient_identifier,
+                            session=session,
+                            call_id=call_id,
                         )
                     except Exception as sms_err:
                         logger.error(f"Error sending URLs via SMS: {sms_err}")
