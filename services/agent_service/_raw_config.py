@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
 from uuid import UUID
@@ -25,7 +26,13 @@ from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, TargetTier
 from services.integration_service.schema import IntegrationDetail
 from services.prompt_service.prompts import prompt_factory
+from services.prompt_service.prompts_v2 import prompt_factory_v2
 from utils.log import logger
+
+TEST_AGENTS_STR = os.getenv("TEST_AGENTS", "")
+TEST_AGENTS = [
+    agent_id.strip() for agent_id in TEST_AGENTS_STR.split(",") if agent_id.strip()
+]
 
 
 class RawConfig:
@@ -377,7 +384,11 @@ class RawConfig:
 
         brand_info_list = self._get_brand_info()
         store_info_list = self._get_store_info()
-        agent_info_list = self._get_agent_info(channel)
+
+        if str(self.agent.id) in TEST_AGENTS:
+            agent_info_list = self._get_agent_info_v2(channel)
+        else:
+            agent_info_list = self._get_agent_info(channel)
 
         sections = [self._build_agent_introduction()]
         sections.extend(build_section("# Brand Information", brand_info_list))
@@ -431,6 +442,10 @@ class RawConfig:
             info_list.append(
                 ("## Custom Interaction Guideline", self.agent.interaction_guidelines)
             )
+        return info_list
+
+    def _get_agent_info_v2(self, channel: Channel):
+        info_list = prompt_factory_v2.build(channel, self.agent.id)
         return info_list
 
     def _get_store_info(self):
