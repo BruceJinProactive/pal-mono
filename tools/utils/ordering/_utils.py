@@ -146,6 +146,52 @@ def get_relevant_docs(
     return context
 
 
+async def get_relevant_docs_v2(
+    order_items: list[str],
+    query_engine: BaseQueryEngine,
+) -> str:
+    """
+    Retrieves relevant documents for order items directly without LLM decomposition.
+
+    Args:
+        order_items (list[str]): List of order items to query
+        query_engine (BaseQueryEngine): Query engine to use for document retrieval
+
+    Returns:
+        str: The relevant documents.
+    """
+    logger.debug(f"Querying documents for items: {order_items}")
+
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tasks = [tg.create_task(query_engine.aquery(item)) for item in order_items]
+        results = [task.result() for task in tasks]
+    except Exception as e:
+        logger.error(f"Error executing queries: {e}")
+        results = []
+
+    context = ""
+    output_data = []
+    found_doc_names = set()
+
+    for res in results:
+        for node in res.source_nodes:
+            if not node.metadata:
+                continue
+
+            doc_name = node.metadata["file_name"]
+            if doc_name in found_doc_names:
+                continue
+            found_doc_names.add(doc_name)
+
+            node_text = textwrap.indent(node.text, 2 * "\t")
+            context += f"<document name='{doc_name}'>\n\t<document_content>\n{node_text}\n\t</document_content>\n</document>\n\n"
+            output_data.append({"id": node.id_, "text": node.text})
+
+    LLMObs.annotate(input_data=order_items, output_data=output_data)
+    return context
+
+
 def format_phone_number(phone_number: str) -> str:
     # Remove non-digit characters
     digits = re.sub(r"\D", "", phone_number)

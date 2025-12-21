@@ -33,8 +33,7 @@ from tools.adora_v2_tool.classes import (
 )
 from tools.utils.ordering._llm import async_llm_call
 from tools.utils.ordering._query_engine import create_query_engine
-from tools.utils.ordering._utils import get_relevant_docs, is_valid_email
-from tools.utils.ordering.classes import SubQueries
+from tools.utils.ordering._utils import get_relevant_docs_v2, is_valid_email
 from utils.log import logger
 
 
@@ -272,13 +271,7 @@ class AdoraV2Tool(Toolkit):
         )
 
         # Get menu context and build complete context
-        item_context = await asyncio.to_thread(
-            get_relevant_docs,
-            self.query_engine,
-            chat_history,
-            ", ".join(order_items),
-            SubQueries,
-        )
+        item_context = await get_relevant_docs_v2(order_items, self.query_engine)
         context, context_template = build_context(
             item_context, self.tool_metadata.timezone
         )
