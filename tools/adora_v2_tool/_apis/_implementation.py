@@ -139,8 +139,7 @@ async def api_validate_address(
                 body = json.loads(body)
 
             if isinstance(body, list) and body:
-                if len(body) == 1:
-                    return ValidateAddressResponse(**body[0])
+                return ValidateAddressResponse(**body[0])
 
         logger.error(f"[AdoraV2Tool._apis.validate_address] Error {response}")
         return "An error occurred while validating the address: "
