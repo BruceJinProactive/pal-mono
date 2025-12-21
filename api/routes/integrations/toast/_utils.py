@@ -350,8 +350,9 @@ def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> Non
             projects = _find_projects_by_restaurant_guid(restaurant_guid, session)
 
             if not projects:
-                logger.error(
-                    f"[ToastWebhook._process_stock_item_status_sync] Could not find any projects for restaurant_guid: {restaurant_guid}"
+                logger.debug(
+                    "[ToastWebhook._process_stock_item_status_sync] No projects configured, skipping",
+                    extra={"restaurant_guid": restaurant_guid},
                 )
                 return
 
