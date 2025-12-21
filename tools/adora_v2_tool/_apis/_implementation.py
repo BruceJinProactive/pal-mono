@@ -8,9 +8,9 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from tools.adora_v2_tool.classes import (
     BaseDeliveryAddress,
-    PaymentDetails,
     ProcessOrderRequest,
     ProcessOrderResponse,
+    ValidateAddressRequest,
     ValidateAddressResponse,
     ValidateOrderRequest,
     ValidateOrderResponse,
@@ -111,28 +111,20 @@ async def api_get_store_info(
 
 async def api_validate_address(
     bearer_token: str,
-    store_id: str,
-    delivery_address: BaseDeliveryAddress,
-    lat_lng: Tuple[float, float],
+    validate_address_request: ValidateAddressRequest,
 ) -> ValidateAddressResponse | str:
     """
     Validate an address with Adora POS.
+
+    Args:
+        bearer_token: Bearer token for authentication
+        validate_address_request: ValidateAddressRequest containing address details
 
     Returns:
         ValidateAddressResponse on success, error message string on failure
     """
     try:
-        payload = {
-            "storeId": store_id,
-            "lat": lat_lng[0],
-            "lng": lat_lng[1],
-            "streetNo": delivery_address.street_number,
-            "streetName": delivery_address.street_name,
-            "unitApt": delivery_address.extended_address,
-            "city": delivery_address.city,
-            "state": delivery_address.state,
-            "zip": delivery_address.zip,
-        }
+        payload = validate_address_request.model_dump(by_alias=True, exclude_none=True)
         logger.debug(f"[AdoraV2Tool._apis] validate address payload: {payload}")
         response = await connect_adora_order_hub(
             HttpMethod.POST, bearer_token, ApiFunction.VALIDATE_ADDRESS, payload=payload
@@ -147,16 +139,11 @@ async def api_validate_address(
                 body = json.loads(body)
 
             if isinstance(body, list) and body:
-                return ValidateAddressResponse(**body[0])
-            elif isinstance(body, dict):
-                return ValidateAddressResponse(**body)
+                if len(body) == 1:
+                    return ValidateAddressResponse(**body[0])
 
         logger.error(f"[AdoraV2Tool._apis.validate_address] Error {response}")
-        return (
-            body.get("message", "Address validation failed")
-            if isinstance(body, dict)
-            else str(body)
-        )
+        return "An error occurred while validating the address: "
 
     except Exception as e:
         logger.error(f"[api_validate_address] Error: {e}")
@@ -274,48 +261,19 @@ async def api_validate_order(
 
 async def api_process_order(
     bearer_token: str,
-    order_request: ValidateOrderRequest,
-    validate_response: ValidateOrderResponse,
+    process_request: ProcessOrderRequest,
 ) -> ProcessOrderResponse | str:
     """
     Process a customer order with Adora POS.
 
     Args:
         bearer_token: Bearer token for authentication
-        order_request: Original validate order request
-        validate_response: Response from validate order containing pricing and guid
+        process_request: Process order request containing all order details
 
     Returns:
         ProcessOrderResponse on success, error message string on failure
     """
     try:
-        if not validate_response.key:
-            logger.error(
-                f"[AdoraV2Tool.api_process_order] Missing order key from validation: {validate_response}"
-            )
-            return "Cannot process order: missing order key from validation."
-
-        process_request = ProcessOrderRequest.model_validate(
-            {
-                "store_id": order_request.store_id,
-                "order_type": order_request.order_type,
-                "payment_type": order_request.payment_type,
-                "guid": validate_response.key,  # Use the key from validate response
-                "promise_date_time": order_request.promise_date_time,
-                "customer": order_request.customer,
-                "delivery_address": order_request.delivery_address,
-                "items": order_request.items,
-                "payment_details": PaymentDetails.model_validate(
-                    {
-                        "sub_total": validate_response.sub_total,
-                        "tax": validate_response.tax_amount,
-                        "total": validate_response.total,
-                    }
-                ),
-                "order_comment": order_request.order_comment,
-            }
-        )
-
         payload = process_request.model_dump(by_alias=True, exclude_none=True)
 
         response = await connect_adora_order_hub(

@@ -14,10 +14,12 @@ from tools.adora_v2_tool._apis import (
     api_validate_order,
     get_adora_pos_auth_token,
 )
+from tools.adora_v2_tool._llm_constants import EXTRACTOR_SYSTEM_PROMPT
 from tools.adora_v2_tool._utils import (
     add_lat_long_to_address,
     build_context,
-    build_extraction_prompt,
+    build_process_order_request,
+    build_validate_address_request,
     get_adora_credentials,
 )
 from tools.adora_v2_tool.classes import (
@@ -196,15 +198,16 @@ class AdoraV2Tool(Toolkit):
         if not bearer_token:
             return "Failed to authenticate.", None
 
-        if not geocoding_result[0]:
-            return geocoding_result[1], None  # type: ignore
+        if not geocoding_result:
+            return (
+                "The address provided is invalid. Please provide a valid address.",
+                None,
+            )
 
-        result = await api_validate_address(
-            bearer_token,
-            self.store_id,
-            delivery_address,
-            geocoding_result[1],  # type: ignore
+        validate_address_request = build_validate_address_request(
+            self.store_id, geocoding_result, delivery_address
         )
+        result = await api_validate_address(bearer_token, validate_address_request)
 
         # If validation failed, return error message
         if isinstance(result, str):
@@ -212,7 +215,7 @@ class AdoraV2Tool(Toolkit):
 
         return (
             f"Address is valid and within delivery zone. {result}",
-            {"lat_lng": geocoding_result[1], "type_id": result.type_id},
+            {"lat_lng": geocoding_result, "type_id": result.type_id},
         )
 
     @tool
@@ -252,29 +255,20 @@ class AdoraV2Tool(Toolkit):
             self._get_bearer_token(),
             asyncio.to_thread(self.query_messages_tool.query_messages),
         ]
-        if delivery_address:
-            tasks.append(self.check_address(delivery_address))  # type: ignore
 
         results = await asyncio.gather(*tasks)
-        bearer_token, chat_history_result = results[0], results[1]
+        bearer_token, chat_history = results[0], results[1]
 
         if not bearer_token:
             return "Failed to authenticate with Adora API."
 
-        validate_address_result = results[2][1] if delivery_address else None
-        if delivery_address and not validate_address_result:
-            return results[2][0]
-
-        chat_history: str = str(chat_history_result)  # type: ignore
-
-        # Build default prompts
-        system_prompt = build_extraction_prompt(
-            OrderRequestBase, self.fulfill_order.__name__
-        )
-
         # Apply backdoor overrides if present
-        system_prompt = self.backdoor_tool_prompt.get(
-            BackdoorToolPrompt.SYSTEM_PROMPT, system_prompt
+        system_prompt = (
+            self.backdoor_tool_prompt.get(
+                BackdoorToolPrompt.SYSTEM_PROMPT, EXTRACTOR_SYSTEM_PROMPT
+            )
+            if self.backdoor_tool_prompt
+            else EXTRACTOR_SYSTEM_PROMPT
         )
 
         # Get menu context and build complete context
@@ -304,22 +298,10 @@ class AdoraV2Tool(Toolkit):
 
         # Validate and parse LLM response
         if not isinstance(order_request_base, OrderRequestBase):
-            try:
-                import json
-
-                if isinstance(order_request_base, str):
-                    order_request_base = OrderRequestBase(
-                        **json.loads(order_request_base)
-                    )
-                elif isinstance(order_request_base, dict):
-                    order_request_base = OrderRequestBase(**order_request_base)
-                else:
-                    raise TypeError(
-                        f"[AdoraV2Tool.fulfill_order] Unexpected type: {type(order_request_base)}\nValue: {order_request_base}"
-                    )
-            except Exception as e:
-                logger.error(f"[AdoraV2Tool.fulfill_order] Parse failed: {e}")
-                return "Failed to extract order information. Please provide all order details."
+            logger.error(
+                f"[AdoraV2Tool.fulfill_order] Parse failed: Extracted Order: {order_request_base}; Type: {type(order_request_base)}"
+            )
+            return "Failed to extract order information. Please provide all order details and try again."
 
         # Convert to ValidateOrderRequest with store_id
         order_request = ValidateOrderRequest(
@@ -336,6 +318,11 @@ class AdoraV2Tool(Toolkit):
         if order_request.order_type == OrderType.DELIVERY:
             if not delivery_address:
                 return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
+
+            validate_address_result = await self.check_address(delivery_address)  # type: ignore
+            if isinstance(validate_address_result[0], str):
+                return validate_address_result[0]
+
             order_request.delivery_address = DeliveryAddress(
                 **delivery_address.model_dump(),
                 lat=validate_address_result["lat_lng"][0],  # type: ignore
@@ -356,17 +343,14 @@ class AdoraV2Tool(Toolkit):
         if isinstance(validate_result, str) or not validate_result.key:
             return f"Validation failed: {validate_result if isinstance(validate_result, str) else 'No order key returned'}"
 
-        # Step 2: Process the order
-        process_result = await api_process_order(
-            bearer_token, order_request, validate_result
+        # Step 2: Build process order request and process the order
+        process_order_request = build_process_order_request(
+            order_request, validate_result
         )
+        process_result = await api_process_order(bearer_token, process_order_request)
         logger.debug(f"[AdoraV2Tool.fulfill_order] process_result: {process_result}")
-        if isinstance(process_result, str):
+        if isinstance(process_result, str) or not process_result.success:
             return f"Processing failed: {process_result}"
-
-        # Step 3: Return confirmation
-        if not process_result.success:
-            return f"Order processing failed: {process_result}"
 
         confirmation = (
             f"Order successfully placed!\n"
@@ -379,8 +363,8 @@ class AdoraV2Tool(Toolkit):
             f"Total: ${validate_result.total:.2f}\n"
         )
 
-        # Use payment URL from process result first, fallback to validate result
-        payment_url = process_result.payment_url or validate_result.payment_url
+        # Use payment URL from process result
+        payment_url = process_result.payment_url
         if payment_url:
             confirmation += f"\nPayment URL: {payment_url}"
 

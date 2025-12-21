@@ -27,7 +27,8 @@ class BaseDeliveryAddress(BaseModel):
     street_number: str = Field(description="Street number (required)")
     street_name: str = Field(description="Street name (required)")
     extended_address: str = Field(
-        description="Extended address (if applicable, ex unit apartment/suite, etc), set to empty string if not provided"
+        description="Extended address (ex unit apartment/suite, etc), set to empty string if not provided (required)",
+        alias="extendedAddress",
     )
     city: str = Field(description="City name (required)")
     state: str = Field(
@@ -81,6 +82,22 @@ class DeliveryAddress(BaseDeliveryAddress):
     def address(self) -> str:
         """Computed field that combines street_number and street_name"""
         return f"{self.street_number} {self.street_name}"
+
+
+class ValidateAddressRequest(BaseModel):
+    """Request for address validation API"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    store_id: str = Field(description="Store ID", alias="storeId")
+    lat: float = Field(description="Latitude")
+    lng: float = Field(description="Longitude")
+    street_no: str = Field(description="Street number", alias="streetNo")
+    street_name: str = Field(description="Street name", alias="streetName")
+    unit_apt: str = Field(description="Unit/Apartment", alias="unitApt")
+    city: str = Field(description="City")
+    state: str = Field(description="State")
+    zip: str = Field(description="ZIP code")
 
 
 class ValidateAddressResponse(BaseModel):

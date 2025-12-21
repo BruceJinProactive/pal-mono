@@ -1,11 +1,20 @@
 import asyncio
 import re
+from datetime import datetime
 from typing import Tuple, Type
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
 from tools.adora_v2_tool._apis import geocode_with_aws_location, geocode_with_google
-from tools.adora_v2_tool.classes import BaseDeliveryAddress
+from tools.adora_v2_tool.classes import (
+    BaseDeliveryAddress,
+    PaymentDetails,
+    ProcessOrderRequest,
+    ValidateAddressRequest,
+    ValidateOrderRequest,
+    ValidateOrderResponse,
+)
 from utils.log import logger
 from utils.secret import async_get_client_secret_with_fallback
 
@@ -36,13 +45,13 @@ async def get_adora_credentials(account_name: str) -> tuple[str | None, str | No
 
 async def add_lat_long_to_address(
     delivery_address: BaseDeliveryAddress,
-) -> Tuple[bool, str | tuple[float, float]]:
+) -> Tuple[float, float] | None:
     """Add lat/long to address using AWS Location Service with Google Geocoding fallback.
 
     Returns:
-        Tuple[bool, str | tuple[float, float]]:
-            - On success: (True, (lat, lng))
-            - On failure: (False, error_message)
+        Tuple[float, float] | None:
+            - On success: (lat, lng)
+            - On failure: None
     """
     # Try AWS first, fallback to Google
     result = await geocode_with_aws_location(
@@ -50,15 +59,12 @@ async def add_lat_long_to_address(
     ) or await geocode_with_google(delivery_address)
 
     if not result:
-        return False, "The address provided is invalid. Please provide a valid address."
+        return None
 
     if delivery_address.state == "N/A" or delivery_address.zip == "N/A":
-        return (
-            False,
-            "Please provide your full address with zip code and state information.",
-        )
+        return None
 
-    return True, result
+    return result
 
 
 def extract_street_parts(full_address: str) -> Tuple[str, str]:
@@ -162,9 +168,6 @@ def build_context(menu_context: str, timezone: str | None = None) -> tuple[str, 
     Returns:
         tuple[str, str]: (complete context with datetime, default user prompt template)
     """
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-
     # Add current date/time to context for LLM to understand temporal references
     store_tz = timezone or "America/Los_Angeles"
     current_dt_store = datetime.now(ZoneInfo(store_tz))
@@ -179,3 +182,66 @@ def build_context(menu_context: str, timezone: str | None = None) -> tuple[str, 
     context_template = "{context}\n\n{chat_history}"
 
     return context, context_template
+
+
+def build_validate_address_request(
+    store_id: str,
+    lat_lng: Tuple[float, float],
+    delivery_address: BaseDeliveryAddress,
+) -> ValidateAddressRequest:
+    """Build ValidateAddressRequest from address components.
+
+    Args:
+        store_id: Store ID
+        lat_lng: Tuple of (latitude, longitude)
+        delivery_address: BaseDeliveryAddress
+
+    Returns:
+        ValidateAddressRequest
+    """
+    return ValidateAddressRequest(
+        storeId=store_id,
+        lat=lat_lng[0],
+        lng=lat_lng[1],
+        streetNo=delivery_address.street_number,
+        streetName=delivery_address.street_name,
+        unitApt=delivery_address.extended_address,
+        city=delivery_address.city,
+        state=delivery_address.state,
+        zip=delivery_address.zip,
+    )
+
+
+def build_process_order_request(
+    validate_order_request: ValidateOrderRequest,
+    validate_order_response: ValidateOrderResponse,
+) -> ProcessOrderRequest:
+    """Build ProcessOrderRequest from validate order request and response.
+
+    Args:
+        validate_order_request: ValidateOrderRequest
+        validate_order_response: ValidateOrderResponse
+
+    Returns:
+        ProcessOrderRequest
+    """
+    return ProcessOrderRequest.model_validate(
+        {
+            "store_id": validate_order_request.store_id,
+            "order_type": validate_order_request.order_type,
+            "payment_type": validate_order_request.payment_type,
+            "guid": validate_order_response.key,
+            "promise_date_time": validate_order_request.promise_date_time,
+            "customer": validate_order_request.customer,
+            "delivery_address": validate_order_request.delivery_address,
+            "items": validate_order_request.items,
+            "payment_details": PaymentDetails.model_validate(
+                {
+                    "sub_total": validate_order_response.sub_total,
+                    "tax": validate_order_response.tax_amount,
+                    "total": validate_order_response.total,
+                }
+            ),
+            "order_comment": validate_order_request.order_comment,
+        }
+    )
