@@ -128,6 +128,23 @@ class VapiTool(Toolkit):
         Returns:
             str: Success or error message about the call transfer attempt.
         """
+        # Validate channel - defense in depth
+        if (
+            hasattr(self.tool_metadata, "channel")
+            and self.tool_metadata.channel
+            and self.tool_metadata.channel != "voice"
+        ):
+            error_msg = "Call transfer is only available for voice calls. This conversation is not a voice call."
+            logger.warning(
+                f"[VapiTool.call_transfer] {error_msg}",
+                extra={
+                    "project_id": str(self.tool_metadata.project_id),
+                    "account_name": self.tool_metadata.account_name,
+                    "channel": self.tool_metadata.channel,
+                },
+            )
+            return error_msg
+
         # Get control URL from the conversations table using session_id (conversation_id)
         conversation_id = self.tool_metadata.session_id
         # get last message, and get ctrl url from the message metadata

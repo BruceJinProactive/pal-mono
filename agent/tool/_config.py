@@ -20,6 +20,7 @@ class ToolMetadata(BaseModel):
     timezone: str | None = None
     customer_phone: str | None = None
     store_phone: str | None = None
+    channel: str | None = None
 
 
 class ToolIdentifier(BaseModel):

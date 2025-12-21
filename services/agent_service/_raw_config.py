@@ -268,6 +268,7 @@ class RawConfig:
             timezone=self.project.timezone,
             customer_phone=customer_phone,
             store_phone=store_phone,
+            channel=self.channel.value if self.channel else None,
         )
 
         raw_tools: Dict[str, Any] = self.agent.raw_config.get("tools", {})
@@ -359,6 +360,13 @@ class RawConfig:
                     access_metadata=bool(entry["access_metadata"]),
                 )
             )
+
+        # Filter out voice-only tools for non-voice channels
+        VOICE_ONLY_TOOLS = {"vapi_tool"}
+        if self.channel != Channel.VOICE:
+            final_identifiers = [
+                t for t in final_identifiers if t.tool_name not in VOICE_ONLY_TOOLS
+            ]
 
         return ToolConfig(identifiers=final_identifiers, metadata=metadata)
 
