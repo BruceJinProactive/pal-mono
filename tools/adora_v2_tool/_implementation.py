@@ -320,14 +320,15 @@ class AdoraV2Tool(Toolkit):
                 return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
 
             validate_address_result = await self.check_address(delivery_address)  # type: ignore
-            if not validate_address_result[1]:
+            address_data = validate_address_result[1]
+            if not address_data:
                 return validate_address_result[0]
 
             order_request.delivery_address = DeliveryAddress(
                 **delivery_address.model_dump(),
-                lat=validate_address_result["lat_lng"][0],  # type: ignore
-                lng=validate_address_result["lat_lng"][1],  # type: ignore
-                type_id=validate_address_result["type_id"],  # type: ignore
+                lat=address_data["lat_lng"][0],  # type: ignore
+                lng=address_data["lat_lng"][1],  # type: ignore
+                type_id=address_data["type_id"],  # type: ignore
             )
             order_request.payment_type = PaymentType.PAYMENT_LINK
         else:
