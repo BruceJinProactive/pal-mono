@@ -320,7 +320,7 @@ class AdoraV2Tool(Toolkit):
                 return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
 
             validate_address_result = await self.check_address(delivery_address)  # type: ignore
-            if isinstance(validate_address_result[0], str):
+            if not validate_address_result[1]:
                 return validate_address_result[0]
 
             order_request.delivery_address = DeliveryAddress(
