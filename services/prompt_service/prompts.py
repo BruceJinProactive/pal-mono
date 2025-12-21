@@ -492,16 +492,6 @@ prompt_factory.register(
 
 prompt_factory.register(
     Prompt(
-        id="closing-conversation-ordering",
-        agent_types=[AgentType.ordering],
-        title="Closing Conversation Guideline",
-        instructions="""
-- You should close the conversation once an order is successfully placed. An order is successfully placed when the user receives the payment link.""",
-    )
-)
-
-prompt_factory.register(
-    Prompt(
         id="store-hours-enforcement",
         agent_types=[AgentType.ordering],
         title="Store Hours Enforcement",
