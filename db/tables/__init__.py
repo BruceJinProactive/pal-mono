@@ -26,6 +26,8 @@ from .prompts import Prompt, PromptDetails
 from .reservations import Reservation
 from .resource_role_assignment import ResourceRoleAssignment
 from .role_permission import RolePermission
+from .signal_feeds import SignalFeed
+from .signal_sources import SignalSource
 from .subscriptions import AccountSubscription, ProjectSubscription, SubscriptionPlan
 from .types import (
     AccountUserStatus,
@@ -34,13 +36,20 @@ from .types import (
     CallEndedReason,
     CallLanguage,
     CallPurpose,
+    CameraSubtype,
+    CaptureMode,
     Channel,
     CheckStatus,
+    CloudCameraProvider,
+    FeedType,
     IntegrationProvider,
     IntegrationType,
     InvitationStatus,
     Language,
     PaymentMethod,
+    SignalFeedStatus,
+    SignalSourceStatus,
+    SignalType,
     SubscriptionStatus,
     TargetTier,
     UserSatisfaction,

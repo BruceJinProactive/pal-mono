@@ -160,3 +160,58 @@ class InvitationStatus(str, enum.Enum):
     accepted = "accepted"
     expired = "expired"
     revoked = "revoked"
+
+
+# Signal Sources Enums
+
+
+class SignalType(str, enum.Enum):
+    """Type of signal source (V1: camera only)."""
+
+    camera = "camera"
+
+
+class CameraSubtype(str, enum.Enum):
+    """Subtype for camera signals."""
+
+    rtsp = "rtsp"
+    cloud = "cloud"
+    s3 = "s3"
+
+
+class CloudCameraProvider(str, enum.Enum):
+    """Supported cloud camera providers."""
+
+    verkada = "verkada"
+    rhombus = "rhombus"
+    ring = "ring"
+
+
+class SignalSourceStatus(str, enum.Enum):
+    """Status of a signal source."""
+
+    active = "active"
+    inactive = "inactive"
+    error = "error"
+
+
+class SignalFeedStatus(str, enum.Enum):
+    """Status of a signal feed."""
+
+    active = "active"
+    paused = "paused"
+    error = "error"
+
+
+class FeedType(str, enum.Enum):
+    """Type of data produced by a feed."""
+
+    image_snapshot = "image_snapshot"
+    video_stream = "video_stream"
+
+
+class CaptureMode(str, enum.Enum):
+    """How feed data is obtained."""
+
+    pull = "pull"
+    push = "push"
