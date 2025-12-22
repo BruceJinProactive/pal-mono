@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 import db
 from agent import Agent
 from agent.input_output import Output
+from agent.storage._implementation import query_history_messages
 from api.schemas.chat.message import (
     AuthorType,
     Broker,
@@ -142,35 +143,65 @@ async def get_chat_response_async(
                 channel=message.channel.value if message.channel else None,
             )
 
+            # Fetch conversation history
+            history_messages = await query_history_messages(
+                request_message.conversation_id,
+                limit=20,
+            )
+
+            # Format history for context
+            # Match legacy flow's defensive pattern: verify last message matches
+            # current input before excluding (see agent/framework/agno.py:356-377)
+            current_message = message.text.body if message.text else ""
+            history_text = ""
+            if history_messages:
+                # Check if last message matches current input (should be the case
+                # since create_message commits before we fetch history)
+                if (
+                    history_messages[-1].content == current_message
+                    and history_messages[-1].role == "user"
+                ):
+                    # Exclude current message from history
+                    prior_messages = history_messages[:-1]
+                else:
+                    # Defensive: log warning but include all history
+                    # (safer to have potential duplicate than missing context)
+                    logger.warning(
+                        "[pal-agents] Last history message does not match current input. "
+                        f"Expected: {current_message[:50]}..., "
+                        f"Got: {history_messages[-1].content[:50]}..."
+                    )
+                    prior_messages = history_messages
+
+                if prior_messages:
+                    history_text = "\n".join(
+                        [
+                            f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
+                            for msg in prior_messages
+                        ]
+                    )
+
+            # Build content with history
+            if history_text:
+                full_content = (
+                    f"<conversation_history>\n{history_text}\n</conversation_history>\n\n"
+                    f"User: {current_message}"
+                )
+            else:
+                full_content = f"User: {current_message}"
+
             pal_input = PalInput(
-                content=message.text.body if message.text else "",
+                content=full_content,
                 runtime_context=runtime_context,
             )
 
             pal_output = await pal_agent.run(pal_input)
 
-            # Convert to old Output format
-            # ============================================================
-            # GAP: pal-agents Output only has `content` field.
-            # The old flow's `escalated` and `closing_conversation` flags
-            # are NOT available in pal-agents.
-            #
-            # MVP WORKAROUND: Default both to False.
-            # CONSEQUENCES:
-            #   - Escalation to human agents won't trigger automatically
-            #   - Conversations won't auto-close based on agent signals
-            #   - The closing_conversation check at line ~212 will never trigger
-            #
-            # FUTURE OPTIONS:
-            #   1. Add these fields to pal-agents Output class
-            #   2. Parse from content using regex/keywords
-            #   3. Use a dedicated tool that sets these flags
-            #   4. Use structured output extraction from LLM response
-            # ============================================================
+            # Use pal-agents Output fields directly (v0.2.1+)
             output = Output(
                 content=pal_output.content,
-                escalated=False,
-                closing_conversation=False,
+                escalated=pal_output.escalated,
+                closing_conversation=pal_output.closing_conversation,
             )
             logger.debug(f"pal-agents Output: {output}")
         else:
