@@ -13,6 +13,7 @@ from services.knowledge_service import (
     query_vector_database,
     upload_knowledge_file,
 )
+from services.transaction_service import update_order_by_order_id
 from tools.toast_tool._apis import (
     connect_toast_order_hub,
     get_existing_order,
@@ -555,7 +556,23 @@ async def checkout_complete(request: Request) -> JSONResponse:
             f"[ToastAPIIntegration.checkout_complete] Successfully posted payment with externalId {payment_external_reference_id} to order {order.guid}"  # type: ignore
         )
 
-        # 4. Return success response to Toast Iframe UI
+        # 5. Update order status from pending to paid in the database
+        order_updated = update_order_by_order_id(
+            store_id=store_id,
+            vendor=IntegrationProvider.toast,
+            new_status="paid",
+            order_id=str(order.guid),  # type: ignore
+        )
+        if order_updated:
+            logger.debug(
+                f"[ToastAPIIntegration.checkout_complete] Updated order {order.guid} status to paid"  # type: ignore
+            )
+        else:
+            logger.warning(
+                f"[ToastAPIIntegration.checkout_complete] Failed to update order {order.guid} status to paid - order may not exist in database"  # type: ignore
+            )
+
+        # 6. Return success response to Toast Iframe UI
         response_content = {
             "message": "Payment processed successfully",
             "testMode": test_mode,
