@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from utils.log import logger
 
 # Import access control functions that are needed for formatting
-from ._access_control import get_account_integrations, get_project_display_name
+from ._access_control import get_project_display_name
 
 # =============================================================================
 # CONSTANTS AND CONFIGURATION
@@ -641,22 +641,6 @@ def build_conversion_section(
     """Build conversion summary section and table blocks."""
     blocks = []
 
-    # Check if account has Adora integration (for summary N/A display)
-    has_adora_integration = False
-    if account_id_filter and session:
-        logger.info(
-            f"[Slackbot DEBUG] Checking integrations for account_id={account_id_filter}, session={'present' if session else 'None'}"
-        )
-        integrations = get_account_integrations(account_id_filter, session)
-        has_adora_integration = "adora" in integrations
-        logger.info(
-            f"[Slackbot] Conversion summary: has_adora={has_adora_integration}, integrations={integrations}, account_id={account_id_filter}"
-        )
-    else:
-        logger.warning(
-            f"[Slackbot DEBUG] Skipping integration check: account_id_filter={account_id_filter}, session={'present' if session else 'None'}"
-        )
-
     conversion_summary_lines = []
     if "Conversion Metrics" in totals_summary:
         conv_totals = totals_summary["Conversion Metrics"]
@@ -679,23 +663,14 @@ def build_conversion_section(
             paid_revenue / total_paid_orders if total_paid_orders > 0 else 0
         )
 
-        # Format values - use N/A for paid metrics if Adora integration exists
+        # Format values
         total_transaction_formatted = safe_float_format(total_revenue, 2)
         conversion_rate_formatted = safe_float_format(overall_conversion_rate, 1)
         avg_subtotal_formatted = safe_float_format(avg_subtotal, 2)
-
-        if has_adora_integration:
-            # Show N/A for paid metrics in summary
-            paid_orders_display = "N/A"
-            paid_revenue_formatted = "N/A"
-            paid_rate_formatted = "N/A"
-            avg_paid_total_formatted = "N/A"
-        else:
-            # Show actual values
-            paid_orders_display = str(total_paid_orders)
-            paid_revenue_formatted = safe_float_format(paid_revenue, 2)
-            paid_rate_formatted = safe_float_format(overall_paid_rate, 1)
-            avg_paid_total_formatted = safe_float_format(avg_paid_total, 2)
+        paid_orders_display = str(total_paid_orders)
+        paid_revenue_formatted = safe_float_format(paid_revenue, 2)
+        paid_rate_formatted = safe_float_format(overall_paid_rate, 1)
+        avg_paid_total_formatted = safe_float_format(avg_paid_total, 2)
 
         conversion_summary_lines.extend(
             [

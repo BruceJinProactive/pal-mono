@@ -238,52 +238,6 @@ def get_project_display_name(
         return project_name
 
 
-def get_account_integrations(
-    account_id: uuid.UUID, session: Session | None = None
-) -> list[str]:
-    """
-    Get integrations for an account as a list of provider names.
-
-    Args:
-        account_id: Account UUID
-        session: Database session (optional)
-
-    Returns:
-        List of integration provider names (e.g., ["toast", "opentable"]) or empty list
-    """
-    if not session:
-        logger.warning(
-            f"[Slackbot] get_account_integrations called with no session for account {account_id}"
-        )
-        return []
-
-    try:
-        from services import integration_service
-
-        # Use integration service instead of direct database query
-        integrations = integration_service.get_integrations_by_account_id(
-            session, account_id
-        )
-
-        if not integrations:
-            logger.info(f"[Slackbot] No integrations found for account {account_id}")
-            return []
-
-        # Return list of provider names (lowercase)
-        provider_list = [integration.provider.value for integration in integrations]
-        logger.info(
-            f"[Slackbot] Found {len(provider_list)} integrations for account {account_id}: {provider_list}"
-        )
-        return provider_list
-
-    except Exception as e:
-        logger.warning(
-            f"[Slackbot] Error looking up integrations for account {account_id}: {e}",
-            exc_info=True,
-        )
-        return []
-
-
 def get_account_timezone(session: Session, account_name: str) -> str:
     """
     Get the timezone for an account by looking up its first project's timezone.

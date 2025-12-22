@@ -225,7 +225,10 @@ class OrderRepository:
                     func.count(func.distinct(Conversation.id)).label("placed_order"),
                     func.count(
                         func.distinct(
-                            case((Order.status == "paid", Conversation.id), else_=None)
+                            case(
+                                (func.lower(Order.status) == "paid", Conversation.id),
+                                else_=None,
+                            )
                         )
                     ).label("paid_order"),
                 )

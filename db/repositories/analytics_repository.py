@@ -628,20 +628,20 @@ class AnalyticsRepository:
                             else_=None,
                         )
                     ).label("conversations_with_orders"),
-                    # Orders with paid status
+                    # Orders with paid status (case-insensitive)
                     func.count(
                         case(
-                            (Order.status == "paid", Order.id),
+                            (func.lower(Order.status) == "paid", Order.id),
                             else_=None,
                         )
                     ).label("paid_orders"),
                     # Total subtotal (monetary value) from all orders
                     func.coalesce(func.sum(Order.subtotal), 0).label("total_subtotal"),
-                    # Paid total (monetary value) from only paid orders
+                    # Paid total (monetary value) from only paid orders (case-insensitive)
                     func.coalesce(
                         func.sum(
                             case(
-                                (Order.status == "paid", Order.subtotal),
+                                (func.lower(Order.status) == "paid", Order.subtotal),
                                 else_=0,
                             )
                         ),
