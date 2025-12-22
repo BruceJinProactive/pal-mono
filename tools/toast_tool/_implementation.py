@@ -7,7 +7,7 @@ import urllib.parse
 import uuid
 from datetime import datetime
 from functools import cached_property
-from typing import Any, Optional
+from typing import Any, List, Optional
 from zoneinfo import ZoneInfo
 
 import polyline
@@ -20,6 +20,8 @@ from shapely import Point, Polygon
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
+from db.tables.types import IntegrationProvider
+from services.transaction_service import save_order
 from tools.toast_tool._apis import (
     create_payment_intent,
     get_existing_order,
@@ -47,6 +49,7 @@ from tools.toast_tool.classes import (
     AppliedServiceCharge,
     DeliveryAddress,
     DiningBehavior,
+    ItemSelection,
     Modifier,
     Order,
     OrderInput,
@@ -901,6 +904,101 @@ class ToastTool(Toolkit):
         return context
 
     @staticmethod
+    def _transform_modifiers_for_db(
+        modifiers: Optional[List[Modifier]],
+    ) -> Optional[List[dict]]:
+        """
+        Recursively transform Toast Modifier objects to the schema expected by
+        reconstruct_order_items (modifier_id, modifier_name, nested modifiers).
+        """
+        if not modifiers:
+            return None
+        result = []
+        for mod in modifiers:
+            item_guid = getattr(mod.item, "guid", None) if mod.item else None
+            item_name = getattr(mod.item, "name", None) if mod.item else None
+            transformed = {
+                "modifier_id": item_guid,
+                "modifier_name": item_name or mod.displayName,
+            }
+            nested = ToastTool._transform_modifiers_for_db(mod.modifiers)
+            if nested:
+                transformed["modifiers"] = nested
+            result.append(transformed)
+        return result if result else None
+
+    @staticmethod
+    def _transform_selections_for_db(selections: List[ItemSelection]) -> List[dict]:
+        """
+        Transform Toast ItemSelection objects to the schema expected by
+        reconstruct_order_items (item_id, item_name, quantity, modifiers).
+
+        Note: displayName comes from Toast API response via extra="allow" on ItemSelection.
+        """
+        result = []
+        for sel in selections:
+            item_guid = getattr(sel.item, "guid", None) if sel.item else None
+            # displayName is an extra field from Toast API response (not in ItemBase model)
+            item_name = getattr(sel, "displayName", None)
+            transformed = {
+                "item_id": item_guid,
+                "item_name": item_name,
+                "quantity": sel.quantity,
+            }
+            mods = ToastTool._transform_modifiers_for_db(sel.modifiers)
+            if mods:
+                transformed["modifiers"] = mods
+            result.append(transformed)
+        return result
+
+    @task(name="_save_order_to_db")
+    def _save_order_to_db(self, validated_order: Order) -> None:
+        """
+        Save order information to the database.
+
+        Uses the transaction_service.save_order() function which properly handles
+        database session management, field mapping, and conversation_id extraction
+        from tool_metadata.
+
+        Args:
+            validated_order: The validated order response from Toast API
+        """
+        store_tz = self.tool_metadata.timezone or "America/Los_Angeles"
+
+        try:
+            order_id = save_order(
+                tool_metadata=self.tool_metadata,
+                vendor=IntegrationProvider.toast,
+                order_id=str(validated_order.guid) if validated_order.guid else None,
+                store_id=self.store_id,
+                status="pending",
+                fulfillment_strategy=None,  # Toast does not provide fulfillment strategy in the order response. It's updated once payment is completed.
+                subtotal=validated_order.checks[0].amount,
+                order_items=self._transform_selections_for_db(
+                    validated_order.checks[0].selections
+                ),
+                order_time=(
+                    datetime.fromisoformat(
+                        getattr(validated_order.checks[0], "openedDate", "")
+                    )
+                    if getattr(validated_order.checks[0], "openedDate", None)
+                    else datetime.now(ZoneInfo(store_tz))
+                ),
+            )
+            if order_id:
+                logger.debug(
+                    f"[ToastTool._save_order_to_db] Saved order to database: {order_id}"
+                )
+        except Exception as e:
+            # Log error but don't re-raise - the order was already successfully
+            # submitted to Toast, so we don't want to fail the user's order
+            # just because of a database persistence issue
+            logger.error(
+                f"[ToastTool._save_order_to_db] Error saving order into db: {e}",
+                exc_info=True,
+            )
+
+    @staticmethod
     def _is_invalid_guid(guid) -> bool:
         """Check if a GUID is invalid (None, 'N/A', empty, or whitespace-only)."""
         return guid in (None, "N/A", "") or (isinstance(guid, str) and not guid.strip())
@@ -1164,6 +1262,9 @@ class ToastTool(Toolkit):
                 order,
                 general_api_endpoint=self.general_api_endpoint,
             )
+
+            # Save order to database
+            self._save_order_to_db(order)
 
             # TODO: Decide what messages to return to the user, and whether we want to store the Order guid in the database.
             logger.debug(
