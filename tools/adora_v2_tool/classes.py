@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 class OrderItem(BaseModel):
     """Single order item containing item name and optional modifiers"""
 
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
     item_name: str = Field(
         description=(
             "Complete dish or drink name from the order without size or quantity information. "
@@ -26,6 +28,8 @@ class OrderItem(BaseModel):
 
 class OrderItems(BaseModel):
     """Collection of order items"""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     items: list[OrderItem] = Field(
         description=(
