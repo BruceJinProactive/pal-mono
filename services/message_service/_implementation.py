@@ -169,7 +169,7 @@ async def get_chat_response_async(
                     logger.warning(
                         "[pal-agents] Last history message does not match current input. "
                         f"Expected: {current_message[:50]}..., "
-                        f"Got: {history_messages[-1].content[:50]}..."
+                        f"Got: {(history_messages[-1].content or '')[:50]}..."
                     )
                     prior_messages = history_messages
 
@@ -178,6 +178,7 @@ async def get_chat_response_async(
                         [
                             f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
                             for msg in prior_messages
+                            if msg.content  # Filter out None/empty content
                         ]
                     )
 
@@ -393,46 +394,97 @@ async def get_chat_response_stream(
             if agent_id is None:
                 raise ValueError("Agent ID not found")
 
-            # Configure agent for streaming
-            config = await agent_service.construct_agent_config(
-                session=session,
-                agent_id=agent_id,
-                user_id=user.id,
-                project_id=project.id,
-                conversation_id=request_message.conversation_id,
-                channel=message.channel,
-                sender_identifier=message.sender_identifier,
-                receiver_identifier=message.recipient_identifier,
-            )
-            config.stream = True
+            collected_content: list[str] = []
 
-            # Initialize agent and set up streaming input
-            agent = Agent(config=config)
+            # ========== CHUNK GENERATION (if/else by account) ==========
+            if account_name in ["proactiveailab-transformer"]:
+                # PAL-AGENTS PATH
+                spec = await agent_service.construct_agent_spec(
+                    session=session,
+                    agent_id=agent_id,
+                    user_id=user.id,
+                    project_id=project.id,
+                    conversation_id=request_message.conversation_id,
+                    channel=message.channel,
+                    sender_identifier=message.sender_identifier,
+                )
+                pal_agent = PalAgent(spec=spec)
 
-            logger.debug(f"Agent config stream mode: {config}")
+                # Build RuntimeContext (same as non-streaming)
+                customer_phone = None
+                if message.channel and message.channel.value.lower() in [
+                    "sms",
+                    "voice",
+                    "whatsapp",
+                ]:
+                    customer_phone = message.sender_identifier
 
-            # Get Input with conversation history
-            input = await _utils.get_agent_input_from_message(
-                message=message,
-                stream=True,
-                request_context=request_context,
-            )
-            logger.debug(f"Input stream mode: {input}")
-            send_dd_histogram_metrics(
-                "message_service.start_streaming",
-                request_context.request_time,
-                [
-                    f"agent_id:{agent_id}",
-                    f"account_name:{account_name}",
-                ],
-            )
+                runtime_context = RuntimeContext(
+                    user_id=str(user.id),
+                    session_id=str(request_message.conversation_id),
+                    customer_phone=customer_phone,
+                    project_id=str(project.id),
+                    account_id=str(project.account_id),
+                    account_name=account_name,
+                    agent_id=str(agent_id),
+                    timezone=project.timezone,
+                    channel=message.channel.value if message.channel else None,
+                )
 
-            # Get streaming response
-            response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
-            collected_content = []
+                # Fetch and format conversation history (same as non-streaming)
+                history_messages = await query_history_messages(
+                    request_message.conversation_id,
+                    limit=20,
+                )
 
-            # ==== Step 3: Process the streaming response ====
-            if response_stream:
+                current_message = message.text.body if message.text else ""
+                history_text = ""
+                if history_messages:
+                    if (
+                        history_messages[-1].content == current_message
+                        and history_messages[-1].role == "user"
+                    ):
+                        prior_messages = history_messages[:-1]
+                    else:
+                        logger.warning(
+                            "[pal-agents streaming] Last history message does not match current input. "
+                            f"Expected: {current_message[:50]}..., "
+                            f"Got: {(history_messages[-1].content or '')[:50]}..."
+                        )
+                        prior_messages = history_messages
+
+                    if prior_messages:
+                        history_text = "\n".join(
+                            [
+                                f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
+                                for msg in prior_messages
+                                if msg.content  # Filter out None/empty content
+                            ]
+                        )
+
+                if history_text:
+                    full_content = (
+                        f"<conversation_history>\n{history_text}\n</conversation_history>\n\n"
+                        f"User: {current_message}"
+                    )
+                else:
+                    full_content = f"User: {current_message}"
+
+                pal_input = PalInput(
+                    content=full_content,
+                    runtime_context=runtime_context,
+                )
+
+                send_dd_histogram_metrics(
+                    "message_service.start_streaming",
+                    request_context.request_time,
+                    [
+                        f"agent_id:{agent_id}",
+                        f"account_name:{account_name}",
+                    ],
+                )
+
+                # Stream from pal-agents
                 async with trace_async_block("Message Service Streaming"):
                     index = 0
                     send_dd_histogram_metrics(
@@ -444,7 +496,7 @@ async def get_chat_response_stream(
                         ],
                     )
 
-                    async for chunk in response_stream:
+                    async for chunk in await pal_agent.run(pal_input, stream=True):
                         if index == 0:
                             send_dd_histogram_metrics(
                                 "message_service.received_first_chunk",
@@ -455,123 +507,207 @@ async def get_chat_response_stream(
                                 ],
                             )
 
-                        async with trace_async_block(
-                            "Process Stream Chunk",
-                            tags={
-                                "chunk_index": index,
-                                "conversation_id": str(request_message.conversation_id),
-                                "chunk_type": type(chunk).__name__,
-                            },
-                        ) as span:
-                            # Process different chunk types into content string
-                            content = ""
-                            if isinstance(chunk, Output):
-                                content = chunk.content
-                                # Check for conversation closing if available
-                                if (
-                                    hasattr(chunk, "closing_conversation")
-                                    and chunk.closing_conversation
-                                ):
-                                    conversation = await db.ConversationRepositoryAsync(
-                                        session
-                                    ).get_conversation_by_id(
-                                        conversation_id=request_message.conversation_id
-                                    )
-                                    if conversation:
-                                        conversation.status = (
-                                            db.ConversationStatus.CLOSING
+                        if not chunk.content:
+                            continue
+
+                        completion_chunk = ChatCompletionChunk(
+                            id=f"chatcmpl-{uuid.uuid4().hex}",
+                            object="chat.completion.chunk",
+                            created=int(
+                                datetime.datetime.now(datetime.timezone.utc).timestamp()
+                            ),
+                            model=message.recipient_identifier,
+                            choices=[
+                                ChunkChoice(
+                                    index=index,
+                                    delta=ChoiceDelta(
+                                        role="assistant", content=chunk.content
+                                    ),
+                                    finish_reason=None,
+                                )
+                            ],
+                        )
+                        yield completion_chunk
+                        collected_content.append(chunk.content)
+                        index += 1
+
+            else:
+                # LEGACY PATH - existing agent system
+                config = await agent_service.construct_agent_config(
+                    session=session,
+                    agent_id=agent_id,
+                    user_id=user.id,
+                    project_id=project.id,
+                    conversation_id=request_message.conversation_id,
+                    channel=message.channel,
+                    sender_identifier=message.sender_identifier,
+                    receiver_identifier=message.recipient_identifier,
+                )
+                config.stream = True
+
+                agent = Agent(config=config)
+
+                logger.debug(f"Agent config stream mode: {config}")
+
+                input = await _utils.get_agent_input_from_message(
+                    message=message,
+                    stream=True,
+                    request_context=request_context,
+                )
+                logger.debug(f"Input stream mode: {input}")
+                send_dd_histogram_metrics(
+                    "message_service.start_streaming",
+                    request_context.request_time,
+                    [
+                        f"agent_id:{agent_id}",
+                        f"account_name:{account_name}",
+                    ],
+                )
+
+                response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
+
+                if response_stream:
+                    async with trace_async_block("Message Service Streaming"):
+                        index = 0
+                        send_dd_histogram_metrics(
+                            "message_service.waiting_first_chunk",
+                            request_context.request_time,
+                            [
+                                f"agent_id:{agent_id}",
+                                f"account_name:{account_name}",
+                            ],
+                        )
+
+                        async for chunk in response_stream:
+                            if index == 0:
+                                send_dd_histogram_metrics(
+                                    "message_service.received_first_chunk",
+                                    request_context.request_time,
+                                    [
+                                        f"agent_id:{agent_id}",
+                                        f"account_name:{account_name}",
+                                    ],
+                                )
+
+                            async with trace_async_block(
+                                "Process Stream Chunk",
+                                tags={
+                                    "chunk_index": index,
+                                    "conversation_id": str(
+                                        request_message.conversation_id
+                                    ),
+                                    "chunk_type": type(chunk).__name__,
+                                },
+                            ) as span:
+                                # Process different chunk types into content string
+                                content = ""
+                                if isinstance(chunk, Output):
+                                    content = chunk.content
+                                    # Check for conversation closing if available
+                                    if (
+                                        hasattr(chunk, "closing_conversation")
+                                        and chunk.closing_conversation
+                                    ):
+                                        conversation = await db.ConversationRepositoryAsync(
+                                            session
+                                        ).get_conversation_by_id(
+                                            conversation_id=request_message.conversation_id
                                         )
-                                        await session.flush()
-                            elif isinstance(chunk, RunResponse):
-                                content = chunk.get_content_as_string()
-                            elif isinstance(chunk, tuple):
-                                content = chunk[0]
-                            elif isinstance(chunk, Message):
-                                content = chunk.text.body if chunk.text else ""
-                            elif chunk:
-                                if not isinstance(chunk, (str, int, float, bool)):
-                                    logger.warning(
-                                        f"Unexpected chunk type: {type(chunk)}"
-                                    )
+                                        if conversation:
+                                            conversation.status = (
+                                                db.ConversationStatus.CLOSING
+                                            )
+                                            await session.flush()
+                                elif isinstance(chunk, RunResponse):
+                                    content = chunk.get_content_as_string()
+                                elif isinstance(chunk, tuple):
+                                    content = chunk[0]
+                                elif isinstance(chunk, Message):
+                                    content = chunk.text.body if chunk.text else ""
+                                elif chunk:
+                                    if not isinstance(chunk, (str, int, float, bool)):
+                                        logger.warning(
+                                            f"Unexpected chunk type: {type(chunk)}"
+                                        )
+                                        continue
+                                    content = str(chunk)
+
+                                # Skip empty chunks
+                                if not content:
                                     continue
-                                content = str(chunk)
 
-                            # Skip empty chunks
-                            if not content:
-                                continue
+                                # Update span tags with content
+                                span.set_tag(
+                                    "content",
+                                    content[:100] if len(content) > 100 else content,
+                                )
 
-                            # Update span tags with content
-                            span.set_tag(
-                                "content",
-                                content[:100] if len(content) > 100 else content,
-                            )
+                                # Create and yield chunk
+                                chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
+                                completion_chunk = ChatCompletionChunk(
+                                    id=chunk_id,
+                                    object="chat.completion.chunk",
+                                    created=int(
+                                        datetime.datetime.now(
+                                            datetime.timezone.utc
+                                        ).timestamp()
+                                    ),
+                                    model=message.recipient_identifier,
+                                    choices=[
+                                        ChunkChoice(
+                                            index=index,
+                                            delta=ChoiceDelta(
+                                                role="assistant", content=content
+                                            ),
+                                            finish_reason=None,
+                                        )
+                                    ],
+                                )
+                                yield completion_chunk
+                                # Store original content for relay service
+                                collected_content.append(content)
+                                index += 1
 
-                            # Create and yield chunk
-                            chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
-                            completion_chunk = ChatCompletionChunk(
-                                id=chunk_id,
-                                object="chat.completion.chunk",
-                                created=int(
-                                    datetime.datetime.now(
-                                        datetime.timezone.utc
-                                    ).timestamp()
-                                ),
-                                model=message.recipient_identifier,
-                                choices=[
-                                    ChunkChoice(
-                                        index=index,
-                                        delta=ChoiceDelta(
-                                            role="assistant", content=content
-                                        ),
-                                        finish_reason=None,
-                                    )
-                                ],
-                            )
-                            yield completion_chunk
-                            # Store original content for relay service
-                            collected_content.append(content)
-                            index += 1
+            # ==== Step 4: After streaming, save final messages to database ====
+            # (shared by both pal-agents and legacy paths)
+            if collected_content:
+                output_message_metadata = Metadata(
+                    account_name=account_name,
+                    project_name=project.name,
+                    agent_id=str(agent_id),
+                    user_id=str(user.id),
+                    session_id=str(request_message.conversation_id),
+                    testing=testing,
+                )
 
-                # ==== Step 4: After streaming, save final messages to database ====
-                if collected_content:
-                    # Construct final messages from collected content
-                    output_message_metadata = Metadata(
-                        account_name=account_name,
-                        project_name=project.name,
-                        agent_id=str(agent_id),
-                        user_id=str(user.id),
-                        session_id=str(request_message.conversation_id),
-                        testing=testing,
-                    )
+                full_response = "".join(collected_content)
 
-                    full_response = "".join(collected_content)
+                response_message = Message(
+                    author_type=AuthorType.AGENT,
+                    sender_identifier=message.recipient_identifier,
+                    recipient_identifier=message.sender_identifier,
+                    channel=message.channel,
+                    broker=message.broker,
+                    channel_info=message.channel_info,
+                    text=TextObject(body=full_response),
+                    metadata=output_message_metadata,
+                )
 
-                    response_message = Message(
-                        author_type=AuthorType.AGENT,
-                        sender_identifier=message.recipient_identifier,
-                        recipient_identifier=message.sender_identifier,
-                        channel=message.channel,
-                        broker=message.broker,
-                        channel_info=message.channel_info,
-                        text=TextObject(body=full_response),
-                        metadata=output_message_metadata,
-                    )
+                logger.debug(
+                    f"Persist streaming outbound message: {response_message.to_dict()} to user: {user.id}"
+                )
+                await message_repo.create_message(
+                    user_id=user.id,
+                    project_id=project.id,
+                    message_body=response_message.to_dict(),
+                    channel=(
+                        response_message.channel.value
+                        if response_message.channel
+                        else "unknown"
+                    ),
+                )
 
-                    logger.debug(
-                        f"Persist streaming outbound message: {response_message.to_dict()} to user: {user.id}"
-                    )
-                    await message_repo.create_message(
-                        user_id=user.id,
-                        project_id=project.id,
-                        message_body=response_message.to_dict(),
-                        channel=(
-                            response_message.channel.value
-                            if response_message.channel
-                            else "unknown"
-                        ),
-                    )
-
-                    await session.refresh(user, attribute_names=["id"])
+                await session.refresh(user, attribute_names=["id"])
 
         except Exception as e:
             # Log error and return a single error chunk
