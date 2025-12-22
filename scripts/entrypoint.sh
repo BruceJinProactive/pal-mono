@@ -40,16 +40,58 @@ if [[ "$INSTALL_REQUIREMENTS" = true || "$INSTALL_REQUIREMENTS" = True ]]; then
 fi
 
 ############################################################################
-# Migrate database
+# Migrate database (version-aware: supports both upgrade and downgrade)
 ############################################################################
 
 if [[ "$MIGRATE_DB" = true || "$MIGRATE_DB" = True ]]; then
   echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-  echo "Migrating Database"
-  if ! alembic -c db/alembic.ini upgrade head; then
-    echo "ERROR: Database migration failed!"
+  echo "Running version-aware migration"
+
+  # Get target version from migration files (the HEAD revision this build expects)
+  TARGET_VERSION=$(alembic -c db/alembic.ini heads --resolve-dependencies 2>/dev/null | head -1 | awk '{print $1}')
+
+  if [[ -z "$TARGET_VERSION" ]]; then
+    echo "ERROR: Failed to determine migration head from alembic" >&2
     exit 1
   fi
+
+  # Get current database version
+  CURRENT_VERSION=$(alembic -c db/alembic.ini current 2>/dev/null | awk '{print $1}' | head -1)
+
+  echo "Current DB version: ${CURRENT_VERSION:-none}"
+  echo "Target version: $TARGET_VERSION"
+
+  if [[ "$CURRENT_VERSION" == "$TARGET_VERSION" ]]; then
+    echo "Database already at target version, skipping migration"
+  elif [[ -z "$CURRENT_VERSION" ]]; then
+    # Fresh database - just upgrade
+    echo "Fresh database, upgrading to $TARGET_VERSION"
+    if ! alembic -c db/alembic.ini upgrade "$TARGET_VERSION"; then
+      echo "ERROR: Database migration failed!"
+      exit 1
+    fi
+  else
+    # Database has a version - determine direction and migrate
+    echo "Migrating database to $TARGET_VERSION"
+
+    # Check if target is reachable via upgrade path
+    if alembic -c db/alembic.ini history -r "$CURRENT_VERSION:$TARGET_VERSION" 2>/dev/null | grep -q .; then
+      echo "Upgrading to $TARGET_VERSION"
+      if ! alembic -c db/alembic.ini upgrade "$TARGET_VERSION"; then
+        echo "ERROR: Database upgrade failed!"
+        exit 1
+      fi
+      echo "Successfully upgraded to $TARGET_VERSION"
+    else
+      echo "Downgrading to $TARGET_VERSION"
+      if ! alembic -c db/alembic.ini downgrade "$TARGET_VERSION"; then
+        echo "ERROR: Database downgrade failed!"
+        exit 1
+      fi
+      echo "Successfully downgraded to $TARGET_VERSION"
+    fi
+  fi
+
   echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 fi
 
