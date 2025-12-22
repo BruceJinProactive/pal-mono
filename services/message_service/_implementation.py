@@ -4,6 +4,7 @@ import uuid
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
+from ddtrace.llmobs import LLMObs
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
@@ -63,6 +64,9 @@ async def get_chat_response_async(
     session: AsyncSession, message: Message, request_context: RequestContext
 ) -> list[Message]:
     logger.info(f"get_chat_response_async received message: {message}")
+
+    # Initialize LLMObs for Datadog LLM Observability (idempotent - safe to call multiple times)
+    LLMObs.enable(ml_app="pal", agentless_enabled=True)
 
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
@@ -325,6 +329,9 @@ async def get_chat_response_stream(
     call_id: str | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
     logger.info(f"get_chat_response_stream received message: {message}")
+
+    # Initialize LLMObs for Datadog LLM Observability (idempotent - safe to call multiple times)
+    LLMObs.enable(ml_app="pal", agentless_enabled=True)
 
     async with trace_async_block("Message Service Stream Processing"):
         message_repo = db.MessageRepositoryAsync(session)
