@@ -7,9 +7,6 @@ from agno.run.response import RunResponse
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
-from pal_agents import Agent as PalAgent
-from pal_agents import Input as PalInput
-from pal_agents.input import RuntimeContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -109,6 +106,11 @@ async def get_chat_response_async(
         # **************** Step 2: Construct agent, get input, and generate output ****************
         if account_name in ["proactiveailab-transformer"]:
             # NEW FLOW: Use pal-agents
+            # Lazy import to avoid global side effects on SQLAlchemy async/greenlet handling
+            from pal_agents import Agent as PalAgent
+            from pal_agents import Input as PalInput
+            from pal_agents.input import RuntimeContext
+
             spec = await agent_service.construct_agent_spec(
                 session=session,
                 agent_id=agent_id,
@@ -399,6 +401,11 @@ async def get_chat_response_stream(
             # ========== CHUNK GENERATION (if/else by account) ==========
             if account_name in ["proactiveailab-transformer"]:
                 # PAL-AGENTS PATH
+                # Lazy import to avoid global side effects on SQLAlchemy async/greenlet handling
+                from pal_agents import Agent as PalAgent
+                from pal_agents import Input as PalInput
+                from pal_agents.input import RuntimeContext
+
                 spec = await agent_service.construct_agent_spec(
                     session=session,
                     agent_id=agent_id,
