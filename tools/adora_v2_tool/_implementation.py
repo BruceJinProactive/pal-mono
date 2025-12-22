@@ -26,6 +26,7 @@ from tools.adora_v2_tool.classes import (
     BackdoorToolPrompt,
     BaseDeliveryAddress,
     DeliveryAddress,
+    OrderItems,
     OrderRequestBase,
     OrderType,
     PaymentType,
@@ -219,7 +220,7 @@ class AdoraV2Tool(Toolkit):
 
     @tool
     async def fulfill_order(
-        self, order_items: list[str], delivery_address: BaseDeliveryAddress | None
+        self, order_items: OrderItems, delivery_address: BaseDeliveryAddress | None
     ) -> str:
         """
         Fulfills customer order by validating and processing it, returning confirmation.
@@ -229,12 +230,22 @@ class AdoraV2Tool(Toolkit):
         Use when customer says "checkout", "place order", "complete order", etc.
 
         Args:
-            order_items (list[str]): List of order items extracted from chat history.
-                Requirements:
-                - Extract the **complete dish or drink name**, but **remove size or quantity information**.
-                - Do not shorten or generalize the dish.
-                - Only include items that the user **explicitly confirmed or finalized** as part of their order.
-                - Output a JSON array of strings with **cleaned item names**.
+            order_items (OrderItems): Collection of order items with names and modifiers throughout the entire conversation history.
+                Structure:
+                - items: List of OrderItem objects, each containing:
+                  - item_name: Complete dish/drink name without size or quantity
+                    Examples: 'Margherita Pizza', 'Caesar Salad', 'Beef Burger'
+                  - item_modifiers: List of customizations for this specific item
+                    Examples: ['Extra cheese', 'No onions'], ['Well done', 'Dressing on the side']
+                    Leave empty if no modifications specified for this item
+                Example:
+                {
+                  "items": [
+                    {"item_name": "Margherita Pizza", "item_modifiers": ["Extra cheese", "Gluten-free crust"]},
+                    {"item_name": "Caesar Salad", "item_modifiers": ["Dressing on the side"]},
+                    {"item_name": "Coca Cola", "item_modifiers": []}
+                  ]
+                }
             delivery_address (BaseDeliveryAddress | None): Delivery address for delivery orders.
                 Required fields:
                 - address: Street address (e.g., "123 Main St")
@@ -248,6 +259,9 @@ class AdoraV2Tool(Toolkit):
         """
 
         logger.debug(f"[AdoraV2Tool.fulfill_order] Order items: {order_items}")
+
+        # Extract item names from OrderItems object
+        item_names = [item.item_name for item in order_items.items]
 
         # Gather common tasks with optional address validation
         tasks = [
@@ -271,9 +285,9 @@ class AdoraV2Tool(Toolkit):
         )
 
         # Get menu context and build complete context
-        item_context = await get_relevant_docs_v2(order_items, self.query_engine)
+        item_context = await get_relevant_docs_v2(item_names, self.query_engine)
         context, context_template = build_context(
-            item_context, self.tool_metadata.timezone
+            order_items, item_context, self.tool_metadata.timezone
         )
         if self.backdoor_tool_prompt:
             context_template = self.backdoor_tool_prompt.get(

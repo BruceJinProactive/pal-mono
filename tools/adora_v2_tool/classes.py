@@ -3,6 +3,41 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
+class OrderItem(BaseModel):
+    """Single order item containing item name and optional modifiers"""
+
+    item_name: str = Field(
+        description=(
+            "Complete dish or drink name from the order without size or quantity information. "
+            "Must be the exact menu item name. "
+            "Examples: 'Margherita Pizza' or 'Caesar Salad' or 'Beef Burger'"
+        )
+    )
+    item_modifiers: list[str] = Field(
+        description=(
+            "List of modifications or customizations requested for this specific item. "
+            "Only include if customer explicitly requested changes for this item. "
+            "Examples: ['Extra cheese', 'No onions'] or ['Well done', 'Dressing on the side'] or "
+            "['Add bacon', 'No pickles', 'Extra sauce']. "
+            "Leave as empty [] if no modifications were specified for this item."
+        )
+    )
+
+
+class OrderItems(BaseModel):
+    """Collection of order items"""
+
+    items: list[OrderItem] = Field(
+        description=(
+            "List of order items with their respective names and modifiers. "
+            "Each OrderItem should contain one dish/drink name and its specific modifiers. "
+            "Example: [{'item_name': 'Margherita Pizza', 'item_modifiers': ['Extra cheese', 'Gluten-free crust']}, "
+            "{'item_name': 'Caesar Salad', 'item_modifiers': ['Dressing on the side']}, "
+            "{'item_name': 'Coca Cola', 'item_modifiers': []}]"
+        )
+    )
+
+
 class BackdoorToolPrompt(str, Enum):
     ORDER_ITEM_PROMPT = "order_item_prompt"
     SYSTEM_PROMPT = "system_prompt"

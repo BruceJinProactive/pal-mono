@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from tools.adora_v2_tool._apis import geocode_with_aws_location, geocode_with_google
 from tools.adora_v2_tool.classes import (
     BaseDeliveryAddress,
+    OrderItems,
     PaymentDetails,
     ProcessOrderRequest,
     ValidateAddressRequest,
@@ -157,11 +158,14 @@ def build_extraction_prompt(model_class: Type[BaseModel], operation_name: str) -
     return f"{operation_context}\n\n{field_requirements}\n{strict_instructions}\n{full_schema}"
 
 
-def build_context(menu_context: str, timezone: str | None = None) -> tuple[str, str]:
+def build_context(
+    order_items: OrderItems, menu_context: str, timezone: str | None = None
+) -> tuple[str, str]:
     """
     Build complete context and user prompt template for order extraction.
 
     Args:
+        order_items: OrderItems object containing items with names and modifiers
         menu_context: Menu-related context from query engine
         timezone: Store timezone (defaults to America/Los_Angeles)
 
@@ -172,13 +176,14 @@ def build_context(menu_context: str, timezone: str | None = None) -> tuple[str, 
     store_tz = timezone or "America/Los_Angeles"
     current_dt_store = datetime.now(ZoneInfo(store_tz))
 
+    order_info = f"Order Information: {order_items}"
     current_time_info = (
         f"\n\n<current_datetime>\n"
         f"Current date and time: {current_dt_store.strftime('%A, %B %d, %Y at %I:%M %p')} ({store_tz})\n"
         f"</current_datetime>"
     )
 
-    context = menu_context + current_time_info
+    context = order_info + menu_context + current_time_info
     context_template = "{context}\n\n{chat_history}"
 
     return context, context_template
