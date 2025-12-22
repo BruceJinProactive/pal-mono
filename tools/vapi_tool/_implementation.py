@@ -39,7 +39,8 @@ def _get_control_url_from_vapi(call_id: str) -> str:
         response.raise_for_status()
 
         call_data = response.json()
-        control_url = call_data.get("monitor", {}).get("controlUrl")
+        # Use `or {}` because .get() returns None if key exists with None value
+        control_url = (call_data.get("monitor") or {}).get("controlUrl")
 
         if not control_url:
             logger.error(

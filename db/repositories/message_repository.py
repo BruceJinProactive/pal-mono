@@ -226,18 +226,23 @@ class MessageRepositoryAsync:
         self.session.add(new_conversation)
         await self.session.flush()
 
+        # Store conversation_id before commit to avoid MissingGreenlet error
+        # After commit(), SQLAlchemy expires objects; accessing new_conversation.id
+        # would trigger a lazy load which fails in async context
+        conversation_id = new_conversation.id
+
         logger.debug(
             "[db.message_repository.create_voice_message] Created conversation",
             extra={
                 "user_id": str(user_id),
                 "project_id": str(project_id),
-                "conversation_id": str(new_conversation.id),
+                "conversation_id": str(conversation_id),
                 "call_id": call_id,
             },
         )
 
         # Create the message
-        message = Message(conversation_id=new_conversation.id, body=message_body)
+        message = Message(conversation_id=conversation_id, body=message_body)
         self.session.add(message)
         await self.session.commit()
         await self.session.refresh(message)
@@ -247,7 +252,7 @@ class MessageRepositoryAsync:
             extra={
                 "user_id": str(user_id),
                 "project_id": str(project_id),
-                "conversation_id": str(new_conversation.id),
+                "conversation_id": str(conversation_id),
                 "message_id": str(message.id),
                 "call_id": call_id,
             },
@@ -295,17 +300,20 @@ class MessageRepositoryAsync:
         if not conversation:
             raise ValueError(f"No conversation found for call_id {call_id}")
 
+        # Store conversation_id before commit to avoid MissingGreenlet error
+        conversation_id = conversation.id
+
         logger.debug(
             "[db.message_repository.add_message_to_voice_conversation] Found conversation",
             extra={
                 "user_id": str(user_id),
-                "conversation_id": str(conversation.id),
+                "conversation_id": str(conversation_id),
                 "call_id": call_id,
             },
         )
 
         # Create the message in the existing conversation
-        message = Message(conversation_id=conversation.id, body=message_body)
+        message = Message(conversation_id=conversation_id, body=message_body)
         self.session.add(message)
         await self.session.commit()
         await self.session.refresh(message)
@@ -314,7 +322,7 @@ class MessageRepositoryAsync:
             "[db.message_repository.add_message_to_voice_conversation] Successfully created message",
             extra={
                 "user_id": str(user_id),
-                "conversation_id": str(conversation.id),
+                "conversation_id": str(conversation_id),
                 "message_id": str(message.id),
                 "call_id": call_id,
             },

@@ -477,7 +477,8 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             )
             return {"error": "Invalid or missing call_id"}
 
-        monitor_data = call_data.get("monitor", {})
+        # Use `or {}` because .get() returns None if key exists with None value
+        monitor_data = call_data.get("monitor") or {}
 
         logger.debug(
             f"[vapi._implementation.handle_assistant_request] Processing assistant request. Monitor Data: {monitor_data}"
@@ -725,7 +726,8 @@ async def handle_status_update(message_data, session: AsyncSession):
         )
 
         # Extract control URL from monitor data if available
-        monitor_data = call_data.get("monitor", {})
+        # Use `or {}` because .get() returns None if key exists with None value
+        monitor_data = call_data.get("monitor") or {}
         control_url = monitor_data.get("controlUrl")
 
         # Store control URL using call_id to find the conversation
