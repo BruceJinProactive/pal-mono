@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
@@ -32,6 +33,12 @@ from api.schemas.admin.checkpoint import (
 )
 from api.schemas.asset.asset import AssetResponse
 from api.schemas.error.error import ErrorResponse
+from api.schemas.operations.signal_source import (
+    CreateSignalSourceRequest,
+    ListSignalSourcesResponse,
+    SignalSourceResponse,
+    UpdateSignalSourceRequest,
+)
 from db.tables.types import CheckStatus
 from services.auth_service.dependencies import (
     require_checklist_permission,
@@ -39,7 +46,7 @@ from services.auth_service.dependencies import (
 )
 from services.auth_types import UserContext
 
-from . import _checklist, _checkpoint, _implementation
+from . import _checklist, _checkpoint, _implementation, _signal_sources
 
 operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
 
@@ -898,3 +905,205 @@ async def rerun_checkpoint_run(
     Authorization: Via checkpoint → project → account
     """
     return await _checkpoint.rerun_checkpoint_run(run_id, context, session)
+
+
+"""
+---------- Signal Source Endpoints ----------
+---------------------------------------------
+"""
+
+
+@operation_router.post(
+    "/projects/{project_id}/signal-sources",
+    response_model=SignalSourceResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_signal_source(
+    project_id: uuid.UUID,
+    request: CreateSignalSourceRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SignalSourceResponse:
+    """
+    Create a new signal source (camera device) for a project.
+
+    Signal sources represent data providers (cameras in V1) that can be
+    monitored. Each source automatically gets an associated feed for
+    capturing data.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Request Body:
+    - name (required): Name of the signal source
+    - config (required): Type-specific configuration
+    - description (optional): Description of the source
+
+    Returns:
+    - SignalSourceResponse with the created source details
+    """
+    _ = context  # Used by require_project_permission
+    return await _signal_sources.create_signal_source(
+        request=request,
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/signal-sources",
+    response_model=ListSignalSourcesResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_signal_sources(
+    project_id: uuid.UUID,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListSignalSourcesResponse:
+    """
+    List signal sources for a project.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Query Parameters:
+    - page (optional, default: 1): Page number
+    - page_size (optional, default: 20): Items per page
+
+    Returns:
+    - ListSignalSourcesResponse with paginated results
+    """
+    _ = context  # Used by require_project_permission
+    return await _signal_sources.list_signal_sources(
+        session=session,
+        project_id=project_id,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/signal-sources/{source_id}",
+    response_model=SignalSourceResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_signal_source(
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SignalSourceResponse:
+    """
+    Get a signal source by ID.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - source_id: UUID of the signal source
+
+    Returns:
+    - SignalSourceResponse with source details
+    """
+    _ = context  # Used by require_project_permission
+    return await _signal_sources.get_signal_source(
+        source_id=source_id,
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.patch(
+    "/projects/{project_id}/signal-sources/{source_id}",
+    response_model=SignalSourceResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_signal_source(
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    request: UpdateSignalSourceRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SignalSourceResponse:
+    """
+    Update a signal source.
+
+    Cannot change signal_type or project_id.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - source_id: UUID of the signal source
+
+    Request Body (all optional):
+    - name: New name
+    - config: Updated configuration
+    - description: Updated description
+    - status: Updated status (active, inactive, error)
+
+    Returns:
+    - SignalSourceResponse with updated source details
+    """
+    _ = context  # Used by require_project_permission
+    return await _signal_sources.update_signal_source(
+        source_id=source_id,
+        request=request,
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.delete(
+    "/projects/{project_id}/signal-sources/{source_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_signal_source(
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a signal source and its associated feed.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - source_id: UUID of the signal source
+    """
+    _ = context  # Used by require_project_permission
+    return await _signal_sources.delete_signal_source(
+        source_id=source_id,
+        session=session,
+        project_id=project_id,
+    )
