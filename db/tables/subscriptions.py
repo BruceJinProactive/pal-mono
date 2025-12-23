@@ -9,10 +9,15 @@ from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.schema import ForeignKey
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import Boolean, DateTime, Enum, Integer, String
+from sqlalchemy.types import Boolean, DateTime, Enum, Float, Integer, String
 
 from .base import Base
-from .types import PaymentMethod, SubscriptionStatus, TargetTier
+from .types import (
+    PaymentMethod,
+    RecurringCreditFrequency,
+    SubscriptionStatus,
+    TargetTier,
+)
 
 if TYPE_CHECKING:
     from .accounts import Account
@@ -44,6 +49,7 @@ class SubscriptionPlan(Base):
     free_trial_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     credit_amount: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     monthly_fee: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
@@ -110,6 +116,23 @@ class AccountSubscription(Base):
         nullable=False,
     )
 
+    recurring_credit_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    recurring_credit_amount: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    recurring_credit_frequency: Mapped[Optional[RecurringCreditFrequency]] = (
+        mapped_column(
+            Enum(RecurringCreditFrequency, name="recurringcreditfrequency"),
+            nullable=True,
+        )
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )
@@ -154,6 +177,24 @@ class ProjectSubscription(Base):
         nullable=False,
         server_default="false",
     )
+
+    recurring_credit_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    recurring_credit_amount: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    recurring_credit_frequency: Mapped[Optional[RecurringCreditFrequency]] = (
+        mapped_column(
+            Enum(RecurringCreditFrequency, name="recurringcreditfrequency"),
+            nullable=True,
+        )
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
     )

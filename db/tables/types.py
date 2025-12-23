@@ -162,6 +162,23 @@ class InvitationStatus(str, enum.Enum):
     revoked = "revoked"
 
 
+class CreditGrantStatus(str, enum.Enum):
+    """Status of recurring credit grant."""
+
+    pending = "pending"  # Credit grant scheduled but not yet applied
+    granted = "granted"  # Credit successfully applied to account
+    failed = "failed"  # Credit grant failed to apply
+    cancelled = "cancelled"  # Credit grant cancelled (e.g., subscription ended)
+
+
+class RecurringCreditFrequency(str, enum.Enum):
+    """Frequency for recurring credit grants."""
+
+    weekly = "weekly"
+    monthly = "monthly"
+    yearly = "yearly"
+
+
 # Signal Sources Enums
 
 

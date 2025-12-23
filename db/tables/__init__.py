@@ -12,6 +12,7 @@ from .checkpoint_runs import CheckpointRun
 from .checkpoints import CheckPoint
 from .contacts import Contact
 from .conversations import Conversation, ConversationStatus
+from .credit_grants import CreditGrant
 from .faqs import FAQ
 from .feedback import Feedback
 from .integration import Integration, ProjectIntegration
@@ -41,6 +42,7 @@ from .types import (
     Channel,
     CheckStatus,
     CloudCameraProvider,
+    CreditGrantStatus,
     FeedType,
     IntegrationProvider,
     IntegrationType,
