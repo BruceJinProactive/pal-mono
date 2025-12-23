@@ -18,6 +18,8 @@ from .feedback import Feedback
 from .integration import Integration, ProjectIntegration
 from .lead import Lead
 from .messages import Message
+from .monitoring_configs import MonitoringConfig
+from .monitoring_runs import MonitoringRun
 from .orders import Order
 from .permission import Permission
 from .phonecalls import PhoneCall
