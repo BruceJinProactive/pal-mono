@@ -48,6 +48,7 @@ async def create_signal_source(
         )
 
         await session.commit()
+        await session.refresh(source)
 
         return signal_source_service.build_source_response(source)
 
@@ -205,6 +206,7 @@ async def update_signal_source(
             )
 
         await session.commit()
+        await session.refresh(updated_source)
 
         feed_repo = SignalFeedRepositoryAsync(session)
         feed = await feed_repo.get_by_source_id(updated_source.id)
