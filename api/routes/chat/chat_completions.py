@@ -324,16 +324,21 @@ Instructions:
                     conversation = await conv_repo.get_conversation_by_call_id(call_id)
 
                     if conversation:
+                        # Store conversation_id before commit to avoid MissingGreenlet error
+                        # After commit(), SQLAlchemy expires objects; accessing conversation.id
+                        # would trigger a lazy load which fails in async context
+                        conversation_id = conversation.id
+
                         message_repo = db.MessageRepositoryAsync(session)
                         await message_repo.add_message_to_conversation(
-                            conversation_id=conversation.id,
+                            conversation_id=conversation_id,
                             message_body=relay_message.to_dict(),
                         )
                         logger.debug(
                             "Persisted outbound payment link SMS",
                             extra={
                                 "call_id": call_id,
-                                "conversation_id": str(conversation.id),
+                                "conversation_id": str(conversation_id),
                             },
                         )
                     else:
