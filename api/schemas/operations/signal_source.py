@@ -58,14 +58,6 @@ class S3RecordingConfig(BaseModel):
 
     subtype: Literal[CameraSubtype.s3] = CameraSubtype.s3
 
-    bucket: str = Field(..., description="S3 bucket name")
-    prefix: str = Field(..., description="Object key prefix for this source")
-    file_pattern: str = Field("*.mp4", description="Glob pattern for matching files")
-    polling_interval: int = Field(
-        60, ge=30, le=3600, description="Seconds between checks for new files"
-    )
-    region: str | None = Field(None, description="AWS region")
-
 
 # Discriminated union for camera subtypes
 CameraConfigDetails = Annotated[
@@ -84,6 +76,12 @@ class CameraSignalConfig(BaseModel):
 
     signal_type: Literal[SignalType.camera] = SignalType.camera
     camera: CameraConfigDetails
+    camera_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Unique camera identifier within the project. Used for upload/lookup.",
+    )
 
 
 # V1: Only camera supported

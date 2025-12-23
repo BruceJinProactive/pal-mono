@@ -152,3 +152,64 @@ class SignalSourceRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error deleting signal source: {e}")
             raise
+
+    async def get_by_camera_id(
+        self,
+        project_id: uuid.UUID,
+        camera_id: str,
+    ) -> SignalSource | None:
+        """
+        Get signal source by camera_id within a project.
+
+        Args:
+            project_id: Project UUID.
+            camera_id: Camera identifier from config.
+
+        Returns:
+            SignalSource if found, None otherwise.
+        """
+        try:
+            query = select(SignalSource).filter(
+                SignalSource.project_id == project_id,
+                SignalSource.config["camera_id"].astext == camera_id,
+            )
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error getting signal source by camera_id: {e}")
+            return None
+
+    async def camera_id_exists(
+        self,
+        project_id: uuid.UUID,
+        camera_id: str,
+        exclude_source_id: uuid.UUID | None = None,
+    ) -> bool:
+        """
+        Check if camera_id already exists in project.
+
+        Args:
+            project_id: Project UUID.
+            camera_id: Camera identifier to check.
+            exclude_source_id: Optional source ID to exclude (for updates).
+
+        Returns:
+            True if camera_id exists, False otherwise.
+
+        Raises:
+            SQLAlchemyError: If there is a database error.
+        """
+        try:
+            query = select(SignalSource).filter(
+                SignalSource.project_id == project_id,
+                SignalSource.config["camera_id"].astext == camera_id,
+            )
+            if exclude_source_id:
+                query = query.filter(SignalSource.id != exclude_source_id)
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none() is not None
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error checking camera_id existence: {e}")
+            raise

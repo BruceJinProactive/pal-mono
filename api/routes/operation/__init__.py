@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -40,11 +49,13 @@ from api.schemas.operations.signal_source import (
     UpdateSignalSourceRequest,
 )
 from db.tables.types import CheckStatus
+from services import signal_source_service
 from services.auth_service.dependencies import (
     require_checklist_permission,
     require_project_permission,
 )
 from services.auth_types import UserContext
+from utils.log import logger
 
 from . import _checklist, _checkpoint, _implementation, _signal_sources
 
@@ -52,25 +63,31 @@ operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
 
 
 @operation_router.post(
-    "/accounts/{account_id}/projects/{project_id}/cameras/{camera_name}/upload",
+    "/accounts/{account_id}/projects/{project_id}/cameras/{camera_id}/upload",
     response_model=AssetResponse,
-    responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
+    responses={
+        400: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
 )
 async def upload_camera_image(
     account_id: str,
     project_id: str,
-    camera_name: str,
+    camera_id: str,
     image: UploadFile = File(...),
+    session: AsyncSession = Depends(db.get_db_async),
 ) -> AssetResponse:
     """
     Upload a camera image to S3 without authentication.
 
     This endpoint is designed for camera devices to upload images directly.
+    The camera_id is validated against registered signal sources if possible,
+    but upload proceeds regardless to ensure device reliability.
 
     Path Parameters:
     - account_id: The account ID
     - project_id: The project ID
-    - camera_name: The camera name/ID
+    - camera_id: The camera identifier (from signal source config)
 
     Request body (multipart/form-data):
     - image: The image file to upload
@@ -78,7 +95,37 @@ async def upload_camera_image(
     Returns:
     - url: S3 URL of the uploaded image
     """
-    path = f"security/cameras/{account_id}/{project_id}/{camera_name}"
+    # Validate camera exists
+    try:
+        source = await signal_source_service.get_source_by_camera_id(
+            session=session,
+            project_id=uuid.UUID(project_id),
+            camera_id=camera_id,
+        )
+    except Exception as e:
+        logger.error(
+            "Failed to lookup camera for upload",
+            extra={
+                "camera_id": camera_id,
+                "project_id": project_id,
+                "account_id": account_id,
+                "error": str(e),
+            },
+        )
+        return AssetResponse(url="")
+
+    if not source:
+        logger.error(
+            "Camera not found for upload",
+            extra={
+                "camera_id": camera_id,
+                "project_id": project_id,
+                "account_id": account_id,
+            },
+        )
+        return AssetResponse(url="")
+
+    path = f"security/cameras/{account_id}/{project_id}/{camera_id}"
     return await asset_implementation.upload_asset(image, path, {})
 
 

@@ -55,6 +55,12 @@ async def create_source(
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
+    # Validate camera_id uniqueness
+    if await source_repo.camera_id_exists(project_id, request.config.camera_id):
+        raise ValueError(
+            f"camera_id '{request.config.camera_id}' already exists in project"
+        )
+
     # Create the signal source
     source = SignalSource(
         account_id=project.account_id,
@@ -150,6 +156,26 @@ async def get_source(
     return None
 
 
+async def get_source_by_camera_id(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    camera_id: str,
+) -> SignalSource | None:
+    """
+    Get a signal source by camera_id within a project.
+
+    Args:
+        session: Async database session.
+        project_id: Project UUID.
+        camera_id: Camera identifier from config.
+
+    Returns:
+        SignalSource if found, None otherwise.
+    """
+    source_repo = SignalSourceRepositoryAsync(session)
+    return await source_repo.get_by_camera_id(project_id, camera_id)
+
+
 async def update_source(
     session: AsyncSession,
     project_id: uuid.UUID,
@@ -196,6 +222,16 @@ async def update_source(
     if request.status is not None:
         updates["status"] = request.status
     if request.config is not None:
+        # Validate camera_id is present and non-empty
+        camera_id = request.config.camera_id
+        if not camera_id or not camera_id.strip():
+            raise ValueError("camera_id is required and cannot be empty")
+
+        # Validate camera_id uniqueness if config is being updated
+        if await source_repo.camera_id_exists(
+            project_id, camera_id, exclude_source_id=source_id
+        ):
+            raise ValueError(f"camera_id '{camera_id}' already exists in project")
         updates["config"] = request.config.model_dump()
 
     if not updates:
