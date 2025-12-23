@@ -71,7 +71,12 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
         list[ToolSpec]: List of pal-agents tool specifications.
     """
     # Auto-registered tools in pal-tools that we can use for MVP
-    PAL_TOOLS_AVAILABLE = {"CalculatorTool", "WeatherTool", "reverse_string"}
+    PAL_TOOLS_AVAILABLE = {
+        "CalculatorTool",
+        "WeatherTool",
+        "reverse_string",
+        "vapi_tool",
+    }
 
     tool_specs = []
     for identifier in tool_config.identifiers:

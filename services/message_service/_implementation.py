@@ -428,6 +428,29 @@ async def get_chat_response_stream(
                 ]:
                     customer_phone = message.sender_identifier
 
+                # Pre-fetch voice-specific data for RuntimeContext
+                vapi_control_url = None
+                if message.channel == Channel.VOICE and call_id:
+                    try:
+                        conversation = await db.ConversationRepositoryAsync(
+                            session
+                        ).get_conversation_by_id(
+                            conversation_id=request_message.conversation_id
+                        )
+                        vapi_control_url = conversation.vapi_control_url
+                    except Exception as e:
+                        # Catch all exceptions for graceful degradation during voice calls.
+                        # VapiTool has fallback to fetch control_url from Vapi API if None.
+                        logger.warning(
+                            "Failed to fetch conversation for vapi_control_url: %s",
+                            str(e),
+                            extra={
+                                "conversation_id": str(request_message.conversation_id),
+                                "call_id": call_id,
+                                "exception_type": type(e).__name__,
+                            },
+                        )
+
                 runtime_context = RuntimeContext(
                     user_id=str(user.id),
                     session_id=str(request_message.conversation_id),
@@ -438,6 +461,9 @@ async def get_chat_response_stream(
                     agent_id=str(agent_id),
                     timezone=project.timezone,
                     channel=message.channel.value if message.channel else None,
+                    # Voice-specific fields (extra="allow" permits these)
+                    call_id=call_id,  # type: ignore[call-arg]
+                    vapi_control_url=vapi_control_url,  # type: ignore[call-arg]
                 )
 
                 # Fetch and format conversation history (same as non-streaming)
