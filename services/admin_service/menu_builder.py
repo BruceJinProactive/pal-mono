@@ -8,7 +8,7 @@ from openai import OpenAI
 from openai.types.responses import ResponseInputMessageContentList, ResponseInputParam
 
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback
+from utils.secret import get_server_secret_with_fallback
 
 # Shared extraction prompt for both web scraping and file uploads
 MENU_EXTRACTION_PROMPT = """
@@ -106,18 +106,42 @@ def convert_menu_to_markdown(menu_data: list[dict[str, Any]]) -> str:
 
 
 class MenuBuilder:
-    """Menu builder for restaurant websites and delivery platforms"""
+    """
+    Menu builder for restaurant websites and delivery platforms.
+
+    Uses Palona's Firecrawl API key (server secret) to scrape restaurant
+    menu pages and extract structured menu data using LLM-based extraction.
+    """
 
     def __init__(self):
+        """
+        Initialize the MenuBuilder with Firecrawl client.
+
+        Raises:
+            ValueError: If the Firecrawl API key is not configured in server secrets.
+        """
         try:
-            api_key = get_client_secret_with_fallback("FIRECRAWL_API_KEY")
+            api_key = get_server_secret_with_fallback("FIRECRAWL_API_KEY")
         except ValueError as e:
             raise ValueError("Firecrawl API key required.") from e
 
         self.firecrawl = Firecrawl(api_key=api_key)
 
     def build(self, url: str, proxy_type: str = "auto") -> Optional[dict[str, Any]]:
-        """Build menu data from a URL using LLM extraction"""
+        """
+        Build menu data from a URL using LLM extraction.
+
+        Args:
+            url: The URL of the restaurant menu page to scrape.
+            proxy_type: Proxy configuration for Firecrawl ("auto", "stealth", etc.).
+
+        Returns:
+            A dictionary containing structured menu data with categories and items,
+            or None if extraction fails.
+
+        Raises:
+            ValueError: If the URL is invalid or no menu content is found.
+        """
         try:
             formats = [{"type": "json", "prompt": MENU_EXTRACTION_PROMPT}]
 
@@ -162,11 +186,22 @@ class MenuBuilder:
 
 
 class MenuUploader:
-    """Menu builder that processes uploaded files using OpenAI Responses API"""
+    """
+    Menu builder that processes uploaded files using OpenAI Responses API.
+
+    Uses Palona's OpenAI API key (server secret) to process uploaded menu files
+    (PDFs, images) and extract structured menu data using vision capabilities.
+    """
 
     def __init__(self):
+        """
+        Initialize the MenuUploader with OpenAI client.
+
+        Raises:
+            ValueError: If the OpenAI API key is not configured in server secrets.
+        """
         try:
-            openai_api_key = get_client_secret_with_fallback("OPENAI_API_KEY")
+            openai_api_key = get_server_secret_with_fallback("OPENAI_API_KEY")
             if not openai_api_key:
                 raise ValueError("OpenAI API key not found")
         except Exception as e:

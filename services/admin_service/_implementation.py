@@ -56,7 +56,7 @@ from services.project_service import get_project, replace_project_channel_identi
 from services.user_service import get_users_by_account_id
 from utils import secret
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback
+from utils.secret import get_server_secret_with_fallback
 
 MOCK_USER_PREFIX = "mock-user"
 
@@ -1959,13 +1959,27 @@ def get_brand_extract_prompt() -> str:
     """
 
 
-def scrape_brand_from_url(url: str):
+def scrape_brand_from_url(url: str) -> str:
     """
     Scrape a description of the brand from a URL using Firecrawl.
+
+    Uses Palona's Firecrawl API key (server secret) to crawl the given URL
+    and extract brand/company description from pages like "about", "story",
+    "overview", or "home".
+
+    Args:
+        url: The base URL of the restaurant/brand website to scrape.
+
+    Returns:
+        A string containing the extracted company description, or empty string
+        if no description could be found.
+
+    Raises:
+        ValueError: If the Firecrawl API key is not configured.
     """
     ## Set up Firecrawl
     try:
-        api_key = get_client_secret_with_fallback("FIRECRAWL_API_KEY")
+        api_key = get_server_secret_with_fallback("FIRECRAWL_API_KEY")
     except ValueError as e:
         raise ValueError("Firecrawl API key required.") from e
     firecrawl = Firecrawl(api_key=api_key)

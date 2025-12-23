@@ -31,12 +31,19 @@ def get_server_secret(secret_key: str) -> str:
 
 def get_server_secret_with_fallback(secret_key: str) -> str:
     """
-    Retrieve the value of a secret key from AWS Secrets Manager or fallback to an environment variables.
+    Retrieve a Palona system-level secret from AWS Secrets Manager with env fallback.
+
+    Use this for API keys and credentials that belong to Palona (not per-client),
+    such as: FIRECRAWL_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.
 
     Args:
-        secret_key (str): The key of the secret to retrieve.
+        secret_key: The key of the secret to retrieve.
+
     Returns:
-        str: The value of the secret.
+        The value of the secret.
+
+    Raises:
+        ValueError: If the secret is not found in AWS Secrets Manager or environment variables.
     """
     try:
         # Attempt to retrieve the secret from AWS Secrets Manager
@@ -55,13 +62,16 @@ def get_server_secret_with_fallback(secret_key: str) -> str:
 
 def get_client_secret_with_fallback(secret_key: str) -> str:
     """
-    Retrieve the value of a secret key from AWS Secrets Manager or fallback to an environment variables.
+    Retrieve a client/customer-specific secret from AWS Secrets Manager with env fallback.
+
+    Use this for API keys and credentials that belong to individual clients/customers,
+    such as: ADORA_API_KEY, TOAST_API_KEY, SQUARE_ACCESS_TOKEN, etc.
 
     Args:
-        secret_key (str): The key of the secret to retrieve.
+        secret_key: The key of the secret to retrieve.
 
     Returns:
-        str: The value of the secret.
+        The value of the secret.
 
     Raises:
         ValueError: If the secret is not found in AWS Secrets Manager or environment variables.
