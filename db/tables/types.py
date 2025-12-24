@@ -29,10 +29,21 @@ class TargetTier(str, enum.Enum):
 
 
 class SubscriptionStatus(str, enum.Enum):
-    pending = "pending"  # unpaid
-    active = "active"  # paid
+    # Stripe mapping: 'incomplete', 'paused' → awaiting initial payment or paused
+    pending = "pending"
+    # Stripe mapping: 'active' → subscription active and paid
+    active = "active"
+    # Stripe mapping: 'trialing' → in free trial period
+    trialing = "trialing"
+    # Stripe mapping: 'past_due' → payment failed, in grace/dunning period
+    past_due = "past_due"
+    # Stripe mapping: 'unpaid' → all payment retries failed, subscription suspended
+    unpaid = "unpaid"
+    # Stripe mapping: 'incomplete_expired' → checkout expired before payment
     expired = "expired"
+    # Stripe mapping: 'canceled' → subscription ended
     cancelled = "cancelled"
+    # Internal only (soft delete, no Stripe mapping)
     deleted = "deleted"
 
 
