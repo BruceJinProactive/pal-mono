@@ -51,7 +51,7 @@ def _format_special_hours(special_hours: list) -> list[str]:
             - periods: List of open/close times (empty = closed)
 
     Returns:
-        List of formatted strings like "Dec 25: 12:00 PM – 4:00 PM (Holiday Hours)"
+        List of formatted strings like "Thursday, Dec 25: 12:00 PM – 4:00 PM (Holiday Hours)"
     """
     formatted = []
 
@@ -60,10 +60,10 @@ def _format_special_hours(special_hours: list) -> list[str]:
         if not date_str:
             continue
 
-        # Parse date and format as "Dec 25"
+        # Parse date and format as "Thursday, Dec 25"
         try:
             date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-            formatted_date = date_obj.strftime("%b %d").replace(" 0", " ")
+            formatted_date = date_obj.strftime("%A, %b %d").replace(" 0", " ")
         except ValueError:
             formatted_date = date_str
 
