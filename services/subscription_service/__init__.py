@@ -8,6 +8,11 @@ from ._plan import (
     get_subscription_plans,
     update_subscription_plan,
 )
+from ._stripe_subscription import (
+    handle_subscription_deleted,
+    sync_account_subscriptions,
+    update_subscription_status_from_stripe,
+)
 from ._subscription import (
     cancel_account_subscription,
     create_account_subscription,
@@ -68,4 +73,8 @@ __all__ = [
     "switch_subscription_plan",
     "unlink_subscription_from_account",
     "update_stripe_customer_for_account",
+    # Stripe sync functions
+    "sync_account_subscriptions",
+    "update_subscription_status_from_stripe",
+    "handle_subscription_deleted",
 ]

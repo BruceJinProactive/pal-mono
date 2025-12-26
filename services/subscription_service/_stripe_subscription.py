@@ -1,17 +1,32 @@
 import json
 import uuid
-from datetime import UTC, datetime
-from typing import Any, Dict
+from datetime import UTC, datetime, timezone
+from typing import Any, Dict, Optional
 
 import stripe
+from sqlalchemy.ext.asyncio import AsyncSession
 from stripe.checkout import Session
 from typing_extensions import Literal
 
+from db.repositories.subscription_repository import AsyncAccountSubscriptionRepository
+from db.tables.types import SubscriptionStatus
 from services.subscription_service.schema import (
     StripeCheckoutResponse,
     StripeSubscriptionDetails,
 )
 from utils.log import logger
+
+# Map Stripe subscription statuses to internal SubscriptionStatus enum
+STRIPE_STATUS_MAP: dict[str, SubscriptionStatus] = {
+    "active": SubscriptionStatus.active,
+    "trialing": SubscriptionStatus.trialing,
+    "past_due": SubscriptionStatus.past_due,
+    "unpaid": SubscriptionStatus.unpaid,
+    "canceled": SubscriptionStatus.cancelled,
+    "incomplete": SubscriptionStatus.pending,
+    "incomplete_expired": SubscriptionStatus.expired,
+    "paused": SubscriptionStatus.pending,
+}
 
 SUBSCRIPTION_EXTERNAL_ID = "subscription_external_id"
 PROJECT_IDS = "project_ids"
@@ -710,3 +725,202 @@ def parse_uuid(uuid_str: str | None) -> uuid.UUID:
         except ValueError:
             pass
     return uuid.UUID(int=0)
+
+
+def map_stripe_status(stripe_status: str) -> Optional[SubscriptionStatus]:
+    """Map a Stripe subscription status string to internal SubscriptionStatus enum."""
+    return STRIPE_STATUS_MAP.get(stripe_status)
+
+
+async def update_subscription_status_from_stripe(
+    async_session: AsyncSession,
+    stripe_subscription_id: str,
+    stripe_status: str,
+) -> bool:
+    """
+    Update subscription status based on Stripe status.
+
+    Args:
+        async_session: Async database session
+        stripe_subscription_id: The Stripe subscription ID
+        stripe_status: The status string from Stripe
+
+    Returns:
+        True if status was updated, False otherwise
+    """
+    sub_repo = AsyncAccountSubscriptionRepository(async_session)
+    db_subscription = await sub_repo.get_account_subscription_by_stripe_subscription_id(
+        stripe_subscription_id
+    )
+
+    if not db_subscription:
+        logger.warning(
+            f"No subscription found for stripe_subscription_id: {stripe_subscription_id}"
+        )
+        return False
+
+    new_status = map_stripe_status(stripe_status)
+    if not new_status:
+        logger.warning(f"Unknown Stripe status: {stripe_status}")
+        return False
+
+    if db_subscription.status != new_status:
+        old_status = db_subscription.status.value
+        await sub_repo.update_account_subscription_status(
+            db_subscription.id, new_status
+        )
+        logger.info(
+            f"Updated subscription {stripe_subscription_id} status from {old_status} to {new_status.value}"
+        )
+        return True
+
+    return False
+
+
+async def handle_subscription_deleted(
+    async_session: AsyncSession,
+    stripe_subscription_id: str,
+    canceled_at: int | None = None,
+) -> bool:
+    """
+    Handle subscription deletion from Stripe.
+
+    Sets status to cancelled and updates end_date if provided.
+
+    Args:
+        async_session: Async database session
+        stripe_subscription_id: The Stripe subscription ID
+        canceled_at: Optional Unix timestamp when subscription was canceled
+
+    Returns:
+        True if subscription was updated, False otherwise
+    """
+    sub_repo = AsyncAccountSubscriptionRepository(async_session)
+    db_subscription = await sub_repo.get_account_subscription_by_stripe_subscription_id(
+        stripe_subscription_id
+    )
+
+    if not db_subscription:
+        logger.warning(
+            f"No subscription found for stripe_subscription_id: {stripe_subscription_id}"
+        )
+        return False
+
+    await sub_repo.update_account_subscription_status(
+        db_subscription.id, SubscriptionStatus.cancelled
+    )
+
+    if canceled_at and not db_subscription.end_date:
+        db_subscription.end_date = datetime.fromtimestamp(canceled_at, tz=timezone.utc)
+
+    logger.info(f"Subscription {stripe_subscription_id} cancelled")
+    return True
+
+
+async def sync_account_subscriptions(
+    async_session: AsyncSession,
+    account_id: uuid.UUID,
+) -> dict:
+    """
+    Sync subscription statuses with Stripe for an account.
+
+    Fetches current status from Stripe and updates local database if out of sync.
+
+    Args:
+        async_session: Async database session
+        account_id: The account UUID
+
+    Returns:
+        Summary dict with synced, updated, errors counts and details
+    """
+    sub_repo = AsyncAccountSubscriptionRepository(async_session)
+    subscriptions = await sub_repo.get_account_subscriptions_with_stripe_id(account_id)
+
+    if not subscriptions:
+        return {
+            "message": "No subscriptions with Stripe ID found",
+            "synced": 0,
+            "updated": 0,
+            "errors": 0,
+            "details": [],
+        }
+
+    synced = 0
+    updated = 0
+    errors = 0
+    details: list[dict] = []
+
+    for subscription in subscriptions:
+        stripe_sub_id = subscription.stripe_subscription_id
+        if not stripe_sub_id:
+            continue
+
+        try:
+            stripe_sub = stripe.Subscription.retrieve(stripe_sub_id)
+            stripe_status = stripe_sub.status
+
+            new_status = map_stripe_status(stripe_status)
+            if not new_status:
+                logger.warning(
+                    f"Unknown Stripe status: {stripe_status} for subscription {stripe_sub_id}"
+                )
+                errors += 1
+                details.append(
+                    {
+                        "subscription_id": str(subscription.external_id),
+                        "stripe_subscription_id": stripe_sub_id,
+                        "status": "error",
+                        "message": f"Unknown Stripe status: {stripe_status}",
+                    }
+                )
+                continue
+
+            synced += 1
+
+            if subscription.status != new_status:
+                old_status = subscription.status.value
+                await sub_repo.update_account_subscription_status(
+                    subscription.id, new_status
+                )
+                updated += 1
+                details.append(
+                    {
+                        "subscription_id": str(subscription.external_id),
+                        "stripe_subscription_id": stripe_sub_id,
+                        "status": "updated",
+                        "old_status": old_status,
+                        "new_status": new_status.value,
+                    }
+                )
+                logger.info(
+                    f"Synced subscription {stripe_sub_id}: {old_status} -> {new_status.value}"
+                )
+            else:
+                details.append(
+                    {
+                        "subscription_id": str(subscription.external_id),
+                        "stripe_subscription_id": stripe_sub_id,
+                        "status": "unchanged",
+                        "current_status": subscription.status.value,
+                    }
+                )
+
+        except stripe.StripeError as e:
+            logger.error(f"Stripe API error for subscription {stripe_sub_id}: {e}")
+            errors += 1
+            details.append(
+                {
+                    "subscription_id": str(subscription.external_id),
+                    "stripe_subscription_id": stripe_sub_id,
+                    "status": "error",
+                    "message": str(e),
+                }
+            )
+
+    return {
+        "message": f"Sync completed: {synced} synced, {updated} updated, {errors} errors",
+        "synced": synced,
+        "updated": updated,
+        "errors": errors,
+        "details": details,
+    }

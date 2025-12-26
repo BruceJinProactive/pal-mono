@@ -3,6 +3,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
@@ -951,3 +952,26 @@ def update_stripe_customer_info(
     if customer_data is None:
         raise not_found_error("Account has no Stripe customer")
     return build_stripe_customer(customer_data)
+
+
+async def sync_stripe_subscriptions(
+    context: UserContext,
+    async_session: AsyncSession,
+    account_name: str,
+) -> dict:
+    """
+    Sync subscription statuses with Stripe for an account.
+
+    Fetches current status from Stripe and updates local database if out of sync.
+
+    Returns a summary of synced subscriptions.
+    """
+    account = await account_service.get_account_async(async_session, account_name)
+    if not account:
+        raise not_found_error("Account not found")
+
+    result = await subscription_service.sync_account_subscriptions(
+        async_session, account.id
+    )
+    await async_session.commit()
+    return result

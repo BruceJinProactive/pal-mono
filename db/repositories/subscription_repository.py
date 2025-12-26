@@ -643,3 +643,76 @@ class AsyncAccountSubscriptionRepository:
                 },
             )
             return None
+
+    async def get_account_subscription_by_stripe_subscription_id(
+        self, stripe_subscription_id: str
+    ) -> Optional[AccountSubscription]:
+        """Get an account subscription by Stripe subscription ID."""
+        try:
+            query = (
+                select(AccountSubscription)
+                .filter(
+                    AccountSubscription.stripe_subscription_id == stripe_subscription_id
+                )
+                .order_by(AccountSubscription.version.desc())
+                .limit(1)
+            )
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            logger.error(
+                f"Error retrieving account subscription by stripe_subscription_id: {e}",
+                extra={"stripe_subscription_id": stripe_subscription_id},
+            )
+            return None
+
+    async def update_account_subscription_status(
+        self, subscription_id: uuid.UUID, status: SubscriptionStatus
+    ) -> Optional[AccountSubscription]:
+        """Update the status of an account subscription."""
+        try:
+            query = select(AccountSubscription).filter(
+                AccountSubscription.id == subscription_id
+            )
+            result = await self.session.execute(query)
+            subscription = result.scalar_one_or_none()
+
+            if not subscription:
+                return None
+
+            subscription.status = status
+            await self.session.flush()
+            await self.session.refresh(subscription)
+            return subscription
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(
+                f"Error updating account subscription status: {e}",
+                extra={
+                    "subscription_id": subscription_id,
+                    "status": status,
+                },
+            )
+            raise
+
+    async def get_account_subscriptions_with_stripe_id(
+        self, account_id: uuid.UUID
+    ) -> List[AccountSubscription]:
+        """Get all account subscriptions that have a stripe_subscription_id."""
+        try:
+            query = (
+                select(AccountSubscription)
+                .filter(
+                    AccountSubscription.account_id == account_id,
+                    AccountSubscription.stripe_subscription_id.isnot(None),
+                )
+                .order_by(AccountSubscription.created_at.desc())
+            )
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            logger.error(
+                f"Error retrieving account subscriptions with stripe_id: {e}",
+                extra={"account_id": account_id},
+            )
+            return []

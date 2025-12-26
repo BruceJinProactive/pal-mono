@@ -2688,6 +2688,25 @@ def cancel_account_subscription(
     )
 
 
+@admin_router.post("/accounts/{account_name}/subscriptions/sync-stripe")
+async def sync_stripe_subscriptions(
+    account_name: str,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    async_session: AsyncSession = Depends(db.get_db_async),
+) -> dict:
+    """
+    Sync subscription statuses with Stripe for an account.
+
+    Fetches current status from Stripe API and updates local database
+    if the status is out of sync. Returns a summary of synced subscriptions.
+    """
+    return await _subscription.sync_stripe_subscriptions(
+        context, async_session, account_name
+    )
+
+
 @admin_router.post("/accounts/{account_name}/subscriptions/{external_id}/checkout")
 def create_subscription_checkout_session(
     account_name: str,
