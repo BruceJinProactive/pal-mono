@@ -60,22 +60,24 @@ class ConversationRepositoryAsync:
             logger.error(f"Error retrieving conversation by call_id: {e}")
             return None
 
-    async def get_open_conversations_by_user_id(
-        self, user_id: uuid.UUID, limit: int = 5
+    async def get_open_conversations_by_user_and_project(
+        self, user_id: uuid.UUID, project_id: uuid.UUID, limit: int = 5
     ):
         """
-        Retrieve all active conversations for a specific user.
+        Retrieve all active conversations for a specific user and project.
 
         Args:
             user_id (uuid.UUID): The ID of the user whose active conversations are being retrieved.
+            project_id (uuid.UUID): The ID of the project to filter conversations by.
 
         Returns:
-            list[Conversation]: A list of active conversation objects for the specified user.
+            list[Conversation]: A list of active conversation objects for the specified user and project.
         """
         result = await self.session.execute(
             select(Conversation)
             .filter(
                 Conversation.user_id == user_id,
+                Conversation.project_id == project_id,
                 Conversation.status == ConversationStatus.ACTIVE,
             )
             .limit(limit)

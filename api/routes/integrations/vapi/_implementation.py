@@ -1110,8 +1110,10 @@ async def handle_session_closure(message_data, session: AsyncSession):
             )
 
         conversation_repo = db.ConversationRepositoryAsync(session)
-        conversations = await conversation_repo.get_open_conversations_by_user_id(
-            user.id
+        conversations = (
+            await conversation_repo.get_open_conversations_by_user_and_project(
+                user.id, project.id
+            )
         )
 
         if not conversations:
