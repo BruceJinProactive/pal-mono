@@ -11,6 +11,83 @@ from db.tables import Project
 from utils.log import logger
 
 
+def _format_time(time_str: str) -> str:
+    """Convert Google Places time format to 12-hour format.
+
+    Args:
+        time_str: Time in HHMM format (e.g., "1200", "0900")
+
+    Returns:
+        Time in 12-hour format (e.g., "12:00 PM", "9:00 AM")
+    """
+    if not time_str or len(time_str) != 4 or not time_str.isdigit():
+        return time_str
+
+    hour = int(time_str[:2])
+    minute_int = int(time_str[2:])
+
+    # Validate hour/minute ranges
+    if hour > 23 or minute_int > 59:
+        return time_str
+
+    minute = time_str[2:]
+    period = "AM" if hour < 12 else "PM"
+
+    if hour == 0:
+        hour = 12
+    elif hour > 12:
+        hour -= 12
+
+    return f"{hour}:{minute} {period}"
+
+
+def _format_special_hours(special_hours: list) -> list[str]:
+    """Format special hours (holidays, exceptional days) for display.
+
+    Args:
+        special_hours: List of special hour entries, each with:
+            - date: Date string in YYYY-MM-DD format
+            - exceptional_hours: Boolean flag
+            - periods: List of open/close times (empty = closed)
+
+    Returns:
+        List of formatted strings like "Dec 25: 12:00 PM – 4:00 PM (Holiday Hours)"
+    """
+    formatted = []
+
+    for entry in special_hours:
+        date_str = entry.get("date")
+        if not date_str:
+            continue
+
+        # Parse date and format as "Dec 25"
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            formatted_date = date_obj.strftime("%b %d").replace(" 0", " ")
+        except ValueError:
+            formatted_date = date_str
+
+        periods = entry.get("periods", [])
+
+        if not periods:
+            # No periods means closed
+            formatted.append(f"{formatted_date}: Closed (Holiday Hours)")
+        else:
+            # Format the time range from first period
+            period = periods[0]
+            open_time = period.get("open", {}).get("time", "")
+            close_time = period.get("close", {}).get("time", "")
+
+            if open_time and close_time:
+                formatted_open = _format_time(open_time)
+                formatted_close = _format_time(close_time)
+                formatted.append(
+                    f"{formatted_date}: {formatted_open} – {formatted_close} (Holiday Hours)"
+                )
+
+    return formatted
+
+
 class ProjectRepositoryAsync:
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -527,8 +604,22 @@ class ProjectRepository:
             # Also update the human-readable store_hours field
             regular_hours = business_hours.get("regular_hours") or {}
             weekday_text = regular_hours.get("weekday_text", [])
+            store_hours_parts = []
+
             if weekday_text:
-                project.store_hours = "\n".join(weekday_text)
+                store_hours_parts.append("\n".join(weekday_text))
+
+            # Append special hours (holidays, exceptional days)
+            special_hours = business_hours.get("special_hours") or []
+            if special_hours:
+                formatted_special = _format_special_hours(special_hours)
+                if formatted_special:
+                    store_hours_parts.append(
+                        "Special Hours:\n" + "\n".join(formatted_special)
+                    )
+
+            if store_hours_parts:
+                project.store_hours = "\n\n".join(store_hours_parts)
 
             if self.auto_commit:
                 self.session.commit()

@@ -217,7 +217,7 @@ async def update_project_business_hours(
         )
 
         logger.info(
-            f"[BusinessHoursUpdate] Updated business hours for project {project_id}",
+            f"[BusinessHoursUpdate] Updated business hours for project {project.name}",
             extra={
                 "project_id": project_id,
                 "project_name": project.name,
