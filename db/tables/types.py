@@ -243,3 +243,65 @@ class CaptureMode(str, enum.Enum):
 
     pull = "pull"
     push = "push"
+
+
+# Routines Enums
+
+
+class RoutineCategory(str, enum.Enum):
+    """Category of routine."""
+
+    opening = "opening"
+    closing = "closing"
+    food_safety = "food_safety"
+    cleaning = "cleaning"
+    compliance = "compliance"
+    custom = "custom"
+
+
+class RoutineInputType(str, enum.Enum):
+    """Type of input for routine items (V1: photo only)."""
+
+    photo = "photo"
+    # Future:
+    # checkbox = "checkbox"
+    # number = "number"
+    # text = "text"
+    # multi_select = "multi_select"
+
+
+class RoutineFrequency(str, enum.Enum):
+    """Frequency of routine schedules."""
+
+    once = "once"
+    daily = "daily"
+    weekly = "weekly"
+    monthly = "monthly"
+    custom = "custom"
+
+
+class ExecutionStatus(str, enum.Enum):
+    """Status of routine executions."""
+
+    pending = "pending"
+    in_progress = "in_progress"
+    completed = "completed"
+    missed = "missed"
+
+
+class SubmissionStatus(str, enum.Enum):
+    """Status of routine submissions."""
+
+    draft = "draft"
+    submitted = "submitted"
+    approved = "approved"
+    rejected = "rejected"
+
+
+class ItemResponseStatus(str, enum.Enum):
+    """Status of individual item responses."""
+
+    pending = "pending"
+    passed = "passed"
+    failed = "failed"
+    skipped = "skipped"
