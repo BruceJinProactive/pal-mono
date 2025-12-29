@@ -65,8 +65,11 @@ async def get_chat_response_async(
 ) -> list[Message]:
     logger.info(f"get_chat_response_async received message: {message}")
 
-    # Initialize LLMObs for Datadog LLM Observability (skip for testing requests)
-    if not is_testing_mode():
+    # Initialize LLMObs for Datadog LLM Observability
+    if is_testing_mode():
+        # Explicitly disable LLMObs for testing requests to prevent data collection
+        LLMObs.disable()
+    else:
         LLMObs.enable(ml_app="pal", agentless_enabled=True)
 
     message_repo = db.MessageRepositoryAsync(session)
@@ -331,8 +334,11 @@ async def get_chat_response_stream(
 ) -> AsyncIterator[ChatCompletionChunk]:
     logger.info(f"get_chat_response_stream received message: {message}")
 
-    # Initialize LLMObs for Datadog LLM Observability (skip for testing requests)
-    if not is_testing_mode():
+    # Initialize LLMObs for Datadog LLM Observability
+    if is_testing_mode():
+        # Explicitly disable LLMObs for testing requests to prevent data collection
+        LLMObs.disable()
+    else:
         LLMObs.enable(ml_app="pal", agentless_enabled=True)
 
     async with trace_async_block("Message Service Stream Processing"):
