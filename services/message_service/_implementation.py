@@ -28,7 +28,7 @@ from api.schemas.chat.message import (
 )
 from db.tables.types import Channel
 from services import agent_service, project_service, user_service
-from utils.dd import send_dd_histogram_metrics, trace_async_block
+from utils.dd import is_testing_mode, send_dd_histogram_metrics, trace_async_block
 from utils.log import logger
 from utils.request_context import RequestContext
 
@@ -65,8 +65,9 @@ async def get_chat_response_async(
 ) -> list[Message]:
     logger.info(f"get_chat_response_async received message: {message}")
 
-    # Initialize LLMObs for Datadog LLM Observability (idempotent - safe to call multiple times)
-    LLMObs.enable(ml_app="pal", agentless_enabled=True)
+    # Initialize LLMObs for Datadog LLM Observability (skip for testing requests)
+    if not is_testing_mode():
+        LLMObs.enable(ml_app="pal", agentless_enabled=True)
 
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
@@ -330,8 +331,9 @@ async def get_chat_response_stream(
 ) -> AsyncIterator[ChatCompletionChunk]:
     logger.info(f"get_chat_response_stream received message: {message}")
 
-    # Initialize LLMObs for Datadog LLM Observability (idempotent - safe to call multiple times)
-    LLMObs.enable(ml_app="pal", agentless_enabled=True)
+    # Initialize LLMObs for Datadog LLM Observability (skip for testing requests)
+    if not is_testing_mode():
+        LLMObs.enable(ml_app="pal", agentless_enabled=True)
 
     async with trace_async_block("Message Service Stream Processing"):
         message_repo = db.MessageRepositoryAsync(session)
@@ -671,11 +673,16 @@ async def get_chat_response_stream(
                                 if not content:
                                     continue
 
-                                # Update span tags with content
-                                span.set_tag(
-                                    "content",
-                                    content[:100] if len(content) > 100 else content,
-                                )
+                                # Update span tags with content (skip if span is None in testing mode)
+                                if span:
+                                    span.set_tag(
+                                        "content",
+                                        (
+                                            content[:100]
+                                            if len(content) > 100
+                                            else content
+                                        ),
+                                    )
 
                                 # Create and yield chunk
                                 chunk_id = f"chatcmpl-{uuid.uuid4().hex}"

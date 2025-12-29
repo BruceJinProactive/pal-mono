@@ -22,6 +22,7 @@ from services.message_service import (
     get_filler_message,
 )
 from services.relay_service import send_messages
+from utils.dd import set_testing_mode
 from utils.log import logger
 from utils.request_context import RequestContext
 
@@ -50,6 +51,20 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
     try:
 
         request_context = RequestContext()
+
+        # Extract testing flag from message metadata and set context
+        testing = (
+            getattr(request.message.metadata, "testing", False)
+            if request.message.metadata
+            else False
+        )
+        set_testing_mode(testing)
+
+        # If testing, drop the APM trace to prevent DD logging
+        current_span = tracer.current_span()
+        if testing and current_span:
+            current_span.context.sampling_priority = -1  # USER_REJECT
+
         # Process the message
         logger.info(
             f"Received message: {request.message}",
@@ -59,9 +74,8 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
             },
         )
 
-        # Override the DD Trace to add request type facet
-        current_span = tracer.current_span()
-        if current_span:
+        # Override the DD Trace to add request type facet (only for non-testing requests)
+        if not testing and current_span:
             current_span.set_tag(
                 "http.params.chat_type", categorize_chat_request(request)
             )

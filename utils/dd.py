@@ -2,11 +2,26 @@ import asyncio
 import datetime
 import os
 from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from functools import wraps
 from typing import Any, Dict, Optional
 
 from datadog import DogStatsd  # pyright: ignore[reportPrivateImportUsage]
 from ddtrace import tracer  # pyright: ignore[reportPrivateImportUsage]
+
+# Context variable to track testing mode for current request
+# When True, all Datadog logging/tracing is disabled for the request
+_testing_mode: ContextVar[bool] = ContextVar("testing_mode", default=False)
+
+
+def set_testing_mode(testing: bool) -> None:
+    """Set testing mode for current request context."""
+    _testing_mode.set(testing)
+
+
+def is_testing_mode() -> bool:
+    """Check if current request is in testing mode."""
+    return _testing_mode.get()
 
 
 def traced(name, tags=None):
@@ -22,12 +37,18 @@ def traced(name, tags=None):
 
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
+            # Skip tracing for testing requests
+            if is_testing_mode():
+                return await func(*args, **kwargs)
             with tracer.trace(name) as span:
                 _apply_tags(span)
                 return await func(*args, **kwargs)
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
+            # Skip tracing for testing requests
+            if is_testing_mode():
+                return func(*args, **kwargs)
             with tracer.trace(name) as span:
                 _apply_tags(span)
                 return func(*args, **kwargs)
@@ -58,6 +79,10 @@ def _handle_exception(span, e: Exception):
 @contextmanager
 def trace_block(name, resource=None, service=None, tags=None):
     """Synchronous trace block context manager"""
+    # Skip tracing for testing requests
+    if is_testing_mode():
+        yield None
+        return
     with tracer.trace(name, resource=resource, service=service) as span:
         _setup_span(span, tags)
         try:
@@ -68,6 +93,11 @@ def trace_block(name, resource=None, service=None, tags=None):
 
 @asynccontextmanager
 async def trace_async_block(name, resource=None, service=None, tags=None):
+    """Asynchronous trace block context manager"""
+    # Skip tracing for testing requests
+    if is_testing_mode():
+        yield None
+        return
     with tracer.trace(name, resource=resource, service=service) as span:
         _setup_span(span, tags)
         try:
@@ -90,6 +120,9 @@ statsd = DogStatsd(
 
 
 def dd_histogram_duration(name: str, duration_ms: float, tags: Optional[list] = None):
+    # Skip metrics for testing requests
+    if is_testing_mode():
+        return
     env = os.getenv("RUNTIME_ENV", "none")
     base_tags = [f"env:{env}"]
     if tags:
@@ -100,6 +133,9 @@ def dd_histogram_duration(name: str, duration_ms: float, tags: Optional[list] = 
 def send_dd_histogram_metrics(
     metrics_name: str, start_time: datetime.datetime, tags: Optional[list[str]] = None
 ):
+    # Skip metrics for testing requests
+    if is_testing_mode():
+        return
     current_time = datetime.datetime.now(datetime.timezone.utc)
     duration_ms = (current_time - start_time).total_seconds() * 1000
     dd_histogram_duration(
