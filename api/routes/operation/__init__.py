@@ -42,6 +42,16 @@ from api.schemas.admin.checkpoint import (
 )
 from api.schemas.asset.asset import AssetResponse
 from api.schemas.error.error import ErrorResponse
+from api.schemas.operations.monitoring import (
+    CreateMonitoringConfigRequest,
+    ListMonitoringConfigsResponse,
+    ListMonitoringRunsResponse,
+    MonitoringConfigResponse,
+    MonitoringRunResponse,
+    TriggerRunRequest,
+    TriggerRunResponse,
+    UpdateMonitoringConfigRequest,
+)
 from api.schemas.operations.signal_source import (
     CreateSignalSourceRequest,
     ListSignalSourcesResponse,
@@ -57,7 +67,7 @@ from services.auth_service.dependencies import (
 from services.auth_types import UserContext
 from utils.log import logger
 
-from . import _checklist, _checkpoint, _implementation, _signal_sources
+from . import _checklist, _checkpoint, _implementation, _monitoring, _signal_sources
 
 operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
 
@@ -1151,6 +1161,357 @@ async def delete_signal_source(
     _ = context  # Used by require_project_permission
     return await _signal_sources.delete_signal_source(
         source_id=source_id,
+        session=session,
+        project_id=project_id,
+    )
+
+
+# ==============================================================================
+# MONITORING CONFIGURATION ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.post(
+    "/projects/{project_id}/monitoring/configs",
+    status_code=status.HTTP_201_CREATED,
+    response_model=MonitoringConfigResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_monitoring_config(
+    project_id: uuid.UUID,
+    request: CreateMonitoringConfigRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> MonitoringConfigResponse:
+    """
+    Create a new monitoring configuration.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Request Body:
+    - signal_source_id (required): UUID of the signal source
+    - name (required): Name of the monitoring config (unique per project)
+    - description (optional): Description of what is being monitored
+    - rules (required): Monitoring rules (AI analysis or threshold)
+    - enabled (optional, default: true): Whether monitoring is active
+
+    Returns:
+    - MonitoringConfigResponse with the created config details
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.create_monitoring_config(
+        project_id=project_id,
+        request=request,
+        session=session,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/monitoring/configs",
+    response_model=ListMonitoringConfigsResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_monitoring_configs(
+    project_id: uuid.UUID,
+    enabled: bool | None = Query(None, description="Filter by enabled status"),
+    signal_source_id: uuid.UUID | None = Query(
+        None, description="Filter by signal source"
+    ),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(10, ge=1, le=100, description="Items per page"),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListMonitoringConfigsResponse:
+    """
+    List monitoring configurations for a project.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Query Parameters:
+    - enabled (optional): Filter by enabled status
+    - signal_source_id (optional): Filter by signal source UUID
+    - page (optional, default: 1): Page number
+    - page_size (optional, default: 10): Items per page
+
+    Returns:
+    - ListMonitoringConfigsResponse with paginated results
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.list_monitoring_configs(
+        session=session,
+        project_id=project_id,
+        enabled=enabled,
+        signal_source_id=signal_source_id,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/monitoring/configs/{config_id}",
+    response_model=MonitoringConfigResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_monitoring_config(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> MonitoringConfigResponse:
+    """
+    Get a monitoring configuration by ID.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the monitoring configuration
+
+    Returns:
+    - MonitoringConfigResponse with config details
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.get_monitoring_config(
+        config_id=config_id,
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.patch(
+    "/projects/{project_id}/monitoring/configs/{config_id}",
+    response_model=MonitoringConfigResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_monitoring_config(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    request: UpdateMonitoringConfigRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> MonitoringConfigResponse:
+    """
+    Update a monitoring configuration.
+
+    Cannot change project_id or signal_source_id.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the monitoring configuration
+
+    Request Body (all optional):
+    - name: New name (must be unique per project)
+    - description: Updated description
+    - rules: Updated monitoring rules
+    - enabled: Updated enabled status
+
+    Returns:
+    - MonitoringConfigResponse with updated config details
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.update_monitoring_config(
+        config_id=config_id,
+        request=request,
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.delete(
+    "/projects/{project_id}/monitoring/configs/{config_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_monitoring_config(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a monitoring configuration.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the monitoring configuration
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.delete_monitoring_config(
+        config_id=config_id,
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.post(
+    "/projects/{project_id}/monitoring/configs/{config_id}/run",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=TriggerRunResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def trigger_monitoring_run(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    request: TriggerRunRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> TriggerRunResponse:
+    """
+    Trigger a manual monitoring run.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the monitoring configuration
+
+    Request Body (all optional):
+    - s3_bucket: S3 bucket for image source
+    - s3_key: S3 key for image source
+
+    Returns:
+    - TriggerRunResponse with run details
+    """
+    return await _monitoring.trigger_monitoring_run(
+        config_id=config_id,
+        request=request,
+        session=session,
+        project_id=project_id,
+        user_id=context.username,
+    )
+
+
+# ==============================================================================
+# MONITORING RUN ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.get(
+    "/projects/{project_id}/monitoring/configs/{monitoring_config_id}/runs",
+    response_model=ListMonitoringRunsResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_monitoring_runs(
+    project_id: uuid.UUID,
+    monitoring_config_id: uuid.UUID,
+    start_date: datetime | None = Query(
+        None, description="Filter runs after this date (ISO 8601)"
+    ),
+    end_date: datetime | None = Query(
+        None, description="Filter runs before this date (ISO 8601)"
+    ),
+    result: str | None = Query(
+        None, description="Filter by result (pass, fail, error)"
+    ),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(10, ge=1, le=100, description="Items per page"),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListMonitoringRunsResponse:
+    """
+    List monitoring runs for a configuration.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - monitoring_config_id: UUID of the monitoring config
+
+    Query Parameters:
+    - start_date (optional): Filter runs after this date
+    - end_date (optional): Filter runs before this date
+    - result (optional): Filter by result ('pass', 'fail', 'error')
+    - page (optional, default: 1): Page number
+    - page_size (optional, default: 10): Items per page
+
+    Returns:
+    - ListMonitoringRunsResponse with paginated results
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.list_monitoring_runs(
+        session=session,
+        monitoring_config_id=monitoring_config_id,
+        project_id=project_id,
+        start_date=start_date,
+        end_date=end_date,
+        result=result,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/monitoring/runs/{run_id}",
+    response_model=MonitoringRunResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_monitoring_run(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> MonitoringRunResponse:
+    """
+    Get a monitoring run by ID.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - run_id: UUID of the monitoring run
+
+    Returns:
+    - MonitoringRunResponse with run details
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.get_monitoring_run(
+        run_id=run_id,
         session=session,
         project_id=project_id,
     )

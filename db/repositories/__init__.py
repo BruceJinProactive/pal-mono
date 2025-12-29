@@ -11,6 +11,8 @@ from .feedback_repository import FeedbackRepository
 from .integration_repository import IntegrationAsyncRepository, IntegrationRepository
 from .lead_repository import LeadFilter, LeadRepository
 from .message_repository import MessageRepository, MessageRepositoryAsync
+from .monitoring_config_repository import MonitoringConfigRepositoryAsync
+from .monitoring_run_repository import MonitoringRunRepositoryAsync
 from .order_repository import OrderRepository
 from .permission_repository import PermissionRepository
 from .phone_call_repository import PhoneCallRepository, PhoneCallRepositoryAsync
