@@ -1039,34 +1039,6 @@ async def handle_session_closure(message_data, session: AsyncSession):
             )
             return {"error": "Invalid or missing call_id"}
 
-        # TEMPORARY: Log the complete webhook payload structure to verify available fields
-        logger.info(
-            "[TEMP] VAPI end-of-call-report webhook payload inspection",
-            extra={
-                "call_id": call_id,
-                "message_data_keys": list(message_data.keys()),
-                "call_data_keys": list(call_data.keys()) if call_data else None,
-                "has_transcript_in_message_data": "transcript" in message_data,
-                "has_transcript_in_call_data": (
-                    "transcript" in call_data if call_data else False
-                ),
-                "transcript_preview": (
-                    message_data.get("transcript", call_data.get("transcript", ""))[
-                        :100
-                    ]
-                    + "..."
-                    if message_data.get("transcript") or call_data.get("transcript")
-                    else "No transcript found"
-                ),
-                "duration_seconds": call_data.get("durationSeconds"),
-                "ended_reason": call_data.get("endedReason"),
-                "full_call_data": call_data,  # Complete call_data object
-                "full_message_data_keys_with_types": {
-                    key: type(value).__name__ for key, value in message_data.items()
-                },
-            },
-        )
-
         # this is for deleting the temporary assistant from the admin console self-onboarding
         metadata = message_data.get("assistant", {}).get("metadata", {})
         if (
