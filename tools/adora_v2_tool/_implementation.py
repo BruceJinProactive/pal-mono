@@ -25,8 +25,8 @@ from tools.adora_v2_tool._utils import (
 from tools.adora_v2_tool.classes import (
     BackdoorToolPrompt,
     BaseDeliveryAddress,
+    ClientCustomerInfo,
     DeliveryAddress,
-    OrderItems,
     OrderRequestBase,
     OrderType,
     PaymentType,
@@ -220,7 +220,12 @@ class AdoraV2Tool(Toolkit):
 
     @tool
     async def fulfill_order(
-        self, order_items: OrderItems, delivery_address: BaseDeliveryAddress | None
+        self,
+        customer_info: ClientCustomerInfo,
+        order_type: OrderType,
+        payment_type: PaymentType,
+        order_items: list[str],
+        delivery_address: BaseDeliveryAddress | None,
     ) -> str:
         """
         Fulfills customer order by validating and processing it, returning confirmation.
@@ -230,28 +235,25 @@ class AdoraV2Tool(Toolkit):
         Use when customer says "checkout", "place order", "complete order", etc.
 
         Args:
-            order_items (OrderItems): Collection of order items with names and modifiers throughout the entire conversation history.
-                Structure:
-                - items: List of OrderItem objects, each containing:
-                  - item_name: Complete dish/drink name without size or quantity
-                    Examples: 'Margherita Pizza', 'Caesar Salad', 'Beef Burger'
-                  - item_modifiers: List of customizations for this specific item
-                    Examples: ['Extra cheese', 'No onions'], ['Well done', 'Dressing on the side']
-                    Leave empty if no modifications specified for this item
-                Example:
-                {
-                  "items": [
-                    {"item_name": "Margherita Pizza", "item_modifiers": ["Extra cheese", "Gluten-free crust"]},
-                    {"item_name": "Caesar Salad", "item_modifiers": ["Dressing on the side"]},
-                    {"item_name": "Coca Cola", "item_modifiers": []}
-                  ]
-                }
+            customer_info (ClientCustomerInfo): Customer information containing:
+                - name: Customer first name (required)
+                - lastname: Customer last name (default: "via Palona")
+                - phone: Customer phone number in format (123) 456-7890 (required)
+                - email: Customer email address (optional)
+            order_type (OrderType): Type of order. Options: "TakeOut", "Delivery"
+            payment_type (PaymentType): Payment type. Options: "PayInStore", "PaymentLink".
+                Default is "PaymentLink". Note: Delivery orders must use "PaymentLink".
+            order_items (list[str]): List of order item names without modifiers.
+                Extract complete dish or drink names without size or quantity.
+                Examples: ["Margherita Pizza", "Caesar Salad", "Coca Cola"]
             delivery_address (BaseDeliveryAddress | None): Delivery address for delivery orders.
                 Required fields:
-                - address: Street address (e.g., "123 Main St")
-                - city: City name (e.g., "Springfield")
-                - state: Two-letter US state abbreviation (e.g., "IL")
-                - zip: ZIP code (e.g., "62704")
+                - street_number: Street number (required)
+                - street_name: Street name (required)
+                - extended_address: Unit/apartment (empty string if not provided)
+                - city: City name (required)
+                - state: Two-letter US state abbreviation (required)
+                - zip: ZIP code (required)
                 Set to None for pickup/dine-in orders.
 
         Returns:
@@ -260,17 +262,12 @@ class AdoraV2Tool(Toolkit):
 
         logger.debug(f"[AdoraV2Tool.fulfill_order] Order items: {order_items}")
 
-        # Extract item names from OrderItems object
-        item_names = [item.item_name for item in order_items.items]
-
-        # Gather common tasks with optional address validation
-        tasks = [
+        # Gather common tasks
+        bearer_token, chat_history, item_context = await asyncio.gather(
             self._get_bearer_token(),
             asyncio.to_thread(self.query_messages_tool.query_messages),
-        ]
-
-        results = await asyncio.gather(*tasks)
-        bearer_token, chat_history = results[0], results[1]
+            get_relevant_docs_v2(order_items, self.query_engine),
+        )
 
         if not bearer_token:
             return "Failed to authenticate with Adora API."
@@ -284,8 +281,7 @@ class AdoraV2Tool(Toolkit):
             else EXTRACTOR_SYSTEM_PROMPT
         )
 
-        # Get menu context and build complete context
-        item_context = await get_relevant_docs_v2(item_names, self.query_engine)
+        # Build complete context
         context, context_template = build_context(
             order_items, item_context, self.tool_metadata.timezone
         )
@@ -294,7 +290,7 @@ class AdoraV2Tool(Toolkit):
                 BackdoorToolPrompt.USER_PROMPT, context_template
             )
 
-        # LLM call without delivery address
+        # LLM call to extract order items with modifiers/sizes/quantities
         order_request_base = await async_llm_call(
             system_prompt=system_prompt,
             prompt=context_template.format(context=context, chat_history=chat_history),
@@ -310,9 +306,15 @@ class AdoraV2Tool(Toolkit):
             )
             return "Failed to extract order information. Please provide all order details and try again."
 
-        # Convert to ValidateOrderRequest with store_id
+        # Convert to ValidateOrderRequest with provided fields and extracted items
         order_request = ValidateOrderRequest(
-            storeId=self.store_id, **order_request_base.model_dump()
+            storeId=self.store_id,
+            OrderType=order_type,
+            paymentType=payment_type,
+            promiseDateTime=order_request_base.promise_date_time,
+            customer=customer_info,
+            items=order_request_base.items,
+            orderComment=order_request_base.order_comment,
         )
 
         # Set email to default if empty or invalid
@@ -338,8 +340,6 @@ class AdoraV2Tool(Toolkit):
                 type_id=address_data["type_id"],  # type: ignore
             )
             order_request.payment_type = PaymentType.PAYMENT_LINK
-        else:
-            order_request.delivery_address = None
 
         logger.debug(
             f"[AdoraV2Tool.fulfill_order] Final order request: {order_request.model_dump()}"

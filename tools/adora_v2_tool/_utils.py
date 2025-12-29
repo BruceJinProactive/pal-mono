@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from tools.adora_v2_tool._apis import geocode_with_aws_location, geocode_with_google
 from tools.adora_v2_tool.classes import (
     BaseDeliveryAddress,
-    OrderItems,
     PaymentDetails,
     ProcessOrderRequest,
     ValidateAddressRequest,
@@ -159,13 +158,13 @@ def build_extraction_prompt(model_class: Type[BaseModel], operation_name: str) -
 
 
 def build_context(
-    order_items: OrderItems, menu_context: str, timezone: str | None = None
+    order_items: list[str], menu_context: str, timezone: str | None = None
 ) -> tuple[str, str]:
     """
     Build complete context and user prompt template for order extraction.
 
     Args:
-        order_items: OrderItems object containing items with names and modifiers
+        order_items: List of order item names
         menu_context: Menu-related context from query engine
         timezone: Store timezone (defaults to America/Los_Angeles)
 
@@ -176,7 +175,7 @@ def build_context(
     store_tz = timezone or "America/Los_Angeles"
     current_dt_store = datetime.now(ZoneInfo(store_tz))
 
-    order_info = f"Order Information: {order_items}"
+    order_info = f"Order Information: {', '.join(order_items)}"
     current_time_info = (
         f"\n\n<current_datetime>\n"
         f"Current date and time: {current_dt_store.strftime('%A, %B %d, %Y at %I:%M %p')} ({store_tz})\n"

@@ -3,45 +3,6 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
-class OrderItem(BaseModel):
-    """Single order item containing item name and optional modifiers"""
-
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
-
-    item_name: str = Field(
-        description=(
-            "Complete dish or drink name from the order without size or quantity information. "
-            "Must be the exact menu item name. "
-            "Examples: 'Margherita Pizza' or 'Caesar Salad' or 'Beef Burger'"
-        )
-    )
-    item_modifiers: list[str] = Field(
-        description=(
-            "List of modifications or customizations requested for this specific item. "
-            "Only include if customer explicitly requested changes for this item. "
-            "Examples: ['Extra cheese', 'No onions'] or ['Well done', 'Dressing on the side'] or "
-            "['Add bacon', 'No pickles', 'Extra sauce']. "
-            "Leave as empty [] if no modifications were specified for this item."
-        )
-    )
-
-
-class OrderItems(BaseModel):
-    """Collection of order items"""
-
-    model_config = ConfigDict(populate_by_name=True, extra="forbid")
-
-    items: list[OrderItem] = Field(
-        description=(
-            "List of order items with their respective names and modifiers. "
-            "Each OrderItem should contain one dish/drink name and its specific modifiers. "
-            "Example: [{'item_name': 'Margherita Pizza', 'item_modifiers': ['Extra cheese', 'Gluten-free crust']}, "
-            "{'item_name': 'Caesar Salad', 'item_modifiers': ['Dressing on the side']}, "
-            "{'item_name': 'Coca Cola', 'item_modifiers': []}]"
-        )
-    )
-
-
 class BackdoorToolPrompt(str, Enum):
     ORDER_ITEM_PROMPT = "order_item_prompt"
     SYSTEM_PROMPT = "system_prompt"
@@ -154,6 +115,8 @@ class ValidateAddressResponse(BaseModel):
 
 
 class ClientCustomerInfo(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
     name: str = Field(description="Customer first name, non-empty, required")
     lastname: str = Field(
         description="Customer last name (optional), if not provided, use 'via Palona' as the last name",
@@ -213,42 +176,55 @@ class ClientItem(BaseModel):
 
 
 class OrderRequestBase(BaseModel):
-    """Base order request without delivery address (used for LLM extraction)"""
+    """Base order request with only fields to be extracted by LLM"""
 
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    order_type: OrderType = Field(
-        description=f"Type of order. Options: {', '.join([e.value for e in OrderType])}",
-        alias="OrderType",
-    )
-    payment_type: PaymentType = Field(
-        description=f"Payment type. Options: {', '.join([e.value for e in PaymentType])}. Default is 'PaymentLink' if not specified",
-        default=PaymentType.PAYMENT_LINK,
-        alias="paymentType",
-    )
+    items: list[ClientItem] = Field(description="List of order items, required")
     promise_date_time: str | None = Field(
         description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to null if not provided (only if customer requests scheduled/future order)",
         default=None,
         alias="promiseDateTime",
     )
-    customer: ClientCustomerInfo = Field(description="Customer information, required")
-    items: list[ClientItem] = Field(description="List of order items, required")
     order_comment: str = Field(
-        description="Order comment, optional, max 500 characters, default is '(via PalonaAI) if not specified'",
+        description="Order comment, optional, max 500 characters, default is '(via PalonaAI)' if not specified",
         default="(via PalonaAI)",
         max_length=500,
         alias="orderComment",
     )
 
 
-class ValidateOrderRequest(OrderRequestBase):
+class ValidateOrderRequest(BaseModel):
     """Complete order request with delivery address (used for API calls)"""
 
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
     store_id: str = Field(description="Store ID, non-empty, required", alias="storeId")
+    order_type: OrderType = Field(
+        description=f"Type of order. Options: {', '.join([e.value for e in OrderType])}",
+        alias="OrderType",
+    )
+    payment_type: PaymentType = Field(
+        description=f"Payment type. Options: {', '.join([e.value for e in PaymentType])}",
+        alias="paymentType",
+    )
+    promise_date_time: str | None = Field(
+        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to null if not provided",
+        default=None,
+        alias="promiseDateTime",
+    )
+    customer: ClientCustomerInfo = Field(description="Customer information, required")
     delivery_address: DeliveryAddress | None = Field(
         description="Delivery address (required for delivery orders), set to null if not provided",
         default=None,
         alias="deliveryAddress",
+    )
+    items: list[ClientItem] = Field(description="List of order items, required")
+    order_comment: str = Field(
+        description="Order comment, optional, max 500 characters",
+        default="(via PalonaAI)",
+        max_length=500,
+        alias="orderComment",
     )
 
 
