@@ -1039,6 +1039,32 @@ async def handle_session_closure(message_data, session: AsyncSession):
             )
             return {"error": "Invalid or missing call_id"}
 
+        # TEMPORARY: Log to check for transcript in artifact (per VAPI docs)
+        artifact = message_data.get("artifact", {})
+        transcript_from_artifact = artifact.get("transcript", "") if artifact else ""
+
+        logger.info(
+            "[TEMP] VAPI end-of-call-report - checking for transcript in artifact",
+            extra={
+                "call_id": call_id,
+                "has_artifact": "artifact" in message_data,
+                "artifact_keys": list(artifact.keys()) if artifact else None,
+                "has_transcript_in_artifact": (
+                    "transcript" in artifact if artifact else False
+                ),
+                "transcript_length": (
+                    len(transcript_from_artifact) if transcript_from_artifact else 0
+                ),
+                "transcript_preview": (
+                    transcript_from_artifact[:200] + "..."
+                    if transcript_from_artifact
+                    else "No transcript found"
+                ),
+                "has_messages": "messages" in artifact if artifact else False,
+                "messages_count": len(artifact.get("messages", [])) if artifact else 0,
+            },
+        )
+
         # this is for deleting the temporary assistant from the admin console self-onboarding
         metadata = message_data.get("assistant", {}).get("metadata", {})
         if (
@@ -1173,8 +1199,17 @@ async def handle_session_closure(message_data, session: AsyncSession):
             and webhook_secret
             and _is_allowed_business_number(phone_number, allowed_numbers)
         ):
-            transcript_text = (
-                message_data.get("transcript") or call_data.get("transcript") or ""
+            # Extract transcript from artifact (per VAPI docs structure)
+            transcript_text = artifact.get("transcript", "") if artifact else ""
+
+            # TEMPORARY: Log transcript extraction
+            logger.info(
+                "[TEMP] Extracting transcript for webhook",
+                extra={
+                    "call_id": call_id,
+                    "transcript_found": bool(transcript_text),
+                    "transcript_length": len(transcript_text) if transcript_text else 0,
+                },
             )
             payload = {
                 "call_id": call_id,
