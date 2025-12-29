@@ -13,6 +13,7 @@ from utils.log import logger
 from . import _implementation
 from .catering import catering_router
 from .events import events_router
+from .monitoring import monitoring_router
 from .projects import projects_router
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
@@ -25,6 +26,7 @@ internal_router = APIRouter(prefix="/internal", tags=["internal"])
 
 internal_router.include_router(catering_router)
 internal_router.include_router(events_router)
+internal_router.include_router(monitoring_router)
 internal_router.include_router(projects_router)
 
 
