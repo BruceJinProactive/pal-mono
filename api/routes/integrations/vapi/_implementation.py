@@ -998,6 +998,7 @@ def _should_track_call_usage(
     message_data: dict,
     customer_number: str,
     call_id: str,
+    conversation_start_time: datetime | None,
 ) -> tuple[bool, str, float]:
     """
     Determine if a call should be tracked for billing based on filtering rules.
@@ -1012,6 +1013,7 @@ def _should_track_call_usage(
         message_data: Message data from VAPI
         customer_number: Customer phone number
         call_id: Call ID
+        conversation_start_time: Conversation created_at timestamp from database
 
     Returns:
         tuple: (should_track: bool, skip_reason: str, duration_seconds: float)
@@ -1023,46 +1025,44 @@ def _should_track_call_usage(
     # Rule 2: Check call duration >= 10 seconds
     duration_seconds = call_data.get("durationSeconds")
 
-    # If durationSeconds not provided, calculate from timestamps
+    # If durationSeconds not provided, calculate from conversation start to call end
     if duration_seconds is None:
-        # Try startedAt/endedAt first
-        started_at = call_data.get("startedAt")
-        ended_at = call_data.get("endedAt")
+        # Use conversation start time and call end time
+        ended_at = call_data.get("endedAt") or call_data.get("updatedAt")
 
-        # If not available, try createdAt/updatedAt as fallback
-        if not started_at:
-            started_at = call_data.get("createdAt")
-        if not ended_at:
-            ended_at = call_data.get("updatedAt")
-
-        if started_at and ended_at:
+        if conversation_start_time and ended_at:
             try:
-                from datetime import datetime
-
-                start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                # conversation_start_time is already a datetime object from database
                 end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
-                duration_seconds = (end - start).total_seconds()
+                duration_seconds = (end - conversation_start_time).total_seconds()
 
                 # Log calculation for debugging
                 logger.debug(
-                    f"[Call {call_id}] Calculated duration from timestamps",
+                    f"[Call {call_id}] Calculated duration from conversation start to call end",
                     extra={
-                        "started_at": started_at,
-                        "ended_at": ended_at,
+                        "conversation_start": conversation_start_time.isoformat(),
+                        "call_ended_at": ended_at,
                         "duration_seconds": duration_seconds,
                     },
                 )
             except (ValueError, AttributeError) as e:
                 # If parsing fails, default to 0
                 logger.warning(
-                    f"[Call {call_id}] Failed to parse timestamps: {e}",
-                    extra={"started_at": started_at, "ended_at": ended_at},
+                    f"[Call {call_id}] Failed to calculate duration: {e}",
+                    extra={
+                        "conversation_start": str(conversation_start_time),
+                        "ended_at": ended_at,
+                    },
                 )
                 duration_seconds = 0
         else:
             logger.warning(
-                f"[Call {call_id}] No timestamps available for duration calculation",
-                extra={"call_data_keys": list(call_data.keys())},
+                f"[Call {call_id}] Missing conversation start time or call end time",
+                extra={
+                    "has_conversation_start": bool(conversation_start_time),
+                    "has_ended_at": bool(ended_at),
+                    "call_data_keys": list(call_data.keys()),
+                },
             )
             duration_seconds = 0
 
@@ -1096,6 +1096,7 @@ async def _track_call_usage(
     message_data: dict,
     project: db.Project,
     call_id: str,
+    conversation: db.Conversation | None,
 ) -> None:
     """
     Track call usage for billing with filtering rules.
@@ -1110,15 +1111,19 @@ async def _track_call_usage(
         message_data: Message data from VAPI end-of-call-report
         project: Project object
         call_id: Call ID
+        conversation: Conversation object for start time
     """
     try:
         # Extract customer number for filtering
         customer_data = message_data.get("customer", {})
         customer_number = customer_data.get("number", "")
 
+        # Get conversation start time for duration calculation
+        conversation_start_time = conversation.created_at if conversation else None
+
         # Check if call should be tracked based on filtering rules
         should_track, skip_reason, duration_seconds = _should_track_call_usage(
-            call_data, message_data, customer_number, call_id
+            call_data, message_data, customer_number, call_id, conversation_start_time
         )
 
         if not should_track:
@@ -1274,6 +1279,7 @@ async def handle_session_closure(message_data, session: AsyncSession):
             )
         )
 
+        first_conversation = None
         if not conversations:
             logger.warning(f"No matching active conversation found for call {call_id}")
         else:
@@ -1384,6 +1390,7 @@ async def handle_session_closure(message_data, session: AsyncSession):
             message_data=message_data,
             project=project,
             call_id=call_id,
+            conversation=first_conversation if conversations else None,
         )
 
         return {
