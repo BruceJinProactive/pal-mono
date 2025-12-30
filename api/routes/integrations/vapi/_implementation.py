@@ -1023,10 +1023,17 @@ def _should_track_call_usage(
     # Rule 2: Check call duration >= 10 seconds
     duration_seconds = call_data.get("durationSeconds")
 
-    # If durationSeconds not provided, calculate from startedAt and endedAt
+    # If durationSeconds not provided, calculate from timestamps
     if duration_seconds is None:
+        # Try startedAt/endedAt first
         started_at = call_data.get("startedAt")
         ended_at = call_data.get("endedAt")
+
+        # If not available, try createdAt/updatedAt as fallback
+        if not started_at:
+            started_at = call_data.get("createdAt")
+        if not ended_at:
+            ended_at = call_data.get("updatedAt")
 
         if started_at and ended_at:
             try:
@@ -1035,10 +1042,28 @@ def _should_track_call_usage(
                 start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
                 end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
                 duration_seconds = (end - start).total_seconds()
-            except (ValueError, AttributeError):
+
+                # Log calculation for debugging
+                logger.debug(
+                    f"[Call {call_id}] Calculated duration from timestamps",
+                    extra={
+                        "started_at": started_at,
+                        "ended_at": ended_at,
+                        "duration_seconds": duration_seconds,
+                    },
+                )
+            except (ValueError, AttributeError) as e:
                 # If parsing fails, default to 0
+                logger.warning(
+                    f"[Call {call_id}] Failed to parse timestamps: {e}",
+                    extra={"started_at": started_at, "ended_at": ended_at},
+                )
                 duration_seconds = 0
         else:
+            logger.warning(
+                f"[Call {call_id}] No timestamps available for duration calculation",
+                extra={"call_data_keys": list(call_data.keys())},
+            )
             duration_seconds = 0
 
     if duration_seconds < 10:
