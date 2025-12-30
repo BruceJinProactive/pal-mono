@@ -35,6 +35,7 @@ from services.subscription_service import _stripe_product
 from services.subscription_service.stripe_usage_billing import send_meter_event
 from utils.dd import dd_histogram_duration
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
 
 def _get_squad_model(squad_data: dict[str, Any]) -> dict[str, Any] | None:
@@ -961,6 +962,110 @@ def handle_transcript_update(message_data):
         return {"error": str(e)}
 
 
+def _is_test_phone_number(phone_number: str) -> bool:
+    """
+    Check if a phone number is a Palona test/internal number.
+
+    Reads from AWS Secrets Manager or environment variable TEST_PHONE_NUMBERS
+    which should be a comma-separated list of phone numbers.
+
+    Example: TEST_PHONE_NUMBERS="+18889738742,+18885551234,+12125551212"
+
+    Args:
+        phone_number: Phone number to check
+
+    Returns:
+        bool: True if test number, False otherwise
+    """
+    try:
+        # Get test phone numbers from AWS Secrets Manager with env fallback
+        test_numbers_str = get_server_secret_with_fallback("TEST_PHONE_NUMBERS")
+    except (ValueError, KeyError):
+        # Secret not found, no test numbers configured
+        return False
+
+    if not test_numbers_str:
+        return False
+
+    # Parse comma-separated phone numbers and strip whitespace
+    test_numbers = {num.strip() for num in test_numbers_str.split(",") if num.strip()}
+
+    return phone_number in test_numbers
+
+
+def _should_track_call_usage(
+    call_data: dict,
+    message_data: dict,
+    customer_number: str,
+    call_id: str,
+) -> tuple[bool, str, float]:
+    """
+    Determine if a call should be tracked for billing based on filtering rules.
+
+    Filtering rules:
+    1. Exclude test phone numbers (Palona internal)
+    2. Exclude calls under 10 seconds
+    3. Exclude calls where customer didn't speak
+
+    Args:
+        call_data: Call data from VAPI
+        message_data: Message data from VAPI
+        customer_number: Customer phone number
+        call_id: Call ID
+
+    Returns:
+        tuple: (should_track: bool, skip_reason: str, duration_seconds: float)
+    """
+    # Rule 1: Check if test phone number
+    if _is_test_phone_number(customer_number):
+        return False, f"test_number:{customer_number}", 0
+
+    # Rule 2: Check call duration >= 10 seconds
+    duration_seconds = call_data.get("durationSeconds")
+
+    # If durationSeconds not provided, calculate from startedAt and endedAt
+    if duration_seconds is None:
+        started_at = call_data.get("startedAt")
+        ended_at = call_data.get("endedAt")
+
+        if started_at and ended_at:
+            try:
+                from datetime import datetime
+
+                start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+                duration_seconds = (end - start).total_seconds()
+            except (ValueError, AttributeError):
+                # If parsing fails, default to 0
+                duration_seconds = 0
+        else:
+            duration_seconds = 0
+
+    if duration_seconds < 10:
+        return False, f"duration_too_short:{duration_seconds}s", duration_seconds
+
+    # Rule 3: Check if customer spoke
+    # Check in artifact.messages for any user role messages
+    artifact = message_data.get("artifact", {})
+    messages = artifact.get("messages", [])
+
+    customer_spoke = False
+    for msg in messages:
+        if isinstance(msg, dict):
+            role = msg.get("role", "").lower()
+            if role == "user":
+                # Check if message has content
+                if msg.get("message") or msg.get("content"):
+                    customer_spoke = True
+                    break
+
+    if not customer_spoke:
+        return False, "customer_did_not_speak", duration_seconds
+
+    # All checks passed
+    return True, "", duration_seconds
+
+
 async def _track_call_usage(
     call_data: dict,
     message_data: dict,
@@ -968,15 +1073,42 @@ async def _track_call_usage(
     call_id: str,
 ) -> None:
     """
-    Track call usage for billing.
+    Track call usage for billing with filtering rules.
+
+    Filters out:
+    - Test phone numbers (Palona internal)
+    - Calls under 10 seconds
+    - Calls where customer didn't speak
 
     Args:
         call_data: Call data from VAPI end-of-call-report
-        message_data: Message data from VAPI end-of-call-report (unused, for compatibility)
+        message_data: Message data from VAPI end-of-call-report
         project: Project object
         call_id: Call ID
     """
     try:
+        # Extract customer number for filtering
+        customer_data = message_data.get("customer", {})
+        customer_number = customer_data.get("number", "")
+
+        # Check if call should be tracked based on filtering rules
+        should_track, skip_reason, duration_seconds = _should_track_call_usage(
+            call_data, message_data, customer_number, call_id
+        )
+
+        if not should_track:
+            logger.info(
+                f"Skipping call usage tracking for call {call_id}: {skip_reason}",
+                extra={
+                    "call_id": call_id,
+                    "project_id": str(project.id),
+                    "skip_reason": skip_reason,
+                    "duration_seconds": duration_seconds,
+                    "customer_number": customer_number[-4:] if customer_number else "",
+                },
+            )
+            return
+
         # Track usage for all calls
         stripe_customer_id = project.account.stripe_customer_id
 
@@ -1004,6 +1136,7 @@ async def _track_call_usage(
             extra={
                 "call_id": call_id,
                 "project_id": str(project.id),
+                "duration_seconds": duration_seconds,
             },
         )
 
