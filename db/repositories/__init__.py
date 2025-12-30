@@ -21,6 +21,10 @@ from .project_repository import ProjectRepository, ProjectRepositoryAsync
 from .prompt_repository import PromptRepository
 from .resource_role_assignment_repository import ResourceRoleAssignmentRepository
 from .role_permission_repository import RolePermissionRepository
+from .routine_execution_repository import RoutineExecutionRepositoryAsync
+from .routine_repository import RoutineRepositoryAsync
+from .routine_schedule_repository import RoutineScheduleRepositoryAsync
+from .routine_submission_repository import RoutineSubmissionRepositoryAsync
 from .signal_feed_repository import SignalFeedRepositoryAsync
 from .signal_source_repository import SignalSourceRepositoryAsync
 from .subscription_repository import (

@@ -52,13 +52,34 @@ from api.schemas.operations.monitoring import (
     TriggerRunResponse,
     UpdateMonitoringConfigRequest,
 )
+from api.schemas.operations.routine import (
+    CreateRoutineItemRequest,
+    CreateRoutineRequest,
+    CreateScheduleRequest,
+    ExecutionDetailResponse,
+    ItemResponseWithItemResponse,
+    ListExecutionsResponse,
+    ListPendingReviewResponse,
+    ListRoutinesResponse,
+    ListSchedulesResponse,
+    RejectSubmissionRequest,
+    RoutineDetailResponse,
+    RoutineItemResponse,
+    RoutineResponse,
+    ScheduleResponse,
+    SubmissionDetailResponse,
+    SubmissionResponse,
+    UpdateRoutineItemRequest,
+    UpdateRoutineRequest,
+    UpdateScheduleRequest,
+)
 from api.schemas.operations.signal_source import (
     CreateSignalSourceRequest,
     ListSignalSourcesResponse,
     SignalSourceResponse,
     UpdateSignalSourceRequest,
 )
-from db.tables.types import CheckStatus
+from db.tables.types import CheckStatus, ExecutionStatus
 from services import signal_source_service
 from services.auth_service.dependencies import (
     require_checklist_permission,
@@ -67,7 +88,14 @@ from services.auth_service.dependencies import (
 from services.auth_types import UserContext
 from utils.log import logger
 
-from . import _checklist, _checkpoint, _implementation, _monitoring, _signal_sources
+from . import (
+    _checklist,
+    _checkpoint,
+    _implementation,
+    _monitoring,
+    _routines,
+    _signal_sources,
+)
 
 operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
 
@@ -1515,3 +1543,712 @@ async def get_monitoring_run(
         session=session,
         project_id=project_id,
     )
+
+
+# ==============================================================================
+# ROUTINE ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.post(
+    "/projects/{project_id}/routines",
+    status_code=status.HTTP_201_CREATED,
+    response_model=RoutineDetailResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_routine(
+    project_id: uuid.UUID,
+    request: CreateRoutineRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> RoutineDetailResponse:
+    """
+    Create a new routine with optional items and schedule.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Request Body:
+    - name (required): Name of the routine
+    - description (optional): Description
+    - category (required): Category (opening, closing, food_safety, custom)
+    - is_active (optional, default: true): Whether routine is active
+    - items (optional): List of routine items to create
+    - schedule (optional): Schedule configuration
+
+    Returns:
+    - RoutineDetailResponse with the created routine and items
+    """
+    return await _routines.create_routine(project_id, request, context, session)
+
+
+@operation_router.get(
+    "/projects/{project_id}/routines",
+    response_model=ListRoutinesResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_routines(
+    project_id: uuid.UUID,
+    is_active: bool | None = Query(None, description="Filter by active status"),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListRoutinesResponse:
+    """
+    List routines for a project.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Query Parameters:
+    - is_active (optional): Filter by active status
+
+    Returns:
+    - ListRoutinesResponse with routines and total count
+    """
+    return await _routines.list_routines(project_id, context, session, is_active)
+
+
+# TODO: Add require_routine_permission or require_project_permission for proper
+# project-scoped authorization. Currently only authenticates user without verifying
+# they have access to the routine's project. See checklist endpoints for reference.
+@operation_router.get(
+    "/routines/{routine_id}",
+    response_model=RoutineDetailResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_routine(
+    routine_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> RoutineDetailResponse:
+    """
+    Get a routine by ID with its items.
+
+    Path Parameters:
+    - routine_id: UUID of the routine
+
+    Returns:
+    - RoutineDetailResponse with routine details and items
+    """
+    return await _routines.get_routine(routine_id, context, session)
+
+
+# TODO: Add require_routine_permission or require_project_permission for proper
+# project-scoped authorization. See checklist endpoints for reference.
+@operation_router.patch(
+    "/routines/{routine_id}",
+    response_model=RoutineResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_routine(
+    routine_id: uuid.UUID,
+    request: UpdateRoutineRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> RoutineResponse:
+    """
+    Update a routine.
+
+    Path Parameters:
+    - routine_id: UUID of the routine
+
+    Request Body (all optional):
+    - name: New name
+    - description: Updated description
+    - category: Updated category
+    - is_active: Updated active status
+
+    Returns:
+    - RoutineResponse with updated routine
+    """
+    return await _routines.update_routine(routine_id, request, context, session)
+
+
+# TODO: Add require_routine_permission or require_project_permission for proper
+# project-scoped authorization. See checklist endpoints for reference.
+@operation_router.delete(
+    "/routines/{routine_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_routine(
+    routine_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a routine.
+
+    Path Parameters:
+    - routine_id: UUID of the routine
+    """
+    await _routines.delete_routine(routine_id, context, session)
+
+
+# ==============================================================================
+# ROUTINE ITEM ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.post(
+    "/routines/{routine_id}/items",
+    status_code=status.HTTP_201_CREATED,
+    response_model=RoutineItemResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def add_routine_item(
+    routine_id: uuid.UUID,
+    request: CreateRoutineItemRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> RoutineItemResponse:
+    """
+    Add an item to a routine.
+
+    Path Parameters:
+    - routine_id: UUID of the routine
+
+    Request Body:
+    - name (required): Name of the item
+    - description (optional): Description
+    - input_type (required): Input type (photo, checkbox, number, text)
+    - is_required (optional, default: true): Whether item is required
+    - sort_order (optional): Sort order
+    - ai_rules (optional): AI verification rules
+
+    Returns:
+    - RoutineItemResponse with created item
+    """
+    return await _routines.add_item(routine_id, request, context, session)
+
+
+@operation_router.patch(
+    "/routine-items/{item_id}",
+    response_model=RoutineItemResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_routine_item(
+    item_id: uuid.UUID,
+    request: UpdateRoutineItemRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> RoutineItemResponse:
+    """
+    Update a routine item.
+
+    Path Parameters:
+    - item_id: UUID of the routine item
+
+    Request Body (all optional):
+    - name: New name
+    - description: Updated description
+    - input_type: Updated input type
+    - is_required: Updated required status
+    - sort_order: Updated sort order
+    - ai_rules: Updated AI rules
+
+    Returns:
+    - RoutineItemResponse with updated item
+    """
+    return await _routines.update_item(item_id, request, context, session)
+
+
+@operation_router.delete(
+    "/routine-items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_routine_item(
+    item_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a routine item.
+
+    Path Parameters:
+    - item_id: UUID of the routine item
+    """
+    await _routines.delete_item(item_id, context, session)
+
+
+@operation_router.post(
+    "/routine-items/{item_id}/reference-image",
+    response_model=str,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def upload_routine_item_reference_image(
+    item_id: uuid.UUID,
+    file: UploadFile = File(...),
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> str:
+    """
+    Upload a reference image for a routine item.
+
+    Path Parameters:
+    - item_id: UUID of the routine item
+
+    Request Body (multipart/form-data):
+    - file (required): Image file
+
+    Returns:
+    - URL of the uploaded image
+    """
+    return await _routines.upload_reference_image(item_id, file, context, session)
+
+
+# ==============================================================================
+# SCHEDULE ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.post(
+    "/routines/{routine_id}/schedules",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ScheduleResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_schedule(
+    routine_id: uuid.UUID,
+    request: CreateScheduleRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ScheduleResponse:
+    """
+    Create a schedule for a routine.
+
+    Path Parameters:
+    - routine_id: UUID of the routine
+
+    Request Body:
+    - frequency (required): Frequency (daily, weekly, monthly)
+    - config (required): Schedule configuration
+    - is_active (optional, default: true): Whether schedule is active
+
+    Returns:
+    - ScheduleResponse with created schedule
+    """
+    return await _routines.create_schedule(routine_id, request, context, session)
+
+
+@operation_router.get(
+    "/routines/{routine_id}/schedules",
+    response_model=ListSchedulesResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_schedules(
+    routine_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListSchedulesResponse:
+    """
+    List schedules for a routine.
+
+    Path Parameters:
+    - routine_id: UUID of the routine
+
+    Returns:
+    - ListSchedulesResponse with schedules and total count
+    """
+    return await _routines.list_schedules(routine_id, context, session)
+
+
+@operation_router.patch(
+    "/schedules/{schedule_id}",
+    response_model=ScheduleResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_schedule(
+    schedule_id: uuid.UUID,
+    request: UpdateScheduleRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ScheduleResponse:
+    """
+    Update a schedule.
+
+    Path Parameters:
+    - schedule_id: UUID of the schedule
+
+    Request Body (all optional):
+    - frequency: Updated frequency
+    - config: Updated configuration
+    - is_active: Updated active status
+
+    Returns:
+    - ScheduleResponse with updated schedule
+    """
+    return await _routines.update_schedule(schedule_id, request, context, session)
+
+
+@operation_router.delete(
+    "/schedules/{schedule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_schedule(
+    schedule_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a schedule.
+
+    Path Parameters:
+    - schedule_id: UUID of the schedule
+    """
+    await _routines.delete_schedule(schedule_id, context, session)
+
+
+# ==============================================================================
+# EXECUTION ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.get(
+    "/projects/{project_id}/executions",
+    response_model=ListExecutionsResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_executions(
+    project_id: uuid.UUID,
+    status_filter: ExecutionStatus | None = Query(
+        None, alias="status", description="Filter by execution status"
+    ),
+    date_filter: datetime | None = Query(
+        None, alias="date", description="Filter by scheduled date"
+    ),
+    routine_id: uuid.UUID | None = Query(
+        None, description="Filter by specific routine"
+    ),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListExecutionsResponse:
+    """
+    List executions for routines in a project.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Query Parameters:
+    - status (optional): Filter by execution status
+    - date (optional): Filter by scheduled date
+    - routine_id (optional): Filter by specific routine
+
+    Returns:
+    - ListExecutionsResponse with executions and total count
+    """
+    # Convert datetime to date if provided
+    date_only = date_filter.date() if date_filter else None
+    return await _routines.list_executions(
+        project_id, context, session, status_filter, date_only, routine_id
+    )
+
+
+@operation_router.get(
+    "/executions/{execution_id}",
+    response_model=ExecutionDetailResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_execution(
+    execution_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ExecutionDetailResponse:
+    """
+    Get an execution by ID.
+
+    Path Parameters:
+    - execution_id: UUID of the execution
+
+    Returns:
+    - ExecutionDetailResponse with execution details
+    """
+    return await _routines.get_execution(execution_id, context, session)
+
+
+# ==============================================================================
+# SUBMISSION ENDPOINTS - STAFF WORKFLOW
+# ==============================================================================
+
+
+@operation_router.post(
+    "/executions/{execution_id}/submissions",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SubmissionDetailResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def start_submission(
+    execution_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SubmissionDetailResponse:
+    """
+    Start a submission for an execution (creates draft).
+
+    If a submission already exists for this execution, returns the existing one.
+
+    Path Parameters:
+    - execution_id: UUID of the execution
+
+    Returns:
+    - SubmissionDetailResponse with the draft submission
+    """
+    return await _routines.start_submission(execution_id, context, session)
+
+
+@operation_router.get(
+    "/submissions/{submission_id}",
+    response_model=SubmissionDetailResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_submission(
+    submission_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SubmissionDetailResponse:
+    """
+    Get a submission with its responses.
+
+    Path Parameters:
+    - submission_id: UUID of the submission
+
+    Returns:
+    - SubmissionDetailResponse with submission details and responses
+    """
+    return await _routines.get_submission(submission_id, context, session)
+
+
+@operation_router.post(
+    "/submissions/{submission_id}/responses",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ItemResponseWithItemResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def add_response(
+    submission_id: uuid.UUID,
+    routine_item_id: uuid.UUID = Form(...),
+    file: UploadFile | None = File(None),
+    notes: str | None = Form(None),
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ItemResponseWithItemResponse:
+    """
+    Add a response to a submission item.
+
+    Path Parameters:
+    - submission_id: UUID of the submission
+
+    Request Body (multipart/form-data):
+    - routine_item_id (required): UUID of the routine item
+    - file (optional): Image file for photo responses
+    - notes (optional): Staff notes
+
+    Returns:
+    - ItemResponseWithItemResponse with the created/updated response
+    """
+    return await _routines.add_response(
+        submission_id, routine_item_id, file, notes, context, session
+    )
+
+
+@operation_router.post(
+    "/submissions/{submission_id}/submit",
+    response_model=SubmissionResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def submit_for_review(
+    submission_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SubmissionResponse:
+    """
+    Submit a draft submission for manager review.
+
+    Path Parameters:
+    - submission_id: UUID of the submission
+
+    Returns:
+    - SubmissionResponse with updated submission status
+    """
+    return await _routines.submit_for_review(submission_id, context, session)
+
+
+# ==============================================================================
+# SUBMISSION ENDPOINTS - MANAGER WORKFLOW
+# ==============================================================================
+
+
+@operation_router.get(
+    "/projects/{project_id}/submissions/pending-review",
+    response_model=ListPendingReviewResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_pending_review(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListPendingReviewResponse:
+    """
+    List submissions pending manager review.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Returns:
+    - ListPendingReviewResponse with pending submissions and total count
+    """
+    return await _routines.list_pending_review(project_id, context, session)
+
+
+@operation_router.post(
+    "/submissions/{submission_id}/approve",
+    response_model=SubmissionResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def approve_submission(
+    submission_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SubmissionResponse:
+    """
+    Approve a submitted submission.
+
+    Path Parameters:
+    - submission_id: UUID of the submission
+
+    Returns:
+    - SubmissionResponse with approved status
+    """
+    return await _routines.approve_submission(submission_id, context, session)
+
+
+@operation_router.post(
+    "/submissions/{submission_id}/reject",
+    response_model=SubmissionResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def reject_submission(
+    submission_id: uuid.UUID,
+    request: RejectSubmissionRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SubmissionResponse:
+    """
+    Reject a submitted submission with notes.
+
+    Path Parameters:
+    - submission_id: UUID of the submission
+
+    Request Body:
+    - review_notes (required): Reason for rejection
+
+    Returns:
+    - SubmissionResponse with rejected status
+    """
+    return await _routines.reject_submission(submission_id, request, context, session)
