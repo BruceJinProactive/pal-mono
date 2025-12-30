@@ -55,6 +55,12 @@ class Project(Base):
     reservation_link: Mapped[str | None] = mapped_column(String, nullable=True)
     ordering_link: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    # Stripe subscription info
+    stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    current_subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
     # Google Business Hours fields
     google_place_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     business_hours: Mapped[Optional[Dict]] = mapped_column(
