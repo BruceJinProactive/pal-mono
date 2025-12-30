@@ -327,9 +327,9 @@ async def get_project_by_id_async(
 
 
 async def get_project_async(session: AsyncSession, message: Message) -> db.Project:
-    project_channel_identifier = (
-        f"{message.channel.value}:{message.recipient_identifier}"
-    )
+    # Use recipient_identifier directly without channel prefix
+    # since channel column doesn't exist in projects table yet
+    project_channel_identifier = message.recipient_identifier
     project_repo = db.ProjectRepositoryAsync(session)
     project = await project_repo.get_project_by_channel_identifier(
         project_channel_identifier
@@ -343,9 +343,9 @@ async def get_project_async(session: AsyncSession, message: Message) -> db.Proje
 
 
 def get_project_sync(session: Session, message: Message) -> db.Project:
-    project_channel_identifier = (
-        f"{message.channel.value}:{message.recipient_identifier}"
-    )
+    # Use recipient_identifier directly without channel prefix
+    # since channel column doesn't exist in projects table yet
+    project_channel_identifier = message.recipient_identifier
     project = db.ProjectRepository(session).get_project_by_channel_identifier(
         project_channel_identifier
     )
