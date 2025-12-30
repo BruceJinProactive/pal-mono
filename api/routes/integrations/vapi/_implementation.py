@@ -994,83 +994,31 @@ def _is_test_phone_number(phone_number: str) -> bool:
 
 
 def _should_track_call_usage(
-    call_data: dict,
     message_data: dict,
     customer_number: str,
-    call_id: str,
-    conversation_start_time: datetime | None,
-) -> tuple[bool, str, float]:
+) -> tuple[bool, str]:
     """
     Determine if a call should be tracked for billing based on filtering rules.
 
     Filtering rules:
     1. Exclude test phone numbers (Palona internal)
-    2. Exclude calls under 10 seconds
-    3. Exclude calls where customer didn't speak
+    2. Exclude calls where customer didn't speak
 
     Args:
         call_data: Call data from VAPI
         message_data: Message data from VAPI
         customer_number: Customer phone number
         call_id: Call ID
-        conversation_start_time: Conversation created_at timestamp from database
+        conversation_start_time: Conversation created_at timestamp from database (unused for now)
 
     Returns:
-        tuple: (should_track: bool, skip_reason: str, duration_seconds: float)
+        tuple: (should_track: bool, skip_reason: str)
     """
     # Rule 1: Check if test phone number
     if _is_test_phone_number(customer_number):
-        return False, f"test_number:{customer_number}", 0
+        return False, f"test_number:{customer_number}"
 
-    # Rule 2: Check call duration >= 10 seconds
-    duration_seconds = call_data.get("durationSeconds")
-
-    # If durationSeconds not provided, calculate from conversation start to call end
-    if duration_seconds is None:
-        # Use conversation start time and call end time
-        ended_at = call_data.get("endedAt") or call_data.get("updatedAt")
-
-        if conversation_start_time and ended_at:
-            try:
-                # conversation_start_time is already a datetime object from database
-                end = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
-                duration_seconds = (end - conversation_start_time).total_seconds()
-
-                # Log calculation for debugging
-                logger.debug(
-                    f"[Call {call_id}] Calculated duration from conversation start to call end",
-                    extra={
-                        "conversation_start": conversation_start_time.isoformat(),
-                        "call_ended_at": ended_at,
-                        "duration_seconds": duration_seconds,
-                    },
-                )
-            except (ValueError, AttributeError) as e:
-                # If parsing fails, default to 0
-                logger.warning(
-                    f"[Call {call_id}] Failed to calculate duration: {e}",
-                    extra={
-                        "conversation_start": str(conversation_start_time),
-                        "ended_at": ended_at,
-                    },
-                )
-                duration_seconds = 0
-        else:
-            logger.warning(
-                f"[Call {call_id}] Missing conversation start time or call end time",
-                extra={
-                    "has_conversation_start": bool(conversation_start_time),
-                    "has_ended_at": bool(ended_at),
-                    "call_data_keys": list(call_data.keys()),
-                },
-            )
-            duration_seconds = 0
-
-    if duration_seconds < 10:
-        return False, f"duration_too_short:{duration_seconds}s", duration_seconds
-
-    # Rule 3: Check if customer spoke
-    # Check in artifact.messages for any user role messages
+    # Rule 2: Check if customer spoke
     artifact = message_data.get("artifact", {})
     messages = artifact.get("messages", [])
 
@@ -1085,25 +1033,22 @@ def _should_track_call_usage(
                     break
 
     if not customer_spoke:
-        return False, "customer_did_not_speak", duration_seconds
+        return False, "customer_did_not_speak"
 
     # All checks passed
-    return True, "", duration_seconds
+    return True, ""
 
 
 async def _track_call_usage(
-    call_data: dict,
     message_data: dict,
     project: db.Project,
     call_id: str,
-    conversation: db.Conversation | None,
 ) -> None:
     """
     Track call usage for billing with filtering rules.
 
     Filters out:
     - Test phone numbers (Palona internal)
-    - Calls under 10 seconds
     - Calls where customer didn't speak
 
     Args:
@@ -1118,12 +1063,9 @@ async def _track_call_usage(
         customer_data = message_data.get("customer", {})
         customer_number = customer_data.get("number", "")
 
-        # Get conversation start time for duration calculation
-        conversation_start_time = conversation.created_at if conversation else None
-
         # Check if call should be tracked based on filtering rules
-        should_track, skip_reason, duration_seconds = _should_track_call_usage(
-            call_data, message_data, customer_number, call_id, conversation_start_time
+        should_track, skip_reason = _should_track_call_usage(
+            message_data, customer_number
         )
 
         if not should_track:
@@ -1133,7 +1075,6 @@ async def _track_call_usage(
                     "call_id": call_id,
                     "project_id": str(project.id),
                     "skip_reason": skip_reason,
-                    "duration_seconds": duration_seconds,
                     "customer_number": customer_number[-4:] if customer_number else "",
                 },
             )
@@ -1166,7 +1107,6 @@ async def _track_call_usage(
             extra={
                 "call_id": call_id,
                 "project_id": str(project.id),
-                "duration_seconds": duration_seconds,
             },
         )
 
@@ -1386,11 +1326,9 @@ async def handle_session_closure(message_data, session: AsyncSession):
 
         # Track usage for all calls
         await _track_call_usage(
-            call_data=call_data,
             message_data=message_data,
             project=project,
             call_id=call_id,
-            conversation=first_conversation if conversations else None,
         )
 
         return {
