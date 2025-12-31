@@ -30,6 +30,7 @@ from db.repositories import (
 from db.tables.routine_items import RoutineItem
 from db.tables.routines import Routine
 from services.auth_types import UserContext
+from services.routine_service._schedule_calculator import calculate_next_executions
 
 
 def _build_routine_response(routine: Routine) -> RoutineResponse:
@@ -116,11 +117,12 @@ async def create_routine(
     session: AsyncSession,
 ) -> RoutineDetailResponse:
     """
-    Create a new routine with optional items and schedule.
+    Create a new routine with items, schedule, and initial executions.
     Authorization is handled in the API layer.
     """
     routine_repo = RoutineRepositoryAsync(session)
     schedule_repo = RoutineScheduleRepositoryAsync(session)
+    execution_repo = RoutineExecutionRepositoryAsync(session)
 
     # Create the routine
     routine = await routine_repo.create_routine(
@@ -150,19 +152,39 @@ async def create_routine(
         )
         items.append(item)
 
-    # Create schedule if provided
-    if request.schedule:
-        await schedule_repo.create_schedule(
+    # Create schedule (required)
+    schedule = await schedule_repo.create_schedule(
+        routine_id=routine.id,
+        frequency=request.schedule.frequency,
+        start_time=_parse_time(request.schedule.start_time),
+        end_time=_parse_time(request.schedule.end_time),
+        timezone=request.schedule.timezone,
+        days_of_week=request.schedule.days_of_week,
+        day_of_month=request.schedule.day_of_month,
+        interval_hours=request.schedule.interval_hours,
+        effective_from=request.schedule.effective_from,
+        effective_until=request.schedule.effective_until,
+    )
+
+    # Generate next 10 executions
+    execution_windows = calculate_next_executions(
+        frequency=schedule.frequency.value,
+        start_time=schedule.start_time,
+        end_time=schedule.end_time,
+        timezone=schedule.timezone,
+        days_of_week=schedule.days_of_week,
+        day_of_month=schedule.day_of_month,
+        effective_from=schedule.effective_from,
+        effective_until=schedule.effective_until,
+        count=10,
+    )
+
+    for scheduled_start, scheduled_end in execution_windows:
+        await execution_repo.create_execution(
             routine_id=routine.id,
-            frequency=request.schedule.frequency,
-            start_time=_parse_time(request.schedule.start_time),
-            end_time=_parse_time(request.schedule.end_time),
-            timezone=request.schedule.timezone,
-            days_of_week=request.schedule.days_of_week,
-            day_of_month=request.schedule.day_of_month,
-            interval_hours=request.schedule.interval_hours,
-            effective_from=request.schedule.effective_from,
-            effective_until=request.schedule.effective_until,
+            schedule_id=schedule.id,
+            scheduled_start=scheduled_start,
+            scheduled_end=scheduled_end,
         )
 
     await session.commit()

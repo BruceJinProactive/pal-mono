@@ -10,6 +10,7 @@ import uuid
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -93,6 +94,16 @@ class ScheduleConfig(BaseModel):
         default=None,
         description="End date for the schedule",
     )
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v: str) -> str:
+        """Validate timezone is a valid IANA timezone."""
+        try:
+            ZoneInfo(v)
+        except Exception:
+            raise ValueError(f"Invalid timezone: {v}")
+        return v
 
     @model_validator(mode="after")
     def validate_frequency_fields(self):
@@ -216,7 +227,7 @@ class RoutineItemResponse(BaseModel):
 
 
 class CreateRoutineRequest(BaseModel):
-    """Request to create a routine with items and optional schedule."""
+    """Request to create a routine with items and schedule."""
 
     name: str = Field(
         ...,
@@ -236,9 +247,9 @@ class CreateRoutineRequest(BaseModel):
         default_factory=list,
         description="Items to create with the routine",
     )
-    schedule: ScheduleConfig | None = Field(
-        default=None,
-        description="Optional schedule to create with the routine",
+    schedule: ScheduleConfig = Field(
+        ...,
+        description="Schedule configuration (required)",
     )
 
     @field_validator("name")
