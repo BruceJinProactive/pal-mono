@@ -370,7 +370,7 @@ async def delete_config(
     config_id: uuid.UUID,
 ) -> bool:
     """
-    Delete a monitoring configuration.
+    Delete a monitoring configuration and clean up its S3 storage.
 
     Args:
         session: Async database session.
@@ -393,10 +393,27 @@ async def delete_config(
     if not config or config.project_id != project_id:
         return False
 
-    # Delete config
+    # Extract reference image URLs before deletion for S3 cleanup
+    file_paths: list[str] = []
+    if config.rules and "reference_images" in config.rules:
+        reference_images = config.rules.get("reference_images", [])
+        file_paths = [
+            img["url"]
+            for img in reference_images
+            if isinstance(img, dict) and "url" in img
+        ]
+        logger.info(
+            f"Found {len(file_paths)} reference images to clean up for config {config_id}"
+        )
+
+    # Delete config from database
     deleted = await config_repo.delete(config_id)
     if deleted:
         logger.info(f"Deleted monitoring config {config_id}")
+
+        # Clean up S3 storage after successful database deletion
+        if file_paths:
+            await cleanup_reference_images(file_paths)
 
     return deleted
 
