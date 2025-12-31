@@ -5,6 +5,7 @@ Business logic handlers for monitoring configuration and run CRUD endpoints.
 
 from __future__ import annotations
 
+import asyncio
 import math
 import uuid
 from datetime import datetime
@@ -126,7 +127,7 @@ async def create_monitoring_config(
         )
 
         logger.debug("[create monitoring config] Step 7: Building response")
-        response = monitoring_service.build_config_response(config)
+        response = await monitoring_service.build_config_response(config)
         logger.info(
             f"[create monitoring config] Successfully created monitoring config {config.id} "
             f"for project {project_id}"
@@ -218,10 +219,10 @@ async def list_monitoring_configs(
             page_size=page_size,
         )
 
-        # Build responses
-        config_responses = [
-            monitoring_service.build_config_response(config) for config in configs
-        ]
+        # Build responses asynchronously to avoid blocking event loop
+        config_responses = await asyncio.gather(
+            *[monitoring_service.build_config_response(config) for config in configs]
+        )
 
         total_pages = math.ceil(total / page_size) if total > 0 else 0
 
@@ -281,7 +282,7 @@ async def get_monitoring_config(
                 headers={"Content-Type": "application/json"},
             )
 
-        return monitoring_service.build_config_response(config)
+        return await monitoring_service.build_config_response(config)
 
     except HTTPException:
         raise
@@ -332,7 +333,7 @@ async def update_monitoring_config(
 
         await session.commit()
 
-        return monitoring_service.build_config_response(config)
+        return await monitoring_service.build_config_response(config)
 
     except ValueError as e:
         await session.rollback()

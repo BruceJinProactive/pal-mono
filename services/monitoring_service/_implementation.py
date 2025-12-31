@@ -6,6 +6,7 @@ Business logic for monitoring configuration and run CRUD operations.
 from __future__ import annotations
 
 import asyncio
+import copy
 import os
 import uuid
 from datetime import datetime
@@ -28,6 +29,7 @@ from db.repositories import (
 from db.tables import MonitoringConfig, MonitoringRun
 from services.asset_service import delete_asset, write_asset
 from services.asset_service._implementation import WriteAssetRequest
+from services.asset_service._utils import map_uri_to_s3_url
 from utils.log import logger
 
 
@@ -559,7 +561,7 @@ async def get_run(
     return None
 
 
-def build_config_response(config: MonitoringConfig) -> MonitoringConfigResponse:
+async def build_config_response(config: MonitoringConfig) -> MonitoringConfigResponse:
     """
     Build a MonitoringConfigResponse from a MonitoringConfig model.
 
@@ -569,13 +571,38 @@ def build_config_response(config: MonitoringConfig) -> MonitoringConfigResponse:
     Returns:
         MonitoringConfigResponse for API response.
     """
+    # Deep copy rules to avoid modifying the original
+    transformed_rules = copy.deepcopy(config.rules)
+
+    # Transform reference image URLs to presigned S3 URLs asynchronously
+    if "reference_images" in transformed_rules:
+        for image in transformed_rules["reference_images"]:
+            if image.get("url"):
+                original_url = image["url"]
+                try:
+                    # Run synchronous S3 operations in thread pool to avoid blocking event loop
+                    image["url"] = await asyncio.to_thread(
+                        map_uri_to_s3_url, original_url
+                    )
+                    # Preserve original URL if transformation fails (returns empty string)
+                    if not image["url"]:
+                        logger.warning(
+                            f"Failed to transform URL {original_url}, preserving original"
+                        )
+                        image["url"] = original_url
+                except Exception as e:
+                    logger.error(
+                        f"Error transforming URL {original_url}: {e}, preserving original"
+                    )
+                    image["url"] = original_url
+
     return MonitoringConfigResponse(
         id=config.id,
         project_id=config.project_id,
         signal_source_id=config.signal_source_id,
         name=config.name,
         description=config.description,
-        rules=config.rules,
+        rules=transformed_rules,
         enabled=config.enabled,
         created_at=config.created_at,
         updated_at=config.updated_at,
