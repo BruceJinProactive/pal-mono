@@ -11,6 +11,7 @@ from datetime import datetime
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
 
 from api.schemas.operations.monitoring import (
     CreateMonitoringConfigRequest,
@@ -72,6 +73,8 @@ async def create_monitoring_config(
 
             # Update config with structured reference images
             config.rules["reference_images"] = uploaded_images
+            # Mark the JSONB field as modified so SQLAlchemy tracks the change
+            attributes.flag_modified(config, "rules")
 
         await session.commit()
 
