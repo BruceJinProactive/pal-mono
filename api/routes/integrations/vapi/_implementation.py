@@ -993,6 +993,70 @@ def _is_test_phone_number(phone_number: str) -> bool:
     return phone_number in test_numbers
 
 
+def _calculate_call_duration(call_data: dict) -> float | None:
+    """
+    Calculate call duration from startedAt and endedAt timestamps.
+    Falls back to durationSeconds if timestamps are not available.
+
+    Args:
+        call_data: Call data from VAPI end-of-call-report
+
+    Returns:
+        float | None: Duration in seconds, or None if not available
+    """
+    call_id = call_data.get("id", "unknown")
+    started_at = call_data.get("startedAt")
+    ended_at = call_data.get("endedAt")
+
+    logger.info(
+        f"[_calculate_call_duration] call_id={call_id}, startedAt={started_at}, endedAt={ended_at}",
+        extra={
+            "call_id": call_id,
+            "started_at": started_at,
+            "ended_at": ended_at,
+        },
+    )
+
+    if started_at and ended_at:
+        try:
+            start_time = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+            end_time = datetime.fromisoformat(ended_at.replace("Z", "+00:00"))
+            duration_seconds = (end_time - start_time).total_seconds()
+            logger.info(
+                f"[_calculate_call_duration] Calculated duration from timestamps: {duration_seconds}s",
+                extra={
+                    "call_id": call_id,
+                    "duration_seconds": duration_seconds,
+                    "method": "timestamps",
+                },
+            )
+            return float(duration_seconds)
+        except (ValueError, AttributeError) as e:
+            logger.warning(
+                f"[_calculate_call_duration] Failed to parse call timestamps: {e}",
+                extra={"call_id": call_id, "error": str(e)},
+            )
+
+    # Fallback to durationSeconds field
+    duration = call_data.get("durationSeconds")
+    if duration is not None:
+        logger.info(
+            f"[_calculate_call_duration] Using durationSeconds from webhook: {duration}s",
+            extra={
+                "call_id": call_id,
+                "duration_seconds": duration,
+                "method": "durationSeconds",
+            },
+        )
+        return float(duration)
+
+    logger.warning(
+        "[_calculate_call_duration] No duration data available",
+        extra={"call_id": call_id},
+    )
+    return None
+
+
 def _should_track_call_usage(
     message_data: dict,
     customer_number: str,
@@ -1003,13 +1067,11 @@ def _should_track_call_usage(
     Filtering rules:
     1. Exclude test phone numbers (Palona internal)
     2. Exclude calls where customer didn't speak
+    3. Exclude calls shorter than 10 seconds
 
     Args:
-        call_data: Call data from VAPI
         message_data: Message data from VAPI
         customer_number: Customer phone number
-        call_id: Call ID
-        conversation_start_time: Conversation created_at timestamp from database (unused for now)
 
     Returns:
         tuple: (should_track: bool, skip_reason: str)
@@ -1018,7 +1080,14 @@ def _should_track_call_usage(
     if _is_test_phone_number(customer_number):
         return False, f"test_number:{customer_number}"
 
-    # Rule 2: Check if customer spoke
+    # Rule 2: Check call duration (minimum 10 seconds)
+    call_data = message_data.get("call", {})
+    duration_seconds = _calculate_call_duration(call_data)
+
+    if duration_seconds is not None and duration_seconds < 10:
+        return False, f"duration_too_short:{duration_seconds:.2f}s"
+
+    # Rule 3: Check if customer spoke
     artifact = message_data.get("artifact", {})
     messages = artifact.get("messages", [])
 
