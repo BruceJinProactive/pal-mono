@@ -61,15 +61,22 @@ async def create_monitoring_config(
 
         # Upload reference images if provided
         if reference_images:
+            # Store config_id before S3 upload to avoid MissingGreenlet error
+            # asyncio.to_thread() in upload function can't access SQLAlchemy objects
+            config_id = config.id
+
             uploaded_images = await monitoring_service.upload_reference_images(
                 images=reference_images,
                 descriptions=reference_image_descriptions,
                 project_id=project_id,
-                config_id=config.id,
+                config_id=config_id,
             )
 
             # Track uploaded file paths for potential rollback
             uploaded_file_paths = [img["url"] for img in uploaded_images]
+
+            # Refresh config to re-establish async session context after asyncio.to_thread()
+            await session.refresh(config)
 
             # Update config with structured reference images
             config.rules["reference_images"] = uploaded_images
