@@ -103,11 +103,20 @@ class VapiTool(Toolkit):
         if not self.destination_number:
             raise ValueError("destination_number cannot be empty or None")
         is_sip = self.destination_number.lower().startswith("sip:")
-        destination = (
-            {"type": "sip", "sipUri": self.destination_number}
-            if is_sip
-            else {"type": "number", "number": self.destination_number}
-        )
+        if is_sip:
+            # Use <Dial> instead of <Refer> for PSTN compatibility.
+            # <Refer> only works when caller is on SIP leg, but our customers
+            # call from PSTN phones. <Dial> keeps Twilio in the call path
+            # and bridges PSTN caller to SIP endpoint.
+            destination = {
+                "type": "sip",
+                "sipUri": self.destination_number,
+                "transferPlan": {
+                    "sipVerb": "dial",
+                },
+            }
+        else:
+            destination = {"type": "number", "number": self.destination_number}
         logger.debug(
             f"[VapiTool._build_transfer_payload] Detected destination type: {'SIP' if is_sip else 'phone number'} for {self.destination_number}"
         )
