@@ -9,7 +9,7 @@ import math
 import uuid
 from datetime import datetime
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.monitoring import (
@@ -29,14 +29,18 @@ from utils.log import logger
 async def create_monitoring_config(
     project_id: uuid.UUID,
     request: CreateMonitoringConfigRequest,
+    reference_images: list[UploadFile],
+    reference_image_descriptions: list[str],
     session: AsyncSession,
 ) -> MonitoringConfigResponse:
     """
-    Create a new monitoring configuration.
+    Create a new monitoring configuration with optional reference image uploads.
 
     Args:
         project_id: Project UUID from path parameter.
         request: Create request with monitoring configuration.
+        reference_images: List of reference image files to upload.
+        reference_image_descriptions: List of descriptions for each reference image.
         session: Async database session.
 
     Returns:
@@ -45,6 +49,8 @@ async def create_monitoring_config(
     Raises:
         HTTPException: If creation fails.
     """
+    uploaded_file_paths: list[str] = []
+
     try:
         config = await monitoring_service.create_config(
             session=session,
@@ -52,19 +58,43 @@ async def create_monitoring_config(
             request=request,
         )
 
+        # Upload reference images if provided
+        if reference_images:
+            uploaded_images = await monitoring_service.upload_reference_images(
+                images=reference_images,
+                descriptions=reference_image_descriptions,
+                project_id=project_id,
+                config_id=config.id,
+            )
+
+            # Track uploaded file paths for potential rollback
+            uploaded_file_paths = [img["url"] for img in uploaded_images]
+
+            # Update config with structured reference images
+            config.rules["reference_images"] = uploaded_images
+
         await session.commit()
 
         return monitoring_service.build_config_response(config)
 
     except ValueError as e:
         await session.rollback()
+        # Clean up any uploaded S3 files
+        await monitoring_service.cleanup_reference_images(uploaded_file_paths)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
+    except HTTPException:
+        await session.rollback()
+        # Clean up any uploaded S3 files
+        await monitoring_service.cleanup_reference_images(uploaded_file_paths)
+        raise
     except Exception as e:
         await session.rollback()
+        # Clean up any uploaded S3 files
+        await monitoring_service.cleanup_reference_images(uploaded_file_paths)
         logger.error(f"Error creating monitoring config: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -1212,32 +1212,66 @@ async def delete_signal_source(
 )
 async def create_monitoring_config(
     project_id: uuid.UUID,
-    request: CreateMonitoringConfigRequest,
+    signal_source_id: uuid.UUID = Form(...),
+    name: str = Form(...),
+    description: str | None = Form(None),
+    prompt: str = Form(...),
+    enabled: bool = Form(True),
+    reference_images: list[UploadFile] = File(default=[]),
+    reference_image_descriptions: list[str] = Form(default=[]),
     context: UserContext = Depends(
         require_project_permission("project.write", authenticate_user)
     ),
     session: AsyncSession = Depends(db.get_db_async),
 ) -> MonitoringConfigResponse:
     """
-    Create a new monitoring configuration.
+    Create a new monitoring configuration with optional reference image uploads.
 
     Path Parameters:
     - project_id: UUID of the project
 
-    Request Body:
+    Request Body (multipart/form-data):
     - signal_source_id (required): UUID of the signal source
     - name (required): Name of the monitoring config (unique per project)
     - description (optional): Description of what is being monitored
-    - rules (required): Monitoring rules (AI analysis or threshold)
+    - prompt (required): AI analysis prompt (1-2000 characters)
     - enabled (optional, default: true): Whether monitoring is active
+    - reference_images (optional): Multiple image files for reference
+    - reference_image_descriptions (optional): Descriptions for each reference image (must match number of images)
 
     Returns:
     - MonitoringConfigResponse with the created config details
     """
+    from api.schemas.operations.monitoring import AIAnalysisRules
+
     _ = context  # Used by require_project_permission
+
+    # Validate that number of images matches number of descriptions
+    if len(reference_images) != len(reference_image_descriptions):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Number of images ({len(reference_images)}) must match number of descriptions ({len(reference_image_descriptions)})",
+        )
+
+    # Build the request object from form fields
+    rules = AIAnalysisRules(
+        prompt=prompt,
+        reference_images=[],  # Will be populated after upload
+    )
+
+    request = CreateMonitoringConfigRequest(
+        signal_source_id=signal_source_id,
+        name=name,
+        description=description,
+        rules=rules,
+        enabled=enabled,
+    )
+
     return await _monitoring.create_monitoring_config(
         project_id=project_id,
         request=request,
+        reference_images=reference_images,
+        reference_image_descriptions=reference_image_descriptions,
         session=session,
     )
 

@@ -5,9 +5,12 @@ Business logic for monitoring configuration and run CRUD operations.
 
 from __future__ import annotations
 
+import asyncio
+import os
 import uuid
 from datetime import datetime
 
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.monitoring import (
@@ -23,7 +26,132 @@ from db.repositories import (
     SignalSourceRepositoryAsync,
 )
 from db.tables import MonitoringConfig, MonitoringRun
+from services.asset_service import delete_asset, write_asset
+from services.asset_service._implementation import WriteAssetRequest
 from utils.log import logger
+
+
+async def upload_reference_images(
+    images: list[UploadFile],
+    descriptions: list[str],
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+) -> list[dict]:
+    """
+    Upload multiple reference images with descriptions to S3.
+
+    Args:
+        images: List of uploaded image files
+        descriptions: List of descriptions for each image
+        project_id: Project UUID
+        config_id: Monitoring config UUID
+
+    Returns:
+        list[dict]: List of {"url": str, "description": str} objects
+
+    Raises:
+        HTTPException: If image upload fails
+    """
+    uploaded_images = []
+
+    for idx, (image, description) in enumerate(zip(images, descriptions)):
+        try:
+            logger.info(
+                f"Uploading reference image {idx + 1}/{len(images)}: {image.filename}"
+            )
+
+            if not image.filename:
+                raise ValueError(f"Image {idx + 1} filename is required.")
+
+            # Validate description length
+            if not description or len(description) < 1 or len(description) > 500:
+                raise ValueError(
+                    f"Image {idx + 1} description must be between 1 and 500 characters"
+                )
+
+            # Read image content
+            content = await image.read()
+
+            # Get file extension
+            file_extension = os.path.splitext(image.filename)[1] or ".jpg"
+
+            # Generate UUID for unique filename
+            image_uuid = uuid.uuid4()
+
+            # Create S3 path with UUID (not sequential index!)
+            # Format: monitoring/reference_images/{project_id}/{config_id}/{uuid}{extension}
+            # Use forward slashes for S3 compatibility (not os.path.join which uses backslashes on Windows)
+            file_path = f"monitoring/reference_images/{project_id}/{config_id}/{image_uuid}{file_extension}"
+
+            # Upload to S3 with metadata
+            write_asset_req = WriteAssetRequest(
+                name=file_path,
+                content=content,
+                metadata={
+                    "project_id": str(project_id),
+                    "config_id": str(config_id),
+                    "image_uuid": str(image_uuid),
+                    "description": description,
+                },
+            )
+
+            # Run blocking S3 upload in thread pool to avoid blocking async event loop
+            asset_response = await asyncio.to_thread(write_asset, write_asset_req)
+            logger.info(
+                f"Reference image {idx + 1} uploaded successfully: {asset_response.url}"
+            )
+
+            # Return structured data
+            uploaded_images.append({"url": file_path, "description": description})
+
+        except ValueError as ve:
+            logger.error(f"Validation error uploading reference image {idx + 1}: {ve}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(ve),
+            )
+        except Exception as e:
+            logger.error(f"Error uploading reference image {idx + 1}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upload reference image {idx + 1}: {str(e)}",
+            )
+
+    return uploaded_images
+
+
+async def cleanup_reference_images(file_paths: list[str]) -> None:
+    """
+    Clean up reference images from S3 (rollback uploaded files on transaction failure).
+
+    Args:
+        file_paths: List of S3 file paths to delete
+
+    Note:
+        This function logs errors but does not raise exceptions to avoid
+        masking the original error that triggered the cleanup.
+    """
+    if not file_paths:
+        return
+
+    logger.info(f"Cleaning up {len(file_paths)} reference images from S3")
+
+    for file_path in file_paths:
+        try:
+            # Run blocking S3 delete in thread pool to avoid blocking async event loop
+            deleted = await asyncio.to_thread(delete_asset, file_path)
+            if deleted:
+                logger.info(f"Successfully deleted reference image: {file_path}")
+            else:
+                logger.warning(
+                    f"Reference image not found during cleanup (may not have been uploaded): {file_path}"
+                )
+        except Exception as e:
+            # Log but don't raise - we want to try deleting all files
+            # and not mask the original error that caused the rollback
+            logger.error(
+                f"Failed to delete reference image {file_path} during cleanup: {e}"
+            )
 
 
 async def create_config(

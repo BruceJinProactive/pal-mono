@@ -8,81 +8,40 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal, Union
+from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 # ============================================================================
 # RULES SCHEMAS
 # ============================================================================
 
 
+class ReferenceImage(BaseModel):
+    """Reference image with description."""
+
+    url: str = Field(..., description="S3 URL/key of the reference image")
+    description: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Description of what this reference image represents",
+    )
+
+
 class AIAnalysisRules(BaseModel):
     """Configuration for AI-based analysis rules."""
-
-    type: Literal["ai_analysis"] = "ai_analysis"
 
     prompt: str = Field(
         ..., min_length=1, max_length=2000, description="AI analysis prompt"
     )
-    reference_image_urls: list[str] = Field(
-        default_factory=list, description="S3 URLs of reference images"
-    )
-    comparison_mode: Literal["best_match", "all_match"] = Field(
-        "best_match", description="How to compare against references"
-    )
-    confidence_threshold: float = Field(
-        0.8, ge=0.0, le=1.0, description="Minimum confidence for pass"
+    reference_images: list[ReferenceImage] = Field(
+        default_factory=list, description="Reference images with descriptions"
     )
 
 
-class ThresholdRules(BaseModel):
-    """Configuration for threshold-based rules."""
-
-    type: Literal["threshold"] = "threshold"
-
-    metric: str = Field(..., description="Name of metric to check")
-    operator: Literal["lt", "gt", "lte", "gte", "eq", "between"] = Field(
-        ..., description="Comparison operator"
-    )
-    value: float | None = Field(None, description="Value for single-value operators")
-    min: float | None = Field(None, description="Minimum value for 'between' operator")
-    max: float | None = Field(None, description="Maximum value for 'between' operator")
-    unit: str | None = Field(None, description="Unit of measurement")
-
-    @model_validator(mode="after")
-    def validate_threshold_fields(self) -> "ThresholdRules":
-        """Validate that correct fields are provided based on operator."""
-        if self.operator == "between":
-            # For 'between', require min and max
-            if self.min is None or self.max is None:
-                raise ValueError(
-                    "Operator 'between' requires both 'min' and 'max' fields"
-                )
-            if self.value is not None:
-                raise ValueError("Operator 'between' should not have 'value' field")
-            # Ensure min < max
-            if self.min >= self.max:
-                raise ValueError(
-                    f"'min' ({self.min}) must be less than 'max' ({self.max})"
-                )
-        else:
-            # For single-value operators, require value
-            if self.value is None:
-                raise ValueError(f"Operator '{self.operator}' requires 'value' field")
-            if self.min is not None or self.max is not None:
-                raise ValueError(
-                    f"Operator '{self.operator}' should not have 'min' or 'max' fields"
-                )
-
-        return self
-
-
-# Discriminated union for rule types
-MonitoringRules = Annotated[
-    Union[AIAnalysisRules, ThresholdRules],
-    Field(discriminator="type"),
-]
+# MonitoringRules type alias
+MonitoringRules = AIAnalysisRules
 
 
 # ============================================================================

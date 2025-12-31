@@ -6,6 +6,7 @@ Provides business logic for monitoring configuration and run CRUD operations.
 from ._implementation import (
     build_config_response,
     build_run_response,
+    cleanup_reference_images,
     create_config,
     delete_config,
     get_config,
@@ -14,6 +15,7 @@ from ._implementation import (
     get_runs,
     trigger_run,
     update_config,
+    upload_reference_images,
 )
 
 __all__ = [
@@ -27,4 +29,6 @@ __all__ = [
     "get_run",
     "build_config_response",
     "build_run_response",
+    "upload_reference_images",
+    "cleanup_reference_images",
 ]
