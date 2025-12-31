@@ -10,6 +10,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
 
 from db.tables import MonitoringConfig
 from utils.log import logger
@@ -144,6 +145,9 @@ class MonitoringConfigRepositoryAsync:
             for key, value in kwargs.items():
                 if hasattr(config, key):
                     setattr(config, key, value)
+                    # Mark JSONB fields as modified to ensure SQLAlchemy tracks changes
+                    if key == "rules":
+                        attributes.flag_modified(config, "rules")
 
             await self.session.flush()
             await self.session.refresh(config)

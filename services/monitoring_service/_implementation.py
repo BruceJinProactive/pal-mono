@@ -49,7 +49,10 @@ async def upload_reference_images(
         config_id: Monitoring config UUID
 
     Returns:
-        list[dict]: List of {"url": str, "description": str} objects
+        list[dict]: List of {"id": str, "url": str, "description": str} objects
+            - id: UUID string for identifying the image
+            - url: S3 file path
+            - description: Image description
 
     Raises:
         HTTPException: If image upload fails
@@ -103,8 +106,14 @@ async def upload_reference_images(
                 f"Reference image {idx + 1} uploaded successfully: {asset_response.url}"
             )
 
-            # Return structured data
-            uploaded_images.append({"url": file_path, "description": description})
+            # Return structured data with UUID for future reference
+            uploaded_images.append(
+                {
+                    "id": str(image_uuid),
+                    "url": file_path,
+                    "description": description,
+                }
+            )
 
         except ValueError as ve:
             logger.error(f"Validation error uploading reference image {idx + 1}: {ve}")
@@ -306,9 +315,18 @@ async def update_config(
     project_id: uuid.UUID,
     config_id: uuid.UUID,
     request: UpdateMonitoringConfigRequest,
-) -> MonitoringConfig | None:
+    add_images: list[UploadFile] | None = None,
+    add_descriptions: list[str] | None = None,
+    remove_image_ids: list[str] | None = None,
+    update_descriptions: dict[str, str] | None = None,
+) -> tuple[MonitoringConfig | None, list[str]]:
     """
-    Update a monitoring configuration.
+    Update a monitoring configuration with simple operation-based image management.
+
+    Send only the operations you want to perform:
+    - Add new images
+    - Remove existing images by ID
+    - Update descriptions without touching the image file
 
     Cannot change project_id or signal_source_id.
 
@@ -317,12 +335,17 @@ async def update_config(
         project_id: Project UUID.
         config_id: Config UUID.
         request: Update request.
+        add_images: New image files to add.
+        add_descriptions: Descriptions for new images.
+        remove_image_ids: List of image UUIDs to remove.
+        update_descriptions: Dict mapping image_id -> new_description.
 
     Returns:
-        Updated MonitoringConfig if found, None otherwise.
+        Tuple of (Updated MonitoringConfig if found, list of S3 URLs to delete).
+        The S3 URLs should be deleted AFTER the database transaction commits.
 
     Raises:
-        ValueError: If name already exists (when changing name).
+        ValueError: If name already exists or invalid image operations.
     """
     project_repo = ProjectRepositoryAsync(session)
     config_repo = MonitoringConfigRepositoryAsync(session)
@@ -330,12 +353,12 @@ async def update_config(
     # Verify project exists
     project = await project_repo.get_project(project_id)
     if not project:
-        return None
+        return None, []
 
     # Verify config exists and belongs to project
     config = await config_repo.get_by_id(config_id)
     if not config or config.project_id != project_id:
-        return None
+        return None, []
 
     # Check for duplicate name if name is being changed
     if request.name is not None and request.name != config.name:
@@ -345,23 +368,131 @@ async def update_config(
                 f"Monitoring config with name '{request.name}' already exists in project {project_id}"
             )
 
+    # Validate add operations - both add_images and add_descriptions must be provided together
+    has_add_images = bool(add_images and len(add_images) > 0)
+    has_add_descriptions = bool(add_descriptions and len(add_descriptions) > 0)
+
+    if has_add_images != has_add_descriptions:
+        raise ValueError(
+            "Both add_images and add_descriptions must be provided together. "
+            f"Got add_images: {has_add_images}, add_descriptions: {has_add_descriptions}"
+        )
+
+    if has_add_images and has_add_descriptions:
+        if len(add_images) != len(add_descriptions):  # type: ignore[arg-type]
+            raise ValueError(
+                f"Number of add_images ({len(add_images)}) must match "  # type: ignore[arg-type]
+                f"number of add_descriptions ({len(add_descriptions)})"  # type: ignore[arg-type]
+            )
+
+    # Track S3 URLs to delete (return these to caller for cleanup after commit)
+    images_to_delete: list[str] = []
+
     # Build updates
     updates = {}
     if request.name is not None:
         updates["name"] = request.name
     if request.description is not None:
         updates["description"] = request.description
-    if request.rules is not None:
-        updates["rules"] = request.rules.model_dump()
     if request.enabled is not None:
         updates["enabled"] = request.enabled
 
+    # Handle prompt update (part of rules)
+    if request.prompt is not None:
+        # Get current rules or initialize empty
+        current_rules = copy.deepcopy(config.rules) if config.rules else {}
+        current_rules["prompt"] = request.prompt
+        updates["rules"] = current_rules
+
+    # Handle reference image operations
+    needs_image_update = add_images or remove_image_ids or update_descriptions
+
+    if needs_image_update:
+        # Get current reference images, preserving any already-staged rule updates (e.g., prompt)
+        current_rules = copy.deepcopy(
+            updates.get("rules", config.rules if config.rules else {})
+        )
+        current_images = current_rules.get("reference_images", [])
+
+        # Build a map of image_id -> image for quick lookup
+        image_map = {
+            img.get("id"): img
+            for img in current_images
+            if isinstance(img, dict) and "id" in img
+        }
+
+        # Step 1: Remove images by ID
+        if remove_image_ids:
+            for image_id in remove_image_ids:
+                if image_id in image_map:
+                    removed_img = image_map.pop(image_id)
+                    if "url" in removed_img:
+                        images_to_delete.append(removed_img["url"])
+                    logger.info(
+                        f"Removed reference image {image_id} from config {config_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Image ID {image_id} not found for removal in config {config_id}"
+                    )
+
+        # Step 2: Update descriptions (no file upload)
+        if update_descriptions:
+            for image_id, new_desc in update_descriptions.items():
+                if image_id in image_map:
+                    image_map[image_id]["description"] = new_desc
+                    logger.info(
+                        f"Updated description for reference image {image_id} in config {config_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Image ID {image_id} not found for description update in config {config_id}"
+                    )
+
+        # Step 3: Add new images
+        if add_images:
+            uploaded_images = await upload_reference_images(
+                images=add_images,
+                descriptions=add_descriptions or [],
+                project_id=project_id,
+                config_id=config_id,
+            )
+            # Add to map
+            for img in uploaded_images:
+                if "id" in img:
+                    image_map[img["id"]] = img
+            logger.info(
+                f"Added {len(uploaded_images)} new reference images to config {config_id}"
+            )
+
+        # Rebuild current_images list from map (preserves order for existing, adds new at end)
+        # First keep existing images in their original order
+        existing_ids = [
+            img.get("id")
+            for img in current_images
+            if isinstance(img, dict) and "id" in img and img.get("id") in image_map
+        ]
+        current_images = [
+            image_map[img_id] for img_id in existing_ids if img_id in image_map
+        ]
+
+        # Add any new images that weren't in the original list (preserves insertion order)
+        new_ids = [k for k in image_map.keys() if k not in existing_ids]
+        current_images.extend([image_map[img_id] for img_id in new_ids])
+
+        # Update rules with modified reference images
+        current_rules["reference_images"] = current_images
+        updates["rules"] = current_rules
+
     if not updates:
-        return config
+        return config, []
 
     updated_config = await config_repo.update(config_id, **updates)
+
     logger.info(f"Updated monitoring config {config_id}")
-    return updated_config
+
+    # Return config and list of S3 URLs to delete
+    return updated_config, images_to_delete
 
 
 async def delete_config(

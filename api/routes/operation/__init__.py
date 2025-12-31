@@ -1418,14 +1418,22 @@ async def get_monitoring_config(
 async def update_monitoring_config(
     project_id: uuid.UUID,
     config_id: uuid.UUID,
-    request: UpdateMonitoringConfigRequest,
+    name: str | None = Form(None),
+    description: str | None = Form(None),
+    prompt: str | None = Form(None),
+    enabled: bool | None = Form(None),
+    # Reference image operations (send only what changes)
+    add_images: list[UploadFile] = File(default=[]),
+    add_descriptions: list[str] = Form(default=[]),
+    remove_image_ids: list[str] = Form(default=[]),
+    update_descriptions: list[str] = Form(default=[]),
     context: UserContext = Depends(
         require_project_permission("project.write", authenticate_user)
     ),
     session: AsyncSession = Depends(db.get_db_async),
 ) -> MonitoringConfigResponse:
     """
-    Update a monitoring configuration.
+    Update a monitoring configuration with simple operation-based image management.
 
     Cannot change project_id or signal_source_id.
 
@@ -1433,21 +1441,114 @@ async def update_monitoring_config(
     - project_id: UUID of the project
     - config_id: UUID of the monitoring configuration
 
-    Request Body (all optional):
+    Request Body (multipart/form-data, all optional):
     - name: New name (must be unique per project)
     - description: Updated description
-    - rules: Updated monitoring rules
+    - prompt: Updated AI analysis prompt
     - enabled: Updated enabled status
 
+    Reference Image Operations (send only what you want to change):
+    - add_images: New image files to add
+    - add_descriptions: Descriptions for new images (must match add_images count)
+    - remove_image_ids: List of image UUIDs to remove
+    - update_descriptions: JSON array of {"id": "uuid", "description": "new desc"} to update descriptions only
+
     Returns:
-    - MonitoringConfigResponse with updated config details
+    - MonitoringConfigResponse with updated config details and presigned image URLs
+
+    Examples:
+    1. Add new images:
+       add_images=[file1, file2]
+       add_descriptions=["desc1", "desc2"]
+
+    2. Remove images:
+       remove_image_ids=["uuid1", "uuid2"]
+
+    3. Update description only:
+       update_descriptions=[{"id": "uuid1", "description": "new desc"}]
+
+    4. Combination:
+       add_images=[file1]
+       add_descriptions=["new image"]
+       remove_image_ids=["uuid2"]
+       update_descriptions=[{"id": "uuid3", "description": "updated"}]
+
+    5. Remove all:
+       remove_image_ids=[list all current image IDs]
     """
     _ = context  # Used by require_project_permission
+
+    # Validate add operations
+    if add_images and len(add_images) != len(add_descriptions):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Number of add_images ({len(add_images)}) must match "
+            f"number of add_descriptions ({len(add_descriptions)})",
+        )
+
+    # Parse update_descriptions JSON
+    import json
+
+    update_desc_map: dict[str, str] = {}
+    if update_descriptions:
+        malformed_entries: list[dict] = []
+        try:
+            for idx, update_json in enumerate(update_descriptions):
+                update_obj = json.loads(update_json)
+                # Validate required fields
+                if "id" not in update_obj or "description" not in update_obj:
+                    logger.warning(
+                        f"update_descriptions[{idx}] missing required fields: "
+                        f"raw='{update_json}', parsed={update_obj}"
+                    )
+                    malformed_entries.append(
+                        {
+                            "index": idx,
+                            "raw": update_json,
+                            "parsed": update_obj,
+                            "missing_fields": [
+                                field
+                                for field in ["id", "description"]
+                                if field not in update_obj
+                            ],
+                        }
+                    )
+                else:
+                    update_desc_map[update_obj["id"]] = update_obj["description"]
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid JSON in update_descriptions: {e}",
+            )
+
+        # Raise error if any entries were malformed
+        if malformed_entries:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "Invalid update_descriptions entries",
+                    "message": "One or more entries are missing required fields ('id' and 'description')",
+                    "malformed_entries": malformed_entries,
+                },
+            )
+
+    # Build request object
+    request = UpdateMonitoringConfigRequest(
+        name=name,
+        description=description,
+        prompt=prompt,
+        enabled=enabled,
+    )
+
     return await _monitoring.update_monitoring_config(
         config_id=config_id,
         request=request,
         session=session,
         project_id=project_id,
+        add_images=add_images,
+        add_descriptions=add_descriptions,
+        remove_image_ids=remove_image_ids,
+        update_descriptions=update_desc_map,
     )
 
 

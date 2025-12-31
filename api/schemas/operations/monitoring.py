@@ -18,8 +18,9 @@ from pydantic import BaseModel, Field
 
 
 class ReferenceImage(BaseModel):
-    """Reference image with description."""
+    """Reference image with description and unique identifier."""
 
+    id: str = Field(..., description="Unique UUID identifier for this image")
     url: str = Field(..., description="S3 URL/key of the reference image")
     description: str = Field(
         ...,
@@ -64,7 +65,11 @@ class CreateMonitoringConfigRequest(BaseModel):
 
 
 class UpdateMonitoringConfigRequest(BaseModel):
-    """Request to update a monitoring configuration."""
+    """Request to update a monitoring configuration.
+
+    Note: This model is used internally. The actual API endpoint accepts
+    multipart/form-data with Form fields for text and File fields for images.
+    """
 
     name: str | None = Field(
         None, min_length=1, max_length=255, description="Updated name"
@@ -72,8 +77,38 @@ class UpdateMonitoringConfigRequest(BaseModel):
     description: str | None = Field(
         None, max_length=2000, description="Updated description"
     )
-    rules: MonitoringRules | None = Field(None, description="Updated rules")
+    prompt: str | None = Field(
+        None, min_length=1, max_length=2000, description="Updated AI analysis prompt"
+    )
     enabled: bool | None = Field(None, description="Updated enabled status")
+
+
+class ReplaceReferenceImageMapping(BaseModel):
+    """Mapping for replacing a specific reference image by ID."""
+
+    image_id: str = Field(..., description="UUID of the image to replace")
+    description: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Description for the replacement image",
+    )
+
+
+class UpdateMonitoringConfigImageOperations(BaseModel):
+    """Image operations for updating monitoring configuration (documentation only)."""
+
+    remove_image_ids: list[str] = Field(
+        default_factory=list,
+        description="UUIDs of reference images to remove",
+    )
+    remove_all_reference_images: bool = Field(
+        False, description="Remove all existing reference images"
+    )
+    replace_all_reference_images: bool = Field(
+        False,
+        description="Replace all existing images with new ones (requires new images)",
+    )
 
 
 class MonitoringConfigResponse(BaseModel):
