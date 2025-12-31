@@ -152,12 +152,18 @@ async def create_routine(
         )
         items.append(item)
 
+    # Parse schedule times upfront to avoid accessing model attributes later
+    # (accessing SQLAlchemy model attributes can trigger async I/O and cause
+    # "greenlet_spawn has not been called" errors in sync contexts)
+    schedule_start_time = _parse_time(request.schedule.start_time)
+    schedule_end_time = _parse_time(request.schedule.end_time)
+
     # Create schedule (required)
     schedule = await schedule_repo.create_schedule(
         routine_id=routine.id,
         frequency=request.schedule.frequency,
-        start_time=_parse_time(request.schedule.start_time),
-        end_time=_parse_time(request.schedule.end_time),
+        start_time=schedule_start_time,
+        end_time=schedule_end_time,
         timezone=request.schedule.timezone,
         days_of_week=request.schedule.days_of_week,
         day_of_month=request.schedule.day_of_month,
@@ -166,16 +172,17 @@ async def create_routine(
         effective_until=request.schedule.effective_until,
     )
 
-    # Generate next 10 executions
+    # Generate next 10 executions using request values directly
+    # to avoid async I/O issues with SQLAlchemy model attribute access
     execution_windows = calculate_next_executions(
-        frequency=schedule.frequency.value,
-        start_time=schedule.start_time,
-        end_time=schedule.end_time,
-        timezone=schedule.timezone,
-        days_of_week=schedule.days_of_week,
-        day_of_month=schedule.day_of_month,
-        effective_from=schedule.effective_from,
-        effective_until=schedule.effective_until,
+        frequency=request.schedule.frequency.value,
+        start_time=schedule_start_time,
+        end_time=schedule_end_time,
+        timezone=request.schedule.timezone,
+        days_of_week=request.schedule.days_of_week,
+        day_of_month=request.schedule.day_of_month,
+        effective_from=request.schedule.effective_from,
+        effective_until=request.schedule.effective_until,
         count=10,
     )
 
