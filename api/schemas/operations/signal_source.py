@@ -137,3 +137,9 @@ class ListSignalSourcesResponse(BaseModel):
     total: int
     page: int = 1
     page_size: int = 20
+
+
+class SignalSourceIdResponse(BaseModel):
+    """Response model returning only signal source ID."""
+
+    signal_source_id: uuid.UUID

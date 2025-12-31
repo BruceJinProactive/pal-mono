@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.schemas.operations.signal_source import (
     CreateSignalSourceRequest,
     ListSignalSourcesResponse,
+    SignalSourceIdResponse,
     SignalSourceResponse,
     UpdateSignalSourceRequest,
 )
@@ -263,3 +264,38 @@ async def delete_signal_source(
         )
 
     await session.commit()
+
+
+async def get_signal_source_by_camera_id(
+    project_id: uuid.UUID,
+    camera_id: str,
+    session: AsyncSession,
+) -> SignalSourceIdResponse:
+    """
+    Get signal source ID by camera_id.
+
+    Args:
+        project_id: Project UUID from path.
+        camera_id: Camera identifier from query.
+        session: Async database session.
+
+    Returns:
+        SignalSourceIdResponse with signal_source_id.
+
+    Raises:
+        HTTPException: If signal source not found.
+    """
+    source = await signal_source_service.get_source_by_camera_id(
+        session=session,
+        project_id=project_id,
+        camera_id=camera_id,
+    )
+
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Signal source with camera_id '{camera_id}' not found in project {project_id}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return SignalSourceIdResponse(signal_source_id=source.id)

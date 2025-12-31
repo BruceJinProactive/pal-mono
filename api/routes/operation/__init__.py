@@ -76,6 +76,7 @@ from api.schemas.operations.routine import (
 from api.schemas.operations.signal_source import (
     CreateSignalSourceRequest,
     ListSignalSourcesResponse,
+    SignalSourceIdResponse,
     SignalSourceResponse,
     UpdateSignalSourceRequest,
 )
@@ -1078,6 +1079,51 @@ async def list_signal_sources(
         project_id=project_id,
         page=page,
         page_size=page_size,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/signal-sources/camera",
+    response_model=SignalSourceIdResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_signal_source_by_camera_id(
+    project_id: uuid.UUID,
+    camera_id: str = Query(
+        ..., description="Camera identifier from signal source config"
+    ),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SignalSourceIdResponse:
+    """
+    Lookup signal source ID by camera identifier.
+
+    This endpoint allows you to find a signal source using its camera_id
+    instead of the signal_source_id UUID.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Query Parameters:
+    - camera_id (required): Camera identifier from signal source configuration
+
+    Returns:
+    - SignalSourceIdResponse with signal_source_id
+
+    Example:
+    - GET /projects/{project_id}/signal-sources/camera?camera_id=camera123
+    """
+    _ = context  # Used by require_project_permission
+    return await _signal_sources.get_signal_source_by_camera_id(
+        project_id=project_id,
+        camera_id=camera_id,
+        session=session,
     )
 
 
