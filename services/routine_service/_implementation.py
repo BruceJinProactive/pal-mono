@@ -9,6 +9,7 @@ from datetime import time
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.routine import (
@@ -125,12 +126,21 @@ async def create_routine(
     execution_repo = RoutineExecutionRepositoryAsync(session)
 
     # Create the routine
-    routine = await routine_repo.create_routine(
-        project_id=project_id,
-        name=request.name,
-        description=request.description,
-        category=request.category,
-    )
+    try:
+        routine = await routine_repo.create_routine(
+            project_id=project_id,
+            name=request.name,
+            description=request.description,
+            category=request.category,
+        )
+    except IntegrityError as e:
+        if "routines_project_name_idx" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A routine with the name '{request.name}' already exists for this project",
+                headers={"Content-Type": "application/json"},
+            ) from e
+        raise
 
     # Create items if provided
     items = []
@@ -280,9 +290,14 @@ async def update_routine(
             headers={"Content-Type": "application/json"},
         )
 
+    # Build response before commit to avoid async I/O issues
+    # (session.commit() expires objects, and accessing attributes
+    # in sync _build_routine_response would trigger greenlet errors)
+    response = _build_routine_response(updated)
+
     await session.commit()
 
-    return _build_routine_response(updated)
+    return response
 
 
 async def delete_routine(
@@ -377,9 +392,14 @@ async def add_item(
         signal_source_id=request.signal_source_id,
     )
 
+    # Build response before commit to avoid async I/O issues
+    # (session.commit() expires objects, and accessing attributes
+    # in sync _build_item_response would trigger greenlet errors)
+    response = _build_item_response(item)
+
     await session.commit()
 
-    return _build_item_response(item)
+    return response
 
 
 async def get_item(
@@ -448,9 +468,14 @@ async def update_item(
             headers={"Content-Type": "application/json"},
         )
 
+    # Build response before commit to avoid async I/O issues
+    # (session.commit() expires objects, and accessing attributes
+    # in sync _build_item_response would trigger greenlet errors)
+    response = _build_item_response(updated)
+
     await session.commit()
 
-    return _build_item_response(updated)
+    return response
 
 
 async def delete_item(

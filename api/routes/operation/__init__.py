@@ -1738,6 +1738,10 @@ async def get_monitoring_run(
     responses={
         400: {"model": ErrorResponse},
         403: {"model": ErrorResponse},
+        409: {
+            "model": ErrorResponse,
+            "description": "Routine with this name already exists",
+        },
         500: {"model": ErrorResponse},
     },
 )
