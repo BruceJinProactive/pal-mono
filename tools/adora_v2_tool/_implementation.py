@@ -2,7 +2,8 @@ import asyncio
 import threading
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from ddtrace.llmobs import LLMObs
+from ddtrace.llmobs.decorators import task, tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
@@ -73,6 +74,7 @@ class AdoraV2Tool(Toolkit):
         self.register(self.check_address)
         self.register(self.fulfill_order)
 
+    @task(name="_get_bearer_token")
     async def _get_bearer_token(self) -> str | None:
         """Get cached bearer token or fetch new one if not cached."""
         logger.debug(
@@ -228,11 +230,17 @@ class AdoraV2Tool(Toolkit):
         delivery_address: BaseDeliveryAddress | None,
     ) -> str:
         """
-        Fulfills customer order by validating and processing it, returning confirmation.
-        This submits the order to the POS system and provides order confirmation.
+        Fulfills and submits customer order to the POS system and provides order confirmation.
 
-        Use when customer is ready to place/complete their order.
-        Use when customer says "checkout", "place order", "complete order", etc.
+        Use when ALL of the following conditions are met:
+        - Customer has provided all required information (customer info, order items, delivery address if applicable)
+        - Order items have been explicitly confirmed by the user
+        - User explicitly expresses willingness to checkout (e.g., "checkout", "place order", "complete order", "I'm ready to order")
+
+        DO NOT use if:
+        - Customer has not explicitly said they want to checkout/place order/complete order
+        - Customer is still browsing, asking questions, or modifying their order
+        - Any required information is missing or unconfirmed
 
         Args:
             customer_info (ClientCustomerInfo): Customer information containing:
@@ -262,12 +270,24 @@ class AdoraV2Tool(Toolkit):
 
         logger.debug(f"[AdoraV2Tool.fulfill_order] Order items: {order_items}")
 
-        # Gather common tasks
-        bearer_token, chat_history, item_context = await asyncio.gather(
-            self._get_bearer_token(),
-            asyncio.to_thread(self.query_messages_tool.query_messages),
-            get_relevant_docs_v2(order_items, self.query_engine),
+        # Annotate input data for Datadog tracing
+        LLMObs.annotate(
+            input_data={
+                "order_type": order_type.value,
+                "payment_type": payment_type.value,
+                "order_items": order_items,
+                "has_delivery_address": delivery_address is not None,
+                "customer_name": customer_info.name,
+            }
         )
+
+        # Gather common tasks
+        with LLMObs.task(name="fulfill_order.gather_context"):
+            bearer_token, chat_history, item_context = await asyncio.gather(
+                self._get_bearer_token(),
+                asyncio.to_thread(self.query_messages_tool.query_messages),
+                get_relevant_docs_v2(order_items, self.query_engine),
+            )
 
         if not bearer_token:
             return "Failed to authenticate with Adora API."
@@ -291,13 +311,16 @@ class AdoraV2Tool(Toolkit):
             )
 
         # LLM call to extract order items with modifiers/sizes/quantities
-        order_request_base = await async_llm_call(
-            system_prompt=system_prompt,
-            prompt=context_template.format(context=context, chat_history=chat_history),
-            response_format=OrderRequestBase,
-            name=self.fulfill_order.__name__,
-            openai=True,
-        )
+        with LLMObs.task(name="fulfill_order.extract_order_details"):
+            order_request_base = await async_llm_call(
+                system_prompt=system_prompt,
+                prompt=context_template.format(
+                    context=context, chat_history=chat_history
+                ),
+                response_format=OrderRequestBase,
+                name=self.fulfill_order.__name__,
+                openai=True,
+            )
 
         # Validate and parse LLM response
         if not isinstance(order_request_base, OrderRequestBase):
@@ -305,6 +328,15 @@ class AdoraV2Tool(Toolkit):
                 f"[AdoraV2Tool.fulfill_order] Parse failed: Extracted Order: {order_request_base}; Type: {type(order_request_base)}"
             )
             return "Failed to extract order information. Please provide all order details and try again."
+
+        # Annotate LLM extraction results
+        LLMObs.annotate(
+            metadata={
+                "extracted_items": order_request_base.items,
+                "promise_date_time": order_request_base.promise_date_time,
+                "order_comment": order_request_base.order_comment,
+            }
+        )
 
         # Convert to ValidateOrderRequest with provided fields and extracted items
         order_request = ValidateOrderRequest(
@@ -328,37 +360,57 @@ class AdoraV2Tool(Toolkit):
             if not delivery_address:
                 return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
 
-            validate_address_result = await self.check_address(delivery_address)  # type: ignore
-            address_data = validate_address_result[1]
-            if not address_data:
-                return validate_address_result[0]
+            with LLMObs.task(name="fulfill_order.validate_delivery_address"):
+                validate_address_result = await self.check_address(delivery_address)  # type: ignore
+                address_data = validate_address_result[1]
+                if not address_data:
+                    return validate_address_result[0]
 
-            order_request.delivery_address = DeliveryAddress(
-                **delivery_address.model_dump(),
-                lat=address_data["lat_lng"][0],  # type: ignore
-                lng=address_data["lat_lng"][1],  # type: ignore
-                type_id=address_data["type_id"],  # type: ignore
-            )
-            order_request.payment_type = PaymentType.PAYMENT_LINK
+                order_request.delivery_address = DeliveryAddress(
+                    **delivery_address.model_dump(),
+                    lat=address_data["lat_lng"][0],  # type: ignore
+                    lng=address_data["lat_lng"][1],  # type: ignore
+                    type_id=address_data["type_id"],  # type: ignore
+                )
+                order_request.payment_type = PaymentType.PAYMENT_LINK
 
         logger.debug(
             f"[AdoraV2Tool.fulfill_order] Final order request: {order_request.model_dump()}"
         )
 
         # Step 1: Validate the order
-        validate_result = await api_validate_order(bearer_token, order_request)
-        logger.debug(f"[AdoraV2Tool.fulfill_order] validate_result: {validate_result}")
-        if isinstance(validate_result, str) or not validate_result.key:
-            return f"Validation failed: {validate_result if isinstance(validate_result, str) else 'No order key returned'}"
+        with LLMObs.task(name="fulfill_order.validate_order"):
+            validate_result = await api_validate_order(bearer_token, order_request)
+            logger.debug(
+                f"[AdoraV2Tool.fulfill_order] validate_result: {validate_result}"
+            )
+            if isinstance(validate_result, str) or not validate_result.key:
+                return f"Validation failed: {validate_result if isinstance(validate_result, str) else 'No order key returned'}"
+
+            # Annotate validation results
+            LLMObs.annotate(
+                metadata={
+                    "validation_success": True,
+                    "order_key": validate_result.key,
+                    "subtotal": validate_result.sub_total,
+                    "total": validate_result.total,
+                    "delivery_charge": validate_result.delivery_charge,
+                }
+            )
 
         # Step 2: Build process order request and process the order
-        process_order_request = build_process_order_request(
-            order_request, validate_result
-        )
-        process_result = await api_process_order(bearer_token, process_order_request)
-        logger.debug(f"[AdoraV2Tool.fulfill_order] process_result: {process_result}")
-        if isinstance(process_result, str) or not process_result.success:
-            return f"Processing failed: {process_result}"
+        with LLMObs.task(name="fulfill_order.process_order"):
+            process_order_request = build_process_order_request(
+                order_request, validate_result
+            )
+            process_result = await api_process_order(
+                bearer_token, process_order_request
+            )
+            logger.debug(
+                f"[AdoraV2Tool.fulfill_order] process_result: {process_result}"
+            )
+            if isinstance(process_result, str) or not process_result.success:
+                return f"Processing failed: {process_result}"
 
         confirmation = (
             f"Order successfully placed!\n"
@@ -375,5 +427,16 @@ class AdoraV2Tool(Toolkit):
         payment_url = process_result.payment_url
         if payment_url:
             confirmation += f"\nPayment URL: {payment_url}"
+
+        # Annotate final output for Datadog tracing
+        LLMObs.annotate(
+            output_data=confirmation,
+            metadata={
+                "order_id": process_result.order_id,
+                "order_number": process_result.order_no,
+                "total_amount": validate_result.total,
+                "payment_url_provided": payment_url is not None,
+            },
+        )
 
         return confirmation
