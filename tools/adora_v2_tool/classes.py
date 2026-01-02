@@ -119,15 +119,13 @@ class ClientCustomerInfo(BaseModel):
 
     name: str = Field(description="Customer first name, non-empty, required")
     lastname: str = Field(
-        description="Customer last name (optional), if not provided, use 'via Palona' as the last name",
-        default="via Palona",
+        description="Customer last name, required, set to via PalonaAI if not provided"
     )
     phone: str = Field(
         description="Customer phone number in format (123) 456-7890, non-empty, required"
     )
     email: str = Field(
-        description="Customer email address (optional), leave as empty string if not provided",
-        default="",
+        description="Customer email address, required, set to orderingagent@palona.ai if not provided"
     )
 
 
