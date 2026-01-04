@@ -1,8 +1,10 @@
 from . import checkpoint_repository
 from .account_repository import AccountRepository
 from .account_user_repository import AccountUserRepository
+from .agent_capability_repository import AgentCapabilityRepositoryAsync
 from .agent_repository import AgentRepository, AgentRepositoryAsync
 from .analytics_repository import AnalyticsRepository
+from .capability_action_repository import CapabilityActionRepositoryAsync
 from .change_log_repository import ChangeLogRepository
 from .checkpoint_repository import CheckpointRepository
 from .conversation_repository import ConversationRepository, ConversationRepositoryAsync
