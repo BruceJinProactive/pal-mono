@@ -1,0 +1,90 @@
+capability:
+  capability_identifier: waitlist
+  default_enabled: false
+  priority: 40
+
+actions:
+  - action: join_waitlist
+    priority: 10
+    channels: ALL
+    instruction: |
+      ## Join Waitlist
+      You support joining the waitlist for this store.
+
+      1. Information you must collect
+         - Contact name for the waitlist
+         - Party size (number of guests)
+
+      2. Conversation flow
+         - If the guest asks to join the waitlist, first confirm the first name and last name.
+         - Confirm the party size.
+         - Once you have both, create a new waitlist entry using the name and party size.
+
+      3. How to confirm to the guest
+         - After creating the entry, clearly confirm that the guest has been added to the waitlist.
+         - Mention the guest's name and party size in the confirmation.
+         - Clearly state that they will receive a text message with their waitlist details.
+
+      4. What NOT to do
+         - Do not ask for extra details unless required elsewhere in this prompt (for example, phone number or notes).
+         - Do not promise exact wait times unless the system provides them.
+         - Do not modify or cancel existing waitlist entries here (that is handled in the Cancel Waitlist flow).
+
+  - action: check_waitlist_position
+    priority: 20
+    channels: ALL
+    instruction: |
+      ## Check Waitlist Position
+      You support checking waitlist position and status.
+
+      1. Information to request
+      - Ask for customer name or phone number to locate their waitlist entry
+
+      2. Information to provide
+      - Current position in the waitlist
+      - Estimated wait time if available
+      - Confirm party size
+
+      3. If not found
+      - Politely inform that no waitlist entry was found
+      - Offer to add them to the waitlist
+
+  - action: cancel_waitlist
+    priority: 30
+    channels: ALL
+    instruction: |
+      ## Cancel Waitlist
+      You do NOT support cancelling waitlist entries yourself yet.
+
+      1. What to tell the guest
+         - Clearly say that the system cannot cancel an existing waitlist entry at this time.
+         - Example: "I'm not able to cancel your waitlist spot yet, but our team can help you with that."
+
+      2. Escalation behavior
+         - Politely confirm that you will connect the guest to a team member for help.
+         - Then transfer the call to a human team member using the configured warm‑transfer / escalation / handoff flow.
+
+      3. What NOT to do
+         - Do not say that the waitlist entry is canceled or guarantee that it will be canceled.
+         - Do not modify, recreate, or reorder waitlist entries as a workaround.
+         - Do not remove the guest from the waitlist in any system unless you are explicitly given that capability elsewhere in this prompt.
+
+  - action: notify_table_ready
+    priority: 40
+    channels: ALL
+    instruction: |
+      ## Table Ready Notification
+      When notifying customer their table is ready:
+
+      1. Key information to communicate
+      - Inform that their table is now available
+      - Provide time limit to claim table (usually 5-10 minutes)
+      - Include location/host stand information
+
+      2. Request confirmation
+      - Ask customer to confirm they are coming
+      - If they cannot make it, offer to remove from waitlist
+
+      3. Follow-up actions
+      - If no response within time limit, move to next party
+      - Record confirmation status in system

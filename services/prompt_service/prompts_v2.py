@@ -5,146 +5,197 @@ This module provides a more flexible prompt factory that loads prompts from YAML
 allowing for easier management and updates without code changes.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import ClassVar, Optional
 from uuid import UUID
 
 import yaml
 
-from db.tables.types import Channel
 from utils.log import logger
 
 
 @dataclass
-class Prompt:
-    """Prompt configuration with optional filtering criteria"""
+class Action:
+    """Represents a single action within a capability"""
 
-    id: str
-    title: str
-    instructions: str
-    channels: Optional[list[Channel]] = None
+    action: str  # Action identifier (e.g., 'create_order', 'cancel_order')
+    instruction: str  # The prompt/instruction text for this action
+    channel: str = "ALL"  # Channel-specific override (SMS, VOICE, EMAIL, ALL)
+    priority: int = 50  # Priority for ordering (lower = higher priority)
+
+
+@dataclass
+class Capability:
+    """Represents a capability with its associated actions"""
+
+    identifier: str  # Capability identifier (e.g., 'ordering', 'reservation')
+    priority: int = 50  # Capability priority (lower = higher priority)
+    enabled: bool = True
+    actions: list[Action] = field(default_factory=list)
 
 
 class PromptFactoryV2:
     """
-    YAML-based prompt factory with database override support.
+    Capability-based prompt factory with database override support.
 
-    Loads prompts from YAML files in the same directory as this module.
+    Loads capability definitions from YAML files in the capabilities directory.
     Provides channel-based filtering with optional database overrides per agent.
     """
 
-    _cached_prompts: list[Prompt] = []
-    _is_loaded = False
-    _prompt_dir = Path(__file__).parent  # Always use same directory
+    _default_capabilities: ClassVar[dict[str, Capability]] = (
+        {}
+    )  # Cache for default capabilities loaded from YAML
+    _is_loaded: ClassVar[bool] = False
+    _capabilities_dir: ClassVar[Path] = (
+        Path(__file__).parent / "capabilities"
+    )  # Capabilities directory
 
     def __init__(self):
-        # Load prompts only once at class level
+        # Load capabilities only once at class level
         if not PromptFactoryV2._is_loaded:
-            self._load_prompts()
+            self._load_capabilities()
             PromptFactoryV2._is_loaded = True
 
-        # Each instance gets a reference to the shared cache
-        self.registry = PromptFactoryV2._cached_prompts
+    def _load_capabilities(self) -> None:
+        """Load capabilities from YAML files - only runs once"""
+        PromptFactoryV2._default_capabilities.clear()
 
-    def _load_prompts(self) -> None:
-        """Load prompts from YAML files - only runs once"""
-        PromptFactoryV2._cached_prompts.clear()
-
-        # Check if prompt directory exists
-        if not PromptFactoryV2._prompt_dir.exists():
+        if not PromptFactoryV2._capabilities_dir.exists():
             logger.warning(
-                f"Prompt directory {PromptFactoryV2._prompt_dir} does not exist. "
+                f"Capabilities directory {PromptFactoryV2._capabilities_dir} does not exist. "
                 "Creating with empty configuration."
             )
             return
 
-        # Load all YAML files from the prompts directory
-        yaml_files = list(PromptFactoryV2._prompt_dir.glob("*.yml"))
+        # Load all YAML files from the capabilities directory
+        yaml_files = list(PromptFactoryV2._capabilities_dir.glob("*.yaml"))
 
         if not yaml_files:
-            logger.warning(f"No YAML files found in {PromptFactoryV2._prompt_dir}")
+            logger.warning(
+                f"No YAML files found in {PromptFactoryV2._capabilities_dir}"
+            )
             return
 
         for yaml_file in sorted(yaml_files):  # Sort for consistent loading order
             try:
-                self._load_yaml_file(yaml_file)
+                self._load_capability_file(yaml_file)
             except Exception as e:
-                logger.error(f"Failed to load prompt file {yaml_file}: {e}")
+                logger.error(f"Failed to load capability file {yaml_file}: {e}")
                 continue
 
         logger.info(
-            f"Loaded {len(PromptFactoryV2._cached_prompts)} prompts from {len(yaml_files)} YAML files"
+            f"Loaded {len(PromptFactoryV2._default_capabilities)} capabilities from {len(yaml_files)} YAML files"
         )
 
-    def _load_yaml_file(self, file_path: Path) -> None:
-        """Load prompts from a single YAML file"""
+    def _load_capability_file(self, file_path: Path) -> None:
+        """Load a capability and its actions from a single YAML file"""
         with open(file_path, "r") as f:
             data = yaml.safe_load(f)
 
-        if not data or "prompts" not in data:
-            logger.warning(f"No prompts found in {file_path}")
+        if not data or "capability" not in data:
+            logger.warning(f"No capability definition found in {file_path}")
             return
 
-        for prompt_data in data["prompts"]:
-            try:
-                # Convert string types to enums if needed
-                if "channels" in prompt_data and prompt_data["channels"]:
-                    prompt_data["channels"] = [
-                        Channel[ch] if isinstance(ch, str) else ch
-                        for ch in prompt_data["channels"]
-                    ]
+        try:
+            # Parse capability metadata
+            cap_data = data["capability"]
+            capability = Capability(
+                identifier=cap_data["capability_identifier"],
+                priority=cap_data.get("priority", 50),
+                enabled=cap_data.get("default_enabled", False),
+                actions=[],
+            )
 
-                prompt = Prompt(**prompt_data)
-                self._register(prompt)
+            # Parse actions if present
+            if "actions" in data and data["actions"]:
+                for action_data in data["actions"]:
+                    try:
+                        action = Action(
+                            action=action_data["action"],
+                            instruction=action_data.get("instruction", ""),
+                            channel=action_data.get(
+                                "channels", "ALL"
+                            ),  # Note: YAML uses 'channels', we store as 'channel'
+                            priority=action_data.get("priority", 50),
+                        )
+                        capability.actions.append(action)
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to parse action in {file_path}: {e}\n"
+                            f"Action data: {action_data}"
+                        )
+                        continue
 
-            except Exception as e:
-                logger.error(
-                    f"Failed to parse prompt in {file_path}: {e}\n"
-                    f"Prompt data: {prompt_data}"
-                )
-                continue
+            self._register_capability(capability)
 
-    def _register(self, prompt: Prompt) -> None:
-        """Register a prompt in the factory"""
-        # Check for duplicate IDs
-        existing_ids = {p.id for p in PromptFactoryV2._cached_prompts}
-        if prompt.id in existing_ids:
-            logger.warning(f"Overwriting existing prompt with ID: {prompt.id}")
-            PromptFactoryV2._cached_prompts = [
-                p for p in PromptFactoryV2._cached_prompts if p.id != prompt.id
-            ]
+        except Exception as e:
+            logger.error(
+                f"Failed to parse capability in {file_path}: {e}\n"
+                f"Capability data: {data}"
+            )
+            return
 
-        PromptFactoryV2._cached_prompts.append(prompt)
+    def _register_capability(self, capability: Capability) -> None:
+        """Register a capability in the factory"""
+        # Check for duplicate capability identifiers
+        if capability.identifier in PromptFactoryV2._default_capabilities:
+            logger.warning(f"Overwriting existing capability: {capability.identifier}")
+
+        PromptFactoryV2._default_capabilities[capability.identifier] = capability
 
     def build(
         self,
-        channel: Channel,
+        channel: Optional[str] = None,
         agent_id: Optional[UUID] = None,
     ) -> list[tuple[str, str]]:
         """
-        Build the final list of prompts by merging factory prompts with database prompts.
+        Build the final list of prompts from default capabilities.
 
         Args:
-            channel: Communication channel (SMS, VOICE, etc.)
-            agent_id: Agent ID for querying database prompts (optional)
+            channel: Communication channel (SMS, VOICE, EMAIL, or None for all)
+            agent_id: Agent ID for future database override support (optional)
 
         Returns:
             List of (title, instructions) tuples for the final prompts
         """
-        # Filter factory prompts based on channel
-        selected_factory_prompts = []
-        for prompt in self.registry:
-            if prompt.channels is not None and channel not in prompt.channels:
+        prompts = []
+
+        # Sort capabilities by priority
+        sorted_capabilities = sorted(
+            PromptFactoryV2._default_capabilities.values(), key=lambda c: c.priority
+        )
+
+        for capability in sorted_capabilities:
+            if not capability.enabled:
                 continue
-            selected_factory_prompts.append(prompt)
 
-        factory_prompts = []
-        for prompt in selected_factory_prompts:
-            factory_prompts.append((f"## {prompt.title}", prompt.instructions))
+            actions = capability.actions
 
-        return factory_prompts
+            if channel:
+                actions = [
+                    action
+                    for action in actions
+                    if action.channel == "ALL" or action.channel == channel
+                ]
+
+            if not actions:
+                continue
+
+            sorted_actions = sorted(actions, key=lambda a: a.priority)
+
+            action_instructions = []
+            for action in sorted_actions:
+                action_instructions.append(action.instruction)
+
+            combined_instructions = "\n\n".join(action_instructions)
+
+            words = capability.identifier.replace("_", " ").title()
+            title = f"{words} Instruction"
+
+            prompts.append((title, combined_instructions))
+
+        return prompts
 
 
-# Simple module-level instance since configuration is fixed
 prompt_factory_v2 = PromptFactoryV2()

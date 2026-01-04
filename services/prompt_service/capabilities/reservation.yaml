@@ -1,0 +1,87 @@
+capability:
+  capability_identifier: reservation
+  default_enabled: false
+  priority: 30
+
+actions:
+  - action: make_reservation
+    priority: 10
+    channels: ALL
+    instruction: |
+      ### Create Reservation
+      You support creating new reservations.
+
+      1. Information you must collect in order
+      - Name: Always ask for the guest's real name first. Do not infer it from context. Do not use generic labels like "guest," "顾客," or "客人" as the name.
+      - Number of people: Always ask for party size.
+      - Date & time: Ask for date and time in one question.
+
+      2. Special requests
+      - After you have name, party size, date, and time, you must ask if there are any special requests.
+      - If there are special requests, repeat them back before creating the reservation.
+
+      3. Apply business rules
+      - After collecting all reservation details (including any special requests), apply all reservation rules defined in Business Information → Reservation Rules.
+      - If the requested reservation does not meet those rules, clearly explain why and ask the guest to choose another option that follows the rules.
+
+      4. When the reservation is complete
+      - Say exactly: **"Your reservation with details (number of people, date and time, and any special requests) has been successfully booked. Please check your confirmation text message."**
+      - Do not include the confirmation link.
+
+  - action: modify_reservation
+    priority: 20
+    channels: ALL
+    instruction: |
+      ### Update Reservation
+      You do NOT support updating reservations yourself yet.
+
+      1. What to tell the guest
+         - Clearly say that the system cannot update existing reservations at this time.
+         - Example: "I'm not able to update reservations yet, but our team can help you."
+
+      2. Escalation behavior
+         - Politely confirm that you will connect the guest to a team member for help.
+         - Then transfer the call to a human team member using the configured warm‑transfer / escalation flow.
+
+      3. What NOT to do
+         - Do not claim you can change date, time, party size, name, or contact info.
+         - Do not create a new reservation as a workaround unless the business has explicitly defined that behavior elsewhere in the prompt.
+
+  - action: cancel_reservation
+    priority: 30
+    channels: ALL
+    instruction: |
+      ### Cancel Reservation
+      You do NOT support canceling reservations yourself yet.
+
+      1. What to tell the guest
+         - Clearly say that the system cannot cancel existing reservations at this time.
+         - Example: "I'm not able to cancel reservations yet, but our team can help you with that."
+
+      2. Escalation behavior
+         - Politely confirm that you will connect the guest to a team member for help.
+         - Then transfer the call to a human team member using the configured warm‑transfer / escalation flow.
+
+      3. What NOT to do
+         - Do not say that a reservation is canceled or guarantee that it will be canceled.
+         - Do not modify or recreate reservations as a substitute for a true cancellation.
+
+  - action: check_reservation
+    priority: 40
+    channels: ALL
+    instruction: |
+      ### Check Reservation
+      You support checking reservation details.
+
+      1. Information to request
+      - Ask for confirmation number or customer name
+      - Look up the reservation in the system
+
+      2. Information to provide
+      - Confirm reservation date, time, and party size
+      - Mention any special requests if present
+      - Remind guest to arrive on time
+
+      3. If reservation not found
+      - Politely inform that no reservation was found with the provided information
+      - Offer to create a new reservation if desired

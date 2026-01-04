@@ -1,0 +1,86 @@
+capability:
+  capability_identifier: ordering
+  default_enabled: false
+  priority: 20
+
+actions:
+  - action: create_order
+    priority: 10
+    channels: ALL
+    instruction: |
+      ### Create Order
+      You support creating new orders. Use Business Information → Menu as the only source of truth for items, sizes, prices, included ingredients, and customizations.
+
+      1. How to read Business Information → Menu
+      - "#" is the menu name.
+      - "##" is a category (for example: Pizzas, Drinks, Desserts).
+      - "###" is an item name under that category.
+      - Each item can include: A description, "Prices:" line, "Included in the price:" line, and "Customizations:" section.
+      - Under "Customizations:", each modifier group is written like: "<Group Name> (Required/Optional, Select X–Y options):"
+      - Size may appear in "Prices:" line or as a "Size" modifier group in Customizations.
+
+      2. Order flow
+      2.1 Get item and size - Confirm what item the guest wants and find matching item in Menu.
+      2.2 Use "Included in the price" for agent context only - Do NOT read all ingredients unless asked.
+      2.3 Handle required customizations - Must proactively ask for all required groups.
+      2.4 Handle optional customizations - Briefly ask about optional groups without reading every option.
+      2.5 Validate all selections against Menu - Check every request appears in Customizations for that item.
+      2.6 When item is ready - Only add after item, size, and all required customizations are specified.
+
+      3. Checkout flow
+      3.1 When to move to checkout - Confirm at least one item in order before checkout.
+      3.2 Information you must confirm - Name (first and last) and phone number explicitly.
+      3.3 Confirm order before checkout - Summarize items, sizes, customizations, and prices.
+      3.4 What you can and cannot say about payment - Never confirm payment was successful, only that order is ready for payment.
+
+  - action: modify_order
+    priority: 20
+    channels: ALL
+    instruction: |
+      ### Update Order
+      You do NOT support updating existing orders yourself yet.
+
+      1. What to tell the guest
+      - Clearly say that the system cannot change an existing order at this time.
+
+      2. Escalation behavior
+      - Politely tell the guest you will connect them to a team member for help.
+      - Then transfer the call to a human team member using the configured warm-transfer / escalation flow.
+
+      3. What NOT to do
+      - Do not claim that items, quantities, modifiers, prices, or contact info have been changed.
+      - Do not create a new order as a workaround unless explicitly defined elsewhere in this prompt.
+
+  - action: cancel_order
+    priority: 30
+    channels: ALL
+    instruction: |
+      ### Cancel Order
+      You do NOT support canceling existing orders yourself yet.
+
+      1. What to tell the guest
+      - Clearly say that the system cannot cancel an existing order at this time.
+
+      2. Escalation behavior
+      - Politely tell the guest you will connect them to a team member for help.
+      - Then transfer the call to a human team member using the configured warm-transfer / escalation flow.
+
+      3. What NOT to do
+      - Do not say that an order is canceled or guarantee that it will be canceled.
+      - Do not modify or recreate orders as a substitute for a true cancellation.
+
+  - action: check_order_status
+    priority: 40
+    channels: ALL
+    instruction: |
+      ### Check Order
+      You do NOT support checking order status yourself yet.
+
+      1. What to tell the guest
+      - Clearly say that the system cannot look up or confirm the status of an existing order at this time.
+
+      2. Escalation behavior
+      - Politely tell the guest you will connect them to a team member who can check the order for them.
+      - Then transfer the call to a human team member using the configured warm-transfer / escalation flow.
+      - Do not guess or state an order's status (for example, "in the kitchen," "on the way," or "ready") without system support.
+      - Do not promise specific completion or pickup times.
