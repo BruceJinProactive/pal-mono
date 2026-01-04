@@ -516,23 +516,13 @@ def _create_engagement_table_generic(
             if i < len(row):
                 max_width = max(max_width, len(str(row[i])))
 
-        # Set minimum widths based on column type for engagement table
-        if i > 0:  # Skip entity name column
-            if header in ["Users"]:
-                # Users: 6 digits (999,999)
-                max_width = max(max_width, 6)
-            elif header in ["Call&Text", "Calls"]:
-                # Call&Text and Calls: 10 digits (9,999,999,999)
-                max_width = max(max_width, 10)
-            else:
-                # Other numeric columns: keep existing 6 digit width
-                max_width = max(max_width, 6)
-
+        # Set minimum widths - use header width as minimum, no forced padding
+        # This keeps columns tight to fit more columns on screen
         col_widths.append(max_width)
 
     lines = []
 
-    # Header row
+    # Header row (single space between columns for tighter layout)
     header_line = ""
     for i, header in enumerate(headers):
         if i == 0:
@@ -542,7 +532,7 @@ def _create_engagement_table_generic(
             # Right-align numeric columns
             header_line += header.rjust(col_widths[i])
         if i < len(headers) - 1:
-            header_line += "  "
+            header_line += " "
     lines.append(header_line)
 
     # Separator line
@@ -550,7 +540,7 @@ def _create_engagement_table_generic(
     for i, width in enumerate(col_widths):
         separator += "-" * width
         if i < len(col_widths) - 1:
-            separator += "--"
+            separator += "-"
     lines.append(separator)
 
     # Data rows
@@ -565,7 +555,7 @@ def _create_engagement_table_generic(
                 # Right-align numeric values
                 row_line += cell_str.rjust(col_widths[i])
             if i < len(row) - 1:
-                row_line += "  "
+                row_line += " "
         lines.append(row_line)
 
     return "```\n" + "\n".join(lines) + "\n```"
