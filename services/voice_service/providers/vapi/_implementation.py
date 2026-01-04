@@ -351,6 +351,39 @@ class VAPIProvider:
             "analysisPlan": self._get_analysis_plan(),
         }
 
+        # Add transferCall tool for SIP destinations
+        # This enables proper SIP transfers with sipVerb: "dial"
+        # For PSTN callers transferring to SIP endpoints, we need <Dial> not <Refer>
+        transfer_number = caller_info.get("transfer_phone_number")
+        transfer_message = (
+            caller_info.get("transfer_message") or "Transferring your call now."
+        )
+        if transfer_number and transfer_number.lower().startswith("sip:"):
+            # Add transferCall tool with full destination config
+            # When chat completions emits transferCall, VAPI uses this destination
+            if "tools" not in assistant_config["model"]:
+                assistant_config["model"]["tools"] = []
+            assistant_config["model"]["tools"].append(
+                {
+                    "type": "transferCall",
+                    "destinations": [
+                        {
+                            "type": "sip",
+                            "sipUri": transfer_number,
+                            "message": transfer_message,
+                            "transferPlan": {
+                                "mode": "blind-transfer",
+                                "sipVerb": "dial",
+                            },
+                        }
+                    ],
+                }
+            )
+            logger.debug(
+                "[VAPIProvider] Added transferCall tool for SIP transfer destination",
+                extra={"transfer_number": transfer_number, "sipVerb": "dial"},
+            )
+
         # Apply custom raw_config overrides if provided
         if voice_config.raw_config:
             assistant_config = _deep_merge(assistant_config, voice_config.raw_config)

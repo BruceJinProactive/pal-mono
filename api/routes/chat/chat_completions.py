@@ -158,6 +158,52 @@ def _create_fallback_chunk(model: str, content: str) -> dict:
     }
 
 
+# Marker prefix for SIP transfers - must match VapiTool.SIP_TRANSFER_MARKER
+SIP_TRANSFER_MARKER = "__VAPI_SIP_TRANSFER__"
+
+
+def _create_transfer_call_response() -> dict:
+    """
+    Create a transferCall tool call response for VAPI.
+
+    When VAPI receives this, it intercepts the transferCall and sends a
+    transfer-destination-request webhook to get the actual destination.
+    We return the destination with sipVerb: "dial" in that webhook.
+    """
+    return {
+        "id": f"chatcmpl-{uuid.uuid4().hex}",
+        "object": "chat.completion.chunk",
+        "created": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+        "model": "gpt-4",
+        "choices": [
+            {
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "index": 0,
+                            "id": f"call_{uuid.uuid4().hex[:24]}",
+                            "type": "function",
+                            "function": {
+                                "name": "transferCall",
+                                "arguments": "{}",
+                            },
+                        }
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+    }
+
+
+def _check_for_sip_transfer_marker(content: str) -> bool:
+    """Check if content contains the SIP transfer marker."""
+    return SIP_TRANSFER_MARKER in content
+
+
 def is_invalid_url(url_string: str) -> bool:
     """
     Check if a URL string is invalid based on common false positive patterns, e.g. moment.It
@@ -410,6 +456,7 @@ async def chat_completions_agno(
                 )
 
                 collected_content = []
+                collected_chunks = []  # Buffer chunks for SIP transfer detection
                 if response_stream:
                     chunk_count = 0
                     url_filter = create_url_filter()
@@ -422,6 +469,7 @@ async def chat_completions_agno(
                         ],
                     )
 
+                    # First pass: collect all chunks to check for SIP transfer marker
                     async for chunk in response_stream:
                         chunk_count += 1
                         chunk_data = _convert_chunk_to_dict(chunk)
@@ -434,8 +482,9 @@ async def chat_completions_agno(
                         )
                         collected_content.append(content)
                         filtered_content = url_filter.filter_content(content)
+
+                        # Store chunk with filtered content for later yielding
                         if filtered_content is not None:
-                            # Replace the original content in chunk_data with filtered_content
                             if (
                                 chunk_data.get("choices")
                                 and len(chunk_data["choices"]) > 0
@@ -444,30 +493,50 @@ async def chat_completions_agno(
                                     chunk_data["choices"][0]["delta"][
                                         "content"
                                     ] = filtered_content
+                            collected_chunks.append(chunk_data)
 
-                            yield f"data: {json.dumps(chunk_data)}\n\n"
+                    # Check if response contains SIP transfer marker
+                    full_content = "".join(collected_content)
+                    if _check_for_sip_transfer_marker(full_content):
+                        # SIP transfer detected - yield transferCall tool call instead
+                        logger.info(
+                            "[ChatCompletions] SIP transfer marker detected, converting to transferCall",
+                            extra={
+                                "sender_identifier": sender_identifier,
+                                "recipient_identifier": recipient_identifier,
+                                "call_id": call_id,
+                            },
+                        )
+                        transfer_response = _create_transfer_call_response()
+                        yield f"data: {json.dumps(transfer_response)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
 
-                            if chunk_count == 1:
-                                time_diff = (
-                                    datetime.datetime.now(datetime.timezone.utc)
-                                    - request_context.request_time
-                                ).total_seconds() * 1000
-                                logger.debug(
-                                    f"[ChatCompletions] TTFT is {time_diff}",
-                                    extra={
-                                        "recipient_identifier": recipient_identifier,
-                                        "sender_identifier": sender_identifier,
-                                    },
-                                )
+                    # No SIP transfer - yield all collected chunks normally
+                    for idx, chunk_data in enumerate(collected_chunks):
+                        yield f"data: {json.dumps(chunk_data)}\n\n"
 
-                                send_dd_histogram_metrics(
-                                    "chat_completions.sent_first_chunk",
-                                    request_context.request_time,
-                                    [
-                                        f"sender_identifier:{sender_identifier}",
-                                        f"recipient_identifier:{recipient_identifier}",
-                                    ],
-                                )
+                        if idx == 0:
+                            time_diff = (
+                                datetime.datetime.now(datetime.timezone.utc)
+                                - request_context.request_time
+                            ).total_seconds() * 1000
+                            logger.debug(
+                                f"[ChatCompletions] TTFT is {time_diff}",
+                                extra={
+                                    "recipient_identifier": recipient_identifier,
+                                    "sender_identifier": sender_identifier,
+                                },
+                            )
+
+                            send_dd_histogram_metrics(
+                                "chat_completions.sent_first_chunk",
+                                request_context.request_time,
+                                [
+                                    f"sender_identifier:{sender_identifier}",
+                                    f"recipient_identifier:{recipient_identifier}",
+                                ],
+                            )
 
                     # Log completion of stream
                     logger.info(

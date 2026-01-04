@@ -660,6 +660,9 @@ async def handle_assistant_request(message_data, session: AsyncSession):
             "recipient_identifier": phone_number,
             "call_id": call_id,  # Adding call_id for future reference
             "timezone": project.timezone,
+            # Transfer settings for VAPI transferCall tool configuration
+            "transfer_phone_number": project.transfer_phone_number,
+            "transfer_message": project.transfer_message,
         }
 
         # ================= Step 3: Construct assistant(s) =================

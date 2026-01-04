@@ -126,6 +126,10 @@ class VapiTool(Toolkit):
             "content": self.transfer_message,
         }
 
+    # Marker prefix for SIP transfers that should use VAPI's transferCall tool
+    # This is detected by the chat completions endpoint and converted to a transferCall
+    SIP_TRANSFER_MARKER = "__VAPI_SIP_TRANSFER__"
+
     @tool
     def call_transfer(self) -> str:
         """
@@ -154,6 +158,22 @@ class VapiTool(Toolkit):
                 },
             )
             return error_msg
+
+        # For SIP destinations, return a marker instead of using control URL
+        # The control URL doesn't support sipVerb parameter, so SIP transfers fail
+        # The marker is detected by chat completions and converted to a transferCall
+        # VAPI then sends transfer-destination-request webhook where we return sipVerb: "dial"
+        if self.destination_number.lower().startswith("sip:"):
+            logger.info(
+                "[VapiTool.call_transfer] SIP destination detected, returning transfer marker",
+                extra={
+                    "project_id": str(self.tool_metadata.project_id),
+                    "account_name": self.tool_metadata.account_name,
+                    "destination_number": self.destination_number,
+                },
+            )
+            # Return marker that chat completions will detect and convert to transferCall
+            return f"{self.SIP_TRANSFER_MARKER}:{self.destination_number}"
 
         # Get control URL from the conversations table using session_id (conversation_id)
         conversation_id = self.tool_metadata.session_id
