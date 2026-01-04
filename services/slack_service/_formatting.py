@@ -305,10 +305,10 @@ def _create_conversion_table_generic(
         "Call&Text",
         "Orders",
         "Paid",
-        "Subtotal",
-        "Paidtotal",
-        "CVR%",
-        "Paid%",
+        "Total $",
+        "Paid $",
+        "Link CVR %",
+        "Link Paid %",
     ]
 
     # First filter out entries with 0 orders and sort by orders (high to low)
@@ -374,7 +374,7 @@ def _create_conversion_table_generic(
             if header in ["Call&Text"]:
                 # Call&Text: 10 digits (9,999,999,999)
                 max_width = max(max_width, 10)
-            elif header in ["Subtotal", "Paidtotal"]:
+            elif header in ["Total $", "Paid $"]:
                 # Revenue columns: wider for currency values (e.g., "123,456.7")
                 max_width = max(max_width, 10)
             else:
@@ -448,7 +448,15 @@ def _create_engagement_table_generic(
         return f"No {entity_label.lower()} data available."
 
     # Headers with key engagement metrics
-    headers = [entity_label, "Users", "Call&Text", "Calls", "Dur", "Xfer%"]
+    headers = [
+        entity_label,
+        "Users",
+        "Call&Text",
+        "Calls",
+        "Avg Call Time",
+        "Transfer Rate",
+        "Res w/o Xfer %",
+    ]
 
     # Build data rows - limit to first 15 entries
     data_rows = []
@@ -476,9 +484,13 @@ def _create_engagement_table_generic(
         if str(transfer_rate).endswith("%"):
             transfer_rate = str(transfer_rate)[:-1]
         try:
-            transfer_rate = f"{float(transfer_rate):.1f}"
+            transfer_rate_float = float(transfer_rate)
+            transfer_rate = f"{transfer_rate_float:.1f}"
+            # Calculate resolution rate = 100 - transfer rate
+            resolution_rate = f"{100 - transfer_rate_float:.1f}"
         except (ValueError, TypeError):
             transfer_rate = str(transfer_rate)
+            resolution_rate = "N/A"
 
         # For projects, use display_name if available
         display_name = name
@@ -492,6 +504,7 @@ def _create_engagement_table_generic(
             str(calls),
             duration,
             transfer_rate,
+            resolution_rate,
         ]
         data_rows.append(row)
 
@@ -624,8 +637,14 @@ def build_engagement_summary(totals_summary: dict) -> list[str]:
         )
         avg_duration_formatted = safe_float_format(avg_duration, 1)
         transfer_rate_formatted = safe_float_format(transfer_rate, 1)
+        # Calculate resolution rate = 100 - transfer rate
+        try:
+            resolution_rate = 100 - float(transfer_rate)
+            resolution_rate_formatted = safe_float_format(resolution_rate, 1)
+        except (ValueError, TypeError):
+            resolution_rate_formatted = "N/A"
         summary_lines.append(
-            f"• Calls: *{total_calls}* (Avg {avg_duration_formatted}s, Transfer Rate {transfer_rate_formatted}%)"
+            f"• Calls: *{total_calls}* (Avg {avg_duration_formatted}s, Transfer Rate {transfer_rate_formatted}%, Resolution without Transfer Rate {resolution_rate_formatted}%)"
         )
 
     return summary_lines
@@ -675,9 +694,9 @@ def build_conversion_section(
         conversion_summary_lines.extend(
             [
                 f"• Orders: *{total_convs_with_orders}* (Paid: *{paid_orders_display}*)",
-                f"• Subtotal Value: *${total_transaction_formatted}* | Paid Total: *${paid_revenue_formatted}*",
+                f"• Total Order Value: *${total_transaction_formatted}* | Paid Order Total: *${paid_revenue_formatted}*",
                 f"• Avg Subtotal: *${avg_subtotal_formatted}* | Avg Paid Total: *${avg_paid_total_formatted}*",
-                f"• Checkout Rate: *{conversion_rate_formatted}%* | Paid Rate: *{paid_rate_formatted}%*",
+                f"• Checkout Link Conversion Rate: *{conversion_rate_formatted}%* | Payment From Link Rate: *{paid_rate_formatted}%*",
             ]
         )
 

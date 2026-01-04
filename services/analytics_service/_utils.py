@@ -92,8 +92,8 @@ def build_slack_report_blocks(report: list[dict]) -> list[dict]:
                         f"• Conversations: *{total['total_conversations']}*\n"
                         f"• Orders: *{total['conversations_with_orders']}*\n"
                         f"• Paid Orders: *{total['conversations_with_paid_orders']}*\n"
-                        f"• Checkout CVR: *{total['checkout_conversion_rate']:.2f}%*\n"
-                        f"• Paid Rate: *{total['paid_rate']:.2f}%*"
+                        f"• Checkout Link Conversion Rate: *{total['checkout_conversion_rate']:.2f}%*\n"
+                        f"• Payment From Link Rate: *{total['paid_rate']:.2f}%*"
                     ),
                 },
             }
@@ -122,8 +122,8 @@ def build_slack_report_blocks(report: list[dict]) -> list[dict]:
 
         cvr_values = [f"{r['checkout_conversion_rate']:.1f}" for r in accounts]
         rate_values = [f"{r['paid_rate']:.1f}" for r in accounts]
-        cvr_width = max(len("CVR%"), max(len(v) for v in cvr_values))
-        rate_width = max(len("Paid%"), max(len(v) for v in rate_values))
+        cvr_width = max(len("Link CVR %"), max(len(v) for v in cvr_values))
+        rate_width = max(len("Link Paid %"), max(len(v) for v in rate_values))
 
         # Define consistent spacing between columns
         col_spacing = "  "  # 2 spaces between columns
@@ -134,8 +134,8 @@ def build_slack_report_blocks(report: list[dict]) -> list[dict]:
             f"{'Conv':>{conv_width}}{col_spacing}"
             f"{'Orders':>{orders_width}}{col_spacing}"
             f"{'Paid':>{paid_width}}{col_spacing}"
-            f"{'CVR%':>{cvr_width}}{col_spacing}"
-            f"{'Paid%':>{rate_width}}\n"
+            f"{'Link CVR %':>{cvr_width}}{col_spacing}"
+            f"{'Link Paid %':>{rate_width}}\n"
         )
 
         # Calculate total width for separator
@@ -180,7 +180,7 @@ def build_slack_report_blocks(report: list[dict]) -> list[dict]:
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "CVR = orders / conversations · Paid Rate = paid orders / orders",
+                    "text": "Link CVR % = orders / conversations · Link Paid % = paid orders / orders",
                 }
             ],
         }
