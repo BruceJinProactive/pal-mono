@@ -2,9 +2,11 @@ from .account_user import AccountUser
 from .accounts import Account
 from .adora_orders import AdoraOrder
 from .affiliates import Affiliate
+from .agent_capabilities import AgentCapability
 from .agents import Agent
 from .base import Base
 from .campaigns import Campaign, CampaignChannel, CampaignMessage, CampaignMessageStatus
+from .capability_actions import CapabilityAction
 from .catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from .change_log import ChangeAction, ChangeField, ChangeLog
 from .checklists import Checklist

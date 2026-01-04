@@ -59,7 +59,7 @@ CREATE TABLE capability_actions (
     agent_capability_id UUID REFERENCES agent_capabilities(id),
     action VARCHAR NOT NULL,            -- 'create_order', 'cancel_order', etc.
     prompt TEXT NOT NULL,               -- Override prompt (defaults in YAML)
-    channel VARCHAR,                    -- NULL for all channels, or specific channel
+    channel VARCHAR NOT NULL DEFAULT 'ALL', -- 'ALL' for all channels, or specific channel (SMS, VOICE, EMAIL)
     priority INTEGER NOT NULL,          -- Order within capability
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
@@ -117,7 +117,7 @@ class PromptFactoryV2:
         """Get all actions for a capability (defaults + overrides merged)"""
 
     async def create_action(self, session, agent_capability_id: UUID, action: str,
-                          prompt: str, channel: Optional[str] = None,
+                          prompt: str, channel: str = "ALL",
                           priority: Optional[int] = None) -> Action:
         """Create or update an action override for a capability"""
 
@@ -279,7 +279,8 @@ def build(self, channel: Channel, agent_id: UUID) -> list[tuple[str, str]]:
             # Use database override if exists, otherwise use YAML default
             if action_name in db_overrides:
                 override = db_overrides[action_name]
-                if channel and override.channel and override.channel != channel:
+                # Skip if channel doesn't match (unless override is for ALL channels)
+                if override.channel != 'ALL' and override.channel != channel:
                     continue  # Skip if channel doesn't match
                 capability_prompts.append({
                     'name': action_name,
@@ -399,7 +400,7 @@ async with get_db_session() as session:
         agent_capability_id=agent_cap.id,
         action="create_order",
         prompt="Custom instructions for this specific agent's order creation...",
-        channel="SMS",
+        channel="SMS",  # Or "ALL" for all channels
         priority=5
     )
 
