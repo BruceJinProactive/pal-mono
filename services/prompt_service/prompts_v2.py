@@ -5,14 +5,36 @@ This module provides a more flexible prompt factory that loads prompts from YAML
 allowing for easier management and updates without code changes.
 """
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar, Optional
+from typing import ClassVar, Literal, Optional, Union
 from uuid import UUID
 
 import yaml
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.tables.types import Channel
 from utils.log import logger
+
+# Type for channel values - either a Channel enum or "ALL" for wildcard
+ChannelType = Union[Channel, Literal["ALL"]]
+
+
+def parse_channel(channel_str: str) -> ChannelType:
+    """Convert a string to a Channel enum or 'ALL'."""
+    if channel_str == "ALL":
+        return "ALL"
+
+    # Try to match with enum values (case-insensitive)
+    channel_upper = channel_str.upper()
+    for ch in Channel:
+        if ch.value.upper() == channel_upper:
+            return ch
+
+    # Default to ALL if unrecognized
+    logger.warning(f"Unknown channel '{channel_str}', defaulting to 'ALL'")
+    return "ALL"
 
 
 @dataclass
@@ -21,7 +43,7 @@ class Action:
 
     action: str  # Action identifier (e.g., 'create_order', 'cancel_order')
     instruction: str  # The prompt/instruction text for this action
-    channel: str = "ALL"  # Channel-specific override (SMS, VOICE, EMAIL, ALL)
+    channel: ChannelType = "ALL"  # Channel-specific override (SMS, VOICE, EMAIL, ALL)
     priority: int = 50  # Priority for ordering (lower = higher priority)
 
 
@@ -111,12 +133,13 @@ class PromptFactoryV2:
             if "actions" in data and data["actions"]:
                 for action_data in data["actions"]:
                     try:
+                        channel_str = action_data.get(
+                            "channels", "ALL"
+                        )  # YAML uses 'channels'
                         action = Action(
                             action=action_data["action"],
                             instruction=action_data.get("instruction", ""),
-                            channel=action_data.get(
-                                "channels", "ALL"
-                            ),  # Note: YAML uses 'channels', we store as 'channel'
+                            channel=parse_channel(channel_str),
                             priority=action_data.get("priority", 50),
                         )
                         capability.actions.append(action)
@@ -144,27 +167,173 @@ class PromptFactoryV2:
 
         PromptFactoryV2._default_capabilities[capability.identifier] = capability
 
-    def build(
-        self,
-        channel: Optional[str] = None,
-        agent_id: Optional[UUID] = None,
-    ) -> list[tuple[str, str]]:
+    async def _get_db_overrides(
+        self, agent_id: UUID, session: AsyncSession
+    ) -> dict[str, Capability]:
         """
-        Build the final list of prompts from default capabilities.
+        Fetch capability and action overrides from database for an agent.
 
         Args:
-            channel: Communication channel (SMS, VOICE, EMAIL, or None for all)
-            agent_id: Agent ID for future database override support (optional)
+            agent_id: UUID of the agent
+            session: Database session
+
+        Returns:
+            Dictionary of capability identifier to Capability with DB overrides
+        """
+        try:
+            # Import repositories here to avoid circular dependencies
+            from db.repositories.agent_capability_repository import (
+                AgentCapabilityRepositoryAsync,
+            )
+            from db.repositories.capability_action_repository import (
+                CapabilityActionRepositoryAsync,
+            )
+
+            # Get agent capabilities
+            agent_cap_repo = AgentCapabilityRepositoryAsync(session)
+            agent_capabilities = await agent_cap_repo.get_by_agent(
+                agent_id, enabled_only=False
+            )
+
+            if not agent_capabilities:
+                return {}
+
+            # Get actions for all capabilities
+            capability_ids = [cap.id for cap in agent_capabilities]
+            action_repo = CapabilityActionRepositoryAsync(session)
+            actions_by_capability = await action_repo.get_actions_for_capabilities(
+                capability_ids
+            )
+
+            # Build Capability objects from DB data
+            db_capabilities = {}
+            for agent_cap in agent_capabilities:
+                # Create capability with DB settings
+                capability = Capability(
+                    identifier=agent_cap.capability_identifier,
+                    priority=agent_cap.priority,
+                    enabled=agent_cap.enabled,
+                    actions=[],
+                )
+
+                # Add actions if present
+                if agent_cap.id in actions_by_capability:
+                    for db_action in actions_by_capability[agent_cap.id]:
+                        action = Action(
+                            action=db_action.action,
+                            instruction=db_action.prompt,  # DB uses 'prompt' field
+                            channel=parse_channel(db_action.channel),
+                            priority=db_action.priority,
+                        )
+                        capability.actions.append(action)
+
+                db_capabilities[capability.identifier] = capability
+
+            return db_capabilities
+
+        except Exception as e:
+            logger.error(f"Failed to fetch DB overrides for agent {agent_id}: {e}")
+            return {}
+
+    def _merge_capabilities(
+        self,
+        default_capabilities: dict[str, Capability],
+        db_overrides: dict[str, Capability],
+    ) -> dict[str, Capability]:
+        """
+        Merge default capabilities with database overrides using action-level merging.
+
+        For each DB override:
+        1. If capability doesn't exist in defaults, add it
+        2. If it exists:
+           - Override priority and enabled state from DB
+           - Merge actions: DB actions override matching default actions by name
+           - Keep default actions that aren't overridden
+           - Add new DB actions
+
+        Args:
+            default_capabilities: Default capabilities from YAML
+            db_overrides: Database overrides
+
+        Returns:
+            Merged capabilities dictionary
+        """
+        # Start with a deep copy of defaults
+        merged = deepcopy(default_capabilities)
+
+        for cap_id, db_capability in db_overrides.items():
+            if cap_id not in merged:
+                # New capability from DB, add it entirely
+                merged[cap_id] = deepcopy(db_capability)
+            else:
+                # Merge with existing capability
+                default_cap = merged[cap_id]
+
+                # Override capability-level settings
+                default_cap.priority = db_capability.priority
+                default_cap.enabled = db_capability.enabled
+
+                # Merge actions
+                # Create a dict of default actions by (action, channel) for easier lookup
+                default_actions_map = {
+                    (action.action, action.channel): action
+                    for action in default_cap.actions
+                }
+
+                # Create a dict of DB actions
+                db_actions_map = {
+                    (action.action, action.channel): action
+                    for action in db_capability.actions
+                }
+
+                # Build merged actions list
+                merged_actions = []
+
+                # Add/override with DB actions
+                for key, db_action in db_actions_map.items():
+                    merged_actions.append(deepcopy(db_action))
+
+                # Add default actions that weren't overridden
+                for key, default_action in default_actions_map.items():
+                    if key not in db_actions_map:
+                        merged_actions.append(deepcopy(default_action))
+
+                default_cap.actions = merged_actions
+
+        return merged
+
+    async def build(
+        self,
+        agent_id: UUID,
+        channel: Optional[Channel] = None,
+        session: Optional[AsyncSession] = None,
+    ) -> list[tuple[str, str]]:
+        """
+        Build the final list of prompts with optional database overrides.
+
+        Args:
+            agent_id: Agent ID for database override support
+            channel: Communication channel enum (Channel.SMS, Channel.VOICE, etc.) or None for all
+            session: Database session for fetching overrides (optional)
 
         Returns:
             List of (title, instructions) tuples for the final prompts
         """
+        # Start with default capabilities
+        capabilities = PromptFactoryV2._default_capabilities
+
+        # Apply database overrides if agent_id and session provided
+        if agent_id and session:
+            db_overrides = await self._get_db_overrides(agent_id, session)
+            if db_overrides:
+                capabilities = self._merge_capabilities(
+                    PromptFactoryV2._default_capabilities, db_overrides
+                )
+
         prompts = []
 
         # Sort capabilities by priority
-        sorted_capabilities = sorted(
-            PromptFactoryV2._default_capabilities.values(), key=lambda c: c.priority
-        )
+        sorted_capabilities = sorted(capabilities.values(), key=lambda c: c.priority)
 
         for capability in sorted_capabilities:
             if not capability.enabled:
@@ -173,6 +342,7 @@ class PromptFactoryV2:
             actions = capability.actions
 
             if channel:
+                # Filter actions by channel - include if action is for ALL or matches the specific channel
                 actions = [
                     action
                     for action in actions
@@ -191,7 +361,7 @@ class PromptFactoryV2:
             combined_instructions = "\n\n".join(action_instructions)
 
             words = capability.identifier.replace("_", " ").title()
-            title = f"{words} Instruction"
+            title = f"## {words} Instruction"
 
             prompts.append((title, combined_instructions))
 

@@ -5,6 +5,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from agent import (
@@ -62,13 +63,13 @@ class RawConfig:
         self.project_integrations = list(project_integrations or [])
         self.faqs = list(faqs or [])
 
-    def build(self) -> AgentConfig:
+    async def build(self, session: Optional[AsyncSession] = None) -> AgentConfig:
         try:
             memory_enabled = self.agent.memory_enabled
             filler_words_config = self.agent.filler_words or {}
 
             return AgentConfig(
-                persona=self._get_agent_persona(self.channel),
+                persona=await self._get_agent_persona(self.channel, session),
                 model=self._get_agent_model_config(),
                 memory=MemoryConfig(
                     enabled=memory_enabled,
@@ -109,11 +110,13 @@ class RawConfig:
             return False
         return bool(value)
 
-    def _get_agent_persona(self, channel: Channel) -> AgentPersona:
+    async def _get_agent_persona(
+        self, channel: Channel, session: Optional[AsyncSession] = None
+    ) -> AgentPersona:
         # Always use dynamic prompt behavior
         name = self.agent.name or ""
         role = self.agent.agent_type or ""
-        system_prompt = self._build_agent_prompt(channel)
+        system_prompt = await self._build_agent_prompt(channel, session)
 
         return AgentPersona(
             name=name,
@@ -377,7 +380,9 @@ class RawConfig:
 
         return ModelConfig(provider=provider, identifier=identifier)
 
-    def _build_agent_prompt(self, channel: Channel) -> str:
+    async def _build_agent_prompt(
+        self, channel: Channel, session: Optional[AsyncSession] = None
+    ) -> str:
         def build_section(title, info_list) -> list[str]:
             blocks = [title]
             for header, content in info_list:
@@ -394,7 +399,7 @@ class RawConfig:
         store_info_list = self._get_store_info()
 
         if str(self.agent.id) in TEST_AGENTS:
-            agent_info_list = self._get_agent_info_v2(channel)
+            agent_info_list = await self._get_agent_info_v2(channel, session)
         else:
             agent_info_list = self._get_agent_info(channel)
 
@@ -452,8 +457,12 @@ class RawConfig:
             )
         return info_list
 
-    def _get_agent_info_v2(self, channel: Channel):
-        info_list = prompt_factory_v2.build(channel, self.agent.id)
+    async def _get_agent_info_v2(
+        self, channel: Channel, session: Optional[AsyncSession] = None
+    ):
+        info_list = await prompt_factory_v2.build(
+            channel=channel, agent_id=self.agent.id, session=session
+        )
         return info_list
 
     def _get_store_info(self):

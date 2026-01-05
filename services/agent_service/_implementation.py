@@ -284,7 +284,7 @@ async def construct_agent_config(
 
     # Convert blueprint to agent config
     logger.debug("Loading agent config...")
-    return raw_config.build()
+    return await raw_config.build(session=db_session)
 
 
 async def get_agent_async(
