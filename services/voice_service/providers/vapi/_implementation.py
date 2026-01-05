@@ -351,37 +351,23 @@ class VAPIProvider:
             "analysisPlan": self._get_analysis_plan(),
         }
 
-        # Add transferCall tool for SIP destinations
-        # This enables proper SIP transfers with sipVerb: "dial"
-        # For PSTN callers transferring to SIP endpoints, we need <Dial> not <Refer>
+        # Add transferCall tool for SIP destinations with EMPTY destinations
+        # Empty destinations triggers VAPI to send transfer-destination-request webhook
+        # Our webhook handler returns the destination with sipVerb: "dial"
+        # This is needed because control URL ignores sipVerb parameter
         transfer_number = caller_info.get("transfer_phone_number")
-        transfer_message = (
-            caller_info.get("transfer_message") or "Transferring your call now."
-        )
         if transfer_number and transfer_number.lower().startswith("sip:"):
-            # Add transferCall tool with full destination config
-            # When chat completions emits transferCall, VAPI uses this destination
             if "tools" not in assistant_config["model"]:
                 assistant_config["model"]["tools"] = []
             assistant_config["model"]["tools"].append(
                 {
                     "type": "transferCall",
-                    "destinations": [
-                        {
-                            "type": "sip",
-                            "sipUri": transfer_number,
-                            "message": transfer_message,
-                            "transferPlan": {
-                                "mode": "blind-transfer",
-                                "sipVerb": "dial",
-                            },
-                        }
-                    ],
+                    "destinations": [],  # Empty - VAPI will send webhook to get destination
                 }
             )
             logger.debug(
-                "[VAPIProvider] Added transferCall tool for SIP transfer destination",
-                extra={"transfer_number": transfer_number, "sipVerb": "dial"},
+                "[VAPIProvider] Added transferCall tool with empty destinations for SIP",
+                extra={"transfer_number": transfer_number},
             )
 
         # Apply custom raw_config overrides if provided
