@@ -174,20 +174,16 @@ def revert_change_log(
 
     if resource_type == ChangeResourceType.Account:
         old_record, new_record = _revert_account(
-            session, resource_id, change_log.fields, context
+            session, resource_id, change_log.fields
         )
     elif resource_type == ChangeResourceType.Agent:
-        old_record, new_record = _revert_agent(
-            session, resource_id, change_log.fields, context
-        )
+        old_record, new_record = _revert_agent(session, resource_id, change_log.fields)
     elif resource_type == ChangeResourceType.Project:
         old_record, new_record = _revert_project(
-            session, resource_id, change_log.fields, context
+            session, resource_id, change_log.fields
         )
     elif resource_type == ChangeResourceType.Prompt:
-        old_record, new_record = _revert_prompt(
-            session, resource_id, change_log.fields, context
-        )
+        old_record, new_record = _revert_prompt(session, resource_id, change_log.fields)
     else:
         raise ValueError(
             f"[history_service._implementation.revert_change_log] Revert not supported for resource type: {resource_type}"
@@ -237,17 +233,17 @@ def _revert_account(
     session: Session,
     resource_id: str,
     fields: list[ChangeField],
-    context: UserContext,
 ) -> tuple[Any, db.Account]:
-    """Revert account changes by applying old values."""
-    from services import account_service
-    from services.account_service import AccountParams
+    """Revert account changes by applying old values.
 
+    Uses repository directly to avoid automatic change log creation from service layer.
+    """
     logger.debug(
         f"[history_service._implementation._revert_account] Reverting account {resource_id}"
     )
 
-    account = account_service.get_account_by_id(session, uuid.UUID(resource_id))
+    account_repository = db.AccountRepository(session, auto_commit=False)
+    account = account_repository.get_account_by_id(uuid.UUID(resource_id))
     if not account:
         raise ValueError(
             f"[history_service._implementation._revert_account] Account {resource_id} not found"
@@ -261,10 +257,11 @@ def _revert_account(
     )
 
     if update_params:
-        params = AccountParams(**update_params)
-        account = account_service.update_account(
-            session, context, account.name, params, expected_version=None
+        updated_account = account_repository.update_account(
+            account.name, expected_version=None, **update_params
         )
+        if updated_account:
+            account = updated_account
 
     logger.debug(
         f"[history_service._implementation._revert_account] Successfully reverted account {resource_id}"
@@ -276,17 +273,17 @@ def _revert_agent(
     session: Session,
     resource_id: str,
     fields: list[ChangeField],
-    context: UserContext,
 ) -> tuple[Any, db.Agent]:
-    """Revert agent changes by applying old values."""
-    from services import agent_service
-    from services.agent_service import AgentParams
+    """Revert agent changes by applying old values.
 
+    Uses repository directly to avoid automatic change log creation from service layer.
+    """
     logger.debug(
         f"[history_service._implementation._revert_agent] Reverting agent {resource_id}"
     )
 
-    agent = agent_service.get_agent(session, uuid.UUID(resource_id))
+    agent_repository = db.AgentRepository(session, auto_commit=False)
+    agent = agent_repository.get_agent(uuid.UUID(resource_id))
     if not agent:
         raise ValueError(
             f"[history_service._implementation._revert_agent] Agent {resource_id} not found"
@@ -300,10 +297,11 @@ def _revert_agent(
     )
 
     if update_params:
-        params = AgentParams(**update_params)
-        agent = agent_service.update_agent(
-            session, context, uuid.UUID(resource_id), params, expected_version=None
+        updated_agent = agent_repository.update_agent(
+            uuid.UUID(resource_id), expected_version=None, **update_params
         )
+        if updated_agent:
+            agent = updated_agent
 
     logger.debug(
         f"[history_service._implementation._revert_agent] Successfully reverted agent {resource_id}"
@@ -315,17 +313,17 @@ def _revert_project(
     session: Session,
     resource_id: str,
     fields: list[ChangeField],
-    context: UserContext,
 ) -> tuple[Any, db.Project]:
-    """Revert project changes by applying old values."""
-    from services import project_service
-    from services.project_service import ProjectParams
+    """Revert project changes by applying old values.
 
+    Uses repository directly to avoid automatic change log creation from service layer.
+    """
     logger.debug(
         f"[history_service._implementation._revert_project] Reverting project {resource_id}"
     )
 
-    project = project_service.get_project(session, uuid.UUID(resource_id))
+    project_repository = db.ProjectRepository(session, auto_commit=False)
+    project = project_repository.get_project(uuid.UUID(resource_id))
     if not project:
         raise ValueError(
             f"[history_service._implementation._revert_project] Project {resource_id} not found"
@@ -339,10 +337,11 @@ def _revert_project(
     )
 
     if update_params:
-        params = ProjectParams(**update_params)
-        project = project_service.update_project(
-            session, context, uuid.UUID(resource_id), params, expected_version=None
+        updated_project = project_repository.update_project(
+            uuid.UUID(resource_id), expected_version=None, **update_params
         )
+        if updated_project:
+            project = updated_project
 
     logger.debug(
         f"[history_service._implementation._revert_project] Successfully reverted project {resource_id}"
@@ -354,7 +353,6 @@ def _revert_prompt(
     session: Session,
     resource_id: str,
     fields: list[ChangeField],
-    context: UserContext,
 ) -> tuple[Any, db.Prompt]:
     """Revert prompt changes by applying old values."""
     logger.debug(
