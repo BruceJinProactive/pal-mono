@@ -234,10 +234,6 @@ class ProjectSubscription(Base):
         DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
     )
 
-    subscription_plan: Mapped[Optional["SubscriptionPlan"]] = relationship(
-        "SubscriptionPlan"
-    )
-
     __table_args__ = (
         Index(
             "ix_project_id_subscription_id_unique_not_deleted",
