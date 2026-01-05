@@ -158,7 +158,14 @@ class ProjectSubscription(Base):
         nullable=False,
         index=True,
     )
-
+    external_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+    version: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, default=1, server_default="1"
+    )
     project_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         nullable=False,
@@ -168,10 +175,35 @@ class ProjectSubscription(Base):
         nullable=False,
         index=True,
     )
+    subscription_plan_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
     stripe_product_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, index=True
+    )
+    payment_method: Mapped[Optional[PaymentMethod]] = mapped_column(
+        Enum(PaymentMethod),
+        nullable=True,
+    )
     base_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     call_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     order_price_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    trial_start_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    start_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    end_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[Optional[SubscriptionStatus]] = mapped_column(
+        Enum(SubscriptionStatus, name="subscriptionstatus"),
+        nullable=True,
+    )
     deleted: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -200,6 +232,10 @@ class ProjectSubscription(Base):
     )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
+    )
+
+    subscription_plan: Mapped[Optional["SubscriptionPlan"]] = relationship(
+        "SubscriptionPlan"
     )
 
     __table_args__ = (
