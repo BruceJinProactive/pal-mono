@@ -7,8 +7,6 @@ This module handles parsing of Slack commands and routing them to appropriate ha
 import re
 from datetime import datetime
 
-from sqlalchemy.orm import Session
-
 from db.session import SyncSessionLocal
 from utils.log import logger
 
@@ -68,25 +66,19 @@ def parse_last_hours(message_text: str) -> int | None:
     return None
 
 
-def parse_custom_date_range(
-    message_text: str, session: Session | None = None, account_name: str | None = None
-) -> tuple[datetime, datetime] | None:
+def parse_custom_date_range(message_text: str) -> tuple[datetime, datetime] | None:
     """
     Parse custom date range from message text like "from 2024-01-01 to 2024-01-31" or "from 2024-01-01 10:00 to 2024-01-31 15:30".
     Supports YYYY-MM-DD format and optional HH:MM time with case-insensitive matching.
 
     Args:
         message_text: The full message text from Slack
-        session: Database session (optional) - used to look up account timezone
-        account_name: Account name (optional) - if provided, dates are interpreted in account's timezone
 
     Returns:
         tuple[datetime, datetime] | None: (start_date, end_date) in UTC, or None if no match
     """
     # Import here to avoid circular dependency
     from services.analytics_service._utils import normalize_datetime_to_utc
-
-    from ._access_control import get_account_timezone
 
     # Pattern to match "from YYYY-MM-DD [HH:MM] to YYYY-MM-DD [HH:MM]" format (case insensitive)
     # Time is optional, format: HH:MM (24-hour)
@@ -133,18 +125,10 @@ def parse_custom_date_range(
                 hour=23, minute=59, second=59, microsecond=999999
             )
 
-        # Get account timezone if available, otherwise default to PST
-        timezone_id = None
-        if session and account_name:
-            timezone_id = get_account_timezone(session, account_name)
-
-        if not timezone_id:
-            # Default to PST when no account specified
-            timezone_id = "America/Los_Angeles"
-
-        # Interpret dates in timezone (account's or PST), then convert to UTC
+        # Always use PST timezone
         from zoneinfo import ZoneInfo
 
+        timezone_id = "America/Los_Angeles"
         tz = ZoneInfo(timezone_id)
         start_date = start_date.replace(tzinfo=tz)
         end_date = end_date.replace(tzinfo=tz)
@@ -156,13 +140,8 @@ def parse_custom_date_range(
         )
         end_display = f"{end_date_str} {end_time_str}" if end_time_str else end_date_str
 
-        tz_display = (
-            "PST/PDT"
-            if timezone_id == "America/Los_Angeles" and not account_name
-            else timezone_id
-        )
         logger.info(
-            f"[Slackbot] Parsed dates in timezone '{tz_display}': {start_display} -> {start_date}, {end_display} -> {end_date}"
+            f"[Slackbot] Parsed dates in timezone 'PST/PDT': {start_display} -> {start_date}, {end_display} -> {end_date}"
         )
 
         return start_date, end_date
@@ -201,7 +180,6 @@ async def handle_report_request(
         custom_dates: Optional tuple of (start_date, end_date) for custom ranges
     """
     # Import here to avoid circular dependency
-    from ._access_control import get_account_timezone
     from ._reports import (
         get_channel_name,
         get_date_range_for_period,
@@ -234,29 +212,20 @@ async def handle_report_request(
                     f"[Slackbot] Using custom date range: {start_date} to {end_date}"
                 )
             else:
-                start_date, end_date = get_date_range_for_period(
-                    period, session, account_name
-                )
+                start_date, end_date = get_date_range_for_period(period)
                 logger.info(
                     f"[Slackbot] Using {period} date range: {start_date} to {end_date}"
                 )
 
-            # Get timezone name for display
-            if account_name:
-                timezone_id = get_account_timezone(session, account_name)
-            else:
-                # Default to PST when no account specified
-                timezone_id = "America/Los_Angeles"
+            # Always use PST timezone
+            timezone_id = "America/Los_Angeles"
 
-            # Extract short timezone name (e.g., 'EST', 'PST')
-            timezone_name = None
-            if timezone_id:
-                from zoneinfo import ZoneInfo
+            # Extract short timezone name (e.g., 'PST', 'PDT')
+            from zoneinfo import ZoneInfo
 
-                tz = ZoneInfo(timezone_id)
-                # Get timezone abbreviation
-                now_in_tz = datetime.now(tz)
-                timezone_name = now_in_tz.strftime("%Z")
+            tz = ZoneInfo(timezone_id)
+            now_in_tz = datetime.now(tz)
+            timezone_name = now_in_tz.strftime("%Z")
 
             result = await send_report_to_slack(
                 slack_channel,
@@ -313,7 +282,6 @@ async def handle_last_hours_request(message, client):
         client: Slack client object
     """
     # Import here to avoid circular dependency
-    from ._access_control import get_account_timezone
     from ._reports import (
         get_channel_name,
         get_date_range_for_hours,
@@ -345,7 +313,7 @@ async def handle_last_hours_request(message, client):
             )
             return
 
-        # Get database session for timezone lookup
+        # Get database session for conversion data using proper context handling
         session = SyncSessionLocal()
         try:
             slack_channel = message.get("channel")
@@ -360,29 +328,20 @@ async def handle_last_hours_request(message, client):
             )
 
             # Calculate date range
-            start_date, end_date = get_date_range_for_hours(
-                hours, session, account_name
-            )
+            start_date, end_date = get_date_range_for_hours(hours)
             logger.info(
                 f"[Slackbot] Using last {hours} hours range: {start_date} to {end_date}"
             )
 
-            # Get timezone name for display
-            if account_name:
-                timezone_id = get_account_timezone(session, account_name)
-            else:
-                # Default to PST when no account specified
-                timezone_id = "America/Los_Angeles"
+            # Always use PST timezone
+            timezone_id = "America/Los_Angeles"
 
-            # Extract short timezone name (e.g., 'EST', 'PST')
-            timezone_name = None
-            if timezone_id:
-                from zoneinfo import ZoneInfo
+            # Extract short timezone name (e.g., 'PST', 'PDT')
+            from zoneinfo import ZoneInfo
 
-                tz = ZoneInfo(timezone_id)
-                # Get timezone abbreviation
-                now_in_tz = datetime.now(tz)
-                timezone_name = now_in_tz.strftime("%Z")
+            tz = ZoneInfo(timezone_id)
+            now_in_tz = datetime.now(tz)
+            timezone_name = now_in_tz.strftime("%Z")
 
             result = await send_report_to_slack(
                 slack_channel,
@@ -436,34 +395,27 @@ async def handle_custom_date_request(message, client):
     try:
         message_text = message.get("text", "")
 
-        # Parse account name from message if provided
-        account_name = parse_account_name_from_message(message_text)
+        # Parse custom date range (always uses PST)
+        custom_dates = parse_custom_date_range(message_text)
 
-        # Get database session to look up timezone
-        session = SyncSessionLocal()
-        try:
-            custom_dates = parse_custom_date_range(message_text, session, account_name)
+        if custom_dates:
+            await handle_report_request("custom", message, client, custom_dates)
+        else:
+            # Send help message if parsing failed
+            slack_channel = message.get("channel")
+            help_text = (
+                "📅 *Custom Date Range Help*\n\n"
+                "Please use the format: `From YYYY-MM-DD [HH:MM] to YYYY-MM-DD [HH:MM]`\n\n"
+                "Examples:\n"
+                "• `From 2024-01-01 to 2024-01-31` (full days)\n"
+                "• `From 2024-01-01 10:00 to 2024-01-31 15:30` (with specific times)\n"
+                "• `From 2024-01-15 9:00 to 2024-01-15 17:00` (same day)\n\n"
+                "Note: Times are in 24-hour format (HH:MM)"
+            )
 
-            if custom_dates:
-                await handle_report_request("custom", message, client, custom_dates)
-            else:
-                # Send help message if parsing failed
-                slack_channel = message.get("channel")
-                help_text = (
-                    "📅 *Custom Date Range Help*\n\n"
-                    "Please use the format: `From YYYY-MM-DD [HH:MM] to YYYY-MM-DD [HH:MM]`\n\n"
-                    "Examples:\n"
-                    "• `From 2024-01-01 to 2024-01-31` (full days)\n"
-                    "• `From 2024-01-01 10:00 to 2024-01-31 15:30` (with specific times)\n"
-                    "• `From 2024-01-15 9:00 to 2024-01-15 17:00` (same day)\n\n"
-                    "Note: Times are in 24-hour format (HH:MM)"
-                )
-
-                await client.chat_postMessage(
-                    channel=slack_channel, text=help_text, mrkdwn=True
-                )
-        finally:
-            session.close()
+            await client.chat_postMessage(
+                channel=slack_channel, text=help_text, mrkdwn=True
+            )
 
     except Exception as e:
         logger.error(f"[Slackbot] Error handling custom date request: {e}")

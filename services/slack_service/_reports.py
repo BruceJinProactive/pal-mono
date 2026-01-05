@@ -15,7 +15,7 @@ from services.analytics_service import get_reports
 from services.analytics_service._utils import normalize_datetime_to_utc
 from utils.log import logger
 
-from ._access_control import determine_account_filter, get_account_timezone
+from ._access_control import determine_account_filter
 from ._bot import get_slack_credentials
 from ._formatting import format_unified_report_for_slack
 
@@ -24,32 +24,20 @@ from ._formatting import format_unified_report_for_slack
 # =============================================================================
 
 
-def get_date_range_for_hours(
-    hours: int, session: Session | None = None, account_name: str | None = None
-) -> tuple[datetime, datetime]:
+def get_date_range_for_hours(hours: int) -> tuple[datetime, datetime]:
     """
     Generate start_date and end_date for custom hour range.
 
     Args:
         hours: Number of hours to look back
-        session: Database session (optional) - used to look up account timezone
-        account_name: Account name (optional) - if provided, dates are calculated in account's timezone
 
     Returns:
         tuple[datetime, datetime]: (start_date, end_date) in UTC
     """
-    # Get account timezone if available, otherwise default to PST
-    timezone_id = None
-    if session and account_name:
-        timezone_id = get_account_timezone(session, account_name)
-
-    if not timezone_id:
-        # Default to PST when no account specified or timezone not found
-        timezone_id = "America/Los_Angeles"
-
-    # Get current time in the timezone (account's or PST)
+    # Always use PST timezone
     from zoneinfo import ZoneInfo
 
+    timezone_id = "America/Los_Angeles"
     tz = ZoneInfo(timezone_id)
     now = datetime.now(tz)
     logger.info(
@@ -67,32 +55,20 @@ def get_date_range_for_hours(
     return start_date, end_date
 
 
-def get_date_range_for_period(
-    period: str, session: Session | None = None, account_name: str | None = None
-) -> tuple[datetime, datetime]:
+def get_date_range_for_period(period: str) -> tuple[datetime, datetime]:
     """
     Generate start_date and end_date for different reporting periods.
 
     Args:
         period: "daily", "weekly", or "monthly"
-        session: Database session (optional) - used to look up account timezone
-        account_name: Account name (optional) - if provided, dates are calculated in account's timezone
 
     Returns:
         tuple[datetime, datetime]: (start_date, end_date) in UTC
     """
-    # Get account timezone if available, otherwise default to PST
-    timezone_id = None
-    if session and account_name:
-        timezone_id = get_account_timezone(session, account_name)
-
-    if not timezone_id:
-        # Default to PST when no account specified or timezone not found
-        timezone_id = "America/Los_Angeles"
-
-    # Get current time in the timezone (account's or PST)
+    # Always use PST timezone
     from zoneinfo import ZoneInfo
 
+    timezone_id = "America/Los_Angeles"
     tz = ZoneInfo(timezone_id)
     now = datetime.now(tz)
     logger.info(
