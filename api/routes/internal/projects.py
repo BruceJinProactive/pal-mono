@@ -7,16 +7,18 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from botocore.exceptions import ClientError
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pinecone import Pinecone
 from pinecone.exceptions import PineconeException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
+from api.schemas.operations.signal_source import SignalSourceIdResponse
 from db.repositories.project_repository import ProjectRepository
 from db.tables.types import IntegrationProvider, IntegrationType
-from services import knowledge_service, project_service
+from services import knowledge_service, project_service, signal_source_service
 from utils.log import logger
 from utils.secret import get_client_secret
 
@@ -153,6 +155,99 @@ class UpdateBusinessHoursRequest(BaseModel):
     formatted_phone_number: str | None = None
     phone_number: str | None = None
     website: str | None = None
+
+
+@projects_router.get(
+    "/{project_id}/signal-sources/camera",
+    response_model=SignalSourceIdResponse,
+    responses={
+        404: {"description": "Signal source not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def get_signal_source_by_camera_id(
+    project_id: str,
+    camera_id: str = Query(
+        ..., description="Camera identifier from signal source config"
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SignalSourceIdResponse:
+    """
+    Internal endpoint: Get signal source ID by camera_id.
+
+    Called by Lambda functions (e.g., Monitoring Image Processor) to lookup
+    signal_source_id using camera_id for further processing.
+
+    Args:
+        project_id: UUID of the project
+        camera_id: Camera identifier from signal source configuration
+        session: Async database session
+
+    Returns:
+        SignalSourceIdResponse with signal_source_id
+
+    Raises:
+        400: Invalid project_id format
+        404: Signal source not found
+        500: Database error
+    """
+    try:
+        # Validate and convert project_id to UUID
+        try:
+            project_uuid = uuid.UUID(project_id)
+        except ValueError:
+            logger.warning(
+                f"[Internal API] Invalid project_id format: {project_id}",
+                extra={"project_id": project_id, "camera_id": camera_id},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid project_id format: {project_id}",
+                headers={"Content-Type": "application/json"},
+            )
+
+        # Get signal source by camera_id
+        source = await signal_source_service.get_source_by_camera_id(
+            session=session,
+            project_id=project_uuid,
+            camera_id=camera_id,
+        )
+
+        if not source:
+            logger.warning(
+                f"[Internal API] Signal source not found for camera_id: {camera_id}",
+                extra={"project_id": project_id, "camera_id": camera_id},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Signal source with camera_id '{camera_id}' not found in project {project_id}",
+                headers={"Content-Type": "application/json"},
+            )
+
+        logger.info(
+            f"[Internal API] Found signal source for camera_id: {camera_id}",
+            extra={
+                "project_id": project_id,
+                "camera_id": camera_id,
+                "signal_source_id": str(source.id),
+            },
+        )
+
+        return SignalSourceIdResponse(signal_source_id=source.id)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "[Internal API] Error getting signal source by camera_id",
+            exc_info=True,
+            extra={"project_id": project_id, "camera_id": camera_id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get signal source: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
 
 
 @projects_router.post("/{project_id}/business-hours")
