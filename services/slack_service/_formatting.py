@@ -454,7 +454,7 @@ def _create_engagement_table_generic(
         "Call&Text",
         "Calls",
         "Avg Call Time",
-        "Transfer Rate",
+        "Xfer %",
         "Res w/o Xfer %",
     ]
 
