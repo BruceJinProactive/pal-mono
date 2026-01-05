@@ -8,6 +8,7 @@ from ._implementation import (
     build_run_response,
     cleanup_reference_images,
     create_config,
+    create_monitoring_run_with_analysis,
     delete_config,
     generate_monitoring_llm_prompt,
     get_config,
@@ -33,4 +34,5 @@ __all__ = [
     "upload_reference_images",
     "cleanup_reference_images",
     "generate_monitoring_llm_prompt",
+    "create_monitoring_run_with_analysis",
 ]

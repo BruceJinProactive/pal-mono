@@ -5,7 +5,7 @@ These endpoints are called by the Monitoring Image Processor Lambda to:
 2. Create monitoring run records with AI analysis results
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -78,6 +78,7 @@ class CreateMonitoringRunRequest(BaseModel):
 class CreateMonitoringRunResponse(BaseModel):
     """Response after creating a monitoring run."""
 
+    run_id: UUID = Field(..., description="UUID of the created monitoring run")
     monitoring_config_id: UUID
     prompt_sent: dict = Field(
         ...,
@@ -88,6 +89,9 @@ class CreateMonitoringRunResponse(BaseModel):
     )
     started_at: datetime
     completed_at: datetime | None
+    error_message: str | None = Field(
+        None, description="Error message if analysis failed or image was invalid"
+    )
 
 
 # ============================================================================
@@ -251,24 +255,23 @@ async def create_monitoring_run(
     session: AsyncSession = Depends(db.get_db_async),
 ) -> CreateMonitoringRunResponse:
     """
-    Run AI analysis on a camera image without saving to database.
+    Run AI analysis on a camera image and save the monitoring run to database.
 
-    Returns both the prompt that was sent to the LLM and the analysis result.
-    This is for testing/debugging purposes.
+    Returns the created monitoring run with prompt and analysis results.
 
     Called by Monitoring Image Processor Lambda.
 
     Args:
-        request: Monitoring run creation request (only monitoring_config_id and image_url are used)
+        request: Monitoring run creation request
         session: Async database session
 
     Returns:
-        Prompt sent and analysis result (does not save to database)
+        Created monitoring run with prompt sent and analysis result
 
     Raises:
         400: Missing image_url
         404: Monitoring config not found
-        500: LLM analysis error
+        500: LLM analysis error or database error
     """
     try:
         # Validate monitoring config exists
@@ -292,8 +295,7 @@ async def create_monitoring_run(
                 detail="image_url is required",
             )
 
-        # Run LLM analysis
-        started_at = datetime.now(timezone.utc)
+        # Run LLM analysis and create monitoring run
         logger.info(
             f"[Internal API] Running LLM analysis for config {request.monitoring_config_id}",
             extra={
@@ -302,28 +304,49 @@ async def create_monitoring_run(
             },
         )
 
-        result = await monitoring_service.generate_monitoring_llm_prompt(
-            session=session,
-            monitoring_config_id=request.monitoring_config_id,
-            image_url=request.image_url,
-        )
-        completed_at = datetime.now(timezone.utc)
-
-        logger.info(
-            f"[Internal API] LLM analysis completed for config {request.monitoring_config_id}",
-            extra={
-                "monitoring_config_id": str(request.monitoring_config_id),
-                "result": result.get("analysis_result", {}).get("result"),
-            },
+        # Create monitoring run with analysis and add to session
+        # Note: Transaction commit is handled by get_db_async dependency
+        monitoring_run, analysis_details = (
+            await monitoring_service.create_monitoring_run_with_analysis(
+                session=session,
+                monitoring_config_id=request.monitoring_config_id,
+                image_url=request.image_url,
+                trigger_metadata=request.trigger_metadata,
+            )
         )
 
-        # Return prompt and analysis result (DO NOT save to database)
+        analysis_result = analysis_details.get("analysis_result", {})
+        result_status = analysis_result.get("result")
+
+        # Log result
+        if result_status == "error":
+            logger.warning(
+                f"[Internal API] LLM analysis returned error for config {request.monitoring_config_id}",
+                extra={
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "run_id": str(monitoring_run.id),
+                    "error_message": monitoring_run.error_message,
+                },
+            )
+        else:
+            logger.info(
+                f"[Internal API] LLM analysis completed for config {request.monitoring_config_id}",
+                extra={
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "run_id": str(monitoring_run.id),
+                    "result": result_status,
+                },
+            )
+
+        # Return prompt and analysis result
         return CreateMonitoringRunResponse(
+            run_id=monitoring_run.id,
             monitoring_config_id=request.monitoring_config_id,
-            prompt_sent=result.get("prompt_sent", {}),
-            analysis_result=result.get("analysis_result", {}),
-            started_at=started_at,
-            completed_at=completed_at,
+            prompt_sent=analysis_details.get("prompt_sent", {}),
+            analysis_result=analysis_result,
+            started_at=monitoring_run.started_at,
+            completed_at=monitoring_run.completed_at,
+            error_message=monitoring_run.error_message,
         )
 
     except HTTPException:

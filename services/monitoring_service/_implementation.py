@@ -818,10 +818,8 @@ async def generate_monitoring_llm_prompt(
                     "camera_image_included": bool
                 },
                 "analysis_result": {
-                    "result": "pass" or "fail",
-                    "confidence": 0.0-1.0,
-                    "finding": str,
-                    "details": {...}
+                    "result": "pass" or "fail" or "error",
+                    "details": str
                 }
             }
 
@@ -907,11 +905,25 @@ async def generate_monitoring_llm_prompt(
     # Build OpenAI messages with images - structured as a vision analysis prompt
     system_instruction = """You are a visual monitoring assistant. Your task is to analyze a camera image and compare it against reference images to detect any issues or anomalies.
 
-Please analyze the images carefully and respond with a JSON object containing:
-- "result": either "pass" or "fail"
-- "confidence": a number between 0 and 1 indicating your confidence
-- "finding": a brief description of what you observed
-- "details": any additional relevant details about your analysis"""
+First, verify that the camera image is valid and relevant to the analysis task. If the image has any of these issues, return an error:
+- The image is completely black, white, or a solid color
+- The image is corrupted, unreadable, or severely distorted
+- The image content is completely unrelated to what should be monitored based on the reference images and task description
+- The image quality is too poor to perform any meaningful analysis
+
+Please analyze the images carefully and respond with a JSON object in ONE of these formats:
+
+For valid images:
+{
+  "result": "pass" or "fail",
+  "details": "any relevant details about your analysis, why it passes/ failed"
+}
+
+For invalid/problematic images:
+{
+  "result": "error",
+  "details": "specific description of what is wrong with the camera image"
+}"""
 
     message_content: list[dict] = [
         {"type": "text", "text": system_instruction},
@@ -1003,3 +1015,121 @@ Please analyze the images carefully and respond with a JSON object containing:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"LLM analysis failed: {str(e)}",
         )
+
+
+async def create_monitoring_run_with_analysis(
+    session: AsyncSession,
+    monitoring_config_id: uuid.UUID,
+    image_url: str,
+    trigger_metadata: dict | None = None,
+) -> tuple[MonitoringRun, dict]:
+    """
+    Create a monitoring run with LLM analysis and add to database session.
+
+    This function:
+    1. Validates the monitoring config exists
+    2. Runs LLM analysis on the camera image
+    3. Creates a MonitoringRun record with results and adds to session
+    4. Returns both the run object and the prompt/analysis details
+
+    Note: This function does NOT commit the transaction. The caller is responsible
+    for committing or rolling back the session. This allows the caller to include
+    this operation in a larger transaction if needed.
+
+    Args:
+        session: Async database session (caller manages commit/rollback)
+        monitoring_config_id: UUID of the monitoring configuration
+        image_url: S3 key/path of the camera image to analyze
+        trigger_metadata: Optional metadata about what triggered this run
+
+    Returns:
+        tuple: (MonitoringRun object, analysis_details dict)
+            analysis_details contains:
+            {
+                "prompt_sent": {...},
+                "analysis_result": {...}
+            }
+
+    Raises:
+        HTTPException: If config not found or analysis fails
+    """
+    config_repo = MonitoringConfigRepositoryAsync(session)
+    run_repo = MonitoringRunRepositoryAsync(session)
+
+    # Verify monitoring config exists before proceeding
+    config = await config_repo.get_by_id(monitoring_config_id)
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Monitoring config {monitoring_config_id} not found",
+        )
+
+    # Set default trigger metadata
+    if trigger_metadata is None:
+        trigger_metadata = {
+            "trigger_source": "internal_api",
+            "triggered_at": datetime.utcnow().isoformat(),
+            "image_url": image_url,
+        }
+
+    # Record start time
+    started_at = datetime.utcnow()
+
+    # Run LLM analysis
+    try:
+        analysis_details = await generate_monitoring_llm_prompt(
+            session=session,
+            monitoring_config_id=monitoring_config_id,
+            image_url=image_url,
+        )
+    except HTTPException as e:
+        # Re-raise config not found errors without creating a run
+        if e.status_code == status.HTTP_404_NOT_FOUND:
+            raise
+
+        # For other HTTP errors (S3, OpenAI, etc.), create a run with error
+        error_run = MonitoringRun(
+            monitoring_config_id=monitoring_config_id,
+            trigger_metadata=trigger_metadata,
+            started_at=started_at,
+            completed_at=datetime.utcnow(),
+            evaluation_result={},
+            error_message="LLM analysis failed",
+        )
+        created_run = await run_repo.create(error_run)
+        # Note: Caller is responsible for committing/rolling back
+        raise
+
+    completed_at = datetime.utcnow()
+    analysis_result = analysis_details.get("analysis_result", {})
+    result_status = analysis_result.get("result")
+
+    # Extract error message if result is "error"
+    error_message = None
+    if result_status == "error":
+        error_message = analysis_result.get("details", "Image validation failed")
+
+    # Create monitoring run and add to session
+    run = MonitoringRun(
+        monitoring_config_id=monitoring_config_id,
+        trigger_metadata=trigger_metadata,
+        started_at=started_at,
+        completed_at=completed_at,
+        evaluation_result=analysis_result,
+        error_message=error_message,
+    )
+
+    created_run = await run_repo.create(run)
+
+    logger.info(
+        f"Created monitoring run {created_run.id} for config {monitoring_config_id}",
+        extra={
+            "run_id": str(created_run.id),
+            "config_id": str(monitoring_config_id),
+            "result": result_status,
+            "error_message": error_message,
+        },
+    )
+
+    # Note: Caller is responsible for committing the transaction
+    return created_run, analysis_details
