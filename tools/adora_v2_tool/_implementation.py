@@ -46,6 +46,7 @@ class AdoraV2Tool(Toolkit):
         namespace: str,
         tool_metadata: ToolMetadata,
         backdoor_tool_prompt: dict | None = None,
+        test_pay_in_store: bool = False,
         **kwargs,
     ):
         super().__init__(name="adora_v2_tool")
@@ -55,6 +56,7 @@ class AdoraV2Tool(Toolkit):
         self.namespace = namespace
         self.tool_metadata = tool_metadata
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
+        self.test_pay_in_store = test_pay_in_store
 
         # Cache for bearer token with async lock
         self._cached_bearer_token: str | None = None
@@ -396,6 +398,13 @@ class AdoraV2Tool(Toolkit):
                     "total": validate_result.total,
                     "delivery_charge": validate_result.delivery_charge,
                 }
+            )
+
+        # Enforce PaymentLink for test_pay_in_store mode (testing only)
+        if self.test_pay_in_store:
+            order_request.payment_type = PaymentType.PAYMENT_LINK
+            logger.debug(
+                "[AdoraV2Tool.fulfill_order] test_pay_in_store=True, enforcing PaymentLink payment type"
             )
 
         # Step 2: Build process order request and process the order
