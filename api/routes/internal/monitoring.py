@@ -5,7 +5,7 @@ These endpoints are called by the Monitoring Image Processor Lambda to:
 2. Create monitoring run records with AI analysis results
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from db.repositories.monitoring_config_repository import MonitoringConfigRepositoryAsync
-from db.repositories.monitoring_run_repository import MonitoringRunRepositoryAsync
-from db.tables import MonitoringConfig, MonitoringRun
+from db.tables import MonitoringConfig
+from services import monitoring_service
 from utils.log import logger
 
 monitoring_router = APIRouter(prefix="/monitoring", tags=["internal-monitoring"])
@@ -56,11 +56,20 @@ class CreateMonitoringRunRequest(BaseModel):
         ...,
         description="Metadata about what triggered this run (SQS message, user, etc.)",
     )
-    evaluation_result: dict = Field(
-        ..., description="AI analysis result (result, confidence, finding, etc.)"
+    image_url: str | None = Field(
+        None,
+        description="S3 key/path of camera image. If provided, LLM analysis will run automatically.",
     )
-    started_at: datetime = Field(..., description="When the analysis started")
-    completed_at: datetime = Field(..., description="When the analysis completed")
+    evaluation_result: dict | None = Field(
+        None,
+        description="AI analysis result (result, confidence, finding, etc.). Optional if image_url provided.",
+    )
+    started_at: datetime | None = Field(
+        None, description="When the analysis started. Auto-set if not provided."
+    )
+    completed_at: datetime | None = Field(
+        None, description="When the analysis completed. Auto-set after LLM run."
+    )
     error_message: str | None = Field(
         None, description="Error message if analysis failed"
     )
@@ -69,11 +78,16 @@ class CreateMonitoringRunRequest(BaseModel):
 class CreateMonitoringRunResponse(BaseModel):
     """Response after creating a monitoring run."""
 
-    id: UUID
     monitoring_config_id: UUID
+    prompt_sent: dict = Field(
+        ...,
+        description="The prompt that was sent to the LLM (with system instruction and images structure)",
+    )
+    analysis_result: dict = Field(
+        ..., description="The AI analysis result from the LLM"
+    )
     started_at: datetime
     completed_at: datetime | None
-    success: bool
 
 
 # ============================================================================
@@ -231,28 +245,30 @@ async def get_monitoring_config_by_id(
         ) from e
 
 
-@monitoring_router.post("/runs", status_code=status.HTTP_201_CREATED)
+@monitoring_router.post("/runs", status_code=status.HTTP_200_OK)
 async def create_monitoring_run(
     request: CreateMonitoringRunRequest,
     session: AsyncSession = Depends(db.get_db_async),
 ) -> CreateMonitoringRunResponse:
     """
-    Create a monitoring run record with AI analysis results.
+    Run AI analysis on a camera image without saving to database.
 
-    Called by Monitoring Image Processor Lambda after performing AI analysis.
-    Creates a new monitoring_runs record with the evaluation result,
-    trigger metadata, and timestamps.
+    Returns both the prompt that was sent to the LLM and the analysis result.
+    This is for testing/debugging purposes.
+
+    Called by Monitoring Image Processor Lambda.
 
     Args:
-        request: Monitoring run creation request
+        request: Monitoring run creation request (only monitoring_config_id and image_url are used)
         session: Async database session
 
     Returns:
-        Created monitoring run details
+        Prompt sent and analysis result (does not save to database)
 
     Raises:
+        400: Missing image_url
         404: Monitoring config not found
-        500: Database error
+        500: LLM analysis error
     """
     try:
         # Validate monitoring config exists
@@ -261,7 +277,7 @@ async def create_monitoring_run(
 
         if not config:
             logger.warning(
-                f"[Internal API] Cannot create run: monitoring config not found: {request.monitoring_config_id}",
+                f"[Internal API] Monitoring config not found: {request.monitoring_config_id}",
                 extra={"monitoring_config_id": str(request.monitoring_config_id)},
             )
             raise HTTPException(
@@ -269,55 +285,56 @@ async def create_monitoring_run(
                 detail=f"Monitoring config {request.monitoring_config_id} not found",
             )
 
-        # Create monitoring run
-        run_repo = MonitoringRunRepositoryAsync(session)
+        # Require image_url
+        if not request.image_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="image_url is required",
+            )
 
-        new_run = MonitoringRun(
-            monitoring_config_id=request.monitoring_config_id,
-            trigger_metadata=request.trigger_metadata,
-            evaluation_result=request.evaluation_result,
-            started_at=request.started_at,
-            completed_at=request.completed_at,
-            error_message=request.error_message,
-        )
-
-        created_run = await run_repo.create(new_run)
-
-        # Extract result for logging
-        result = request.evaluation_result.get("result", "unknown")
-        confidence = request.evaluation_result.get("confidence")
-
+        # Run LLM analysis
+        started_at = datetime.now(timezone.utc)
         logger.info(
-            f"[Internal API] Created monitoring run: {created_run.id}",
+            f"[Internal API] Running LLM analysis for config {request.monitoring_config_id}",
             extra={
-                "run_id": str(created_run.id),
                 "monitoring_config_id": str(request.monitoring_config_id),
-                "result": result,
-                "confidence": confidence,
-                "trigger_source": request.trigger_metadata.get("trigger_source"),
+                "image_url": request.image_url,
             },
         )
 
-        # TODO: If result=fail and alerts configured, trigger alert delivery
-        # This will be implemented in future phase
+        result = await monitoring_service.generate_monitoring_llm_prompt(
+            session=session,
+            monitoring_config_id=request.monitoring_config_id,
+            image_url=request.image_url,
+        )
+        completed_at = datetime.now(timezone.utc)
 
+        logger.info(
+            f"[Internal API] LLM analysis completed for config {request.monitoring_config_id}",
+            extra={
+                "monitoring_config_id": str(request.monitoring_config_id),
+                "result": result.get("analysis_result", {}).get("result"),
+            },
+        )
+
+        # Return prompt and analysis result (DO NOT save to database)
         return CreateMonitoringRunResponse(
-            id=created_run.id,
-            monitoring_config_id=created_run.monitoring_config_id,
-            started_at=created_run.started_at,
-            completed_at=created_run.completed_at,
-            success=True,
+            monitoring_config_id=request.monitoring_config_id,
+            prompt_sent=result.get("prompt_sent", {}),
+            analysis_result=result.get("analysis_result", {}),
+            started_at=started_at,
+            completed_at=completed_at,
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(
-            f"[Internal API] Error creating monitoring run for config {request.monitoring_config_id}",
+            f"[Internal API] Error running LLM analysis for config {request.monitoring_config_id}",
             exc_info=True,
             extra={"monitoring_config_id": str(request.monitoring_config_id)},
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create monitoring run: {str(e)}",
+            detail=f"Failed to run LLM analysis: {str(e)}",
         ) from e

@@ -6,11 +6,15 @@ Business logic for monitoring configuration and run CRUD operations.
 from __future__ import annotations
 
 import asyncio
+import base64
 import copy
+import json
 import os
 import uuid
 from datetime import datetime
 
+import boto3
+import openai
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +35,16 @@ from services.asset_service import delete_asset, write_asset
 from services.asset_service._implementation import WriteAssetRequest
 from services.asset_service._utils import map_uri_to_s3_url
 from utils.log import logger
+
+# OpenAI Configuration
+OPENAI_MODEL = "gpt-4o"
+OPENAI_MAX_TOKENS = 2000
+OPENAI_RESPONSE_FORMAT = {"type": "json_object"}
+OPENAI_IMAGE_DETAIL = "high"
+
+# AWS Configuration
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+AWS_ASSET_BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME")
 
 
 async def upload_reference_images(
@@ -776,3 +790,216 @@ def build_run_response(run: MonitoringRun) -> MonitoringRunResponse:
         evaluation_result=run.evaluation_result,
         error_message=run.error_message,
     )
+
+
+async def generate_monitoring_llm_prompt(
+    session: AsyncSession,
+    monitoring_config_id: uuid.UUID,
+    image_url: str,
+) -> dict:
+    """
+    Execute LLM analysis for a monitoring configuration.
+
+    Retrieves the monitoring config, fetches reference images and camera image,
+    and performs AI analysis using OpenAI Vision API.
+
+    Args:
+        session: Async database session
+        monitoring_config_id: UUID of the monitoring configuration
+        image_url: S3 key/path of the camera image to analyze
+
+    Returns:
+        dict: Contains both the prompt and analysis result:
+            {
+                "prompt_sent": {
+                    "system_instruction": str,
+                    "user_prompt": str,
+                    "reference_images": [{"description": str}],
+                    "camera_image_included": bool
+                },
+                "analysis_result": {
+                    "result": "pass" or "fail",
+                    "confidence": 0.0-1.0,
+                    "finding": str,
+                    "details": {...}
+                }
+            }
+
+    Raises:
+        HTTPException: If config not found or S3/OpenAI errors occur
+    """
+    # Get monitoring config
+    config_repo = MonitoringConfigRepositoryAsync(session)
+    config = await config_repo.get_by_id(monitoring_config_id)
+
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Monitoring config {monitoring_config_id} not found",
+        )
+
+    # Initialize S3 client
+    s3_client = (
+        boto3.client(
+            "s3",
+            region_name=AWS_REGION,
+            aws_access_key_id=os.getenv("LOCAL_AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("LOCAL_AWS_SECRET_ACCESS_KEY"),
+            aws_session_token=os.getenv("LOCAL_AWS_SESSION_TOKEN"),
+        )
+        if os.getenv("LOCAL_AWS_ACCESS_KEY_ID")
+        else boto3.client("s3", region_name=AWS_REGION)
+    )
+
+    # Fetch camera image from S3
+    try:
+        # Run blocking S3 operations in thread pool to avoid blocking event loop
+        camera_response = await asyncio.to_thread(
+            s3_client.get_object, Bucket=AWS_ASSET_BUCKET_NAME, Key=image_url
+        )
+        camera_image_content = await asyncio.to_thread(camera_response["Body"].read)
+        camera_image_base64 = base64.b64encode(camera_image_content).decode("utf-8")
+    except Exception as e:
+        logger.error(f"Failed to retrieve camera image from S3: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve camera image from storage",
+        ) from e
+
+    # Build prompt from rules
+    rules = config.rules or {}
+    prompt = rules.get("prompt", "")
+    reference_images_meta = rules.get("reference_images", [])
+
+    if not prompt:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Monitoring config has no prompt in rules",
+        )
+
+    # Fetch reference images if specified
+    reference_images_base64 = []
+    for ref_img in reference_images_meta:
+        ref_image_url = ref_img.get("url")
+        description = ref_img.get("description", "Reference image")
+
+        if not ref_image_url:
+            logger.warning("Reference image missing 'url' field, skipping")
+            continue
+
+        try:
+            # Run blocking S3 operations in thread pool to avoid blocking event loop
+            ref_response = await asyncio.to_thread(
+                s3_client.get_object, Bucket=AWS_ASSET_BUCKET_NAME, Key=ref_image_url
+            )
+            ref_content = await asyncio.to_thread(ref_response["Body"].read)
+            ref_base64 = base64.b64encode(ref_content).decode("utf-8")
+            reference_images_base64.append(
+                {
+                    "base64": ref_base64,
+                    "description": description,
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Failed to retrieve reference image {ref_image_url}: {e}")
+            # Continue without this reference image
+
+    # Build OpenAI messages with images - structured as a vision analysis prompt
+    system_instruction = """You are a visual monitoring assistant. Your task is to analyze a camera image and compare it against reference images to detect any issues or anomalies.
+
+Please analyze the images carefully and respond with a JSON object containing:
+- "result": either "pass" or "fail"
+- "confidence": a number between 0 and 1 indicating your confidence
+- "finding": a brief description of what you observed
+- "details": any additional relevant details about your analysis"""
+
+    message_content: list[dict] = [
+        {"type": "text", "text": system_instruction},
+        {"type": "text", "text": f"\n**Analysis Task:**\n{prompt}\n"},
+    ]
+
+    # Add reference images with context
+    if reference_images_base64:
+        message_content.append(
+            {"type": "text", "text": "\n**Reference Images (Expected State):**"}
+        )
+        for idx, ref_img in enumerate(reference_images_base64):
+            message_content.append(
+                {
+                    "type": "text",
+                    "text": f"\nReference {idx + 1}: {ref_img['description']}",
+                }
+            )
+            message_content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{ref_img['base64']}",
+                        "detail": OPENAI_IMAGE_DETAIL,
+                    },
+                }
+            )
+
+    # Add camera image to analyze
+    message_content.append(
+        {
+            "type": "text",
+            "text": "\n**Current Camera Image (To Be Analyzed):**\nPlease compare this image against the reference images above and evaluate based on the analysis task.",
+        }
+    )
+    message_content.append(
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{camera_image_base64}",
+                "detail": OPENAI_IMAGE_DETAIL,
+            },
+        }
+    )
+
+    # Call OpenAI Vision API
+    try:
+        # Run blocking OpenAI call in thread pool
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: openai.OpenAI().chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
+                response_format=OPENAI_RESPONSE_FORMAT,  # type: ignore[arg-type]
+                max_tokens=OPENAI_MAX_TOKENS,
+            ),
+        )
+
+        analysis_result = json.loads(response.choices[0].message.content or "{}")
+
+        logger.info(
+            f"Monitoring LLM analysis completed for config {monitoring_config_id}",
+            extra={
+                "config_id": str(monitoring_config_id),
+                "result": analysis_result.get("result", "unknown"),
+            },
+        )
+
+        # Build prompt summary (excluding base64 data for readability)
+        prompt_summary = {
+            "system_instruction": system_instruction,
+            "user_prompt": prompt,
+            "reference_images": [
+                {"description": ref_img["description"]}
+                for ref_img in reference_images_base64
+            ],
+            "camera_image_included": True,
+        }
+
+        return {
+            "prompt_sent": prompt_summary,
+            "analysis_result": analysis_result,
+        }
+
+    except Exception as e:
+        logger.error(f"OpenAI API call failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"LLM analysis failed: {str(e)}",
+        )

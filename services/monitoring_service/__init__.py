@@ -9,6 +9,7 @@ from ._implementation import (
     cleanup_reference_images,
     create_config,
     delete_config,
+    generate_monitoring_llm_prompt,
     get_config,
     get_configs,
     get_run,
@@ -31,4 +32,5 @@ __all__ = [
     "build_run_response",
     "upload_reference_images",
     "cleanup_reference_images",
+    "generate_monitoring_llm_prompt",
 ]
