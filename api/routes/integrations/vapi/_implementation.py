@@ -1136,19 +1136,6 @@ def _should_track_call_usage(
     started_at = message_data.get("startedAt")
     ended_at = message_data.get("endedAt")
 
-    # Log all call and message data for debugging
-    logger.info(
-        "Call duration check",
-        extra={
-            "call_id": call_data.get("id"),
-            "message_started_at": started_at,
-            "message_ended_at": ended_at,
-            "customer_number": customer_number[-4:] if customer_number else "",
-            "all_call_data": call_data,
-            "all_message_data": message_data,
-        },
-    )
-
     if started_at and ended_at:
         try:
             # Parse ISO timestamps and calculate duration in seconds
@@ -1156,20 +1143,10 @@ def _should_track_call_usage(
             end_time = date_parser.isoparse(ended_at)
             duration_seconds = (end_time - start_time).total_seconds()
 
-            logger.info(
-                "Calculated call duration",
-                extra={
-                    "call_id": call_data.get("id"),
-                    "duration_seconds": duration_seconds,
-                    "started_at": started_at,
-                    "ended_at": ended_at,
-                },
-            )
-
             if duration_seconds < 10:
                 return False, f"call_too_short:{duration_seconds:.2f}s"
         except Exception as e:
-            logger.warning(
+            logger.info(
                 f"Failed to parse call timestamps: {e}",
                 extra={
                     "call_id": call_data.get("id"),
@@ -1178,15 +1155,6 @@ def _should_track_call_usage(
                 },
             )
             # Continue with other checks if timestamp parsing fails
-    else:
-        logger.warning(
-            "Missing startedAt or endedAt in call data",
-            extra={
-                "call_id": call_data.get("id"),
-                "has_started_at": started_at is not None,
-                "has_ended_at": ended_at is not None,
-            },
-        )
 
     # Rule 3: Check if customer spoke
     artifact = message_data.get("artifact", {})
