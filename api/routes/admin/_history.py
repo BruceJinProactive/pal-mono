@@ -54,3 +54,25 @@ async def get_change_log_details(
         raise not_found_error(f"Change log does not exist for id: {change_log_id}")
 
     return _builder.build_change_log_details(change_log)
+
+
+async def revert_change_log(
+    change_log_id: UUID,
+    context: UserContext,
+    session: Session,
+) -> ChangeLogDetails:
+    """
+    Revert a change log by applying the old values to the resource.
+    Authorization handled by require_history_permission in route decorator.
+    """
+    from fastapi import HTTPException, status
+
+    try:
+        revert_log = history_service.revert_change_log(session, change_log_id, context)
+        return _builder.build_change_log_details(revert_log)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )

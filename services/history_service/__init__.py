@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import uuid
 from contextlib import contextmanager
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,9 @@ from db.tables.change_log import ChangeResourceType
 
 from . import _implementation
 from ._context import ChangeLogContext
+
+if TYPE_CHECKING:
+    from services.auth_types import UserContext
 
 
 def list_account_change_logs(
@@ -55,6 +60,29 @@ def get_change_log(
         db.ChangeLog: Detailed change log with changed fields or None.
     """
     return _implementation.get_change_log_details(session, change_log_id)
+
+
+def revert_change_log(
+    session: Session,
+    change_log_id: uuid.UUID,
+    context: "UserContext",
+) -> db.ChangeLog:
+    """
+    Revert a change log by applying the old values to the resource.
+    Creates a new change log entry for the revert action.
+
+    Args:
+        session (Session): database connection
+        change_log_id (uuid.UUID): ID of the change log to revert
+        context (UserContext): User context for authorization and logging
+
+    Returns:
+        db.ChangeLog: The new change log entry for the revert action
+
+    Raises:
+        ValueError: If the change log is not found or cannot be reverted
+    """
+    return _implementation.revert_change_log(session, change_log_id, context)
 
 
 @contextmanager
@@ -104,5 +132,6 @@ def change_log_context(
 __all__ = [
     "list_account_change_logs",
     "get_change_log",
+    "revert_change_log",
     "change_log_context",
 ]

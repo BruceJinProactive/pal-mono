@@ -2264,6 +2264,25 @@ async def get_change_log(
     )
 
 
+@admin_router.post("/changes/{change_log_id}/revert")
+async def revert_change_log(
+    change_log_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_history_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> ChangeLogDetails:
+    """
+    Revert a change log by applying the old values to the resource.
+    Creates a new change log entry for the revert action.
+    """
+    return await _history.revert_change_log(
+        change_log_id=change_log_id,
+        context=context,
+        session=session,
+    )
+
+
 """
 ----------- Lead Management -----------
 ---------------------------------------
