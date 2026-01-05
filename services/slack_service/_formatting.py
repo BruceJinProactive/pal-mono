@@ -305,10 +305,10 @@ def _create_conversion_table_generic(
         "Call&Text",
         "Orders",
         "Paid",
-        "Total $",
-        "Paid $",
-        "Link CVR %",
-        "Link Paid %",
+        "Total$",
+        "Paid$",
+        "Link CVR%",
+        "Link Paid%",
     ]
 
     # First filter out entries with 0 orders and sort by orders (high to low)
@@ -374,7 +374,7 @@ def _create_conversion_table_generic(
             if header in ["Call&Text"]:
                 # Call&Text: 10 digits (9,999,999,999)
                 max_width = max(max_width, 10)
-            elif header in ["Total $", "Paid $"]:
+            elif header in ["Total$", "Paid$"]:
                 # Revenue columns: wider for currency values (e.g., "123,456.7")
                 max_width = max(max_width, 10)
             else:
