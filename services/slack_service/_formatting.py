@@ -522,7 +522,7 @@ def _create_engagement_table_generic(
 
     lines = []
 
-    # Header row (single space between columns for tighter layout)
+    # Header row (2 spaces between columns for readability)
     header_line = ""
     for i, header in enumerate(headers):
         if i == 0:
@@ -532,7 +532,7 @@ def _create_engagement_table_generic(
             # Right-align numeric columns
             header_line += header.rjust(col_widths[i])
         if i < len(headers) - 1:
-            header_line += " "
+            header_line += "  "
     lines.append(header_line)
 
     # Separator line
@@ -540,7 +540,7 @@ def _create_engagement_table_generic(
     for i, width in enumerate(col_widths):
         separator += "-" * width
         if i < len(col_widths) - 1:
-            separator += "-"
+            separator += "--"
     lines.append(separator)
 
     # Data rows
@@ -555,7 +555,7 @@ def _create_engagement_table_generic(
                 # Right-align numeric values
                 row_line += cell_str.rjust(col_widths[i])
             if i < len(row) - 1:
-                row_line += " "
+                row_line += "  "
         lines.append(row_line)
 
     return "```\n" + "\n".join(lines) + "\n```"
