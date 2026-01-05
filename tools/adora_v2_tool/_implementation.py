@@ -86,7 +86,7 @@ class AdoraV2Tool(Toolkit):
                 return self._cached_bearer_token
 
             api_key, api_secret = await get_adora_credentials(
-                self.tool_metadata.account_name or ""
+                self.tool_metadata.account_name or "", self.store_id
             )
             if not api_key or not api_secret:
                 logger.error("[AdoraV2Tool] Failed to retrieve Adora credentials")

@@ -19,13 +19,24 @@ from utils.log import logger
 from utils.secret import async_get_client_secret_with_fallback
 
 
-async def get_adora_credentials(account_name: str) -> tuple[str | None, str | None]:
+async def get_adora_credentials(
+    account_name: str, store_id: str | None = None
+) -> tuple[str | None, str | None]:
     """Fetch Adora API credentials from AWS Secrets Manager."""
-    if not account_name:
-        logger.error("[AdoraV2Tool._utils] account_name is missing")
-        return None, None
-
     try:
+        # Check for LE5AR store ID - use ADORA_2 secrets
+        if store_id == "LE5AR":
+            api_key, api_secret = await asyncio.gather(
+                async_get_client_secret_with_fallback("ADORA_2_API_KEY"),
+                async_get_client_secret_with_fallback("ADORA_2_API_SECRET"),
+            )
+            return api_key, api_secret
+
+        # For other stores, use account-based credentials
+        if not account_name:
+            logger.error("[AdoraV2Tool._utils] account_name is missing")
+            return None, None
+
         name = re.sub(r"[^a-zA-Z0-9]", "", account_name).upper()
         if not name:
             logger.error(
