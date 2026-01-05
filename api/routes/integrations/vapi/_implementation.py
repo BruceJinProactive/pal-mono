@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+from dateutil import parser as date_parser
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1113,6 +1114,7 @@ def _should_track_call_usage(
     Filtering rules:
     1. Exclude test phone numbers (Palona internal)
     2. Exclude calls where customer didn't speak
+    3. Exclude calls less than 10 seconds in duration
 
     Args:
         call_data: Call data from VAPI
@@ -1128,7 +1130,65 @@ def _should_track_call_usage(
     if _is_test_phone_number(customer_number):
         return False, f"test_number:{customer_number}"
 
-    # Rule 2: Check if customer spoke
+    # Rule 2: Check call duration using message.startedAt and message.endedAt
+    # If call is less than 10 seconds, don't count as usage
+    call_data = message_data.get("call", {})
+    started_at = message_data.get("startedAt")
+    ended_at = message_data.get("endedAt")
+
+    # Log all call and message data for debugging
+    logger.info(
+        "Call duration check",
+        extra={
+            "call_id": call_data.get("id"),
+            "message_started_at": started_at,
+            "message_ended_at": ended_at,
+            "customer_number": customer_number[-4:] if customer_number else "",
+            "all_call_data": call_data,
+            "all_message_data": message_data,
+        },
+    )
+
+    if started_at and ended_at:
+        try:
+            # Parse ISO timestamps and calculate duration in seconds
+            start_time = date_parser.isoparse(started_at)
+            end_time = date_parser.isoparse(ended_at)
+            duration_seconds = (end_time - start_time).total_seconds()
+
+            logger.info(
+                "Calculated call duration",
+                extra={
+                    "call_id": call_data.get("id"),
+                    "duration_seconds": duration_seconds,
+                    "started_at": started_at,
+                    "ended_at": ended_at,
+                },
+            )
+
+            if duration_seconds < 10:
+                return False, f"call_too_short:{duration_seconds:.2f}s"
+        except Exception as e:
+            logger.warning(
+                f"Failed to parse call timestamps: {e}",
+                extra={
+                    "call_id": call_data.get("id"),
+                    "started_at": started_at,
+                    "ended_at": ended_at,
+                },
+            )
+            # Continue with other checks if timestamp parsing fails
+    else:
+        logger.warning(
+            "Missing startedAt or endedAt in call data",
+            extra={
+                "call_id": call_data.get("id"),
+                "has_started_at": started_at is not None,
+                "has_ended_at": ended_at is not None,
+            },
+        )
+
+    # Rule 3: Check if customer spoke
     artifact = message_data.get("artifact", {})
     messages = artifact.get("messages", [])
 
