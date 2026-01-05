@@ -723,6 +723,95 @@ async def get_run(
     return None
 
 
+async def delete_run(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+) -> bool:
+    """
+    Delete a monitoring run by ID.
+
+    Verifies the run's config belongs to the specified project before deletion.
+
+    Args:
+        session: Async database session.
+        project_id: Project UUID.
+        run_id: Run UUID.
+
+    Returns:
+        True if deleted successfully, False if not found or unauthorized.
+    """
+    config_repo = MonitoringConfigRepositoryAsync(session)
+    run_repo = MonitoringRunRepositoryAsync(session)
+
+    # First verify the run exists and belongs to the project
+    run = await run_repo.get_by_id(run_id)
+    if not run:
+        return False
+
+    # Verify the run's config belongs to the project
+    config = await config_repo.get_by_id(run.monitoring_config_id)
+    if not config or config.project_id != project_id:
+        return False
+
+    # Delete the run
+    return await run_repo.delete(run_id)
+
+
+async def delete_runs_batch(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    run_ids: list[uuid.UUID],
+) -> dict[str, int]:
+    """
+    Delete multiple monitoring runs by IDs.
+
+    Verifies each run's config belongs to the specified project before deletion.
+
+    Args:
+        session: Async database session.
+        project_id: Project UUID.
+        run_ids: List of run UUIDs to delete.
+
+    Returns:
+        Dictionary with 'deleted', 'not_found', and 'unauthorized' counts.
+    """
+    config_repo = MonitoringConfigRepositoryAsync(session)
+    run_repo = MonitoringRunRepositoryAsync(session)
+
+    authorized_run_ids = []
+    not_found_count = 0
+    unauthorized_count = 0
+
+    # First, verify all runs exist and belong to the project
+    for run_id in run_ids:
+        run = await run_repo.get_by_id(run_id)
+        if not run:
+            not_found_count += 1
+            continue
+
+        # Verify the run's config belongs to the project
+        config = await config_repo.get_by_id(run.monitoring_config_id)
+        if not config or config.project_id != project_id:
+            unauthorized_count += 1
+            continue
+
+        authorized_run_ids.append(run_id)
+
+    # Delete all authorized runs
+    if authorized_run_ids:
+        result = await run_repo.delete_batch(authorized_run_ids)
+        deleted_count = result["deleted"]
+    else:
+        deleted_count = 0
+
+    return {
+        "deleted": deleted_count,
+        "not_found": not_found_count,
+        "unauthorized": unauthorized_count,
+    }
+
+
 async def build_config_response(config: MonitoringConfig) -> MonitoringConfigResponse:
     """
     Build a MonitoringConfigResponse from a MonitoringConfig model.

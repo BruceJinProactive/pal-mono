@@ -171,3 +171,22 @@ class ListMonitoringRunsResponse(BaseModel):
     total_pages: int
     page: int = 1
     page_size: int = 10
+
+
+class BatchDeleteMonitoringRunsRequest(BaseModel):
+    """Request to delete multiple monitoring runs."""
+
+    run_ids: list[uuid.UUID] = Field(
+        ..., min_length=1, description="List of run UUIDs to delete"
+    )
+
+
+class BatchDeleteMonitoringRunsResponse(BaseModel):
+    """Response for batch delete operation."""
+
+    deleted: int = Field(..., description="Number of runs successfully deleted")
+    not_found: int = Field(..., description="Number of runs not found")
+    unauthorized: int = Field(
+        ..., description="Number of runs user is not authorized to delete"
+    )
+    message: str = Field(..., description="Summary message")

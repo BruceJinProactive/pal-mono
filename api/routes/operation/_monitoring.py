@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import attributes
 
 from api.schemas.operations.monitoring import (
+    BatchDeleteMonitoringRunsRequest,
+    BatchDeleteMonitoringRunsResponse,
     CreateMonitoringConfigRequest,
     ListMonitoringConfigsResponse,
     ListMonitoringRunsResponse,
@@ -674,5 +676,111 @@ async def get_monitoring_run(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve monitoring run",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def delete_monitoring_run(
+    run_id: uuid.UUID,
+    session: AsyncSession,
+    project_id: uuid.UUID,
+) -> dict:
+    """
+    Delete a monitoring run by ID.
+
+    Args:
+        run_id: Run UUID.
+        session: Async database session.
+        project_id: Project UUID (for authorization).
+
+    Returns:
+        Success message.
+
+    Raises:
+        HTTPException: If run not found or deletion fails.
+    """
+    try:
+        deleted = await monitoring_service.delete_run(
+            session=session,
+            project_id=project_id,
+            run_id=run_id,
+        )
+
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Monitoring run {run_id} not found",
+                headers={"Content-Type": "application/json"},
+            )
+
+        await session.commit()
+
+        return {"message": f"Monitoring run {run_id} deleted successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"Error deleting monitoring run: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete monitoring run",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def batch_delete_monitoring_runs(
+    request: BatchDeleteMonitoringRunsRequest,
+    session: AsyncSession,
+    project_id: uuid.UUID,
+) -> BatchDeleteMonitoringRunsResponse:
+    """
+    Delete multiple monitoring runs by IDs.
+
+    Args:
+        request: Batch delete request with list of run IDs.
+        session: Async database session.
+        project_id: Project UUID (for authorization).
+
+    Returns:
+        BatchDeleteMonitoringRunsResponse with deletion results.
+
+    Raises:
+        HTTPException: If batch deletion fails.
+    """
+    try:
+        result = await monitoring_service.delete_runs_batch(
+            session=session,
+            project_id=project_id,
+            run_ids=request.run_ids,
+        )
+
+        total_requested = len(request.run_ids)
+        deleted = result["deleted"]
+        not_found = result["not_found"]
+        unauthorized = result["unauthorized"]
+
+        # Build summary message
+        message_parts = [f"Batch delete completed: {deleted}/{total_requested} deleted"]
+        if not_found > 0:
+            message_parts.append(f"{not_found} not found")
+        if unauthorized > 0:
+            message_parts.append(f"{unauthorized} unauthorized")
+
+        await session.commit()
+
+        return BatchDeleteMonitoringRunsResponse(
+            deleted=deleted,
+            not_found=not_found,
+            unauthorized=unauthorized,
+            message=", ".join(message_parts),
+        )
+
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"Error batch deleting monitoring runs: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to batch delete monitoring runs",
             headers={"Content-Type": "application/json"},
         )

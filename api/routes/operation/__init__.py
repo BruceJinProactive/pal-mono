@@ -43,6 +43,8 @@ from api.schemas.admin.checkpoint import (
 from api.schemas.asset.asset import AssetResponse
 from api.schemas.error.error import ErrorResponse
 from api.schemas.operations.monitoring import (
+    BatchDeleteMonitoringRunsRequest,
+    BatchDeleteMonitoringRunsResponse,
     CreateMonitoringConfigRequest,
     ListMonitoringConfigsResponse,
     ListMonitoringRunsResponse,
@@ -1721,6 +1723,77 @@ async def get_monitoring_run(
     _ = context  # Used by require_project_permission
     return await _monitoring.get_monitoring_run(
         run_id=run_id,
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.delete(
+    "/projects/{project_id}/monitoring/runs/{run_id}",
+    response_model=dict,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_monitoring_run(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> dict:
+    """
+    Delete a monitoring run by ID.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - run_id: UUID of the monitoring run
+
+    Returns:
+    - Success message
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.delete_monitoring_run(
+        run_id=run_id,
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.post(
+    "/projects/{project_id}/monitoring/runs/batch-delete",
+    response_model=BatchDeleteMonitoringRunsResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def batch_delete_monitoring_runs(
+    project_id: uuid.UUID,
+    request: BatchDeleteMonitoringRunsRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> BatchDeleteMonitoringRunsResponse:
+    """
+    Delete multiple monitoring runs by IDs.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Request Body:
+    - run_ids: List of monitoring run UUIDs to delete
+
+    Returns:
+    - BatchDeleteMonitoringRunsResponse with deletion statistics
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.batch_delete_monitoring_runs(
+        request=request,
         session=session,
         project_id=project_id,
     )
