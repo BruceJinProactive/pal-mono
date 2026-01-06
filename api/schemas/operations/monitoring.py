@@ -156,7 +156,7 @@ class MonitoringRunResponse(BaseModel):
 
     id: uuid.UUID
     monitoring_config_id: uuid.UUID
-    trigger_metadata: dict
+    image_url: str | None
     started_at: datetime
     completed_at: datetime | None
     evaluation_result: dict

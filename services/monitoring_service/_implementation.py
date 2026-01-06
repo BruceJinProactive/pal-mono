@@ -864,16 +864,29 @@ def build_run_response(run: MonitoringRun) -> MonitoringRunResponse:
     """
     Build a MonitoringRunResponse from a MonitoringRun model.
 
+    Extracts the image S3 key from trigger_metadata and converts it to a presigned URL.
+
     Args:
         run: MonitoringRun database model.
 
     Returns:
         MonitoringRunResponse for API response.
     """
+    # Extract S3 key from trigger metadata
+    image_s3_key = None
+    if run.trigger_metadata:
+        # Check for s3_key in trigger metadata
+        s3_key = run.trigger_metadata.get("s3_key")
+        if s3_key:
+            image_s3_key = s3_key
+
+    # Convert S3 key to presigned URL
+    image_url = map_uri_to_s3_url(image_s3_key) if image_s3_key else None
+
     return MonitoringRunResponse(
         id=run.id,
         monitoring_config_id=run.monitoring_config_id,
-        trigger_metadata=run.trigger_metadata,
+        image_url=image_url,
         started_at=run.started_at,
         completed_at=run.completed_at,
         evaluation_result=run.evaluation_result,
