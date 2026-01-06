@@ -13,6 +13,7 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, Enum, String
 
 from .base import Base
+from .types import Channel
 
 if TYPE_CHECKING:
     from .messages import Message
@@ -25,14 +26,14 @@ class ConversationStatus(enum.Enum):
     States:
         ACTIVE:    Default state for ongoing conversations
         INACTIVE:  Set when no activity detected for >2 hours
-        EXPIRED:   Set when conversation exceeds 24-hour limit
+        EXPIRED:   Deprecated - kept for backwards compatibility
         CLOSING:   Set when bot indicates conversation should end
         CLOSED:    Set by message service
     """
 
     ACTIVE = "active"
     INACTIVE = "inactive"
-    EXPIRED = "expired"
+    EXPIRED = "expired"  # Deprecated - kept for backwards compatibility
     CLOSING = "closing"
     CLOSED = "closed"
 
@@ -76,6 +77,9 @@ class Conversation(Base):
 
     # Call ID for call transfer
     call_id: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
+
+    # Channel that initiated this conversation (sms, voice, whatsapp, etc.)
+    channel: Mapped[Optional[Channel]] = mapped_column(Enum(Channel), nullable=True)
 
     # Conversation purpose (ordering, reservation, waitlist, etc.)
     purpose: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
