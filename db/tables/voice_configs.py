@@ -54,17 +54,6 @@ class VoiceConfig(Base):
         default=dict,
     )
     cloned_voice_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    voice_model: Mapped[str] = mapped_column(
-        String,
-        nullable=False,
-        server_default=text("'sonic-2'"),
-        default="sonic-2",
-    )
-    transcriber: Mapped[Dict | None] = mapped_column(
-        MutableDict.as_mutable(JSONB()),
-        nullable=True,
-        default=None,
-    )
 
     # Metadata columns
     created_at: Mapped[datetime] = mapped_column(
