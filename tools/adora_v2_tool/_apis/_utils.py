@@ -143,7 +143,7 @@ def get_endpoint_url(
 ) -> str:
     if request_token:
         if store_id in ("UQ5ZT", "LE5AR"):
-            return "https://identityqa.adorapos.net/connect/token"
+            return "https://identityqa.adorapos.com/connect/token"
         elif store_id in MARCOS_STORE_IDS:
             return "https://identity.marcosoms.com/connect/token"
         else:
