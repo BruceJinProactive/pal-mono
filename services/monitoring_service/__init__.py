@@ -8,11 +8,9 @@ from ._implementation import (
     build_run_response,
     cleanup_reference_images,
     create_config,
-    create_monitoring_run_with_analysis,
     delete_config,
     delete_run,
     delete_runs_batch,
-    generate_monitoring_llm_prompt,
     get_config,
     get_configs,
     get_run,
@@ -21,6 +19,7 @@ from ._implementation import (
     update_config,
     upload_reference_images,
 )
+from ._llm import create_monitoring_run_with_analysis, generate_monitoring_llm_prompt
 
 __all__ = [
     "create_config",

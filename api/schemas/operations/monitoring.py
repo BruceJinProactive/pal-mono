@@ -41,7 +41,7 @@ class StructuredOutputField(BaseModel):
         description="Field name (snake_case)",
     )
     description: str = Field(
-        ..., min_length=1, max_length=200, description="What this field represents"
+        ..., min_length=1, max_length=1000, description="What this field represents"
     )
     required: bool = Field(True, description="Whether field is required")
     enum_values: list[str] | None = Field(
