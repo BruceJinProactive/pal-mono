@@ -150,8 +150,14 @@ class ClientModifier(BaseModel):
 class ClientGroup(BaseModel):
     model_config = {"populate_by_name": True}
 
-    item_id: int = Field(description="Item ID, required", alias="itemId")
-    size_id: int = Field(description="Size ID, required", alias="sizeId")
+    item_id: int = Field(
+        description="Item ID from the menu context. Required. Must match exactly with the item_id provided in the relevant context for the ordered item, must be an integer and cannot be null.",
+        alias="itemId",
+    )
+    size_id: int = Field(
+        description="Size ID from the menu context. Required. Cannot be null. Must match exactly with the size_id from the relevant context, must be an integer and cannot be null.",
+        alias="sizeId",
+    )
     quantity: int = Field(
         description="Item quantity, required, range [1..1000]", ge=1, le=1000
     )

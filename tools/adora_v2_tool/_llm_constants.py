@@ -51,7 +51,8 @@ requests a future time, such as:
   If a single name is provided (without clarification), always treat it as the first name.
 - For phone numbers, only extract if a complete number is provided
 - For addresses, only extract if all required components are present
-- You must ALWAYS extract the `item_id` and `size_id` for an item. Use the relevant context to identify the CORRECT `item_id` and `size_id` for each item. If there is only one `size_id` for the item, you MUST use that one.
+- You must ALWAYS extract the `item_id` and `size_id` for an item. Use the relevant context to identify the CORRECT `item_id` and `size_id` for each item.
+- CRITICAL: `size_id` can NEVER be null. Every item must have a valid `size_id`. If there is only one `size_id` listed for the item in the context, you MUST use that one. If no sizes are listed, check the context for the default or only available size.
 
 If unsure about any field, leave it empty rather than guessing.
 """

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import threading
 
 from agno.tools.toolkit import Toolkit
@@ -312,31 +313,63 @@ class AdoraV2Tool(Toolkit):
 
         # LLM call to extract order items with modifiers/sizes/quantities
         with LLMObs.task(name="fulfill_order.extract_order_details"):
+            formatted_prompt = context_template.format(
+                context=context, chat_history=chat_history
+            )
+
+            # Annotate input before LLM call
+            LLMObs.annotate(
+                metadata={
+                    "llm_input_system_prompt": system_prompt,
+                    "llm_input_prompt": formatted_prompt,
+                }
+            )
+
             order_request_base = await async_llm_call(
                 system_prompt=system_prompt,
-                prompt=context_template.format(
-                    context=context, chat_history=chat_history
-                ),
+                prompt=formatted_prompt,
                 response_format=OrderRequestBase,
                 name=self.fulfill_order.__name__,
                 openai=True,
             )
 
+            # Annotate output after LLM call
+            if order_request_base and hasattr(order_request_base, "model_dump"):
+                llm_output_data = order_request_base.model_dump()
+            else:
+                llm_output_data = (
+                    str(order_request_base) if order_request_base else "None"
+                )
+            LLMObs.annotate(
+                metadata={
+                    "llm_output": llm_output_data,
+                    "output_type": str(type(order_request_base)),
+                }
+            )
+
         # Validate and parse LLM response
         if not isinstance(order_request_base, OrderRequestBase):
-            logger.error(
-                f"[AdoraV2Tool.fulfill_order] Parse failed: Extracted Order: {order_request_base}; Type: {type(order_request_base)}"
-            )
-            return "Failed to extract order information. Please provide all order details and try again."
-
-        # Annotate LLM extraction results
-        LLMObs.annotate(
-            metadata={
-                "extracted_items": order_request_base.items,
-                "promise_date_time": order_request_base.promise_date_time,
-                "order_comment": order_request_base.order_comment,
-            }
-        )
+            # Fallback: If response is a JSON string, try to parse it
+            if isinstance(order_request_base, str):
+                try:
+                    logger.info(
+                        "[AdoraV2Tool.fulfill_order] Attempting to parse JSON string response"
+                    )
+                    order_dict = json.loads(order_request_base)
+                    order_request_base = OrderRequestBase(**order_dict)
+                    logger.info(
+                        "[AdoraV2Tool.fulfill_order] Successfully parsed JSON string to OrderRequestBase"
+                    )
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(
+                        f"[AdoraV2Tool.fulfill_order] Parse failed: Extracted Order: {order_request_base}; Type: {type(order_request_base)}; Error: {e}"
+                    )
+                    return "Failed to extract order information. Please provide all order details and try again."
+            else:
+                logger.error(
+                    f"[AdoraV2Tool.fulfill_order] Parse failed: Extracted Order: {order_request_base}; Type: {type(order_request_base)}"
+                )
+                return "Failed to extract order information. Please provide all order details and try again."
 
         # Convert to ValidateOrderRequest with provided fields and extracted items
         order_request = ValidateOrderRequest(
@@ -361,8 +394,29 @@ class AdoraV2Tool(Toolkit):
                 return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
 
             with LLMObs.task(name="fulfill_order.validate_delivery_address"):
+                # Annotate input before API call
+                LLMObs.annotate(
+                    metadata={
+                        "input_address": delivery_address.model_dump(),
+                    }
+                )
+
                 validate_address_result = await self.check_address(delivery_address)  # type: ignore
                 address_data = validate_address_result[1]
+
+                # Annotate output after API call
+                LLMObs.annotate(
+                    metadata={
+                        "validation_success": address_data is not None,
+                        "validated_lat_lng": (
+                            address_data["lat_lng"] if address_data else None
+                        ),
+                        "address_type_id": (
+                            address_data["type_id"] if address_data else None
+                        ),
+                    }
+                )
+
                 if not address_data:
                     return validate_address_result[0]
 
@@ -380,35 +434,85 @@ class AdoraV2Tool(Toolkit):
 
         # Step 1: Validate the order
         with LLMObs.task(name="fulfill_order.validate_order"):
+            # Annotate input before API call
+            LLMObs.annotate(
+                metadata={
+                    "api_input": order_request.model_dump(),
+                }
+            )
+
             validate_result = await api_validate_order(bearer_token, order_request)
             logger.debug(
                 f"[AdoraV2Tool.fulfill_order] validate_result: {validate_result}"
             )
-            if isinstance(validate_result, str) or not validate_result.key:
-                return f"Validation failed: {validate_result if isinstance(validate_result, str) else 'No order key returned'}"
 
-            # Annotate validation results
+            # Annotate output after API call
+            if isinstance(validate_result, str):
+                api_response_data = validate_result
+                validation_success = False
+                order_key = None
+                subtotal = None
+                total = None
+                delivery_charge = None
+            else:
+                api_response_data = (
+                    validate_result.model_dump()
+                    if hasattr(validate_result, "model_dump")
+                    else str(validate_result)
+                )
+                validation_success = bool(getattr(validate_result, "key", None))
+                order_key = getattr(validate_result, "key", None)
+                subtotal = getattr(validate_result, "sub_total", None)
+                total = getattr(validate_result, "total", None)
+                delivery_charge = getattr(validate_result, "delivery_charge", None)
+
             LLMObs.annotate(
                 metadata={
-                    "validation_success": True,
-                    "order_key": validate_result.key,
-                    "subtotal": validate_result.sub_total,
-                    "total": validate_result.total,
-                    "delivery_charge": validate_result.delivery_charge,
+                    "api_response": api_response_data,
+                    "validation_success": validation_success,
+                    "order_key": order_key,
+                    "subtotal": subtotal,
+                    "total": total,
+                    "delivery_charge": delivery_charge,
                 }
             )
+
+            if isinstance(validate_result, str) or not validate_result.key:
+                return f"Validation failed: {validate_result if isinstance(validate_result, str) else 'No order key returned'}"
 
         # Step 2: Build process order request and process the order
         with LLMObs.task(name="fulfill_order.process_order"):
             process_order_request = build_process_order_request(
                 order_request, validate_result
             )
+
+            # Annotate input before API call
+            LLMObs.annotate(
+                metadata={
+                    "api_input": process_order_request.model_dump(),
+                }
+            )
+
             process_result = await api_process_order(
                 bearer_token, process_order_request
             )
             logger.debug(
                 f"[AdoraV2Tool.fulfill_order] process_result: {process_result}"
             )
+
+            # Annotate output after API call
+            if isinstance(process_result, str):
+                api_response_data = process_result
+            elif hasattr(process_result, "model_dump"):
+                api_response_data = process_result.model_dump()
+            else:
+                api_response_data = str(process_result)
+            LLMObs.annotate(
+                metadata={
+                    "api_response": api_response_data,
+                }
+            )
+
             if isinstance(process_result, str) or not process_result.success:
                 return f"Processing failed: {process_result}"
 
