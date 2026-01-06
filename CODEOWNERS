@@ -17,3 +17,7 @@
 
 # CLAUDE.md files
 **/CLAUDE.md kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+
+# Allow automatic version bump
+/pyproject.toml @coderabbitai
+/uv.lock @coderabbitai
