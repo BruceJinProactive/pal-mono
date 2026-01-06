@@ -217,6 +217,18 @@ from services.auth_service import (
 )
 from services.auth_types import UserContext
 from services.campaign_service.schema import CampaignDetails, CreateCampaignRequest
+from services.capability_service.schema import (
+    ActionCreate,
+    ActionResponse,
+    ActionUpdate,
+    AgentCapabilityCreate,
+    AgentCapabilityResponse,
+    AgentCapabilityUpdate,
+    BulkPriorityUpdate,
+    BulkPriorityUpdateResponse,
+    CapabilityWithActions,
+    DefaultCapabilitiesResponse,
+)
 from services.google_maps_service import search_places_by_name
 from services.google_maps_service.schemas import (
     GoogleMapsSearchRequest,
@@ -231,6 +243,7 @@ from . import (
     _auth,
     _billing,
     _campaign,
+    _capabilities,
     _conversation,
     _email,
     _faq,
@@ -3350,3 +3363,172 @@ async def delete_affiliate(
     Note: Rewardful doesn't support actual deletion. The local record is kept for historical tracking.
     """
     return await _affiliate.delete_affiliate(affiliate_id, context, async_session)
+
+
+# ===============================================
+# Capabilities
+# ===============================================
+
+
+@admin_router.get("/capabilities/defaults")
+def get_default_capabilities() -> DefaultCapabilitiesResponse:
+    """Get all available default capability definitions from YAML configuration."""
+    return _capabilities.get_default_capabilities()
+
+
+@admin_router.post(
+    "/agents/{agent_id}/capabilities",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_agent_capability(
+    agent_id: uuid.UUID,
+    data: AgentCapabilityCreate,
+    context: UserContext = Depends(
+        require_agent_permission("agent.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> AgentCapabilityResponse:
+    """Create a new capability configuration for an agent."""
+    return await _capabilities.create_agent_capability(agent_id, data, session)
+
+
+@admin_router.get("/agents/{agent_id}/capabilities")
+async def list_agent_capabilities(
+    agent_id: uuid.UUID,
+    enabled_only: bool = Query(False, description="Return only enabled capabilities"),
+    context: UserContext = Depends(
+        require_agent_permission("agent.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> list[AgentCapabilityResponse]:
+    """Get all capabilities for an agent."""
+    return await _capabilities.list_agent_capabilities(agent_id, enabled_only, session)
+
+
+@admin_router.get("/agents/{agent_id}/capabilities/with-actions")
+async def list_capabilities_with_actions(
+    agent_id: uuid.UUID,
+    channel: Optional[str] = Query(
+        None,
+        description="Filter actions by channel (SMS, VOICE, EMAIL)",
+        pattern="^(SMS|VOICE|EMAIL|sms|voice|email)$",
+    ),
+    enabled_only: bool = Query(False, description="Return only enabled capabilities"),
+    context: UserContext = Depends(
+        require_agent_permission("agent.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> list[CapabilityWithActions]:
+    """Get all capabilities for an agent including their actions."""
+    return await _capabilities.list_capabilities_with_actions(
+        agent_id, channel, enabled_only, session
+    )
+
+
+@admin_router.put("/agents/{agent_id}/capabilities/{capability_id}")
+async def update_capability(
+    agent_id: uuid.UUID,
+    capability_id: uuid.UUID,
+    data: AgentCapabilityUpdate,
+    context: UserContext = Depends(
+        require_agent_permission("agent.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> AgentCapabilityResponse:
+    """Update a capability's priority or enabled status."""
+    return await _capabilities.update_capability(agent_id, capability_id, data, session)
+
+
+@admin_router.delete(
+    "/agents/{agent_id}/capabilities/{capability_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_capability(
+    agent_id: uuid.UUID,
+    capability_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_agent_permission("agent.delete", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """Delete a capability and all its actions."""
+    await _capabilities.delete_capability(agent_id, capability_id, session)
+
+
+@admin_router.post("/agents/{agent_id}/capabilities/bulk-priority-update")
+async def bulk_update_priorities(
+    agent_id: uuid.UUID,
+    data: BulkPriorityUpdate,
+    context: UserContext = Depends(
+        require_agent_permission("agent.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> BulkPriorityUpdateResponse:
+    """Update priorities for multiple capabilities at once for a single agent."""
+    return await _capabilities.bulk_update_priorities(agent_id, data, session)
+
+
+@admin_router.post(
+    "/agents/{agent_id}/capabilities/actions",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_action(
+    agent_id: uuid.UUID,
+    data: ActionCreate,
+    context: UserContext = Depends(
+        require_agent_permission("agent.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ActionResponse:
+    """Create a new action for a capability."""
+    return await _capabilities.create_action(agent_id, data, session)
+
+
+@admin_router.get("/agents/{agent_id}/capabilities/{capability_id}/actions")
+async def list_capability_actions(
+    agent_id: uuid.UUID,
+    capability_id: uuid.UUID,
+    channel: Optional[str] = Query(
+        None,
+        description="Filter by channel (SMS, VOICE, EMAIL)",
+        pattern="^(SMS|VOICE|EMAIL|sms|voice|email)$",
+    ),
+    context: UserContext = Depends(
+        require_agent_permission("agent.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> list[ActionResponse]:
+    """Get all actions for a capability."""
+    return await _capabilities.list_capability_actions(
+        agent_id, capability_id, channel, session
+    )
+
+
+@admin_router.put("/agents/{agent_id}/capabilities/actions/{action_id}")
+async def update_action(
+    agent_id: uuid.UUID,
+    action_id: uuid.UUID,
+    data: ActionUpdate,
+    context: UserContext = Depends(
+        require_agent_permission("agent.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ActionResponse:
+    """Update a capability action."""
+    return await _capabilities.update_action(agent_id, action_id, data, session)
+
+
+@admin_router.delete(
+    "/agents/{agent_id}/capabilities/actions/{action_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_action(
+    agent_id: uuid.UUID,
+    action_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_agent_permission("agent.delete", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """Delete a capability action."""
+    await _capabilities.delete_action(agent_id, action_id, session)
