@@ -20,6 +20,8 @@ class VoiceConfig(BaseModel):
     background_sound: str
     raw_config: dict
     cloned_voice_id: Optional[str] = None
+    voice_model: str = "sonic-2"
+    transcriber: Optional[dict] = None
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
 
@@ -37,6 +39,8 @@ class CreateVoiceConfigRequest(BaseModel):
     background_sound: Optional[str] = "office"
     raw_config: Optional[dict] = Field(default_factory=dict)
     cloned: Optional[bool] = False
+    voice_model: Optional[str] = "sonic-2"
+    transcriber: Optional[dict] = None
 
 
 class UpdateVoiceConfigRequest(BaseModel):
@@ -51,6 +55,8 @@ class UpdateVoiceConfigRequest(BaseModel):
     background_sound: Optional[str] = None
     raw_config: Optional[dict] = None
     cloned: Optional[bool] = None
+    voice_model: Optional[str] = None
+    transcriber: Optional[dict] = None
 
 
 class ListVoiceConfigsResponse(BaseModel):
@@ -75,6 +81,8 @@ class VoiceConfigUpdateData(BaseModel):
     background_sound: Optional[str] = None
     raw_config: Optional[dict] = None
     cloned: Optional[bool] = None
+    voice_model: Optional[str] = None
+    transcriber: Optional[dict] = None
 
 
 class BatchUpdateVoiceConfigsRequest(BaseModel):
