@@ -1,4 +1,3 @@
-import os
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -16,13 +15,24 @@ from services.notification_service import (
     handle_billing_event,
 )
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
-# Stripe webhook signing secret from environment
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
-if not STRIPE_WEBHOOK_SECRET:
-    logger.warning(
-        "[Stripe Webhook] STRIPE_WEBHOOK_SECRET not configured - webhooks will fail"
-    )
+
+def _get_stripe_webhook_secret() -> str:
+    """
+    Get Stripe webhook secret from AWS Secrets Manager with env fallback.
+
+    Returns:
+        Stripe webhook signing secret
+
+    Raises:
+        ValueError: If secret is not configured
+    """
+    try:
+        return get_server_secret_with_fallback("STRIPE_WEBHOOK_SECRET")
+    except ValueError as e:
+        logger.error(f"[Stripe Webhook] Failed to retrieve secret: {e}")
+        raise
 
 
 async def _get_account_id_from_stripe_customer(
@@ -500,9 +510,16 @@ async def handle_stripe_webhook(request: Request) -> dict[str, str]:
 
         # Verify webhook signature using Stripe SDK
         try:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, STRIPE_WEBHOOK_SECRET
+            webhook_secret = _get_stripe_webhook_secret()
+        except ValueError:
+            logger.error("[Stripe Webhook] STRIPE_WEBHOOK_SECRET not configured")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Webhook secret not configured",
             )
+
+        try:
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
         except ValueError:
             # Invalid payload
             logger.error("[Stripe Webhook] Invalid payload")
