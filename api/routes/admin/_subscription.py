@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.admin._auth import authorize_admin
 from api.routes.admin._builder import (
+    build_independent_project_subscription,
     build_project_subscription,
     build_stripe_customer,
     build_subscription,
@@ -16,7 +17,10 @@ from api.routes.admin._builder import (
 )
 from api.routes.admin._utils import not_found_error
 from api.schemas.admin.subscription import (
+    CancelProjectSubscriptionResponse,
     CreateCheckoutSessionRequest,
+    CreateIndependentProjectSubscriptionRequest,
+    CreateIndependentProjectSubscriptionResponse,
     CreateProjectSubscriptionRequest,
     CreateProjectSubscriptionResponse,
     CreateSubscriptionPlanRequest,
@@ -25,6 +29,7 @@ from api.schemas.admin.subscription import (
     GetAccountCreditResponse,
     GetCurrentSubscriptionDetailsResponse,
     GetCurrentSubscriptionResponse,
+    GetProjectSubscriptionResponse,
     GrantAccountCreditRequest,
     ListAccountCreditGrantsResponse,
     ListAccountSubscriptionsResponse,
@@ -38,6 +43,10 @@ from api.schemas.admin.subscription import (
     UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
+    UpdateProjectSubscriptionRequest,
+    UpdateProjectSubscriptionResponse,
+    UpdateProjectSubscriptionStatusRequest,
+    UpdateProjectSubscriptionStatusResponse,
     UpdateStripeCustomerRequest,
     UpdateSubscriptionPlanRequest,
 )
@@ -975,3 +984,357 @@ async def sync_stripe_subscriptions(
     )
     await async_session.commit()
     return result
+
+
+# ============================================================================
+# Independent Project Subscription Endpoints
+# ============================================================================
+
+
+def create_independent_project_subscription(
+    context: UserContext,
+    session: Session,
+    project_id: uuid.UUID,
+    request: CreateIndependentProjectSubscriptionRequest,
+) -> CreateIndependentProjectSubscriptionResponse:
+    """
+    Create an independent project-level subscription.
+
+    This creates a standalone subscription for a project with its own Stripe
+    product and billing, independent of any account-level subscription.
+
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    # Validate project exists
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} does not exist")
+
+    subscription_params = request.to_subscription_params()
+
+    try:
+        db_project_subscription = (
+            subscription_service.create_independent_project_subscription(
+                session=session,
+                context=context,
+                project_id=project_id,
+                subscription_params=subscription_params,
+            )
+        )
+
+        # Get the subscription plan for response
+        from db.repositories.subscription_repository import SubscriptionPlanRepository
+
+        plan_repo = SubscriptionPlanRepository(session)
+        plan = None
+        if db_project_subscription.subscription_plan_id:
+            plan = plan_repo.get_subscription_plan_by_id(
+                db_project_subscription.subscription_plan_id
+            )
+
+        return CreateIndependentProjectSubscriptionResponse(
+            message="Project subscription created successfully",
+            project_subscription=build_independent_project_subscription(
+                db_project_subscription, plan
+            ),
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except RuntimeError as err:
+        logger.error(f"Error creating independent project subscription: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(err),
+        )
+    except Exception as err:
+        logger.error(
+            f"Unexpected error creating independent project subscription: {err}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def get_project_subscription(
+    context: UserContext,
+    session: Session,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+) -> GetProjectSubscriptionResponse:
+    """
+    Get a project subscription by external ID.
+
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    # Validate project exists
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} does not exist")
+
+    try:
+        db_subscription = subscription_service.get_project_subscription_by_external_id(
+            session, external_id
+        )
+
+        if not db_subscription:
+            return GetProjectSubscriptionResponse(project_subscription=None)
+
+        # Verify subscription belongs to this project
+        if db_subscription.project_id != project_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Subscription does not belong to this project",
+            )
+
+        # Get the subscription plan for response
+        from db.repositories.subscription_repository import SubscriptionPlanRepository
+
+        plan_repo = SubscriptionPlanRepository(session)
+        plan = None
+        if db_subscription.subscription_plan_id:
+            plan = plan_repo.get_subscription_plan_by_id(
+                db_subscription.subscription_plan_id
+            )
+
+        return GetProjectSubscriptionResponse(
+            project_subscription=build_independent_project_subscription(
+                db_subscription, plan
+            )
+        )
+    except HTTPException:
+        raise
+    except Exception as err:
+        logger.error(f"Error retrieving project subscription: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def get_active_project_subscription(
+    context: UserContext,
+    session: Session,
+    project_id: uuid.UUID,
+) -> GetProjectSubscriptionResponse:
+    """
+    Get the active project subscription for a project.
+
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    # Validate project exists
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} does not exist")
+
+    try:
+        db_subscription = subscription_service.get_active_project_subscription(
+            session, project_id
+        )
+
+        if not db_subscription:
+            return GetProjectSubscriptionResponse(project_subscription=None)
+
+        # Get the subscription plan for response
+        from db.repositories.subscription_repository import SubscriptionPlanRepository
+
+        plan_repo = SubscriptionPlanRepository(session)
+        plan = None
+        if db_subscription.subscription_plan_id:
+            plan = plan_repo.get_subscription_plan_by_id(
+                db_subscription.subscription_plan_id
+            )
+
+        return GetProjectSubscriptionResponse(
+            project_subscription=build_independent_project_subscription(
+                db_subscription, plan
+            )
+        )
+    except Exception as err:
+        logger.error(f"Error retrieving active project subscription: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def update_project_subscription(
+    context: UserContext,
+    session: Session,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    request: UpdateProjectSubscriptionRequest,
+    force_update: bool = False,
+) -> UpdateProjectSubscriptionResponse:
+    """
+    Update a project subscription by external_id, creating a new version.
+
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    if force_update:
+        # Only admins can perform force updates
+        authorize_admin(context)
+
+    # Validate project exists
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} not found")
+
+    update_data = request.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No fields provided for update",
+        )
+
+    try:
+        new_subscription = subscription_service.update_project_subscription(
+            session=session,
+            context=context,
+            project_id=project_id,
+            external_id=external_id,
+            update_data=update_data,
+            force_update=force_update,
+        )
+
+        # Get the subscription plan for response
+        from db.repositories.subscription_repository import SubscriptionPlanRepository
+
+        plan_repo = SubscriptionPlanRepository(session)
+        plan = None
+        if new_subscription.subscription_plan_id:
+            plan = plan_repo.get_subscription_plan_by_id(
+                new_subscription.subscription_plan_id
+            )
+
+        return UpdateProjectSubscriptionResponse(
+            message="Project subscription updated successfully",
+            project_subscription=build_independent_project_subscription(
+                new_subscription, plan
+            ),
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+                if "does not exist" in str(err)
+                else status.HTTP_400_BAD_REQUEST
+            ),
+            detail=str(err),
+        )
+    except Exception as err:
+        logger.error(f"Error updating project subscription: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def update_project_subscription_status(
+    context: UserContext,
+    session: Session,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    request: UpdateProjectSubscriptionStatusRequest,
+) -> UpdateProjectSubscriptionStatusResponse:
+    """
+    Update the status of a project subscription.
+
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    # Validate project exists
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} not found")
+
+    try:
+        updated_subscription = subscription_service.update_project_subscription_status(
+            session=session,
+            context=context,
+            project_id=project_id,
+            external_id=external_id,
+            new_status=request.status,
+        )
+
+        if updated_subscription is None:
+            raise not_found_error("Project subscription not found")
+
+        return UpdateProjectSubscriptionStatusResponse(
+            message="Project subscription status updated successfully",
+            external_id=updated_subscription.external_id,
+            status=(
+                updated_subscription.status.value
+                if updated_subscription.status
+                else "unknown"
+            ),
+        )
+    except ValueError as err:
+        if "does not exist" in str(err):
+            raise not_found_error(str(err))
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(err),
+            )
+    except Exception as err:
+        logger.error(f"Error updating project subscription status: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def cancel_project_subscription(
+    context: UserContext,
+    session: Session,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+) -> CancelProjectSubscriptionResponse:
+    """
+    Cancel a project subscription.
+
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    # Validate project exists
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} not found")
+
+    try:
+        cancelled_subscription = subscription_service.cancel_project_subscription(
+            session=session,
+            context=context,
+            project_id=project_id,
+            external_id=external_id,
+        )
+
+        if cancelled_subscription is None:
+            raise not_found_error("Project subscription not found")
+
+        return CancelProjectSubscriptionResponse(
+            message="Project subscription cancelled successfully",
+            external_id=cancelled_subscription.external_id,
+        )
+    except ValueError as err:
+        if "does not exist" in str(err):
+            raise not_found_error(str(err))
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(err),
+            )
+    except RuntimeError as err:
+        logger.error(f"Error cancelling project subscription: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(err),
+        )
+    except Exception as err:
+        logger.error(f"Unexpected error cancelling project subscription: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )

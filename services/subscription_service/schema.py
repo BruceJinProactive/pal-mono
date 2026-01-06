@@ -53,6 +53,19 @@ class SubscriptionParams(BaseModel):
     subscription_plan_id: uuid.UUID
     payment_method: PaymentMethod
     schedule: SubscriptionSchedule | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    trial_start_date: datetime | None = None
+    call_quota: Optional[int] = None
+    order_quota: Optional[int] = None
+    call_overage_charge: Optional[int] = None
+    order_overage_charge: Optional[int] = None
+    free_trial_days: Optional[int] = None
+    credit_amount: Optional[int] = None
+    monthly_fee: Optional[int] = None
+    recurring_credit_enabled: bool = False
+    recurring_credit_amount: Optional[float] = None
+    recurring_credit_frequency: Optional[str] = None
 
 
 class StripeSubscriptionDetails(BaseModel):

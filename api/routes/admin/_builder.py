@@ -20,6 +20,7 @@ from api.schemas.admin.onboarding import OnboardingProjectInfo
 from api.schemas.admin.project import Project, ProjectSummary
 from api.schemas.admin.prompt import Prompt, PromptDetails
 from api.schemas.admin.subscription import (
+    IndependentProjectSubscription,
     ProjectSubscription,
     StripeCustomer,
     Subscription,
@@ -449,6 +450,30 @@ def build_project_subscription(
         project=build_project_summary(project),
         subscription_id=project_subscription.subscription_id,
         deleted=project_subscription.deleted,
+        created_at=project_subscription.created_at,
+        updated_at=project_subscription.updated_at,
+    )
+
+
+def build_independent_project_subscription(
+    project_subscription: db.ProjectSubscription,
+    subscription_plan: db.SubscriptionPlan | None = None,
+) -> IndependentProjectSubscription:
+    """Build an independent project subscription response."""
+    return IndependentProjectSubscription(
+        id=project_subscription.id,
+        external_id=project_subscription.external_id,
+        version=project_subscription.version,
+        project_id=project_subscription.project_id,
+        subscription_plan=(
+            build_subscription_plan(subscription_plan) if subscription_plan else None
+        ),
+        payment_method=project_subscription.payment_method,
+        trial_start_date=project_subscription.trial_start_date,
+        start_date=project_subscription.start_date,
+        end_date=project_subscription.end_date,
+        stripe_subscription_id=project_subscription.stripe_subscription_id,
+        status=project_subscription.status,
         created_at=project_subscription.created_at,
         updated_at=project_subscription.updated_at,
     )

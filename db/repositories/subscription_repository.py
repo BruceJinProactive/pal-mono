@@ -615,6 +615,150 @@ class ProjectSubscriptionRepository:
             logger.error(f"Error updating project subscription: {e}")
             raise
 
+    def get_project_subscription_by_external_id(
+        self, external_id: uuid.UUID
+    ) -> Optional[ProjectSubscription]:
+        """Get the latest version of a project subscription by external_id."""
+        try:
+            return (
+                self.session.query(ProjectSubscription)
+                .filter(
+                    ProjectSubscription.external_id == external_id,
+                    ProjectSubscription.deleted.is_(False),
+                )
+                .order_by(ProjectSubscription.version.desc())
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving project subscription by external_id: {e}")
+            return None
+
+    def get_active_project_subscription(
+        self, project_id: uuid.UUID
+    ) -> Optional[ProjectSubscription]:
+        """Get the active project subscription for a project.
+
+        Returns the most recent subscription that is either ongoing or hasn't ended yet.
+        """
+        now = datetime.now(UTC)
+        try:
+            return (
+                self.session.query(ProjectSubscription)
+                .filter(
+                    and_(
+                        ProjectSubscription.project_id == project_id,
+                        ProjectSubscription.deleted.is_(False),
+                        or_(
+                            ProjectSubscription.status == SubscriptionStatus.active,
+                            ProjectSubscription.status == SubscriptionStatus.pending,
+                        ),
+                        or_(
+                            ProjectSubscription.end_date.is_(None),
+                            ProjectSubscription.end_date > now,
+                        ),
+                    )
+                )
+                .order_by(ProjectSubscription.start_date.desc())
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving active project subscription: {e}")
+            return None
+
+    def check_subscription_overlap(
+        self,
+        project_id: uuid.UUID,
+        start_date: datetime,
+        end_date: datetime | None,
+    ) -> bool:
+        """Check if there's an overlapping active subscription for a project.
+
+        Similar to account subscription overlap checking.
+        """
+        try:
+            overlap_conditions = []
+
+            if end_date is not None:
+                overlap_conditions.append(
+                    and_(
+                        ProjectSubscription.end_date.is_(None),
+                        ProjectSubscription.start_date <= end_date,
+                    )
+                )
+            else:
+                overlap_conditions.append(ProjectSubscription.end_date.is_(None))
+
+            if end_date is None:
+                overlap_conditions.append(
+                    or_(
+                        ProjectSubscription.end_date.is_(None),
+                        ProjectSubscription.end_date >= start_date,
+                    )
+                )
+
+            if end_date is not None:
+                overlap_conditions.extend(
+                    [
+                        and_(
+                            ProjectSubscription.start_date <= start_date,
+                            ProjectSubscription.end_date >= start_date,
+                        ),
+                        and_(
+                            ProjectSubscription.start_date <= end_date,
+                            ProjectSubscription.end_date >= end_date,
+                        ),
+                        and_(
+                            start_date <= ProjectSubscription.start_date,
+                            end_date >= ProjectSubscription.end_date,
+                        ),
+                    ]
+                )
+
+            overlapping = (
+                self.session.query(ProjectSubscription)
+                .filter(
+                    and_(
+                        ProjectSubscription.project_id == project_id,
+                        ProjectSubscription.deleted.is_(False),
+                        or_(
+                            ProjectSubscription.status == SubscriptionStatus.pending,
+                            ProjectSubscription.status == SubscriptionStatus.active,
+                        ),
+                        or_(*overlap_conditions),
+                    )
+                )
+                .first()
+            )
+            return overlapping is not None
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error checking project subscription overlap: {e}")
+            return True
+
+    def update_project_subscription_status(
+        self, external_id: uuid.UUID, new_status: SubscriptionStatus
+    ) -> Optional[ProjectSubscription]:
+        """Update only the status of the latest version of a project subscription."""
+        try:
+            subscription = self.get_project_subscription_by_external_id(external_id)
+            if not subscription:
+                return None
+
+            subscription.status = new_status
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(subscription)
+            return subscription
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating project subscription status: {e}")
+            raise
+
 
 class AsyncAccountSubscriptionRepository:
     def __init__(self, session: AsyncSession):

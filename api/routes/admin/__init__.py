@@ -146,13 +146,17 @@ from api.schemas.admin.prompt import (
 )
 from api.schemas.admin.signature import InitiateTermsSigningRequest
 from api.schemas.admin.subscription import (
+    CancelProjectSubscriptionResponse,
     CreateCheckoutSessionRequest,
+    CreateIndependentProjectSubscriptionRequest,
+    CreateIndependentProjectSubscriptionResponse,
     CreateProjectSubscriptionRequest,
     CreateStripeCustomerRequest,
     CreateSubscriptionPlanRequest,
     CreateSubscriptionRequest,
     GetAccountCreditResponse,
     GetCurrentSubscriptionResponse,
+    GetProjectSubscriptionResponse,
     GrantAccountCreditRequest,
     ListAccountCreditGrantsResponse,
     ListAccountSubscriptionsResponse,
@@ -164,6 +168,10 @@ from api.schemas.admin.subscription import (
     UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
+    UpdateProjectSubscriptionRequest,
+    UpdateProjectSubscriptionResponse,
+    UpdateProjectSubscriptionStatusRequest,
+    UpdateProjectSubscriptionStatusResponse,
     UpdateStripeCustomerRequest,
     UpdateSubscriptionPlanRequest,
 )
@@ -758,6 +766,118 @@ async def delete_project_integration(
     """
     return await _integration.delete_project_integration(
         project_id, project_integration_id, context, session
+    )
+
+
+"""
+---------- Project Subscription Endpoints ----------
+----------------------------------------------------
+"""
+
+
+@admin_router.post(
+    "/projects/{project_id}/subscriptions", status_code=status.HTTP_201_CREATED
+)
+def create_independent_project_subscription(
+    project_id: uuid.UUID,
+    request: CreateIndependentProjectSubscriptionRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> CreateIndependentProjectSubscriptionResponse:
+    """
+    Create an independent project-level subscription with its own Stripe product and billing.
+    """
+    return _subscription.create_independent_project_subscription(
+        context, session, project_id, request
+    )
+
+
+@admin_router.get("/projects/{project_id}/subscriptions/active")
+def get_active_project_subscription(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> GetProjectSubscriptionResponse:
+    """
+    Get the active subscription for a project.
+    """
+    return _subscription.get_active_project_subscription(context, session, project_id)
+
+
+@admin_router.get("/projects/{project_id}/subscriptions/{external_id}")
+def get_project_subscription(
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> GetProjectSubscriptionResponse:
+    """
+    Get a project subscription by external ID.
+    """
+    return _subscription.get_project_subscription(
+        context, session, project_id, external_id
+    )
+
+
+@admin_router.patch("/projects/{project_id}/subscriptions/{external_id}")
+def update_project_subscription(
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    request: UpdateProjectSubscriptionRequest,
+    force_update: bool = Query(
+        False, description="Force update non-active subscriptions (admin only)"
+    ),
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> UpdateProjectSubscriptionResponse:
+    """
+    Update a project subscription, creating a new version.
+    """
+    return _subscription.update_project_subscription(
+        context, session, project_id, external_id, request, force_update
+    )
+
+
+@admin_router.patch("/projects/{project_id}/subscriptions/{external_id}/status")
+def update_project_subscription_status(
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    request: UpdateProjectSubscriptionStatusRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> UpdateProjectSubscriptionStatusResponse:
+    """
+    Update the status of a project subscription.
+    """
+    return _subscription.update_project_subscription_status(
+        context, session, project_id, external_id, request
+    )
+
+
+@admin_router.delete("/projects/{project_id}/subscriptions/{external_id}")
+def cancel_project_subscription(
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> CancelProjectSubscriptionResponse:
+    """
+    Cancel a project subscription.
+    """
+    return _subscription.cancel_project_subscription(
+        context, session, project_id, external_id
     )
 
 

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal as D
 from typing import Any, List, Optional
 
+import stripe
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -18,6 +19,7 @@ from db.repositories.subscription_repository import (
 from db.tables.accounts import OnboardingMethod
 from db.tables.change_log import ChangeResourceType
 from db.tables.subscriptions import SubscriptionStatus
+from db.tables.types import PaymentMethod
 from services import account_service, project_service
 from services.account_service import AccountParams
 from services.auth_types import UserContext
@@ -609,8 +611,13 @@ def update_account_subscription(
         if force_update:
             logger.warning(f"Force updating account subscription {external_id}!")
         else:
+            status_value = (
+                current_subscription.status.value
+                if current_subscription.status
+                else "unknown"
+            )
             raise ValueError(
-                f"Cannot update subscription with status {current_subscription.status.value}. Use force_update=true to override."
+                f"Cannot update subscription with status {status_value}. Use force_update=true to override."
             )
 
     # Duplicate the current subscription row, excluding id and timestamps
@@ -821,7 +828,7 @@ def cancel_account_subscription(
     )
 
     # Send subscription cancelled notification
-    if cancelled_subscription:
+    if cancelled_subscription and subscription_to_cancel.subscription_plan_id:
         subscription_plan_repository = SubscriptionPlanRepository(session)
         plan = subscription_plan_repository.get_subscription_plan_by_id(
             subscription_to_cancel.subscription_plan_id
@@ -1881,3 +1888,802 @@ def get_subscription_details(session: Session, account: db.Account) -> dict:
         "upgrade_options": upgrade_options,
         "current_plan_tier": current_plan_tier_value,
     }
+
+
+# ============================================================================
+# Project Subscription Management Functions
+# ============================================================================
+
+
+def create_independent_project_subscription(
+    session: Session,
+    context: UserContext,
+    project_id: uuid.UUID,
+    subscription_params: SubscriptionParams,
+) -> db.ProjectSubscription:
+    """
+    Create an independent project-level subscription with Stripe integration.
+
+    This creates a subscription at the project level, separate from any account-level
+    subscription. The project subscription has its own Stripe product, pricing, and billing.
+
+    This differs from create_project_subscription() which links a project to an existing
+    account subscription. This function creates a standalone project subscription.
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        project_id: Project ID to create subscription for
+        subscription_params: Subscription parameters (plan_id, start_date, etc.)
+
+    Returns:
+        Created ProjectSubscription instance
+
+    Raises:
+        ValueError: If validation fails or project doesn't exist
+        RuntimeError: If Stripe integration fails
+    """
+    # Get the project
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} does not exist")
+
+    # Get the account for Stripe customer
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise ValueError(f"Account {project.account_id} does not exist")
+
+    # Validate the subscription plan
+    subscription_plan_repository = SubscriptionPlanRepository(
+        session, auto_commit=False
+    )
+    plan = subscription_plan_repository.get_subscription_plan_by_id(
+        subscription_params.subscription_plan_id
+    )
+    if not plan:
+        raise ValueError(
+            f"Subscription plan {subscription_params.subscription_plan_id} does not exist"
+        )
+    if not plan.active:
+        raise ValueError(
+            f"Subscription plan {subscription_params.subscription_plan_id} is not active"
+        )
+
+    # Extract and validate subscription parameters
+    start_date = subscription_params.start_date or datetime.now(UTC)
+    end_date = subscription_params.end_date
+    trial_start_date = subscription_params.trial_start_date
+    payment_method = subscription_params.payment_method
+
+    # Use plan defaults if not specified
+    if trial_start_date is None and plan.free_trial_days and plan.free_trial_days > 0:
+        trial_start_date = start_date
+        start_date = trial_start_date + timedelta(days=plan.free_trial_days)
+
+    # Check for overlapping subscriptions
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session, auto_commit=False
+    )
+    has_overlap = project_subscription_repository.check_subscription_overlap(
+        project_id, start_date, end_date
+    )
+    if has_overlap:
+        raise ValueError(
+            f"Project {project_id} already has an active subscription that overlaps with the requested dates"
+        )
+
+    # Determine initial status
+    if trial_start_date:
+        status = SubscriptionStatus.trialing
+    elif start_date <= datetime.now(UTC):
+        status = SubscriptionStatus.active
+    else:
+        status = SubscriptionStatus.pending
+
+    # Create the project subscription record
+    external_id = uuid.uuid4()
+    project_subscription = db.ProjectSubscription(
+        id=uuid.uuid4(),
+        external_id=external_id,
+        version=1,
+        project_id=project_id,
+        subscription_id=external_id,  # For compatibility with existing schema
+        subscription_plan_id=plan.id,
+        payment_method=payment_method,
+        trial_start_date=trial_start_date,
+        start_date=start_date,
+        end_date=end_date,
+        status=status,
+        deleted=False,
+        recurring_credit_enabled=subscription_params.recurring_credit_enabled or False,
+        recurring_credit_amount=subscription_params.recurring_credit_amount,
+        recurring_credit_frequency=subscription_params.recurring_credit_frequency,
+    )
+
+    # Create Stripe product and subscription if payment method is autopay
+    if payment_method == PaymentMethod.autopay:
+        # Ensure account has Stripe customer ID
+        if not account.stripe_customer_id:
+            logger.info(
+                "Account missing Stripe customer ID, creating one",
+                extra={"account_id": str(account.id), "account_name": account.name},
+            )
+            customer_info = create_stripe_customer_for_account(
+                session, context, account
+            )
+            account.stripe_customer_id = customer_info.id
+
+        # Create Stripe product for the project
+        stripe_product_id = _stripe_product.create_product_for_project(
+            project=project,
+            account_name=account.name,
+            plan_name=plan.name,
+        )
+        project_subscription.stripe_product_id = stripe_product_id
+
+        logger.info(
+            "Created Stripe product for project subscription",
+            extra={
+                "project_id": str(project_id),
+                "product_id": stripe_product_id,
+            },
+        )
+
+        # Create base price for monthly fee if applicable
+        base_price_id = None
+        if plan.monthly_fee and plan.monthly_fee > 0:
+            base_price_id = _stripe_product.create_product_price(
+                product_id=stripe_product_id,
+                nickname="Base Monthly Fee",
+                project=project,
+                flat_fee=plan.monthly_fee,
+            )
+            project_subscription.base_price_id = base_price_id
+            logger.info(
+                "Created base price for project subscription",
+                extra={
+                    "project_id": str(project_id),
+                    "price_id": base_price_id,
+                    "amount": plan.monthly_fee,
+                },
+            )
+
+        # Create metered billing for calls
+        call_meter_id = _stripe_product.create_billing_meter(
+            display_name=f"Calls - {project.name}",
+            event_name=_stripe_product.get_call_meter_event_name(project_id),
+        )
+
+        call_tiers = _build_call_tiers(plan)
+        call_price_id = _stripe_product.create_product_price(
+            product_id=stripe_product_id,
+            nickname="Call Usage",
+            project=project,
+            meter_tiers=call_tiers,
+            meter_id=call_meter_id,
+        )
+        project_subscription.call_price_id = call_price_id
+
+        logger.info(
+            "Created call meter and price for project subscription",
+            extra={
+                "project_id": str(project_id),
+                "meter_id": call_meter_id,
+                "price_id": call_price_id,
+            },
+        )
+
+        # Create metered billing for orders if applicable
+        if plan.order_overage_charge:
+            order_meter_id = _stripe_product.create_billing_meter(
+                display_name=f"Orders - {project.name}",
+                event_name=_stripe_product.get_order_meter_event_name(project_id),
+            )
+
+            order_tiers = _build_order_tiers(plan)
+            order_price_id = _stripe_product.create_product_price(
+                product_id=stripe_product_id,
+                nickname="Order Usage",
+                project=project,
+                meter_tiers=order_tiers,
+                meter_id=order_meter_id,
+            )
+            project_subscription.order_price_id = order_price_id
+
+            logger.info(
+                "Created order meter and price for project subscription",
+                extra={
+                    "project_id": str(project_id),
+                    "meter_id": order_meter_id,
+                    "price_id": order_price_id,
+                },
+            )
+
+        # Create Stripe subscription
+        price_ids = [call_price_id]
+        if base_price_id:
+            price_ids.insert(0, base_price_id)
+        if project_subscription.order_price_id:
+            price_ids.append(project_subscription.order_price_id)
+
+        # Create Stripe subscription items
+        items = [{"price": price_id} for price_id in price_ids]
+
+        # Generate idempotency key for safe retry behavior
+        idempotency_key = f"project_sub_{external_id}"
+
+        stripe_subscription_params: dict[str, Any] = {
+            "customer": account.stripe_customer_id,
+            "items": items,
+            "metadata": {
+                "project_id": str(project_id),
+                "project_name": project.name,
+                "account_id": str(account.id),
+                "plan_id": str(plan.id),
+            },
+        }
+
+        if plan.free_trial_days and trial_start_date:
+            stripe_subscription_params["trial_period_days"] = plan.free_trial_days
+
+        stripe_subscription = stripe.Subscription.create(
+            **stripe_subscription_params,
+            idempotency_key=idempotency_key,
+        )
+        project_subscription.stripe_subscription_id = stripe_subscription.id
+
+        logger.info(
+            "Created Stripe subscription for project",
+            extra={
+                "project_id": str(project_id),
+                "stripe_subscription_id": stripe_subscription.id,
+            },
+        )
+
+    # Save to database with change log
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Subscription,
+        author=context.email,
+        account_id=account.id,
+        resource_id=str(external_id),
+        auto_commit=False,
+    ) as ctx:
+        created_subscription = (
+            project_subscription_repository.create_project_subscription_with_prices(
+                project_id=project_id,
+                subscription_id=external_id,
+                call_price_id=project_subscription.call_price_id,
+                order_price_id=project_subscription.order_price_id,
+            )
+        )
+        # Copy all the fields we set
+        for field in [
+            "external_id",
+            "version",
+            "subscription_plan_id",
+            "stripe_product_id",
+            "stripe_subscription_id",
+            "payment_method",
+            "base_price_id",
+            "trial_start_date",
+            "start_date",
+            "end_date",
+            "status",
+            "recurring_credit_enabled",
+            "recurring_credit_amount",
+            "recurring_credit_frequency",
+        ]:
+            setattr(created_subscription, field, getattr(project_subscription, field))
+
+        session.flush()
+        session.refresh(created_subscription)
+        ctx.new_record = created_subscription
+
+    try:
+        session.commit()
+    except Exception as err:
+        logger.error(f"Failed to create project subscription due to error: {err}")
+        raise err
+
+    logger.info(
+        "Created project subscription",
+        extra={
+            "project_id": str(project_id),
+            "subscription_external_id": str(external_id),
+            "plan_id": str(plan.id),
+            "status": status.value,
+        },
+    )
+
+    # Send notification
+    _send_project_subscription_activated_notification(
+        session, account, project, created_subscription, plan
+    )
+
+    return created_subscription
+
+
+def update_project_subscription(
+    session: Session,
+    context: UserContext,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    update_data: dict[str, Any],
+    force_update: bool = False,
+) -> db.ProjectSubscription:
+    """
+    Update a project subscription by creating a new version.
+
+    IMPORTANT: This function performs DATABASE-ONLY updates and does NOT synchronize
+    changes to Stripe. This is intentional for the following reasons:
+
+    1. Subscription plan changes should use switch_subscription_plan() which handles
+       Stripe synchronization including product/price creation and subscription item updates.
+
+    2. Payment method changes in Stripe are handled through the Stripe dashboard or
+       payment method update flows, not through subscription updates.
+
+    3. Stripe subscription ID should never be manually updated; it's set during
+       subscription creation or checkout success.
+
+    4. Date/status changes are typically driven by Stripe webhooks or cancellation
+       flows that handle both database and Stripe updates.
+
+    This function is intended for administrative corrections, recurring credit updates,
+    or other database-only metadata changes that don't require Stripe synchronization.
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        project_id: Project ID for authorization
+        external_id: External ID of the subscription to update
+        update_data: Fields to update (payment_method, trial_start_date, start_date,
+                     end_date, status, stripe_subscription_id, subscription_plan_id,
+                     recurring_credit_enabled, recurring_credit_amount,
+                     recurring_credit_frequency)
+        force_update: Whether to allow updates on non-active subscriptions
+
+    Returns:
+        New version of the project subscription
+
+    Raises:
+        ValueError: If subscription doesn't exist or validation fails
+
+    Warning:
+        Do not use this function to change subscription_plan_id for active Stripe
+        subscriptions. Use switch_subscription_plan() instead to ensure proper
+        Stripe synchronization.
+    """
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session, auto_commit=False
+    )
+
+    current_subscription = (
+        project_subscription_repository.get_project_subscription_by_external_id(
+            external_id
+        )
+    )
+    if not current_subscription:
+        raise ValueError(
+            f"Project subscription with external_id {external_id} does not exist"
+        )
+
+    # Verify the subscription belongs to this project
+    if current_subscription.project_id != project_id:
+        raise ValueError(
+            f"Subscription {external_id} does not belong to project {project_id}"
+        )
+
+    # Check if subscription is in valid state for updates
+    if current_subscription.status not in [
+        SubscriptionStatus.active,
+        SubscriptionStatus.pending,
+        SubscriptionStatus.trialing,
+    ]:
+        if force_update:
+            logger.warning(f"Force updating project subscription {external_id}!")
+        else:
+            status_value = (
+                current_subscription.status.value
+                if current_subscription.status
+                else "unknown"
+            )
+            raise ValueError(
+                f"Cannot update subscription with status {status_value}. Use force_update=true to override."
+            )
+
+    # Get project for logging
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} does not exist")
+
+    # Duplicate the current subscription row, excluding id and timestamps
+    cls = type(current_subscription)
+    exclude_fields = ["id", "created_at", "updated_at"]
+    data = {
+        column.name: getattr(current_subscription, column.name)
+        for column in cls.__table__.columns
+        if column.name not in exclude_fields
+    }
+    new_subscription = cls(**data)
+
+    allowed_fields = {
+        "payment_method",
+        "trial_start_date",
+        "start_date",
+        "end_date",
+        "status",
+        "stripe_subscription_id",
+        "subscription_plan_id",
+        "recurring_credit_enabled",
+        "recurring_credit_amount",
+        "recurring_credit_frequency",
+    }
+
+    nullable_fields = {"end_date", "trial_start_date", "stripe_subscription_id"}
+
+    for k, v in update_data.items():
+        if k in allowed_fields:
+            if v is None and k not in nullable_fields:
+                continue
+            setattr(new_subscription, k, v)
+    new_subscription.version = (new_subscription.version or 0) + 1
+
+    # Cancel old version
+    project_subscription_repository.update_project_subscription_status(
+        external_id, SubscriptionStatus.cancelled
+    )
+
+    with change_log_context(
+        session=session,
+        resource_type=ChangeResourceType.Subscription,
+        author=context.email,
+        account_id=project.account_id,
+        resource_id=str(external_id),
+        old_record=copy.copy(current_subscription),
+        auto_commit=False,
+    ) as ctx:
+        # Create new subscription (needs proper implementation)
+        new_subscription.id = uuid.uuid4()
+        session.add(new_subscription)
+        session.flush()
+        session.refresh(new_subscription)
+        ctx.new_record = new_subscription
+
+    try:
+        session.commit()
+    except Exception as err:
+        logger.error(f"Failed to update project subscription due to error: {err}")
+        raise err
+
+    logger.info(
+        "Updated project subscription",
+        extra={
+            "project_id": str(project_id),
+            "subscription_external_id": str(external_id),
+            "old_version": current_subscription.version,
+            "new_version": new_subscription.version,
+        },
+    )
+
+    return new_subscription
+
+
+def update_project_subscription_status(
+    session: Session,
+    context: UserContext,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    new_status: SubscriptionStatus,
+) -> db.ProjectSubscription:
+    """
+    Update the status of a project subscription.
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        project_id: Project ID for authorization
+        external_id: External ID of the subscription to update
+        new_status: New status to set
+
+    Returns:
+        Updated project subscription
+
+    Raises:
+        ValueError: If subscription doesn't exist
+    """
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session, auto_commit=True
+    )
+
+    current_subscription = (
+        project_subscription_repository.get_project_subscription_by_external_id(
+            external_id
+        )
+    )
+    if not current_subscription:
+        raise ValueError(
+            f"Project subscription with external_id {external_id} does not exist"
+        )
+
+    # Verify the subscription belongs to this project
+    if current_subscription.project_id != project_id:
+        raise ValueError(
+            f"Subscription {external_id} does not belong to project {project_id}"
+        )
+
+    # Get project for logging
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} does not exist")
+
+    old_subscription = copy.copy(current_subscription)
+
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Subscription,
+            author=context.email,
+            account_id=project.account_id,
+            resource_id=str(external_id),
+            old_record=old_subscription,
+            auto_commit=False,
+        ) as ctx:
+            updated_subscription = (
+                project_subscription_repository.update_project_subscription_status(
+                    external_id, new_status
+                )
+            )
+            ctx.new_record = updated_subscription
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for project subscription status update, proceeding anyway: {e}"
+        )
+        updated_subscription = (
+            project_subscription_repository.update_project_subscription_status(
+                external_id, new_status
+            )
+        )
+
+    if updated_subscription is None:
+        raise ValueError(f"Failed to update project subscription {external_id}")
+
+    logger.info(
+        "Updated project subscription status",
+        extra={
+            "project_id": str(project_id),
+            "subscription_external_id": str(external_id),
+            "old_status": (
+                old_subscription.status.value if old_subscription.status else None
+            ),
+            "new_status": new_status.value,
+        },
+    )
+
+    return updated_subscription
+
+
+def cancel_project_subscription(
+    session: Session,
+    context: UserContext,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+) -> Optional[db.ProjectSubscription]:
+    """
+    Cancel a project subscription.
+
+    This will:
+    1. Update the subscription status to cancelled
+    2. Cancel the Stripe subscription if it exists
+    3. Send cancellation notification
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        project_id: Project ID for authorization
+        external_id: External ID of the subscription to cancel
+
+    Returns:
+        Cancelled project subscription
+
+    Raises:
+        ValueError: If project or subscription doesn't exist
+        RuntimeError: If Stripe cancellation fails
+    """
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} does not exist")
+
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session, auto_commit=False
+    )
+
+    subscription_to_cancel = (
+        project_subscription_repository.get_project_subscription_by_external_id(
+            external_id
+        )
+    )
+    if not subscription_to_cancel:
+        raise ValueError(
+            f"Project subscription with external_id {external_id} does not exist"
+        )
+
+    # Verify the subscription belongs to this project
+    if subscription_to_cancel.project_id != project_id:
+        raise ValueError(
+            f"Subscription {external_id} does not belong to project {project_id}"
+        )
+
+    old_subscription = copy.copy(subscription_to_cancel)
+
+    # Cancel Stripe subscription first if it exists
+    if subscription_to_cancel.stripe_subscription_id:
+        stripe_cancelled = _stripe_subscription.cancel_subscription(
+            subscription_to_cancel.stripe_subscription_id
+        )
+        if not stripe_cancelled:
+            raise RuntimeError(
+                f"Failed to cancel Stripe subscription {subscription_to_cancel.stripe_subscription_id}. "
+                "Internal subscription will not be cancelled to maintain data consistency."
+            )
+        logger.info(
+            "Successfully cancelled Stripe subscription for project",
+            extra={
+                "project_id": str(project_id),
+                "subscription_external_id": str(external_id),
+                "stripe_subscription_id": subscription_to_cancel.stripe_subscription_id,
+            },
+        )
+
+    # Update subscription status
+    try:
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Subscription,
+            author=context.email,
+            account_id=project.account_id,
+            resource_id=str(external_id),
+            old_record=old_subscription,
+            auto_commit=False,
+        ) as ctx:
+            cancelled_subscription = (
+                project_subscription_repository.update_project_subscription_status(
+                    external_id,
+                    SubscriptionStatus.cancelled,
+                )
+            )
+            ctx.new_record = cancelled_subscription
+    except Exception as e:
+        logger.warning(
+            f"Change log failed for project subscription cancellation, proceeding anyway: {e}"
+        )
+        cancelled_subscription = (
+            project_subscription_repository.update_project_subscription_status(
+                external_id,
+                SubscriptionStatus.cancelled,
+            )
+        )
+
+    try:
+        session.commit()
+    except Exception as err:
+        logger.error(f"Failed to cancel project subscription due to error: {err}")
+        raise err
+
+    logger.info(
+        f"Cancelled subscription for project {project.name}",
+        extra={
+            "project_id": str(project_id),
+            "subscription_external_id": str(external_id),
+            "stripe_subscription_id": subscription_to_cancel.stripe_subscription_id,
+        },
+    )
+
+    # Send subscription cancelled notification
+    if cancelled_subscription and subscription_to_cancel.subscription_plan_id:
+        account = account_service.get_account_by_id(session, project.account_id)
+        subscription_plan_repository = SubscriptionPlanRepository(session)
+        plan = subscription_plan_repository.get_subscription_plan_by_id(
+            subscription_to_cancel.subscription_plan_id
+        )
+        if plan and account:
+            _send_project_subscription_cancelled_notification(
+                session, account, project, cancelled_subscription, plan
+            )
+
+    return cancelled_subscription
+
+
+def get_project_subscription_by_external_id(
+    session: Session,
+    external_id: uuid.UUID,
+) -> db.ProjectSubscription | None:
+    """Get a project subscription by external ID."""
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session, auto_commit=True
+    )
+    return project_subscription_repository.get_project_subscription_by_external_id(
+        external_id
+    )
+
+
+def get_active_project_subscription(
+    session: Session,
+    project_id: uuid.UUID,
+) -> db.ProjectSubscription | None:
+    """Get the active project subscription for a project."""
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session, auto_commit=True
+    )
+    return project_subscription_repository.get_active_project_subscription(project_id)
+
+
+def _send_project_subscription_activated_notification(
+    session: Session,
+    account: db.Account,
+    project: db.Project,
+    subscription: db.ProjectSubscription,
+    plan: db.SubscriptionPlan,
+) -> None:
+    """Send project subscription activated notification."""
+    try:
+        # Calculate trial end date from subscription's trial_start_date + plan's free_trial_days
+        trial_end_formatted = None
+        if subscription.trial_start_date and plan.free_trial_days:
+            trial_end = subscription.trial_start_date + timedelta(
+                days=plan.free_trial_days
+            )
+            trial_end_formatted = trial_end.strftime("%B %d, %Y")
+
+        event = BillingEvent(
+            type=BillingEventType.SUBSCRIPTION_ACTIVATED,
+            account_id=account.id,
+            payload={
+                "plan_name": plan.name,
+                "project_name": project.name,
+                "price": float(plan.monthly_fee or 0),
+                "currency": "USD",
+                "trial_end": trial_end_formatted,
+            },
+        )
+        handle_billing_event_sync(session, event)
+    except Exception as e:
+        logger.warning(
+            f"Failed to send project subscription activated notification: {e}",
+            extra={
+                "project_id": str(project.id),
+                "subscription_id": str(subscription.id),
+            },
+        )
+
+
+def _send_project_subscription_cancelled_notification(
+    session: Session,
+    account: db.Account,
+    project: db.Project,
+    subscription: db.ProjectSubscription,
+    plan: db.SubscriptionPlan,
+) -> None:
+    """Send project subscription cancelled notification."""
+    try:
+        # Calculate cancellation effective date
+        cancel_date = subscription.end_date or datetime.now(UTC)
+        event = BillingEvent(
+            type=BillingEventType.SUBSCRIPTION_CANCELLED,
+            account_id=account.id,
+            payload={
+                "plan_name": plan.name,
+                "project_name": project.name,
+                "cancel_effective_date": cancel_date.strftime("%B %d, %Y"),
+            },
+        )
+        handle_billing_event_sync(session, event)
+    except Exception as e:
+        logger.warning(
+            f"Failed to send project subscription cancelled notification: {e}",
+            extra={
+                "project_id": str(project.id),
+                "subscription_id": str(subscription.id),
+            },
+        )

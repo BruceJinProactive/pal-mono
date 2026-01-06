@@ -370,6 +370,111 @@ class RemoveProjectSubscriptionResponse(BaseModel):
     success: bool
 
 
+class IndependentProjectSubscription(BaseModel):
+    """Schema for independent ProjectSubscription response"""
+
+    id: uuid.UUID
+    external_id: Optional[uuid.UUID] = None
+    version: Optional[int] = None
+    project_id: uuid.UUID
+    subscription_plan: SubscriptionPlan | None = None
+    payment_method: PaymentMethod | None = None
+    trial_start_date: Optional[datetime] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    stripe_subscription_id: Optional[str] = None
+    status: Optional[SubscriptionStatus] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class CreateIndependentProjectSubscriptionRequest(BaseModel):
+    """Request for creating an independent project subscription"""
+
+    subscription_plan_id: uuid.UUID
+    payment_method: PaymentMethod
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    trial_start_date: Optional[datetime] = None
+    recurring_credit_enabled: bool = False
+    recurring_credit_amount: Optional[float] = None
+    recurring_credit_frequency: Optional[str] = None
+
+    def to_subscription_params(self) -> SubscriptionParams:
+        from db.tables.types import RecurringCreditFrequency
+
+        recurring_freq = None
+        if self.recurring_credit_frequency:
+            recurring_freq = RecurringCreditFrequency(self.recurring_credit_frequency)
+
+        return SubscriptionParams(
+            subscription_plan_id=self.subscription_plan_id,
+            payment_method=self.payment_method,
+            start_date=self.start_date,
+            end_date=self.end_date,
+            trial_start_date=self.trial_start_date,
+            recurring_credit_enabled=self.recurring_credit_enabled,
+            recurring_credit_amount=self.recurring_credit_amount,
+            recurring_credit_frequency=recurring_freq,
+            schedule=None,
+        )
+
+
+class CreateIndependentProjectSubscriptionResponse(BaseModel):
+    """Response for creating an independent project subscription"""
+
+    message: str
+    project_subscription: IndependentProjectSubscription
+
+
+class UpdateProjectSubscriptionRequest(BaseModel):
+    """Request for updating a project subscription"""
+
+    payment_method: Optional[PaymentMethod] = None
+    trial_start_date: Optional[datetime] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    status: Optional[SubscriptionStatus] = None
+    subscription_plan_id: Optional[uuid.UUID] = None
+    recurring_credit_enabled: Optional[bool] = None
+    recurring_credit_amount: Optional[float] = None
+    recurring_credit_frequency: Optional[str] = None
+
+
+class UpdateProjectSubscriptionResponse(BaseModel):
+    """Response for updating a project subscription"""
+
+    message: str
+    project_subscription: IndependentProjectSubscription
+
+
+class UpdateProjectSubscriptionStatusRequest(BaseModel):
+    """Request for updating project subscription status"""
+
+    status: SubscriptionStatus
+
+
+class UpdateProjectSubscriptionStatusResponse(BaseModel):
+    """Response for updating project subscription status"""
+
+    message: str
+    external_id: Optional[uuid.UUID] = None
+    status: str
+
+
+class CancelProjectSubscriptionResponse(BaseModel):
+    """Response for cancelling a project subscription"""
+
+    message: str
+    external_id: Optional[uuid.UUID] = None
+
+
+class GetProjectSubscriptionResponse(BaseModel):
+    """Response for getting a project subscription"""
+
+    project_subscription: IndependentProjectSubscription | None
+
+
 class GrantAccountCreditRequest(BaseModel):
     amount: int  # amount in cent
     currency: str = "usd"  # default USD
