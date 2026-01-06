@@ -30,6 +30,26 @@ class ReferenceImage(BaseModel):
     )
 
 
+class StructuredOutputField(BaseModel):
+    """Field definition for structured output schema."""
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        pattern="^[a-zA-Z_][a-zA-Z0-9_]*$",
+        description="Field name (snake_case)",
+    )
+    description: str = Field(
+        ..., min_length=1, max_length=200, description="What this field represents"
+    )
+    required: bool = Field(True, description="Whether field is required")
+    enum_values: list[str] | None = Field(
+        None,
+        description="Allowed values (optional, restricts field to specific options)",
+    )
+
+
 class AIAnalysisRules(BaseModel):
     """Configuration for AI-based analysis rules."""
 
@@ -38,6 +58,10 @@ class AIAnalysisRules(BaseModel):
     )
     reference_images: list[ReferenceImage] = Field(
         default_factory=list, description="Reference images with descriptions"
+    )
+    structured_output: list[StructuredOutputField] | None = Field(
+        None,
+        description="Field definitions for structured output. If not provided, uses default {result: 'pass'|'fail'|'error', details: string}",
     )
 
 
@@ -79,6 +103,10 @@ class UpdateMonitoringConfigRequest(BaseModel):
     )
     prompt: str | None = Field(
         None, min_length=1, max_length=2000, description="Updated AI analysis prompt"
+    )
+    structured_output: list[StructuredOutputField] | None = Field(
+        None,
+        description="Updated field definitions for structured output",
     )
     enabled: bool | None = Field(None, description="Updated enabled status")
 

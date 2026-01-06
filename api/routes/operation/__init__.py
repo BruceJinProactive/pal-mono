@@ -1264,6 +1264,7 @@ async def create_monitoring_config(
     name: str = Form(...),
     description: str | None = Form(None),
     prompt: str = Form(...),
+    structured_output: str | None = Form(None),
     enabled: bool = Form(True),
     reference_images: list[UploadFile] = File(default=[]),
     reference_image_descriptions: list[str] = Form(default=[]),
@@ -1290,7 +1291,9 @@ async def create_monitoring_config(
     Returns:
     - MonitoringConfigResponse with the created config details
     """
-    from api.schemas.operations.monitoring import AIAnalysisRules
+    import json
+
+    from api.schemas.operations.monitoring import AIAnalysisRules, StructuredOutputField
 
     _ = context  # Used by require_project_permission
 
@@ -1301,10 +1304,25 @@ async def create_monitoring_config(
             detail=f"Number of images ({len(reference_images)}) must match number of descriptions ({len(reference_image_descriptions)})",
         )
 
+    # Parse structured_output if provided
+    parsed_structured_output = None
+    if structured_output:
+        try:
+            structured_output_data = json.loads(structured_output)
+            parsed_structured_output = [
+                StructuredOutputField(**field) for field in structured_output_data
+            ]
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid structured_output format: {str(e)}",
+            )
+
     # Build the request object from form fields
     rules = AIAnalysisRules(
         prompt=prompt,
         reference_images=[],  # Will be populated after upload
+        structured_output=parsed_structured_output,
     )
 
     request = CreateMonitoringConfigRequest(
@@ -1423,6 +1441,7 @@ async def update_monitoring_config(
     name: str | None = Form(None),
     description: str | None = Form(None),
     prompt: str | None = Form(None),
+    structured_output: str | None = Form(None),
     enabled: bool | None = Form(None),
     # Reference image operations (send only what changes)
     add_images: list[UploadFile] = File(default=[]),
@@ -1534,11 +1553,28 @@ async def update_monitoring_config(
                 },
             )
 
+    # Parse structured_output if provided
+    from api.schemas.operations.monitoring import StructuredOutputField
+
+    parsed_structured_output = None
+    if structured_output:
+        try:
+            structured_output_data = json.loads(structured_output)
+            parsed_structured_output = [
+                StructuredOutputField(**field) for field in structured_output_data
+            ]
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid structured_output format: {str(e)}",
+            )
+
     # Build request object
     request = UpdateMonitoringConfigRequest(
         name=name,
         description=description,
         prompt=prompt,
+        structured_output=parsed_structured_output,
         enabled=enabled,
     )
 

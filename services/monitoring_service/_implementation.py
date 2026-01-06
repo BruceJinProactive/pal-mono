@@ -47,6 +47,65 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_ASSET_BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME")
 
 
+def build_structured_output_from_fields(
+    response_fields: list[dict] | None,
+) -> dict | None:
+    """
+    Build OpenAI-compatible JSON Schema from simple field definitions.
+
+    Args:
+        response_fields: List of field definitions with name, type, description, etc.
+
+    Returns:
+        JSON Schema dictionary ready for OpenAI Structured Outputs, or None if no fields
+
+    Raises:
+        ValueError: If field definitions are invalid
+    """
+    if not response_fields:
+        return None
+
+    # Validate field definitions
+    field_names = [f["name"] for f in response_fields]
+    if len(field_names) != len(set(field_names)):
+        duplicates = [name for name in field_names if field_names.count(name) > 1]
+        raise ValueError(f"Duplicate field names found: {set(duplicates)}")
+
+    properties = {}
+    required_fields = []
+
+    for field in response_fields:
+        field_name = field["name"]
+        field_desc = field.get("description", "")
+        is_required = field.get("required", True)
+
+        # Build field schema - all fields are strings
+        field_schema: dict = {
+            "type": "string",
+            "description": field_desc,
+        }
+
+        # Add enum if specified
+        enum_values = field.get("enum_values")
+        if enum_values:
+            field_schema["enum"] = enum_values
+
+        properties[field_name] = field_schema
+
+        if is_required:
+            required_fields.append(field_name)
+
+    # Build complete schema
+    schema = {
+        "type": "object",
+        "properties": properties,
+        "required": required_fields,
+        "additionalProperties": False,
+    }
+
+    return schema
+
+
 async def upload_reference_images(
     images: list[UploadFile],
     descriptions: list[str],
@@ -224,13 +283,27 @@ async def create_config(
             f"Monitoring config with name '{request.name}' already exists in project {project_id}"
         )
 
+    # Prepare rules dict
+    rules_dict = request.rules.model_dump()
+
+    # If structured_output fields are provided, build the schema
+    if request.rules.structured_output:
+        structured_output_fields = [
+            field.model_dump() for field in request.rules.structured_output
+        ]
+        structured_output_schema = build_structured_output_from_fields(
+            structured_output_fields
+        )
+        if structured_output_schema:
+            rules_dict["structured_output"] = structured_output_schema
+
     # Create the monitoring config
     config = MonitoringConfig(
         project_id=project_id,
         signal_source_id=request.signal_source_id,
         name=request.name,
         description=request.description,
-        rules=request.rules.model_dump(),
+        rules=rules_dict,
         enabled=request.enabled,
     )
 
@@ -416,6 +489,33 @@ async def update_config(
         # Get current rules or initialize empty
         current_rules = copy.deepcopy(config.rules) if config.rules else {}
         current_rules["prompt"] = request.prompt
+        updates["rules"] = current_rules
+
+    # Handle structured_output update (part of rules)
+    if request.structured_output is not None:
+        # Get current rules or initialize empty, preserving any already-staged updates (e.g., prompt)
+        current_rules = copy.deepcopy(
+            updates.get("rules", config.rules if config.rules else {})
+        )
+
+        # Build structured output schema from fields
+        structured_output_fields = [
+            field.model_dump() for field in request.structured_output
+        ]
+
+        # Check if the list is empty - if so, remove structured_output
+        if not structured_output_fields:
+            # Remove structured_output from rules if present
+            if "structured_output" in current_rules:
+                del current_rules["structured_output"]
+        else:
+            # Build and set the structured output schema
+            structured_output_schema = build_structured_output_from_fields(
+                structured_output_fields
+            )
+            if structured_output_schema:
+                current_rules["structured_output"] = structured_output_schema
+
         updates["rules"] = current_rules
 
     # Handle reference image operations
@@ -970,6 +1070,7 @@ async def generate_monitoring_llm_prompt(
     rules = config.rules or {}
     prompt = rules.get("prompt", "")
     reference_images_meta = rules.get("reference_images", [])
+    structured_output = rules.get("structured_output")
 
     if not prompt:
         raise HTTPException(
@@ -1005,7 +1106,25 @@ async def generate_monitoring_llm_prompt(
             # Continue without this reference image
 
     # Build OpenAI messages with images - structured as a vision analysis prompt
-    system_instruction = """You are a visual monitoring assistant. Your task is to analyze a camera image and compare it against reference images to detect any issues or anomalies.
+    # Use custom structured output if provided, otherwise use default
+    if structured_output:
+        system_instruction = f"""You are a visual monitoring assistant. Your task is to analyze a camera image and compare it against reference images to detect any issues or anomalies.
+
+First, verify that the camera image is valid and relevant to the analysis task. If the image has any of these issues, you should indicate an error in your response according to the schema below.
+
+Image validation issues to check for:
+- The image is completely black, white, or a solid color
+- The image is corrupted, unreadable, or severely distorted
+- The image content is completely unrelated to what should be monitored based on the reference images and task description
+- The image quality is too poor to perform any meaningful analysis
+
+Please analyze the images carefully and respond with a JSON object that follows this schema:
+
+{json.dumps(structured_output, indent=2)}
+
+Ensure your response strictly adheres to this schema structure."""
+    else:
+        system_instruction = """You are a visual monitoring assistant. Your task is to analyze a camera image and compare it against reference images to detect any issues or anomalies.
 
 First, verify that the camera image is valid and relevant to the analysis task. If the image has any of these issues, return an error:
 - The image is completely black, white, or a solid color
@@ -1073,6 +1192,21 @@ For invalid/problematic images:
 
     # Call OpenAI Vision API
     try:
+        # Determine response format based on custom structured output
+        if structured_output:
+            # Use structured outputs with custom JSON schema
+            openai_response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "monitoring_analysis",
+                    "strict": True,
+                    "schema": structured_output,
+                },
+            }
+        else:
+            # Use default json_object format
+            openai_response_format = OPENAI_RESPONSE_FORMAT
+
         # Run blocking OpenAI call in thread pool
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(
@@ -1080,7 +1214,7 @@ For invalid/problematic images:
             lambda: openai.OpenAI().chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
-                response_format=OPENAI_RESPONSE_FORMAT,  # type: ignore[arg-type]
+                response_format=openai_response_format,  # type: ignore[arg-type]
                 max_tokens=OPENAI_MAX_TOKENS,
             ),
         )
