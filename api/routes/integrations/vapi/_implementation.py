@@ -436,10 +436,6 @@ async def api_vapi_server(request: Request, session: AsyncSession) -> JSONRespon
                 response_data = await handle_session_closure(message_data, session)
             case "tool-calls":
                 response_data = handle_tool_calls(message_data)
-            case "transfer-destination-request":
-                response_data = await handle_transfer_destination_request(
-                    message_data, session
-                )
             case _:
                 logger.warning(f"Received unknown VAPI message type: {message_type}")
                 response_data = {"status": "acknowledged"}
@@ -699,109 +695,6 @@ async def handle_assistant_request(message_data, session: AsyncSession):
     except Exception as e:
         logger.error(f"Error in handle_assistant_request: {str(e)}", exc_info=True)
         return {"error": str(e)}
-
-
-async def handle_transfer_destination_request(
-    message_data: dict, session: AsyncSession
-) -> dict:
-    """
-    Handle transfer-destination-request webhook from VAPI.
-
-    This is sent when VAPI's transferCall tool is triggered with empty destinations.
-    We return the destination with sipVerb: "dial" to enable PSTN-to-SIP transfers.
-
-    Args:
-        message_data: The webhook payload containing call info
-        session: Database session
-
-    Returns:
-        dict: Response with destination configuration
-    """
-    try:
-        call_data = message_data.get("call", {})
-        call_id = call_data.get("id")
-
-        logger.info(
-            "[handle_transfer_destination_request] Received transfer destination request",
-            extra={"call_id": call_id},
-        )
-
-        if not call_id:
-            logger.error(
-                "[handle_transfer_destination_request] Missing call_id in request"
-            )
-            return {"error": "Missing call_id"}
-
-        # Get conversation to find project's transfer settings
-        conversation_repo = db.ConversationRepositoryAsync(session)
-        conversation = await conversation_repo.get_conversation_by_call_id(call_id)
-
-        if not conversation:
-            logger.error(
-                "[handle_transfer_destination_request] Conversation not found",
-                extra={"call_id": call_id},
-            )
-            return {"error": "Conversation not found"}
-
-        # Get project to retrieve transfer settings
-        project_repo = db.ProjectRepositoryAsync(session)
-        project = await project_repo.get_project(conversation.project_id)
-
-        if not project:
-            logger.error(
-                "[handle_transfer_destination_request] Project not found",
-                extra={"call_id": call_id, "project_id": str(conversation.project_id)},
-            )
-            return {"error": "Project not found"}
-
-        transfer_number = project.transfer_phone_number
-        transfer_message = project.transfer_message or "Transferring your call now."
-
-        if not transfer_number:
-            logger.error(
-                "[handle_transfer_destination_request] No transfer number configured",
-                extra={"call_id": call_id, "project_id": str(project.id)},
-            )
-            return {"error": "No transfer destination configured"}
-
-        # Build destination with sipVerb: "dial" for PSTN-to-SIP compatibility
-        is_sip = transfer_number.lower().startswith("sip:")
-
-        if is_sip:
-            destination = {
-                "type": "sip",
-                "sipUri": transfer_number,
-                "message": transfer_message,
-                "transferPlan": {
-                    "mode": "blind-transfer",
-                    "sipVerb": "dial",
-                },
-            }
-        else:
-            destination = {
-                "type": "number",
-                "number": transfer_number,
-                "message": transfer_message,
-            }
-
-        logger.info(
-            "[handle_transfer_destination_request] Returning destination",
-            extra={
-                "call_id": call_id,
-                "project_id": str(project.id),
-                "destination_type": "sip" if is_sip else "number",
-                "sipVerb": "dial" if is_sip else None,
-            },
-        )
-
-        return {"destination": destination}
-
-    except Exception:
-        logger.error(
-            "[handle_transfer_destination_request] Error",
-            exc_info=True,
-        )
-        return {"error": "Internal error processing transfer request"}
 
 
 async def handle_status_update(message_data, session: AsyncSession):

@@ -351,25 +351,6 @@ class VAPIProvider:
             "analysisPlan": self._get_analysis_plan(),
         }
 
-        # Add transferCall tool for SIP destinations with EMPTY destinations
-        # Empty destinations triggers VAPI to send transfer-destination-request webhook
-        # Our webhook handler returns the destination with sipVerb: "dial"
-        # This is needed because control URL ignores sipVerb parameter
-        transfer_number = caller_info.get("transfer_phone_number")
-        if transfer_number and transfer_number.lower().startswith("sip:"):
-            if "tools" not in assistant_config["model"]:
-                assistant_config["model"]["tools"] = []
-            assistant_config["model"]["tools"].append(
-                {
-                    "type": "transferCall",
-                    "destinations": [],  # Empty - VAPI will send webhook to get destination
-                }
-            )
-            logger.debug(
-                "[VAPIProvider] Added transferCall tool with empty destinations for SIP",
-                extra={"transfer_number": transfer_number},
-            )
-
         # Apply custom raw_config overrides if provided
         if voice_config.raw_config:
             assistant_config = _deep_merge(assistant_config, voice_config.raw_config)

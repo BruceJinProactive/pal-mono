@@ -158,52 +158,6 @@ def _create_fallback_chunk(model: str, content: str) -> dict:
     }
 
 
-# Marker prefix for SIP transfers - must match VapiTool.SIP_TRANSFER_MARKER
-SIP_TRANSFER_MARKER = "__VAPI_SIP_TRANSFER__"
-
-
-def _create_transfer_call_response() -> dict:
-    """
-    Create a transferCall tool call response for VAPI.
-
-    When VAPI receives this, it intercepts the transferCall and sends a
-    transfer-destination-request webhook to get the actual destination.
-    We return the destination with sipVerb: "dial" in that webhook.
-    """
-    return {
-        "id": f"chatcmpl-{uuid.uuid4().hex}",
-        "object": "chat.completion.chunk",
-        "created": int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
-        "model": "gpt-4",
-        "choices": [
-            {
-                "index": 0,
-                "delta": {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "index": 0,
-                            "id": f"call_{uuid.uuid4().hex[:24]}",
-                            "type": "function",
-                            "function": {
-                                "name": "transferCall",
-                                "arguments": "{}",
-                            },
-                        }
-                    ],
-                },
-                "finish_reason": "tool_calls",
-            }
-        ],
-    }
-
-
-def _check_for_sip_transfer_marker(content: str) -> bool:
-    """Check if content contains the SIP transfer marker."""
-    return SIP_TRANSFER_MARKER in content
-
-
 def is_invalid_url(url_string: str) -> bool:
     """
     Check if a URL string is invalid based on common false positive patterns, e.g. moment.It
@@ -469,7 +423,7 @@ async def chat_completions_agno(
                         ],
                     )
 
-                    # First pass: collect all chunks to check for SIP transfer marker
+                    # First pass: collect all chunks for URL filtering
                     async for chunk in response_stream:
                         chunk_count += 1
                         chunk_data = _convert_chunk_to_dict(chunk)
@@ -495,24 +449,7 @@ async def chat_completions_agno(
                                     ] = filtered_content
                             collected_chunks.append(chunk_data)
 
-                    # Check if response contains SIP transfer marker
-                    full_content = "".join(collected_content)
-                    if _check_for_sip_transfer_marker(full_content):
-                        # SIP transfer detected - yield transferCall tool call instead
-                        logger.info(
-                            "[ChatCompletions] SIP transfer marker detected, converting to transferCall",
-                            extra={
-                                "sender_identifier": sender_identifier,
-                                "recipient_identifier": recipient_identifier,
-                                "call_id": call_id,
-                            },
-                        )
-                        transfer_response = _create_transfer_call_response()
-                        yield f"data: {json.dumps(transfer_response)}\n\n"
-                        yield "data: [DONE]\n\n"
-                        return
-
-                    # No SIP transfer - yield all collected chunks normally
+                    # Yield all collected chunks
                     for idx, chunk_data in enumerate(collected_chunks):
                         yield f"data: {json.dumps(chunk_data)}\n\n"
 
