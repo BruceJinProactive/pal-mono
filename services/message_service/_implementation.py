@@ -93,6 +93,9 @@ async def get_chat_response_async(
             # Create new user record
             user = await user_service.create_user_async(session, project, message)
 
+        # Capture user_id early while object is attached to session (for memory ingestion)
+        ingestion_user_id = user.id
+
         # Save request message to database
         request_message = await message_repo.create_message(
             user_id=user.id,
@@ -111,6 +114,9 @@ async def get_chat_response_async(
 
         if not request_message:
             raise ValueError("Failed to create request message")
+
+        # Capture conversation_id early while object is attached to session (for memory ingestion)
+        request_conversation_id = request_message.conversation_id
 
         # Get agent_id (needed for metadata regardless of which flow)
         agent_id = project.agent_id
@@ -317,12 +323,12 @@ async def get_chat_response_async(
         # Memory ingestion for pal-agents flow (fire-and-forget)
         # Only triggers for pal-agents accounts; agno agents are unaffected
         if account_name in ["proactiveailab-transformer"]:
-            # Use early-captured project_account_id to avoid SQLAlchemy lazy load issues
+            # Use early-captured values to avoid SQLAlchemy lazy load issues
             asyncio.create_task(
                 get_ingestion_service().ingest_interaction(
                     account_id=str(project_account_id),
-                    user_id=str(user.id),
-                    conversation_id=str(request_message.conversation_id),
+                    user_id=str(ingestion_user_id),
+                    conversation_id=str(request_conversation_id),
                     user_message=current_message,
                     assistant_message=output.content,
                 )
@@ -380,6 +386,9 @@ async def get_chat_response_stream(
                 user = await user_service.create_user_async(session, project, message)
             await session.refresh(user, attribute_names=["id"])
 
+            # Capture user_id early while object is attached to session (for memory ingestion)
+            ingestion_user_id = user.id
+
             logger.debug(
                 f"Persist streaming inbound message: {message.to_dict()} from user: {user.id}"
             )
@@ -415,6 +424,9 @@ async def get_chat_response_stream(
 
             if not request_message:
                 raise ValueError("Failed to create request message")
+
+            # Capture conversation_id early while object is attached to session (for memory ingestion)
+            request_conversation_id = request_message.conversation_id
 
             # Get account info for metadata
             await session.refresh(user, attribute_names=["id"])
@@ -783,12 +795,12 @@ async def get_chat_response_stream(
                 # Memory ingestion for pal-agents flow (fire-and-forget)
                 # Only triggers for pal-agents accounts; agno agents are unaffected
                 if account_name in ["proactiveailab-transformer"]:
-                    # Use early-captured project_account_id to avoid SQLAlchemy lazy load issues
+                    # Use early-captured values to avoid SQLAlchemy lazy load issues
                     asyncio.create_task(
                         get_ingestion_service().ingest_interaction(
                             account_id=str(project_account_id),
-                            user_id=str(user.id),
-                            conversation_id=str(request_message.conversation_id),
+                            user_id=str(ingestion_user_id),
+                            conversation_id=str(request_conversation_id),
                             user_message=current_message,
                             assistant_message=full_response,
                         )
