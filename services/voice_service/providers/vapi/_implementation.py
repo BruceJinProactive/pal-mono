@@ -37,6 +37,8 @@ class VoiceConfigProtocol(Protocol):
     background_sound: str
     speech_rate: SpeechRate
     raw_config: dict
+    voice_model: str
+    transcriber: dict | None
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -164,11 +166,12 @@ class VAPIProvider:
 
     def _create_voice(self, voice_config: VoiceConfigProtocol) -> dict:
         """Create voice configuration based on voice_config."""
-        # Base voice configuration
+        # Base voice configuration - use voice_model from config, default to sonic-2
+        voice_model = voice_config.voice_model or "sonic-2"
         vapi_voice_config = {
             "provider": "cartesia",
             "voiceId": voice_config.voice_id,
-            "model": "sonic-2",
+            "model": voice_model,
             "experimentalControls": {
                 "speed": CARTESIA_SPEED_MAPPING.get(voice_config.speech_rate, "normal")
             },
@@ -320,8 +323,14 @@ class VAPIProvider:
         else:
             greeting = "Hi, this is a voice ai assistant. How can I help you today?"
 
-        # Create transcriber configuration based on language
-        transcriber = self._create_transcriber(voice_config.language)
+        # Create transcriber configuration
+        # If voice model is sonic-3 and transcriber is configured, use it from DB
+        # Otherwise, fall back to language-based transcriber
+        voice_model = voice_config.voice_model or "sonic-2"
+        if voice_model == "sonic-3" and voice_config.transcriber:
+            transcriber = voice_config.transcriber
+        else:
+            transcriber = self._create_transcriber(voice_config.language)
 
         # Create voice configuration based on voice_config
         voice = self._create_voice(voice_config)
@@ -370,8 +379,14 @@ class VAPIProvider:
         else:
             greeting = "Hi, this is a voice ai assistant. How can I help you today?"
 
-        # Create transcriber configuration for triage (multilingual)
-        transcriber = self._create_transcriber(triage_config.language)
+        # Create transcriber configuration for triage
+        # If voice model is sonic-3 and transcriber is configured, use it from DB
+        # Otherwise, fall back to language-based transcriber
+        voice_model = triage_config.voice_model or "sonic-2"
+        if voice_model == "sonic-3" and triage_config.transcriber:
+            transcriber = triage_config.transcriber
+        else:
+            transcriber = self._create_transcriber(triage_config.language)
 
         # Create voice configuration for triage
         voice = self._create_voice(triage_config)

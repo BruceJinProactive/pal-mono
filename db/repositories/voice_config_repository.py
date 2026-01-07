@@ -26,6 +26,8 @@ class VoiceConfigRepositoryAsync:
         background_sound: Optional[str] = None,
         raw_config: Optional[Dict] = None,
         cloned_voice_id: Optional[str] = None,
+        voice_model: Optional[str] = None,
+        transcriber: Optional[Dict] = None,
     ) -> VoiceConfig:
         """
         Create a new voice config asynchronously.
@@ -41,6 +43,8 @@ class VoiceConfigRepositoryAsync:
             background_sound (Optional[str]): The background sound
             raw_config (Optional[Dict]): Raw configuration dictionary
             cloned_voice_id (Optional[str]): The cloned voice ID
+            voice_model (Optional[str]): The voice model (sonic-2 or sonic-3)
+            transcriber (Optional[Dict]): The transcriber configuration
 
         Returns:
             VoiceConfig: The created voice config
@@ -56,6 +60,8 @@ class VoiceConfigRepositoryAsync:
             background_sound=background_sound,
             raw_config=raw_config or {},
             cloned_voice_id=cloned_voice_id,
+            voice_model=voice_model or "sonic-2",
+            transcriber=transcriber,
         )
         self.session.add(db_voice_config)
 
@@ -199,6 +205,8 @@ class VoiceConfigRepository:
         background_sound: Optional[str] = None,
         raw_config: Optional[Dict] = None,
         cloned_voice_id: Optional[str] = None,
+        voice_model: Optional[str] = None,
+        transcriber: Optional[Dict] = None,
     ) -> VoiceConfig:
         """
         Create a new voice config synchronously.
@@ -214,6 +222,8 @@ class VoiceConfigRepository:
             background_sound (Optional[str]): The background sound
             raw_config (Optional[Dict]): Raw configuration dictionary
             cloned_voice_id (Optional[str]): The cloned voice ID
+            voice_model (Optional[str]): The voice model (sonic-2 or sonic-3)
+            transcriber (Optional[Dict]): The transcriber configuration
 
         Returns:
             VoiceConfig: The created voice config
@@ -229,6 +239,8 @@ class VoiceConfigRepository:
             background_sound=background_sound,
             raw_config=raw_config or {},
             cloned_voice_id=cloned_voice_id,
+            voice_model=voice_model or "sonic-2",
+            transcriber=transcriber,
         )
         self.session.add(db_voice_config)
 

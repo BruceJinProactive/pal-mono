@@ -77,6 +77,8 @@ class VoiceService:
                 background_sound=create_request.background_sound,
                 raw_config=create_request.raw_config or {},
                 cloned_voice_id=cloned_voice_id,
+                voice_model=create_request.voice_model,
+                transcriber=create_request.transcriber,
             )
 
             return build_voice_config(db_voice_config)
