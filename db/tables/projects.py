@@ -57,6 +57,7 @@ class Project(Base):
 
     # Stripe subscription info
     stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    stripe_coupon_id: Mapped[str | None] = mapped_column(String, nullable=True)
     current_subscription_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
