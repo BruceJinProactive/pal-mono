@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # RULES SCHEMAS
@@ -27,6 +27,29 @@ class ReferenceImage(BaseModel):
         min_length=1,
         max_length=500,
         description="Description of what this reference image represents",
+    )
+
+
+class EnumMetadata(BaseModel):
+    """Metadata for a single enum value (description and UI color)."""
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Enum value name (must match a value in enum_values)",
+    )
+    description: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Human-readable description of this enum value",
+    )
+    color: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Tailwind CSS classes for UI display (e.g., 'bg-green-100 text-green-800')",
     )
 
 
@@ -48,6 +71,51 @@ class StructuredOutputField(BaseModel):
         None,
         description="Allowed values (optional, restricts field to specific options)",
     )
+    enum_metadata: list[EnumMetadata] | None = Field(
+        None,
+        description="Metadata for each enum value (description and color for UI display)",
+    )
+
+    @field_validator("enum_metadata")
+    @classmethod
+    def validate_enum_metadata(
+        cls, v: list[EnumMetadata] | None, info
+    ) -> list[EnumMetadata] | None:
+        """Validate that enum_metadata names match enum_values."""
+        if v is None:
+            return v
+
+        # Get enum_values from the field data
+        enum_values = info.data.get("enum_values")
+
+        # If enum_metadata is provided but enum_values is not, raise error
+        if enum_values is None:
+            raise ValueError(
+                "enum_metadata requires enum_values to be specified. "
+                "Please provide enum_values list."
+            )
+
+        # Check that all enum_metadata names exist in enum_values
+        enum_value_set = set(enum_values)
+        metadata_names = [meta.name for meta in v]
+
+        invalid_names = [name for name in metadata_names if name not in enum_value_set]
+        if invalid_names:
+            raise ValueError(
+                f"enum_metadata contains names not in enum_values: {invalid_names}. "
+                f"Valid values are: {enum_values}"
+            )
+
+        # Check for duplicate names in metadata
+        if len(metadata_names) != len(set(metadata_names)):
+            duplicates = [
+                name for name in metadata_names if metadata_names.count(name) > 1
+            ]
+            raise ValueError(
+                f"enum_metadata contains duplicate names: {set(duplicates)}"
+            )
+
+        return v
 
 
 class AIAnalysisRules(BaseModel):
@@ -180,7 +248,7 @@ class TriggerRunResponse(BaseModel):
 
 
 class MonitoringRunResponse(BaseModel):
-    """Response model for a monitoring run."""
+    """Response model for a monitoring run (detailed view with image URL)."""
 
     id: uuid.UUID
     monitoring_config_id: uuid.UUID
@@ -191,14 +259,21 @@ class MonitoringRunResponse(BaseModel):
     error_message: str | None
 
 
+class MonitoringRunListResponse(BaseModel):
+    """Response model for a monitoring run in list view (without image URL for performance)."""
+
+    id: uuid.UUID
+    monitoring_config_id: uuid.UUID
+    started_at: datetime
+    completed_at: datetime | None
+    evaluation_result: dict
+    error_message: str | None
+
+
 class ListMonitoringRunsResponse(BaseModel):
     """Response for listing monitoring runs."""
 
-    runs: list[MonitoringRunResponse]
-    total: int
-    total_pages: int
-    page: int = 1
-    page_size: int = 10
+    runs: list[MonitoringRunListResponse]
 
 
 class BatchDeleteMonitoringRunsRequest(BaseModel):

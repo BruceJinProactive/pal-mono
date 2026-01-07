@@ -5,6 +5,7 @@ Provides business logic for monitoring configuration and run CRUD operations.
 
 from ._implementation import (
     build_config_response,
+    build_run_list_response,
     build_run_response,
     cleanup_reference_images,
     create_config,
@@ -34,6 +35,7 @@ __all__ = [
     "delete_runs_batch",
     "build_config_response",
     "build_run_response",
+    "build_run_list_response",
     "upload_reference_images",
     "cleanup_reference_images",
     "generate_monitoring_llm_prompt",

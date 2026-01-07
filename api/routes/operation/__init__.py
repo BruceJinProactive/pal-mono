@@ -1692,8 +1692,6 @@ async def list_monitoring_runs(
     result: str | None = Query(
         None, description="Filter by result (pass, fail, error)"
     ),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(10, ge=1, le=100, description="Items per page"),
     context: UserContext = Depends(
         require_project_permission("project.read", authenticate_user)
     ),
@@ -1710,11 +1708,9 @@ async def list_monitoring_runs(
     - start_date (optional): Filter runs after this date
     - end_date (optional): Filter runs before this date
     - result (optional): Filter by result ('pass', 'fail', 'error')
-    - page (optional, default: 1): Page number
-    - page_size (optional, default: 10): Items per page
 
     Returns:
-    - ListMonitoringRunsResponse with paginated results
+    - ListMonitoringRunsResponse with all runs
     """
     _ = context  # Used by require_project_permission
     return await _monitoring.list_monitoring_runs(
@@ -1724,8 +1720,6 @@ async def list_monitoring_runs(
         start_date=start_date,
         end_date=end_date,
         result=result,
-        page=page,
-        page_size=page_size,
     )
 
 

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.schemas.operations.monitoring import (
     CreateMonitoringConfigRequest,
     MonitoringConfigResponse,
+    MonitoringRunListResponse,
     MonitoringRunResponse,
     UpdateMonitoringConfigRequest,
 )
@@ -79,6 +80,11 @@ def build_structured_output_from_fields(
         enum_values = field.get("enum_values")
         if enum_values:
             field_schema["enum"] = enum_values
+
+        # Add enum_metadata if specified
+        enum_metadata = field.get("enum_metadata")
+        if enum_metadata:
+            field_schema["enum_metadata"] = enum_metadata
 
         properties[field_name] = field_schema
 
@@ -605,7 +611,7 @@ async def delete_config(
     config_id: uuid.UUID,
 ) -> bool:
     """
-    Delete a monitoring configuration and clean up its S3 storage.
+    Delete a monitoring configuration, its associated runs, and clean up its S3 storage.
 
     Args:
         session: Async database session.
@@ -639,6 +645,16 @@ async def delete_config(
         ]
         logger.info(
             f"Found {len(file_paths)} reference images to clean up for config {config_id}"
+        )
+
+    # Delete associated monitoring runs before deleting config
+    run_repo = MonitoringRunRepositoryAsync(session)
+    runs = await run_repo.get_by_config(config_id)
+    if runs:
+        run_ids = [run.id for run in runs]
+        delete_result = await run_repo.delete_batch(run_ids)
+        logger.info(
+            f"Deleted {delete_result['deleted']} monitoring runs for config {config_id}"
         )
 
     # Delete config from database
@@ -731,9 +747,7 @@ async def get_runs(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
     result_filter: str | None = None,
-    page: int = 1,
-    page_size: int = 10,
-) -> tuple[list[MonitoringRun], int]:
+) -> list[MonitoringRun]:
     """
     Get all monitoring runs for a configuration.
 
@@ -744,11 +758,9 @@ async def get_runs(
         start_date: Optional filter for runs after this date.
         end_date: Optional filter for runs before this date.
         result_filter: Optional filter by result ('pass', 'fail', 'error').
-        page: Page number (1-indexed).
-        page_size: Items per page.
 
     Returns:
-        Tuple of (list of MonitoringRun objects, total count).
+        List of MonitoringRun objects.
 
     Raises:
         ValueError: If config not found or doesn't belong to project.
@@ -771,13 +783,7 @@ async def get_runs(
         result_filter=result_filter,
     )
 
-    # Apply pagination
-    total = len(all_runs)
-    start_idx = (page - 1) * page_size
-    end_idx = start_idx + page_size
-    paginated_runs = all_runs[start_idx:end_idx]
-
-    return paginated_runs, total
+    return all_runs
 
 
 async def get_run(
@@ -977,6 +983,29 @@ def build_run_response(run: MonitoringRun) -> MonitoringRunResponse:
         id=run.id,
         monitoring_config_id=run.monitoring_config_id,
         image_url=image_url,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        evaluation_result=run.evaluation_result,
+        error_message=run.error_message,
+    )
+
+
+def build_run_list_response(run: MonitoringRun) -> MonitoringRunListResponse:
+    """
+    Build a MonitoringRunListResponse from a MonitoringRun model.
+
+    This is optimized for list views and does not include image URLs to avoid
+    S3 API calls for every run in the list.
+
+    Args:
+        run: MonitoringRun database model.
+
+    Returns:
+        MonitoringRunListResponse for API response (without image_url).
+    """
+    return MonitoringRunListResponse(
+        id=run.id,
+        monitoring_config_id=run.monitoring_config_id,
         started_at=run.started_at,
         completed_at=run.completed_at,
         evaluation_result=run.evaluation_result,

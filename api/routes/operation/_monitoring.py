@@ -572,8 +572,6 @@ async def list_monitoring_runs(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
     result: str | None = None,
-    page: int = 1,
-    page_size: int = 10,
 ) -> ListMonitoringRunsResponse:
     """
     List monitoring runs for a configuration.
@@ -585,39 +583,29 @@ async def list_monitoring_runs(
         start_date: Optional filter for runs after this date.
         end_date: Optional filter for runs before this date.
         result: Optional filter by result ('pass', 'fail', 'error').
-        page: Page number (1-based).
-        page_size: Items per page.
 
     Returns:
-        ListMonitoringRunsResponse with paginated results.
+        ListMonitoringRunsResponse with all runs.
 
     Raises:
         HTTPException: If listing fails.
     """
     try:
-        runs, total = await monitoring_service.get_runs(
+        runs = await monitoring_service.get_runs(
             session=session,
             project_id=project_id,
             monitoring_config_id=monitoring_config_id,
             start_date=start_date,
             end_date=end_date,
             result_filter=result,
-            page=page,
-            page_size=page_size,
         )
 
-        # Build responses
-        run_responses = [monitoring_service.build_run_response(run) for run in runs]
+        # Build responses (using list response builder to avoid S3 calls)
+        run_responses = [
+            monitoring_service.build_run_list_response(run) for run in runs
+        ]
 
-        total_pages = math.ceil(total / page_size) if total > 0 else 0
-
-        return ListMonitoringRunsResponse(
-            runs=run_responses,
-            total=total,
-            total_pages=total_pages,
-            page=page,
-            page_size=page_size,
-        )
+        return ListMonitoringRunsResponse(runs=run_responses)
 
     except ValueError as e:
         raise HTTPException(
