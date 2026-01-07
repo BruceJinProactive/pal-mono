@@ -162,7 +162,7 @@ class ClientGroup(BaseModel):
         description="Item quantity, required, range [1..1000]", ge=1, le=1000
     )
     comment: str | None = Field(
-        description="Special instructions or comments, optional, max 250 characters, set to null if not provided",
+        description="Special instructions or comments, optional, max 250 characters, set to None if not provided",
         default=None,
         max_length=250,
     )
@@ -186,12 +186,12 @@ class OrderRequestBase(BaseModel):
 
     items: list[ClientItem] = Field(description="List of order items, required")
     promise_date_time: str | None = Field(
-        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to null if not provided (only if customer requests scheduled/future order)",
+        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to None if not provided (only if customer requests scheduled/future order)",
         default=None,
         alias="promiseDateTime",
     )
     order_comment: str = Field(
-        description="Order comment, optional, max 500 characters, default is '(via PalonaAI)' if not specified",
+        description="Order comment, optional, max 500 characters, set to '(via PalonaAI)' if not specified",
         default="(via PalonaAI)",
         max_length=500,
         alias="orderComment",
@@ -213,13 +213,13 @@ class ValidateOrderRequest(BaseModel):
         alias="paymentType",
     )
     promise_date_time: str | None = Field(
-        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to null if not provided",
+        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to None if not provided",
         default=None,
         alias="promiseDateTime",
     )
     customer: ClientCustomerInfo = Field(description="Customer information, required")
     delivery_address: DeliveryAddress | None = Field(
-        description="Delivery address (required for delivery orders), set to null if not provided",
+        description="Delivery address (required for delivery orders), set to None if not provided",
         default=None,
         alias="deliveryAddress",
     )
@@ -236,7 +236,7 @@ class ValidateOrderResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
     key: str | None = Field(
-        description="Order key/GUID, set to null if not provided", default=None
+        description="Order key/GUID, set to None if not provided", default=None
     )
     is_payment_required: bool = Field(
         description="Whether payment is required, set to false if not provided",
@@ -270,7 +270,7 @@ class ValidateOrderResponse(BaseModel):
         default=0.0,
     )
     payment_url: str | None = Field(
-        description="Payment URL if payment link is required, set to null if not provided",
+        description="Payment URL if payment link is required, set to None if not provided",
         default=None,
         alias="paymentUrl",
     )
@@ -299,13 +299,13 @@ class ProcessOrderRequest(BaseModel):
     )
     guid: str = Field(description="Order GUID from validate order response, required")
     promise_date_time: str | None = Field(
-        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to null if not provided (only if customer requests scheduled/future order)",
+        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to None if not provided (only if customer requests scheduled/future order)",
         default=None,
         alias="promiseDateTime",
     )
     customer: ClientCustomerInfo = Field(description="Customer information, required")
     delivery_address: DeliveryAddress | None = Field(
-        description="Delivery address (required for delivery orders), set to null if not provided",
+        description="Delivery address (required for delivery orders), set to None if not provided",
         default=None,
         alias="deliveryAddress",
     )
@@ -314,7 +314,7 @@ class ProcessOrderRequest(BaseModel):
         description="Payment details including subtotal, tax, and total"
     )
     order_comment: str = Field(
-        description="Order comment, optional, max 500 characters, default is '(via PalonaAI)' if not specified",
+        description="Order comment, optional, max 500 characters, set to '(via PalonaAI)' if not specified",
         default="(via PalonaAI)",
         max_length=500,
         alias="orderComment",
@@ -334,7 +334,7 @@ class ProcessOrderResponse(BaseModel):
         description="Order number, set to 0 if not provided", default=0, alias="orderNo"
     )
     order_date: str | None = Field(
-        description="Order date in ISO format, set to null if not provided",
+        description="Order date in ISO format, set to None if not provided",
         default=None,
         alias="orderDate",
     )
@@ -350,7 +350,7 @@ class ProcessOrderResponse(BaseModel):
         description="Profile ID, set to 0 if not provided", default=0, alias="profileID"
     )
     msg: str | None = Field(
-        description="Response message, set to null if not provided", default=None
+        description="Response message, set to None if not provided", default=None
     )
     prof_updated: int = Field(
         description="Profile updated flag, set to 0 if not provided",
@@ -358,7 +358,7 @@ class ProcessOrderResponse(BaseModel):
         alias="profUpdated",
     )
     payment_url: str | None = Field(
-        description="Payment URL if applicable, set to null if not provided",
+        description="Payment URL if applicable, set to None if not provided",
         default=None,
         alias="paymentUrl",
     )

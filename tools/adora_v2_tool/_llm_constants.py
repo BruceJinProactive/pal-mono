@@ -42,6 +42,13 @@ requests a future time, such as:
 - An order item's included ingredients are not considered modifiers.
 - Only include modifiers that were explicitly mentioned by the user in the Chat History.
 
+# JSON STRUCTURE RULES:
+- CRITICAL: The `items` field is a single array that MUST contain ALL order items
+- Each item in the items array is a ClientItem object with a `group` field containing an array of ClientGroup objects
+- The items array must remain open until ALL items are added
+- For N items, all N ClientItem objects must be within the same items array
+- NEVER create multiple root-level objects or close the items array prematurely
+
 # IMPORTANT RULES:
 - Do NOT make assumptions or fabricate data
 - Leave fields as None/null if the information is not explicitly mentioned
