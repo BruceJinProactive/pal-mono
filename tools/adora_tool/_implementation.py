@@ -465,6 +465,30 @@ class AdoraTool(Toolkit):
         LLMObs.annotate(input_data=chat_history, output_data=output_data)
         return context
 
+    def _format_phone_for_db(self, raw_phone: str | None) -> str:
+        """
+        Format a phone number for database storage with +1 prefix.
+
+        Args:
+            raw_phone: The raw phone number to format (can be None)
+
+        Returns:
+            str: Formatted phone as +1XXXXXXXXXX or +10000000000 if invalid/missing
+        """
+        PHONE_PLACEHOLDER = (
+            "+10000000000"  # Standard placeholder for missing/invalid phones
+        )
+
+        if not raw_phone:
+            return PHONE_PLACEHOLDER
+
+        # Format phone number to 10 digits
+        formatted_phone = _utils.format_phone_number(raw_phone)
+        if formatted_phone:
+            return f"+1{formatted_phone}"
+        else:
+            return PHONE_PLACEHOLDER
+
     @task(name="_save_order_to_db")
     def _save_order_to_db(
         self, order: Order, validated_order: AdoraOrderCalculationResult
@@ -483,11 +507,44 @@ class AdoraTool(Toolkit):
         session = SyncSessionLocal()
         store_tz = self.tool_metadata.timezone or "America/Los_Angeles"
 
+        # Get and format customer phone from the validated order object
+        customer_phone_raw = None
+        if order.customer and order.customer.phone_number:
+            customer_phone_raw = order.customer.phone_number
+        else:
+            # This should not happen as _fulfill_order validates this
+            logger.error(
+                "[AdoraTool._save_order_to_db] Customer phone missing from order object. "
+                "This is unexpected as order should have been validated."
+            )
+
+        customer_phone = self._format_phone_for_db(customer_phone_raw)
+        if customer_phone == "+10000000000" and customer_phone_raw:
+            logger.error(
+                f"[AdoraTool._save_order_to_db] Invalid customer phone format: {customer_phone_raw}. "
+                "Expected 10-digit phone number."
+            )
+
+        # Get and format store phone from tool metadata
+        store_phone_raw = self.tool_metadata.store_phone
+        if not store_phone_raw:
+            logger.error(
+                f"[AdoraTool._save_order_to_db] store_phone not configured for store_id: {self.store_id}. "
+                "This should be set in project configuration."
+            )
+
+        store_phone = self._format_phone_for_db(store_phone_raw)
+        if store_phone == "+10000000000" and store_phone_raw:
+            logger.error(
+                f"[AdoraTool._save_order_to_db] Invalid store phone format: {store_phone_raw}. "
+                "Expected 10-digit phone number."
+            )
+
         try:
             # Create a new order record
             db_order = DBOrder(
-                user_phone_number=self.tool_metadata.customer_phone,
-                store_phone_number=self.tool_metadata.store_phone,
+                user_phone_number=customer_phone,
+                store_phone_number=store_phone,
                 order_number=str(validated_order.key) if validated_order.key else "",
                 transaction_id=(
                     str(validated_order.key) if validated_order.key else ""
