@@ -76,6 +76,30 @@ class OrderRepository:
         """Get an order by its ID."""
         return self.session.query(Order).filter(Order.id == order_id).first()
 
+    def get_order_by_order_id_store_vendor(
+        self,
+        order_id: str,
+        store_id: str,
+        vendor: IntegrationProvider,
+    ) -> Optional[Order]:
+        """
+        Get an order by its order ID, store ID, and vendor.
+
+        Args:
+            order_id: The order ID to find
+            store_id: The store ID to find
+            vendor: The integration provider (adora, square, toast, etc.)
+
+        Returns:
+            Order: The order if found, or None if not found
+        """
+        filters = [
+            Order.order_id == order_id,
+            Order.vendor == vendor,
+            Order.store_id == store_id,
+        ]
+        return self.session.query(Order).filter(*filters).first()
+
     def update_order_by_order_id(
         self,
         store_id: str,

@@ -166,10 +166,37 @@ def get_order_by_id(
     return _implementation.get_order_by_id(session, order_id)
 
 
+def get_order_by_order_id_store_vendor(
+    order_id: str,
+    store_id: str,
+    vendor,
+    session: Optional[Session] = None,
+) -> Optional[Order]:
+    """
+    Get an order by its external order ID, store ID, and vendor.
+
+    Args:
+        order_id: The external order ID to find
+        store_id: The store ID to find
+        vendor: The integration provider (adora, square, toast, etc.)
+        session: Optional database session (creates one if not provided)
+
+    Returns:
+        Order: The order if found, or None if not found
+    """
+    return _implementation.get_order_by_order_id_store_vendor(
+        order_id=order_id,
+        store_id=store_id,
+        vendor=vendor,
+        session=session,
+    )
+
+
 __all__ = [
     # Core order operations
     "create_order",
     "get_order_by_id",
+    "get_order_by_order_id_store_vendor",
     # Helper functions for tools
     "save_order",
     "update_order_by_order_id",

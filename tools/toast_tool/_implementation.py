@@ -20,8 +20,9 @@ from shapely import Point, Polygon
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
+from db.tables.orders import Order as DbOrder
 from db.tables.types import IntegrationProvider
-from services.transaction_service import save_order
+from services.transaction_service import get_order_by_order_id_store_vendor, save_order
 from tools.toast_tool._apis import (
     create_payment_intent,
     get_existing_order,
@@ -55,7 +56,6 @@ from tools.toast_tool.classes import (
     OrderInput,
     PaymentIntentRequest,
     PaymentIntentResponse,
-    PaymentStatus,
     Price,
     SelectionType,
     SubQueries,
@@ -557,39 +557,84 @@ class ToastTool(Toolkit):
             )
             return "Failed to retrieve menu inventory information, please try again."
 
-    def _get_existing_order_tool(self) -> Optional[Order]:
+    def _get_external_id(self) -> str:
         """
-        Checks if an existing order is associated with the current conversation.
+        Get the external ID for the current session.
 
         Returns:
-            Optional[Order]: The existing order if found, otherwise None.
-
-        Raises:
-            ValueError: If bearer token is not available.
+            str: The external ID in format TPC-PALONA:{session_id} or PALONA:{session_id}
         """
-        if not self._toast_bearer_token:
-            raise RuntimeError(
-                "[ToastTool._get_existing_order] No bearer token available."
-            )
+        return (
+            f"TPC-PALONA:{self.tool_metadata.session_id}"
+            if "sandbox" not in str(self.general_api_endpoint)
+            else f"PALONA:{self.tool_metadata.session_id}"
+        )
+
+    def _get_existing_order_from_db(self) -> Optional[DbOrder]:
+        """
+        Checks if an existing order is associated with the current conversation
+        by querying the local database using the external ID.
+
+        Returns:
+            Optional[DbOrder]: The existing database order if found, otherwise None.
+        """
+        external_id = self._get_external_id()
 
         try:
-            return get_existing_order(
-                bearer_token=self._toast_bearer_token,
+            db_order = get_order_by_order_id_store_vendor(
+                order_id=external_id,
                 store_id=self.store_id,
-                order_guid=(
-                    f"TPC-PALONA:{self.tool_metadata.session_id}"
-                    if "sandbox" not in str(self.general_api_endpoint)
-                    else f"PALONA:{self.tool_metadata.session_id}"
-                ),
-                general_api_endpoint=self.general_api_endpoint,
+                vendor=IntegrationProvider.toast,
             )
+
+            if db_order:
+                logger.debug(
+                    f"[ToastTool._get_existing_order_from_db] Found existing order in database with external_id: {external_id}"
+                )
+            return db_order
 
         except Exception as e:
             logger.error(
-                f"[ToastTool._get_existing_order] Failed to check for existing order: {e}",
+                f"[ToastTool._get_existing_order_from_db] Failed to check for existing order: {e}",
                 exc_info=True,
             )
-            # Return None to allow order creation to proceed rather than blocking checkout
+            return None
+
+    def _get_existing_order_from_toast(self, external_id: str) -> Optional[Order]:
+        """
+        Retrieves an existing order from the Toast API using the external ID.
+
+        Args:
+            external_id: The external ID to look up in Toast API.
+
+        Returns:
+            Optional[Order]: The existing Toast order if found, otherwise None.
+        """
+        try:
+            if not self._toast_bearer_token:
+                logger.error(
+                    "[ToastTool._get_existing_order_from_toast] No bearer token available to retrieve order from Toast API."
+                )
+                return None
+
+            toast_order = get_existing_order(
+                bearer_token=self._toast_bearer_token,
+                store_id=self.store_id,
+                order_guid=external_id,
+                general_api_endpoint=self.general_api_endpoint,
+            )
+
+            if toast_order:
+                logger.debug(
+                    f"[ToastTool._get_existing_order_from_toast] Retrieved order from Toast API: {toast_order.guid}"
+                )
+            return toast_order
+
+        except Exception as e:
+            logger.error(
+                f"[ToastTool._get_existing_order_from_toast] Failed to retrieve order from Toast API: {e}",
+                exc_info=True,
+            )
             return None
 
     # TODO: decide if we want to use order.externalId for payment intent's externalReferenceId
@@ -610,25 +655,14 @@ class ToastTool(Toolkit):
             if not self.skip_order_submission and not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
 
-            # Check for existing order
-            existing_order = self._get_existing_order_tool()
+            # Check for existing order in local database
+            existing_order = self._get_existing_order_from_db()
             if existing_order is not None:
-                # Try creating payment intent for existing order if it is not paid yet
-                if existing_order.checks[0].paymentStatus in [
-                    PaymentStatus.PAID,
-                    PaymentStatus.CLOSED,
-                ]:
-                    return f"Inform the customer their order has been successfully placed and is already paid. Order ID: {existing_order.guid}"
-                # Create payment intent for existing order and return payment link
-                logger.debug(
-                    f"[ToastTool._checkout_order_hosted] Found existing unpaid order {existing_order.guid}, creating payment intent"
-                )
-                price = Price(
-                    amount=existing_order.checks[0].amount,
-                    taxAmount=existing_order.checks[0].taxAmount,
-                    totalAmount=existing_order.checks[0].totalAmount,
-                )
-                return self._begin_hosted_checkout_flow(existing_order, price)  # type: ignore
+                # Check if order is already paid
+                if existing_order.status == "paid":
+                    return f"Inform the customer their order has been successfully placed and is already paid, if they want additional details you could transfer them to the store. Order ID: {existing_order.order_id}"
+                # Order exists but is not paid - inform customer
+                return f"Inform the customer their order has been created but payment is still pending, if they want additional details you could transfer them to the store. Order ID: {existing_order.order_id}. Please complete payment to finalize your order."
 
             # Construct order
             order = self._construct_order()
@@ -724,16 +758,14 @@ class ToastTool(Toolkit):
             if not self.skip_order_submission and not self._is_online_order_available():
                 return "The store is currently closed for online ordering. Please try again later."
 
-            # Check if an order with the current conversationId (externalId) already exists.
+            # Check if an order with the current conversationId (externalId) already exists in local database.
             # If yes, skip placing a new order and return a message that the order is already successfully placed
-            existing_order = self._get_existing_order_tool()
+            existing_order = self._get_existing_order_from_db()
             if existing_order is not None:
-                if existing_order.checks[0].paymentStatus in [
-                    PaymentStatus.PAID,
-                    PaymentStatus.CLOSED,
-                ]:
-                    return f"Your order has been successfully placed and is already paid. Order ID: {existing_order.guid}"
-                return f"Your order has been created but payment is still pending. Order ID: {existing_order.guid}. Please complete payment to finalize your order."
+                if existing_order.status == "paid":
+                    return f"Inform the customer their order has been successfully placed and is already paid, if they want additional details you could transfer them to the store. Order ID: {existing_order.order_id}"
+                # Order exists but is not paid - inform customer
+                return f"Inform the customer their order has been created but payment is still pending, if they want additional details you could transfer them to the store. Order ID: {existing_order.order_id}. Please complete payment to finalize your order."
 
             order = self._construct_order()
 
@@ -969,7 +1001,9 @@ class ToastTool(Toolkit):
             order_id = save_order(
                 tool_metadata=self.tool_metadata,
                 vendor=IntegrationProvider.toast,
-                order_id=str(validated_order.guid) if validated_order.guid else None,
+                order_id=str(
+                    validated_order.externalId
+                ),  # Use externalId as order_id so that we can check for existing orders using session_id
                 store_id=self.store_id,
                 status="pending",
                 fulfillment_strategy=None,  # Toast does not provide fulfillment strategy in the order response. It's updated once payment is completed.
@@ -1251,11 +1285,7 @@ class ToastTool(Toolkit):
         # First let toast API fill in the prices
         try:
             # Set the order externalId to the session id to track the order
-            order.externalId = (
-                f"TPC-PALONA:{self.tool_metadata.session_id}"
-                if "sandbox" not in str(self.general_api_endpoint)
-                else f"PALONA:{self.tool_metadata.session_id}"
-            )
+            order.externalId = self._get_external_id()
             order = submit_order(
                 toast_bearer_token,
                 self.store_id,

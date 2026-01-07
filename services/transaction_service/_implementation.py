@@ -92,6 +92,39 @@ def get_order_by_id(
     return repository.get_order_by_id(order_id)
 
 
+def get_order_by_order_id_store_vendor(
+    order_id: str,
+    store_id: str,
+    vendor: IntegrationProvider,
+    session: Optional[Session] = None,
+) -> Optional[Order]:
+    """
+    Get an order by its order ID, store ID, and vendor.
+
+    Args:
+        order_id: The order ID to find
+        store_id: The store ID to find
+        vendor: The integration provider (adora, square, toast, etc.)
+        session: Optional database session (creates one if not provided)
+
+    Returns:
+        Order: The order if found, or None if not found
+    """
+    db_session = session or SyncSessionLocal()
+    session_created_here = session is None
+
+    try:
+        repository = OrderRepository(db_session, auto_commit=False)
+        return repository.get_order_by_order_id_store_vendor(
+            order_id=order_id,
+            store_id=store_id,
+            vendor=vendor,
+        )
+    finally:
+        if session_created_here:
+            db_session.close()
+
+
 def save_order(
     tool_metadata: ToolMetadata,
     vendor: IntegrationProvider,

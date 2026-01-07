@@ -561,7 +561,7 @@ async def checkout_complete(request: Request) -> JSONResponse:
             store_id=store_id,
             vendor=IntegrationProvider.toast,
             new_status="paid",
-            order_id=str(order.guid),  # type: ignore
+            order_id=order_external_id,  # Use external ID as order ID
         )
         if order_updated:
             logger.debug(
