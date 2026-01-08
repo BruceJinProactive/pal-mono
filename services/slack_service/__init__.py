@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from utils.log import logger
 
 from ._bot import _get_slack_handler
-from ._client import get_slack_channel
+from ._client import get_slack_channel_from_env_key
 from ._messages import send_slack_message
 from ._reports import send_report_to_slack as _send_report_to_slack
 
@@ -106,5 +106,5 @@ __all__ = [
     "handle_slack_events",
     "send_report_to_slack",
     "send_slack_message",
-    "get_slack_channel",
+    "get_slack_channel_from_env_key",
 ]

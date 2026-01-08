@@ -17,7 +17,7 @@ from services.analytics_service._utils import normalize_datetime_to_utc
 from utils.log import logger
 
 from ._access_control import determine_account_filter
-from ._client import get_slack_client
+from ._client import DEFAULT_SLACK_CHANNEL, get_slack_client
 from ._formatting import format_unified_report_for_slack
 from ._messages import send_slack_message
 
@@ -166,8 +166,8 @@ async def send_report_to_slack(
     Send a comprehensive analytics report to Slack.
 
     Args:
-        slack_channel: Slack channel to send to (optional, defaults to "oncall" if not provided).
-                      Sets target_channel to slack_channel or "oncall".
+        slack_channel: Slack channel to send to (optional, defaults to DEFAULT_SLACK_CHANNEL if not provided).
+                      Sets target_channel to slack_channel or DEFAULT_SLACK_CHANNEL.
         client: Optional async Slack client to reuse. If not provided, obtains one via
                 get_slack_client() (catches ValueError if token not configured).
         session: Database session for fetching analytics data
@@ -187,7 +187,7 @@ async def send_report_to_slack(
             return {"status": "error", "message": "Database session not available"}
 
         # Get target channel
-        target_channel = slack_channel or "oncall"
+        target_channel = slack_channel or DEFAULT_SLACK_CHANNEL
 
         # Create client if not provided
         if client is None:
@@ -253,8 +253,8 @@ async def send_report_to_slack(
         logger.info(f"[Slackbot] Sending report to Slack channel: {target_channel}")
         result = await send_slack_message(
             blocks=message_blocks["blocks"],
-            text_fallback="Analytics Report",
             channel=target_channel,
+            text_fallback="Analytics Report",
             client=client,
         )
 

@@ -17,8 +17,8 @@ from ._client import get_slack_client
 
 async def send_slack_message(
     blocks: List[Dict[str, Any]],
+    channel: str,
     text_fallback: str = "New message",
-    channel: Optional[str] = None,
     client: Optional[AsyncWebClient] = None,
     thread_ts: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -27,8 +27,8 @@ async def send_slack_message(
 
     Args:
         blocks: List of Slack block elements for rich formatting
+        channel: Target channel (required)
         text_fallback: Fallback text for notifications
-        channel: Target channel (uses default if not provided)
         client: Optional Slack client to reuse
         thread_ts: Optional thread timestamp for replies
 
@@ -39,17 +39,15 @@ async def send_slack_message(
         if not client:
             client = await run_in_threadpool(get_slack_client)
 
-        target_channel = channel or "oncall"
-
         response = await client.chat_postMessage(
-            channel=target_channel,
+            channel=channel,
             text=text_fallback,
             blocks=blocks,
             thread_ts=thread_ts,
         )
 
         if response["ok"]:
-            logger.info(f"[Slack] Block message sent to {target_channel}")
+            logger.info(f"[Slack] Block message sent to {channel}")
             return {
                 "status": "success",
                 "message": "Message sent successfully",

@@ -12,6 +12,9 @@ from slack_sdk.web.async_client import AsyncWebClient
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
+# Default Slack channel for all services
+DEFAULT_SLACK_CHANNEL = "#test-channel"
+
 # Global client instance for reuse
 _client_instance: AsyncWebClient | None = None
 # Thread lock for synchronizing client access
@@ -47,7 +50,7 @@ def get_slack_client() -> AsyncWebClient:
         return _client_instance
 
 
-def get_slack_channel(env_key: str) -> str:
+def get_slack_channel_from_env_key(env_key: str) -> str:
     """
     Get a Slack channel from a specific environment variable.
 
@@ -55,15 +58,18 @@ def get_slack_channel(env_key: str) -> str:
         env_key: The environment variable key to look up (e.g., "SLACK_CHANNEL_INTEGRATIONS")
 
     Returns:
-        str: Channel ID or name from the environment variable, or default channel if not found
+        str: Channel name with # prefix from the environment variable, or default channel if not found
     """
     channel = os.environ.get(env_key)
     if channel:
+        # Ensure channel starts with #
+        if not channel.startswith("#"):
+            channel = f"#{channel}"
         logger.debug(f"[Slack] Using channel {channel} from {env_key}")
         return channel
     else:
         logger.debug(f"[Slack] {env_key} not configured, using default channel")
-        return "oncall"
+        return DEFAULT_SLACK_CHANNEL
 
 
 def reset_client() -> None:

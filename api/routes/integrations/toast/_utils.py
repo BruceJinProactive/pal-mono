@@ -714,10 +714,13 @@ async def _process_partner_added_event(
     try:
         from datetime import datetime, timezone
 
-        from services.slack_service import get_slack_channel, send_slack_message
+        from services.slack_service import (
+            get_slack_channel_from_env_key,
+            send_slack_message,
+        )
 
         # Get the appropriate channel for integration events
-        channel = get_slack_channel("TOAST_NEW_CUSTOMER_SLACK_CHANNEL")
+        channel = get_slack_channel_from_env_key("TOAST_NEW_CUSTOMER_SLACK_CHANNEL")
 
         # Build creator info
         creator_name = "N/A"
@@ -773,8 +776,8 @@ async def _process_partner_added_event(
         # Send the notification
         result = await send_slack_message(
             blocks=blocks,
-            text_fallback=f"Toast Integration Activated for {restaurant_name}",
             channel=channel,
+            text_fallback=f"Toast Integration Activated for {restaurant_name}",
         )
 
         if result["status"] == "success":
