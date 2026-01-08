@@ -37,6 +37,7 @@ from api.schemas.admin.subscription import (
     GrantAccountCreditRequest,
     ListAccountCreditGrantsResponse,
     ListAccountSubscriptionsResponse,
+    ListCouponsResponse,
     ListProjectSubscriptionsResponse,
     RemoveProjectSubscriptionResponse,
     StripeCustomer,
@@ -59,6 +60,7 @@ from services import account_service, project_service, subscription_service
 from services.account_service import AccountParams
 from services.auth_service import check_permission
 from services.auth_types import UserContext, UserRole
+from services.subscription_service import _stripe_subscription
 from services.subscription_service.schema import SubscriptionPlanParams
 from utils.log import logger
 
@@ -1346,6 +1348,56 @@ def cancel_project_subscription(
 
 
 # Coupon Management Functions
+def list_coupons(
+    context: UserContext, session: Session, limit: int = 100
+) -> ListCouponsResponse:
+    """
+    List all Stripe coupons with account and project usage information.
+    Only admin users can list coupons.
+    """
+    authorize_admin(context)
+
+    # Validate limit at handler level as well
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="limit must be between 1 and 100",
+        )
+
+    try:
+        coupons_data = _stripe_subscription.list_stripe_coupons(
+            session=session, limit=limit
+        )
+
+        coupons = [
+            CouponDetailsResponse(
+                id=coupon.get("id", ""),
+                name=coupon.get("name"),
+                percent_off=coupon.get("percent_off"),
+                amount_off=coupon.get("amount_off"),
+                currency=coupon.get("currency"),
+                duration=coupon.get("duration", ""),
+                duration_in_months=coupon.get("duration_in_months"),
+                max_redemptions=coupon.get("max_redemptions"),
+                times_redeemed=coupon.get("times_redeemed", 0),
+                valid=coupon.get("valid", False),
+                redeem_by=coupon.get("redeem_by"),
+                created=coupon.get("created"),
+                account_names=coupon.get("account_names", []),
+                project_names=coupon.get("project_names", []),
+            )
+            for coupon in coupons_data
+        ]
+
+        return ListCouponsResponse(coupons=coupons, count=len(coupons))
+
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
+
+
 def create_coupon(
     context: UserContext,
     request: CreateCouponRequest,
@@ -1355,8 +1407,6 @@ def create_coupon(
     Only admin users can create coupons.
     """
     authorize_admin(context)
-
-    from services.subscription_service import _stripe_subscription
 
     try:
         metadata = {

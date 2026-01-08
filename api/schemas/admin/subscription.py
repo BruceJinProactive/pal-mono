@@ -604,3 +604,13 @@ class CouponDetailsResponse(BaseModel):
     times_redeemed: int
     valid: bool
     redeem_by: int | None
+    created: int | None = None
+    account_names: list[str] = []
+    project_names: list[str] = []
+
+
+class ListCouponsResponse(BaseModel):
+    """Response containing list of all Stripe coupons"""
+
+    coupons: list[CouponDetailsResponse]
+    count: int

@@ -164,6 +164,7 @@ from api.schemas.admin.subscription import (
     GrantAccountCreditRequest,
     ListAccountCreditGrantsResponse,
     ListAccountSubscriptionsResponse,
+    ListCouponsResponse,
     StripeCustomer,
     Subscription,
     SubscriptionPlan,
@@ -2881,6 +2882,31 @@ def create_subscription_checkout_session(
     return _subscription.create_checkout_session(
         context, session, account_name, external_id, request
     )
+
+
+@admin_router.get("/coupons")
+def list_stripe_coupons(
+    context: UserContext = Depends(require_admin),
+    session: Session = Depends(db.get_db),
+    limit: int = Query(
+        100,
+        gt=0,
+        le=100,
+        description="Maximum number of coupons to return (1-100)",
+    ),
+) -> ListCouponsResponse:
+    """
+    List all Stripe coupons with account and project usage information.
+    Only admin users can list coupons.
+
+    Args:
+        limit: Maximum number of coupons to return (default 100, max 100)
+
+    Returns:
+        List of all available Stripe coupons with their details,
+        including which accounts and projects are using each coupon
+    """
+    return _subscription.list_coupons(context, session, limit)
 
 
 @admin_router.post("/coupons")

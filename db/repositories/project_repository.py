@@ -634,3 +634,16 @@ class ProjectRepository:
             self.session.rollback()
             logger.error(f"Error updating project business hours: {e}")
             raise
+
+    def get_projects_with_coupons(self) -> List[Project]:
+        """Retrieve all projects that have a Stripe coupon assigned."""
+        try:
+            return (
+                self.session.query(Project)
+                .filter(Project.stripe_coupon_id.isnot(None))
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving projects with coupons: {e}")
+            return []

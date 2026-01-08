@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from stripe.checkout import Session
 from typing_extensions import Literal
 
+from db.repositories.account_repository import AccountRepository
+from db.repositories.project_repository import ProjectRepository
 from db.repositories.subscription_repository import AsyncAccountSubscriptionRepository
 from db.tables.types import SubscriptionStatus
 from services.subscription_service.schema import (
@@ -185,6 +187,86 @@ def validate_stripe_coupon(coupon_id: str) -> bool:
             f"Stripe error validating coupon: {e}", extra={"coupon_id": coupon_id}
         )
         raise ValueError(f"Failed to validate coupon '{coupon_id}': {str(e)}")
+
+
+def list_stripe_coupons(session: Any, limit: int = 100) -> list[dict[str, Any]]:
+    """
+    List all Stripe coupons with information about which accounts/projects use them.
+
+    Args:
+        session: Database session for querying account/project usage
+        limit: Maximum number of coupons to return (default 100, max 100)
+
+    Returns:
+        List of coupon details dictionaries including account_names and project_names
+
+    Raises:
+        ValueError: If Stripe API call fails
+    """
+    try:
+        # Limit to max 100 as per Stripe API limits
+        limit = min(limit, 100)
+
+        coupons = stripe.Coupon.list(limit=limit)
+
+        account_repo = AccountRepository(session)
+        project_repo = ProjectRepository(session)
+
+        # Get all accounts with coupons using repository methods
+        accounts_with_coupons = account_repo.get_accounts_with_coupons()
+
+        # Get all projects with coupons using repository methods
+        projects_with_coupons = project_repo.get_projects_with_coupons()
+
+        # Build lookup dictionaries
+        coupon_to_accounts = {}
+        for account in accounts_with_coupons:
+            coupon_id = account.stripe_coupon_id
+            if coupon_id not in coupon_to_accounts:
+                coupon_to_accounts[coupon_id] = []
+            coupon_to_accounts[coupon_id].append(account.name)
+
+        coupon_to_projects = {}
+        for project in projects_with_coupons:
+            coupon_id = project.stripe_coupon_id
+            if coupon_id not in coupon_to_projects:
+                coupon_to_projects[coupon_id] = []
+            coupon_to_projects[coupon_id].append(project.name)
+
+        coupon_list = []
+        for coupon in coupons.auto_paging_iter():
+            coupon_details = {
+                "id": coupon.id,
+                "name": coupon.name,
+                "percent_off": coupon.percent_off,
+                "amount_off": coupon.amount_off,
+                "currency": coupon.currency,
+                "duration": coupon.duration,
+                "duration_in_months": coupon.duration_in_months,
+                "max_redemptions": coupon.max_redemptions,
+                "times_redeemed": coupon.times_redeemed,
+                "valid": coupon.valid,
+                "redeem_by": coupon.redeem_by,
+                "created": coupon.created,
+                "account_names": coupon_to_accounts.get(coupon.id, []),
+                "project_names": coupon_to_projects.get(coupon.id, []),
+            }
+            coupon_list.append(coupon_details)
+
+            # Stop if we've reached the limit
+            if len(coupon_list) >= limit:
+                break
+
+        logger.info(
+            f"Retrieved {len(coupon_list)} Stripe coupons with usage info",
+            extra={"count": len(coupon_list)},
+        )
+
+        return coupon_list
+
+    except stripe.StripeError as e:
+        logger.error(f"Stripe error listing coupons: {e}", extra={"error": str(e)})
+        raise ValueError(f"Failed to list coupons: {str(e)}")
 
 
 # Map Stripe subscription statuses to internal SubscriptionStatus enum

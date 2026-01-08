@@ -222,3 +222,17 @@ class AccountRepository:
             self.session.rollback()
             logger.error(f"Error creating account: {e}")
             raise
+
+    def get_accounts_with_coupons(self) -> List[Account]:
+        """Retrieve all accounts that have a Stripe coupon assigned."""
+        try:
+            return (
+                self.session.query(Account)
+                .filter(Account.stripe_coupon_id.isnot(None))
+                .filter(Account.status != AccountStatus.deleted)
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving accounts with coupons: {e}")
+            return []
