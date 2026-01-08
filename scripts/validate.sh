@@ -42,7 +42,6 @@ main() {
     uv run isort "${REPO_ROOT}" --check-only
 
     print_heading "Running: uv run pyright ${REPO_ROOT}"
-    export PYRIGHT_PYTHON_FORCE_VERSION=latest # ignore latest pyright version warning
     uv run pyright "${REPO_ROOT}"
 
     print_heading "Running: uv run lint-imports"
@@ -61,7 +60,6 @@ main() {
     uv run isort "${REPO_ROOT}"
 
     print_heading "Running: uv run pyright ${REPO_ROOT}"
-    export PYRIGHT_PYTHON_FORCE_VERSION=latest # ignore latest pyright version warning
     uv run pyright "${REPO_ROOT}"
 
     print_heading "Running: uv run lint-imports"
