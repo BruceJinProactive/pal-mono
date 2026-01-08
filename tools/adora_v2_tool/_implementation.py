@@ -576,7 +576,7 @@ class AdoraV2Tool(Toolkit):
                 }
             )
 
-            if isinstance(process_result, str) or not process_result.success:
+            if isinstance(process_result, str):
                 return f"Processing failed: {process_result}"
 
         confirmation = (
