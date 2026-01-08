@@ -156,7 +156,7 @@ async def upload_camera_image(
         return AssetResponse(url="")
 
     if not source:
-        logger.error(
+        logger.warning(
             "Camera not found for upload",
             extra={
                 "camera_id": camera_id,
