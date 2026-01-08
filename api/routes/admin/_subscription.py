@@ -17,8 +17,12 @@ from api.routes.admin._builder import (
 )
 from api.routes.admin._utils import not_found_error
 from api.schemas.admin.subscription import (
+    AssignCouponRequest,
     CancelProjectSubscriptionResponse,
+    CouponDetailsResponse,
+    CouponResponse,
     CreateCheckoutSessionRequest,
+    CreateCouponRequest,
     CreateIndependentProjectSubscriptionRequest,
     CreateIndependentProjectSubscriptionResponse,
     CreateProjectSubscriptionRequest,
@@ -43,6 +47,7 @@ from api.schemas.admin.subscription import (
     UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
+    UpdateCouponRequest,
     UpdateProjectSubscriptionRequest,
     UpdateProjectSubscriptionResponse,
     UpdateProjectSubscriptionStatusRequest,
@@ -1334,6 +1339,327 @@ def cancel_project_subscription(
         )
     except Exception as err:
         logger.error(f"Unexpected error cancelling project subscription: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+# Coupon Management Functions
+def create_coupon(
+    context: UserContext,
+    request: CreateCouponRequest,
+) -> CouponDetailsResponse:
+    """
+    Create a new Stripe coupon.
+    Only admin users can create coupons.
+    """
+    authorize_admin(context)
+
+    from services.subscription_service import _stripe_subscription
+
+    try:
+        metadata = {
+            "created_by": context.email,
+            "created_via": "admin_api",
+        }
+
+        coupon = _stripe_subscription.create_stripe_coupon(
+            coupon_id=request.coupon_id,
+            percent_off=request.percent_off,
+            amount_off=request.amount_off,
+            currency=request.currency,
+            duration=request.duration,
+            duration_in_months=request.duration_in_months,
+            max_redemptions=request.max_redemptions,
+            redeem_by=request.redeem_by,
+            name=request.name,
+            metadata=metadata,
+        )
+
+        return CouponDetailsResponse(
+            id=coupon.id,
+            name=coupon.name,
+            percent_off=coupon.percent_off,
+            amount_off=coupon.amount_off,
+            currency=coupon.currency,
+            duration=coupon.duration,
+            duration_in_months=coupon.duration_in_months,
+            max_redemptions=coupon.max_redemptions,
+            times_redeemed=coupon.times_redeemed,
+            valid=coupon.valid,
+            redeem_by=coupon.redeem_by,
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except Exception as err:
+        logger.error(f"Error creating coupon: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def assign_coupon(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    request: AssignCouponRequest,
+) -> CouponResponse:
+    """
+    Assign a Stripe coupon to an account.
+    The coupon will be applied to all future subscriptions.
+    Authorization is handled by require_account_permission in route decorator.
+    """
+    try:
+        account = subscription_service.assign_coupon_to_account(
+            session, context, account_name, request.coupon_id
+        )
+        session.commit()
+        return CouponResponse(
+            coupon_id=account.stripe_coupon_id,
+            coupon_valid=True,
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Error assigning coupon to account: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def update_coupon(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    request: UpdateCouponRequest,
+) -> CouponResponse:
+    """
+    Update the Stripe coupon for an account.
+    Authorization is handled by require_account_permission in route decorator.
+    """
+    try:
+        account = subscription_service.update_account_coupon(
+            session, context, account_name, request.coupon_id
+        )
+        session.commit()
+        return CouponResponse(
+            coupon_id=account.stripe_coupon_id,
+            coupon_valid=True,
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Error updating coupon for account: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def remove_coupon(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+) -> dict:
+    """
+    Remove the Stripe coupon from an account.
+    Authorization is handled by require_account_permission in route decorator.
+    """
+    try:
+        subscription_service.remove_coupon_from_account(session, context, account_name)
+        session.commit()
+        return {"message": "Coupon removed successfully"}
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Error removing coupon from account: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def get_coupon(
+    session: Session,
+    account_name: str,
+) -> CouponDetailsResponse | CouponResponse | dict:
+    """
+    Get the Stripe coupon assigned to an account.
+    Authorization is handled by require_account_permission in route decorator.
+    """
+    try:
+        coupon_id, coupon_details = subscription_service.get_account_coupon(
+            session, account_name
+        )
+
+        if not coupon_id:
+            return {"message": "No coupon assigned to this account"}
+
+        if not coupon_details:
+            # Coupon exists but couldn't fetch details from Stripe
+            return CouponResponse(coupon_id=coupon_id, coupon_valid=None)
+
+        return CouponDetailsResponse(**coupon_details)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except Exception as err:
+        logger.error(f"Error retrieving coupon for account: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+# Project Coupon Management Functions
+def assign_project_coupon(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    project_id: UUID,
+    request: AssignCouponRequest,
+) -> CouponResponse:
+    """
+    Assign a Stripe coupon to a project.
+    The coupon will be applied to all future subscriptions for this project.
+    Takes precedence over account-level coupons.
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    try:
+        project = subscription_service.assign_coupon_to_project(
+            session, context, project_id, request.coupon_id
+        )
+        session.commit()
+        return CouponResponse(
+            coupon_id=project.stripe_coupon_id,
+            coupon_valid=True,
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Error assigning coupon to project: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def update_project_coupon(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    project_id: UUID,
+    request: UpdateCouponRequest,
+) -> CouponResponse:
+    """
+    Update the Stripe coupon for a project.
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    try:
+        project = subscription_service.update_project_coupon(
+            session, context, project_id, request.coupon_id
+        )
+        session.commit()
+        return CouponResponse(
+            coupon_id=project.stripe_coupon_id,
+            coupon_valid=True,
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Error updating coupon for project: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def remove_project_coupon(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    project_id: UUID,
+) -> dict:
+    """
+    Remove the Stripe coupon from a project.
+    Future subscriptions will fall back to account-level coupon if set.
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    try:
+        subscription_service.remove_coupon_from_project(session, context, project_id)
+        session.commit()
+        return {"message": "Coupon removed successfully"}
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except Exception as err:
+        session.rollback()
+        logger.error(f"Error removing coupon from project: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def get_project_coupon(
+    session: Session,
+    account_name: str,
+    project_id: UUID,
+) -> CouponDetailsResponse | CouponResponse | dict:
+    """
+    Get the Stripe coupon assigned to a project with full details.
+    Authorization is handled by require_project_permission in route decorator.
+    """
+    try:
+        coupon_id, coupon_details = subscription_service.get_project_coupon(
+            session, project_id
+        )
+
+        if not coupon_id:
+            return {"message": "No coupon assigned to this project"}
+
+        if not coupon_details:
+            # Coupon exists but couldn't fetch details from Stripe
+            return CouponResponse(coupon_id=coupon_id, coupon_valid=None)
+
+        return CouponDetailsResponse(**coupon_details)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except Exception as err:
+        logger.error(f"Error retrieving coupon for project: {err}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",

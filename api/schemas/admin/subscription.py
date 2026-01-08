@@ -534,3 +534,73 @@ class UpdateStripeCustomerRequest(BaseModel):
 class CreateStripeCustomerRequest(BaseModel):
     name: str | None = None
     email: str | None = None
+
+
+# Coupon Management Schemas
+class CreateCouponRequest(BaseModel):
+    """Request to create a new Stripe coupon"""
+
+    coupon_id: str | None = None  # Optional custom ID
+    percent_off: float | None = None  # Percentage discount (0-100)
+    amount_off: int | None = None  # Fixed amount in cents
+    currency: str | None = None  # Required if amount_off is set
+    duration: str = "once"  # 'once', 'repeating', or 'forever'
+    duration_in_months: int | None = None  # Required if duration is 'repeating'
+    max_redemptions: int | None = None  # Maximum times coupon can be redeemed
+    redeem_by: int | None = None  # Unix timestamp for expiration
+    name: str | None = None  # Human-readable name
+
+    @field_validator("percent_off")
+    def validate_percent_off(cls, v):
+        if v is not None and (v <= 0 or v > 100):
+            raise ValueError("percent_off must be between 0 and 100")
+        return v
+
+    @field_validator("amount_off")
+    def validate_amount_off(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("amount_off must be positive")
+        return v
+
+    @field_validator("duration")
+    def validate_duration(cls, v):
+        valid_durations = ["once", "repeating", "forever"]
+        if v not in valid_durations:
+            raise ValueError(f"duration must be one of: {valid_durations}")
+        return v
+
+
+class AssignCouponRequest(BaseModel):
+    """Request to assign a Stripe coupon to an account"""
+
+    coupon_id: str
+
+
+class UpdateCouponRequest(BaseModel):
+    """Request to update the Stripe coupon for an account"""
+
+    coupon_id: str
+
+
+class CouponResponse(BaseModel):
+    """Response containing coupon information"""
+
+    coupon_id: str | None
+    coupon_valid: bool | None = None
+    coupon_details: dict | None = None
+
+
+class CouponDetailsResponse(BaseModel):
+    """Detailed coupon information from Stripe"""
+
+    id: str
+    name: str | None
+    percent_off: float | None
+    amount_off: int | None
+    currency: str | None
+    duration: str
+    duration_in_months: int | None
+    max_redemptions: int | None
+    times_redeemed: int
+    valid: bool
+    redeem_by: int | None

@@ -146,8 +146,12 @@ from api.schemas.admin.prompt import (
 )
 from api.schemas.admin.signature import InitiateTermsSigningRequest
 from api.schemas.admin.subscription import (
+    AssignCouponRequest,
     CancelProjectSubscriptionResponse,
+    CouponDetailsResponse,
+    CouponResponse,
     CreateCheckoutSessionRequest,
+    CreateCouponRequest,
     CreateIndependentProjectSubscriptionRequest,
     CreateIndependentProjectSubscriptionResponse,
     CreateProjectSubscriptionRequest,
@@ -168,6 +172,7 @@ from api.schemas.admin.subscription import (
     UpdateAccountSubscriptionRequest,
     UpdateAccountSubscriptionStatusRequest,
     UpdateAccountSubscriptionStatusResponse,
+    UpdateCouponRequest,
     UpdateProjectSubscriptionRequest,
     UpdateProjectSubscriptionResponse,
     UpdateProjectSubscriptionStatusRequest,
@@ -2876,6 +2881,157 @@ def create_subscription_checkout_session(
     return _subscription.create_checkout_session(
         context, session, account_name, external_id, request
     )
+
+
+@admin_router.post("/coupons")
+def create_stripe_coupon(
+    request: CreateCouponRequest,
+    context: UserContext = Depends(require_admin),
+) -> CouponDetailsResponse:
+    """
+    Create a new Stripe coupon.
+    Only admin users can create coupons.
+
+    The coupon can be either:
+    - Percentage-based (percent_off): 0-100% discount
+    - Fixed amount (amount_off): Fixed discount in cents (requires currency)
+
+    Duration options:
+    - 'once': Applies to a single invoice
+    - 'repeating': Applies for a specific number of months (requires duration_in_months)
+    - 'forever': Applies to all future invoices
+    """
+    return _subscription.create_coupon(context, request)
+
+
+@admin_router.post("/accounts/{account_name}/coupon")
+def assign_account_coupon(
+    account_name: str,
+    request: AssignCouponRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> CouponResponse:
+    """
+    Assign a Stripe coupon to an account.
+    The coupon will be applied to all future subscriptions for this account.
+    """
+    return _subscription.assign_coupon(context, session, account_name, request)
+
+
+@admin_router.put("/accounts/{account_name}/coupon")
+def update_account_coupon(
+    account_name: str,
+    request: UpdateCouponRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> CouponResponse:
+    """
+    Update the Stripe coupon for an account.
+    """
+    return _subscription.update_coupon(context, session, account_name, request)
+
+
+@admin_router.delete("/accounts/{account_name}/coupon")
+def delete_account_coupon(
+    account_name: str,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> dict:
+    """
+    Remove the Stripe coupon from an account.
+    """
+    return _subscription.remove_coupon(context, session, account_name)
+
+
+@admin_router.get("/accounts/{account_name}/coupon")
+def get_account_coupon(
+    account_name: str,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> CouponDetailsResponse | CouponResponse | dict:
+    """
+    Get the Stripe coupon assigned to an account with full details.
+    """
+    return _subscription.get_coupon(session, account_name)
+
+
+@admin_router.post("/accounts/{account_name}/projects/{project_id}/coupon")
+def assign_project_coupon(
+    account_name: str,
+    project_id: uuid.UUID,
+    request: AssignCouponRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> CouponResponse:
+    """
+    Assign a Stripe coupon to a project.
+    The coupon will be applied to all future subscriptions for this project.
+    Takes precedence over account-level coupons.
+    """
+    return _subscription.assign_project_coupon(
+        context, session, account_name, project_id, request
+    )
+
+
+@admin_router.put("/accounts/{account_name}/projects/{project_id}/coupon")
+def update_project_coupon(
+    account_name: str,
+    project_id: uuid.UUID,
+    request: UpdateCouponRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> CouponResponse:
+    """
+    Update the Stripe coupon for a project.
+    """
+    return _subscription.update_project_coupon(
+        context, session, account_name, project_id, request
+    )
+
+
+@admin_router.delete("/accounts/{account_name}/projects/{project_id}/coupon")
+def delete_project_coupon(
+    account_name: str,
+    project_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> dict:
+    """
+    Remove the Stripe coupon from a project.
+    Future subscriptions will fall back to account-level coupon if set.
+    """
+    return _subscription.remove_project_coupon(
+        context, session, account_name, project_id
+    )
+
+
+@admin_router.get("/accounts/{account_name}/projects/{project_id}/coupon")
+def get_project_coupon(
+    account_name: str,
+    project_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> CouponDetailsResponse | CouponResponse | dict:
+    """
+    Get the Stripe coupon assigned to a project with full details.
+    """
+    return _subscription.get_project_coupon(session, account_name, project_id)
 
 
 @admin_router.get("/subscriptions/checkout/callback", status_code=status.HTTP_200_OK)

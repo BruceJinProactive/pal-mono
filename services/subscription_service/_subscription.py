@@ -1038,6 +1038,7 @@ def create_stripe_checkout_url(
 
     account = account_service.get_account_by_id(session, account_id)
     existing_stripe_customer_id = account.stripe_customer_id if account else None
+    account_coupon_id = account.stripe_coupon_id if account else None
 
     # Create checkout session with project-specific prices
     checkout_session = _stripe_subscription.create_checkout_session(
@@ -1049,6 +1050,7 @@ def create_stripe_checkout_url(
         start_date=subscription.start_date,
         existing_customer_id=existing_stripe_customer_id,
         referral_code=referral_code,
+        account_coupon_id=account_coupon_id,
     )
 
     if not checkout_session or not checkout_session.url:
@@ -2125,6 +2127,33 @@ def create_independent_project_subscription(
 
         if plan.free_trial_days and trial_start_date:
             stripe_subscription_params["trial_period_days"] = plan.free_trial_days
+
+        # Apply coupon - project-level takes precedence over account-level
+        coupon_to_apply = project.stripe_coupon_id or account.stripe_coupon_id
+        if coupon_to_apply:
+            from services.subscription_service import _stripe_subscription
+
+            try:
+                _stripe_subscription.validate_stripe_coupon(coupon_to_apply)
+                stripe_subscription_params["coupon"] = coupon_to_apply
+                coupon_source = "project" if project.stripe_coupon_id else "account"
+                logger.info(
+                    f"Applying {coupon_source}-level coupon {coupon_to_apply} to subscription",
+                    extra={
+                        "project_id": str(project_id),
+                        "coupon_id": coupon_to_apply,
+                        "coupon_source": coupon_source,
+                    },
+                )
+            except ValueError as e:
+                logger.error(
+                    f"Coupon validation failed: {e}",
+                    extra={
+                        "project_id": str(project_id),
+                        "coupon_id": coupon_to_apply,
+                    },
+                )
+                raise
 
         stripe_subscription = stripe.Subscription.create(
             **stripe_subscription_params,

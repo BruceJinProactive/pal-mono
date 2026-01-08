@@ -16,6 +16,177 @@ from services.subscription_service.schema import (
 )
 from utils.log import logger
 
+
+def create_stripe_coupon(
+    coupon_id: str | None = None,
+    percent_off: float | None = None,
+    amount_off: int | None = None,
+    currency: str | None = None,
+    duration: str = "once",
+    duration_in_months: int | None = None,
+    max_redemptions: int | None = None,
+    redeem_by: int | None = None,
+    name: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> stripe.Coupon:
+    """
+    Create a new Stripe coupon.
+
+    Args:
+        coupon_id: Optional custom ID for the coupon (auto-generated if not provided)
+        percent_off: Percentage discount (0-100). Mutually exclusive with amount_off
+        amount_off: Fixed amount discount in cents. Mutually exclusive with percent_off
+        currency: Currency for amount_off (required if amount_off is specified)
+        duration: How long the coupon lasts - 'once', 'repeating', or 'forever'
+        duration_in_months: Required if duration is 'repeating'
+        max_redemptions: Maximum number of times this coupon can be redeemed
+        redeem_by: Unix timestamp for coupon expiration
+        name: Human-readable name for the coupon
+        metadata: Additional metadata to attach to the coupon
+
+    Returns:
+        Created Stripe coupon object
+
+    Raises:
+        ValueError: If validation fails or invalid parameters provided
+    """
+    # Validate that either percent_off or amount_off is provided, but not both
+    if percent_off is None and amount_off is None:
+        raise ValueError("Either percent_off or amount_off must be provided")
+
+    if percent_off is not None and amount_off is not None:
+        raise ValueError("Cannot specify both percent_off and amount_off")
+
+    # Validate percent_off range
+    if percent_off is not None and (percent_off <= 0 or percent_off > 100):
+        raise ValueError("percent_off must be between 0 and 100")
+
+    # Validate amount_off requires currency
+    if amount_off is not None:
+        if not currency:
+            raise ValueError("currency is required when amount_off is specified")
+        if amount_off <= 0:
+            raise ValueError("amount_off must be positive")
+
+    # Validate duration
+    valid_durations = ["once", "repeating", "forever"]
+    if duration not in valid_durations:
+        raise ValueError(f"duration must be one of: {valid_durations}")
+
+    # Validate duration_in_months for repeating coupons
+    if duration == "repeating":
+        if not duration_in_months or duration_in_months <= 0:
+            raise ValueError(
+                "duration_in_months is required and must be positive for repeating coupons"
+            )
+
+    # Build coupon parameters
+    coupon_params: dict[str, Any] = {
+        "duration": duration,
+    }
+
+    if coupon_id:
+        coupon_params["id"] = coupon_id
+
+    if percent_off is not None:
+        coupon_params["percent_off"] = percent_off
+
+    if amount_off is not None:
+        coupon_params["amount_off"] = amount_off
+        coupon_params["currency"] = currency
+
+    if duration_in_months:
+        coupon_params["duration_in_months"] = duration_in_months
+
+    if max_redemptions:
+        coupon_params["max_redemptions"] = max_redemptions
+
+    if redeem_by:
+        coupon_params["redeem_by"] = redeem_by
+
+    if name:
+        coupon_params["name"] = name
+
+    if metadata:
+        coupon_params["metadata"] = metadata
+
+    try:
+        coupon = stripe.Coupon.create(**coupon_params)
+
+        logger.info(
+            f"Created Stripe coupon: {coupon.id}",
+            extra={
+                "coupon_id": coupon.id,
+                "duration": coupon.duration,
+                "percent_off": coupon.percent_off,
+                "amount_off": coupon.amount_off,
+                "name": name,
+            },
+        )
+
+        return coupon
+
+    except stripe.InvalidRequestError as e:
+        error_msg = str(e)
+        logger.error(
+            f"Invalid request when creating coupon: {e}",
+            extra={"error": error_msg, "params": coupon_params},
+        )
+        raise ValueError(f"Failed to create coupon: {error_msg}")
+    except stripe.StripeError as e:
+        logger.error(f"Stripe error creating coupon: {e}", extra={"error": str(e)})
+        raise ValueError(f"Failed to create coupon: {str(e)}")
+
+
+def validate_stripe_coupon(coupon_id: str) -> bool:
+    """
+    Validate that a Stripe coupon exists and is active.
+
+    Args:
+        coupon_id: The Stripe coupon ID to validate
+
+    Returns:
+        True if coupon is valid and active, False otherwise
+
+    Raises:
+        ValueError: If coupon validation fails with specific error message
+    """
+    try:
+        coupon = stripe.Coupon.retrieve(coupon_id)
+
+        if not coupon.valid:
+            raise ValueError(f"Coupon '{coupon_id}' is not valid")
+
+        # Check if coupon has expiration and if it's expired
+        if coupon.redeem_by and coupon.redeem_by < int(datetime.now(UTC).timestamp()):
+            raise ValueError(f"Coupon '{coupon_id}' has expired")
+
+        # Check if coupon has max redemptions and is exhausted
+        if coupon.max_redemptions and coupon.times_redeemed >= coupon.max_redemptions:
+            raise ValueError(f"Coupon '{coupon_id}' has reached maximum redemptions")
+
+        logger.info(
+            f"Validated Stripe coupon: {coupon_id}",
+            extra={
+                "coupon_id": coupon_id,
+                "duration": coupon.duration,
+                "percent_off": coupon.percent_off,
+                "amount_off": coupon.amount_off,
+            },
+        )
+        return True
+
+    except stripe.InvalidRequestError as e:
+        if e.code == "resource_missing":
+            raise ValueError(f"Coupon '{coupon_id}' does not exist")
+        raise ValueError(f"Invalid coupon '{coupon_id}': {str(e)}")
+    except stripe.StripeError as e:
+        logger.error(
+            f"Stripe error validating coupon: {e}", extra={"coupon_id": coupon_id}
+        )
+        raise ValueError(f"Failed to validate coupon '{coupon_id}': {str(e)}")
+
+
 # Map Stripe subscription statuses to internal SubscriptionStatus enum
 STRIPE_STATUS_MAP: dict[str, SubscriptionStatus] = {
     "active": SubscriptionStatus.active,
@@ -42,6 +213,7 @@ def create_checkout_session(
     start_date: datetime | None = None,
     existing_customer_id: str | None = None,
     referral_code: str | None = None,
+    account_coupon_id: str | None = None,
 ) -> Session:
     """
     Creates a new checkout session that allows user to subscribe to our product and
@@ -56,6 +228,8 @@ def create_checkout_session(
                    If None, subscription begins immediately with no trial.
         existing_customer_id: Optional existing Stripe customer ID to reuse
         referral_code: Optional Rewardful referral token from ?via= parameter
+        account_coupon_id: Optional Stripe coupon ID from account to apply to the subscription.
+                          Supports both one-time and recurring coupons.
 
     Returns:
         Stripe checkout session object
@@ -83,7 +257,33 @@ def create_checkout_session(
     if referral_code:
         subscription_metadata["rewardful_referral"] = referral_code
 
+    # Add coupon to metadata for tracking
+    if account_coupon_id:
+        subscription_metadata["coupon_id"] = account_coupon_id
+
     subscription_data_params: Dict[str, Any] = {"metadata": subscription_metadata}
+
+    # Apply coupon to the subscription when it's created by Stripe Checkout
+    if account_coupon_id:
+        try:
+            validate_stripe_coupon(account_coupon_id)
+            subscription_data_params["coupon"] = account_coupon_id
+            logger.info(
+                f"Coupon {account_coupon_id} will be applied to subscription created by checkout",
+                extra={
+                    "account_id": str(account_id),
+                    "coupon_id": account_coupon_id,
+                },
+            )
+        except ValueError as e:
+            logger.error(
+                f"Coupon validation failed: {e}",
+                extra={
+                    "account_id": str(account_id),
+                    "coupon_id": account_coupon_id,
+                },
+            )
+            raise
 
     if start_date and start_date > datetime.now(UTC):
         # If start_date is in the future, then there is a trial.

@@ -2,6 +2,16 @@ import os
 
 import stripe
 
+from ._coupon import (
+    assign_coupon_to_account,
+    assign_coupon_to_project,
+    get_account_coupon,
+    get_project_coupon,
+    remove_coupon_from_account,
+    remove_coupon_from_project,
+    update_account_coupon,
+    update_project_coupon,
+)
 from ._plan import (
     create_subscription_plan,
     delete_subscription_plan,
@@ -97,4 +107,13 @@ __all__ = [
     "sync_account_subscriptions",
     "update_subscription_status_from_stripe",
     "handle_subscription_deleted",
+    # Coupon management functions
+    "assign_coupon_to_account",
+    "update_account_coupon",
+    "remove_coupon_from_account",
+    "get_account_coupon",
+    "assign_coupon_to_project",
+    "update_project_coupon",
+    "remove_coupon_from_project",
+    "get_project_coupon",
 ]
