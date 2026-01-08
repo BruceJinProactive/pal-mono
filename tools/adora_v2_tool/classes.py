@@ -15,6 +15,13 @@ class OrderType(str, Enum):
 
 
 class PaymentType(str, Enum):
+    """Payment type for orders.
+
+    Default: PAYMENT_LINK (use unless customer explicitly requests to pay in store)
+    - PAYMENT_LINK: Customer pays via payment link (DEFAULT for both pickup and delivery)
+    - PAY_IN_STORE: Customer pays at store/restaurant (only when explicitly requested, delivery orders cannot use this)
+    """
+
     PAY_IN_STORE = "PayInStore"
     PAYMENT_LINK = "PaymentLink"
 
@@ -224,6 +231,11 @@ class ValidateOrderRequest(BaseModel):
         max_length=500,
         alias="orderComment",
     )
+    coupon_ids: list[int] | None = Field(
+        description="List of coupon IDs to apply to the order",
+        default=None,
+        alias="couponIds",
+    )
 
 
 class ValidateOrderResponse(BaseModel):
@@ -313,6 +325,11 @@ class ProcessOrderRequest(BaseModel):
         max_length=500,
         alias="orderComment",
     )
+    coupon_ids: list[int] | None = Field(
+        description="List of coupon IDs to apply to the order",
+        default=None,
+        alias="couponIds",
+    )
 
 
 class ProcessOrderResponse(BaseModel):
@@ -355,4 +372,24 @@ class ProcessOrderResponse(BaseModel):
         description="Payment URL if applicable, set to None if not provided",
         default=None,
         alias="paymentUrl",
+    )
+
+
+class ValidateCouponResponse(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    is_valid: bool = Field(
+        description="Whether the coupon code is valid", alias="isValid"
+    )
+    message: str | None = Field(
+        description="Message about the validation result", default=None
+    )
+    coupon_id: int | None = Field(
+        description="ID of the coupon if valid", default=None, alias="couponId"
+    )
+    coupon_code: str | None = Field(
+        description="The validated coupon code", default=None, alias="couponCode"
+    )
+    description: str | None = Field(
+        description="Description of the coupon", default=None
     )

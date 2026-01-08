@@ -13,6 +13,7 @@ from tools.adora_v2_tool._apis import (
     api_get_store_info,
     api_process_order,
     api_validate_address,
+    api_validate_coupon_code,
     api_validate_order,
     get_adora_pos_auth_token,
 )
@@ -230,6 +231,7 @@ class AdoraV2Tool(Toolkit):
         order_items: list[str],
         delivery_address: BaseDeliveryAddress | None,
         promise_date_time: str | None = None,
+        coupon_code: str | None = None,
     ) -> str:
         """
         Fulfills and submits customer order to the POS system and provides order confirmation.
@@ -252,8 +254,7 @@ class AdoraV2Tool(Toolkit):
                 - email: Customer email address (optional)
             order_type (OrderType): Type of order. Options: "TakeOut", "Delivery"
             payment_type (PaymentType): Payment type. Options: "PayInStore", "PaymentLink".
-                IMPORTANT: Always use "PaymentLink" unless user explicitly requests to pay in store.
-                - If payment type is not mentioned, use "PaymentLink"
+                IMPORTANT: Always use "PaymentLink" for both pick up and delivery orders if payment type is not mentioned
                 - Delivery orders must always use "PaymentLink"
             order_items (list[str]): List of order item names without modifiers.
                 Extract complete dish or drink names without size or quantity.
@@ -276,6 +277,10 @@ class AdoraV2Tool(Toolkit):
                 - ONLY set when customer explicitly requests future time
                 - Examples: "2025-01-15T14:30:00", "2025-12-25T12:00:00"
                 - Must be in store's local timezone
+            coupon_code (str | None): Coupon code to apply to the order (optional).
+                - Set to None if no coupon mentioned
+                - If provided, will be validated before processing order
+                - Invalid coupons will result in order rejection with error message
 
         Returns:
             str: Order confirmation with order ID and final total.
@@ -304,6 +309,51 @@ class AdoraV2Tool(Toolkit):
 
         if not bearer_token:
             return "Failed to authenticate with Adora API."
+
+        # Validate coupon code if provided
+        coupon_id = None
+        if coupon_code:
+            with LLMObs.task(name="fulfill_order.validate_coupon"):
+                # Annotate input
+                LLMObs.annotate(
+                    metadata={
+                        "coupon_code": coupon_code,
+                    }
+                )
+
+                coupon_result = await api_validate_coupon_code(
+                    bearer_token, self.store_id, coupon_code
+                )
+
+                # Annotate output
+                if coupon_result:
+                    LLMObs.annotate(
+                        metadata={
+                            "is_valid": coupon_result.is_valid,
+                            "coupon_id": coupon_result.coupon_id,
+                            "message": coupon_result.message,
+                        }
+                    )
+                else:
+                    LLMObs.annotate(
+                        metadata={
+                            "is_valid": False,
+                            "error": "API call failed",
+                        }
+                    )
+
+                if not coupon_result or not coupon_result.is_valid:
+                    error_message = (
+                        coupon_result.message
+                        if coupon_result and coupon_result.message
+                        else "Coupon code validation failed"
+                    )
+                    return f"Invalid coupon code '{coupon_code}'. {error_message}. Please provide a valid coupon code or proceed without a coupon."
+
+                coupon_id = coupon_result.coupon_id
+                logger.info(
+                    f"[AdoraV2Tool.fulfill_order] Validated coupon code '{coupon_code}', ID: {coupon_id}"
+                )
 
         # Apply backdoor overrides if present
         system_prompt = (
@@ -392,6 +442,7 @@ class AdoraV2Tool(Toolkit):
             customer=customer_info,
             items=order_request_base.items,
             orderComment=order_request_base.order_comment,
+            couponIds=[coupon_id] if coupon_id else None,
         )
 
         # Set email to default if empty or invalid

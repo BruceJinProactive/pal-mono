@@ -12,6 +12,7 @@ from tools.adora_v2_tool.classes import (
     ProcessOrderResponse,
     ValidateAddressRequest,
     ValidateAddressResponse,
+    ValidateCouponResponse,
     ValidateOrderRequest,
     ValidateOrderResponse,
 )
@@ -103,6 +104,48 @@ async def api_get_store_info(
             return response["body"]
 
         logger.error(f"[AdoraV2Tool._apis] Error {response}")
+        return None
+    except (KeyError, TypeError, httpx.RequestError) as e:
+        logger.error(f"[AdoraV2Tool._apis] Request error: {e}")
+        return None
+
+
+async def api_validate_coupon_code(
+    bearer_token: str, store_id: str, coupon_code: str
+) -> ValidateCouponResponse | None:
+    """
+    Validate a coupon code for a specific store.
+
+    Args:
+        bearer_token: Bearer token for authentication
+        store_id: The ID of the store
+        coupon_code: The coupon code to validate
+
+    Returns:
+        ValidateCouponResponse on success, None on failure
+    """
+    logger.debug(
+        f"[AdoraV2Tool._apis] Validating coupon code '{coupon_code}' for store {store_id}"
+    )
+
+    try:
+        response = await connect_adora_order_hub(
+            HttpMethod.GET,
+            bearer_token,
+            ApiFunction.VALIDATE_COUPON,
+            query_params={
+                "sid": store_id,
+                "couponCode": coupon_code,
+                "clCode": "en-US",
+            },
+        )
+
+        if response["status"] == 200:
+            return ValidateCouponResponse(**response["body"])
+
+        logger.error(
+            f"[AdoraV2Tool._apis] Coupon validation failed with status {response['status']}: {response['body']}"
+        )
         return None
     except (KeyError, TypeError, httpx.RequestError) as e:
         logger.error(f"[AdoraV2Tool._apis] Request error: {e}")

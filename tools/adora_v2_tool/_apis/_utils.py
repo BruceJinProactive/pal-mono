@@ -18,6 +18,7 @@ class ApiFunction(Enum):
     STORE_INFO = "store/info"
     STORE_STATUS = "store/status"
     VALIDATE_ADDRESS = "validateAddress"
+    VALIDATE_COUPON = "validateCouponCode"
     VALIDATE_ORDER = "validateOrder"
     PROCESS_ORDER = "processOrder"
 
@@ -31,6 +32,7 @@ V1_API_FUNCTIONS = {
     ApiFunction.STORE_INFO,
     ApiFunction.STORE_STATUS,
     ApiFunction.VALIDATE_ADDRESS,
+    ApiFunction.VALIDATE_COUPON,
 }
 
 V2_API_FUNCTIONS = {

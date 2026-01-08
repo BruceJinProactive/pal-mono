@@ -258,5 +258,6 @@ def build_process_order_request(
                 }
             ),
             "order_comment": validate_order_request.order_comment,
+            "coupon_ids": validate_order_request.coupon_ids,
         }
     )
