@@ -19,28 +19,22 @@ _slack_handler = None
 _slack_init_lock = threading.Lock()
 
 
-def get_slack_credentials() -> tuple[str, str]:
+def get_slack_bot_token() -> str:
     """
-    Get Slack bot token and channel from secrets.
+    Get Slack bot token from secrets.
 
     Returns:
-        tuple[str, str]: (bot_token, default_channel)
+        str: Slack bot token
 
     Raises:
         ValueError: If Slack bot token not configured
     """
     try:
         bot_token = get_client_secret_with_fallback("SLACK_BOT_TOKEN")
+        return bot_token
     except ValueError as e:
         logger.error(f"[Slackbot] SLACK_BOT_TOKEN not found: {e}")
         raise ValueError("Slack bot token not configured")
-
-    try:
-        slack_channel = get_client_secret_with_fallback("SLACK_CHANNEL")
-    except ValueError:
-        slack_channel = "#test-channel"  # Default fallback
-
-    return bot_token, slack_channel
 
 
 def create_slack_app() -> AsyncApp | None:

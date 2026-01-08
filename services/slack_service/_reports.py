@@ -10,14 +10,16 @@ from datetime import datetime, timedelta
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from services.analytics_service import get_reports
 from services.analytics_service._utils import normalize_datetime_to_utc
 from utils.log import logger
 
 from ._access_control import determine_account_filter
-from ._bot import get_slack_credentials
+from ._client import get_slack_client
 from ._formatting import format_unified_report_for_slack
+from ._messages import send_slack_message
 
 # =============================================================================
 # DATE RANGE UTILITY FUNCTIONS
@@ -164,8 +166,10 @@ async def send_report_to_slack(
     Send a comprehensive analytics report to Slack.
 
     Args:
-        slack_channel: Slack channel to send to (optional, uses secret manager if not provided)
-        client: Optional async Slack client to reuse (creates new one if not provided)
+        slack_channel: Slack channel to send to (optional, defaults to "oncall" if not provided).
+                      Sets target_channel to slack_channel or "oncall".
+        client: Optional async Slack client to reuse. If not provided, obtains one via
+                get_slack_client() (catches ValueError if token not configured).
         session: Database session for fetching analytics data
         start_date: Start date for the report (in UTC)
         end_date: End date for the report (in UTC)
@@ -182,16 +186,15 @@ async def send_report_to_slack(
         if session is None:
             return {"status": "error", "message": "Database session not available"}
 
-        # Get Slack credentials
-        try:
-            bot_token, default_channel = get_slack_credentials()
-            target_channel = slack_channel or default_channel
-        except ValueError as e:
-            return {"status": "error", "message": str(e)}
+        # Get target channel
+        target_channel = slack_channel or "oncall"
 
         # Create client if not provided
         if client is None:
-            client = AsyncWebClient(token=bot_token)
+            try:
+                client = await run_in_threadpool(get_slack_client)
+            except ValueError as e:
+                return {"status": "error", "message": str(e)}
 
         # Get human-readable channel name for logging
         channel_display_name = await get_channel_name(client, target_channel)
@@ -246,27 +249,24 @@ async def send_report_to_slack(
             f"[Slackbot] Successfully converted {len(reports.reports)} reports to Slack blocks"
         )
 
-        # Send to Slack
+        # Send to Slack using the new generic function
         logger.info(f"[Slackbot] Sending report to Slack channel: {target_channel}")
-        response = await client.chat_postMessage(
+        result = await send_slack_message(
+            blocks=message_blocks["blocks"],
+            text_fallback="Analytics Report",
             channel=target_channel,
-            text="Analytics Report",
-            **message_blocks,
+            client=client,
         )
 
-        if response["ok"]:
+        if result["status"] == "success":
             logger.info(f"[Slackbot] Report sent successfully to {target_channel}")
             return {
                 "status": "success",
                 "message": f"Report sent to {target_channel} successfully",
             }
         else:
-            error_msg = response.get("error", "Unknown error")
-            logger.error(f"[Slackbot] Slack API error: {error_msg}")
-            return {
-                "status": "error",
-                "message": f"Failed to send to Slack: {error_msg}",
-            }
+            logger.error(f"[Slackbot] Failed to send report: {result['message']}")
+            return result
 
     except SlackApiError as e:
         error_msg = f"Slack API error: {e.response['error']}"

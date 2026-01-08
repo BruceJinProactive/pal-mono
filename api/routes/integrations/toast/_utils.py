@@ -681,7 +681,9 @@ async def update_ordering_schedule(webhook_request: ToastWebhookRequest) -> None
     )
 
 
-def _process_partner_added_event(partner_details: ToastWebhookPartnerDetails) -> None:
+async def _process_partner_added_event(
+    partner_details: ToastWebhookPartnerDetails,
+) -> None:
     """
     Process partner_added event - when integration is added to a restaurant.
 
@@ -708,9 +710,89 @@ def _process_partner_added_event(partner_details: ToastWebhookPartnerDetails) ->
             f"[ToastWebhook._process_partner_added_event] External references - Group: {partner_details.externalGroupRef}, Restaurant: {partner_details.externalRestaurantRef}"
         )
 
-    # Add business logic here in the future, such as:
+    # Send Slack notification for partner_added event
+    try:
+        from datetime import datetime, timezone
+
+        from services.slack_service import get_slack_channel, send_slack_message
+
+        # Get the appropriate channel for integration events
+        channel = get_slack_channel("TOAST_NEW_CUSTOMER_SLACK_CHANNEL")
+
+        # Build creator info
+        creator_name = "N/A"
+        if partner_details.createdByFirstName or partner_details.createdByLastName:
+            first = partner_details.createdByFirstName or ""
+            last = partner_details.createdByLastName or ""
+            creator_name = f"{first} {last}".strip()
+
+        creator_email = partner_details.createdByEmailAddress or "N/A"
+        creator_phone = partner_details.createdByPhoneNumber or "N/A"
+
+        # Get event timestamp, fallback to current time if not available
+        event_timestamp = (
+            partner_details.isoCreatedDate or datetime.now(timezone.utc).isoformat()
+        )
+
+        # Build the Slack message blocks
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"🍞 *Toast Integration Activated*\n{restaurant_name} has connected their Toast POS system",
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"• *Restaurant:* {restaurant_name}\n"
+                        f"• *Location:* {location_name}\n"
+                        f"• *GUID:* {restaurant_guid}\n"
+                        f"• *Timestamp:* {event_timestamp}"
+                    ),
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*Created By:*\n"
+                        f"• *Name:* {creator_name}\n"
+                        f"• *Email:* {creator_email}\n"
+                        f"• *Phone:* {creator_phone}"
+                    ),
+                },
+            },
+            {"type": "divider"},
+        ]
+
+        # Send the notification
+        result = await send_slack_message(
+            blocks=blocks,
+            text_fallback=f"Toast Integration Activated for {restaurant_name}",
+            channel=channel,
+        )
+
+        if result["status"] == "success":
+            logger.debug(
+                f"[ToastWebhook._process_partner_added_event] Slack notification sent for {restaurant_name}"
+            )
+        else:
+            logger.warning(
+                f"[ToastWebhook._process_partner_added_event] Failed to send Slack notification: {result.get('message')}"
+            )
+    except Exception as e:
+        # Log error but don't fail the webhook processing
+        logger.error(
+            f"[ToastWebhook._process_partner_added_event] Error sending Slack notification: {e}"
+        )
+
+    # Additional business logic:
     # - Creating/updating project integrations in the database
-    # - Sending notifications to admin users
     # - Triggering menu sync processes
     # - Setting up initial configuration
 
@@ -799,7 +881,7 @@ async def process_partner_event(webhook_request: ToastWebhookRequest) -> None:
     try:
         match event_type:
             case ToastPartnerEventType.PARTNER_ADDED:
-                _process_partner_added_event(partner_details)
+                await _process_partner_added_event(partner_details)
             case ToastPartnerEventType.PARTNER_REMOVED:
                 _process_partner_removed_event(partner_details)
             case ToastPartnerEventType.PARTNER_UPDATED:
