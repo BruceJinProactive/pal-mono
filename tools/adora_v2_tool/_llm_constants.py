@@ -41,10 +41,13 @@ For each provided order item name:
 6. Map to structured format
 
 ## JSON structure requirements:
-- ALL items in single `items` array: {"items": [{"group": [...]}, {"group": [...]}], "orderComment": "..."}
-- Each item: {"group": [{"itemId": X, "sizeId": Y, "quantity": Z, ...}]}
-- NEVER close items array until ALL items added
-- NEVER create multiple root objects
+CRITICAL: The response has exactly TWO root fields: "items" and "orderComment"
+- "items" is an array that MUST contain ALL order items before closing
+- Structure for 3 items: {"items": [{"group": [...]}, {"group": [...]}, {"group": [...]}], "orderComment": "..."}
+- Each array element is: {"group": [{"itemId": X, "sizeId": Y, ...}]}
+- Close items array ONLY after all items: ..., {"group": [...]}] ← closes here
+- After items array closes, add comma then orderComment
+- NEVER add items or group objects outside the items array
 
 # EXTRACTING ORDER COMMENT (orderComment field):
 
