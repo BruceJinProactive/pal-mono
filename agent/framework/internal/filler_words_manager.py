@@ -1,3 +1,4 @@
+import os
 import random
 from enum import StrEnum
 from typing import ClassVar, Optional, Protocol, cast
@@ -40,6 +41,22 @@ class FillerWordsManager:
 
     # Class-level cached language detector
     _LANGUAGE_DETECTOR: ClassVar[Optional[LanguageDetectorProtocol]] = None
+
+    # Input length threshold for filler word selection (from env var or default)
+    try:
+        _raw_threshold = int(os.getenv("FILLER_INPUT_LENGTH_THRESHOLD", "35"))
+        if _raw_threshold < 1:
+            _INPUT_LENGTH_THRESHOLD = 35
+            logger.warning(
+                "FILLER_INPUT_LENGTH_THRESHOLD must be positive, using default: 35"
+            )
+        else:
+            _INPUT_LENGTH_THRESHOLD = _raw_threshold
+    except ValueError:
+        _INPUT_LENGTH_THRESHOLD = 35
+        logger.warning(
+            "FILLER_INPUT_LENGTH_THRESHOLD must be a valid integer, using default: 35"
+        )
 
     # Hardcoded filler words lists
     _CHAT_FILLER_WORDS: dict[str, list[str]] = {
@@ -197,13 +214,17 @@ class FillerWordsManager:
             logger.error(f"[FillerWordsManager] Language detection failed: {e}")
             return []
 
-    def get_filler_words(self, language: str, filler_type: FillerType) -> str:
+    def get_filler_words(
+        self, language: str, filler_type: FillerType, input_content: str = ""
+    ) -> str:
         """
         Generate a filler phrase from configured options for a specific language and type.
+        Selects filler length based on input content length using median-based pool splitting.
 
         Args:
             language: The language code/name for which to get filler words
             filler_type: Type of filler words (FillerType enum)
+            input_content: The user input text, used to determine filler length
 
         Returns:
             A filler string with flush directive, or empty string if no fillers configured
@@ -247,10 +268,21 @@ class FillerWordsManager:
             )
             return ""
 
-        # Select a random filler from the configured options for this language
-        selected_filler = random.choice(language_filler_words)
+        # Sort fillers by length and find median length for pool splitting
+        sorted_fillers = sorted(language_filler_words, key=len)
+        median_length = len(sorted_fillers[len(sorted_fillers) // 2])
+
+        # Build appropriate pool based on input length vs threshold
+        if len(input_content.strip()) < self._INPUT_LENGTH_THRESHOLD:
+            pool = [f for f in language_filler_words if len(f) <= median_length]
+        else:
+            pool = [f for f in language_filler_words if len(f) >= median_length]
+
+        # Select a random filler from the pool
+        selected_filler = random.choice(pool)
         logger.debug(
-            f"[FillerWordsManager] Selected {filler_type} filler for {language}: '{selected_filler}'"
+            f"[FillerWordsManager] Selected {filler_type} filler for {language}: '{selected_filler}' "
+            f"(input_length={len(input_content)}, threshold={self._INPUT_LENGTH_THRESHOLD}, pool_size={len(pool)})"
         )
 
         # Empty string in config to control the probability
@@ -315,7 +347,9 @@ class FillerWordsManager:
         # Only proceed with filler words if exactly one language is detected
         if len(detected_languages) == 1:
             detected_language = detected_languages[0]
-            filler_words = self.get_filler_words(detected_language.name, filler_type)
+            filler_words = self.get_filler_words(
+                detected_language.name, filler_type, input_content
+            )
 
             if filler_words:
                 log_extra = {
