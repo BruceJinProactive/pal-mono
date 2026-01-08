@@ -229,6 +229,7 @@ class AdoraV2Tool(Toolkit):
         payment_type: PaymentType,
         order_items: list[str],
         delivery_address: BaseDeliveryAddress | None,
+        promise_date_time: str | None = None,
     ) -> str:
         """
         Fulfills and submits customer order to the POS system and provides order confirmation.
@@ -251,19 +252,30 @@ class AdoraV2Tool(Toolkit):
                 - email: Customer email address (optional)
             order_type (OrderType): Type of order. Options: "TakeOut", "Delivery"
             payment_type (PaymentType): Payment type. Options: "PayInStore", "PaymentLink".
-                Default is "PaymentLink". Note: Delivery orders must use "PaymentLink".
+                IMPORTANT: Always use "PaymentLink" unless user explicitly requests to pay in store.
+                - If payment type is not mentioned, use "PaymentLink"
+                - Delivery orders must always use "PaymentLink"
             order_items (list[str]): List of order item names without modifiers.
                 Extract complete dish or drink names without size or quantity.
                 Examples: ["Margherita Pizza", "Caesar Salad", "Coca Cola"]
             delivery_address (BaseDeliveryAddress | None): Delivery address for delivery orders.
                 Required fields:
-                - street_number: Street number (required)
+                - street_number: Street number (required). Remove spaces in street numbers (e.g., "12 34" → "1234")
                 - street_name: Street name (required)
                 - extended_address: Unit/apartment (empty string if not provided)
                 - city: City name (required)
-                - state: Two-letter US state abbreviation (required)
+                - state: Two-letter US state abbreviation (required, e.g., "TX" not "Texas")
                 - zip: ZIP code (required)
+                Address extraction rules:
+                - Use only 2-letter state abbreviations, convert full names to abbreviations
+                - Remove all spaces within street numbers from voice recognition errors
+                - Set missing fields to "N/A"
                 Set to None for pickup/dine-in orders.
+            promise_date_time (str | None): Scheduled order date/time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS).
+                - Set to None for ASAP orders or when timing not specified (DEFAULT)
+                - ONLY set when customer explicitly requests future time
+                - Examples: "2025-01-15T14:30:00", "2025-12-25T12:00:00"
+                - Must be in store's local timezone
 
         Returns:
             str: Order confirmation with order ID and final total.
@@ -376,7 +388,7 @@ class AdoraV2Tool(Toolkit):
             storeId=self.store_id,
             OrderType=order_type,
             paymentType=payment_type,
-            promiseDateTime=order_request_base.promise_date_time,
+            promiseDateTime=promise_date_time,
             customer=customer_info,
             items=order_request_base.items,
             orderComment=order_request_base.order_comment,

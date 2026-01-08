@@ -183,13 +183,7 @@ class OrderRequestBase(BaseModel):
     """Base order request with only fields to be extracted by LLM"""
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
-
     items: list[ClientItem] = Field(description="List of order items, required")
-    promise_date_time: str | None = Field(
-        description="Promise date and time in ISO date-time format, ex 2019-08-24T14:15:22Z, set to None if not provided (only if customer requests scheduled/future order)",
-        default=None,
-        alias="promiseDateTime",
-    )
     order_comment: str = Field(
         description="Order comment, optional, max 500 characters, set to '(via PalonaAI)' if not specified",
         default="(via PalonaAI)",
