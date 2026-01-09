@@ -21,6 +21,7 @@ from .phone_call_repository import PhoneCallRepository, PhoneCallRepositoryAsync
 from .project_integration_repository import ProjectIntegrationRepository
 from .project_repository import ProjectRepository, ProjectRepositoryAsync
 from .prompt_repository import PromptRepository
+from .reservation_repository import ReservationRepository
 from .resource_role_assignment_repository import ResourceRoleAssignmentRepository
 from .role_permission_repository import RolePermissionRepository
 from .routine_execution_repository import RoutineExecutionRepositoryAsync

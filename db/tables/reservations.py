@@ -49,6 +49,23 @@ class Reservation(Base):
     table_size: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
     special_requests: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
+    # Entry type discriminator (reservation vs waitlist)
+    entry_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=text("'reservation'"),
+        index=True,  # For analytics filtering by entry type
+    )
+
+    # Waitlist-specific timestamps (from external APIs like Yelp)
+    arrive_by_time: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # When customer should arrive (Yelp provides this)
+
+    expected_seating_time: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # Estimated seating time (Yelp provides this)
+
     # Timestamps
     reservation_time: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

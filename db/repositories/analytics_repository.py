@@ -2,7 +2,7 @@ import datetime
 import time
 import uuid
 
-from sqlalchemy import Float, case, exists, func, select
+from sqlalchemy import Float, case, exists, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from db.tables import (
     Order,
     PhoneCall,
     Project,
+    Reservation,
     User,
 )
 from db.tables.types import IntegrationType
@@ -606,12 +607,14 @@ class AnalyticsRepository:
         filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
     ) -> list[tuple]:
         """
-        Get conversion metrics showing how many conversations lead to orders and paid orders.
+        Get conversion metrics showing how many conversations lead to orders,
+        reservations, and waitlist entries.
 
         Returns:
             list[tuple]: (group_fields...,
                          total_conversations, conversations_with_orders,
-                         paid_orders, total_subtotal, paid_total)
+                         paid_orders, total_subtotal, paid_total,
+                         total_reservations, total_waitlists)
         """
         try:
             start_time = time.time()
@@ -647,6 +650,20 @@ class AnalyticsRepository:
                         ),
                         0,
                     ).label("paid_total"),
+                    # Reservations (entry_type='reservation')
+                    func.count(
+                        case(
+                            (Reservation.entry_type == "reservation", Reservation.id),
+                            else_=None,
+                        )
+                    ).label("total_reservations"),
+                    # Waitlists (entry_type='waitlist')
+                    func.count(
+                        case(
+                            (Reservation.entry_type == "waitlist", Reservation.id),
+                            else_=None,
+                        )
+                    ).label("total_waitlists"),
                 ]
             )
 
@@ -668,17 +685,24 @@ class AnalyticsRepository:
                     .join(User, Conversation.user_id == User.id)
                     .join(Account, User.account_id == Account.id)
                     .outerjoin(Order, Conversation.id == Order.conversation_id)
+                    .outerjoin(
+                        Reservation, Conversation.id == Reservation.conversation_id
+                    )
                     .where(
                         Conversation.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
                         account_condition,
-                        # Only include accounts with POS integration - early filter
+                        # Include accounts with POS or reservation integrations
                         exists(
                             select(1)
                             .select_from(Integration)
                             .where(
                                 integration_condition,
-                                Integration.integration_type == IntegrationType.pos,
+                                or_(
+                                    Integration.integration_type == IntegrationType.pos,
+                                    Integration.integration_type
+                                    == IntegrationType.reservation,
+                                ),
                             )
                         ),
                     )
@@ -690,16 +714,23 @@ class AnalyticsRepository:
                     .join(User, Conversation.user_id == User.id)
                     .join(Account, User.account_id == Account.id)
                     .outerjoin(Order, Conversation.id == Order.conversation_id)
+                    .outerjoin(
+                        Reservation, Conversation.id == Reservation.conversation_id
+                    )
                     .where(
                         Conversation.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
-                        # Only include accounts with POS integration
+                        # Include accounts with POS or reservation integrations
                         exists(
                             select(1)
                             .select_from(Integration)
                             .where(
                                 Integration.account_id == User.account_id,
-                                Integration.integration_type == IntegrationType.pos,
+                                or_(
+                                    Integration.integration_type == IntegrationType.pos,
+                                    Integration.integration_type
+                                    == IntegrationType.reservation,
+                                ),
                             )
                         ),
                     )
