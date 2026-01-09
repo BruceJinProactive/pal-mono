@@ -807,7 +807,20 @@ def remove_subscription_item(
     proration_behavior: Literal[
         "always_invoice", "create_prorations", "none"
     ] = "create_prorations",
+    ignore_if_not_found: bool = True,
 ):
+    """
+    Remove a subscription item from a Stripe subscription.
+
+    Args:
+        stripe_subscription_id: Stripe subscription ID
+        stripe_price_id: Price ID to remove
+        proration_behavior: How to handle prorations
+        ignore_if_not_found: If True, log warning instead of raising error when price not found
+
+    Raises:
+        ValueError: If price not found and ignore_if_not_found is False
+    """
     try:
         # 1. Retrieve subscription to find matching subscription item
         subscription = stripe.Subscription.retrieve(
@@ -821,9 +834,15 @@ def remove_subscription_item(
                 break
 
         if not subscription_item_id:
-            raise ValueError(
-                f"Price {stripe_price_id} not found in subscription {stripe_subscription_id}"
-            )
+            if ignore_if_not_found:
+                logger.warning(
+                    f"Price {stripe_price_id} not found in subscription {stripe_subscription_id} - skipping removal (may have been already removed)"
+                )
+                return
+            else:
+                raise ValueError(
+                    f"Price {stripe_price_id} not found in subscription {stripe_subscription_id}"
+                )
 
         # 2. Delete the subscription item
         stripe.SubscriptionItem.delete(
@@ -836,9 +855,27 @@ def remove_subscription_item(
                 "subscription_id": stripe_subscription_id,
             },
         )
+    except stripe.StripeError as err:
+        logger.error(
+            f"Stripe error while removing subscription item: {err}",
+            extra={
+                "price_id": stripe_price_id,
+                "subscription_id": stripe_subscription_id,
+            },
+        )
+        raise
+    except ValueError:
+        # Re-raise ValueError as-is (from not found check)
+        raise
     except Exception as err:
-        logger.error(f"Failed to remove subscription item due to error: {err}")
-        raise err
+        logger.error(
+            f"Unexpected error removing subscription item: {err}",
+            extra={
+                "price_id": stripe_price_id,
+                "subscription_id": stripe_subscription_id,
+            },
+        )
+        raise
 
 
 def update_subscription_item_price(
