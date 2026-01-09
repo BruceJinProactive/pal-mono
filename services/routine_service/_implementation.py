@@ -211,9 +211,14 @@ async def create_routine(
             scheduled_end=scheduled_end,
         )
 
+    # Build response before commit to avoid async I/O issues
+    # (session.commit() expires objects, and accessing attributes
+    # in sync _build_routine_detail_response would trigger greenlet errors)
+    response = _build_routine_detail_response(routine, items)
+
     await session.commit()
 
-    return _build_routine_detail_response(routine, items)
+    return response
 
 
 async def get_routine(
