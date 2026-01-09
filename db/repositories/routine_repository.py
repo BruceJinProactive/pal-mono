@@ -202,7 +202,7 @@ class RoutineRepositoryAsync:
         sort_order: int = 0,
         input_type: RoutineInputType = RoutineInputType.photo,
         is_required: bool = True,
-        reference_image_url: str | None = None,
+        reference_images: list[dict[str, Any]] | None = None,
         ai_rules: dict[str, Any] | None = None,
         signal_source_id: uuid.UUID | None = None,
     ) -> RoutineItem:
@@ -216,7 +216,7 @@ class RoutineRepositoryAsync:
             sort_order: Order in the routine
             input_type: Type of input (V1: photo only)
             is_required: Whether the item is required
-            reference_image_url: Optional S3 URL for reference image
+            reference_images: Optional list of dicts with 'image_url' and 'description' fields
             ai_rules: Optional AI verification rules
             signal_source_id: Optional camera integration
 
@@ -234,7 +234,7 @@ class RoutineRepositoryAsync:
                 sort_order=sort_order,
                 input_type=input_type,
                 is_required=is_required,
-                reference_image_url=reference_image_url,
+                reference_images=reference_images or [],
                 ai_rules=ai_rules or {},
                 signal_source_id=signal_source_id,
             )
@@ -300,7 +300,7 @@ class RoutineRepositoryAsync:
         sort_order: int | None = None,
         input_type: RoutineInputType | None = None,
         is_required: bool | None = None,
-        reference_image_url: str | None = None,
+        reference_images: list[dict[str, Any]] | None = None,
         ai_rules: dict[str, Any] | None = None,
         signal_source_id: uuid.UUID | None = None,
     ) -> RoutineItem | None:
@@ -314,7 +314,7 @@ class RoutineRepositoryAsync:
             sort_order: Optional new sort order
             input_type: Optional new input type
             is_required: Optional new required status
-            reference_image_url: Optional new reference image URL
+            reference_images: Optional new reference images list of dicts with 'image_url' and 'description'
             ai_rules: Optional new AI rules
             signal_source_id: Optional new signal source ID
 
@@ -336,8 +336,8 @@ class RoutineRepositoryAsync:
                 item.input_type = input_type
             if is_required is not None:
                 item.is_required = is_required
-            if reference_image_url is not None:
-                item.reference_image_url = reference_image_url
+            if reference_images is not None:
+                item.reference_images = reference_images
             if ai_rules is not None:
                 item.ai_rules = ai_rules
             if signal_source_id is not None:

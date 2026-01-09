@@ -36,6 +36,7 @@ __all__ = [
     "update_item",
     "delete_item",
     "upload_reference_image",
+    "update_reference_images",
 ]
 
 
@@ -217,19 +218,49 @@ async def delete_item(
 async def upload_reference_image(
     item_id: UUID,
     file: UploadFile,
+    description: str | None,
     context: UserContext,
     session: AsyncSession,
-) -> str:
+) -> dict[str, str]:
     """
     Upload a reference image for a routine item.
 
     Args:
         item_id: UUID of the item
         file: Uploaded file
+        description: Optional description of the reference image
         context: User authentication context
         session: Database session
 
     Returns:
-        S3 URL of the uploaded image
+        Dict with 'image_url' and 'description' fields
     """
-    return await _implementation.upload_reference_image(item_id, file, context, session)
+    return await _implementation.upload_reference_image(
+        item_id, file, description, context, session
+    )
+
+
+async def update_reference_images(
+    item_id: UUID,
+    new_images: list[dict[str, str]],
+    context: UserContext,
+    session: AsyncSession,
+) -> list[dict[str, str]]:
+    """
+    Update the complete list of reference images for a routine item.
+
+    This function compares the new list with existing images and deletes
+    removed images from S3.
+
+    Args:
+        item_id: UUID of the item
+        new_images: Complete new list of reference images
+        context: User authentication context
+        session: Database session
+
+    Returns:
+        List of dicts with 'image_url' and 'description' fields
+    """
+    return await _implementation.update_reference_images(
+        item_id, new_images, context, session
+    )

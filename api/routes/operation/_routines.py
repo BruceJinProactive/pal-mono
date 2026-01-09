@@ -27,6 +27,7 @@ from api.schemas.operations.routine import (
     ScheduleResponse,
     SubmissionDetailResponse,
     SubmissionResponse,
+    UpdateReferenceImagesRequest,
     UpdateRoutineItemRequest,
     UpdateRoutineRequest,
     UpdateScheduleRequest,
@@ -130,11 +131,28 @@ async def delete_item(
 async def upload_reference_image(
     item_id: UUID,
     file: UploadFile,
+    description: str | None,
     context: UserContext,
     session: AsyncSession,
-) -> str:
+) -> dict[str, str]:
     """Upload a reference image for a routine item."""
-    return await routine_service.upload_reference_image(item_id, file, context, session)
+    return await routine_service.upload_reference_image(
+        item_id, file, description, context, session
+    )
+
+
+async def update_reference_images(
+    item_id: UUID,
+    request: UpdateReferenceImagesRequest,
+    context: UserContext,
+    session: AsyncSession,
+) -> list[dict[str, str]]:
+    """Update the complete list of reference images for a routine item."""
+    # Convert Pydantic models to dicts
+    new_images = [img.model_dump() for img in request.reference_images]
+    return await routine_service.update_reference_images(
+        item_id, new_images, context, session
+    )
 
 
 # ============================================================================

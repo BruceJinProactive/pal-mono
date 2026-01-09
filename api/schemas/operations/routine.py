@@ -28,6 +28,16 @@ from db.tables.types import (
 # ============================================================================
 
 
+class ReferenceImageConfig(BaseModel):
+    """Configuration for a single reference image."""
+
+    image_url: str = Field(..., description="S3 URL of the reference image")
+    description: str = Field(
+        default="",
+        description="Description of what the reference image shows",
+    )
+
+
 class AIRulesConfig(BaseModel):
     """Configuration for AI-powered photo verification."""
 
@@ -202,6 +212,15 @@ class UpdateRoutineItemRequest(BaseModel):
     )
 
 
+class UpdateReferenceImagesRequest(BaseModel):
+    """Request to update reference images list for a routine item."""
+
+    reference_images: list[ReferenceImageConfig] = Field(
+        ...,
+        description="Complete list of reference images (replaces existing list)",
+    )
+
+
 class RoutineItemResponse(BaseModel):
     """Response model for a routine item."""
 
@@ -214,7 +233,7 @@ class RoutineItemResponse(BaseModel):
     sort_order: int
     input_type: RoutineInputType
     is_required: bool
-    reference_image_url: str | None
+    reference_images: list[dict[str, Any]]
     ai_rules: dict[str, Any]
     signal_source_id: uuid.UUID | None
     created_at: datetime

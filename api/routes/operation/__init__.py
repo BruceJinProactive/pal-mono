@@ -71,6 +71,7 @@ from api.schemas.operations.routine import (
     ScheduleResponse,
     SubmissionDetailResponse,
     SubmissionResponse,
+    UpdateReferenceImagesRequest,
     UpdateRoutineItemRequest,
     UpdateRoutineRequest,
     UpdateScheduleRequest,
@@ -2100,7 +2101,7 @@ async def delete_routine_item(
 
 @operation_router.post(
     "/routine-items/{item_id}/reference-image",
-    response_model=str,
+    response_model=dict[str, str],
     responses={
         400: {"model": ErrorResponse},
         403: {"model": ErrorResponse},
@@ -2111,22 +2112,91 @@ async def delete_routine_item(
 async def upload_routine_item_reference_image(
     item_id: uuid.UUID,
     file: UploadFile = File(...),
+    description: str = Form(default=""),
     context: UserContext = Depends(authenticate_user),
     session: AsyncSession = Depends(db.get_db_async),
-) -> str:
+) -> dict[str, str]:
     """
     Upload a reference image for a routine item.
+
+    This endpoint appends a new reference image to the routine item's existing
+    list of reference images. To upload multiple images, call this endpoint
+    multiple times.
 
     Path Parameters:
     - item_id: UUID of the routine item
 
     Request Body (multipart/form-data):
     - file (required): Image file
+    - description (optional): Description of the reference image
 
     Returns:
-    - URL of the uploaded image
+    - Dict with 'image_url' and 'description' fields for the newly uploaded image
     """
-    return await _routines.upload_reference_image(item_id, file, context, session)
+    return await _routines.upload_reference_image(
+        item_id, file, description, context, session
+    )
+
+
+@operation_router.patch(
+    "/routine-items/{item_id}/reference-images",
+    response_model=list[dict[str, str]],
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_routine_item_reference_images(
+    item_id: uuid.UUID,
+    request: UpdateReferenceImagesRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> list[dict[str, str]]:
+    """
+    Update the complete list of reference images for a routine item.
+
+    This endpoint replaces the entire list of reference images. It intelligently
+    handles S3 storage:
+    - Keeps images that appear in both old and new lists (matched by image_url)
+    - Deletes images from S3 that are removed from the list
+    - New images should already be uploaded (have image_url populated)
+
+    **Workflow:**
+    1. User uploads new images individually using POST /routine-items/{item_id}/reference-image
+    2. User calls this PATCH endpoint with the complete desired list (existing + new URLs)
+    3. Backend compares lists and deletes removed images from S3
+
+    Path Parameters:
+    - item_id: UUID of the routine item
+
+    Request Body (application/json):
+    - reference_images (required): Complete list of reference images
+      Each item should have:
+      - image_url (required): S3 URL of the image
+      - description (optional): Description of the image
+
+    Returns:
+    - List of dicts with 'image_url' and 'description' fields
+
+    Example request body:
+    ```json
+    {
+      "reference_images": [
+        {
+          "image_url": "https://s3.../routines/.../image1.jpg",
+          "description": "Front view"
+        },
+        {
+          "image_url": "https://s3.../routines/.../image2.jpg",
+          "description": "Side view"
+        }
+      ]
+    }
+    ```
+    """
+    return await _routines.update_reference_images(item_id, request, context, session)
 
 
 # ==============================================================================

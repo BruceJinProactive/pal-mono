@@ -5,6 +5,7 @@ Business logic for routine and routine item operations.
 Authorization is handled in the API layer.
 """
 
+import datetime
 from datetime import time
 from uuid import UUID
 
@@ -32,6 +33,7 @@ from db.tables.routine_items import RoutineItem
 from db.tables.routines import Routine
 from services.auth_types import UserContext
 from services.routine_service._schedule_calculator import calculate_next_executions
+from utils.log import logger
 
 
 def _build_routine_response(routine: Routine) -> RoutineResponse:
@@ -50,6 +52,11 @@ def _build_routine_response(routine: Routine) -> RoutineResponse:
 
 def _build_item_response(item: RoutineItem) -> RoutineItemResponse:
     """Build a RoutineItemResponse from database model."""
+    # Ensure reference_images is always a list
+    ref_images = item.reference_images
+    if not isinstance(ref_images, list):
+        ref_images = []
+
     return RoutineItemResponse(
         id=item.id,
         routine_id=item.routine_id,
@@ -58,7 +65,7 @@ def _build_item_response(item: RoutineItem) -> RoutineItemResponse:
         sort_order=item.sort_order,
         input_type=item.input_type,
         is_required=item.is_required,
-        reference_image_url=item.reference_image_url,
+        reference_images=ref_images,
         ai_rules=item.ai_rules or {},
         signal_source_id=item.signal_source_id,
         created_at=item.created_at,
@@ -306,9 +313,11 @@ async def delete_routine(
     session: AsyncSession,
 ) -> None:
     """
-    Delete a routine and all associated data.
+    Delete a routine and all associated data, including S3 reference images.
     Authorization is handled in the API layer.
     """
+    from services import asset_service
+
     routine_repo = RoutineRepositoryAsync(session)
     schedule_repo = RoutineScheduleRepositoryAsync(session)
     execution_repo = RoutineExecutionRepositoryAsync(session)
@@ -323,7 +332,7 @@ async def delete_routine(
             headers={"Content-Type": "application/json"},
         )
 
-    # Delete in order: submissions -> executions -> schedules -> routine
+    # Delete in order: submissions -> executions -> schedules -> S3 images -> items -> routine
     # (no FK constraints, so manual cascade)
 
     # Get execution IDs for this routine
@@ -339,6 +348,33 @@ async def delete_routine(
 
     # Delete schedules
     await schedule_repo.delete_schedules_by_routine(routine_id)
+
+    # Delete all reference images from S3 for all items in this routine
+    items = await routine_repo.list_items_by_routine(routine_id)
+    for item in items:
+        reference_images = item.reference_images or []
+        if isinstance(reference_images, list):
+            for img in reference_images:
+                if isinstance(img, dict):
+                    url = img.get("image_url")
+                    if url:
+                        try:
+                            # Extract S3 key from URL
+                            if "/routines/" in url:
+                                s3_key = url.split("/routines/", 1)[1]
+                                s3_key = f"routines/{s3_key}"
+                                asset_service.delete_asset(s3_key)
+                        except Exception as e:
+                            # Log error but don't fail the deletion
+                            logger.warning(
+                                f"Failed to delete S3 asset for URL {url} during routine deletion: {e}",
+                                extra={
+                                    "routine_id": str(routine_id),
+                                    "item_id": str(item.id),
+                                    "url": url,
+                                    "error": str(e),
+                                },
+                            )
 
     # Delete the routine (this also deletes items via repository)
     deleted = await routine_repo.delete_routine(routine_id)
@@ -484,9 +520,11 @@ async def delete_item(
     session: AsyncSession,
 ) -> None:
     """
-    Delete a routine item.
+    Delete a routine item and its associated reference images from S3.
     Authorization is handled in the API layer.
     """
+    from services import asset_service
+
     routine_repo = RoutineRepositoryAsync(session)
 
     item = await routine_repo.get_routine_item_by_id(item_id)
@@ -498,6 +536,31 @@ async def delete_item(
             headers={"Content-Type": "application/json"},
         )
 
+    # Delete all reference images from S3 before deleting the item
+    reference_images = item.reference_images or []
+    if isinstance(reference_images, list):
+        for img in reference_images:
+            if isinstance(img, dict):
+                url = img.get("image_url")
+                if url:
+                    try:
+                        # Extract S3 key from URL
+                        if "/routines/" in url:
+                            s3_key = url.split("/routines/", 1)[1]
+                            s3_key = f"routines/{s3_key}"
+                            asset_service.delete_asset(s3_key)
+                    except Exception as e:
+                        # Log error but don't fail the deletion
+                        logger.warning(
+                            f"Failed to delete S3 asset for URL {url} during item deletion: {e}",
+                            extra={
+                                "item_id": str(item_id),
+                                "url": url,
+                                "error": str(e),
+                            },
+                        )
+
+    # Delete the item from database
     deleted = await routine_repo.delete_routine_item(item_id)
 
     if not deleted:
@@ -513,13 +576,25 @@ async def delete_item(
 async def upload_reference_image(
     item_id: UUID,
     file: UploadFile,
+    description: str | None,
     context: UserContext,
     session: AsyncSession,
-) -> str:
+) -> dict[str, str]:
     """
     Upload a reference image for a routine item.
     Uses asset_service for S3 upload.
+    Appends the new image to the existing list of reference images.
     Authorization is handled in the API layer.
+
+    Args:
+        item_id: UUID of the routine item
+        file: The uploaded file
+        description: Optional description of the reference image
+        context: User context
+        session: Database session
+
+    Returns:
+        Dict with 'image_url' and 'description' fields
     """
     from services import asset_service
 
@@ -545,13 +620,12 @@ async def upload_reference_image(
         )
 
     # Upload to S3 via asset_service
-    # Path: routines/{project_id}/{routine_id}/reference/{item_id}_{filename}
+    # Path: routines/{project_id}/{routine_id}/reference/{item_id}_{timestamp}_{filename}
     content = await file.read()
     filename = file.filename or "reference.jpg"
+    timestamp = int(datetime.datetime.now().timestamp())
 
-    asset_path = (
-        f"routines/{routine.project_id}/{routine.id}/reference/{item_id}_{filename}"
-    )
+    asset_path = f"routines/{routine.project_id}/{routine.id}/reference/{item_id}_{timestamp}_{filename}"
 
     from api.schemas.asset.asset import WriteAssetRequest
 
@@ -563,12 +637,129 @@ async def upload_reference_image(
     response = asset_service.write_asset(asset_request)
     s3_url = response.url
 
-    # Update the item with the reference image URL
+    # Append the new image to the existing list
+    new_reference_image = {
+        "image_url": s3_url,
+        "description": description or "",
+    }
+
+    # Get current reference images and append the new one
+    current_images = item.reference_images
+    if not isinstance(current_images, list):
+        current_images = []
+    updated_images = current_images + [new_reference_image]
+
     await routine_repo.update_routine_item(
         item_id=item_id,
-        reference_image_url=s3_url,
+        reference_images=updated_images,
     )
 
     await session.commit()
 
-    return s3_url
+    return new_reference_image
+
+
+async def update_reference_images(
+    item_id: UUID,
+    new_images: list[dict[str, str]],
+    context: UserContext,
+    session: AsyncSession,
+) -> list[dict[str, str]]:
+    """
+    Update the complete list of reference images for a routine item.
+
+    This function compares the new list with existing images:
+    - Keeps images that have matching image_url (unchanged)
+    - Deletes images from S3 that are no longer in the new list
+    - Uploads new images that don't have an image_url yet
+
+    Authorization is handled in the API layer.
+
+    Args:
+        item_id: UUID of the routine item
+        new_images: Complete new list of reference images
+                   Each dict should have 'image_url' and 'description' fields
+                   Entries with empty 'image_url' are filtered out
+        context: User context
+        session: Database session
+
+    Returns:
+        List of dicts with 'image_url' and 'description' fields (all with S3 URLs)
+    """
+    from services import asset_service
+
+    routine_repo = RoutineRepositoryAsync(session)
+
+    item = await routine_repo.get_routine_item_by_id(item_id)
+
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Routine item {item_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Get the routine to get project_id for asset path
+    routine = await routine_repo.get_routine_by_id(item.routine_id)
+
+    if not routine:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Routine {item.routine_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Get current reference images
+    current_images = item.reference_images or []
+    current_urls = {
+        img.get("image_url") for img in current_images if img.get("image_url")
+    }
+    new_urls = {img.get("image_url") for img in new_images if img.get("image_url")}
+
+    # Determine which images to delete from S3
+    urls_to_delete = current_urls - new_urls
+
+    # Delete old images from S3
+    if urls_to_delete:
+        from services import asset_service
+
+        for url in urls_to_delete:
+            if url:
+                try:
+                    # Extract the S3 key from the URL
+                    # Parse the S3 key from the URL
+                    # URL format: routines/{project_id}/{routine_id}/reference/{filename}
+                    if "/routines/" in url:
+                        s3_key = url.split("/routines/", 1)[1]
+                        s3_key = f"routines/{s3_key}"
+
+                        # delete_asset takes a string file_name, not a request object
+                        asset_service.delete_asset(s3_key)
+                except Exception as e:
+                    # Log error but don't fail the entire operation
+                    logger.warning(
+                        f"Failed to delete S3 asset for URL {url}: {e}",
+                        extra={"item_id": str(item_id), "url": url, "error": str(e)},
+                    )
+
+    # Update the item with the new reference images list
+    # Filter out entries with empty/missing image_url
+    final_images = []
+    for img in new_images:
+        image_url = img.get("image_url", "").strip()
+        if image_url:
+            final_images.append(
+                {
+                    "image_url": image_url,
+                    "description": img.get("description", ""),
+                }
+            )
+
+    await routine_repo.update_routine_item(
+        item_id=item_id,
+        reference_images=final_images,
+    )
+
+    await session.commit()
+
+    return final_images

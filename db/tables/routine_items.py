@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy import Enum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
@@ -51,7 +51,12 @@ class RoutineItem(Base):
     )
 
     # AI verification (for photo type)
-    reference_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reference_images: Mapped[list[dict[str, Any]]] = mapped_column(
+        MutableList.as_mutable(JSONB()),
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+        comment="List of dicts with 'image_url' and 'description' fields",
+    )
     ai_rules: Mapped[Dict] = mapped_column(
         MutableDict.as_mutable(JSONB()),
         nullable=False,
