@@ -119,6 +119,15 @@ class VapiTool(Toolkit):
             }
         else:
             destination = {"type": "number", "number": self.destination_number}
+
+        # Add callerId to show AI agent's phone number instead of customer's phone
+        # This ensures stores see a consistent caller ID when receiving transfers
+        if self.tool_metadata and self.tool_metadata.store_phone:
+            destination["callerId"] = self.tool_metadata.store_phone
+            logger.debug(
+                f"[VapiTool._build_transfer_payload] Setting callerId to {self.tool_metadata.store_phone}"
+            )
+
         logger.debug(
             f"[VapiTool._build_transfer_payload] Detected destination type: {'SIP' if is_sip else 'phone number'} for {self.destination_number}"
         )
