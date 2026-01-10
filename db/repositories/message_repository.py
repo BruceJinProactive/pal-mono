@@ -7,32 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.functions import coalesce
 
-from db.tables import Channel, Conversation, ConversationStatus, Message, User
+from db.tables import Conversation, ConversationStatus, Message, User
 from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
 
 CONVERSATION_RESET_SECONDS_SINCE_CREATED = 24 * 3600  # 24 hours
 CONVERSATION_RESET_SECONDS_SINCE_LAST_MESSAGE = 2 * 3600  # 2 hours
-
-
-def _normalize_channel(channel: Channel | str) -> Channel | None:
-    """Convert string channel to Channel enum, handling 'unknown' as None."""
-    if isinstance(channel, Channel):
-        return channel
-    if channel.lower() == "unknown":
-        logger.warning(
-            "[db.message_repository._normalize_channel] Received unknown channel",
-            extra={"channel": channel},
-        )
-        return None
-    try:
-        return Channel(channel.lower())
-    except ValueError:
-        logger.warning(
-            "[db.message_repository._normalize_channel] Failed to parse channel",
-            extra={"channel": channel},
-        )
-        return None
 
 
 class MessageRepositoryAsync:
@@ -65,33 +45,14 @@ class MessageRepositoryAsync:
         if not user:
             raise ValueError(f"No user found with id {user_id}")
 
-        # Step 3: Get conversation with priority-based lookup
-        # First try exact channel match, then fallback to any active conversation
-        normalized_channel = _normalize_channel(channel)
-
-        # Step 3a: Try exact channel match
+        # Step 3: Get only the necessary fields from the latest conversation
         result = await self.session.execute(
             select(Conversation)
             .filter(Conversation.user_id == user.id)
-            .filter(Conversation.project_id == project_id)
-            .filter(Conversation.channel == normalized_channel)
-            .filter(Conversation.status == ConversationStatus.ACTIVE)
             .order_by(Conversation.created_at.desc())
             .limit(1)
         )
         latest_conversation = result.scalar_one_or_none()
-
-        # Step 3b: Fallback to any active conversation (backwards compatibility)
-        if not latest_conversation:
-            result = await self.session.execute(
-                select(Conversation)
-                .filter(Conversation.user_id == user.id)
-                .filter(Conversation.project_id == project_id)
-                .filter(Conversation.status == ConversationStatus.ACTIVE)
-                .order_by(Conversation.created_at.desc())
-                .limit(1)
-            )
-            latest_conversation = result.scalar_one_or_none()
 
         # Step 4: Initialize conversation_id and determine if we need a new conversation
         current_time = datetime.datetime.now(datetime.timezone.utc)
@@ -175,7 +136,6 @@ class MessageRepositoryAsync:
                 project_id=project_id,
                 is_test=is_test_message,
                 call_id=call_id,
-                channel=normalized_channel,
             )
             self.session.add(new_conversation)
             await self.session.flush()
@@ -262,7 +222,6 @@ class MessageRepositoryAsync:
             project_id=project_id,
             is_test=is_test_message,
             call_id=call_id,
-            channel=Channel.VOICE,
         )
         self.session.add(new_conversation)
         await self.session.flush()
