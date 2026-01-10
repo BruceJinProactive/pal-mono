@@ -79,7 +79,9 @@ class Conversation(Base):
     call_id: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
     # Channel that initiated this conversation (sms, voice, whatsapp, etc.)
-    channel: Mapped[Optional[Channel]] = mapped_column(Enum(Channel), nullable=True)
+    channel: Mapped[Optional[Channel]] = mapped_column(
+        Enum(Channel, values_callable=lambda obj: [e.value for e in obj]), nullable=True
+    )
 
     # Conversation purpose (ordering, reservation, waitlist, etc.)
     purpose: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
