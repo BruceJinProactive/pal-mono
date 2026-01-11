@@ -305,3 +305,12 @@ class ItemResponseStatus(str, enum.Enum):
     passed = "passed"
     failed = "failed"
     skipped = "skipped"
+
+
+class IdentifierType(str, enum.Enum):
+    """Type of identifier for feature flags in gatekeeper service."""
+
+    agent = "agent"
+    account = "account"
+    project = "project"
+    user = "user"

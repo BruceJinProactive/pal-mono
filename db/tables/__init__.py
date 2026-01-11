@@ -16,6 +16,7 @@ from .contacts import Contact
 from .conversations import Conversation, ConversationStatus
 from .credit_grants import CreditGrant
 from .faqs import FAQ
+from .features import Feature
 from .feedback import Feedback
 from .integration import Integration, ProjectIntegration
 from .lead import Lead
@@ -55,6 +56,7 @@ from .types import (
     CreditGrantStatus,
     ExecutionStatus,
     FeedType,
+    IdentifierType,
     IntegrationProvider,
     IntegrationType,
     InvitationStatus,
