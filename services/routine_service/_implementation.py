@@ -677,11 +677,13 @@ async def upload_reference_image(
 
     await session.commit()
 
-    # Convert S3 key to presigned URL for API response
+    # Convert S3 key to presigned URL for API response (run in thread pool)
     from services.asset_service import map_uri_to_s3_url
 
+    presigned_url = await asyncio.to_thread(map_uri_to_s3_url, s3_key) if s3_key else ""
+
     return {
-        "image_url": map_uri_to_s3_url(s3_key) if s3_key else "",
+        "image_url": presigned_url,
         "description": description or "",
     }
 
@@ -789,15 +791,19 @@ async def update_reference_images(
 
     await session.commit()
 
-    # Convert S3 keys to presigned URLs for API response
+    # Convert S3 keys to presigned URLs for API response (run in thread pool, parallel)
     from services.asset_service import map_uri_to_s3_url
 
-    converted_images = []
-    for img in final_images:
+    async def convert_image(img: dict) -> dict:
+        """Convert S3 key to presigned URL in thread pool."""
         image_url = img.get("image_url")
-        presigned_url = map_uri_to_s3_url(image_url) if image_url else ""
-        converted_images.append(
-            {"image_url": presigned_url, "description": img.get("description", "")}
+        presigned_url = (
+            await asyncio.to_thread(map_uri_to_s3_url, image_url) if image_url else ""
         )
+        return {"image_url": presigned_url, "description": img.get("description", "")}
+
+    converted_images = await asyncio.gather(
+        *[convert_image(img) for img in final_images]
+    )
 
     return converted_images

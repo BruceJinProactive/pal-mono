@@ -278,10 +278,48 @@ async def add_response(
         # For now, call synchronously but it's stubbed
         await process_response_ai(response.id, session)
 
+    # Access SQLAlchemy model attributes BEFORE commit to avoid lazy-loading issues
+    response_data = {
+        "id": response.id,
+        "submission_id": response.submission_id,
+        "routine_item_id": response.routine_item_id,
+        "image_url": response.image_url,  # Access before commit!
+        "notes": response.notes,
+        "ai_result": response.ai_result,
+        "ai_passed": response.ai_passed,
+        "ai_confidence": response.ai_confidence,
+        "status": response.status,
+        "created_at": response.created_at,
+        "updated_at": response.updated_at,
+    }
+
     await session.commit()
 
-    return await _build_item_response(
-        response=response,
+    # Convert S3 key to presigned URL (run in thread pool)
+    from services.asset_service import map_uri_to_s3_url
+
+    if response_data["image_url"]:
+        presigned_url = await asyncio.to_thread(
+            map_uri_to_s3_url, response_data["image_url"]
+        )
+        # Normalize empty string to None to match _build_item_response behavior
+        if presigned_url == "":
+            presigned_url = None
+    else:
+        presigned_url = None
+
+    return ItemResponseWithItemResponse(
+        id=response_data["id"],
+        submission_id=response_data["submission_id"],
+        routine_item_id=response_data["routine_item_id"],
+        image_url=presigned_url,  # Presigned URL for API response
+        notes=response_data["notes"],
+        ai_result=response_data["ai_result"],
+        ai_passed=response_data["ai_passed"],
+        ai_confidence=response_data["ai_confidence"],
+        status=response_data["status"],
+        created_at=response_data["created_at"],
+        updated_at=response_data["updated_at"],
         item_name=item.name,
         item_description=item.description,
         is_required=item.is_required,

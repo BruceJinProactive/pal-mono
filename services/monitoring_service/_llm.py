@@ -14,6 +14,7 @@ from datetime import datetime
 
 import boto3
 import openai
+from ddtrace.trace import tracer
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -255,17 +256,41 @@ For invalid/problematic images:
             # Use default json_object format
             openai_response_format = OPENAI_RESPONSE_FORMAT
 
-        # Run blocking OpenAI call in thread pool
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: openai.OpenAI().chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
-                response_format=openai_response_format,  # type: ignore[arg-type]
-                max_tokens=OPENAI_MAX_TOKENS,
-            ),
-        )
+        # Create a wrapper function that runs OpenAI call in a new trace context
+        # This breaks the trace inheritance from the parent request (e.g., voice interaction)
+        # so monitoring analysis appears as a separate trace in Datadog
+        def call_openai_with_new_trace():
+            # Get the current context and clear it to start a fresh trace
+            # This prevents inheriting the parent trace from voice/agent interactions
+            current_context = tracer.current_trace_context()
+
+            # Temporarily clear the trace context to create an independent trace
+            tracer.context_provider.activate(None)
+
+            try:
+                # Start a completely new root trace
+                with tracer.trace(
+                    "monitoring.vision_analysis",
+                    service="pal-mono-monitoring",
+                    resource="openai.vision.analysis",
+                ) as span:
+                    span.set_tag("monitoring.config_id", str(monitoring_config_id))
+                    span.set_tag("monitoring.model", OPENAI_MODEL)
+                    span.set_tag("monitoring.image_url", image_url)
+                    return openai.OpenAI().chat.completions.create(
+                        model=OPENAI_MODEL,
+                        messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
+                        response_format=openai_response_format,  # type: ignore[arg-type]
+                        max_tokens=OPENAI_MAX_TOKENS,
+                    )
+            finally:
+                # Restore the original context after the call
+                if current_context:
+                    tracer.context_provider.activate(current_context)
+
+        # Run blocking OpenAI call in thread pool with new trace context
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(None, call_openai_with_new_trace)
 
         analysis_result = json.loads(response.choices[0].message.content or "{}")
 
