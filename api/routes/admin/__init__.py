@@ -74,6 +74,12 @@ from api.schemas.admin.faq import (
     ListFAQsResponse,
     UpdateFAQRequest,
 )
+from api.schemas.admin.features import (
+    CheckFeatureRequest,
+    CheckFeatureResponse,
+    UpsertFeatureRequest,
+    UpsertFeatureResponse,
+)
 from api.schemas.admin.feedback import (
     CreateFeedbackRequest,
     Feedback,
@@ -261,6 +267,7 @@ from . import (
     _conversation,
     _email,
     _faq,
+    _features,
     _feedback,
     _history,
     _integration,
@@ -1339,6 +1346,55 @@ async def delete_faq(
     Delete an FAQ
     """
     return await _faq.delete_faq(account_name, faq_id, context, session)
+
+
+"""
+---------- Features Endpoints ----------
+----------------------------------------
+"""
+
+
+@admin_router.post("/features/check")
+async def check_feature(
+    request: CheckFeatureRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CheckFeatureResponse:
+    """
+    Check if a feature is enabled for a specific identifier.
+
+    This endpoint allows checking feature flags for different identifier types:
+    - agent: Check if a feature is enabled for a specific agent
+    - account: Check if a feature is enabled for a specific account
+    - project: Check if a feature is enabled for a specific project
+    - user: Check if a feature is enabled for a specific user
+
+    Returns the feature status (enabled/disabled) for the given identifier.
+    """
+    authorize_admin(context)
+    return await _features.check_feature(request, context, session)
+
+
+@admin_router.post("/features/upsert")
+async def upsert_feature(
+    request: UpsertFeatureRequest,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> UpsertFeatureResponse:
+    """
+    Create or update a feature flag for a specific identifier.
+
+    This endpoint allows managing feature flags for different identifier types:
+    - agent: Enable/disable a feature for a specific agent
+    - account: Enable/disable a feature for a specific account
+    - project: Enable/disable a feature for a specific project
+    - user: Enable/disable a feature for a specific user
+
+    If the feature flag already exists, it will be updated with the new enabled status.
+    If it doesn't exist, a new feature flag entry will be created.
+    """
+    authorize_admin(context)
+    return await _features.upsert_feature(request, context, session)
 
 
 """
