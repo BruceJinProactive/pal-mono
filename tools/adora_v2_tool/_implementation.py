@@ -278,10 +278,11 @@ class AdoraV2Tool(Toolkit):
                 - Examples: "2025-01-15T14:30:00", "2025-12-25T12:00:00"
                 - Must be in store's local timezone
             coupon_code (str | None): Coupon code to apply to the order (optional).
-                - Set to None if no coupon mentioned
-                - If provided, will be validated before processing order
-                - Invalid coupons will result in order rejection with error message
-
+                - Only apply if customer explicitly requests to use a specific coupon on this order
+                - Assume coupon is valid unless it was previously rejected as invalid in this conversation
+                - Set to None if customer mentions a coupon without confirming they want it applied
+                - Set to None if the coupon was previously deemed invalid in this conversation
+                - If multiple coupons discussed, use only the latest one customer confirms they want applied
         Returns:
             str: Order confirmation with order ID and final total.
         """
