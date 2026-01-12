@@ -2,8 +2,7 @@ from typing import Dict, Optional, Type
 
 from agno.tools.toolkit import Toolkit
 
-# TODO: Absolute import required to resolve circular import. Fix this anti-pattern.
-from agent.tool._config import ToolIdentifier, ToolMetadata
+from agent.tool import ToolIdentifier, ToolMetadata
 from tools.adora_tool import AdoraTool
 from tools.adora_v2_tool import AdoraV2Tool
 from tools.catering_tool import CateringTool
