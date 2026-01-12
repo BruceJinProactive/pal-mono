@@ -5,12 +5,12 @@ from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
-from db.repositories import ConversationRepository
-from db.session import SyncSessionLocal
+from db.repositories.conversation_repository import ConversationRepositoryAsync
+from db.session import AsyncSessionLocal
 from utils.log import logger
 
 
-def _get_control_url_from_vapi(call_id: str) -> str:
+async def _get_control_url_from_vapi(call_id: str) -> str:
     """
     Fetch control URL from Vapi API using call ID.
 
@@ -35,10 +35,11 @@ def _get_control_url_from_vapi(call_id: str) -> str:
     try:
         vapi_url = f"https://api.vapi.ai/call/{call_id}"
         headers = {"Authorization": f"Bearer {vapi_api_key}"}
-        response = httpx.get(vapi_url, headers=headers, timeout=30.0)
-        response.raise_for_status()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(vapi_url, headers=headers)
+            response.raise_for_status()
 
-        call_data = response.json()
+            call_data = response.json()
         # Use `or {}` because .get() returns None if key exists with None value
         control_url = (call_data.get("monitor") or {}).get("controlUrl")
 
@@ -138,7 +139,7 @@ class VapiTool(Toolkit):
         }
 
     @tool
-    def call_transfer(self) -> str:
+    async def call_transfer(self) -> str:
         """
         Transfer the current call to a phone number or SIP address.
 
@@ -183,15 +184,75 @@ class VapiTool(Toolkit):
         logger.debug(
             f"[VapiTool.call_transfer] Initiating call transfer for conversation {conversation_id}"
         )
-        db = SyncSessionLocal()
+        async with AsyncSessionLocal() as db:
+            # Get conversation and fetch control URL from Vapi API
+            try:
+                conversation_repo = ConversationRepositoryAsync(db)
+                conversation = await conversation_repo.get_conversation_by_id(
+                    conversation_id
+                )
 
-        # Get conversation and fetch control URL from Vapi API
-        try:
-            conversation_repo = ConversationRepository(db)
-            conversation = conversation_repo.get_conversation_by_id(conversation_id)
+                if not conversation:
+                    error_msg = f"Conversation {conversation_id} not found. Call transfer is not possible."
+                    logger.error(
+                        f"[VapiTool.call_transfer] {error_msg}",
+                        extra={
+                            "project_id": str(self.tool_metadata.project_id),
+                            "account_name": self.tool_metadata.account_name,
+                            "conversation_id": str(conversation_id),
+                            "user_id": str(self.tool_metadata.user_id),
+                        },
+                    )
+                    return error_msg
 
-            if not conversation:
-                error_msg = f"Conversation {conversation_id} not found. Call transfer is not possible."
+                # Get control URL from Vapi API if not stored in conversation
+                control_url = conversation.vapi_control_url
+                call_id = conversation.call_id
+                if not control_url:
+                    logger.debug(
+                        f"[VapiTool.call_transfer] No control URL stored for conversation {conversation_id}. Fetching from Vapi API."
+                    )
+                    logger.debug(
+                        f"[VapiTool.call_transfer] Call id for conversation {conversation_id}: {call_id}"
+                    )
+
+                    if not call_id:
+                        error_msg = "No call ID available for this conversation. Call transfer is not possible."
+                        logger.error(
+                            f"[VapiTool.call_transfer] {error_msg}",
+                            extra={
+                                "project_id": str(self.tool_metadata.project_id),
+                                "account_name": self.tool_metadata.account_name,
+                                "conversation_id": str(conversation_id),
+                                "user_id": str(self.tool_metadata.user_id),
+                                "destination_number": self.destination_number,
+                                "vapi_control_url_present": bool(
+                                    conversation.vapi_control_url
+                                ),
+                                "conversation_status": (
+                                    str(conversation.status)
+                                    if conversation.status
+                                    else None
+                                ),
+                            },
+                        )
+                        return error_msg
+
+                    control_url = await _get_control_url_from_vapi(call_id)
+                    logger.info(
+                        "[VapiTool.call_transfer] Fetched control URL from VAPI API (fallback)",
+                        extra={
+                            "call_id": call_id,
+                            "conversation_id": str(conversation_id),
+                        },
+                    )
+
+                logger.debug(
+                    f"[VapiTool.call_transfer] Retrieved control URL for conversation {conversation_id}: {control_url}"
+                )
+
+            except Exception as e:
+                error_msg = f"Error fetching call data: {e}"
                 logger.error(
                     f"[VapiTool.call_transfer] {error_msg}",
                     extra={
@@ -200,70 +261,9 @@ class VapiTool(Toolkit):
                         "conversation_id": str(conversation_id),
                         "user_id": str(self.tool_metadata.user_id),
                     },
+                    exc_info=True,
                 )
                 return error_msg
-
-            # Get control URL from Vapi API if not stored in conversation
-            control_url = conversation.vapi_control_url
-            call_id = conversation.call_id
-            if not control_url:
-                logger.debug(
-                    f"[VapiTool.call_transfer] No control URL stored for conversation {conversation_id}. Fetching from Vapi API."
-                )
-                logger.debug(
-                    f"[VapiTool.call_transfer] Call id for conversation {conversation_id}: {call_id}"
-                )
-
-                if not call_id:
-                    error_msg = "No call ID available for this conversation. Call transfer is not possible."
-                    logger.error(
-                        f"[VapiTool.call_transfer] {error_msg}",
-                        extra={
-                            "project_id": str(self.tool_metadata.project_id),
-                            "account_name": self.tool_metadata.account_name,
-                            "conversation_id": str(conversation_id),
-                            "user_id": str(self.tool_metadata.user_id),
-                            "destination_number": self.destination_number,
-                            "vapi_control_url_present": bool(
-                                conversation.vapi_control_url
-                            ),
-                            "conversation_status": (
-                                str(conversation.status)
-                                if conversation.status
-                                else None
-                            ),
-                        },
-                    )
-                    return error_msg
-
-                control_url = _get_control_url_from_vapi(call_id)
-                logger.info(
-                    "[VapiTool.call_transfer] Fetched control URL from VAPI API (fallback)",
-                    extra={
-                        "call_id": call_id,
-                        "conversation_id": str(conversation_id),
-                    },
-                )
-
-            logger.debug(
-                f"[VapiTool.call_transfer] Retrieved control URL for conversation {conversation_id}: {control_url}"
-            )
-
-        except Exception as e:
-            error_msg = f"Error fetching call data: {e}"
-            logger.error(
-                f"[VapiTool.call_transfer] {error_msg}",
-                extra={
-                    "project_id": str(self.tool_metadata.project_id),
-                    "account_name": self.tool_metadata.account_name,
-                    "conversation_id": str(conversation_id),
-                    "user_id": str(self.tool_metadata.user_id),
-                },
-                exc_info=True,
-            )
-            return error_msg
-        finally:
-            db.close()
 
         # Build transfer payload with auto-detection of SIP vs phone number
         transfer_payload = self._build_transfer_payload()
@@ -273,8 +273,9 @@ class VapiTool(Toolkit):
             logger.debug(
                 f"[VapiTool.call_transfer] Sending transfer request to {control_url} with destination {self.destination_number}"
             )
-            response = httpx.post(control_url, json=transfer_payload, timeout=30.0)
-            response.raise_for_status()
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(control_url, json=transfer_payload)
+                response.raise_for_status()
 
             logger.info(
                 "[VapiTool.call_transfer] Successfully initiated call transfer",
@@ -287,7 +288,7 @@ class VapiTool(Toolkit):
                     "destination_number": self.destination_number,
                 },
             )
-            return "Call has been transfered"
+            return "Call has been transferred"
 
         except httpx.RequestError as e:
             error_msg = f"Network error occurred while transferring call: {e}"
