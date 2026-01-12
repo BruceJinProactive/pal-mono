@@ -6,6 +6,7 @@ Handles staff workflow and manager workflow.
 Authorization is handled in the API layer.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
@@ -252,7 +253,10 @@ async def add_response(
             content=content,
             metadata={},
         )
-        response_asset = asset_service.write_asset(asset_request)
+        # Run sync S3 operation in thread pool to avoid blocking async event loop
+        response_asset = await asyncio.to_thread(
+            asset_service.write_asset, asset_request
+        )
         # Store the S3 key instead of presigned URL
         image_url = response_asset.url
 

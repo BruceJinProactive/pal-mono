@@ -5,6 +5,7 @@ Business logic for routine and routine item operations.
 Authorization is handled in the API layer.
 """
 
+import asyncio
 import datetime
 from datetime import time
 from uuid import UUID
@@ -652,7 +653,8 @@ async def upload_reference_image(
         content=content,
         metadata={},
     )
-    response = asset_service.write_asset(asset_request)
+    # Run sync S3 operation in thread pool to avoid blocking async event loop
+    response = await asyncio.to_thread(asset_service.write_asset, asset_request)
     # Store S3 key instead of presigned URL
     s3_key = response.url
 
