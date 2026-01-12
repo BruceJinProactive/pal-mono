@@ -31,10 +31,10 @@ def write_asset(file: WriteAssetRequest) -> AssetResponse:
             Body=file.content,
             Metadata=file.metadata,
         )
-        url = _utils.generate_presigned_url(s3_client, AWS_ASSET_BUCKET_NAME, file.name)
-
+        # Return the S3 key instead of presigned URL
+        # The API layer will convert to presigned URL when needed
         logger.info("Asset file uploaded successfully.")
-        return AssetResponse(url=url)
+        return AssetResponse(url=file.name)
     except (ClientError, ParamValidationError) as e:
         logger.error(f"S3 write operation failed: {e}")
         raise RuntimeError(f"S3 write operation failed: {e}")

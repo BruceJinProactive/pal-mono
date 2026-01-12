@@ -52,10 +52,23 @@ def _build_routine_response(routine: Routine) -> RoutineResponse:
 
 def _build_item_response(item: RoutineItem) -> RoutineItemResponse:
     """Build a RoutineItemResponse from database model."""
+    from services.asset_service import map_uri_to_s3_url
+
     # Ensure reference_images is always a list
     ref_images = item.reference_images
     if not isinstance(ref_images, list):
         ref_images = []
+
+    # Convert S3 keys to presigned URLs for API response
+    converted_images = []
+    for img in ref_images:
+        if isinstance(img, dict):
+            image_url = img.get("image_url")
+            # Convert S3 key to presigned URL
+            presigned_url = map_uri_to_s3_url(image_url) if image_url else ""
+            converted_images.append(
+                {"image_url": presigned_url, "description": img.get("description", "")}
+            )
 
     return RoutineItemResponse(
         id=item.id,
@@ -65,7 +78,7 @@ def _build_item_response(item: RoutineItem) -> RoutineItemResponse:
         sort_order=item.sort_order,
         input_type=item.input_type,
         is_required=item.is_required,
-        reference_images=ref_images,
+        reference_images=converted_images,  # Now contains presigned URLs
         ai_rules=item.ai_rules or {},
         signal_source_id=item.signal_source_id,
         created_at=item.created_at,
@@ -640,11 +653,12 @@ async def upload_reference_image(
         metadata={},
     )
     response = asset_service.write_asset(asset_request)
-    s3_url = response.url
+    # Store S3 key instead of presigned URL
+    s3_key = response.url
 
     # Append the new image to the existing list
     new_reference_image = {
-        "image_url": s3_url,
+        "image_url": s3_key,  # Store S3 key, not presigned URL
         "description": description or "",
     }
 
@@ -661,7 +675,13 @@ async def upload_reference_image(
 
     await session.commit()
 
-    return new_reference_image
+    # Convert S3 key to presigned URL for API response
+    from services.asset_service import map_uri_to_s3_url
+
+    return {
+        "image_url": map_uri_to_s3_url(s3_key) if s3_key else "",
+        "description": description or "",
+    }
 
 
 async def update_reference_images(
@@ -767,4 +787,15 @@ async def update_reference_images(
 
     await session.commit()
 
-    return final_images
+    # Convert S3 keys to presigned URLs for API response
+    from services.asset_service import map_uri_to_s3_url
+
+    converted_images = []
+    for img in final_images:
+        image_url = img.get("image_url")
+        presigned_url = map_uri_to_s3_url(image_url) if image_url else ""
+        converted_images.append(
+            {"image_url": presigned_url, "description": img.get("description", "")}
+        )
+
+    return converted_images

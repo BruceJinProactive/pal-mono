@@ -54,11 +54,16 @@ def _build_item_response(
     is_required: bool = True,
 ) -> ItemResponseWithItemResponse:
     """Build an ItemResponseWithItemResponse from database model."""
+    from services.asset_service import map_uri_to_s3_url
+
+    # Convert S3 key to presigned URL at API boundary
+    image_url = map_uri_to_s3_url(response.image_url) if response.image_url else None
+
     return ItemResponseWithItemResponse(
         id=response.id,
         submission_id=response.submission_id,
         routine_item_id=response.routine_item_id,
-        image_url=response.image_url,
+        image_url=image_url,  # Presigned URL for API response
         notes=response.notes,
         ai_result=response.ai_result,
         ai_passed=response.ai_passed,
@@ -248,13 +253,14 @@ async def add_response(
             metadata={},
         )
         response_asset = asset_service.write_asset(asset_request)
+        # Store the S3 key instead of presigned URL
         image_url = response_asset.url
 
     # Create or update the response
     response = await submission_repo.upsert_item_response(
         submission_id=submission_id,
         routine_item_id=routine_item_id,
-        image_url=image_url,
+        image_url=image_url,  # Now stores S3 key, not presigned URL
         notes=notes,
         status=ItemResponseStatus.pending,
     )
