@@ -159,10 +159,13 @@ async def start_submission(
         status=ExecutionStatus.in_progress,
     )
 
+    # Cache execution.routine_id before commit to avoid lazy-loading issues
+    routine_id = execution.routine_id
+
     await session.commit()
 
     # Get routine name and items for response
-    routine = await routine_repo.get_routine_by_id(execution.routine_id)
+    routine = await routine_repo.get_routine_by_id(routine_id)
     routine_name = routine.name if routine else None
 
     # Return empty responses list (items haven't been responded to yet)
@@ -356,6 +359,10 @@ async def add_response(
             )
             # Don't raise - AI processing failure shouldn't block response creation
 
+        # Refresh the response object to reload updated attributes from database
+        # This prevents lazy-loading issues when accessing ai_result, ai_passed, etc.
+        await session.refresh(response)
+
     # Access SQLAlchemy model attributes BEFORE commit to avoid lazy-loading issues
     logger.debug(
         "[add_response] Capturing response data BEFORE commit "
@@ -384,16 +391,12 @@ async def add_response(
         )
         raise
 
-    logger.debug("[add_response] Committing database transaction")
-    try:
-        await session.commit()
-        logger.debug("[add_response] Transaction committed")
-    except Exception as e:
-        logger.error(
-            f"[add_response] Database commit failed - "
-            f"error={type(e).__name__}: {str(e)}"
-        )
-        raise
+    # Cache item attributes before commit to avoid lazy-loading issues
+    item_name = item.name
+    item_description = item.description
+    item_is_required = item.is_required
+
+    await session.commit()
 
     # Convert S3 key to presigned URL (run in thread pool)
     logger.debug("[add_response] Converting S3 key to presigned URL")
@@ -440,9 +443,9 @@ async def add_response(
         status=response_data["status"],
         created_at=response_data["created_at"],
         updated_at=response_data["updated_at"],
-        item_name=item.name,
-        item_description=item.description,
-        is_required=item.is_required,
+        item_name=item_name,
+        item_description=item_description,
+        is_required=item_is_required,
     )
 
     logger.info(
@@ -505,13 +508,18 @@ async def submit_for_review(
 
     # Update execution status to completed
     await execution_repo.update_execution_status(
-        execution_id=submission.execution_id,
+        execution_id=updated.execution_id,
         status=ExecutionStatus.completed,
     )
 
+    # Build response before commit to avoid async I/O issues
+    # (session.commit() expires objects, and accessing attributes
+    # in sync _build_submission_response would trigger greenlet errors)
+    response = _build_submission_response(updated)
+
     await session.commit()
 
-    return _build_submission_response(updated)
+    return response
 
 
 async def get_submission(
@@ -713,9 +721,14 @@ async def approve_submission(
             headers={"Content-Type": "application/json"},
         )
 
+    # Build response before commit to avoid async I/O issues
+    # (session.commit() expires objects, and accessing attributes
+    # in sync _build_submission_response would trigger greenlet errors)
+    response = _build_submission_response(updated)
+
     await session.commit()
 
-    return _build_submission_response(updated)
+    return response
 
 
 async def reject_submission(
@@ -769,9 +782,14 @@ async def reject_submission(
             headers={"Content-Type": "application/json"},
         )
 
+    # Build response before commit to avoid async I/O issues
+    # (session.commit() expires objects, and accessing attributes
+    # in sync _build_submission_response would trigger greenlet errors)
+    response = _build_submission_response(updated)
+
     await session.commit()
 
-    return _build_submission_response(updated)
+    return response
 
 
 # ============================================================================
