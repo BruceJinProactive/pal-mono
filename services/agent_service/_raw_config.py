@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
 from uuid import UUID
@@ -24,16 +23,12 @@ from agent import (
 )
 from agent.model import ModelProvider
 from db.tables.accounts import BusinessIndustry
-from db.tables.types import AgentType, Channel, TargetTier
+from db.tables.types import AgentType, Channel, IdentifierType, TargetTier
+from services import features_service
 from services.integration_service.schema import IntegrationDetail
 from services.prompt_service.prompts import prompt_factory
 from services.prompt_service.prompts_v2 import prompt_factory_v2
 from utils.log import logger
-
-TEST_AGENTS_STR = os.getenv("TEST_AGENTS", "")
-TEST_AGENTS = [
-    agent_id.strip() for agent_id in TEST_AGENTS_STR.split(",") if agent_id.strip()
-]
 
 
 class RawConfig:
@@ -398,7 +393,24 @@ class RawConfig:
         brand_info_list = self._get_brand_info()
         store_info_list = self._get_store_info()
 
-        if str(self.agent.id) in TEST_AGENTS:
+        # Check if prompt_v2 feature is enabled for this agent
+        use_v2 = False
+        if session:
+            try:
+                use_v2 = await features_service.check_feature_enabled(
+                    session=session,
+                    feature="prompt_v2",
+                    identifier_type=IdentifierType.agent,
+                    identifier=str(self.agent.id),
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to check prompt_v2 feature for agent {self.agent.id}: {e}"
+                )
+                # Default to v1 if feature check fails
+                use_v2 = False
+
+        if use_v2:
             agent_info_list = await self._get_agent_info_v2(channel, session)
         else:
             agent_info_list = self._get_agent_info(channel)
