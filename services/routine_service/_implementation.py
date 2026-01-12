@@ -51,8 +51,10 @@ def _build_routine_response(routine: Routine) -> RoutineResponse:
     )
 
 
-def _build_item_response(item: RoutineItem) -> RoutineItemResponse:
+async def _build_item_response(item: RoutineItem) -> RoutineItemResponse:
     """Build a RoutineItemResponse from database model."""
+    import asyncio
+
     from services.asset_service import map_uri_to_s3_url
 
     # Ensure reference_images is always a list
@@ -60,13 +62,17 @@ def _build_item_response(item: RoutineItem) -> RoutineItemResponse:
     if not isinstance(ref_images, list):
         ref_images = []
 
-    # Convert S3 keys to presigned URLs for API response
+    # Convert S3 keys to presigned URLs for API response (run in thread pool)
     converted_images = []
     for img in ref_images:
         if isinstance(img, dict):
             image_url = img.get("image_url")
-            # Convert S3 key to presigned URL
-            presigned_url = map_uri_to_s3_url(image_url) if image_url else ""
+            # Convert S3 key to presigned URL (run in thread pool to avoid blocking)
+            presigned_url = (
+                await asyncio.to_thread(map_uri_to_s3_url, image_url)
+                if image_url
+                else ""
+            )
             converted_images.append(
                 {"image_url": presigned_url, "description": img.get("description", "")}
             )
@@ -87,11 +93,18 @@ def _build_item_response(item: RoutineItem) -> RoutineItemResponse:
     )
 
 
-def _build_routine_detail_response(
+async def _build_routine_detail_response(
     routine: Routine,
     items: list[RoutineItem],
 ) -> RoutineDetailResponse:
     """Build a RoutineDetailResponse from database models."""
+    import asyncio
+
+    # Build item responses concurrently
+    item_responses = await asyncio.gather(
+        *[_build_item_response(item) for item in items]
+    )
+
     return RoutineDetailResponse(
         id=routine.id,
         project_id=routine.project_id,
@@ -101,7 +114,7 @@ def _build_routine_detail_response(
         is_active=routine.is_active,
         created_at=routine.created_at,
         updated_at=routine.updated_at,
-        items=[_build_item_response(item) for item in items],
+        items=item_responses,
     )
 
 
@@ -228,7 +241,7 @@ async def create_routine(
     # Build response before commit to avoid async I/O issues
     # (session.commit() expires objects, and accessing attributes
     # in sync _build_routine_detail_response would trigger greenlet errors)
-    response = _build_routine_detail_response(routine, items)
+    response = await _build_routine_detail_response(routine, items)
 
     await session.commit()
 
@@ -257,7 +270,7 @@ async def get_routine(
 
     items = await routine_repo.list_items_by_routine(routine_id)
 
-    return _build_routine_detail_response(routine, items)
+    return await _build_routine_detail_response(routine, items)
 
 
 async def list_routines(
@@ -450,7 +463,7 @@ async def add_item(
     # Build response before commit to avoid async I/O issues
     # (session.commit() expires objects, and accessing attributes
     # in sync _build_item_response would trigger greenlet errors)
-    response = _build_item_response(item)
+    response = await _build_item_response(item)
 
     await session.commit()
 
@@ -477,7 +490,7 @@ async def get_item(
             headers={"Content-Type": "application/json"},
         )
 
-    return _build_item_response(item)
+    return await _build_item_response(item)
 
 
 async def update_item(
@@ -526,7 +539,7 @@ async def update_item(
     # Build response before commit to avoid async I/O issues
     # (session.commit() expires objects, and accessing attributes
     # in sync _build_item_response would trigger greenlet errors)
-    response = _build_item_response(updated)
+    response = await _build_item_response(updated)
 
     await session.commit()
 

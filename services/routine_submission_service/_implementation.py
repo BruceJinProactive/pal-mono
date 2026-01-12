@@ -30,6 +30,7 @@ from db.tables.routine_item_responses import RoutineItemResponse
 from db.tables.routine_submissions import RoutineSubmission
 from db.tables.types import ExecutionStatus, ItemResponseStatus, SubmissionStatus
 from services.auth_types import UserContext
+from utils.log import logger
 
 
 def _build_submission_response(submission: RoutineSubmission) -> SubmissionResponse:
@@ -184,6 +185,12 @@ async def add_response(
     Add a response to a submission item.
     Authorization is handled in the API layer.
     """
+    logger.info(
+        f"[add_response] Starting - submission_id={submission_id}, "
+        f"routine_item_id={routine_item_id}, "
+        f"has_file={file is not None}, has_notes={notes is not None}"
+    )
+
     from services import asset_service
 
     submission_repo = RoutineSubmissionRepositoryAsync(session)
@@ -191,17 +198,28 @@ async def add_response(
     execution_repo = RoutineExecutionRepositoryAsync(session)
 
     # Get submission
+    logger.debug(f"[add_response] Fetching submission: {submission_id}")
     submission = await submission_repo.get_submission_by_id(submission_id)
 
     if not submission:
+        logger.error(f"[add_response] Submission not found: {submission_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Submission {submission_id} not found",
             headers={"Content-Type": "application/json"},
         )
 
+    logger.debug(
+        f"[add_response] Submission found - status={submission.status}, "
+        f"execution_id={submission.execution_id}"
+    )
+
     # Check submission is in draft status
     if submission.status != SubmissionStatus.draft:
+        logger.warning(
+            f"[add_response] Cannot add response to non-draft submission: "
+            f"submission_id={submission_id}, status={submission.status}"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot add responses to a submitted submission",
@@ -209,45 +227,68 @@ async def add_response(
         )
 
     # Get the routine item
+    logger.debug(f"[add_response] Fetching routine item: {routine_item_id}")
     item = await routine_repo.get_routine_item_by_id(routine_item_id)
 
     if not item:
+        logger.error(f"[add_response] Routine item not found: {routine_item_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Routine item {routine_item_id} not found",
             headers={"Content-Type": "application/json"},
         )
 
+    logger.debug(
+        f"[add_response] Routine item found - name={item.name}, "
+        f"routine_id={item.routine_id}, has_ai_rules={item.ai_rules is not None}"
+    )
+
     # Get execution to get routine for asset path
+    logger.debug(f"[add_response] Fetching execution: {submission.execution_id}")
     execution = await execution_repo.get_execution_by_id(submission.execution_id)
 
     if not execution:
+        logger.error(f"[add_response] Execution not found: {submission.execution_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Execution {submission.execution_id} not found",
             headers={"Content-Type": "application/json"},
         )
 
+    logger.debug(f"[add_response] Execution found - routine_id={execution.routine_id}")
+
     # Upload image if provided
     image_url = None
     if file:
+        logger.info(
+            f"[add_response] File upload requested - "
+            f"filename={file.filename}, content_type={file.content_type}"
+        )
+
+        logger.debug(f"[add_response] Fetching routine: {execution.routine_id}")
         routine = await routine_repo.get_routine_by_id(execution.routine_id)
 
         if not routine:
+            logger.error(f"[add_response] Routine not found: {execution.routine_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Routine {execution.routine_id} not found",
                 headers={"Content-Type": "application/json"},
             )
 
+        logger.debug("[add_response] Reading file content")
         content = await file.read()
         filename = file.filename or "response.jpg"
+
+        logger.debug(f"[add_response] File size: {len(content)} bytes")
 
         # Path: routines/{project_id}/{routine_id}/responses/{execution_id}/{item_id}_{filename}
         asset_path = (
             f"routines/{routine.project_id}/{routine.id}/responses/"
             f"{execution.id}/{routine_item_id}_{filename}"
         )
+
+        logger.info(f"[add_response] Uploading to S3 - path={asset_path}")
 
         from api.schemas.asset.asset import WriteAssetRequest
 
@@ -256,59 +297,138 @@ async def add_response(
             content=content,
             metadata={},
         )
-        # Run sync S3 operation in thread pool to avoid blocking async event loop
-        response_asset = await asyncio.to_thread(
-            asset_service.write_asset, asset_request
-        )
-        # Store the S3 key instead of presigned URL
-        image_url = response_asset.url
+
+        try:
+            # Run sync S3 operation in thread pool to avoid blocking async event loop
+            response_asset = await asyncio.to_thread(
+                asset_service.write_asset, asset_request
+            )
+
+            # Store the S3 key instead of presigned URL
+            image_url = response_asset.url
+            logger.info(f"[add_response] S3 upload successful - s3_key={image_url}")
+        except Exception as e:
+            logger.error(
+                f"[add_response] S3 upload failed - "
+                f"path={asset_path}, error={type(e).__name__}: {str(e)}"
+            )
+            raise
 
     # Create or update the response
-    response = await submission_repo.upsert_item_response(
-        submission_id=submission_id,
-        routine_item_id=routine_item_id,
-        image_url=image_url,  # Now stores S3 key, not presigned URL
-        notes=notes,
-        status=ItemResponseStatus.pending,
+    logger.debug(
+        f"[add_response] Upserting item response - "
+        f"submission_id={submission_id}, routine_item_id={routine_item_id}"
     )
+
+    try:
+        response = await submission_repo.upsert_item_response(
+            submission_id=submission_id,
+            routine_item_id=routine_item_id,
+            image_url=image_url,  # Now stores S3 key, not presigned URL
+            notes=notes,
+            status=ItemResponseStatus.pending,
+        )
+        logger.debug(
+            f"[add_response] Item response upserted - response_id={response.id}"
+        )
+    except Exception as e:
+        logger.error(
+            f"[add_response] Failed to upsert item response - "
+            f"error={type(e).__name__}: {str(e)}"
+        )
+        raise
 
     # Trigger AI processing (stubbed for now)
     if image_url and item.ai_rules:
+        logger.info(
+            f"[add_response] Triggering AI processing - "
+            f"response_id={response.id}, ai_rules={item.ai_rules}"
+        )
         # TODO: Implement async AI processing
         # For now, call synchronously but it's stubbed
-        await process_response_ai(response.id, session)
+        try:
+            await process_response_ai(response.id, session)
+            logger.debug("[add_response] AI processing completed")
+        except Exception as e:
+            logger.error(
+                f"[add_response] AI processing failed - "
+                f"error={type(e).__name__}: {str(e)}"
+            )
+            # Don't raise - AI processing failure shouldn't block response creation
 
     # Access SQLAlchemy model attributes BEFORE commit to avoid lazy-loading issues
-    response_data = {
-        "id": response.id,
-        "submission_id": response.submission_id,
-        "routine_item_id": response.routine_item_id,
-        "image_url": response.image_url,  # Access before commit!
-        "notes": response.notes,
-        "ai_result": response.ai_result,
-        "ai_passed": response.ai_passed,
-        "ai_confidence": response.ai_confidence,
-        "status": response.status,
-        "created_at": response.created_at,
-        "updated_at": response.updated_at,
-    }
+    logger.debug(
+        "[add_response] Capturing response data BEFORE commit "
+        "(prevents greenlet errors from lazy-loading)"
+    )
+    try:
+        response_data = {
+            "id": response.id,
+            "submission_id": response.submission_id,
+            "routine_item_id": response.routine_item_id,
+            "image_url": response.image_url,  # Access before commit!
+            "notes": response.notes,
+            "ai_result": response.ai_result,
+            "ai_passed": response.ai_passed,
+            "ai_confidence": response.ai_confidence,
+            "status": response.status,
+            "created_at": response.created_at,
+            "updated_at": response.updated_at,
+        }
+        logger.debug("[add_response] Response data captured successfully")
+    except Exception as e:
+        logger.error(
+            f"[add_response] GREENLET ERROR: Failed to access SQLAlchemy attributes - "
+            f"error={type(e).__name__}: {str(e)}, "
+            f"This might be a lazy-loading issue!"
+        )
+        raise
 
-    await session.commit()
+    logger.debug("[add_response] Committing database transaction")
+    try:
+        await session.commit()
+        logger.debug("[add_response] Transaction committed")
+    except Exception as e:
+        logger.error(
+            f"[add_response] Database commit failed - "
+            f"error={type(e).__name__}: {str(e)}"
+        )
+        raise
 
     # Convert S3 key to presigned URL (run in thread pool)
+    logger.debug("[add_response] Converting S3 key to presigned URL")
     from services.asset_service import map_uri_to_s3_url
 
     if response_data["image_url"]:
-        presigned_url = await asyncio.to_thread(
-            map_uri_to_s3_url, response_data["image_url"]
-        )
-        # Normalize empty string to None to match _build_item_response behavior
-        if presigned_url == "":
-            presigned_url = None
+        try:
+            logger.debug(
+                f"[add_response] Calling map_uri_to_s3_url in thread pool - "
+                f"s3_key={response_data['image_url']}"
+            )
+            presigned_url = await asyncio.to_thread(
+                map_uri_to_s3_url, response_data["image_url"]
+            )
+
+            # Normalize empty string to None to match _build_item_response behavior
+            if presigned_url == "":
+                presigned_url = None
+
+            logger.debug(
+                f"[add_response] Presigned URL generated - "
+                f"url_exists={presigned_url is not None}"
+            )
+        except Exception as e:
+            logger.error(
+                f"[add_response] GREENLET ERROR: Failed to generate presigned URL - "
+                f"error={type(e).__name__}: {str(e)}, "
+                f"s3_key={response_data['image_url']}"
+            )
+            raise
     else:
         presigned_url = None
+        logger.debug("[add_response] No image URL to convert")
 
-    return ItemResponseWithItemResponse(
+    result = ItemResponseWithItemResponse(
         id=response_data["id"],
         submission_id=response_data["submission_id"],
         routine_item_id=response_data["routine_item_id"],
@@ -324,6 +444,13 @@ async def add_response(
         item_description=item.description,
         is_required=item.is_required,
     )
+
+    logger.info(
+        f"[add_response] Completed successfully - "
+        f"response_id={result.id}, has_image={result.image_url is not None}"
+    )
+
+    return result
 
 
 async def submit_for_review(
