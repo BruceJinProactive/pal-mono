@@ -48,7 +48,7 @@ def _build_submission_response(submission: RoutineSubmission) -> SubmissionRespo
     )
 
 
-def _build_item_response(
+async def _build_item_response(
     response: RoutineItemResponse,
     item_name: str | None = None,
     item_description: str | None = None,
@@ -57,8 +57,11 @@ def _build_item_response(
     """Build an ItemResponseWithItemResponse from database model."""
     from services.asset_service import map_uri_to_s3_url
 
-    # Convert S3 key to presigned URL at API boundary
-    image_url = map_uri_to_s3_url(response.image_url) if response.image_url else None
+    # Convert S3 key to presigned URL at API boundary (run in thread pool)
+    if response.image_url:
+        image_url = await asyncio.to_thread(map_uri_to_s3_url, response.image_url)
+    else:
+        image_url = None
 
     return ItemResponseWithItemResponse(
         id=response.id,
@@ -277,7 +280,7 @@ async def add_response(
 
     await session.commit()
 
-    return _build_item_response(
+    return await _build_item_response(
         response=response,
         item_name=item.name,
         item_description=item.description,
@@ -388,10 +391,11 @@ async def get_submission(
     # Get responses
     db_responses = await submission_repo.list_responses_by_submission(submission_id)
 
-    responses = []
+    # Build responses concurrently using asyncio.gather
+    response_tasks = []
     for response in db_responses:
         item = item_lookup.get(response.routine_item_id)
-        responses.append(
+        response_tasks.append(
             _build_item_response(
                 response=response,
                 item_name=item.name if item else None,
@@ -399,6 +403,8 @@ async def get_submission(
                 is_required=item.is_required if item else True,
             )
         )
+
+    responses = await asyncio.gather(*response_tasks)
 
     return _build_submission_detail_response(
         submission=submission,
@@ -465,10 +471,11 @@ async def list_pending_review(
         # Get responses
         db_responses = await submission_repo.list_responses_by_submission(submission.id)
 
-        responses = []
+        # Build responses concurrently using asyncio.gather
+        response_tasks = []
         for response in db_responses:
             item = item_lookup.get(response.routine_item_id)
-            responses.append(
+            response_tasks.append(
                 _build_item_response(
                     response=response,
                     item_name=item.name if item else None,
@@ -476,6 +483,8 @@ async def list_pending_review(
                     is_required=item.is_required if item else True,
                 )
             )
+
+        responses = await asyncio.gather(*response_tasks)
 
         submissions.append(
             _build_submission_detail_response(
