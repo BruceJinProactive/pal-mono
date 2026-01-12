@@ -2360,6 +2360,34 @@ async def query_vector_database_namespace(
     )
 
 
+@admin_router.get("/namespaces")
+async def list_namespaces(
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+    page: int = Query(1, gt=0, description="Page number"),
+    page_size: int = Query(50, gt=0, le=100, description="Number of items per page"),
+    account_name: Optional[str] = Query(None, description="Filter by account name"),
+    index_name: Optional[str] = Query(None, description="Filter by index name"),
+    tool_name: Optional[str] = Query(
+        None, description="Filter by tool name or provider"
+    ),
+) -> dict:
+    """
+    List all knowledge base namespaces across all projects.
+    Returns namespace information including account, tool, and index details.
+    Supports filtering by account name, index name, and tool name.
+    """
+    return await _knowledge.list_namespaces(
+        context,
+        session,
+        page,
+        page_size,
+        account_name,
+        index_name,
+        tool_name,
+    )
+
+
 @admin_router.post("/accounts/{account_name}/projects/{project_id}/update_menu")
 async def update_agent_kb(
     account_name: str,

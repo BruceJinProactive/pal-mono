@@ -13,7 +13,7 @@ from llama_index.vector_stores.pinecone import PineconeVectorStore
 from pinecone import Pinecone
 
 from db.tables.types import IntegrationProvider
-from services.knowledge_service.schema import KnowledgeFile
+from services.knowledge_service.schema import KnowledgeFile, NamespaceInfo
 from utils.log import logger
 
 
@@ -547,3 +547,84 @@ def update_agent_kb(
 
         # Re-raise the exception for production environments
         raise
+
+
+def list_namespaces(
+    session,
+    account_name: Optional[str] = None,
+    index_name: Optional[str] = None,
+    tool_name: Optional[str] = None,
+) -> list[NamespaceInfo]:
+    """
+    List all knowledge base namespaces across all projects.
+
+    Extracts namespace information from project raw_config.tools.identifiers.
+
+    Args:
+        session: Database session
+        account_name: Optional filter by account name (partial match, case-insensitive)
+        index_name: Optional filter by index name (partial match, case-insensitive)
+        tool_name: Optional filter by tool name (partial match, case-insensitive)
+
+    Returns:
+        list[NamespaceInfo]: List of namespace information objects
+    """
+    import db
+
+    namespaces: list[NamespaceInfo] = []
+
+    account_repo = db.AccountRepository(session)
+    project_repo = db.ProjectRepository(session)
+
+    accounts = account_repo.filter_accounts_by_name()
+
+    for account in accounts:
+        if account_name and account_name.lower() not in account.name.lower():
+            continue
+
+        projects = project_repo.get_projects_by_account_id(account.id)
+
+        for project in projects:
+            raw_config = project.raw_config or {}
+
+            # Extract tool identifiers from raw_config.tools.identifiers
+            tools_config = raw_config.get("tools", {})
+            identifiers = tools_config.get("identifiers", [])
+
+            # Find namespace and tool info from tool identifiers
+            for identifier in identifiers:
+                tool_args = identifier.get("tool_args", {})
+                namespace = tool_args.get("namespace")
+                project_index_name = tool_args.get("index_name")
+                project_tool_name = identifier.get("tool_name")
+
+                if not namespace:
+                    continue
+
+                if (
+                    index_name
+                    and index_name.lower() not in (project_index_name or "").lower()
+                ):
+                    continue
+
+                if tool_name:
+                    if (
+                        not project_tool_name
+                        or tool_name.lower() not in project_tool_name.lower()
+                    ):
+                        continue
+
+                namespaces.append(
+                    NamespaceInfo(
+                        namespace=namespace,
+                        index_name=project_index_name or "projects",
+                        project_id=project.id,
+                        project_name=project.name,
+                        account_id=account.id,
+                        account_name=account.name,
+                        tool_name=project_tool_name,
+                        provider=None,
+                    )
+                )
+
+    return namespaces

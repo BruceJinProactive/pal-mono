@@ -1,9 +1,11 @@
 from typing import Optional
 
+from sqlalchemy.orm import Session
+
 from db.tables.types import IntegrationProvider
 
 from . import _implementation
-from .schema import KnowledgeFile
+from .schema import KnowledgeFile, NamespaceInfo
 
 
 def list_knowledge_files(
@@ -197,6 +199,34 @@ def update_agent_kb(
     )
 
 
+def list_namespaces(
+    session: Session,
+    account_name: Optional[str] = None,
+    index_name: Optional[str] = None,
+    tool_name: Optional[str] = None,
+) -> list[NamespaceInfo]:
+    """
+    List all knowledge base namespaces across all projects.
+
+    Extracts namespace information from project raw_config.tools.identifiers.
+
+    Args:
+        session: Database session
+        account_name: Optional filter by account name (partial match, case-insensitive)
+        index_name: Optional filter by index name (partial match, case-insensitive)
+        tool_name: Optional filter by tool name (partial match, case-insensitive)
+
+    Returns:
+        list[NamespaceInfo]: List of namespace information objects
+    """
+    return _implementation.list_namespaces(
+        session=session,
+        account_name=account_name,
+        index_name=index_name,
+        tool_name=tool_name,
+    )
+
+
 __all__ = [
     "list_knowledge_files",
     "upload_knowledge_file",
@@ -205,4 +235,6 @@ __all__ = [
     "delete_namespace",
     "query_vector_database",
     "update_agent_kb",
+    "list_namespaces",
+    "NamespaceInfo",
 ]

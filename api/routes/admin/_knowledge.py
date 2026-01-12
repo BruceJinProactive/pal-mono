@@ -1,6 +1,7 @@
 import json
 import time
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -489,4 +490,52 @@ async def query_vector_database_namespace(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error querying namespace: {str(e)}",
+        )
+
+
+async def list_namespaces(
+    context: UserContext,
+    session: Session,
+    page: int = 1,
+    page_size: int = 50,
+    account_name: Optional[str] = None,
+    index_name: Optional[str] = None,
+    tool_name: Optional[str] = None,
+) -> dict:
+    """
+    List all knowledge base namespaces across all projects.
+    Returns namespace information including account, tool, and index details.
+    Supports filtering by account name, index name, and tool name.
+    """
+    try:
+        _auth.authorize_admin(context)
+
+        # Delegate to knowledge service for main logic
+        namespace_infos = knowledge_service.list_namespaces(
+            session=session,
+            account_name=account_name,
+            index_name=index_name,
+            tool_name=tool_name,
+        )
+
+        # Apply pagination
+        total = len(namespace_infos)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_namespaces = namespace_infos[start_idx:end_idx]
+        has_more = end_idx < total
+
+        return {
+            "namespaces": [asdict(ns) for ns in paginated_namespaces],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "has_more": has_more,
+        }
+
+    except Exception as e:
+        logger.error(f"Error listing namespaces: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error listing namespaces: {str(e)}",
         )
