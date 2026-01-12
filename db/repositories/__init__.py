@@ -9,6 +9,7 @@ from .change_log_repository import ChangeLogRepository
 from .checkpoint_repository import CheckpointRepository
 from .conversation_repository import ConversationRepository, ConversationRepositoryAsync
 from .faq_repository import FAQRepository
+from .feature_repository import FeatureRepositoryAsync
 from .feedback_repository import FeedbackRepository
 from .integration_repository import IntegrationAsyncRepository, IntegrationRepository
 from .lead_repository import LeadFilter, LeadRepository
