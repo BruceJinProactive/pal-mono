@@ -395,24 +395,48 @@ class RawConfig:
 
         # Check if prompt_v2 feature is enabled for this agent
         use_v2 = False
+        logger.debug(
+            f"[prompt_v2] Starting feature check for agent {self.agent.id}, session provided: {session is not None}"
+        )
+
         if session:
             try:
+                logger.debug(
+                    f"[prompt_v2] Checking feature 'prompt_v2' for agent {self.agent.id}"
+                )
                 use_v2 = await features_service.check_feature_enabled(
                     session=session,
                     feature="prompt_v2",
                     identifier_type=IdentifierType.agent,
                     identifier=str(self.agent.id),
                 )
+                logger.debug(
+                    f"[prompt_v2] Feature check result for agent {self.agent.id}: use_v2={use_v2}"
+                )
             except Exception as e:
                 logger.warning(
-                    f"Failed to check prompt_v2 feature for agent {self.agent.id}: {e}"
+                    f"[prompt_v2] Failed to check prompt_v2 feature for agent {self.agent.id}: {e}"
                 )
                 # Default to v1 if feature check fails
                 use_v2 = False
+                logger.debug("[prompt_v2] Defaulting to v1 due to exception")
+        else:
+            logger.debug(
+                f"[prompt_v2] No session provided for agent {self.agent.id}, defaulting to v1"
+            )
 
+        logger.info(
+            f"[prompt_v2] Final decision for agent {self.agent.id}: use_v2={use_v2}, channel={channel}"
+        )
         if use_v2:
+            logger.debug(
+                f"[prompt_v2] Calling _get_agent_info_v2 for agent {self.agent.id}"
+            )
             agent_info_list = await self._get_agent_info_v2(channel, session)
         else:
+            logger.debug(
+                f"[prompt_v2] Calling _get_agent_info (v1) for agent {self.agent.id}"
+            )
             agent_info_list = self._get_agent_info(channel)
 
         sections = [self._build_agent_introduction()]
