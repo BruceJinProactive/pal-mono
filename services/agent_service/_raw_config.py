@@ -406,7 +406,7 @@ class RawConfig:
                 )
                 use_v2 = await features_service.check_feature_enabled(
                     session=session,
-                    feature="prompt_v2",
+                    feature="prompts_v2",
                     identifier_type=IdentifierType.agent,
                     identifier=str(self.agent.id),
                 )
