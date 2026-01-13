@@ -1762,9 +1762,12 @@ def create_stripe_customer_for_project(
         )
 
     try:
+        # Create consistent customer name: accountname-projectname
+        combined_name = f"{account.name}-{project.name}".lower()
+
         customer_info = _stripe_customer.create_stripe_customer(
-            account_name=project.name,
-            customer_name=customer_name or project.display_name or project.name,
+            account_name=combined_name,
+            customer_name=customer_name or combined_name,
             customer_email=customer_email,
             metadata={
                 "project_id": str(project.id),
