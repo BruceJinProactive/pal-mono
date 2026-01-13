@@ -228,7 +228,7 @@ class AdoraV2Tool(Toolkit):
         customer_info: ClientCustomerInfo,
         order_type: OrderType,
         payment_type: PaymentType,
-        order_items: list[str],
+        order_items: list[list[str]],
         delivery_address: BaseDeliveryAddress | None,
         promise_date_time: str | None = None,
         coupon_code: str | None = None,
@@ -256,9 +256,20 @@ class AdoraV2Tool(Toolkit):
             payment_type (PaymentType): Payment type. Options: "PayInStore", "PaymentLink".
                 IMPORTANT: Always use "PaymentLink" for both pick up and delivery orders if payment type is not mentioned
                 - Delivery orders must always use "PaymentLink"
-            order_items (list[str]): List of order item names without modifiers.
-                Extract complete dish or drink names without size or quantity.
-                Examples: ["Margherita Pizza", "Caesar Salad", "Coca Cola"]
+            order_items (list[list[str]]): List of order items, where each inner list represents one item or half-and-half combination.
+                Structure:
+                - Individual item: Inner list with 1 item, e.g., [["Pepperoni Pizza"]]
+                - Half-and-half: Inner list with 2 items, e.g., [["Pepperoni Pizza", "Veggie Pizza"]]
+                - Mixed order: [["Pepperoni Pizza", "Hawaiian Pizza"], ["Cheese Pizza"], ["Caesar Salad"]]
+                  (half pepperoni/hawaiian, individual cheese, side salad)
+                Rules:
+                - Extract complete item names without size or quantity
+                - Each inner list must contain 1-2 items only
+                - For half-and-half, both items should be pizza/customizable items
+                Examples:
+                - Individual items: [["Margherita Pizza"], ["Caesar Salad"], ["Coca Cola"]]
+                - Half-and-half pizza: [["Pepperoni Pizza", "Mushroom Pizza"]]
+                - Mixed: [["BBQ Chicken Pizza", "Hawaiian Pizza"], ["Garden Salad"]]
             delivery_address (BaseDeliveryAddress | None): Delivery address for delivery orders.
                 Required fields:
                 - street_number: Street number (required). Remove spaces in street numbers (e.g., "12 34" → "1234")
@@ -288,6 +299,18 @@ class AdoraV2Tool(Toolkit):
         """
 
         logger.debug(f"[AdoraV2Tool.fulfill_order] Order items: {order_items}")
+
+        # Validate order_items structure
+        if not order_items:
+            return "Order items cannot be empty. Please specify at least one item."
+
+        for idx, item_group in enumerate(order_items):
+            if not item_group:
+                return f"Order item group {idx + 1} is empty. Each item must have at least one name."
+            if len(item_group) > 2:
+                return f"Order item group {idx + 1} has {len(item_group)} items. Maximum is 2 for half-and-half combinations."
+            if not all(isinstance(item, str) and item.strip() for item in item_group):
+                return f"Order item group {idx + 1} contains invalid items. All items must be non-empty strings."
 
         # Annotate input data for Datadog tracing
         LLMObs.annotate(

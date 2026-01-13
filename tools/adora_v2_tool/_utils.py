@@ -169,13 +169,13 @@ def build_extraction_prompt(model_class: Type[BaseModel], operation_name: str) -
 
 
 def build_context(
-    order_items: list[str], menu_context: str, timezone: str | None = None
+    order_items: list[list[str]], menu_context: str, timezone: str | None = None
 ) -> tuple[str, str]:
     """
     Build complete context and user prompt template for order extraction.
 
     Args:
-        order_items: List of order item names
+        order_items: List of order items where each inner list represents one item (individual or half-and-half)
         menu_context: Menu-related context from query engine
         timezone: Store timezone (defaults to America/Los_Angeles)
 
@@ -186,7 +186,18 @@ def build_context(
     store_tz = timezone or "America/Los_Angeles"
     current_dt_store = datetime.now(ZoneInfo(store_tz))
 
-    order_info = f"Order Information: {', '.join(order_items)}"
+    # Format order items to show structure
+    formatted_items = []
+    for item_group in order_items:
+        if len(item_group) == 1:
+            formatted_items.append(item_group[0])
+        elif len(item_group) == 2:
+            formatted_items.append(f"Half {item_group[0]} / Half {item_group[1]}")
+        else:
+            # Fallback for unexpected structure
+            formatted_items.append(" / ".join(item_group))
+
+    order_info = f"Order Information: {', '.join(formatted_items)}"
     current_time_info = (
         f"\n\n<current_datetime>\n"
         f"Current date and time: {current_dt_store.strftime('%A, %B %d, %Y at %I:%M %p')} ({store_tz})\n"

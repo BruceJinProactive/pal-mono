@@ -147,24 +147,27 @@ def get_relevant_docs(
 
 
 async def get_relevant_docs_v2(
-    order_items: list[str],
+    order_items: list[list[str]],
     query_engine: BaseQueryEngine,
 ) -> str:
     """
     Retrieves relevant documents for order items directly without LLM decomposition.
 
     Args:
-        order_items (list[str]): List of order items to query
+        order_items (list[list[str]]): List of order items where each inner list represents
+            one item (individual or half-and-half combination)
         query_engine (BaseQueryEngine): Query engine to use for document retrieval
 
     Returns:
         str: The relevant documents.
     """
-    logger.debug(f"Querying documents for items: {order_items}")
+    # Flatten the nested list to get all unique item names for querying
+    flat_items = [item for sublist in order_items for item in sublist]
+    logger.debug(f"Querying documents for items: {flat_items}")
 
     try:
         async with asyncio.TaskGroup() as tg:
-            tasks = [tg.create_task(query_engine.aquery(item)) for item in order_items]
+            tasks = [tg.create_task(query_engine.aquery(item)) for item in flat_items]
         results = [task.result() for task in tasks]
     except Exception as e:
         logger.error(f"Error executing queries: {e}")
