@@ -847,17 +847,36 @@ def resend_invitation(
             template_id = TEAM_INVITATION_NEW_USER_TEMPLATE_ID
             template_model["email"] = invitation.email
             template_model["login_url"] = f"{base_url}/signin?email={invitation.email}"
-        elif user_status == "FORCE_CHANGE_PASSWORD":
-            # User created but never logged in
-            template_id = TEAM_INVITATION_PENDING_USER_TEMPLATE_ID
+        elif user_exists and user_status == "FORCE_CHANGE_PASSWORD":
+            # User created but never logged in - reset their temporary password
+            # This handles the case where the original temp password expired (7 days)
+            if not user_pool_id:
+                raise ValueError(
+                    "AWS_ADMIN_CONSOLE_USER_POOL_ID is not configured; "
+                    "cannot reset temporary password during invitation resend"
+                )
+
+            password = generate_password()
+            try:
+                cognito_client = boto3.client("cognito-idp", region_name=aws_region)
+                cognito_client.admin_set_user_password(
+                    UserPoolId=user_pool_id,
+                    Username=invitation.email,
+                    Password=password,
+                    Permanent=False,  # This makes it a temporary password
+                )
+                user_recreated = True
+                logger.info(
+                    f"Reset temporary password for {invitation.email} (original password may have expired)"
+                )
+            except ClientError as e:
+                logger.error(f"Failed to reset temporary password: {e}")
+                raise ValueError(f"Failed to reset temporary password: {e}") from e
+
+            # Send NEW USER template with embedded password (not pending user template)
+            template_id = TEAM_INVITATION_NEW_USER_TEMPLATE_ID
             template_model["email"] = invitation.email
             template_model["login_url"] = f"{base_url}/signin?email={invitation.email}"
-            template_model["reset_password_url"] = (
-                f"{base_url}/forgot-password?email={invitation.email}"
-            )
-            logger.info(
-                f"Resending pending user invitation to {invitation.email} (never logged in)"
-            )
         else:
             # Existing confirmed user
             template_id = TEAM_INVITATION_EXISTING_USER_TEMPLATE_ID
