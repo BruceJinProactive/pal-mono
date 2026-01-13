@@ -1742,6 +1742,76 @@ def create_stripe_customer_for_account(
         raise
 
 
+def create_stripe_customer_for_project(
+    session: Session,
+    context: UserContext,
+    project: db.Project,
+    account: db.Account,
+    customer_name: str | None = None,
+    customer_email: str | None = None,
+) -> CustomerInfo:
+    """
+    Create a Stripe customer for a project and update the project record.
+
+    This is used for independent project subscriptions where the project has its own
+    Stripe customer hierarchy separate from the account.
+    """
+    if project.stripe_customer_id:
+        raise ValueError(
+            f"Project {project.name} already has a Stripe customer: {project.stripe_customer_id}"
+        )
+
+    try:
+        customer_info = _stripe_customer.create_stripe_customer(
+            account_name=project.name,
+            customer_name=customer_name or project.display_name or project.name,
+            customer_email=customer_email,
+            metadata={
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "account_id": str(account.id),
+                "account_name": account.name,
+                "created_via": "admin_api",
+            },
+        )
+
+        with change_log_context(
+            session=session,
+            resource_type=ChangeResourceType.Project,
+            author=context.email,
+            account_id=account.id,
+            resource_id=str(project.id),
+            auto_commit=False,
+        ):
+            project.stripe_customer_id = customer_info.id
+            session.commit()
+
+        logger.info(
+            "Successfully created and linked Stripe customer to project",
+            extra={
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "account_id": str(account.id),
+                "account_name": account.name,
+                "customer_id": customer_info.id,
+            },
+        )
+        return customer_info
+    except Exception as e:
+        session.rollback()
+        logger.error(
+            f"Failed to create Stripe customer for project: {e}",
+            extra={
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "account_id": str(account.id),
+                "account_name": account.name,
+                "error": str(e),
+            },
+        )
+        raise
+
+
 def get_stripe_customer_info_for_account(
     account: db.Account,
 ) -> CustomerInfo | None:
@@ -2004,16 +2074,21 @@ def create_independent_project_subscription(
 
     # Create Stripe product and subscription if payment method is autopay
     if payment_method == PaymentMethod.autopay:
-        # Ensure account has Stripe customer ID
-        if not account.stripe_customer_id:
+        # Ensure project has Stripe customer ID (project-level customer for independent subscriptions)
+        if not project.stripe_customer_id:
             logger.info(
-                "Account missing Stripe customer ID, creating one",
-                extra={"account_id": str(account.id), "account_name": account.name},
+                "Project missing Stripe customer ID, creating one for independent subscription",
+                extra={
+                    "project_id": str(project.id),
+                    "project_name": project.name,
+                    "account_id": str(account.id),
+                    "account_name": account.name,
+                },
             )
-            customer_info = create_stripe_customer_for_account(
-                session, context, account
+            customer_info = create_stripe_customer_for_project(
+                session, context, project, account
             )
-            account.stripe_customer_id = customer_info.id
+            project.stripe_customer_id = customer_info.id
 
         # Create Stripe product for the project
         stripe_product_id = _stripe_product.create_product_for_project(
@@ -2115,12 +2190,13 @@ def create_independent_project_subscription(
         idempotency_key = f"project_sub_{external_id}"
 
         stripe_subscription_params: dict[str, Any] = {
-            "customer": account.stripe_customer_id,
+            "customer": project.stripe_customer_id,
             "items": items,
             "metadata": {
                 "project_id": str(project_id),
                 "project_name": project.name,
                 "account_id": str(account.id),
+                "account_name": account.name,
                 "plan_id": str(plan.id),
             },
         }
