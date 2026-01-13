@@ -219,6 +219,7 @@ class AccountSubscriptionRepository:
                         or_(
                             AccountSubscription.status == SubscriptionStatus.pending,
                             AccountSubscription.status == SubscriptionStatus.active,
+                            AccountSubscription.status == SubscriptionStatus.trialing,
                         ),
                         or_(*overlap_conditions),
                     )
@@ -365,6 +366,7 @@ class AccountSubscriptionRepository:
                         or_(
                             AccountSubscription.status == SubscriptionStatus.active,
                             AccountSubscription.status == SubscriptionStatus.pending,
+                            AccountSubscription.status == SubscriptionStatus.trialing,
                         ),
                         or_(
                             AccountSubscription.end_date.is_(None),
@@ -652,6 +654,7 @@ class ProjectSubscriptionRepository:
                         or_(
                             ProjectSubscription.status == SubscriptionStatus.active,
                             ProjectSubscription.status == SubscriptionStatus.pending,
+                            ProjectSubscription.status == SubscriptionStatus.trialing,
                         ),
                         or_(
                             ProjectSubscription.end_date.is_(None),
@@ -725,6 +728,7 @@ class ProjectSubscriptionRepository:
                         or_(
                             ProjectSubscription.status == SubscriptionStatus.pending,
                             ProjectSubscription.status == SubscriptionStatus.active,
+                            ProjectSubscription.status == SubscriptionStatus.trialing,
                         ),
                         or_(*overlap_conditions),
                     )
