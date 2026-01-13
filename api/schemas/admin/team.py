@@ -68,6 +68,7 @@ class TeamMemberResponse(BaseModel):
 class TeamInvitationResponse(BaseModel):
     """Pending invitation details for team list."""
 
+    invitation_id: UUID
     email: str
     account_role: UserRole
     status: str  # pending

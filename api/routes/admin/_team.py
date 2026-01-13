@@ -172,6 +172,7 @@ async def list_team_members(
     for invitation in pending_invitations:
         invitations.append(
             TeamInvitationResponse(
+                invitation_id=invitation.id,
                 email=invitation.email,
                 account_role=UserRole(invitation.account_role),
                 status=invitation.status.value,
