@@ -1763,7 +1763,16 @@ def create_stripe_customer_for_project(
 
     try:
         # Create consistent customer name: accountname-projectname
-        combined_name = f"{account.name}-{project.name}".lower()
+        # Avoid duplication if project name already starts with account name
+        project_name_lower = project.name.lower()
+        account_name_lower = account.name.lower()
+
+        if project_name_lower.startswith(f"{account_name_lower}-"):
+            # Project name already includes account name, use as-is
+            combined_name = project_name_lower
+        else:
+            # Combine account and project names
+            combined_name = f"{account_name_lower}-{project_name_lower}"
 
         customer_info = _stripe_customer.create_stripe_customer(
             account_name=combined_name,
