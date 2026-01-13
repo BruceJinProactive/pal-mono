@@ -13,11 +13,13 @@ import uuid
 from datetime import datetime
 
 import boto3
-import openai
 from ddtrace.trace import tracer
 from fastapi import HTTPException, status
+from openai import AzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agent.model._config import ModelOptions
+from agent.model._implementation import _get_deployment_name
 from db.repositories import (
     MonitoringConfigRepositoryAsync,
     MonitoringRunRepositoryAsync,
@@ -25,8 +27,9 @@ from db.repositories import (
 from db.tables import MonitoringRun
 from utils.log import logger
 
-# OpenAI Configuration
-OPENAI_MODEL = "gpt-4o"
+# OpenAI Configuration (using Azure OpenAI)
+# Reuse ModelOptions from agent.model for consistency
+AZURE_DEPLOYMENT_MODEL_OPTION = ModelOptions.GPT_4O
 OPENAI_MAX_TOKENS = 2000
 OPENAI_RESPONSE_FORMAT = {"type": "json_object"}
 OPENAI_IMAGE_DETAIL = "high"
@@ -41,6 +44,50 @@ if not AWS_ASSET_BUCKET_NAME:
         "AWS_ASSET_BUCKET_NAME environment variable is required for monitoring service. "
         "Please set AWS_ASSET_BUCKET_NAME in your environment configuration."
     )
+
+
+def _build_azure_client_sync() -> AzureOpenAI:
+    """Build synchronous Azure OpenAI client for monitoring service.
+
+    Mirrors agent.model._implementation._build_azure_client() but returns
+    synchronous client instead of async client. Monitoring service uses
+    synchronous client with run_in_executor() for thread pool execution.
+
+    Returns:
+        AzureOpenAI: Synchronous Azure OpenAI client
+
+    Raises:
+        ValueError: If required environment variables are missing
+    """
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("AZURE_OPENAI_API_KEY environment variable not found.")
+
+    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    if not azure_endpoint:
+        raise ValueError("AZURE_OPENAI_ENDPOINT environment variable not found.")
+
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+
+    return AzureOpenAI(
+        api_key=api_key,
+        azure_endpoint=azure_endpoint,
+        api_version=api_version,
+    )
+
+
+# Validate Azure OpenAI configuration at module import
+try:
+    _azure_deployment = _get_deployment_name(AZURE_DEPLOYMENT_MODEL_OPTION)
+    logger.info(
+        f"Monitoring service initialized with Azure OpenAI deployment: {_azure_deployment}"
+    )
+except ValueError as e:
+    raise ValueError(
+        f"Azure OpenAI configuration incomplete for monitoring service: {e}. "
+        "Please ensure AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and "
+        "AZURE_OPENAI_DEPLOYMENT_GPT4O are set in your environment."
+    ) from e
 
 
 async def generate_monitoring_llm_prompt(
@@ -268,17 +315,28 @@ For invalid/problematic images:
             tracer.context_provider.activate(None)
 
             try:
+                # Get Azure deployment name
+                deployment_name = _get_deployment_name(AZURE_DEPLOYMENT_MODEL_OPTION)
+
                 # Start a completely new root trace
                 with tracer.trace(
                     "monitoring.vision_analysis",
                     service="pal-mono-monitoring",
-                    resource="openai.vision.analysis",
+                    resource="azure.openai.vision.analysis",
                 ) as span:
                     span.set_tag("monitoring.config_id", str(monitoring_config_id))
-                    span.set_tag("monitoring.model", OPENAI_MODEL)
+                    span.set_tag("monitoring.model", deployment_name)
+                    span.set_tag(
+                        "monitoring.model_option",
+                        AZURE_DEPLOYMENT_MODEL_OPTION.model_name,
+                    )
                     span.set_tag("monitoring.image_url", image_url)
-                    return openai.OpenAI().chat.completions.create(
-                        model=OPENAI_MODEL,
+                    span.set_tag("monitoring.provider", "azure")
+
+                    # Build Azure client and make API call
+                    client = _build_azure_client_sync()
+                    return client.chat.completions.create(
+                        model=deployment_name,
                         messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
                         response_format=openai_response_format,  # type: ignore[arg-type]
                         max_tokens=OPENAI_MAX_TOKENS,
@@ -319,7 +377,7 @@ For invalid/problematic images:
         }
 
     except Exception as e:
-        logger.error(f"OpenAI API call failed: {e}")
+        logger.error(f"Azure OpenAI API call failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"LLM analysis failed: {str(e)}",
