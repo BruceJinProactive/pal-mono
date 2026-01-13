@@ -5,7 +5,7 @@ These endpoints are called by the Monitoring Image Processor Lambda to:
 2. Create monitoring run records with AI analysis results
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
+from db.repositories import SignalFeedRepositoryAsync
 from db.repositories.monitoring_config_repository import MonitoringConfigRepositoryAsync
 from db.tables import MonitoringConfig
 from services import monitoring_service
@@ -94,9 +95,108 @@ class CreateMonitoringRunResponse(BaseModel):
     )
 
 
+class RecordCaptureRequest(BaseModel):
+    """Request to record a camera capture timestamp."""
+
+    signal_source_id: UUID = Field(..., description="Signal source UUID")
+    captured_at: datetime | None = Field(
+        None,
+        description="Timestamp of the capture. Auto-set to current time if not provided.",
+    )
+
+
+class RecordCaptureResponse(BaseModel):
+    """Response after recording a capture timestamp."""
+
+    signal_source_id: UUID
+    feed_id: UUID | None = Field(None, description="UUID of the signal feed (if found)")
+    captured_at: datetime
+    success: bool
+
+
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
+
+
+@monitoring_router.post("/capture", status_code=status.HTTP_200_OK)
+async def record_capture(
+    request: RecordCaptureRequest,
+    session: AsyncSession = Depends(db.get_db_async),
+) -> RecordCaptureResponse:
+    """
+    Record a camera capture timestamp for a signal source.
+
+    Called by Monitoring Image Processor Lambda BEFORE running any analysis.
+    This should be called regardless of whether monitoring configs exist,
+    to track when the camera last captured an image.
+
+    The admin console uses this timestamp to determine camera status:
+    - Active: last_capture_at within last 3 minutes
+    - Inactive: last_capture_at older than 3 minutes or null
+
+    Args:
+        request: Capture recording request with signal_source_id
+        session: Async database session
+
+    Returns:
+        RecordCaptureResponse with capture details
+
+    Raises:
+        500: Database error
+    """
+    try:
+        captured_at = request.captured_at or datetime.now(timezone.utc)
+
+        logger.info(
+            f"[Internal API] Recording capture for signal_source_id={request.signal_source_id}",
+            extra={
+                "signal_source_id": str(request.signal_source_id),
+                "captured_at": captured_at.isoformat(),
+            },
+        )
+
+        feed_repo = SignalFeedRepositoryAsync(session)
+        feed = await feed_repo.get_by_source_id(request.signal_source_id)
+
+        if feed:
+            await feed_repo.update_last_capture(feed.id, captured_at)
+            logger.info(
+                f"[Internal API] Updated signal feed {feed.id} last_capture_at to {captured_at}",
+                extra={
+                    "feed_id": str(feed.id),
+                    "signal_source_id": str(request.signal_source_id),
+                    "last_capture_at": captured_at.isoformat(),
+                },
+            )
+            return RecordCaptureResponse(
+                signal_source_id=request.signal_source_id,
+                feed_id=feed.id,
+                captured_at=captured_at,
+                success=True,
+            )
+        else:
+            logger.warning(
+                f"[Internal API] No signal feed found for signal_source_id={request.signal_source_id}",
+                extra={"signal_source_id": str(request.signal_source_id)},
+            )
+            return RecordCaptureResponse(
+                signal_source_id=request.signal_source_id,
+                feed_id=None,
+                captured_at=captured_at,
+                success=False,
+            )
+
+    except Exception as e:
+        logger.error(
+            f"[Internal API] Error recording capture for signal_source_id={request.signal_source_id}",
+            exc_info=True,
+            extra={"signal_source_id": str(request.signal_source_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to record capture: {str(e)}",
+        ) from e
 
 
 @monitoring_router.get("/configs")
