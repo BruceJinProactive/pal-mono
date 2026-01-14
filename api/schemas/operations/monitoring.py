@@ -142,20 +142,6 @@ MonitoringRules = AIAnalysisRules
 # ============================================================================
 
 
-class CreateMonitoringConfigRequest(BaseModel):
-    """Request to create a new monitoring configuration."""
-
-    signal_source_id: uuid.UUID = Field(..., description="Signal source UUID")
-    name: str = Field(
-        ..., min_length=1, max_length=255, description="Configuration name"
-    )
-    description: str | None = Field(
-        None, max_length=2000, description="Optional description"
-    )
-    rules: MonitoringRules = Field(..., description="Monitoring rules")
-    enabled: bool = Field(True, description="Whether monitoring is enabled")
-
-
 class ModelConfig(BaseModel):
     """LLM model configuration for monitoring analysis."""
 
@@ -170,6 +156,24 @@ class ModelConfig(BaseModel):
         max_length=100,
         description="Model identifier (e.g., 'gpt-4o', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.5-pro')",
     )
+
+
+class CreateMonitoringConfigRequest(BaseModel):
+    """Request to create a new monitoring configuration."""
+
+    signal_source_id: uuid.UUID = Field(..., description="Signal source UUID")
+    name: str = Field(
+        ..., min_length=1, max_length=255, description="Configuration name"
+    )
+    description: str | None = Field(
+        None, max_length=2000, description="Optional description"
+    )
+    rules: MonitoringRules = Field(..., description="Monitoring rules")
+    model: ModelConfig | None = Field(
+        None,
+        description="LLM model configuration override (provider and model)",
+    )
+    enabled: bool = Field(True, description="Whether monitoring is enabled")
 
 
 class UpdateMonitoringConfigRequest(BaseModel):

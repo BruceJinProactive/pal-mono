@@ -293,6 +293,19 @@ async def create_config(
         if structured_output_schema:
             rules_dict["structured_output"] = structured_output_schema
 
+    # Handle model config (part of rules)
+    if request.model is not None:
+        # Convert ModelConfig to dict, excluding None values
+        model_dict = request.model.model_dump(exclude_none=True)
+        if model_dict:
+            rules_dict["model"] = model_dict
+    else:
+        # No model provided, use Azure as default
+        rules_dict["model"] = {
+            "provider": "azure",
+            "model": "gpt-4o",
+        }
+
     # Create the monitoring config
     config = MonitoringConfig(
         project_id=project_id,

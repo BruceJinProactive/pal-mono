@@ -18,6 +18,8 @@ from google import genai
 from google.genai.types import GenerateContentConfig, Part
 from openai import AzureOpenAI
 
+from agent.model._config import ModelOptions
+from agent.model._implementation import _get_deployment_name
 from utils.log import logger
 
 
@@ -41,26 +43,21 @@ class MonitoringLLMConfig:
         Initialize monitoring LLM configuration.
 
         Args:
-            provider: LLM provider to use (defaults to env var MONITORING_LLM_PROVIDER or "azure")
-            model: Model identifier (defaults to env var MONITORING_LLM_MODEL or provider default)
+            provider: LLM provider to use (defaults to "azure")
+            model: Model identifier (defaults to provider default)
             max_tokens: Maximum tokens for response (default: 2000)
         """
-        # Get provider from env or default to azure
-        provider_str = os.getenv("MONITORING_LLM_PROVIDER", "azure")
-        self.provider = provider or MonitoringLLMProvider(provider_str.lower())
+        # Default to Azure if no provider specified
+        self.provider = provider or MonitoringLLMProvider.AZURE
 
-        # Get model from env or use provider default
-        model_env = os.getenv("MONITORING_LLM_MODEL")
+        # Get model or use provider default
         if model:
             self.model = model
-        elif model_env:
-            self.model = model_env
         else:
-            # Default models for each provider
+            # Use provider-specific defaults
             if self.provider == MonitoringLLMProvider.AZURE:
                 self.model = "gpt-4o"
             else:  # GOOGLE
-                # Default to Gemini 3 Flash Preview for best speed/cost balance
                 self.model = "gemini-3-flash-preview"
 
         self.max_tokens = max_tokens
@@ -133,6 +130,36 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             api_key=api_key, azure_endpoint=endpoint, api_version=api_version
         )
 
+        # Get Azure deployment name for the model
+        self.deployment_name = self._get_model_deployment(config.model)
+
+    def _get_model_deployment(self, model: str) -> str:
+        """
+        Get Azure OpenAI deployment name for a given model.
+
+        Args:
+            model: Model identifier (e.g., 'gpt-4o')
+
+        Returns:
+            Deployment name from environment variable
+
+        Raises:
+            ValueError: If model is not supported or deployment name is not set
+        """
+        # Map model names to ModelOptions enum
+        model_options_map = {
+            "gpt-4o": ModelOptions.GPT_4O,
+        }
+
+        model_option = model_options_map.get(model)
+        if not model_option:
+            raise ValueError(
+                f"Unknown Azure OpenAI model '{model}'. Supported models: {list(model_options_map.keys())}"
+            )
+
+        # Use existing _get_deployment_name function from agent.model
+        return _get_deployment_name(model_option)
+
     def analyze_image(
         self,
         system_instruction: str,
@@ -202,7 +229,7 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
 
         # Make Azure OpenAI API call with tracing
         logger.info(
-            f"[Monitoring LLM] Using Azure OpenAI - Model: {self.config.model}, Max Tokens: {self.config.max_tokens}"
+            f"[Monitoring LLM] Using Azure OpenAI - Model: {self.config.model}, Deployment: {self.deployment_name}, Max Tokens: {self.config.max_tokens}"
         )
         with tracer.trace(
             "monitoring.vision_analysis",
@@ -210,10 +237,11 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             resource="azure.openai.vision.analysis",
         ) as span:
             span.set_tag("monitoring.model", self.config.model)
+            span.set_tag("monitoring.deployment", self.deployment_name)
             span.set_tag("monitoring.provider", "azure")
 
             response = self.client.chat.completions.create(
-                model=self.config.model,
+                model=self.deployment_name,  # Use deployment name, not model name
                 messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
                 response_format=openai_response_format,  # type: ignore[arg-type]
                 max_tokens=self.config.max_tokens,

@@ -1266,6 +1266,7 @@ async def create_monitoring_config(
     description: str | None = Form(None),
     prompt: str = Form(...),
     structured_output: str | None = Form(None),
+    model: str | None = Form(None),
     enabled: bool = Form(True),
     reference_images: list[UploadFile] = File(default=[]),
     reference_image_descriptions: list[str] = Form(default=[]),
@@ -1285,6 +1286,7 @@ async def create_monitoring_config(
     - name (required): Name of the monitoring config (unique per project)
     - description (optional): Description of what is being monitored
     - prompt (required): AI analysis prompt (1-2000 characters)
+    - model (optional): JSON string with LLM model configuration (e.g., '{"provider": "google", "model": "gemini-3-flash-preview"}')
     - enabled (optional, default: true): Whether monitoring is active
     - reference_images (optional): Multiple image files for reference
     - reference_image_descriptions (optional): Descriptions for each reference image (must match number of images)
@@ -1294,7 +1296,11 @@ async def create_monitoring_config(
     """
     import json
 
-    from api.schemas.operations.monitoring import AIAnalysisRules, StructuredOutputField
+    from api.schemas.operations.monitoring import (
+        AIAnalysisRules,
+        ModelConfig,
+        StructuredOutputField,
+    )
 
     _ = context  # Used by require_project_permission
 
@@ -1319,6 +1325,18 @@ async def create_monitoring_config(
                 detail=f"Invalid structured_output format: {str(e)}",
             )
 
+    # Parse model if provided
+    parsed_model = None
+    if model:
+        try:
+            model_data = json.loads(model)
+            parsed_model = ModelConfig(**model_data)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid model format: {str(e)}",
+            )
+
     # Build the request object from form fields
     rules = AIAnalysisRules(
         prompt=prompt,
@@ -1331,6 +1349,7 @@ async def create_monitoring_config(
         name=name,
         description=description,
         rules=rules,
+        model=parsed_model,
         enabled=enabled,
     )
 
