@@ -13,6 +13,7 @@ from tools.opentable_tool import OpenTableTool
 from tools.resy_tool import ResyTool
 from tools.resy_tool_with_reservation import ResyToolWithReservation
 from tools.square_tool import SquareTool
+from tools.store_messaging_tool import StoreMessagingTool
 from tools.toast_tool import ToastTool
 from tools.vapi_tool import VapiTool
 from tools.yelp_credit_card_tool import YelpCreditCardTool
@@ -40,6 +41,7 @@ class ToolRegistry:
             "yelp_credit_card_tool": YelpCreditCardTool,
             "yelp_no_credit_card_tool": YelpNoCreditCardTool,
             "square_tool": SquareTool,
+            "store_messaging_tool": StoreMessagingTool,
             "opentable_tool": OpenTableTool,
             "resy_tool": ResyTool,
             "resy_tool_with_reservation": ResyToolWithReservation,
