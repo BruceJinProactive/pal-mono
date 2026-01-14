@@ -29,6 +29,7 @@ class Feedback(Base):
         index=True,
     )
     author_identifier: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    author_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     reaction: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     tags: Mapped[Optional[List[str]]] = mapped_column(
         MutableList.as_mutable(ARRAY(String)), nullable=True
