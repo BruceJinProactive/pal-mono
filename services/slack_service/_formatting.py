@@ -654,13 +654,19 @@ def build_conversion_section(
     if "Conversion Metrics" in totals_summary:
         conv_totals = totals_summary["Conversion Metrics"]
 
-        # Extract conversion metrics
+        # Extract order conversion metrics
         total_convs_with_orders = conv_totals.get("total_conversations_with_orders", 0)
         total_paid_orders = conv_totals.get("total_paid_orders", 0)
         total_revenue = conv_totals.get("total_subtotal", 0)
         paid_revenue = conv_totals.get("total_paid_total", 0)
         overall_conversion_rate = conv_totals.get("overall_conversion_rate", 0)
         overall_paid_rate = conv_totals.get("overall_paid_rate", 0)
+
+        # Extract reservation/waitlist metrics
+        total_reservations = conv_totals.get("total_reservations", 0)
+        total_waitlists = conv_totals.get("total_waitlists", 0)
+        reservation_rate = conv_totals.get("overall_reservation_rate", 0)
+        waitlist_rate = conv_totals.get("overall_waitlist_rate", 0)
 
         # Calculate averages
         avg_subtotal = (
@@ -681,6 +687,10 @@ def build_conversion_section(
         paid_rate_formatted = safe_float_format(overall_paid_rate, 1)
         avg_paid_total_formatted = safe_float_format(avg_paid_total, 2)
 
+        # Format reservation/waitlist values
+        reservation_rate_formatted = safe_float_format(reservation_rate, 1)
+        waitlist_rate_formatted = safe_float_format(waitlist_rate, 1)
+
         conversion_summary_lines.extend(
             [
                 f"• Orders: *{total_convs_with_orders}* (Paid: *{paid_orders_display}*)",
@@ -689,6 +699,15 @@ def build_conversion_section(
                 f"• Checkout Link Conversion Rate: *{conversion_rate_formatted}%* | Payment From Link Rate: *{paid_rate_formatted}%*",
             ]
         )
+
+        # Add reservation/waitlist metrics if any exist
+        if total_reservations > 0 or total_waitlists > 0:
+            conversion_summary_lines.extend(
+                [
+                    f"• Reservations: *{total_reservations}* | Waitlists: *{total_waitlists}*",
+                    f"• Reservation Rate: *{reservation_rate_formatted}%* | Waitlist Rate: *{waitlist_rate_formatted}%*",
+                ]
+            )
 
     # For single-account reports, skip the conversion summary header (already covered by main header)
     # For multi-account reports, show separate "Conversion Summary" header

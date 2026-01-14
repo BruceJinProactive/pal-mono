@@ -11,6 +11,8 @@ from ddtrace.llmobs.decorators import retrieval, tool
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
+from db.tables.types import IntegrationProvider
+from services.reservation_service import save_reservation, save_waitlist
 from tools.utils.ordering._llm import llm_call
 from tools.yelp_tool._apis import cancel_visit as api_cancel_visit
 from tools.yelp_tool._apis import (
@@ -554,6 +556,26 @@ class YelpTool(Toolkit):
             if not reservation_success or not reservation_response:
                 return f"Failed to create reservation: {reservation_message}"
 
+            # Save reservation to database for tracking/analytics
+            try:
+                reservation_time = datetime.strptime(
+                    f"{reservation_query.date} {reservation_query.time}",
+                    "%Y-%m-%d %H:%M",
+                )
+                save_reservation(
+                    tool_metadata=self.tool_metadata,
+                    vendor=IntegrationProvider.yelp,
+                    reservation_id=reservation_response.reservation_id,
+                    store_id=self.business_id_or_alias,
+                    status="confirmed",
+                    tracking_link=reservation_response.confirmation_url,
+                    table_size=reservation_query.covers,
+                    special_requests=notes if notes != "No special request" else None,
+                    reservation_time=reservation_time,
+                )
+            except Exception as e:
+                logger.warning(f"[YelpTool] Failed to save reservation to DB: {e}")
+
             return f"Reservation confirmed! Here is the reservation details: {reservation_response}"
 
         except Exception as e:
@@ -933,6 +955,26 @@ class YelpTool(Toolkit):
             logger.debug(
                 f"[YelpTool.join_waitlist_queue] API call successful - response: {response}"
             )
+
+            # Save waitlist entry to database for tracking/analytics
+            try:
+                arrive_by = datetime.fromtimestamp(response.arrive_by_time)
+                expected_seating = datetime.fromtimestamp(
+                    response.expected_seating_time_min
+                )
+                save_waitlist(
+                    tool_metadata=self.tool_metadata,
+                    vendor=IntegrationProvider.yelp,
+                    reservation_id=response.visit_id,
+                    store_id=self.business_id_or_alias,
+                    status="queued",
+                    table_size=response.party_size,
+                    special_requests=waitlist_query.party_notes,
+                    arrive_by_time=arrive_by,
+                    expected_seating_time=expected_seating,
+                )
+            except Exception as e:
+                logger.warning(f"[YelpTool] Failed to save waitlist to DB: {e}")
 
             # Format and return the success response
             formatted_response = format_waitlist_join_queue_response_for_llm(

@@ -1,7 +1,11 @@
+from datetime import datetime
+
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
+from db.tables.types import IntegrationProvider
+from services.reservation_service import save_reservation, save_waitlist
 from tools.base.reservation import BaseReservationTool, params_validate
 from tools.minitable_tool._apis import (
     check_waitlist_status,
@@ -204,6 +208,23 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             if not booking_id or not status:
                 return f"Error: Incomplete booking response - booking_id: {booking_id}, status: {status}"
 
+            # Save reservation to database for tracking/analytics
+            try:
+                reservation_time = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+                save_reservation(
+                    tool_metadata=self.tool_metadata,
+                    vendor=IntegrationProvider.minitable,
+                    reservation_id=booking_id,
+                    store_id=str(self.restaurant_id),
+                    status=status,
+                    tracking_link=status_link,
+                    table_size=party_size,
+                    special_requests=notes or None,
+                    reservation_time=reservation_time,
+                )
+            except Exception as e:
+                logger.warning(f"[MiniTable] Failed to save reservation to DB: {e}")
+
             message = f"Reservation created: booking_id={booking_id}, status={status}"
             if status_link:
                 message += f", you can change or cancel it by this link: {status_link}"
@@ -349,6 +370,21 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             wait_code = result.get("wait_code")
             left_count = result.get("left_count", 0)
             status_link = result.get("status_link")
+
+            # Save waitlist entry to database for tracking/analytics
+            try:
+                save_waitlist(
+                    tool_metadata=self.tool_metadata,
+                    vendor=IntegrationProvider.minitable,
+                    reservation_id=waitlist_id,
+                    store_id=str(self.restaurant_id),
+                    status="queued",
+                    tracking_link=status_link,
+                    table_size=party_size,
+                    special_requests=notes or None,
+                )
+            except Exception as e:
+                logger.warning(f"[MiniTable] Failed to save waitlist to DB: {e}")
 
             if waitlist_id and wait_code:
                 return f"Successfully added to waitlist! Waitlist ID: {waitlist_id}, Wait code: {wait_code}, Position: {left_count + 1} parties ahead of you. It can be changed or cancelled by this link: {status_link}"

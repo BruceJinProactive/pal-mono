@@ -136,38 +136,62 @@ class AnalyticsReportType:
     CONVERSION_METRICS = ReportConfig(
         name="Conversion Metrics",
         metrics_config={
-            "total_conversations": {"source": "row_index", "index": -5},
-            "conversations_with_orders": {"source": "row_index", "index": -4},
-            "paid_orders": {"source": "row_index", "index": -3},
+            # Order metrics (indices -7 to -3)
+            "total_conversations": {"source": "row_index", "index": -7},
+            "conversations_with_orders": {"source": "row_index", "index": -6},
+            "paid_orders": {"source": "row_index", "index": -5},
             "total_subtotal": {
                 "source": "calculated",
-                "formula": lambda row: float(row[-2]) if row[-2] is not None else 0.0,
+                "formula": lambda row: float(row[-4]) if row[-4] is not None else 0.0,
             },
             "paid_total": {
                 "source": "calculated",
-                "formula": lambda row: float(row[-1]) if row[-1] is not None else 0.0,
+                "formula": lambda row: float(row[-3]) if row[-3] is not None else 0.0,
             },
             "conversion_rate": {
                 "source": "calculated",
                 "formula": lambda row: (
-                    # Handle dynamic row structure: last 5 fields are always the metrics
                     # conversion_rate = conversations_with_orders / total_conversations * 100
-                    round(float(row[-4]) / float(row[-5]) * 100, 2)
-                    if len(row) >= 5
-                    and isinstance(row[-5], (int, float))
-                    and row[-5] > 0
+                    round(float(row[-6]) / float(row[-7]) * 100, 2)
+                    if len(row) >= 7
+                    and isinstance(row[-7], (int, float))
+                    and row[-7] > 0
                     else 0.0
                 ),
             },
             "paid_rate": {
                 "source": "calculated",
                 "formula": lambda row: (
-                    # Handle dynamic row structure: last 5 fields are always the metrics
                     # paid_rate = paid_orders / total_conversations * 100
-                    round(float(row[-3]) / float(row[-5]) * 100, 2)
-                    if len(row) >= 5
-                    and isinstance(row[-5], (int, float))
-                    and row[-5] > 0
+                    round(float(row[-5]) / float(row[-7]) * 100, 2)
+                    if len(row) >= 7
+                    and isinstance(row[-7], (int, float))
+                    and row[-7] > 0
+                    else 0.0
+                ),
+            },
+            # Reservation metrics (indices -2 to -1)
+            "total_reservations": {"source": "row_index", "index": -2},
+            "total_waitlists": {"source": "row_index", "index": -1},
+            "reservation_rate": {
+                "source": "calculated",
+                "formula": lambda row: (
+                    # reservation_rate = total_reservations / total_conversations * 100
+                    round(float(row[-2]) / float(row[-7]) * 100, 2)
+                    if len(row) >= 7
+                    and isinstance(row[-7], (int, float))
+                    and row[-7] > 0
+                    else 0.0
+                ),
+            },
+            "waitlist_rate": {
+                "source": "calculated",
+                "formula": lambda row: (
+                    # waitlist_rate = total_waitlists / total_conversations * 100
+                    round(float(row[-1]) / float(row[-7]) * 100, 2)
+                    if len(row) >= 7
+                    and isinstance(row[-7], (int, float))
+                    and row[-7] > 0
                     else 0.0
                 ),
             },

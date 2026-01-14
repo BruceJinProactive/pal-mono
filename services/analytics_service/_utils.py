@@ -436,9 +436,10 @@ def _calculate_aggregated_metric(metric_name: str, data: list) -> dict:
 
     elif "conversion_rate" in metric_name:
         # Conversion rate: conversations_with_orders / total_conversations * 100
-        total_orders = sum((row[-4] if row[-4] is not None else 0) for row in data)
+        # Indices for 7-field conversion query: -7=total_conversations, -6=conversations_with_orders
+        total_orders = sum((row[-6] if row[-6] is not None else 0) for row in data)
         total_conversations = sum(
-            (row[-5] if row[-5] is not None else 0) for row in data
+            (row[-7] if row[-7] is not None else 0) for row in data
         )
 
         result["overall_conversion_rate"] = (
@@ -454,9 +455,10 @@ def _calculate_aggregated_metric(metric_name: str, data: list) -> dict:
 
     elif "paid_rate" in metric_name:
         # Paid rate: paid_orders / conversations_with_orders * 100
-        total_paid = sum((row[-3] if row[-3] is not None else 0) for row in data)
+        # Indices for 7-field conversion query: -5=paid_orders, -6=conversations_with_orders
+        total_paid = sum((row[-5] if row[-5] is not None else 0) for row in data)
         total_orders = sum(
-            (row[-4] if row[-4] is not None else 0) for row in data
+            (row[-6] if row[-6] is not None else 0) for row in data
         )  # conversations_with_orders
 
         result["overall_paid_rate"] = (
@@ -468,18 +470,58 @@ def _calculate_aggregated_metric(metric_name: str, data: list) -> dict:
             f"rate={result['overall_paid_rate']}% (grouped={is_grouped})"
         )
 
+    elif "reservation_rate" in metric_name:
+        # Reservation rate: total_reservations / total_conversations * 100
+        total_reservations = sum(
+            (row[-2] if row[-2] is not None else 0) for row in data
+        )
+        total_conversations = sum(
+            (row[-7] if row[-7] is not None else 0) for row in data
+        )
+        result["overall_reservation_rate"] = (
+            round(total_reservations / total_conversations * 100, 2)
+            if total_conversations > 0
+            else 0.0
+        )
+
+        logger.debug(
+            f"Reservation rate calculation: reservations={total_reservations}, "
+            f"conversations={total_conversations}, "
+            f"rate={result['overall_reservation_rate']}% (grouped={is_grouped})"
+        )
+
+    elif "waitlist_rate" in metric_name:
+        # Waitlist rate: total_waitlists / total_conversations * 100
+        total_waitlists = sum((row[-1] if row[-1] is not None else 0) for row in data)
+        total_conversations = sum(
+            (row[-7] if row[-7] is not None else 0) for row in data
+        )
+        result["overall_waitlist_rate"] = (
+            round(total_waitlists / total_conversations * 100, 2)
+            if total_conversations > 0
+            else 0.0
+        )
+
+        logger.debug(
+            f"Waitlist rate calculation: waitlists={total_waitlists}, "
+            f"conversations={total_conversations}, "
+            f"rate={result['overall_waitlist_rate']}% (grouped={is_grouped})"
+        )
+
     # === MONETARY TOTALS ===
     elif "total_subtotal" in metric_name:
         # Sum of all order subtotals (regardless of status)
+        # Index for 7-field conversion query: -4=total_subtotal
         total_subtotal = sum(
-            (float(row[-2]) if row[-2] is not None else 0.0) for row in data
+            (float(row[-4]) if row[-4] is not None else 0.0) for row in data
         )
         result["total_subtotal"] = round(total_subtotal, 2)
 
     elif "paid_total" in metric_name:
         # Sum of subtotals from paid orders only
+        # Index for 7-field conversion query: -3=paid_total
         paid_total = sum(
-            (float(row[-1]) if row[-1] is not None else 0.0) for row in data
+            (float(row[-3]) if row[-3] is not None else 0.0) for row in data
         )
         result["total_paid_total"] = round(paid_total, 2)
 
