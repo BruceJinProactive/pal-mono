@@ -15,8 +15,12 @@ class FeedbackReaction(str, Enum):
 class FeedbackTag(str, Enum):
     """Feedback Tags"""
 
-    FACTUAL_ERROR = "factual_error"
-    INSTRUCTION_ERROR = "instruction_error"
+    NOT_FACTUALLY_CORRECT = "not_factually_correct"
+    WRONG_TONE_OF_VOICE = "wrong_tone_of_voice"
+    MISSING_KEY_DETAILS = "missing_key_details"
+    TOO_WORDY = "too_wordy"
+    TOO_CONCISE = "too_concise"
+    OTHER = "other"
 
 
 class UpdateFeedbackRequest(BaseModel):
