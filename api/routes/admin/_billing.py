@@ -447,7 +447,7 @@ async def send_account_invoice_email(
         # Send the email for account-level invoice
         result = invoice_email_service.send_invoice_email_with_analytics(
             to_email=request.to_email,
-            display_name=account.name,
+            display_name=account.display_name or account.name,
             period_start=request.period_start,
             period_end=request.period_end,
             calls_handled=request.calls_handled,
@@ -568,8 +568,9 @@ async def send_project_invoice_email(
             )
 
         # Send the email with combined account + project display name
+        account_display = account.display_name or account.name
         project_display = project.display_name or project.name
-        combined_display_name = f"{account.name} {project_display}"
+        combined_display_name = f"{account_display} {project_display}"
 
         result = invoice_email_service.send_invoice_email_with_analytics(
             to_email=request.to_email,
