@@ -475,6 +475,13 @@ class AdoraV2Tool(Toolkit):
         ):
             order_request.customer.email = "orderingagent@palona.ai"
 
+        # Annotate complete order request for tracing (before delivery address validation)
+        LLMObs.annotate(
+            metadata={
+                "complete_order_request_pre_validation": order_request.model_dump(),
+            }
+        )
+
         # Handle delivery orders
         if order_request.order_type == OrderType.DELIVERY:
             if not delivery_address:
@@ -521,11 +528,27 @@ class AdoraV2Tool(Toolkit):
 
         # Step 1: Validate the order
         with LLMObs.task(name="fulfill_order.validate_order"):
-            # Annotate input before API call
+            # Annotate input before API call with complete order information
             LLMObs.annotate(
+                input_data=order_request.model_dump(),
                 metadata={
                     "api_input": order_request.model_dump(),
-                }
+                    "complete_order_object": {
+                        "store_id": self.store_id,
+                        "order_type": order_type.value,
+                        "payment_type": payment_type.value,
+                        "customer": customer_info.model_dump(),
+                        "items": [item.model_dump() for item in order_request.items],
+                        "order_comment": order_request_base.order_comment,
+                        "delivery_address": (
+                            order_request.delivery_address.model_dump()
+                            if order_request.delivery_address
+                            else None
+                        ),
+                        "promise_date_time": promise_date_time,
+                        "coupon_ids": order_request.coupon_ids,
+                    },
+                },
             )
 
             validate_result = await api_validate_order(bearer_token, order_request)
@@ -573,11 +596,36 @@ class AdoraV2Tool(Toolkit):
                 order_request, validate_result
             )
 
-            # Annotate input before API call
+            # Annotate input before API call with complete order information
             LLMObs.annotate(
+                input_data=process_order_request.model_dump(),
                 metadata={
                     "api_input": process_order_request.model_dump(),
-                }
+                    "complete_order_object": {
+                        "store_id": self.store_id,
+                        "order_type": order_type.value,
+                        "payment_type": payment_type.value,
+                        "order_guid": validate_result.key,
+                        "customer": customer_info.model_dump(),
+                        "items": [item.model_dump() for item in order_request.items],
+                        "order_comment": order_request_base.order_comment,
+                        "delivery_address": (
+                            order_request.delivery_address.model_dump()
+                            if order_request.delivery_address
+                            else None
+                        ),
+                        "promise_date_time": promise_date_time,
+                        "coupon_ids": order_request.coupon_ids,
+                        "payment_details": {
+                            "sub_total": validate_result.sub_total,
+                            "tax": validate_result.tax_amount,
+                            "total": validate_result.total,
+                            "service_charge": validate_result.service_charge,
+                            "delivery_charge": validate_result.delivery_charge,
+                            "discount": validate_result.discount,
+                        },
+                    },
+                },
             )
 
             process_result = await api_process_order(
@@ -619,14 +667,39 @@ class AdoraV2Tool(Toolkit):
         if payment_url:
             confirmation += f"\nPayment URL: {payment_url}"
 
-        # Annotate final output for Datadog tracing
+        # Annotate final output for Datadog tracing with complete order information
         LLMObs.annotate(
             output_data=confirmation,
             metadata={
                 "order_id": process_result.order_id,
                 "order_number": process_result.order_no,
+                "order_date": process_result.order_date,
+                "customer_id": process_result.customer_id,
                 "total_amount": validate_result.total,
+                "subtotal": validate_result.sub_total,
+                "tax_amount": validate_result.tax_amount,
+                "service_charge": validate_result.service_charge,
+                "delivery_charge": validate_result.delivery_charge,
+                "discount": validate_result.discount,
                 "payment_url_provided": payment_url is not None,
+                "payment_url": payment_url,
+                "complete_order_object": {
+                    "store_id": self.store_id,
+                    "order_type": order_type.value,
+                    "payment_type": payment_type.value,
+                    "customer": customer_info.model_dump(),
+                    "items": [item.model_dump() for item in order_request.items],
+                    "order_comment": order_request_base.order_comment,
+                    "delivery_address": (
+                        order_request.delivery_address.model_dump()
+                        if order_request.delivery_address
+                        else None
+                    ),
+                    "promise_date_time": promise_date_time,
+                    "coupon_ids": order_request.coupon_ids,
+                },
+                "validate_result": validate_result.model_dump(),
+                "process_result": process_result.model_dump(),
             },
         )
 

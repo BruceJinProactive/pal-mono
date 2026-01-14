@@ -194,7 +194,7 @@ class ClientGroup(BaseModel):
         description="Item quantity, required, range [1..1000]", ge=1, le=1000
     )
     comment: str | None = Field(
-        description="Special instructions or comments, optional, max 250 characters, set to None if not provided",
+        description="Special instructions or comments for THIS specific item, optional, max 250 characters, set to None if not provided. For half-and-half orders, use this to distinguish each half (e.g., 'left half - pepperoni', 'right half - mushrooms and olives'). General order comments go in orderComment field, not here.",
         default=None,
         max_length=250,
     )
