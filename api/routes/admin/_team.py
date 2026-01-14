@@ -545,6 +545,7 @@ async def list_user_accounts(
             UserAccountResponse(
                 account_id=account.id,
                 account_name=account.name,
+                display_name=account.display_name,
                 role=UserRole(primary_role) if primary_role else None,
                 last_accessed=last_accessed,
             )

@@ -194,6 +194,7 @@ class UserAccountResponse(BaseModel):
 
     account_id: UUID
     account_name: str
+    display_name: Optional[str] = None
     role: Optional[UserRole] = None
     last_accessed: Optional[datetime] = None
 
