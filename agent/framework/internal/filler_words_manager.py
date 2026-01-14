@@ -1,5 +1,5 @@
-import os
 import random
+import re
 from enum import StrEnum
 from typing import ClassVar, Optional, Protocol, cast
 
@@ -18,6 +18,14 @@ class LanguageDetectorProtocol(Protocol):
     def compute_language_confidence(self, text: str, language: Language) -> float:
         """Compute the confidence value for the given language and input text."""
         ...
+
+
+class FillerIntent(StrEnum):
+    """Intent categories for context-based filler selection."""
+
+    ACTION = "action"
+    LOOKUP = "lookup"
+    HELP = "help"
 
 
 class FillerType(StrEnum):
@@ -42,99 +50,460 @@ class FillerWordsManager:
     # Class-level cached language detector
     _LANGUAGE_DETECTOR: ClassVar[Optional[LanguageDetectorProtocol]] = None
 
-    # Input length threshold for filler word selection (from env var or default)
-    try:
-        _raw_threshold = int(os.getenv("FILLER_INPUT_LENGTH_THRESHOLD", "35"))
-        if _raw_threshold < 1:
-            _INPUT_LENGTH_THRESHOLD = 35
-            logger.warning(
-                "FILLER_INPUT_LENGTH_THRESHOLD must be positive, using default: 35"
-            )
-        else:
-            _INPUT_LENGTH_THRESHOLD = _raw_threshold
-    except ValueError:
-        _INPUT_LENGTH_THRESHOLD = 35
-        logger.warning(
-            "FILLER_INPUT_LENGTH_THRESHOLD must be a valid integer, using default: 35"
-        )
-
-    # Hardcoded filler words lists
-    _CHAT_FILLER_WORDS: dict[str, list[str]] = {
-        "CHINESE": [
-            "好的，我来帮您查一下。",
-            "明白了，谢谢您告诉我。",
-            "请稍等，我核实一下。",
-            "没问题，我帮您看一下。",
-            "嗯，我知道您的意思了。",
-            "了解，我这就去看看。",
-            "好的，请给我一点时间确认。",
-        ],
-        "ENGLISH": [
-            "OK. Let me check on it.",
-            "Got it, thanks for letting me know.",
-            "One second, let me check on that.",
-            "Sure thing, let me check for you.",
-            "Alright, I can look into that for you.",
-            "Understood, let me look into that for you.",
-            "Okay, let's see what we can do here.",
-            "Okay, so…",
-            "Alright, so…",
-            "Let me see…",
-            "One moment…",
-            "Just a second…",
-            "Let me check that…",
-            "Give me a sec…",
-            "Hang on one sec…",
-            "Let me take a look…",
-            "Okay, hang on…",
-            "Yeah, one second…",
-        ],
-        "SPANISH": [
-            "Vale, déjame revisarlo.",
-            "Perfecto, gracias por avisar.",
-            "Un momento, lo reviso enseguida.",
-            "Claro, déjame comprobarlo por ti.",
-            "De acuerdo, puedo mirarlo para ti.",
-            "Ah, ya entiendo lo que dices.",
-            "Entendido, lo reviso en un momento.",
-        ],
+    # Keyword categories for context-based filler selection
+    _KEYWORD_CATEGORIES: ClassVar[dict[str, dict[str, dict[str, list[str]]]]] = {
+        "ENGLISH": {
+            "action": {
+                "keywords": [
+                    "order",
+                    "book",
+                    "reserve",
+                    "cancel",
+                    "change",
+                    "modify",
+                    "update",
+                    "add",
+                    "remove",
+                    "make",
+                    "set up",
+                    "schedule",
+                ],
+                "chat_fillers": [
+                    "Got it, I can help with that.",
+                    "Alright, let me handle that.",
+                    "Sure, I can do that.",
+                    "No problem.",
+                    "Okay, let me take care of that.",
+                ],
+                "tool_fillers": [
+                    "Working on it.",
+                    "Processing that now.",
+                    "I'll get that sorted for you right away.",
+                    "No problem, I can handle that.",
+                    "Consider it done.",
+                ],
+            },
+            "lookup": {
+                "keywords": [
+                    "check",
+                    "find",
+                    "search",
+                    "status",
+                    "where",
+                    "when",
+                    "what",
+                    "how much",
+                    "price",
+                    "hours",
+                    "menu",
+                    "available",
+                ],
+                "chat_fillers": [
+                    "Good question.",
+                    "Let me find out.",
+                    "I can look into that.",
+                    "Let me see.",
+                    "Hmm, let me think.",
+                ],
+                "tool_fillers": [
+                    "Checking the system for you.",
+                    "One moment, pulling up details.",
+                    "Let me look.",
+                    "I'll find that info for you.",
+                    "Let's see what I can dig up.",
+                ],
+            },
+            "help": {
+                "keywords": [
+                    "help",
+                    "support",
+                    "manager",
+                    "speak to",
+                    "talk to",
+                    "problem",
+                    "issue",
+                    "wrong",
+                    "mistake",
+                    "complaint",
+                ],
+                "chat_fillers": [
+                    "I understand.",
+                    "I hear you.",
+                    "Let me see what I can do.",
+                    "I'm here to help.",
+                    "Okay, let's figure this out.",
+                ],
+                "tool_fillers": [
+                    "I understand, let's figure this out.",
+                    "On it.",
+                    "Let's see how we can fix this.",
+                    "I'll look into this immediately.",
+                    "Sorting this out for you.",
+                ],
+            },
+        },
+        "SPANISH": {
+            "action": {
+                "keywords": [
+                    "ordenar",
+                    "pedir",
+                    "reservar",
+                    "cancelar",
+                    "cambiar",
+                    "modificar",
+                    "actualizar",
+                    "agregar",
+                    "añadir",
+                    "quitar",
+                    "eliminar",
+                    "hacer",
+                    "configurar",
+                    "programar",
+                ],
+                "chat_fillers": [
+                    "Entendido, te ayudo con eso.",
+                    "Vale, yo me encargo.",
+                    "Claro, lo gestiono ahora.",
+                    "No hay problema.",
+                    "Bien, me ocupo de eso.",
+                ],
+                "tool_fillers": [
+                    "Ya estoy en eso.",
+                    "Me pongo con ello.",
+                    "Enseguida te lo resuelvo.",
+                    "No hay problema, dame un segundo.",
+                    "Consideralo hecho.",
+                ],
+            },
+            "lookup": {
+                "keywords": [
+                    "revisar",
+                    "verificar",
+                    "buscar",
+                    "encontrar",
+                    "estado",
+                    "dónde",
+                    "cuándo",
+                    "qué",
+                    "cuánto",
+                    "precio",
+                    "horario",
+                    "menú",
+                    "disponible",
+                ],
+                "chat_fillers": [
+                    "Buena pregunta, vamos a ver.",
+                    "Déjame averiguarlo.",
+                    "Puedo revisar eso.",
+                    "Déjame ver.",
+                    "Déjame echar un vistazo.",
+                ],
+                "tool_fillers": [
+                    "Revisando el sistema.",
+                    "Un momento, buscando los detalles.",
+                    "Consultando esa información.",
+                    "Te busco esa información.",
+                    "Déjame ver qué encuentro.",
+                ],
+            },
+            "help": {
+                "keywords": [
+                    "ayuda",
+                    "ayudar",
+                    "soporte",
+                    "gerente",
+                    "encargado",
+                    "hablar con",
+                    "problema",
+                    "mal",
+                    "incorrecto",
+                    "error",
+                    "queja",
+                ],
+                "chat_fillers": [
+                    "Entiendo la situación.",
+                    "Entiendo lo que dices.",
+                    "Déjame ver qué puedo hacer.",
+                    "Estoy aquí para ayudar.",
+                    "Vale, vamos a resolverlo.",
+                ],
+                "tool_fillers": [
+                    "Entiendo, vamos a resolverlo.",
+                    "En eso estoy.",
+                    "Veamos cómo lo solucionamos.",
+                    "Lo reviso de inmediato.",
+                    "Déjame arreglar esto.",
+                ],
+            },
+        },
+        "CHINESE": {
+            "action": {
+                "keywords": [
+                    "点",
+                    "订",
+                    "下单",
+                    "预订",
+                    "预约",
+                    "订位",
+                    "取消",
+                    "改",
+                    "换",
+                    "修改",
+                    "更新",
+                    "加",
+                    "添加",
+                    "去掉",
+                    "删除",
+                    "做",
+                    "设置",
+                    "安排",
+                ],
+                "chat_fillers": [
+                    "好的，我可以帮您。",
+                    "没问题，我来处理。",
+                    "可以的，马上办。",
+                    "好的，没问题。",
+                    "行，我来安排。",
+                ],
+                "tool_fillers": [
+                    "正在处理。",
+                    "正在为您处理。",
+                    "我马上帮您处理。",
+                    "没问题，交给我处理。",
+                    "马上为您办理。",
+                ],
+            },
+            "lookup": {
+                "keywords": [
+                    "查",
+                    "看看",
+                    "找",
+                    "搜",
+                    "状态",
+                    "哪",
+                    "哪里",
+                    "什么时候",
+                    "几点",
+                    "什么",
+                    "多少",
+                    "价格",
+                    "多少钱",
+                    "营业时间",
+                    "菜单",
+                    "有没有",
+                    "还有",
+                ],
+                "chat_fillers": [
+                    "好的，我查一下。",
+                    "我来帮您确认。",
+                    "我可以看看。",
+                    "请稍等一下。",
+                    "嗯，我帮您查。",
+                ],
+                "tool_fillers": [
+                    "帮您查一下。",
+                    "稍等，我查一下详情。",
+                    "我看看。",
+                    "我帮您找一下。",
+                    "我来查查看。",
+                ],
+            },
+            "help": {
+                "keywords": [
+                    "帮",
+                    "帮忙",
+                    "客服",
+                    "经理",
+                    "找人",
+                    "跟人说",
+                    "问题",
+                    "毛病",
+                    "错",
+                    "搞错",
+                    "投诉",
+                ],
+                "chat_fillers": [
+                    "我明白。",
+                    "我明白您的意思。",
+                    "让我看看能做什么。",
+                    "我来帮您。",
+                    "好的，我们来解决。",
+                ],
+                "tool_fillers": [
+                    "我明白，咱们来看看怎么解决。",
+                    "马上处理。",
+                    "我们看看怎么解决。",
+                    "我立刻查一下。",
+                    "我来帮您处理。",
+                ],
+            },
+        },
     }
-    _TOOL_CALLING_FILLER_WORDS: dict[str, list[str]] = {
-        "CHINESE": [
-            "我正在处理，请稍等。",
-            "再给我几秒钟。",
-            "谢谢您的耐心，我正在处理。",
-            "请再稍等一下。",
-            "让我帮您查一下。",
-            "现在就帮您处理。",
-            "请再稍等片刻。",
-            "我正在帮您确认。",
-            "请再给我一点时间。",
-        ],
-        "ENGLISH": [
-            "I am working on it.",
-            "Give me a few seconds.",
-            "Thanks for your patience. I am working on it.",
-            "Just a moment, please.",
-            "Let me check that for you.",
-            "Working on it now.",
-            "Hang on a moment.",
-            "I'm checking that for you now.",
-            "Give me just a sec.",
-            "Alright, looking that up for you.",
-        ],
-        "SPANISH": [
-            "Ya estoy en eso.",
-            "Dame unos segundos.",
-            "Gracias por tu paciencia, lo estoy revisando.",
-            "Un momento, por favor.",
-            "Déjame comprobar eso por ti.",
-            "Lo estoy revisando ahora mismo.",
-            "Espera un momento.",
-            "Estoy mirando eso en este instante.",
-            "Dame solo un segundo.",
-            "Vale, estoy buscando esa información para ti.",
-        ],
+
+    # Question indicators for detecting questions when no keywords match
+    _QUESTION_INDICATORS: dict[str, dict[str, list[str]]] = {
+        "ENGLISH": {
+            "markers": ["?"],
+            "starters": [
+                "what",
+                "when",
+                "where",
+                "who",
+                "why",
+                "how",
+                "is",
+                "are",
+                "can",
+                "could",
+                "would",
+                "do",
+                "does",
+                "did",
+                "will",
+                "should",
+            ],
+        },
+        "SPANISH": {
+            "markers": ["?", "¿"],
+            "starters": [
+                "qué",
+                "cuándo",
+                "dónde",
+                "quién",
+                "por qué",
+                "cómo",
+                "cuál",
+                "cuánto",
+                "es",
+                "está",
+                "puede",
+                "puedo",
+                "tiene",
+                "hay",
+                "son",
+                "están",
+            ],
+        },
+        "CHINESE": {
+            "markers": ["?", "？"],
+            "particles": [
+                "吗",
+                "呢",
+                "什么",
+                "哪",
+                "哪里",
+                "几",
+                "多少",
+                "怎么",
+                "为什么",
+                "是不是",
+                "有没有",
+                "能不能",
+            ],
+        },
+    }
+
+    # Fillers for questions when no keyword category matches
+    _QUESTION_FILLERS: dict[str, dict[str, list[str]]] = {
+        "ENGLISH": {
+            "chat_fillers": [
+                "Good question.",
+                "Let me think about that.",
+                "Hmm, let me see.",
+                "That's a good one.",
+                "Let me find out.",
+            ],
+            "tool_fillers": [
+                "Let's see here...",
+                "I'll find out for you.",
+                "One second, looking into that.",
+                "Let me get an answer for you.",
+            ],
+        },
+        "SPANISH": {
+            "chat_fillers": [
+                "Buena pregunta.",
+                "Déjame pensarlo.",
+                "Hmm, déjame ver.",
+                "Esa es buena.",
+                "Déjame averiguarlo.",
+            ],
+            "tool_fillers": [
+                "Buena pregunta, déjame revisar.",
+                "A ver...",
+                "Te lo averiguo.",
+                "Un segundo, lo estoy revisando.",
+                "Déjame conseguirte una respuesta.",
+            ],
+        },
+        "CHINESE": {
+            "chat_fillers": [
+                "好问题。",
+                "让我想想。",
+                "嗯，我看看。",
+                "这个问题问得好。",
+                "我来查一下。",
+            ],
+            "tool_fillers": [
+                "好问题，我查一下。",
+                "我看看...",
+                "我帮您问一下。",
+                "稍等，我查查。",
+                "我帮您找答案。",
+            ],
+        },
+    }
+
+    # Fallback fillers when no keywords match and not a question
+    _FALLBACK_FILLERS: dict[str, dict[str, list[str]]] = {
+        "ENGLISH": {
+            "chat_fillers": [
+                "Got it.",
+                "Okay.",
+                "Alright.",
+                "Sure.",
+                "I see.",
+            ],
+            "tool_fillers": [
+                "Just a moment.",
+                "Bear with me for a second.",
+                "Hang on a sec.",
+                "Okay, let me see.",
+                "One moment please.",
+            ],
+        },
+        "SPANISH": {
+            "chat_fillers": [
+                "Entendido.",
+                "Vale.",
+                "De acuerdo.",
+                "Claro.",
+                "Ya veo.",
+            ],
+            "tool_fillers": [
+                "Un momento.",
+                "Dame un segundito.",
+                "Espera un segundo.",
+                "Vale, déjame ver.",
+                "Un momento, por favor.",
+            ],
+        },
+        "CHINESE": {
+            "chat_fillers": [
+                "好的。",
+                "嗯。",
+                "明白。",
+                "可以。",
+                "了解。",
+            ],
+            "tool_fillers": [
+                "稍等一下。",
+                "请稍等片刻。",
+                "等一下。",
+                "好的，我看看。",
+                "请稍等。",
+            ],
+        },
     }
 
     def __init__(
@@ -165,6 +534,100 @@ class FillerWordsManager:
                 ).build(),
             )
         return FillerWordsManager._LANGUAGE_DETECTOR
+
+    def _has_keyword(self, text: str, keyword: str) -> bool:
+        """
+        Check if keyword exists in text.
+
+        Uses word boundaries for ASCII-only single-word keywords to avoid
+        partial matches (e.g., "order" shouldn't match "border").
+        Uses substring matching for multi-word phrases and non-ASCII keywords
+        (CJK characters) since regex word boundaries don't work for those.
+
+        Args:
+            text: The text to search in
+            keyword: The keyword to search for
+
+        Returns:
+            True if keyword is found, False otherwise
+        """
+        keyword_lower = keyword.lower()
+        text_lower = text.lower()
+
+        # ASCII-only single words: use \b word boundary
+        if keyword_lower.isascii() and " " not in keyword_lower:
+            return bool(re.search(rf"\b{re.escape(keyword_lower)}\b", text_lower))
+
+        # Multi-word phrases or non-ASCII (CJK): use substring match
+        return keyword_lower in text_lower
+
+    def _classify_by_keywords(self, text: str, language: str) -> str | None:
+        """
+        Classify input text into an intent category based on keyword matching.
+
+        Args:
+            text: The input text to classify (should be lowercase)
+            language: The language code (e.g., "ENGLISH", "SPANISH", "CHINESE")
+
+        Returns:
+            Intent category ("action", "lookup", "help") or None if no match
+        """
+        categories = self._KEYWORD_CATEGORIES.get(language, {})
+        if not categories:
+            return None
+
+        # Check categories in priority order: action > lookup > help
+        for intent in [FillerIntent.ACTION, FillerIntent.LOOKUP, FillerIntent.HELP]:
+            category = categories.get(intent.value, {})
+            keywords = category.get("keywords", [])
+            for keyword in keywords:
+                if self._has_keyword(text, keyword):
+                    logger.debug(
+                        f"[FillerWordsManager] Matched keyword '{keyword}' to intent '{intent.value}'",
+                        extra={
+                            "agent_id": self.agent_id,
+                            "account_name": self.account_name,
+                            "language": language,
+                            "intent": intent.value,
+                        },
+                    )
+                    return intent.value
+        return None
+
+    def _is_question(self, text: str, language: str) -> bool:
+        """
+        Detect if the input text is a question.
+
+        Args:
+            text: The input text to check
+            language: The language code (e.g., "ENGLISH", "SPANISH", "CHINESE")
+
+        Returns:
+            True if text appears to be a question, False otherwise
+        """
+        indicators = self._QUESTION_INDICATORS.get(language, {})
+        if not indicators:
+            return False
+
+        # Check for question markers (fast path)
+        markers = indicators.get("markers", [])
+        if any(marker in text for marker in markers):
+            return True
+
+        text_lower = text.lower().strip()
+
+        # Check for question starters (English, Spanish)
+        # Use word boundary to avoid partial matches (e.g., "is" shouldn't match "island")
+        starters = indicators.get("starters", [])
+        if any(re.match(rf"{starter}\b", text_lower) for starter in starters):
+            return True
+
+        # Check for question particles (Chinese)
+        particles = indicators.get("particles", [])
+        if any(particle in text for particle in particles):
+            return True
+
+        return False
 
     def detect_input_languages(self, input_content: str) -> list[Language]:
         """
@@ -218,13 +681,17 @@ class FillerWordsManager:
         self, language: str, filler_type: FillerType, input_content: str = ""
     ) -> str:
         """
-        Generate a filler phrase from configured options for a specific language and type.
-        Selects filler length based on input content length using median-based pool splitting.
+        Generate a filler phrase using context-based selection.
+
+        Selection priority:
+        1. Keyword matching (action > lookup > help)
+        2. Question detection
+        3. Fallback
 
         Args:
             language: The language code/name for which to get filler words
             filler_type: Type of filler words (FillerType enum)
-            input_content: The user input text, used to determine filler length
+            input_content: The user input text, used to determine context
 
         Returns:
             A filler string with flush directive, or empty string if no fillers configured
@@ -245,49 +712,66 @@ class FillerWordsManager:
             )
             return ""
 
-        # Get the appropriate filler words dictionary based on type
-        if filler_type == FillerType.CHAT:
-            filler_words_dict = self._CHAT_FILLER_WORDS
-        elif filler_type == FillerType.TOOL_CALLING:
-            filler_words_dict = self._TOOL_CALLING_FILLER_WORDS
-        else:
-            logger.error(f"[FillerWordsManager] Unknown filler type: {filler_type}")
-            return ""
-
-        if not filler_words_dict:
-            logger.debug(
-                f"[FillerWordsManager] No {filler_type} filler words configured"
-            )
-            return ""
-
-        # Get filler words for the specific language
-        language_filler_words = filler_words_dict.get(language, [])
-        if not language_filler_words:
-            logger.debug(
-                f"[FillerWordsManager] No {filler_type} filler words configured for language: {language}"
-            )
-            return ""
-
-        # Sort fillers by length and find median length for pool splitting
-        sorted_fillers = sorted(language_filler_words, key=len)
-        median_length = len(sorted_fillers[len(sorted_fillers) // 2])
-
-        # Build appropriate pool based on input length vs threshold
-        if len(input_content.strip()) < self._INPUT_LENGTH_THRESHOLD:
-            pool = [f for f in language_filler_words if len(f) <= median_length]
-        else:
-            pool = [f for f in language_filler_words if len(f) >= median_length]
-
-        # Select a random filler from the pool
-        selected_filler = random.choice(pool)
-        logger.debug(
-            f"[FillerWordsManager] Selected {filler_type} filler for {language}: '{selected_filler}' "
-            f"(input_length={len(input_content)}, threshold={self._INPUT_LENGTH_THRESHOLD}, pool_size={len(pool)})"
+        # Determine which filler key to use based on filler_type
+        filler_key = (
+            "chat_fillers" if filler_type == FillerType.CHAT else "tool_fillers"
         )
 
-        # Empty string in config to control the probability
+        text_lower = input_content.lower().strip()
+        selected_filler = None
+        selection_reason = "fallback"
+
+        # Stage 1: Keyword-based classification
+        intent = self._classify_by_keywords(text_lower, language)
+        if intent:
+            category = self._KEYWORD_CATEGORIES.get(language, {}).get(intent, {})
+            fillers = category.get(filler_key, [])
+            if fillers:
+                selected_filler = random.choice(fillers)
+                selection_reason = f"keyword:{intent}"
+
+        # Stage 2: Question detection
+        if not selected_filler and self._is_question(input_content, language):
+            question_fillers = self._QUESTION_FILLERS.get(language, {}).get(
+                filler_key, []
+            )
+            if question_fillers:
+                selected_filler = random.choice(question_fillers)
+                selection_reason = "question"
+
+        # Stage 3: Fallback
         if not selected_filler:
+            fallback_fillers = self._FALLBACK_FILLERS.get(language, {}).get(
+                filler_key, []
+            )
+            if fallback_fillers:
+                selected_filler = random.choice(fallback_fillers)
+                selection_reason = "fallback"
+
+        if not selected_filler:
+            logger.debug(
+                f"[FillerWordsManager] No fillers available for {language}/{filler_type}",
+                extra={
+                    "agent_id": self.agent_id,
+                    "account_name": self.account_name,
+                    "language": language,
+                    "filler_type": filler_type.value,
+                },
+            )
             return ""
+
+        logger.debug(
+            f"[FillerWordsManager] Selected {filler_type} filler for {language}: '{selected_filler}' "
+            f"(reason={selection_reason})",
+            extra={
+                "agent_id": self.agent_id,
+                "account_name": self.account_name,
+                "language": language,
+                "filler_type": filler_type.value,
+                "selection_reason": selection_reason,
+            },
+        )
+
         return selected_filler + " <flush />"
 
     def is_language_supported(self, language: str) -> bool:
@@ -309,27 +793,15 @@ class FillerWordsManager:
         Returns:
             Filler words string or empty string if should be skipped
         """
-        # Get the appropriate filler words dictionary based on type
+        # Check percentage threshold
         if filler_type == FillerType.CHAT:
-            filler_words_dict = self._CHAT_FILLER_WORDS
             percentage_threshold = self.chat_filler_words_percentage
             type_name = "chat"
         elif filler_type == FillerType.TOOL_CALLING:
-            filler_words_dict = self._TOOL_CALLING_FILLER_WORDS
             percentage_threshold = self.tool_calling_filler_words_percentage
             type_name = "tool calling"
         else:
             logger.error(f"[FillerWordsManager] Unknown filler type: {filler_type}")
-            return ""
-
-        if not filler_words_dict:
-            logger.debug(
-                f"[FillerWordsManager] No {type_name} filler words configured",
-                extra={
-                    "agent_id": self.agent_id,
-                    "account_name": self.account_name,
-                },
-            )
             return ""
 
         if random.randint(1, 100) > percentage_threshold:
