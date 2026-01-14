@@ -194,8 +194,13 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
         extract_text_between_markers(item_text, "**Description:** ", "\n") or ""
     )
 
-    # Extract allow_halving flag
-    allow_halving = "**allow_halving:** true" in item_text
+    # Extract allow_halving flag (handles both with and without explanation text)
+    if "**allow_halving:** true" in item_text:
+        allow_halving = True
+    elif "**allow_halving:** false" in item_text:
+        allow_halving = False
+    else:
+        allow_halving = False  # Default to false if not found
 
     # Extract prices
     prices = []
@@ -231,11 +236,18 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
             constraints = {}
 
             # Extract allow_halving information from group name if present
-            group_allow_halving = "[allow_halving: true]" in clean_group_name
-            if group_allow_halving:
+            if "[allow_halving: true]" in clean_group_name:
+                group_allow_halving = True
                 clean_group_name = clean_group_name.replace(
                     "[allow_halving: true]", ""
                 ).strip()
+            elif "[allow_halving: false]" in clean_group_name:
+                group_allow_halving = False
+                clean_group_name = clean_group_name.replace(
+                    "[allow_halving: false]", ""
+                ).strip()
+            else:
+                group_allow_halving = False  # Default to false if not found
 
             # Extract constraint information from group name if present
             constraint_match = re.search(r"(.+?)\s*\((Select.*?)\)", clean_group_name)

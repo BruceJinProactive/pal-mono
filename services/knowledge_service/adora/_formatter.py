@@ -114,6 +114,13 @@ def generate_item_text(
     else:
         lines.append(f"# {item_name}")
 
+    # Add allow_halving with explanation
+    halving_explanation = (
+        "This item supports half and half ordering"
+        if allow_halving
+        else "This item is not eligible for half and half ordering"
+    )
+
     lines.extend(
         [
             "",
@@ -121,13 +128,10 @@ def generate_item_text(
             "",
             f"**Description:** {description}",
             "",
+            f"**allow_halving:** {str(allow_halving).lower()} - {halving_explanation}",
+            "",
         ]
     )
-
-    # Add allow_halving information if true
-    if allow_halving:
-        lines.append("**allow_halving:** true")
-        lines.append("")
 
     # Get allowed sizes
     order_types = item.get("order_types", [])
@@ -193,10 +197,8 @@ def generate_item_text(
             elif max_allowed is not None:
                 constraint_text = f" (Select up to {max_allowed})"
 
-            # Add allow_halving information if applicable
-            halving_text = ""
-            if group_allow_halving:
-                halving_text = " [allow_halving: true]"
+            # Add allow_halving information (always show explicitly)
+            halving_text = f" [allow_halving: {str(group_allow_halving).lower()}]"
 
             lines.append(f"### {group_name}{constraint_text}{halving_text}")
 
@@ -272,10 +274,15 @@ def format_consolidated_menu(menu_items: List[Dict[str, Any]]) -> str:
                 header_line = f"### {item_name}"
             output_parts.append(header_line)
 
-            # Add allow_halving information if true
-            if item.get("allow_halving"):
+            # Add allow_halving information (always show explicitly)
+            allow_halving = item.get("allow_halving", False)
+            if allow_halving:
                 output_parts.append(
                     "**allow_halving:** true - This item supports half and half ordering"
+                )
+            else:
+                output_parts.append(
+                    "**allow_halving:** false - This item does not support half and half ordering"
                 )
 
             # Format prices using original structure: Prices: $X.XX (size), $Y.YY (size)
@@ -360,9 +367,12 @@ def _format_customizations_legacy(modifier_groups: List[Dict[str, Any]]) -> str:
             else:
                 constraint_text = "Optional, Select any number"
 
-            # Add allow_halving information if present
-            if group.get("allow_halving"):
-                constraint_text += ", allow_halving"
+            # Add allow_halving information (always show explicitly)
+            group_allow_halving = group.get("allow_halving", False)
+            if group_allow_halving:
+                constraint_text += ", allow_halving: true"
+            else:
+                constraint_text += ", allow_halving: false"
 
             modifier_list = []
             for modifier in optional_modifiers:
