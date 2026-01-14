@@ -282,7 +282,7 @@ def format_consolidated_menu(menu_items: List[Dict[str, Any]]) -> str:
                 )
             else:
                 output_parts.append(
-                    "**allow_halving:** false - This item does not support half and half ordering"
+                    "**allow_halving:** false - This item is not eligible for half and half ordering"
                 )
 
             # Format prices using original structure: Prices: $X.XX (size), $Y.YY (size)
