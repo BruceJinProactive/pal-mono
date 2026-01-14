@@ -209,27 +209,46 @@ class RawConfig:
 
     def _populate_vapi_tool_args(self, tool_args: dict) -> dict:
         """
-        Populate VAPI tool arguments with transfer settings from project columns.
+        Populate VAPI tool arguments with transfer settings.
 
-        Auto-populates 'transfer_message' and 'destination_number' from project fields
-        if the respective project fields are not empty. Overwrites existing values.
+        Builds 'transfer_destinations' dict from available sources:
+        1. Use 'transfer_destinations' from tool_args if present and non-empty
+        2. Convert legacy 'destination_number' from tool_args if present
+        3. Fall back to project.transfer_phone_number if available
 
         Args:
             tool_args: Existing tool arguments dictionary
 
         Returns:
-            Updated tool arguments with project transfer settings
+            Updated tool arguments with transfer_destinations
         """
         updated_args = tool_args.copy()
-        # Check if both transfer fields are populated in the project
-        has_transfer_phone = self.project.transfer_phone_number
-        has_transfer_message = self.project.transfer_message
 
-        # auto-populate if fields are not empty
-        if has_transfer_message:
+        # Build transfer_destinations from available sources
+        if updated_args.get("transfer_destinations"):
+            # Already has new format with actual value - use as-is
+            pass
+        elif updated_args.get("destination_number"):
+            # Convert legacy format to new format
+            updated_args["transfer_destinations"] = {
+                "general": updated_args.pop("destination_number")
+            }
+        elif self.project.transfer_phone_number:
+            # Fall back to project setting
+            updated_args["transfer_destinations"] = {
+                "general": self.project.transfer_phone_number
+            }
+
+        # Clean up: remove destination_number if transfer_destinations exists
+        if (
+            "transfer_destinations" in updated_args
+            and "destination_number" in updated_args
+        ):
+            updated_args.pop("destination_number")
+
+        # transfer_message behavior unchanged
+        if self.project.transfer_message:
             updated_args["transfer_message"] = self.project.transfer_message
-        if has_transfer_phone:
-            updated_args["destination_number"] = self.project.transfer_phone_number
 
         return updated_args
 

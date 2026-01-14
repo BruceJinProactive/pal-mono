@@ -87,23 +87,71 @@ class VapiTool(Toolkit):
     def __init__(
         self,
         tool_metadata: ToolMetadata,
-        destination_number: str,
+        transfer_destinations: dict[str, str],
         transfer_message: str | None = None,
     ):
         super().__init__(name="vapi_tool")
         self.tool_metadata = tool_metadata
-        self.destination_number = destination_number
+        self.transfer_destinations = transfer_destinations
         self.transfer_message = (
             transfer_message
-            or "I'll transfer you to our customer support. Just hang tight for a moment."
+            or "I'll transfer you to our team. Just hang tight for a moment."
         )
         self.register(self.call_transfer)
 
-    def _build_transfer_payload(self) -> dict:
-        """Build transfer payload for SIP URI or phone number."""
-        if not self.destination_number:
+    def _get_destination_for_purpose(self, purpose: str) -> str | None:
+        """
+        Look up destination number for given purpose.
+
+        Args:
+            purpose: The transfer purpose (e.g., "faq", "complaint", "general")
+
+        Returns:
+            The destination phone number/SIP URI, or None if not found.
+            Falls back to "general" if specific purpose not found.
+        """
+        destination = self.transfer_destinations.get(purpose)
+
+        if destination:
+            logger.debug(
+                f"[VapiTool._get_destination_for_purpose] Found destination for purpose '{purpose}': {destination}"
+            )
+            return destination
+
+        # Fallback to "general"
+        fallback = self.transfer_destinations.get("general")
+        if fallback:
+            logger.debug(
+                f"[VapiTool._get_destination_for_purpose] Purpose '{purpose}' not found, "
+                f"falling back to 'general': {fallback}"
+            )
+            return fallback
+
+        logger.warning(
+            f"[VapiTool._get_destination_for_purpose] No destination found for purpose '{purpose}' "
+            f"and no 'general' fallback configured",
+            extra={
+                "purpose": purpose,
+                "available_purposes": list(self.transfer_destinations.keys()),
+            },
+        )
+        return None
+
+    def _build_transfer_payload(self, destination_number: str) -> dict:
+        """Build transfer payload for SIP URI or phone number.
+
+        Args:
+            destination_number: The phone number or SIP URI to transfer to.
+
+        Returns:
+            dict: The transfer payload for the Vapi API.
+
+        Raises:
+            ValueError: If destination_number is empty or None.
+        """
+        if not destination_number:
             raise ValueError("destination_number cannot be empty or None")
-        is_sip = self.destination_number.lower().startswith("sip:")
+        is_sip = destination_number.lower().startswith("sip:")
         if is_sip:
             # Use <Dial> instead of <Refer> for PSTN compatibility.
             # <Refer> only works when caller is on SIP leg, but our customers
@@ -112,17 +160,17 @@ class VapiTool(Toolkit):
             # IMPORTANT: "mode" is required when using transferPlan per VAPI support
             destination = {
                 "type": "sip",
-                "sipUri": self.destination_number,
+                "sipUri": destination_number,
                 "transferPlan": {
                     "mode": "blind-transfer",
                     "sipVerb": "dial",
                 },
             }
         else:
-            destination = {"type": "number", "number": self.destination_number}
+            destination = {"type": "number", "number": destination_number}
 
         logger.debug(
-            f"[VapiTool._build_transfer_payload] Detected destination type: {'SIP' if is_sip else 'phone number'} for {self.destination_number}"
+            f"[VapiTool._build_transfer_payload] Detected destination type: {'SIP' if is_sip else 'phone number'} for {destination_number}"
         )
         return {
             "type": "transfer",
@@ -131,13 +179,24 @@ class VapiTool(Toolkit):
         }
 
     @tool
-    async def call_transfer(self) -> str:
+    async def call_transfer(self, purpose: str = "general") -> str:
         """
-        Transfer the current call to a phone number or SIP address.
+        Transfer the current call to the appropriate department based on purpose.
+
+        Use when customer needs human assistance. The purpose determines which
+        department/number receives the transferred call.
 
         Supports phone numbers ("+1234567890") or SIP URIs ("sip:+1234567890@sip.provider.com").
 
-        NEVER invoke this tool if user is NOT communicating via voice channel
+        Args:
+            purpose: The reason for transfer. Common values:
+                - "general": Default transfer destination
+                - "faq": Questions about menu, hours, location, etc.
+                - "complaint": Customer complaints or escalations
+                - "order_support": Issues with existing orders
+                Defaults to "general" if specified purpose is not configured.
+
+        NEVER invoke this tool if user is NOT communicating via voice channel.
 
         Returns:
             str: Success or error message about the call transfer attempt.
@@ -155,6 +214,21 @@ class VapiTool(Toolkit):
                     "project_id": str(self.tool_metadata.project_id),
                     "account_name": self.tool_metadata.account_name,
                     "channel": self.tool_metadata.channel,
+                },
+            )
+            return error_msg
+
+        # Look up destination for the given purpose
+        destination_number = self._get_destination_for_purpose(purpose)
+        if not destination_number:
+            error_msg = f"No transfer destination configured for purpose '{purpose}'."
+            logger.error(
+                f"[VapiTool.call_transfer] {error_msg}",
+                extra={
+                    "project_id": str(self.tool_metadata.project_id),
+                    "account_name": self.tool_metadata.account_name,
+                    "purpose": purpose,
+                    "available_purposes": list(self.transfer_destinations.keys()),
                 },
             )
             return error_msg
@@ -217,7 +291,8 @@ class VapiTool(Toolkit):
                                 "account_name": self.tool_metadata.account_name,
                                 "conversation_id": str(conversation_id),
                                 "user_id": str(self.tool_metadata.user_id),
-                                "destination_number": self.destination_number,
+                                "destination_number": destination_number,
+                                "purpose": purpose,
                                 "vapi_control_url_present": bool(
                                     conversation.vapi_control_url
                                 ),
@@ -258,12 +333,12 @@ class VapiTool(Toolkit):
                 return error_msg
 
         # Build transfer payload with auto-detection of SIP vs phone number
-        transfer_payload = self._build_transfer_payload()
+        transfer_payload = self._build_transfer_payload(destination_number)
 
         try:
             # Make the POST request to transfer the call
             logger.debug(
-                f"[VapiTool.call_transfer] Sending transfer request to {control_url} with destination {self.destination_number}"
+                f"[VapiTool.call_transfer] Sending transfer request to {control_url} with destination {destination_number}"
             )
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(control_url, json=transfer_payload)
@@ -277,7 +352,8 @@ class VapiTool(Toolkit):
                     "conversation_id": str(conversation_id),
                     "user_id": str(self.tool_metadata.user_id),
                     "call_id": call_id,
-                    "destination_number": self.destination_number,
+                    "destination_number": destination_number,
+                    "purpose": purpose,
                 },
             )
             return "Call has been transferred"
