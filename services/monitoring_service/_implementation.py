@@ -81,10 +81,8 @@ def build_structured_output_from_fields(
         if enum_values:
             field_schema["enum"] = enum_values
 
-        # Add enum_metadata if specified
-        enum_metadata = field.get("enum_metadata")
-        if enum_metadata:
-            field_schema["enum_metadata"] = enum_metadata
+        # Note: enum_metadata is used for UI display only and is not included
+        # in the JSON Schema sent to the LLM (it's not a valid JSON Schema property)
 
         properties[field_name] = field_schema
 

@@ -7,6 +7,7 @@ used in the monitoring service for vision-based analysis.
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import os
 from abc import ABC, abstractmethod
@@ -22,6 +23,46 @@ from agent.model._config import ModelOptions
 from agent.model._implementation import _get_deployment_name
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
+
+
+def _strip_additional_properties(schema: dict[str, Any]) -> dict[str, Any]:
+    """
+    Recursively remove 'additionalProperties' from a JSON schema.
+
+    Gemini doesn't support the 'additionalProperties' field, so we need to
+    strip it from all levels of the schema.
+
+    Args:
+        schema: JSON schema dictionary
+
+    Returns:
+        Schema with 'additionalProperties' removed at all levels
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    # Remove additionalProperties at current level
+    cleaned = {k: v for k, v in schema.items() if k != "additionalProperties"}
+
+    # Recursively clean nested schemas
+    for key, value in cleaned.items():
+        if key == "properties" and isinstance(value, dict):
+            # Clean each property schema
+            cleaned[key] = {
+                prop_key: _strip_additional_properties(prop_value)
+                for prop_key, prop_value in value.items()
+            }
+        elif key == "items" and isinstance(value, dict):
+            # Clean array item schema
+            cleaned[key] = _strip_additional_properties(value)
+        elif key in ("anyOf", "allOf", "oneOf") and isinstance(value, list):
+            # Clean schemas in composition keywords
+            cleaned[key] = [_strip_additional_properties(item) for item in value]
+        elif isinstance(value, dict):
+            # Recursively clean nested objects
+            cleaned[key] = _strip_additional_properties(value)
+
+    return cleaned
 
 
 class MonitoringLLMProvider(str, Enum):
@@ -228,10 +269,13 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             response_format if response_format else {"type": "json_object"}
         )
 
-        # Make Azure OpenAI API call with tracing
+        # Make Azure OpenAI API call with custom tracing
+        # Note: Auto-instrumentation will still create child spans, but they'll be under
+        # the pal-mono-monitoring service, making them easy to filter in Datadog
         logger.info(
             f"[Monitoring LLM] Using Azure OpenAI - Model: {self.config.model}, Deployment: {self.deployment_name}, Max Tokens: {self.config.max_tokens}"
         )
+
         with tracer.trace(
             "monitoring.vision_analysis",
             service="pal-mono-monitoring",
@@ -240,6 +284,7 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             span.set_tag("monitoring.model", self.config.model)
             span.set_tag("monitoring.deployment", self.deployment_name)
             span.set_tag("monitoring.provider", "azure")
+            span.set_tag("monitoring.internal", "true")
 
             response = self.client.chat.completions.create(
                 model=self.deployment_name,  # Use deployment name, not model name
@@ -248,12 +293,22 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
                 max_tokens=self.config.max_tokens,
             )
 
-        # Parse and return response
-        result = json.loads(response.choices[0].message.content or "{}")
-        logger.info(
-            f"[Monitoring LLM] Azure OpenAI analysis completed - Result: {result.get('result', 'unknown')}"
-        )
-        return result
+        # Parse and return response with defensive error handling
+        try:
+            content = response.choices[0].message.content or "{}"
+            result = json.loads(content)
+            logger.info(
+                f"[Monitoring LLM] Azure OpenAI analysis completed - Result: {result.get('result', 'unknown')}"
+            )
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"[Monitoring LLM] Failed to parse Azure OpenAI response as JSON: {e}"
+            )
+            logger.error(
+                f"[Monitoring LLM] Raw response content: {response.choices[0].message.content}"
+            )
+            raise
 
 
 class GoogleMonitoringProvider(MonitoringLLMProviderBase):
@@ -325,10 +380,13 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
             Part.from_bytes(data=camera_image_bytes, mime_type="image/jpeg")
         )
 
-        # Make Gemini API call with tracing
+        # Make Gemini API call with custom tracing
+        # Note: Auto-instrumentation will still create child spans, but they'll be under
+        # the pal-mono-monitoring service, making them easy to filter in Datadog
         logger.info(
             f"[Monitoring LLM] Using Google Gemini - Model: {self.config.model}, Max Tokens: {self.config.max_tokens}"
         )
+
         with tracer.trace(
             "monitoring.vision_analysis",
             service="pal-mono-monitoring",
@@ -336,6 +394,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
         ) as span:
             span.set_tag("monitoring.model", self.config.model)
             span.set_tag("monitoring.provider", "google")
+            span.set_tag("monitoring.internal", "true")
 
             # Configure generation with JSON schema support
             generation_config_params = {
@@ -353,9 +412,21 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                     if response_format.get("type") == "json_schema":
                         schema = response_format.get("json_schema", {}).get("schema")
                         if schema:
-                            generation_config_params["response_schema"] = schema
+                            # Gemini doesn't support additionalProperties, so remove it recursively
+                            # Create a deep copy to avoid modifying the original schema
+                            gemini_schema = copy.deepcopy(schema)
+                            gemini_schema = _strip_additional_properties(gemini_schema)
+                            generation_config_params["response_schema"] = gemini_schema
                             logger.info(
                                 "[Monitoring LLM] Using structured output with native Gemini JSON schema"
+                            )
+                        else:
+                            # No valid schema found in json_schema format
+                            content_parts.append(
+                                '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
+                            )
+                            logger.warning(
+                                "[Monitoring LLM] json_schema type specified but no schema found, falling back to prompt instructions"
                             )
                     else:
                         # Plain JSON object mode - add instruction to content
@@ -366,8 +437,10 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                             "[Monitoring LLM] Using JSON object mode with prompt instructions"
                         )
                 else:
-                    # Direct schema provided
-                    generation_config_params["response_schema"] = response_format
+                    # Direct schema provided - also strip additionalProperties
+                    cleaned_schema = copy.deepcopy(response_format)
+                    cleaned_schema = _strip_additional_properties(cleaned_schema)
+                    generation_config_params["response_schema"] = cleaned_schema
                     logger.info(
                         "[Monitoring LLM] Using structured output with direct schema"
                     )
@@ -386,12 +459,19 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                 config=generation_config,
             )
 
-        # Parse and return response
-        result = json.loads(response.text or "{}")
-        logger.info(
-            f"[Monitoring LLM] Gemini analysis completed - Result: {result.get('result', 'unknown')}"
-        )
-        return result
+        # Parse and return response with defensive error handling
+        try:
+            result = json.loads(response.text or "{}")
+            logger.info(
+                f"[Monitoring LLM] Gemini analysis completed - Result: {result.get('result', 'unknown')}"
+            )
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"[Monitoring LLM] Failed to parse Gemini response as JSON: {e}"
+            )
+            logger.error(f"[Monitoring LLM] Raw response text: {response.text}")
+            raise
 
 
 def create_monitoring_llm_provider(
