@@ -1,18 +1,17 @@
 # near imports, module scope
 DINING_OPTIONS_INSTRUCTION = (
     "The following is the list of dining options available for the restaurant. "
-    "Select the Online TAKE_OUT dining option only and use the GUID associated with it. Do not include any other dining options."
+    "Select the Online TAKE_OUT dining option only and use the GUID associated with it. Do NOT include any other dining options. Make sure you use the CORRECT GUID and NEVER create a new GUID."
 )
 
-RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = """You are a helpful assistant that extracts full and specific order items from a chat history between a user and a restaurant bot. Your job is to identify the complete names of all food or drink items **and bundle them with their selected modifiers (like sides, toppings, or dressings)**.
+RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = """
+You are a helpful assistant that extracts full and specific order items from a chat history between a user and a restaurant bot. Your job is to identify the complete names of all food or drink items.
 
-Requirements:
-- Extract the **complete main dish or drink name, including all size information**
-- **CRITICAL RULE: You must find all confirmed modifiers (sides, dressings, toppings, etc.) that belong to a main item and combine them into a single, descriptive string.**
-- **STRING FORMAT: Use 'with' to connect the main item and its modifiers. For example: "main_item with modifier1, modifier2, modifier3"**
+**Requirements:**
+- Extract the **complete main dish or drink name, including all size information where applicable. Do not invent any size.**
 - **Do NOT** extract modifiers as separate items in the list.
 - Only include items that the user **explicitly confirmed or finalized** as part of their order.
-- Output a JSON array of strings, where each string is a complete item with its modifiers.
+- Output a JSON array of strings, where each string is a complete item.
 - Do not include duplicates.
 """
 
@@ -113,26 +112,105 @@ If unsure about any field, leave it empty rather than guessing.
 
 EXTRACTOR_USER_PROMPT = """
 # Menu Items:
-<documents>
+
 {context}
-</documents>
+
 
 # Chat History:
-<history>
+
 {chat_history}
-</history>
 
-Construct the structured order with the correct response format from the above Chat History and Menu Items. Do not add newline characters in the JSON object to beutify the response. We will parse the JSON object later.
 
-When building the order, look through the whole context first and make sure you find the document whose name matches the item name for each item.
+Construct the structured order with the correct response format from the above Chat History and Menu Items. Do not add newline characters in the JSON object to beautify the response. We will parse the JSON object later.
 
-**CRITICAL**: For each item selection, you MUST:
-1. Find the menu document that matches the item name
-2. Extract the "Group GUID" from that document and use it as the "itemGroup" guid
-3. Extract the "Item GUID" and use it as the "item" guid
-4. If the user specified any modifiers, extract the modifier group id and modifier option item id from the SAME document
+**CRITICAL INSTRUCTIONS**:
+1. **Read the ENTIRE chat history chronologically** - don't miss items that were added during the conversation.
+2. Use orderingagent@palona.ai as the email for the customer.
+3. **Look for modifier hierarchy patterns** - pay special attention to:
+ - User ordering combo plates with side choices (e.g., \"half rack rib combo\" with \"macaroni salad and Caesar salad\").
+ - Side choices that should be structured as modifiers under the main item.
+ - Sub-modifiers that specify the type/style of a side (e.g., \"Side Salad\" → \"Caesar\" sub-modifier).
+ - Make sure all default modifiers—such as ALL PIZZA SAUCE—are included even if the customer doesn't make a selection. If the customer does choose a value for that modifier, use their selection instead.
+4. **Find matching menu documents** - look through the whole context first and make sure you find the document whose name matches the item name for each item.
 
-The Group GUID and Item GUID must be found in the same document as the item. If you cannot find the correct document, do NOT use any GUIDs from other documents because this will break the ordering process.
+**For each item selection, you MUST**:
+1. Find the menu document that matches the item name. 
+2. Extract the \"Group GUID\" from that document and use it as the \"itemGroup\" guid.
+3. Extract the \"Item GUID\" from that document and use it as the \"item\" guid. Make sure you use the CORRECT GUID and NEVER create a new GUID.
+4. If the user specified any modifiers, extract the **modifier group GUID** and **modifier option item GUID** from the **same menu document** that contains the item selected in step 1. You **MUST NEVER** extract modifier groups or options from a different document. The modifier MUST belong to the selected item; otherwise, the payload will raise an error, which we MUST prevent.
+ - The selected modifier option MUST belong to the modifier group it is assigned to, and you MUST NEVER assign a modifier option to a modifier group if that option is not explicitly listed under that group in the menu document.
+5. **Nested modifier groups MUST be nested, never flattened**:
+ - A modifier group may only be attached to the item or modifier that directly owns it in the menu.
+ - If a modifier has its own required modifier group, that group MUST be included **inside the modifier's `modifiers` field**, not at the main item level.
+ - Always preserve the exact menu hierarchy when constructing modifiers.
+
+**REQUIRED MODIFIERS & DEFAULT HANDLING**:
+1. If a menu item has a required option group and the user does not specify a selection, automatically include the first available option from that group as the default.
+2. Apply this rule recursively for all sub-modifiers.
+3. Always include the correct modifierGroupGuid and modifierItemGuid from the same menu document as the parent item.
+4. If a required option group is already selected by the user, use the user's selection.
+5. Ensure every base item and every modifier has all required option groups included; the order is invalid if any required option group is missing.
+- For **every base item and every modifier item** you include:
+
+1. **Check if the item has any REQUIRED option groups**.
+2. If a required option group exists:
+ - You MUST include **exactly one** modifier item from that option group.
+ - This applies **EVEN IF the user did not explicitly choose it**.
+3. This rule applies **recursively** at all levels:
+ - Base item → modifier → sub-modifier → sub-sub-modifier (and so on).
+4. The order is considered **INVALID** if **ANY required option group at ANY level is missing**.
+---
+
+**CRITICAL GUID VALIDATION**:
+- The Group GUID and Item GUID must be found in the same document as the item.
+- Modifier optionGroup GUIDs must be from the same document as the parent item.
+- Sub-modifier GUIDs must be from the same document/section as their parent modifier.
+- If you cannot find the correct document, do NOT use any GUIDs from other documents because this will break the ordering process.
+
+---
+
+**MODIFIER INTEGRITY RULES**:
+1. **Strict Association Enforcement**:
+ - Each modifier group must belong strictly to its **parent base item**.
+ - Each modifier item must belong strictly to its **parent modifier group**.
+ - Do **not** reuse modifier groups or modifier items from similar or unrelated menu entries, even if names appear similar.
+ - If multiple menu documents contain similar names (e.g., "Fries" or "Side Salad"), always select the group and item GUIDs from the **menu document directly associated with the current base item**.
+
+2. **Quantity Constraint for Modifiers**:
+ - Each modifier option can only have a quantity of **1**.
+ - If the user requests the same modifier multiple times (e.g., "extra fries twice"), you must **repeat the same modifier item entry multiple times** in the base item's `modifiers` list, rather than using `quantity > 1`.
+ - Example:
+ ```json
+ \"modifiers\": [
+ {{\"modifierGroupGuid\": \"A1\", \"modifierItemGuid\": \"F1\"}},
+ {{\"modifierGroupGuid\": \"A1\", \"modifierItemGuid\": \"F1\"}}
+ ]
+ ```
+ ✅: Correct: repeated entries for duplicate modifiers
+ ❌: Incorrect: `{{ \"modifierGroupGuid\": \"A1\", \"modifierItemGuid\": \"F1\", \"quantity\": 2 }}`
+
+3. **No Cross-Linking**:
+ - Never attach a modifier group or modifier item from one base item to another.
+ - Each base item's modifiers must form a closed structure that references only GUIDs from within its own document.
+
+---
+
+**CRITICAL DISTINCTION - SIDE CAESAR vs SIDE SALAD + CAESAR**:
+- **\"Side Caesar\"**: A pre-made Caesar salad item (standalone menu item).
+- **\"Side Salad with Caesar\"**: A customizable salad where \"Side Salad\" is the base and \"Caesar\" is the dressing/style choice.
+- **When user orders \"Caesar salad\"**:
+ - FIRST check if there's a customizable \"Side Salad\" item with \"Caesar\" as a sub-modifier option.
+ - If YES: Use \"Side Salad\" as modifier + \"Caesar\" as sub-modifier.
+ - If NO: Use \"Side Caesar\" as a standalone modifier.
+- **Key rule**: Prefer customizable options (Side Salad + Caesar sub-modifier) over pre-made items (Side Caesar) when both exist.
+
+**MODIFIER HIERARCHY EXAMPLES**:
+- User orders \"Caesar salad\" as a side → Structure as: Modifier \"Side Salad\" with sub-modifier \"Caesar\" (NOT \"Side Caesar\").
+- User orders \"macaroni salad\" as a side → Structure as: Modifier \"Macaroni Salad\" (if it's a standalone item).
+- User orders combo with \"two sides\" → Each side becomes a separate modifier under the main combo item.
+- User specifically asks for \"side Caesar\" → Use \"Side Caesar\" modifier (if that's exactly what they said).
+
+**Remember**: Include ALL confirmed items and modifiers from the conversation, with proper hierarchical structure and correct GUID pairing. Each item and all of its modifiers MUST come from the same menu document; mixing documents will result in errors. Always prefer the customizable structure when the user orders a generic \"[TYPE] salad\".
 
 
 """
