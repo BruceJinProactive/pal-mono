@@ -2,6 +2,7 @@ import os
 from typing import Any
 from uuid import UUID
 
+import requests
 import stripe
 from sqlalchemy.orm import Session
 from stripe import InvalidRequestError, StripeError
@@ -386,3 +387,50 @@ def generate_invoice_for_account(
     )
 
     return finalized_invoice
+
+
+def get_invoice_pdf(invoice_id: str) -> bytes:
+    """
+    Download the PDF for a Stripe invoice.
+
+    Args:
+        invoice_id: Stripe invoice ID
+
+    Returns:
+        bytes: PDF file content
+
+    Raises:
+        ValueError: If invoice not found, doesn't have a PDF, or download fails
+    """
+    try:
+        # Retrieve the invoice to get the PDF URL
+        invoice = stripe.Invoice.retrieve(invoice_id)
+
+        if not invoice.invoice_pdf:
+            raise ValueError(f"Invoice {invoice_id} does not have a PDF available")
+
+        # Download the PDF from the URL
+        response = requests.get(invoice.invoice_pdf, timeout=30)
+        response.raise_for_status()
+
+        logger.info(f"[Stripe Invoice] Downloaded PDF for invoice {invoice_id}")
+        return response.content
+
+    except InvalidRequestError as e:
+        logger.error(f"[Stripe Invoice] Invoice not found: {invoice_id}: {e}")
+        raise ValueError(f"Invoice not found: {str(e)}")
+    except requests.RequestException as e:
+        logger.error(
+            f"[Stripe Invoice] Failed to download PDF for invoice {invoice_id}: {e}"
+        )
+        raise ValueError(f"Failed to download invoice PDF: {str(e)}")
+    except StripeError as e:
+        logger.error(
+            f"[Stripe Invoice] Stripe error retrieving invoice {invoice_id}: {e}"
+        )
+        raise ValueError(f"Failed to retrieve invoice: {str(e)}")
+    except Exception as e:
+        logger.error(
+            f"[Stripe Invoice] Unexpected error downloading PDF for invoice {invoice_id}: {e}"
+        )
+        raise ValueError(f"Unexpected error downloading invoice PDF: {str(e)}")

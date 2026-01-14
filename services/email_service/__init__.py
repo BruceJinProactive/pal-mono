@@ -14,6 +14,7 @@ def send_email_with_template(
     tag: Optional[str] = None,
     track_opens: bool = True,
     track_links: str = "HtmlAndText",
+    attachments: Optional[List[Dict[str, str]]] = None,
 ) -> Dict:
     """
     Send an email using a Postmark template.
@@ -29,6 +30,7 @@ def send_email_with_template(
         tag (Optional[str]): Email tag for tracking
         track_opens (bool): Whether to track email opens
         track_links (str): Link tracking preference ("None", "HtmlAndText", "HtmlOnly", "TextOnly")
+        attachments (Optional[List[Dict[str, str]]]): List of attachments with Name, Content (base64), ContentType
 
     Returns:
         Dict: Postmark API response
@@ -44,6 +46,7 @@ def send_email_with_template(
         tag=tag,
         track_opens=track_opens,
         track_links=track_links,
+        attachments=attachments,
     )
 
 

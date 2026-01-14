@@ -1,3 +1,4 @@
+import base64
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -13,11 +14,18 @@ from api.schemas.admin.billing import (
     InvoiceLineItem,
     InvoiceResponse,
     ListInvoicesResponse,
+    SendInvoiceEmailRequest,
+    SendInvoiceEmailResponse,
     UpdatePaymentMethodRequest,
     UpdatePaymentMethodResponse,
 )
 from db.repositories.account_repository import AccountRepository
-from services.subscription_service import billing_service
+from db.repositories.project_repository import ProjectRepository
+from services.subscription_service import (
+    billing_service,
+    invoice_email_service,
+    stripe_invoice,
+)
 from utils.log import logger
 
 
@@ -360,4 +368,244 @@ async def void_invoice(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to void invoice",
+        )
+
+
+async def send_account_invoice_email(
+    account_name: str,
+    request: SendInvoiceEmailRequest,
+    context: UserContext,
+    session: Session,
+) -> SendInvoiceEmailResponse:
+    """
+    Send an account-level invoice email with combined usage analytics and PDF attachment.
+
+    Args:
+        account_name: Name of the account
+        request: Email details including combined analytics and PDF
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        SendInvoiceEmailResponse: Email send result
+
+    Raises:
+        HTTPException: 404 if account not found, 500 if email send fails
+    """
+    try:
+        # Validate account exists
+        account_repo = AccountRepository(session)
+        account = account_repo.get_account(account_name)
+        if not account:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Account '{account_name}' not found",
+            )
+
+        # Validate that either pdf_base64 or stripe_invoice_id is provided
+        if not request.pdf_base64 and not request.stripe_invoice_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Either pdf_base64 or stripe_invoice_id must be provided",
+            )
+
+        # Get PDF content
+        if request.stripe_invoice_id:
+            # Fetch PDF from Stripe
+            try:
+                pdf_content = stripe_invoice.get_invoice_pdf(request.stripe_invoice_id)
+                pdf_filename = (
+                    request.pdf_filename or f"invoice_{request.stripe_invoice_id}.pdf"
+                )
+                logger.info(
+                    f"Fetched invoice PDF from Stripe: {request.stripe_invoice_id}"
+                )
+            except ValueError as e:
+                logger.error(f"Failed to fetch Stripe invoice PDF: {e}")
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to fetch Stripe invoice: {str(e)}",
+                )
+        elif request.pdf_base64:
+            # Decode PDF from base64
+            try:
+                pdf_content = base64.b64decode(request.pdf_base64)
+                pdf_filename = request.pdf_filename or "invoice.pdf"
+            except Exception as e:
+                logger.error(f"Failed to decode PDF base64: {e}")
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid PDF base64 encoding",
+                )
+        else:
+            # This should never happen due to earlier validation, but for type safety
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Either pdf_base64 or stripe_invoice_id must be provided",
+            )
+
+        # Send the email for account-level invoice
+        result = invoice_email_service.send_invoice_email_with_analytics(
+            to_email=request.to_email,
+            display_name=account.name,
+            period_start=request.period_start,
+            period_end=request.period_end,
+            calls_handled=request.calls_handled,
+            total_minutes=request.total_minutes,
+            staff_hours_saved=request.staff_hours_saved,
+            pdf_content=pdf_content,
+            pdf_filename=pdf_filename,
+            cc_emails=request.cc_emails,
+            scope="account",
+        )
+
+        logger.info(
+            f"Successfully sent account-level invoice email to {request.to_email} for {account_name}",
+            extra={
+                "account_name": account_name,
+                "message_id": result.get("MessageID"),
+            },
+        )
+
+        return SendInvoiceEmailResponse(
+            success=True,
+            message=f"Invoice email sent successfully to {request.to_email}",
+            message_id=result.get("MessageID"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending account invoice email: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send invoice email: {str(e)}",
+        )
+
+
+async def send_project_invoice_email(
+    account_name: str,
+    project_id: UUID,
+    request: SendInvoiceEmailRequest,
+    context: UserContext,
+    session: Session,
+) -> SendInvoiceEmailResponse:
+    """
+    Send a project-level invoice email with usage analytics and PDF attachment.
+
+    Args:
+        account_name: Name of the account
+        project_id: UUID of the project
+        request: Email details including analytics and PDF
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        SendInvoiceEmailResponse: Email send result
+
+    Raises:
+        HTTPException: 404 if account/project not found, 500 if email send fails
+    """
+    try:
+        # Validate account exists
+        account_repo = AccountRepository(session)
+        account = account_repo.get_account(account_name)
+        if not account:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Account '{account_name}' not found",
+            )
+
+        # Validate project exists and belongs to account
+        project_repo = ProjectRepository(session)
+        project = project_repo.get_project(project_id)
+        if not project or project.account_id != account.id:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Project with ID '{project_id}' not found in account '{account_name}'",
+            )
+
+        # Validate that either pdf_base64 or stripe_invoice_id is provided
+        if not request.pdf_base64 and not request.stripe_invoice_id:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Either pdf_base64 or stripe_invoice_id must be provided",
+            )
+
+        # Get PDF content
+        if request.stripe_invoice_id:
+            # Fetch PDF from Stripe
+            try:
+                pdf_content = stripe_invoice.get_invoice_pdf(request.stripe_invoice_id)
+                pdf_filename = (
+                    request.pdf_filename or f"invoice_{request.stripe_invoice_id}.pdf"
+                )
+                logger.info(
+                    f"Fetched invoice PDF from Stripe: {request.stripe_invoice_id}"
+                )
+            except ValueError as e:
+                logger.error(f"Failed to fetch Stripe invoice PDF: {e}")
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to fetch Stripe invoice: {str(e)}",
+                )
+        elif request.pdf_base64:
+            # Decode PDF from base64
+            try:
+                pdf_content = base64.b64decode(request.pdf_base64)
+                pdf_filename = request.pdf_filename or "invoice.pdf"
+            except Exception as e:
+                logger.error(f"Failed to decode PDF base64: {e}")
+                raise HTTPException(
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid PDF base64 encoding",
+                )
+        else:
+            # This should never happen due to earlier validation, but for type safety
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Either pdf_base64 or stripe_invoice_id must be provided",
+            )
+
+        # Send the email with combined account + project display name
+        project_display = project.display_name or project.name
+        combined_display_name = f"{account.name} {project_display}"
+
+        result = invoice_email_service.send_invoice_email_with_analytics(
+            to_email=request.to_email,
+            display_name=combined_display_name,
+            period_start=request.period_start,
+            period_end=request.period_end,
+            calls_handled=request.calls_handled,
+            total_minutes=request.total_minutes,
+            staff_hours_saved=request.staff_hours_saved,
+            pdf_content=pdf_content,
+            pdf_filename=pdf_filename,
+            cc_emails=request.cc_emails,
+            scope="project",
+        )
+
+        logger.info(
+            f"Successfully sent invoice email to {request.to_email} for project {project.name}",
+            extra={
+                "account_name": account_name,
+                "project_id": str(project_id),
+                "project_name": project.name,
+                "message_id": result.get("MessageID"),
+            },
+        )
+
+        return SendInvoiceEmailResponse(
+            success=True,
+            message=f"Invoice email sent successfully to {request.to_email}",
+            message_id=result.get("MessageID"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending invoice email: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send invoice email: {str(e)}",
         )

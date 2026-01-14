@@ -51,6 +51,8 @@ from api.schemas.admin.billing import (
     InvoiceActionRequest,
     InvoiceActionResponse,
     ListInvoicesResponse,
+    SendInvoiceEmailRequest,
+    SendInvoiceEmailResponse,
     UpdatePaymentMethodRequest,
     UpdatePaymentMethodResponse,
 )
@@ -1995,6 +1997,53 @@ async def void_invoice(
     """
     request = InvoiceActionRequest(invoice_id=invoice_id)
     return await _billing.void_invoice(account_name, request, context, session)
+
+
+@admin_router.post("/accounts/{account_name}/billing/send-invoice-email")
+async def send_account_invoice_email(
+    account_name: str,
+    request: SendInvoiceEmailRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> SendInvoiceEmailResponse:
+    """
+    Send an account-level invoice email with combined usage analytics and PDF attachment.
+
+    This endpoint sends a formatted email with combined analytics across all projects:
+    - Aggregated usage summary and analytics
+    - Combined key performance metrics
+    - PDF invoice attachment
+    """
+    return await _billing.send_account_invoice_email(
+        account_name, request, context, session
+    )
+
+
+@admin_router.post(
+    "/accounts/{account_name}/projects/{project_id}/billing/send-invoice-email"
+)
+async def send_project_invoice_email(
+    account_name: str,
+    project_id: uuid.UUID,
+    request: SendInvoiceEmailRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> SendInvoiceEmailResponse:
+    """
+    Send a project-level invoice email with usage analytics and PDF attachment.
+
+    This endpoint sends a formatted email for a single project:
+    - Project-specific usage summary and analytics
+    - Key performance metrics for the project
+    - PDF invoice attachment
+    """
+    return await _billing.send_project_invoice_email(
+        account_name, project_id, request, context, session
+    )
 
 
 """

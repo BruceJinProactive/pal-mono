@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UpdatePaymentMethodRequest(BaseModel):
@@ -83,3 +83,32 @@ class InvoiceActionResponse(BaseModel):
     invoice_id: str
     status: str
     message: str
+
+
+class SendInvoiceEmailRequest(BaseModel):
+    """Request to send an invoice email with analytics and PDF attachment.
+
+    Either pdf_base64 or stripe_invoice_id must be provided.
+    If stripe_invoice_id is provided, the PDF will be fetched from Stripe automatically.
+    """
+
+    to_email: EmailStr
+    period_start: str  # e.g., "December 1"
+    period_end: str  # e.g., "December 31, 2025"
+    calls_handled: int
+    total_minutes: int
+    staff_hours_saved: int
+    pdf_base64: Optional[str] = None  # Base64 encoded PDF content (manual upload)
+    stripe_invoice_id: Optional[str] = (
+        None  # Stripe invoice ID (auto-fetch from Stripe)
+    )
+    pdf_filename: Optional[str] = None  # e.g., "invoice_december_2025.pdf"
+    cc_emails: Optional[list[EmailStr]] = None
+
+
+class SendInvoiceEmailResponse(BaseModel):
+    """Response after sending an invoice email."""
+
+    success: bool
+    message: str
+    message_id: Optional[str] = None
