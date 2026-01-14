@@ -1,6 +1,7 @@
+import re
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer
 
 
 class BackdoorToolPrompt(str, Enum):
@@ -134,6 +135,30 @@ class ClientCustomerInfo(BaseModel):
     email: str = Field(
         description="Customer email address, required, set to orderingagent@palona.ai if not provided"
     )
+
+    @field_serializer("phone")
+    def format_phone_number(self, phone_number: str) -> str:
+        if not phone_number:
+            return phone_number
+
+        # Remove a leading country code (+1) if present
+        phone = re.sub(r"^\+1", "", phone_number)
+
+        # Remove all non-digit characters so we have only digits
+        digits = re.sub(r"\D", "", phone)
+
+        if len(digits) != 10:
+            return phone_number
+
+        # Now use the provided regex pattern to match and capture the groups
+        pattern = r"^\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})$"
+        match = re.fullmatch(pattern, digits)
+
+        if not match:
+            return phone_number
+
+        # Return the concatenation of the three groups
+        return "".join(match.groups())
 
 
 class ClientModifier(BaseModel):
