@@ -21,6 +21,7 @@ from openai import AzureOpenAI
 from agent.model._config import ModelOptions
 from agent.model._implementation import _get_deployment_name
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
 
 class MonitoringLLMProvider(str, Enum):
@@ -269,11 +270,12 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
             ValueError: If GOOGLE_API_KEY is not set
         """
         super().__init__(config)
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "GOOGLE_API_KEY environment variable is required for Google Gemini provider"
-            )
+        # Fetch GOOGLE_API_KEY from AWS Secrets Manager with env fallback
+        try:
+            api_key = get_server_secret_with_fallback("GOOGLE_API_KEY")
+        except ValueError as e:
+            raise ValueError(f"Failed to retrieve Google API key: {str(e)}") from e
+
         self.client = genai.Client(api_key=api_key)
 
     def analyze_image(
