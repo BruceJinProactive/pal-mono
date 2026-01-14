@@ -511,14 +511,15 @@ def remove_team_member(
     user_email: str,
 ) -> None:
     """
-    Remove a team member from the account.
+    Remove a team member from the account or revoke a pending invitation.
 
     Steps:
     1. Get account
-    2. Find user by email
-    3. Check last owner protection
-    4. Deactivate AccountUser record
-    5. Remove all role assignments
+    2. Check for pending invitation first
+    3. If no pending invitation, find confirmed user by email
+    4. Check last owner protection (for confirmed users)
+    5. Deactivate AccountUser record or revoke invitation
+    6. Remove all role assignments (for confirmed users)
 
     Args:
         session: Database session
@@ -535,7 +536,26 @@ def remove_team_member(
     if not account:
         raise ValueError(f"Account '{account_name}' not found")
 
-    # 2. Find user by email
+    # 2. Check for pending invitation first
+    invitation_repo = UserInvitationRepository(session, auto_commit=True)
+    pending_invitations = invitation_repo.get_pending_for_account(account.id)
+
+    # Find matching invitation by email
+    matching_invitation = None
+    for invitation in pending_invitations:
+        if invitation.email.lower() == user_email.lower():
+            matching_invitation = invitation
+            break
+
+    # If there's a pending invitation, revoke it and return
+    if matching_invitation:
+        invitation_repo.revoke(matching_invitation.id)
+        logger.info(
+            f"Revoked pending invitation for {user_email} in account {account_name}"
+        )
+        return
+
+    # 3. Find confirmed user by email
     account_user_repo = AccountUserRepository(session)
     account_users = account_user_repo.get_users_for_account(account.id)
 
@@ -548,7 +568,7 @@ def remove_team_member(
     if not target_user_id:
         raise ValueError("User not found in account")
 
-    # 3. Check last owner protection
+    # 4. Check last owner protection
     role_repo = ResourceRoleAssignmentRepository(session)
     current_roles = role_repo.get_roles_for_resource(
         target_user_id, ResourceType.ACCOUNT, account.id
@@ -561,17 +581,17 @@ def remove_team_member(
         if owner_count <= 1:
             raise ValueError("Cannot remove the last owner from the account")
 
-    # 4. Deactivate AccountUser record
+    # 5. Deactivate AccountUser record
     account_user_repo.update_status(
         target_user_id, account.id, AccountUserStatus.deactivated
     )
 
-    # 5. Remove all role assignments
+    # 6. Remove all role assignments
     role_repo.remove_all_roles_for_user_on_resource(
         target_user_id, ResourceType.ACCOUNT, account.id
     )
 
-    # 6. Send notification email (TODO)
+    # 7. Send notification email (TODO)
 
 
 # ============================================================================
