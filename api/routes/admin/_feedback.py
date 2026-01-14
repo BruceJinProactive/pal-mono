@@ -13,13 +13,7 @@ from api.schemas.admin.feedback import (
     ListFeedbacksResponse,
     UpdateFeedbackRequest,
 )
-from services import (
-    account_service,
-    admin_service,
-    feedback_service,
-    message_service,
-    user_service,
-)
+from services import account_service, feedback_service, message_service, user_service
 from services.auth_service import check_permission
 from services.auth_types import UserRole
 from utils.log import logger
@@ -128,13 +122,8 @@ async def retrieve_feedback_by_id(
         raise not_found_error(f"Feedback not found for id: {feedback_id}")
     conversation = feedback.message.conversation
 
-    if feedback.author_identifier:
-        author_name = admin_service.get_user_name_by_email(feedback.author_identifier)
-    else:
-        author_name = None
-
     return FeedbackDetail(
-        feedback=_builder.build_feedback(feedback, author_name=author_name),
+        feedback=_builder.build_feedback(feedback),
         conversation_id=conversation.id,
     )
 
@@ -154,6 +143,7 @@ async def create_feedback(
     # Process create - store user's email in author_identifier
     feedback = _to_db_feedback(feedback_create)
     feedback.author_identifier = context.email
+    feedback.author_name = context.display_name or None
     feedback.message_id = feedback_create.message_id
     persisted_feedback = feedback_service.create_feedback(session, feedback)
     return _builder.build_feedback(persisted_feedback)

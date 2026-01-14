@@ -216,7 +216,6 @@ def build_message(message: db.Message) -> Message:
 def build_feedback(
     feedback: db.Feedback,
     message: db.Message | None = None,
-    author_name: str | None = None,
 ) -> Feedback:
     if not message:
         # fallback to retrieving the message from the db
@@ -227,7 +226,7 @@ def build_feedback(
         message_id=str(feedback.message_id),
         message_content=message.body.get("text", {}).get("body"),
         author_identifier=feedback.author_identifier,
-        author_name=author_name,
+        author_name=feedback.author_name,
         reaction=feedback.reaction,
         tags=feedback.tags,
         note=feedback.note,
