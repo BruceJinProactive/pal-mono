@@ -156,6 +156,22 @@ class CreateMonitoringConfigRequest(BaseModel):
     enabled: bool = Field(True, description="Whether monitoring is enabled")
 
 
+class ModelConfig(BaseModel):
+    """LLM model configuration for monitoring analysis."""
+
+    provider: str | None = Field(
+        None,
+        description='LLM provider: "azure" or "google"',
+        pattern="^(azure|google)$",
+    )
+    model: str | None = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="Model identifier (e.g., 'gpt-4o', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.5-pro')",
+    )
+
+
 class UpdateMonitoringConfigRequest(BaseModel):
     """Request to update a monitoring configuration.
 
@@ -175,6 +191,10 @@ class UpdateMonitoringConfigRequest(BaseModel):
     structured_output: list[StructuredOutputField] | None = Field(
         None,
         description="Updated field definitions for structured output",
+    )
+    model: ModelConfig | None = Field(
+        None,
+        description="LLM model configuration override (provider and model)",
     )
     enabled: bool | None = Field(None, description="Updated enabled status")
 

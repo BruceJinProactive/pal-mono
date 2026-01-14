@@ -514,6 +514,26 @@ async def update_config(
 
         updates["rules"] = current_rules
 
+    # Handle model config update (part of rules)
+    if request.model is not None:
+        # Get current rules or initialize empty, preserving any already-staged updates
+        current_rules = copy.deepcopy(
+            updates.get("rules", config.rules if config.rules else {})
+        )
+
+        # Convert ModelConfig to dict, excluding None values
+        model_dict = request.model.model_dump(exclude_none=True)
+
+        # If model_dict is empty (all fields were None), remove model from rules
+        if not model_dict:
+            if "model" in current_rules:
+                del current_rules["model"]
+        else:
+            # Set the model configuration
+            current_rules["model"] = model_dict
+
+        updates["rules"] = current_rules
+
     # Handle reference image operations
     needs_image_update = add_images or remove_image_ids or update_descriptions
 

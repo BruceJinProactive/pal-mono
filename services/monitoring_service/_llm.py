@@ -1,6 +1,7 @@
 """Monitoring Service LLM Integration.
 
-LLM-specific functions for AI-based monitoring analysis using OpenAI Vision API.
+LLM-specific functions for AI-based monitoring analysis using multiple LLM providers.
+Supports Azure OpenAI and Google Gemini for vision-based monitoring analysis.
 """
 
 from __future__ import annotations
@@ -15,24 +16,15 @@ from datetime import datetime
 import boto3
 from ddtrace.trace import tracer
 from fastapi import HTTPException, status
-from openai import AzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agent.model._config import ModelOptions
-from agent.model._implementation import _get_deployment_name
 from db.repositories import (
     MonitoringConfigRepositoryAsync,
     MonitoringRunRepositoryAsync,
 )
 from db.tables import MonitoringRun
+from services.monitoring_service._providers import create_monitoring_llm_provider
 from utils.log import logger
-
-# OpenAI Configuration (using Azure OpenAI)
-# Reuse ModelOptions from agent.model for consistency
-AZURE_DEPLOYMENT_MODEL_OPTION = ModelOptions.GPT_4O
-OPENAI_MAX_TOKENS = 2000
-OPENAI_RESPONSE_FORMAT = {"type": "json_object"}
-OPENAI_IMAGE_DETAIL = "high"
 
 # AWS Configuration
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
@@ -46,50 +38,6 @@ if not AWS_ASSET_BUCKET_NAME:
     )
 
 
-def _build_azure_client_sync() -> AzureOpenAI:
-    """Build synchronous Azure OpenAI client for monitoring service.
-
-    Mirrors agent.model._implementation._build_azure_client() but returns
-    synchronous client instead of async client. Monitoring service uses
-    synchronous client with run_in_executor() for thread pool execution.
-
-    Returns:
-        AzureOpenAI: Synchronous Azure OpenAI client
-
-    Raises:
-        ValueError: If required environment variables are missing
-    """
-    api_key = os.getenv("AZURE_OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("AZURE_OPENAI_API_KEY environment variable not found.")
-
-    azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    if not azure_endpoint:
-        raise ValueError("AZURE_OPENAI_ENDPOINT environment variable not found.")
-
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
-
-    return AzureOpenAI(
-        api_key=api_key,
-        azure_endpoint=azure_endpoint,
-        api_version=api_version,
-    )
-
-
-# Validate Azure OpenAI configuration at module import
-try:
-    _azure_deployment = _get_deployment_name(AZURE_DEPLOYMENT_MODEL_OPTION)
-    logger.info(
-        f"Monitoring service initialized with Azure OpenAI deployment: {_azure_deployment}"
-    )
-except ValueError as e:
-    raise ValueError(
-        f"Azure OpenAI configuration incomplete for monitoring service: {e}. "
-        "Please ensure AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and "
-        "AZURE_OPENAI_DEPLOYMENT_GPT4O are set in your environment."
-    ) from e
-
-
 async def generate_monitoring_llm_prompt(
     session: AsyncSession,
     monitoring_config_id: uuid.UUID,
@@ -99,7 +47,7 @@ async def generate_monitoring_llm_prompt(
     Execute LLM analysis for a monitoring configuration.
 
     Retrieves the monitoring config, fetches reference images and camera image,
-    and performs AI analysis using OpenAI Vision API.
+    and performs AI analysis using Azure OpenAI or Google Gemini Vision API.
 
     Args:
         session: Async database session
@@ -122,7 +70,7 @@ async def generate_monitoring_llm_prompt(
             }
 
     Raises:
-        HTTPException: If config not found or S3/OpenAI errors occur
+        HTTPException: If config not found or S3/LLM API errors occur
     """
     # Get monitoring config
     config_repo = MonitoringConfigRepositoryAsync(session)
@@ -168,6 +116,11 @@ async def generate_monitoring_llm_prompt(
     reference_images_meta = rules.get("reference_images", [])
     structured_output = rules.get("structured_output")
 
+    # Get model configuration from rules (optional)
+    model_config = rules.get("model", {})
+    llm_provider = model_config.get("provider")  # e.g., "azure" or "google"
+    llm_model = model_config.get("model")  # e.g., "gpt-4o" or "gemini-3-flash-preview"
+
     if not prompt:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -201,7 +154,7 @@ async def generate_monitoring_llm_prompt(
             logger.warning(f"Failed to retrieve reference image {ref_image_url}: {e}")
             # Continue without this reference image
 
-    # Build OpenAI messages with images - structured as a vision analysis prompt
+    # Build LLM prompt with images - structured as a vision analysis prompt
     # Use custom structured output if provided, otherwise use default
     if structured_output:
         system_instruction = f"""You are a visual monitoring assistant. Your task is to analyze a camera image and compare it against reference images to detect any issues or anomalies.
@@ -242,71 +195,31 @@ For invalid/problematic images:
   "details": "specific description of what is wrong with the camera image"
 }"""
 
-    message_content: list[dict] = [
-        {"type": "text", "text": system_instruction},
-        {"type": "text", "text": f"\n**Analysis Task:**\n{prompt}\n"},
+    # Prepare reference images data for provider
+    reference_images_for_provider = [
+        {"description": ref_img["description"], "base64_data": ref_img["base64"]}
+        for ref_img in reference_images_base64
     ]
 
-    # Add reference images with context
-    if reference_images_base64:
-        message_content.append(
-            {"type": "text", "text": "\n**Reference Images (Expected State):**"}
-        )
-        for idx, ref_img in enumerate(reference_images_base64):
-            message_content.append(
-                {
-                    "type": "text",
-                    "text": f"\nReference {idx + 1}: {ref_img['description']}",
-                }
-            )
-            message_content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/jpeg;base64,{ref_img['base64']}",
-                        "detail": OPENAI_IMAGE_DETAIL,
-                    },
-                }
-            )
-
-    # Add camera image to analyze
-    message_content.append(
-        {
-            "type": "text",
-            "text": "\n**Current Camera Image (To Be Analyzed):**\nPlease compare this image against the reference images above and evaluate based on the analysis task.",
-        }
-    )
-    message_content.append(
-        {
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{camera_image_base64}",
-                "detail": OPENAI_IMAGE_DETAIL,
+    # Determine response format based on custom structured output
+    response_format = None
+    if structured_output:
+        # Use structured outputs with custom JSON schema
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "monitoring_analysis",
+                "strict": True,
+                "schema": structured_output,
             },
         }
-    )
 
-    # Call OpenAI Vision API
+    # Call LLM Vision API using provider abstraction
     try:
-        # Determine response format based on custom structured output
-        if structured_output:
-            # Use structured outputs with custom JSON schema
-            openai_response_format = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "monitoring_analysis",
-                    "strict": True,
-                    "schema": structured_output,
-                },
-            }
-        else:
-            # Use default json_object format
-            openai_response_format = OPENAI_RESPONSE_FORMAT
-
-        # Create a wrapper function that runs OpenAI call in a new trace context
+        # Create a wrapper function that runs LLM call in a new trace context
         # This breaks the trace inheritance from the parent request (e.g., voice interaction)
         # so monitoring analysis appears as a separate trace in Datadog
-        def call_openai_with_new_trace():
+        def call_llm_with_new_trace():
             # Get the current context and clear it to start a fresh trace
             # This prevents inheriting the parent trace from voice/agent interactions
             current_context = tracer.current_trace_context()
@@ -315,42 +228,76 @@ For invalid/problematic images:
             tracer.context_provider.activate(None)
 
             try:
-                # Get Azure deployment name
-                deployment_name = _get_deployment_name(AZURE_DEPLOYMENT_MODEL_OPTION)
+                # Initialize provider with config-specific model settings
+                # Config-level settings override environment variables
+                from services.monitoring_service._providers import (
+                    MonitoringLLMConfig,
+                    MonitoringLLMProvider,
+                )
 
-                # Start a completely new root trace
+                # Create custom config if model settings are specified in the monitoring config
+                if llm_provider or llm_model:
+                    logger.info(
+                        f"[Monitoring LLM] Using model config from database rules - Provider: {llm_provider or 'default'}, Model: {llm_model or 'default'}"
+                    )
+                    provider_enum = None
+                    resolved_model = (
+                        llm_model  # Use separate variable to avoid scope issues
+                    )
+                    if llm_provider:
+                        try:
+                            provider_enum = MonitoringLLMProvider(llm_provider.lower())
+                        except ValueError:
+                            logger.warning(
+                                f"Invalid provider '{llm_provider}' in monitoring config, using default provider and clearing model"
+                            )
+                            # Clear the model when provider is invalid to prevent mismatch
+                            # between provider and model (e.g., gemini model with azure provider)
+                            resolved_model = None
+
+                    custom_config = MonitoringLLMConfig(
+                        provider=provider_enum, model=resolved_model
+                    )
+                    provider = create_monitoring_llm_provider(config=custom_config)
+                else:
+                    # Use default config from environment variables
+                    logger.info(
+                        "[Monitoring LLM] Using model config from environment variables"
+                    )
+                    provider = create_monitoring_llm_provider()
+
+                # Log the final resolved configuration
+                logger.info(
+                    f"[Monitoring LLM] Provider initialized - Final config: Provider={provider.config.provider.value}, Model={provider.config.model}"
+                )
+
+                # Add tags to current span
                 with tracer.trace(
-                    "monitoring.vision_analysis",
+                    "monitoring.llm_provider_call",
                     service="pal-mono-monitoring",
-                    resource="azure.openai.vision.analysis",
                 ) as span:
                     span.set_tag("monitoring.config_id", str(monitoring_config_id))
-                    span.set_tag("monitoring.model", deployment_name)
-                    span.set_tag(
-                        "monitoring.model_option",
-                        AZURE_DEPLOYMENT_MODEL_OPTION.model_name,
-                    )
                     span.set_tag("monitoring.image_url", image_url)
-                    span.set_tag("monitoring.provider", "azure")
+                    span.set_tag(
+                        "monitoring.llm_provider", provider.config.provider.value
+                    )
+                    span.set_tag("monitoring.llm_model", provider.config.model)
 
-                    # Build Azure client and make API call
-                    client = _build_azure_client_sync()
-                    return client.chat.completions.create(
-                        model=deployment_name,
-                        messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
-                        response_format=openai_response_format,  # type: ignore[arg-type]
-                        max_tokens=OPENAI_MAX_TOKENS,
+                    return provider.analyze_image(
+                        system_instruction=system_instruction,
+                        analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
+                        reference_images=reference_images_for_provider,
+                        camera_image_base64=camera_image_base64,
+                        response_format=response_format,
                     )
             finally:
                 # Restore the original context after the call
                 if current_context:
                     tracer.context_provider.activate(current_context)
 
-        # Run blocking OpenAI call in thread pool with new trace context
+        # Run blocking LLM call in thread pool with new trace context
         loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(None, call_openai_with_new_trace)
-
-        analysis_result = json.loads(response.choices[0].message.content or "{}")
+        analysis_result = await loop.run_in_executor(None, call_llm_with_new_trace)
 
         logger.info(
             f"Monitoring LLM analysis completed for config {monitoring_config_id}",
@@ -377,7 +324,7 @@ For invalid/problematic images:
         }
 
     except Exception as e:
-        logger.error(f"Azure OpenAI API call failed: {e}")
+        logger.error(f"Monitoring LLM API call failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"LLM analysis failed: {str(e)}",
@@ -454,7 +401,7 @@ async def create_monitoring_run_with_analysis(
         if e.status_code == status.HTTP_404_NOT_FOUND:
             raise
 
-        # For other HTTP errors (S3, OpenAI, etc.), create a run with error
+        # For other HTTP errors (S3, LLM API, etc.), create a run with error
         error_run = MonitoringRun(
             monitoring_config_id=monitoring_config_id,
             trigger_metadata=trigger_metadata,

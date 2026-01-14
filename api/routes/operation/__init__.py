@@ -1443,6 +1443,7 @@ async def update_monitoring_config(
     description: str | None = Form(None),
     prompt: str | None = Form(None),
     structured_output: str | None = Form(None),
+    model: str | None = Form(None),
     enabled: bool | None = Form(None),
     # Reference image operations (send only what changes)
     add_images: list[UploadFile] = File(default=[]),
@@ -1467,6 +1468,7 @@ async def update_monitoring_config(
     - name: New name (must be unique per project)
     - description: Updated description
     - prompt: Updated AI analysis prompt
+    - model: JSON string with LLM model configuration (e.g., '{"provider": "google", "model": "gemini-3-flash-preview"}')
     - enabled: Updated enabled status
 
     Reference Image Operations (send only what you want to change):
@@ -1555,7 +1557,7 @@ async def update_monitoring_config(
             )
 
     # Parse structured_output if provided
-    from api.schemas.operations.monitoring import StructuredOutputField
+    from api.schemas.operations.monitoring import ModelConfig, StructuredOutputField
 
     parsed_structured_output = None
     if structured_output:
@@ -1570,12 +1572,25 @@ async def update_monitoring_config(
                 detail=f"Invalid structured_output format: {str(e)}",
             )
 
+    # Parse model if provided
+    parsed_model = None
+    if model:
+        try:
+            model_data = json.loads(model)
+            parsed_model = ModelConfig(**model_data)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid model format: {str(e)}",
+            )
+
     # Build request object
     request = UpdateMonitoringConfigRequest(
         name=name,
         description=description,
         prompt=prompt,
         structured_output=parsed_structured_output,
+        model=parsed_model,
         enabled=enabled,
     )
 
