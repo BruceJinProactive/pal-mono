@@ -194,6 +194,9 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
         extract_text_between_markers(item_text, "**Description:** ", "\n") or ""
     )
 
+    # Extract allow_halving flag
+    allow_halving = "**allow_halving:** true" in item_text
+
     # Extract prices
     prices = []
     price_section = re.search(r"## Prices\n(.*?)(?=\n##|\n$)", item_text, re.DOTALL)
@@ -226,6 +229,13 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
             # Group name might have constraint info like "Extra Toppings (Select 0-3)"
             clean_group_name = group_name.strip()
             constraints = {}
+
+            # Extract allow_halving information from group name if present
+            group_allow_halving = "[allow_halving: true]" in clean_group_name
+            if group_allow_halving:
+                clean_group_name = clean_group_name.replace(
+                    "[allow_halving: true]", ""
+                ).strip()
 
             # Extract constraint information from group name if present
             constraint_match = re.search(r"(.+?)\s*\((Select.*?)\)", clean_group_name)
@@ -270,6 +280,7 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
                 "included": [],
                 "optional": [],
                 "constraints": constraints,
+                "allow_halving": group_allow_halving,
             }
 
             # Extract included modifiers
@@ -300,4 +311,5 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
         "prices": prices,
         "included": included_items,
         "modifier_groups": modifier_groups,
+        "allow_halving": allow_halving,
     }

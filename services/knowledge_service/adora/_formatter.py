@@ -104,6 +104,7 @@ def generate_item_text(
     item_category_id = item.get("item_category_id")
     category_name = get_category_name(categories, item_category_id or "")
     description = item.get("description", "")
+    allow_halving = item.get("allow_halving", False)
 
     lines = []
 
@@ -122,6 +123,11 @@ def generate_item_text(
             "",
         ]
     )
+
+    # Add allow_halving information if true
+    if allow_halving:
+        lines.append("**allow_halving:** true")
+        lines.append("")
 
     # Get allowed sizes
     order_types = item.get("order_types", [])
@@ -169,6 +175,9 @@ def generate_item_text(
                 global_modifier_groups, group_id
             )
 
+            # Check allow_halving for this group
+            group_allow_halving = group.get("allow_halving", False)
+
             # Add constraint information to the group header
             constraint_text = ""
             min_req = constraints.get("min_required_modifier")
@@ -184,7 +193,12 @@ def generate_item_text(
             elif max_allowed is not None:
                 constraint_text = f" (Select up to {max_allowed})"
 
-            lines.append(f"### {group_name}{constraint_text}")
+            # Add allow_halving information if applicable
+            halving_text = ""
+            if group_allow_halving:
+                halving_text = " [allow_halving: true]"
+
+            lines.append(f"### {group_name}{constraint_text}{halving_text}")
 
             # Separate included and optional modifiers
             included = []
@@ -257,6 +271,12 @@ def format_consolidated_menu(menu_items: List[Dict[str, Any]]) -> str:
             else:
                 header_line = f"### {item_name}"
             output_parts.append(header_line)
+
+            # Add allow_halving information if true
+            if item.get("allow_halving"):
+                output_parts.append(
+                    "**allow_halving:** true - This item supports half and half ordering"
+                )
 
             # Format prices using original structure: Prices: $X.XX (size), $Y.YY (size)
             prices = item.get("prices", [])
@@ -339,6 +359,10 @@ def _format_customizations_legacy(modifier_groups: List[Dict[str, Any]]) -> str:
                 constraint_text = f"Select up to {max_allowed}"
             else:
                 constraint_text = "Optional, Select any number"
+
+            # Add allow_halving information if present
+            if group.get("allow_halving"):
+                constraint_text += ", allow_halving"
 
             modifier_list = []
             for modifier in optional_modifiers:
