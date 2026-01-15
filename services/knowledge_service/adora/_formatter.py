@@ -133,15 +133,18 @@ def generate_item_text(
         ]
     )
 
-    # Get allowed sizes
+    # Get allowed sizes and their allow_halving flags
     order_types = item.get("order_types", [])
     allowed_size_ids = set()
+    size_halving_map = {}  # Maps size_id to allow_halving flag
     if order_types:
         for order_type in order_types:
             for size in order_type.get("sizes", []):
                 size_id = size.get("size_id")
                 if size_id:
                     allowed_size_ids.add(size_id)
+                    # Store size-level allow_halving (always, default to false if not present)
+                    size_halving_map[size_id] = size.get("allow_halving", False)
 
     # Prices section
     prices = item.get("prices", [])
@@ -156,10 +159,17 @@ def generate_item_text(
             size_id = p.get("size_id")
             price = p.get("price")
             size_desc = get_size_description(sizes, size_id)
+
+            # Add size-level allow_halving (always show, default to false if not in map)
+            size_allow_halving = size_halving_map.get(size_id, False)
+            size_halving_text = f" [allow_halving: {str(size_allow_halving).lower()}]"
+
             if with_ids:
-                lines.append(f"- {size_desc} (size_id: {size_id}): ${price}")
+                lines.append(
+                    f"- {size_desc} (size_id: {size_id}): ${price}{size_halving_text}"
+                )
             else:
-                lines.append(f"- {size_desc}: ${price}")
+                lines.append(f"- {size_desc}: ${price}{size_halving_text}")
         lines.append("")
     else:
         # Throw error if no visible prices are available
@@ -286,22 +296,24 @@ def format_consolidated_menu(menu_items: List[Dict[str, Any]]) -> str:
                 )
 
             # Format prices using original structure: Prices: $X.XX (size), $Y.YY (size)
+            # Preserve size-level allow_halving information if present
             prices = item.get("prices", [])
             if prices:
                 if len(prices) == 1:
                     # Single price
                     price_str = prices[0]
-                    if " (" in price_str:
-                        # Extract just the price part before size info
+                    if " (" in price_str and "[allow_halving:" not in price_str:
+                        # Extract just the price part before size info (only if no allow_halving flag)
                         price_part = price_str.split(" (")[0]
                         output_parts.append(f"Prices: {price_part}")
                     else:
+                        # Keep full string including allow_halving flag if present
                         output_parts.append(f"Prices: {price_str}")
                 else:
                     # Multiple prices
                     price_strs = []
                     for price in prices:
-                        # Prices already include size info like "$8.99 (6pc)"
+                        # Prices already include size info like "$8.99 (6pc)" and may include [allow_halving: true/false]
                         price_strs.append(price)
                     output_parts.append(f"Prices: {', '.join(price_strs)}")
 

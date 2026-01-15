@@ -202,21 +202,35 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
     else:
         allow_halving = False  # Default to false if not found
 
-    # Extract prices
+    # Extract prices (with size-level allow_halving - always present)
     prices = []
     price_section = re.search(r"## Prices\n(.*?)(?=\n##|\n$)", item_text, re.DOTALL)
     if price_section:
         price_lines = price_section.group(1).strip().split("\n")
         for line in price_lines:
             if line.strip().startswith("- "):
-                # Handle both formats: with and without size_id
+                # Handle formats with optional size_id and required allow_halving flag
+
+                # Check if there's an allow_halving flag for this size
+                size_halving_match = re.search(r"\[allow_halving: (true|false)\]", line)
+                size_halving_text = ""
+                if size_halving_match:
+                    size_halving_text = (
+                        f" [allow_halving: {size_halving_match.group(1)}]"
+                    )
+
+                # Try to match price with or without allow_halving flag
                 price_match = re.match(
-                    r"- (.+?) \(size_id: \d+\): \$(.+)", line.strip()
-                ) or re.match(r"- (.+?): \$(.+)", line.strip())
+                    r"- (.+?) \(size_id: \d+\): \$(.+?)(?: \[allow_halving: (?:true|false)\])?$",
+                    line.strip(),
+                ) or re.match(
+                    r"- (.+?): \$(.+?)(?: \[allow_halving: (?:true|false)\])?$",
+                    line.strip(),
+                )
                 if price_match:
                     size_name = price_match.group(1)
                     price = price_match.group(2)
-                    prices.append(f"${price} ({size_name})")
+                    prices.append(f"${price} ({size_name}){size_halving_text}")
 
     # Extract included modifiers and modifier groups
     included_items = []
