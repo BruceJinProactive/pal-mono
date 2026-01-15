@@ -291,6 +291,15 @@ async def create_config(
         if structured_output_schema:
             rules_dict["structured_output"] = structured_output_schema
 
+        # Store enum_metadata separately for UI display
+        enum_metadata_map = {}
+        for field_data in structured_output_fields:
+            if "enum_metadata" in field_data and field_data["enum_metadata"]:
+                enum_metadata_map[field_data["name"]] = field_data["enum_metadata"]
+
+        if enum_metadata_map:
+            rules_dict["enum_metadata_map"] = enum_metadata_map
+
     # Handle model config (part of rules)
     if request.model is not None:
         # Convert ModelConfig to dict, excluding None values
@@ -515,6 +524,9 @@ async def update_config(
             # Remove structured_output from rules if present
             if "structured_output" in current_rules:
                 del current_rules["structured_output"]
+            # Also remove enum_metadata_map if present
+            if "enum_metadata_map" in current_rules:
+                del current_rules["enum_metadata_map"]
         else:
             # Build and set the structured output schema
             structured_output_schema = build_structured_output_from_fields(
@@ -522,6 +534,19 @@ async def update_config(
             )
             if structured_output_schema:
                 current_rules["structured_output"] = structured_output_schema
+
+            # Store enum_metadata separately for UI display
+            enum_metadata_map = {}
+            for field_data in structured_output_fields:
+                if "enum_metadata" in field_data and field_data["enum_metadata"]:
+                    enum_metadata_map[field_data["name"]] = field_data["enum_metadata"]
+
+            if enum_metadata_map:
+                current_rules["enum_metadata_map"] = enum_metadata_map
+            else:
+                # Remove metadata if none provided in update
+                if "enum_metadata_map" in current_rules:
+                    del current_rules["enum_metadata_map"]
 
         updates["rules"] = current_rules
 
