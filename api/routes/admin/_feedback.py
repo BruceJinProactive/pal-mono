@@ -13,7 +13,13 @@ from api.schemas.admin.feedback import (
     ListFeedbacksResponse,
     UpdateFeedbackRequest,
 )
-from services import account_service, feedback_service, message_service, user_service
+from services import (
+    account_service,
+    feedback_service,
+    message_service,
+    slack_service,
+    user_service,
+)
 from services.auth_service import check_permission
 from services.auth_types import UserRole
 from utils.log import logger
@@ -146,6 +152,25 @@ async def create_feedback(
     feedback.author_name = context.display_name or None
     feedback.message_id = feedback_create.message_id
     persisted_feedback = feedback_service.create_feedback(session, feedback)
+
+    # Send Slack notification after successful persistence
+    # This runs asynchronously and won't affect the API response or DB transaction
+    try:
+        await slack_service.send_feedback_notification(
+            client_name=account.name,
+            user_email=context.email,
+            tags=persisted_feedback.tags,
+            feedback_text=persisted_feedback.note,
+            conversation_id=str(message.conversation_id),
+            reaction=persisted_feedback.reaction,
+            feedback_id=str(persisted_feedback.id),
+        )
+    except Exception as e:
+        # Log but don't fail the request if Slack notification fails
+        logger.error(
+            f"Failed to send Slack notification for feedback {persisted_feedback.id}: {e}"
+        )
+
     return _builder.build_feedback(persisted_feedback)
 
 
