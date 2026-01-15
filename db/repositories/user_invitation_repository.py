@@ -289,6 +289,50 @@ class UserInvitationRepository:
             logger.error(f"Error marking invitation as expired: {e}")
             raise
 
+    def update_expiration(
+        self, invitation_id: uuid.UUID, new_expires_at: datetime
+    ) -> Optional[UserInvitation]:
+        """Update invitation expiration time.
+
+        Args:
+            invitation_id: UUID of the invitation
+            new_expires_at: New expiration datetime
+
+        Returns:
+            Updated UserInvitation object or None if not found
+
+        Raises:
+            ValueError: If new_expires_at is not in the future
+            SQLAlchemyError: If there's a database error during update
+        """
+        try:
+            # Validate expiration is in future
+            now = datetime.now(timezone.utc)
+            if new_expires_at <= now:
+                raise ValueError("new_expires_at must be in the future")
+
+            invitation = self.get_by_id(invitation_id)
+            if not invitation:
+                logger.warning(f"Invitation not found: {invitation_id}")
+                return None
+
+            invitation.expires_at = new_expires_at
+
+            if self.auto_commit:
+                self.session.commit()
+            else:
+                self.session.flush()
+
+            self.session.refresh(invitation)
+            logger.info(
+                f"Updated invitation {invitation_id} expiration to {new_expires_at}"
+            )
+            return invitation
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error updating invitation expiration: {e}")
+            raise
+
     def revoke(self, invitation_id: uuid.UUID) -> Optional[UserInvitation]:
         """Revoke an invitation.
 

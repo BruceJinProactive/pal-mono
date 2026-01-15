@@ -787,7 +787,15 @@ def resend_invitation(
             f"Cannot resend invitation with status {invitation.status.value}"
         )
 
-    # 3. Get account details
+    # 3. Extend invitation expiration (7 days from now)
+    new_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    invitation_repo.update_expiration(invitation.id, new_expires_at)
+    invitation.expires_at = new_expires_at  # Update in-memory object
+    logger.info(
+        f"Extended invitation expiration to {new_expires_at} for {invitation.email}"
+    )
+
+    # 4. Get account details
     account_repo = AccountRepository(session)
     account = account_repo.get_account_by_id(invitation.account_id)
     if not account:
