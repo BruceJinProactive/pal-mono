@@ -113,24 +113,13 @@ def _update_stock_section(
     if stock_message is not None and start_header not in content:
         return content + f"\n\n{start_header}\n{stock_message}\n{end_header}\n"
 
-    # Find section boundaries
-    section_start = content.find(start_header) + len(start_header)
-    end_marker_pos = content.find(end_header, section_start)
+    # Find section boundaries using shared helper
+    boundaries = _find_section_boundaries(content, start_header, end_header)
+    if boundaries is None:
+        # This shouldn't happen since we checked above, but handle gracefully
+        return content
 
-    if end_marker_pos != -1:
-        section_end = end_marker_pos
-        has_end_marker = True
-        full_section_end = end_marker_pos + len(end_header)
-    else:
-        # Fallback to legacy layouts (no explicit end marker): find the next header
-        # Works for both LF and CRLF by dropping on start-of-line "###".
-        next_header_match = re.search(r"^###\s+", content[section_start:], re.MULTILINE)
-        if next_header_match:
-            section_end = section_start + next_header_match.start()
-        else:
-            section_end = len(content)
-        has_end_marker = False
-        full_section_end = section_end
+    section_start, section_end, full_section_end, has_end_marker = boundaries
 
     # Extract current section content
     section = content[section_start:section_end]
@@ -143,11 +132,21 @@ def _update_stock_section(
 
     if stock_message is not None:
         # Adding or updating item
+        logger.debug(
+            f"[_update_stock_section] Adding/updating item '{item_name}' (guid: {item_guid}) in out-of-stock section"
+        )
+
         if re.search(item_pattern, section):
             # Item exists, update it
+            logger.debug(
+                f"[_update_stock_section] Item '{item_name}' already exists, updating it"
+            )
             new_section = re.sub(item_pattern, f"{stock_message}\n", section)
         else:
             # Item doesn't exist, add it
+            logger.debug(
+                f"[_update_stock_section] Item '{item_name}' does not exist, adding it"
+            )
             new_section = f"\n{stock_message}" + section
 
         # Ensure end marker is present
@@ -163,7 +162,23 @@ def _update_stock_section(
 
     else:
         # Removing item
+        logger.debug(
+            f"[_update_stock_section] Attempting to remove item '{item_name}' (guid: {item_guid}) from out-of-stock section"
+        )
+        logger.debug(f"[_update_stock_section] Pattern: {item_pattern}")
+        logger.debug(f"[_update_stock_section] Section content:\n{section}")
+
         new_section = re.sub(item_pattern, "", section)
+
+        if new_section == section:
+            logger.warning(
+                f"[_update_stock_section] Pattern did not match any item in section for '{item_name}' (guid: {item_guid}). "
+                f"Item may have different name in database or was manually edited."
+            )
+        else:
+            logger.debug(
+                f"[_update_stock_section] Successfully removed item '{item_name}' from out-of-stock section"
+            )
 
         # If section is now empty, remove entire section
         if re.search(r"^\s*(\r?\n)*$", new_section):
@@ -214,9 +229,18 @@ def _get_item_name_from_toast_api(item_guid: str, restaurant_guid: str) -> str:
         if response.status == 200:
             # Parse the response to get the item name
             item_data = json.loads(response.decoded_body)
-            item_name = item_data.get("name", f"Toast Item {item_guid}")
+            raw_item_name = item_data.get("name", f"Toast Item {item_guid}")
+            # Normalize whitespace to prevent matching issues
+            item_name = (
+                " ".join(raw_item_name.split())
+                if raw_item_name
+                else f"Toast Item {item_guid}"
+            )
+            # Strip trailing punctuation (., !, ?) to handle Toast API inconsistencies
+            # Toast sometimes returns "Item Name." and sometimes "Item Name"
+            item_name = item_name.rstrip(".!?")
             logger.debug(
-                f"[ToastWebhook._get_item_name_from_toast_api] Found item name from Toast API: {item_name} for itemGuid: {item_guid}"
+                f"[ToastWebhook._get_item_name_from_toast_api] Found item name from Toast API: '{item_name}' (raw: '{raw_item_name}') for itemGuid: {item_guid}"
             )
             return item_name
         else:
@@ -230,6 +254,77 @@ def _get_item_name_from_toast_api(item_guid: str, restaurant_guid: str) -> str:
             f"[ToastWebhook._get_item_name_from_toast_api] Could not retrieve item from Toast API: {e}"
         )
         return f"Toast Item {item_guid}"
+
+
+def _find_section_boundaries(
+    content: str, start_marker: str, end_marker: str
+) -> tuple[int, int, int, bool] | None:
+    """
+    Find the boundaries of a section marked by start and end markers.
+
+    Handles both modern format (with end marker) and legacy format (without end marker).
+    For legacy format, finds the next ### header to determine section end.
+
+    Args:
+        content: The content to search in
+        start_marker: The section start marker (e.g., "### OUT-OF-STOCK ###")
+        end_marker: The section end marker (e.g., "### OUT-OF-STOCK-ENDS ###")
+
+    Returns:
+        Tuple of (section_start, section_end, full_section_end, has_end_marker) where:
+        - section_start: Index after the start marker (content begins here)
+        - section_end: Index where section content ends (before end marker or next header)
+        - full_section_end: Index after end marker (or same as section_end for legacy)
+        - has_end_marker: True if end marker was found
+        Returns None if start marker is not found
+    """
+    if start_marker not in content:
+        return None
+
+    start_idx = content.find(start_marker)
+    section_start = start_idx + len(start_marker)
+    end_marker_pos = content.find(end_marker, section_start)
+
+    if end_marker_pos != -1:
+        # Modern format with end marker
+        section_end = end_marker_pos
+        full_section_end = end_marker_pos + len(end_marker)
+        has_end_marker = True
+    else:
+        # Legacy format without end marker: find the next header or use end of content
+        next_header_match = re.search(r"^###\s+", content[section_start:], re.MULTILINE)
+        if next_header_match:
+            section_end = section_start + next_header_match.start()
+        else:
+            section_end = len(content)
+        full_section_end = section_end
+        has_end_marker = False
+
+    return (section_start, section_end, full_section_end, has_end_marker)
+
+
+def _extract_out_of_stock_section(content: str) -> str:
+    """
+    Extract the OUT-OF-STOCK section from product_info content.
+
+    Args:
+        content: The product_info content
+
+    Returns:
+        The OUT-OF-STOCK section if it exists, empty string otherwise
+    """
+    start_marker = "### OUT-OF-STOCK ###"
+    end_marker = "### OUT-OF-STOCK-ENDS ###"
+
+    boundaries = _find_section_boundaries(content, start_marker, end_marker)
+    if boundaries is None:
+        return ""
+
+    section_start, section_end, full_section_end, has_end_marker = boundaries
+
+    # Include the start marker and end marker (if present) in the extraction
+    start_idx = content.find(start_marker)
+    return content[start_idx:full_section_end]
 
 
 def _update_stock_in_project_product_info(
@@ -260,7 +355,9 @@ def _update_stock_in_project_product_info(
             )
 
             current_content = locked.product_info or ""
+            out_of_stock_before = _extract_out_of_stock_section(current_content)
 
+            # Update stock section based on status
             if status == ToastStockItemStatus.OUT_OF_STOCK:
                 stock_message = f"- {item_name} is OUT OF STOCK. You MUST NOT accept orders for this item under any circumstances."
                 new_content = _update_stock_section(
@@ -268,16 +365,40 @@ def _update_stock_in_project_product_info(
                 )
             else:
                 # Item is back in stock - remove from out of stock list
+                logger.debug(
+                    f"[ToastWebhook._update_stock_in_project_product_info] Removing '{item_name}' (guid: {item_guid}) from out-of-stock list in project '{project.name}'"
+                )
                 new_content = _update_stock_section(
                     current_content, item_name, item_guid, None
                 )
 
-            # Update the project if content changed
-            if new_content != current_content:
+            # Check if content changed and update database
+            content_changed = new_content != current_content
+            logger.debug(
+                f"[ToastWebhook._update_stock_in_project_product_info] Content changed for project '{project.name}': {content_changed}"
+            )
+
+            if content_changed:
                 locked.product_info = new_content
                 session.add(locked)
                 logger.debug(
                     f"[ToastWebhook._update_stock_in_project_product_info] Updated stock status in project '{project.name}' product_info for item {item_name}"
+                )
+
+                # Log BEFORE/AFTER for out-of-stock section changes
+                out_of_stock_after = _extract_out_of_stock_section(new_content)
+                if out_of_stock_before or out_of_stock_after:
+                    logger.debug(
+                        f"[ToastWebhook._update_stock_in_project_product_info] OUT-OF-STOCK section for project '{project.name}':\n"
+                        f"{'='*80}\n"
+                        f"BEFORE:\n{out_of_stock_before or '[No OUT-OF-STOCK section]'}\n"
+                        f"{'='*80}\n"
+                        f"AFTER:\n{out_of_stock_after or '[No OUT-OF-STOCK section]'}\n"
+                        f"{'='*80}"
+                    )
+            else:
+                logger.warning(
+                    f"[ToastWebhook._update_stock_in_project_product_info] Content unchanged for project '{project.name}' - item '{item_name}' (guid: {item_guid}) was not found or already removed"
                 )
 
         # Commit all changes
