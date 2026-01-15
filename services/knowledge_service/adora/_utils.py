@@ -130,36 +130,6 @@ def get_modifier_group_constraints(
     return {"min_required_modifier": None, "max_allowed_modifier": None}
 
 
-def _parse_modifier_lines(lines_text: str) -> List[Dict[str, str]]:
-    """Parse modifier lines and extract name and pricing information."""
-    modifiers = []
-    lines = lines_text.strip().split("\n")
-    for line in lines:
-        if line.strip().startswith("- "):
-            # Handle formats: "- Bacon", "- Bacon (modifier_id: 123)", or "- Bacon (modifier_id: 123) (price not available)"
-
-            # Try to match with pricing info first
-            pricing_match = re.match(
-                r"- (.+?)(?:\s*\(modifier_id: \d+\))?\s*(\(price not available\)|\(\+\$[\d.]+.*?\))",
-                line.strip(),
-            )
-
-            if pricing_match:
-                modifier_name = pricing_match.group(1).strip()
-                pricing_text = pricing_match.group(2).strip()
-                modifiers.append({"name": modifier_name, "pricing": pricing_text})
-            else:
-                # No pricing info - just name with optional modifier_id
-                name_match = re.match(
-                    r"- (.+?)(?:\s*\(modifier_id: \d+\))?$", line.strip()
-                )
-                if name_match:
-                    modifier_name = name_match.group(1).strip()
-                    modifiers.append({"name": modifier_name, "pricing": ""})
-
-    return modifiers
-
-
 def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
     """Parse item text to extract structured data.
 
@@ -190,9 +160,12 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
     )
 
     # Extract description using general utility
-    description = (
-        extract_text_between_markers(item_text, "**Description:** ", "\n") or ""
-    )
+    # Handle both KB format (**Description:** ...) and consolidated format (Description: ...)
+    description = extract_text_between_markers(item_text, "**Description:** ", "\n")
+    if not description:
+        description = (
+            extract_text_between_markers(item_text, "Description: ", "\n") or ""
+        )
 
     # Extract allow_halving flag (handles both with and without explanation text)
     if "**allow_halving:** true" in item_text:
@@ -309,23 +282,51 @@ def parse_item_data(item_text: str) -> Optional[Dict[str, Any]]:
                 "allow_halving": group_allow_halving,
             }
 
-            # Extract included modifiers
-            included_sections = re.findall(
-                r"#### Included.*?\n((?:- .+\n?)*)", group_content
-            )
-            for section in included_sections:
-                parsed_modifiers = _parse_modifier_lines(section)
-                for mod in parsed_modifiers:
-                    group_data["included"].append(mod)
-                    included_items.append(mod["name"])
+            # Extract all modifiers (now in one flat list with "(default)" markers)
+            # Parse lines that start with "- "
+            modifier_lines = re.findall(r"^- (.+)$", group_content, re.MULTILINE)
+            for line in modifier_lines:
+                # Check if this is a default modifier
+                if "(default)" in line:
+                    # Remove (default) marker and parse
+                    line_without_default = line.replace("(default)", "").strip()
 
-            # Extract optional modifiers
-            optional_sections = re.findall(
-                r"#### Optional.*?\n((?:- .+\n?)*)", group_content
-            )
-            for section in optional_sections:
-                parsed_modifiers = _parse_modifier_lines(section)
-                group_data["optional"].extend(parsed_modifiers)
+                    # Extract modifier name and ID
+                    mod_match = re.match(
+                        r"(.+?)(?:\s*\(modifier_id: (\d+)\))?(?:\s*\(.*\))?$",
+                        line_without_default,
+                    )
+                    if mod_match:
+                        modifier_name = mod_match.group(1).strip()
+                        group_data["included"].append({"name": modifier_name})
+                        included_items.append(modifier_name)
+                else:
+                    # Optional modifier - may have pricing info
+                    pricing_match = re.match(
+                        r"(.+?)(?:\s*\(modifier_id: \d+\))?\s*(\(price not available\)|\(\+\$[\d.]+.*?\))?$",
+                        line.strip(),
+                    )
+
+                    if pricing_match:
+                        modifier_name = pricing_match.group(1).strip()
+                        pricing_text = (
+                            pricing_match.group(2).strip()
+                            if pricing_match.group(2)
+                            else ""
+                        )
+                        group_data["optional"].append(
+                            {"name": modifier_name, "pricing": pricing_text}
+                        )
+                    else:
+                        # Simple name match without pricing
+                        name_match = re.match(
+                            r"(.+?)(?:\s*\(modifier_id: \d+\))?$", line.strip()
+                        )
+                        if name_match:
+                            modifier_name = name_match.group(1).strip()
+                            group_data["optional"].append(
+                                {"name": modifier_name, "pricing": ""}
+                            )
 
             modifier_groups.append(group_data)
 

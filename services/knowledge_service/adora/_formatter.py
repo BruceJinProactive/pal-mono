@@ -221,29 +221,33 @@ def generate_item_text(
                 else:
                     optional.append(mod)
 
-            if included:
-                lines.append("#### Included in the price")
-                for mod in included:
-                    modifier_name = modifiers.get(mod.get("modifier_id"), "Unknown")
-                    # Don't show pricing for included modifiers
-                    if with_ids:
-                        lines.append(
-                            f"- {modifier_name} (modifier_id: {mod.get('modifier_id')})"
-                        )
-                    else:
-                        lines.append(f"- {modifier_name}")
+            # Show all modifiers in one list with defaults first
+            all_mods = []
 
-            if optional:
-                lines.append("#### Optional (add-on)")
-                for mod in optional:
-                    modifier_name = modifiers.get(mod.get("modifier_id"), "Unknown")
-                    pricing_text = _get_modifier_pricing_text(mod, sizes)
-                    if with_ids:
-                        lines.append(
-                            f"- {modifier_name} (modifier_id: {mod.get('modifier_id')}){pricing_text}"
-                        )
-                    else:
-                        lines.append(f"- {modifier_name}{pricing_text}")
+            # Add included modifiers first with (default) label
+            for mod in included:
+                modifier_name = modifiers.get(mod.get("modifier_id"), "Unknown")
+                if with_ids:
+                    all_mods.append(
+                        f"- {modifier_name} (default) (modifier_id: {mod.get('modifier_id')})"
+                    )
+                else:
+                    all_mods.append(f"- {modifier_name} (default)")
+
+            # Then add optional modifiers
+            for mod in optional:
+                modifier_name = modifiers.get(mod.get("modifier_id"), "Unknown")
+                pricing_text = _get_modifier_pricing_text(mod, sizes)
+                if with_ids:
+                    all_mods.append(
+                        f"- {modifier_name} (modifier_id: {mod.get('modifier_id')}){pricing_text}"
+                    )
+                else:
+                    all_mods.append(f"- {modifier_name}{pricing_text}")
+
+            # Output all modifiers
+            if all_mods:
+                lines.extend(all_mods)
 
             lines.append("")
 
@@ -274,15 +278,12 @@ def format_consolidated_menu(menu_items: List[Dict[str, Any]]) -> str:
             output_parts.append(f"## {category}")
 
         for item in categories[category]:
-            # Format using original structure: ### Item Name - Description
+            # Format: ### Item Name (without description)
             item_name = item["name"]
             description = item.get("description", "")
 
-            if description:
-                header_line = f"### {item_name} - {description}"
-            else:
-                header_line = f"### {item_name}"
-            output_parts.append(header_line)
+            # Header line without description
+            output_parts.append(f"### {item_name}")
 
             # Add allow_halving information (always show explicitly)
             allow_halving = item.get("allow_halving", False)
@@ -294,6 +295,10 @@ def format_consolidated_menu(menu_items: List[Dict[str, Any]]) -> str:
                 output_parts.append(
                     "**allow_halving:** false - This item is not eligible for half and half ordering"
                 )
+
+            # Add description as separate line
+            if description:
+                output_parts.append(f"Description: {description}")
 
             # Format prices using original structure: Prices: $X.XX (size), $Y.YY (size)
             # Preserve size-level allow_halving information if present
@@ -317,23 +322,8 @@ def format_consolidated_menu(menu_items: List[Dict[str, Any]]) -> str:
                         price_strs.append(price)
                     output_parts.append(f"Prices: {', '.join(price_strs)}")
 
-            # Add "Included in the price" section using original structure
-            included_items = []
+            # Add customizations section (includes both default and optional modifiers)
             modifier_groups = item.get("modifier_groups", [])
-            for group in modifier_groups:
-                included_modifiers = group.get("included", [])
-                for modifier in included_modifiers:
-                    if isinstance(modifier, dict):
-                        included_items.append(modifier["name"])
-                    else:
-                        included_items.append(modifier)
-
-            if included_items:
-                output_parts.append(
-                    f"Included in the price: {', '.join(included_items)}"
-                )
-
-            # Add customizations section
             customizations_line = _format_customizations_legacy(modifier_groups)
             if customizations_line:
                 output_parts.append(customizations_line)
@@ -358,9 +348,11 @@ def _format_customizations_legacy(modifier_groups: List[Dict[str, Any]]) -> str:
     customization_parts = []
     for group in modifier_groups:
         group_name = group["name"].lower()
+        included_modifiers = group.get("included", [])
         optional_modifiers = group.get("optional", [])
 
-        if optional_modifiers:
+        # Only show group if it has any modifiers
+        if included_modifiers or optional_modifiers:
             # Get constraint information from parsed data
             constraints = group.get("constraints", {})
             min_req = constraints.get("min_required")
@@ -387,6 +379,15 @@ def _format_customizations_legacy(modifier_groups: List[Dict[str, Any]]) -> str:
                 constraint_text += ", allow_halving: false"
 
             modifier_list = []
+
+            # Add included modifiers with (default) label
+            for modifier in included_modifiers:
+                if isinstance(modifier, dict):
+                    modifier_list.append(f"{modifier['name']} (default)")
+                else:
+                    modifier_list.append(f"{modifier} (default)")
+
+            # Add optional modifiers
             for modifier in optional_modifiers:
                 if isinstance(modifier, dict):
                     pricing_text = modifier.get("pricing", "")
