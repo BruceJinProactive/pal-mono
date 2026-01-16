@@ -10,6 +10,15 @@ from db.session import AsyncSessionLocal
 from utils.log import logger
 
 
+def _mask_phone(phone: str | None) -> str:
+    """Mask phone number for logging, showing only last 4 digits."""
+    if not phone:
+        return "None"
+    if len(phone) <= 4:
+        return "****"
+    return f"***{phone[-4:]}"
+
+
 async def _get_control_url_from_vapi(call_id: str) -> str:
     """
     Fetch control URL from Vapi API using call ID.
@@ -89,6 +98,7 @@ class VapiTool(Toolkit):
         tool_metadata: ToolMetadata,
         transfer_destinations: dict[str, str],
         transfer_message: str | None = None,
+        show_agent_caller_id: bool = False,
     ):
         super().__init__(name="vapi_tool")
         self.tool_metadata = tool_metadata
@@ -97,6 +107,7 @@ class VapiTool(Toolkit):
             transfer_message
             or "I'll transfer you to our team. Just hang tight for a moment."
         )
+        self.show_agent_caller_id = show_agent_caller_id
         self.register(self.call_transfer)
 
     def _get_destination_for_purpose(self, purpose: str) -> str | None:
@@ -168,6 +179,34 @@ class VapiTool(Toolkit):
             }
         else:
             destination = {"type": "number", "number": destination_number}
+
+        # Set caller ID based on project preference
+        # When show_agent_caller_id is True: store sees AI agent's phone number
+        # When show_agent_caller_id is False (default): store sees customer's phone number
+        if self.show_agent_caller_id:
+            if self.tool_metadata and self.tool_metadata.store_phone:
+                destination["callerId"] = self.tool_metadata.store_phone
+                logger.debug(
+                    f"[VapiTool._build_transfer_payload] Setting callerId to agent phone: "
+                    f"{_mask_phone(self.tool_metadata.store_phone)}"
+                )
+            else:
+                logger.warning(
+                    "[VapiTool._build_transfer_payload] show_agent_caller_id is enabled but "
+                    "store_phone is unavailable; callerId will not be set"
+                )
+        else:
+            if self.tool_metadata and self.tool_metadata.customer_phone:
+                destination["callerId"] = self.tool_metadata.customer_phone
+                logger.debug(
+                    f"[VapiTool._build_transfer_payload] Setting callerId to customer phone: "
+                    f"{_mask_phone(self.tool_metadata.customer_phone)}"
+                )
+            else:
+                logger.debug(
+                    "[VapiTool._build_transfer_payload] customer_phone is unavailable; "
+                    "callerId will not be set"
+                )
 
         logger.debug(
             f"[VapiTool._build_transfer_payload] Detected destination type: {'SIP' if is_sip else 'phone number'} for {destination_number}"
