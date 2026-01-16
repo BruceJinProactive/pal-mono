@@ -34,11 +34,13 @@ api/schemas/
 │   ├── project.py
 │   ├── user.py
 │   └── ...
-├── chat/           # Chat and messaging
 ├── asset/          # File/asset management
 ├── catering/       # Catering-specific features
-└── error/          # Error response schemas
-    └── error.py
+├── chat/           # Chat and messaging
+├── error/          # Error response schemas
+│   └── error.py
+├── events/         # Event-related schemas
+└── operations/     # Operational workflow schemas
 ```
 
 **RULE:** No `__init__.py` files - import schemas directly from module files

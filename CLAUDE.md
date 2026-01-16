@@ -64,20 +64,29 @@ uv sync --all-extras
 ### Validation
 
 ```bash
-# Run all validation checks
+# Run all validation checks (format, lint, type check, import-linter, toml-sort)
 ./scripts/validate.sh
 
+# Run validation in check mode (CI-style, no auto-fix)
+./scripts/validate.sh --check
+
 # Format with black
-uv black .
+uv run black .
 
 # Sort imports
-uv isort .
+uv run isort .
 
 # Lint with ruff
-uv ruff check . --fix
+uv run ruff check . --fix
 
 # Type check with pyright
-uv pyright .
+uv run pyright .
+
+# Check import architecture
+uv run lint-imports
+
+# Sort pyproject.toml
+uv run toml-sort pyproject.toml --in-place
 ```
 
 ### Testing
@@ -86,8 +95,8 @@ uv pyright .
 # Start the containers first
 docker-compose up -d --build
 
-# Run tests
-./scripts/test.sh
+# Run tests with pytest
+docker exec -it pal-mono-api pytest
 ```
 
 ## Project Structure
@@ -98,7 +107,8 @@ pal-mono/
 ├── api/                # FastAPI REST API
 ├── services/           # Business logic layer
 ├── db/                 # Database layer
-├── tools/              # AI agent tools 
+├── events/             # AWS EventBridge integration for async events
+├── tools/              # AI agent tools
 ├── utils/              # Shared utilities
 ├── scripts/            # Development and deployment scripts
 └── .github/workflows/  # CI/CD pipelines

@@ -28,10 +28,15 @@
 ```
 api/routes/
 ├── __init__.py
+├── capabilities.py       # Capability-related routes
 ├── endpoints.py          # Centralized endpoint path constants (ALWAYS use)
 ├── v1_router.py         # Root router that aggregates all domain routers
 ├── status.py            # Health check endpoints
 ├── utils.py             # Cross-domain shared utilities
+├── internal/            # Internal routes (not exposed via v1)
+│   ├── __init__.py
+│   ├── _implementation.py
+│   └── <resource>.py
 └── <domain>/            # Domain-specific routes (admin, chat, asset, etc.)
     ├── __init__.py         # Router definition + route decorators
     ├── _implementation.py  # Generic business logic
