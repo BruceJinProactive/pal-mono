@@ -9,29 +9,75 @@ actions:
     channels: ALL
     instruction: |
       ### Create Order
-      You support creating new orders. Use Business Information → Menu as the only source of truth for items, sizes, prices, included ingredients, and customizations.
+      You support creating new orders. Use Store Information → Store Product & Menu as the only source of truth for items, sizes, prices, included ingredients, and customizations.
 
-      1. How to read Business Information → Menu
-      - "#" is the menu name.
-      - "##" is a category (for example: Pizzas, Drinks, Desserts).
-      - "###" is an item name under that category.
-      - Each item can include: A description, "Prices:" line, "Included in the price:" line, and "Customizations:" section.
-      - Under "Customizations:", each modifier group is written like: "<Group Name> (Required/Optional, Select X–Y options):"
-      - Size may appear in "Prices:" line or as a "Size" modifier group in Customizations.
+      1. Customer information collection
+      1.1 Collect first name, last name, and confirm phone number.
+      1.2 Ask if the order is for takeout or delivery.
+      1.3 If delivery, collect the full delivery address including city and zip code.
 
-      2. Order flow
-      2.1 Get item and size - Confirm what item the guest wants and find matching item in Menu.
-      2.2 Use "Included in the price" for agent context only - Do NOT read all ingredients unless asked.
-      2.3 Handle required customizations - Must proactively ask for all required groups.
-      2.4 Handle optional customizations - Briefly ask about optional groups without reading every option.
-      2.5 Validate all selections against Menu - Check every request appears in Customizations for that item.
-      2.6 When item is ready - Only add after item, size, and all required customizations are specified.
+      2. Ordering flow
+      2.1 Ask for first item or Half-and-Half.
+
+      2.2 For regular items:
+        - Confirm the item from the menu.
+        - If there are multiple size options in the menu, confirm which size they want.
+        - Ask for customizations group by group:
+          - Pay attention to selection constraints for each group:
+            - "Select exactly X": Must select exactly X options
+            - "Select X-Y": Must select at least X and at most Y options
+            - "Select 0-X": Optional, can select 0 to X options
+          - Options marked with "(default)" are automatically included unless the user explicitly changes them.
+          - When validating selections, count default selections if the user doesn't change, add, or remove anything from that group.
+          - Validate that selections meet minimum and maximum requirements
+          - Do not allow more than max or less than minimum selections
+
+      2.3 For Half-and-Half orders:
+        - Half-and-Half is treated as one item virtually, split into two halves with different customizations on each half.
+        - Both halves must be the same size, and the item counts as one unit.
+        - Start by asking for size (since both halves must be the same size).
+        - Left half flow:
+          - Ask for the left half item.
+          - Verify that the previously chosen size exists in this item's size/price entries:
+            - Check if the selected size/price entry is present in the item's menu.
+            - If the size is missing, inform the user that this item is not available in that size and re-prompt them to choose a different item or a different size.
+          - Verify item-level and size-level eligibility:
+            1. Item-level allow_halving must be true (**allow_halving:** true at item level)
+            2. Chosen size/price entry allow_halving must be true ([allow_halving: true] for the selected size)
+          - If either is false or missing, clearly state that half-and-half is not available for this item and size combination and ask if they want to choose a different item.
+          - Ask for customizations group by group (size already chosen, no need to ask again).
+          - Options marked with "(default)" are automatically included unless the user explicitly changes them.
+          - When validating selections, count default selections if the user doesn't change, add, or remove anything from that group.
+          - Always use "left half" terminology when collecting customizations.
+          - After customizations are collected, verify all chosen customization groups have allow_halving: true.
+          - If any chosen customization group has allow_halving: false or missing, clearly state that half-and-half is not available with these customizations and ask them to modify their selections.
+        - Right half flow:
+          - Ask for the right half item.
+          - Verify that the previously chosen size exists in this item's size/price entries:
+            - Check if the selected size/price entry is present in the item's menu.
+            - If the size is missing, inform the user that this item is not available in that size and re-prompt them to choose a different item or a different size.
+          - Verify item-level and size-level eligibility:
+            1. Item-level allow_halving must be true (**allow_halving:** true at item level)
+            2. Chosen size/price entry allow_halving must be true ([allow_halving: true] for the selected size)
+          - If either is false or missing, clearly state that half-and-half is not available for this item and size combination and ask if they want to choose a different item.
+          - Ask for customizations group by group (size already chosen, no need to ask again).
+          - Options marked with "(default)" are automatically included unless the user explicitly changes them.
+          - When validating selections, count default selections if the user doesn't change, add, or remove anything from that group.
+          - Always use "right half" terminology when collecting customizations.
+          - After customizations are collected, verify all chosen customization groups have allow_halving: true.
+          - If any chosen customization group has allow_halving: false or missing, clearly state that half-and-half is not available with these customizations and ask them to modify their selections.
+        - When confirming: "I have a [size] Half-and-Half with [left half item and customizations] on the left half and [right half item and customizations] on the right half."
+        - Make sure the guest understands this is one item, not two separate items.
+
+      2.4 After each item or Half-and-Half is complete:
+        - Ask "Anything else?"
+        - If yes, repeat the ordering flow starting from step 2.1.
+        - If no, ask if they are ready to checkout and proceed to checkout flow.
 
       3. Checkout flow
       3.1 When to move to checkout - Confirm at least one item in order before checkout.
-      3.2 Information you must confirm - Name (first and last) and phone number explicitly.
-      3.3 Confirm order before checkout - Summarize items, sizes, customizations, and prices.
-      3.4 What you can and cannot say about payment - Never confirm payment was successful, only that order is ready for payment.
+      3.2 Confirm order before checkout - Summarize items, sizes, customizations, and prices. Confirm customer information (name, phone, order type, and delivery address if applicable).
+      3.3 What you can and cannot say about payment - Never confirm payment was successful, only that order is ready for payment.
 
   - action: modify_order
     priority: 20
