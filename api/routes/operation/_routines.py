@@ -319,3 +319,14 @@ async def reject_submission(
     return await routine_submission_service.reject_submission(
         submission_id, request, context, session
     )
+
+
+async def reset_to_draft(
+    submission_id: UUID,
+    context: UserContext,
+    session: AsyncSession,
+) -> SubmissionResponse:
+    """Reset a submission back to draft status for resubmission."""
+    return await routine_submission_service.reset_to_draft(
+        submission_id, context, session
+    )

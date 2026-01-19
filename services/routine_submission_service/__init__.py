@@ -4,6 +4,7 @@ Routine Submission Service
 This service contains business logic for routine submission operations.
 Handles staff workflow (start, add response, submit) and
 manager workflow (list pending, approve, reject).
+Includes AI-powered verification for routine items.
 Authorization is handled in the API layer.
 """
 
@@ -21,7 +22,7 @@ from api.schemas.operations.routine import (
 )
 from services.auth_types import UserContext
 
-from . import _implementation
+from . import _implementation, _llm
 
 __all__ = [
     # Staff workflow
@@ -33,8 +34,10 @@ __all__ = [
     "list_pending_review",
     "approve_submission",
     "reject_submission",
+    "reset_to_draft",
     # AI processing
-    "process_response_ai",
+    "analyze_routine_item_response",
+    "process_response_with_ai",
 ]
 
 
@@ -193,23 +196,76 @@ async def reject_submission(
     )
 
 
+async def reset_to_draft(
+    submission_id: UUID,
+    context: UserContext,
+    session: AsyncSession,
+) -> SubmissionResponse:
+    """
+    Reset a submission back to draft status for resubmission.
+
+    This allows resetting submissions from any status (submitted, approved, rejected)
+    back to draft, enabling staff to modify responses and resubmit.
+
+    Args:
+        submission_id: UUID of the submission
+        context: User authentication context
+        session: Database session
+
+    Returns:
+        Updated SubmissionResponse object with draft status
+    """
+    return await _implementation.reset_to_draft(submission_id, context, session)
+
+
 # ============================================================================
 # AI Processing
 # ============================================================================
 
 
-async def process_response_ai(
-    response_id: UUID,
+async def analyze_routine_item_response(
     session: AsyncSession,
-) -> None:
+    response_id: UUID,
+) -> dict:
     """
-    Process AI verification for an item response.
+    Execute LLM analysis for a routine item response.
 
-    TODO: Implement full AI vision integration.
-    Currently stubbed - updates response with placeholder AI result.
+    Retrieves the routine item configuration, fetches reference images and submitted image,
+    and performs AI analysis using Azure OpenAI or Google Gemini Vision API.
 
     Args:
-        response_id: UUID of the item response
         session: Database session
+        response_id: UUID of the routine item response to analyze
+
+    Returns:
+        dict: Analysis result with keys:
+            {
+                "result": "pass" or "fail" or "error",
+                "details": str,
+                "confidence": float (0.0-1.0),
+                "findings": list[str] (optional)
+            }
     """
-    await _implementation.process_response_ai(response_id, session)
+    return await _llm.analyze_routine_item_response(session, response_id)
+
+
+async def process_response_with_ai(
+    session: AsyncSession,
+    response_id: UUID,
+):
+    """
+    Process AI verification for a routine item response and update the database.
+
+    This function runs LLM analysis on the submitted image and updates the response
+    record with AI results (ai_result, ai_passed, ai_confidence, status).
+
+    Note: Does not commit - caller is responsible for transaction management.
+
+    Args:
+        session: Database session
+        response_id: UUID of the item response
+
+    Returns:
+        Updated RoutineItemResponse object with AI results
+    """
+    return await _llm.process_response_with_ai(session, response_id)

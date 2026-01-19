@@ -8,7 +8,6 @@ Authorization is handled in the API layer.
 
 import asyncio
 from datetime import datetime, timezone
-from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
@@ -341,16 +340,21 @@ async def add_response(
         )
         raise
 
-    # Trigger AI processing (stubbed for now)
+    # Trigger AI processing if image and AI rules are present
     if image_url and item.ai_rules:
         logger.info(
             f"[add_response] Triggering AI processing - "
             f"response_id={response.id}, ai_rules={item.ai_rules}"
         )
-        # TODO: Implement async AI processing
-        # For now, call synchronously but it's stubbed
         try:
-            await process_response_ai(response.id, session)
+            from services.routine_submission_service._llm import (
+                process_response_with_ai,
+            )
+
+            response = await process_response_with_ai(
+                session=session,
+                response_id=response.id,
+            )
             logger.debug("[add_response] AI processing completed")
         except Exception as e:
             logger.error(
@@ -358,10 +362,6 @@ async def add_response(
                 f"error={type(e).__name__}: {str(e)}"
             )
             # Don't raise - AI processing failure shouldn't block response creation
-
-        # Refresh the response object to reload updated attributes from database
-        # This prevents lazy-loading issues when accessing ai_result, ai_passed, etc.
-        await session.refresh(response)
 
     # Access SQLAlchemy model attributes BEFORE commit to avoid lazy-loading issues
     logger.debug(
@@ -792,57 +792,95 @@ async def reject_submission(
     return response
 
 
+async def reset_to_draft(
+    submission_id: UUID,
+    context: UserContext,
+    session: AsyncSession,
+) -> SubmissionResponse:
+    """
+    Reset a submission back to draft status for resubmission.
+
+    This allows staff to modify and resubmit submissions that were:
+    - rejected (to fix issues)
+    - submitted (to make changes before review)
+    - approved (to make corrections if needed)
+
+    When reset to draft:
+    - Status changes to 'draft'
+    - Review metadata (reviewed_by, reviewed_at, review_notes) is cleared
+    - Submission metadata (submitted_by, submitted_at) is cleared
+    - Item responses remain unchanged (staff can modify them)
+    - Execution status remains 'completed' (routine was physically done)
+
+    Authorization is handled in the API layer.
+
+    Args:
+        submission_id: UUID of the submission to reset
+        context: User authentication context
+        session: Database session
+
+    Returns:
+        Updated SubmissionResponse object with status='draft'
+
+    Raises:
+        HTTPException: If submission not found or already in draft status
+    """
+    submission_repo = RoutineSubmissionRepositoryAsync(session)
+
+    submission = await submission_repo.get_submission_by_id(submission_id)
+
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Submission {submission_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    if submission.status == SubmissionStatus.draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Submission is already in draft status",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Cache previous status before update to avoid lazy-loading issues
+    previous_status = submission.status
+
+    # Reset to draft: clear all review and submission metadata
+    updated = await submission_repo.update_submission(
+        submission_id=submission_id,
+        status=SubmissionStatus.draft,
+        submitted_by=None,
+        submitted_at=None,
+        reviewed_by=None,
+        reviewed_at=None,
+        review_notes=None,
+    )
+
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reset submission {submission_id}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    logger.info(
+        f"[reset_to_draft] Submission reset to draft: "
+        f"submission_id={submission_id}, "
+        f"previous_status={previous_status}, "
+        f"reset_by={context.username}"
+    )
+
+    # Build response before commit to avoid async I/O issues
+    response = _build_submission_response(updated)
+
+    await session.commit()
+
+    return response
+
+
 # ============================================================================
 # AI Processing
 # ============================================================================
-
-
-async def process_response_ai(
-    response_id: UUID,
-    session: AsyncSession,
-) -> None:
-    """
-    Process AI verification for an item response.
-
-    Note: Does not commit - caller is responsible for transaction management.
-
-    TODO: Implement full AI vision integration.
-    Currently stubbed - updates response with placeholder AI result.
-    """
-    submission_repo = RoutineSubmissionRepositoryAsync(session)
-    routine_repo = RoutineRepositoryAsync(session)
-
-    response = await submission_repo.get_item_response_by_id(response_id)
-
-    if not response:
-        return
-
-    # Get the routine item to check AI rules
-    item = await routine_repo.get_routine_item_by_id(response.routine_item_id)
-
-    if not item or not item.ai_rules:
-        return
-
-    # TODO: Implement actual AI vision call
-    # For now, return a stub result
-    stub_result = {
-        "analysis_type": "ai_vision",
-        "result": "pass",
-        "confidence": 0.95,
-        "finding": "TODO: AI verification not yet implemented",
-        "details": {
-            "criteria_met": [],
-            "criteria_not_met": [],
-            "observations": "Placeholder result - AI integration pending",
-        },
-        "model": "stub",
-        "processing_time_ms": 0,
-    }
-
-    await submission_repo.update_item_response(
-        response_id=response_id,
-        ai_result=stub_result,
-        ai_passed=True,
-        ai_confidence=Decimal("0.95"),
-        status=ItemResponseStatus.passed,
-    )
+# Note: AI processing logic has been moved to _llm.py
+# Import and use process_response_with_ai from that module

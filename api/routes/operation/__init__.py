@@ -2644,3 +2644,39 @@ async def reject_submission(
     - SubmissionResponse with rejected status
     """
     return await _routines.reject_submission(submission_id, request, context, session)
+
+
+@operation_router.post(
+    "/submissions/{submission_id}/reset",
+    response_model=SubmissionResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def reset_to_draft(
+    submission_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> SubmissionResponse:
+    """
+    Reset a submission back to draft status for resubmission.
+
+    This endpoint allows resetting submissions from any status (submitted, approved, rejected)
+    back to draft, enabling staff to modify responses and resubmit.
+
+    When reset to draft:
+    - Status changes to 'draft'
+    - All review and submission metadata is cleared
+    - Item responses remain unchanged and can be modified
+    - Execution status remains 'completed'
+
+    Path Parameters:
+    - submission_id: UUID of the submission to reset
+
+    Returns:
+    - SubmissionResponse with draft status
+    """
+    return await _routines.reset_to_draft(submission_id, context, session)
