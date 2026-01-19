@@ -92,6 +92,17 @@ class CateringRequestListResponse(BaseModel):
     catering_requests: List[CateringRequest]
 
 
+class UpdateContactRequest(BaseModel):
+    """
+    Request schema for updating a contact.
+    """
+
+    name: Optional[str] = None
+    phone_number: Optional[str] = None
+    role: Optional[str] = None
+    email: Optional[str] = None
+
+
 class CreateContactRequest(BaseModel):
     """
     Request schema for creating a contact.

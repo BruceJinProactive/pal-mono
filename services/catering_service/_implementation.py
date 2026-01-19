@@ -275,6 +275,50 @@ async def delete_contact(
     return deleted_contact
 
 
+async def update_contact(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    name: Optional[str] = None,
+    phone_number: Optional[str] = None,
+    role: Optional[str] = None,
+    email: Optional[str] = None,
+) -> ContactSchema | None:
+    """
+    Update an existing contact for a project asynchronously.
+
+    Args:
+        session: Async database session
+        project_id: ID of the project the contact belongs to
+        contact_id: ID of the contact to update
+        name: New contact name (optional)
+        phone_number: New phone number (optional)
+        role: New role (optional)
+        email: New email address (optional)
+
+    Returns:
+        ContactSchema: The updated contact as a Pydantic model, or None if not found
+    """
+    # Verify the contact is linked to this project
+    project_contact_repo = ProjectContactRepositoryAsync(session)
+    contact_ids = await project_contact_repo.list_contacts_by_project(project_id)
+
+    if contact_id not in contact_ids:
+        return None
+
+    # Update the contact
+    contact_repo = ContactRepositoryAsync(session)
+    updated_contact = await contact_repo.update_contact(
+        contact_id=contact_id,
+        name=name,
+        phone_number=phone_number,
+        role=role,
+        email=email,
+    )
+
+    return updated_contact
+
+
 async def update_catering_request(
     session: AsyncSession,
     catering_request_id: uuid.UUID,

@@ -1,6 +1,7 @@
 import uuid
 from typing import Dict
 
+from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.catering.catering import (
@@ -12,6 +13,7 @@ from api.schemas.catering.catering import (
     CreateContactRequest,
     EventBridgeEvent,
     UpdateCateringRequestRequest,
+    UpdateContactRequest,
 )
 from services.auth_types import UserContext
 from services.catering_service._implementation import (
@@ -25,6 +27,7 @@ from services.catering_service._implementation import (
 from services.catering_service._implementation import (
     update_catering_request as update_catering_request_impl,
 )
+from services.catering_service._implementation import update_contact
 from utils.log import logger
 
 
@@ -198,6 +201,36 @@ async def list_project_contacts(
     return ContactListResponse(
         contacts=[Contact.model_validate(contact) for contact in contacts]
     )
+
+
+async def update_project_contact(
+    project_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    request: UpdateContactRequest,
+    session: AsyncSession,
+) -> Contact:
+    """
+    Update a contact for a project.
+    """
+    updated_contact = await update_contact(
+        session=session,
+        project_id=project_id,
+        contact_id=contact_id,
+        name=request.name,
+        phone_number=request.phone_number,
+        role=request.role,
+        email=request.email,
+    )
+
+    if not updated_contact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Contact {contact_id} not found for project {project_id}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    logger.debug(f"Successfully updated contact {contact_id} for project {project_id}")
+    return Contact.model_validate(updated_contact)
 
 
 async def delete_project_contact(

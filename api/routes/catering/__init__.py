@@ -15,6 +15,7 @@ from api.schemas.catering.catering import (
     CreateContactRequest,
     EventBridgeEvent,
     UpdateCateringRequestRequest,
+    UpdateContactRequest,
 )
 from services.auth_service.dependencies import require_project_permission
 from services.auth_types import UserContext
@@ -113,6 +114,24 @@ async def list_project_contacts(
     List all contacts for a project.
     """
     return await _implementation.list_project_contacts(project_id, context, session)
+
+
+@catering_router.patch("/projects/{project_id}/contacts/{contact_id}")
+async def update_project_contact(
+    project_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    request: UpdateContactRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> Contact:
+    """
+    Update a contact for a project.
+    """
+    return await _implementation.update_project_contact(
+        project_id, contact_id, request, session
+    )
 
 
 @catering_router.delete("/projects/{project_id}/contacts/{contact_id}")

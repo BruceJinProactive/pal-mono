@@ -137,3 +137,51 @@ class ContactRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error retrieving contacts by IDs: {e}")
             raise
+
+    async def update_contact(
+        self,
+        contact_id: uuid.UUID,
+        name: str | None = None,
+        email: str | None = None,
+        phone_number: str | None = None,
+        role: str | None = None,
+    ) -> ContactSchema | None:
+        """
+        Update a contact by ID asynchronously.
+
+        Args:
+            contact_id (uuid.UUID): The ID of the contact to update.
+            name: New name (optional).
+            email: New email (optional).
+            phone_number: New phone number (optional).
+            role: New role (optional).
+
+        Returns:
+            ContactSchema | None: The updated contact as Pydantic model, or None if not found.
+        """
+        try:
+            query = select(Contact).filter(Contact.id == contact_id)
+            result = await self.session.execute(query)
+            db_contact = result.scalar_one_or_none()
+
+            if db_contact is None:
+                return None
+
+            # Update only provided fields
+            if name is not None:
+                db_contact.name = name
+            if email is not None:
+                db_contact.email = email
+            if phone_number is not None:
+                db_contact.phone_number = phone_number
+            if role is not None:
+                db_contact.role = role
+
+            await self.session.commit()
+            await self.session.refresh(db_contact)
+
+            return self._to_schema(db_contact)
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error updating contact {contact_id}: {e}")
+            raise

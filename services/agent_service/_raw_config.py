@@ -4,6 +4,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
@@ -22,6 +23,8 @@ from agent import (
     ToolMetadata,
 )
 from agent.model import ModelProvider
+from db.repositories.contact_repository import ContactRepositoryAsync
+from db.repositories.project_contact_repository import ProjectContactRepositoryAsync
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, IdentifierType, TargetTier
 from services import features_service
@@ -72,7 +75,7 @@ class RawConfig:
                     instruction="Don't remember the user's gender.",
                 ),
                 knowledge=self._get_agent_knowledge(),
-                tool=self._get_agent_tools(),
+                tool=await self._get_agent_tools(session),
                 feature_config=FeatureConfig(
                     chat_filler_words_percentage=filler_words_config.get(
                         "chat_filler_words_percentage", 80
@@ -207,52 +210,89 @@ class RawConfig:
 
         return tools
 
-    def _populate_vapi_tool_args(self, tool_args: dict) -> dict:
+    async def _populate_vapi_tool_args(
+        self, tool_args: dict, session: Optional[AsyncSession] = None
+    ) -> dict:
         """
         Populate VAPI tool arguments with transfer settings.
 
-        Builds 'transfer_destinations' dict from available sources:
-        1. Use 'transfer_destinations' from tool_args if present and non-empty
-        2. Convert legacy 'destination_number' from tool_args if present
-        3. Fall back to project.transfer_phone_number if available
+        Builds 'transfer_destinations' dict from contacts table.
+        Falls back to project.transfer_phone_number if no contacts exist (deprecated).
 
         Args:
             tool_args: Existing tool arguments dictionary
+            session: Database session for querying contacts
 
         Returns:
             Updated tool arguments with transfer_destinations
         """
         updated_args = tool_args.copy()
 
-        # Build transfer_destinations from available sources
-        if updated_args.get("transfer_destinations"):
-            # Already has new format with actual value - use as-is
-            pass
-        elif updated_args.get("destination_number"):
-            # Convert legacy format to new format
-            updated_args["transfer_destinations"] = {
-                "general": updated_args.pop("destination_number")
-            }
-        elif self.project.transfer_phone_number:
-            # Fall back to project setting
-            updated_args["transfer_destinations"] = {
-                "general": self.project.transfer_phone_number
-            }
+        # Primary: Build transfer_destinations from contacts table
+        if session:
+            try:
+                project_contact_repo = ProjectContactRepositoryAsync(session)
+                contact_ids = await project_contact_repo.list_contacts_by_project(
+                    self.project.id
+                )
 
-        # Clean up: remove destination_number if transfer_destinations exists
-        if (
-            "transfer_destinations" in updated_args
-            and "destination_number" in updated_args
-        ):
-            updated_args.pop("destination_number")
+                if contact_ids:
+                    contact_repo = ContactRepositoryAsync(session)
+                    contacts = await contact_repo.batch_list_contacts(contact_ids)
+                    # Frontend enforces one contact per role; defensive check for duplicates
+                    transfer_destinations = {}
+                    for contact in contacts:
+                        if contact.role in transfer_destinations:
+                            logger.warning(
+                                f"Duplicate contact role '{contact.role}' for project "
+                                f"{self.project.id}, using first contact"
+                            )
+                        else:
+                            transfer_destinations[contact.role] = contact.phone_number
+                    if transfer_destinations:
+                        updated_args["transfer_destinations"] = transfer_destinations
+            except SQLAlchemyError as e:
+                logger.warning(
+                    f"Failed to fetch contacts for project {self.project.id}: {e}"
+                )
+            except Exception:
+                logger.exception(
+                    f"Unexpected error while fetching contacts for project {self.project.id}"
+                )
+                raise
 
-        # transfer_message behavior unchanged
+        # Fallback: Use project.transfer_phone_number if no contacts found (deprecated)
+        if "transfer_destinations" not in updated_args:
+            if self.project.transfer_phone_number:
+                # Mask phone number to avoid logging PII (show only last 4 digits)
+                masked_phone = (
+                    f"***{self.project.transfer_phone_number[-4:]}"
+                    if len(self.project.transfer_phone_number) >= 4
+                    else "***"
+                )
+                logger.warning(
+                    f"Using deprecated transfer_phone_number fallback for project "
+                    f"{self.project.id} ({self.project.name}). "
+                    f"Please migrate to contacts table.",
+                    extra={
+                        "project_id": str(self.project.id),
+                        "project_name": self.project.name,
+                        "transfer_phone_number": masked_phone,
+                    },
+                )
+                updated_args["transfer_destinations"] = {
+                    "general": self.project.transfer_phone_number
+                }
+
+        # transfer_message still comes from project
         if self.project.transfer_message:
             updated_args["transfer_message"] = self.project.transfer_message
 
         return updated_args
 
-    def _get_agent_tools(self) -> ToolConfig:
+    async def _get_agent_tools(
+        self, session: Optional[AsyncSession] = None
+    ) -> ToolConfig:
         # Extract customer phone from sender_identifier based on channel type
         customer_phone = None
         if self.sender_identifier:
@@ -368,7 +408,7 @@ class RawConfig:
             tool_args: Dict[str, Any] = dict(entry["args"])
 
             if tool_name == "vapi_tool":
-                tool_args = self._populate_vapi_tool_args(tool_args)
+                tool_args = await self._populate_vapi_tool_args(tool_args, session)
 
             final_identifiers.append(
                 ToolIdentifier(
