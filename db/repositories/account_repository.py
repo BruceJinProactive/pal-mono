@@ -6,7 +6,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, joinedload
 
-from db.tables import Account, AccountSubscription
+from db.tables import (
+    Account,
+    AccountSubscription,
+    AccountUser,
+    Agent,
+    Conversation,
+    Message,
+    Project,
+    User,
+)
 from db.tables.accounts import AccountStatus
 from utils.log import logger
 
@@ -185,7 +194,64 @@ class AccountRepository:
                     logger.warn(
                         f"Hard deleting account {account_name} from the database!"
                     )
-                    self.session.delete(db_account)
+                    # Delete dependent records in correct order to avoid FK violations
+                    account_id = db_account.id
+
+                    # 1. Get user IDs for this account (needed for messages/conversations)
+                    user_ids = [
+                        u.id
+                        for u in self.session.query(User.id)
+                        .filter(User.account_id == account_id)
+                        .all()
+                    ]
+
+                    if user_ids:
+                        # 2. Delete messages for conversations belonging to these users
+                        conversation_ids = [
+                            c.id
+                            for c in self.session.query(Conversation.id)
+                            .filter(Conversation.user_id.in_(user_ids))
+                            .all()
+                        ]
+                        if conversation_ids:
+                            self.session.query(Message).filter(
+                                Message.conversation_id.in_(conversation_ids)
+                            ).delete(synchronize_session=False)
+
+                        # 3. Delete conversations for these users
+                        self.session.query(Conversation).filter(
+                            Conversation.user_id.in_(user_ids)
+                        ).delete(synchronize_session=False)
+
+                    # 4. Delete users (callers) for this account
+                    self.session.query(User).filter(
+                        User.account_id == account_id
+                    ).delete(synchronize_session=False)
+
+                    # 5. Delete account user memberships
+                    self.session.query(AccountUser).filter(
+                        AccountUser.account_id == account_id
+                    ).delete(synchronize_session=False)
+
+                    # 6. Delete projects for this account
+                    self.session.query(Project).filter(
+                        Project.account_id == account_id
+                    ).delete(synchronize_session=False)
+
+                    # 7. Delete agents for this account
+                    self.session.query(Agent).filter(
+                        Agent.account_id == account_id
+                    ).delete(synchronize_session=False)
+
+                    # 8. Delete account subscriptions
+                    self.session.query(AccountSubscription).filter(
+                        AccountSubscription.account_id == account_id
+                    ).delete(synchronize_session=False)
+
+                    # 9. Delete the account
+                    self.session.query(Account).filter(Account.id == account_id).delete(
+                        synchronize_session=False
+                    )
                 else:
                     db_account.status = AccountStatus.deleted
 
