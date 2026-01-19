@@ -48,6 +48,7 @@ from ._subscription import (
     handle_stripe_checkout_success,
     remove_project_subscription,
     should_block_calls_async,
+    switch_project_subscription_plan,
     switch_subscription_plan,
     unlink_subscription_from_account,
     update_account_subscription,
@@ -102,6 +103,7 @@ __all__ = [
     # Utility functions
     "should_block_calls_async",
     "switch_subscription_plan",
+    "switch_project_subscription_plan",
     "unlink_subscription_from_account",
     # Stripe sync functions
     "sync_account_subscriptions",

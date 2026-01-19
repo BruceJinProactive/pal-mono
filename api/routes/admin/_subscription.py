@@ -842,6 +842,73 @@ def switch_subscription_plan(
         )
 
 
+def switch_project_subscription_plan(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    project_id: uuid.UUID,
+    request: SwitchPlanRequest,
+) -> SwitchPlanResponse:
+    """Switch a project's subscription plan to a new plan.
+    Authorization is handled by require_account_permission in route decorator.
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error("Account not found")
+
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error("Project not found")
+
+    # Verify project belongs to account
+    if project.account_id != account.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project does not belong to this account",
+        )
+
+    try:
+        new_subscription, old_plan_name, new_plan_name = (
+            subscription_service.switch_project_subscription_plan(
+                session=session,
+                context=context,
+                project_id=project.id,
+                new_plan_id=request.new_plan_id,
+                prorate=request.prorate,
+            )
+        )
+
+        if not new_subscription.external_id:
+            raise ValueError("Subscription missing external ID after switch")
+
+        return SwitchPlanResponse(
+            success=True,
+            subscription_id=new_subscription.external_id,
+            old_plan_name=old_plan_name,
+            new_plan_name=new_plan_name,
+            effective_date=new_subscription.updated_at or new_subscription.created_at,
+            prorated=request.prorate,
+        )
+
+    except ValueError as err:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+    except Exception as err:
+        logger.error(
+            f"Failed to switch project subscription plan: {err}",
+            extra={
+                "account_name": account_name,
+                "project_id": str(project_id),
+                "new_plan_id": str(request.new_plan_id),
+                "error": str(err),
+            },
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to switch project subscription plan",
+        )
+
+
 def unlink_subscription_from_account(
     context: UserContext,
     session: Session,

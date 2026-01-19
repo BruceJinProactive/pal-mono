@@ -1425,6 +1425,323 @@ def switch_subscription_plan(
     return new_subscription, current_plan.name, new_plan.name
 
 
+def switch_project_subscription_plan(
+    session: Session,
+    context: UserContext,
+    project_id: uuid.UUID,
+    new_plan_id: uuid.UUID,
+    prorate: bool = True,
+) -> tuple[db.ProjectSubscription, str, str]:
+    """
+    Switch an independent project subscription to a different plan.
+
+    IMPORTANT: This function only works for independent project subscriptions
+    (where subscription_id == external_id). For project subscriptions linked to
+    an account-level subscription, use switch_subscription_plan() instead, which
+    will update all linked project subscriptions together.
+
+    This function:
+    1. Validates the project has an active, independent subscription
+    2. Guards against account-linked subscriptions and missing Stripe IDs
+    3. Creates new Stripe product/prices for the new plan
+    4. Updates Stripe subscription items (with optional proration)
+    5. Updates the database with the new plan and price IDs
+
+    Args:
+        session: Database session
+        context: User context for authorization
+        project_id: Project UUID
+        new_plan_id: Target subscription plan UUID
+        prorate: Whether to prorate the charges (default: True)
+
+    Returns:
+        Tuple of (updated_subscription, old_plan_name, new_plan_name)
+
+    Raises:
+        ValueError: If subscription not found, not active, is account-linked,
+                   missing Stripe ID, or plan invalid
+    """
+    project_subscription_repository = ProjectSubscriptionRepository(session)
+    active_project_sub = (
+        project_subscription_repository.get_active_project_subscription(project_id)
+    )
+
+    if not active_project_sub:
+        raise ValueError("Project has no active subscription to switch")
+
+    if active_project_sub.status != SubscriptionStatus.active:
+        raise ValueError("Can only switch plans for active subscriptions")
+
+    # Guard against switching account-linked project subscriptions
+    # If subscription_id != external_id, this project subscription is linked to
+    # an account-level subscription and should use account-level switch flow
+    if active_project_sub.subscription_id != active_project_sub.external_id:
+        raise ValueError(
+            "Cannot switch plan for account-linked project subscription. "
+            "Use account-level plan switching instead, which will update all "
+            "project subscriptions linked to the account subscription."
+        )
+
+    # Independent project subscriptions must have their own Stripe subscription
+    if not active_project_sub.stripe_subscription_id:
+        raise ValueError(
+            "Project subscription has no Stripe subscription ID. "
+            "Cannot switch plan without Stripe synchronization."
+        )
+
+    subscription_plan_repository = SubscriptionPlanRepository(session)
+
+    if not active_project_sub.subscription_plan_id:
+        raise ValueError("Project subscription has no plan ID")
+
+    current_plan = subscription_plan_repository.get_subscription_plan_by_id(
+        active_project_sub.subscription_plan_id
+    )
+    new_plan = subscription_plan_repository.get_subscription_plan_by_id(new_plan_id)
+
+    if not current_plan:
+        raise ValueError("Current subscription plan not found")
+    if not new_plan:
+        raise ValueError(f"New subscription plan '{new_plan_id}' not found")
+    if not new_plan.active:
+        raise ValueError("Cannot switch to inactive plan")
+
+    if current_plan.id == new_plan.id:
+        raise ValueError("Cannot switch to the same plan")
+
+    # Get project and account for Stripe operations
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise ValueError(f"Account {project.account_id} not found")
+
+    # Update Stripe subscription items with new prices
+    # Note: We already validated stripe_subscription_id exists in guard above
+    _update_stripe_subscription_for_project_plan_switch(
+        session,
+        active_project_sub,
+        new_plan,
+        project,
+        account.name,
+        prorate,
+    )
+
+    try:
+        session.commit()
+    except Exception as err:
+        session.rollback()
+        logger.error(
+            "Failed to commit project subscription updates after Stripe changes",
+            extra={
+                "project_id": str(project_id),
+                "subscription_external_id": str(active_project_sub.external_id),
+                "old_plan_id": str(current_plan.id),
+                "new_plan_id": str(new_plan.id),
+            },
+            exc_info=True,
+        )
+        raise err
+
+    # Update database with new plan
+    if not active_project_sub.external_id:
+        raise ValueError("Project subscription has no external ID")
+
+    new_subscription_data = {
+        "subscription_plan_id": new_plan.id,
+    }
+
+    new_subscription = update_project_subscription(
+        session=session,
+        context=context,
+        project_id=project_id,
+        external_id=active_project_sub.external_id,
+        update_data=new_subscription_data,
+    )
+
+    logger.info(
+        "Successfully switched project subscription plan",
+        extra={
+            "project_id": str(project_id),
+            "subscription_id": str(active_project_sub.external_id),
+            "old_plan_id": str(current_plan.id),
+            "old_plan_name": current_plan.name,
+            "new_plan_id": str(new_plan.id),
+            "new_plan_name": new_plan.name,
+            "prorated": prorate,
+        },
+    )
+
+    return new_subscription, current_plan.name, new_plan.name
+
+
+def _update_stripe_subscription_for_project_plan_switch(
+    session: Session,
+    project_subscription: db.ProjectSubscription,
+    new_plan: db.SubscriptionPlan,
+    project: db.Project,
+    account_name: str,
+    prorate: bool,
+) -> None:
+    """
+    Update Stripe subscription items for a single project's plan switch.
+
+    Creates new products/prices for the new plan and updates the subscription
+    items, removing old ones and adding new ones with prorating.
+    """
+    if not project_subscription.stripe_subscription_id:
+        raise ValueError(
+            "Project subscription must have Stripe subscription ID to update"
+        )
+
+    stripe_subscription_id = project_subscription.stripe_subscription_id
+    proration_behavior = "create_prorations" if prorate else "none"
+
+    project_name = project.name
+    project_display_name = (
+        project.display_name if project.display_name else project_name
+    )
+
+    # Create new Stripe product for the new plan
+    new_product_id = _stripe_product.create_product_for_project(
+        project, account_name, new_plan.name
+    )
+
+    # Store old price IDs for in-place swapping
+    old_base_price_id = project_subscription.base_price_id
+    old_call_price_id = project_subscription.call_price_id
+    old_order_price_id = project_subscription.order_price_id
+
+    # Create base price (monthly fee) if applicable
+    new_base_price_id = None
+    if new_plan.monthly_fee and new_plan.monthly_fee > 0:
+        new_base_price_id = _stripe_product.create_product_price(
+            new_product_id,
+            nickname=f"Flat fee - {project_display_name}",
+            project=project,
+            flat_fee=new_plan.monthly_fee,
+        )
+
+    # Setup call pricing for new plan
+    call_meter_id = _stripe_product.create_billing_meter(
+        f"{project_name} calls",
+        _stripe_product.get_call_meter_event_name(project.id),
+    )
+    new_call_price_id = _stripe_product.create_product_price(
+        new_product_id,
+        nickname=f"Calls - {project_display_name}",
+        project=project,
+        meter_tiers=_build_call_tiers(new_plan),
+        meter_id=call_meter_id,
+    )
+
+    # Setup order pricing for new plan if applicable
+    new_order_price_id = None
+    if new_plan.order_overage_charge and new_plan.order_overage_charge > 0:
+        order_meter_id = _stripe_product.create_billing_meter(
+            f"{project_name} orders",
+            _stripe_product.get_order_meter_event_name(project.id),
+        )
+        new_order_price_id = _stripe_product.create_product_price(
+            new_product_id,
+            nickname=f"Orders - {project_display_name}",
+            meter_tiers=_build_order_tiers(new_plan),
+            project=project,
+            meter_id=order_meter_id,
+        )
+
+    # Update base price (monthly fee)
+    if old_base_price_id and new_base_price_id:
+        _stripe_subscription.update_subscription_item_price(
+            stripe_subscription_id,
+            old_base_price_id,
+            new_base_price_id,
+            proration_behavior=proration_behavior,
+        )
+    elif old_base_price_id and not new_base_price_id:
+        _stripe_subscription.remove_subscription_item(
+            stripe_subscription_id,
+            old_base_price_id,
+            proration_behavior=proration_behavior,
+        )
+    elif new_base_price_id and not old_base_price_id:
+        _stripe_subscription.add_subscription_item(
+            stripe_subscription_id,
+            new_base_price_id,
+            proration_behavior=proration_behavior,
+        )
+
+    # Update call pricing (metered)
+    if old_call_price_id and new_call_price_id:
+        _stripe_subscription.update_subscription_item_price(
+            stripe_subscription_id,
+            old_call_price_id,
+            new_call_price_id,
+            proration_behavior=proration_behavior,
+        )
+    elif old_call_price_id and not new_call_price_id:
+        _stripe_subscription.remove_subscription_item(
+            stripe_subscription_id,
+            old_call_price_id,
+            proration_behavior=proration_behavior,
+        )
+    elif new_call_price_id and not old_call_price_id:
+        _stripe_subscription.add_subscription_item(
+            stripe_subscription_id,
+            new_call_price_id,
+            proration_behavior=proration_behavior,
+        )
+
+    # Update order pricing (metered)
+    if old_order_price_id and new_order_price_id:
+        _stripe_subscription.update_subscription_item_price(
+            stripe_subscription_id,
+            old_order_price_id,
+            new_order_price_id,
+            proration_behavior=proration_behavior,
+        )
+    elif old_order_price_id and not new_order_price_id:
+        _stripe_subscription.remove_subscription_item(
+            stripe_subscription_id,
+            old_order_price_id,
+            proration_behavior=proration_behavior,
+        )
+    elif new_order_price_id and not old_order_price_id:
+        _stripe_subscription.add_subscription_item(
+            stripe_subscription_id,
+            new_order_price_id,
+            proration_behavior=proration_behavior,
+        )
+
+    # Update project subscription record with new Stripe-related fields only
+    # Note: subscription_plan_id is updated separately by the main function
+    # via update_project_subscription which creates a versioned record
+    project_subscription_repository = ProjectSubscriptionRepository(
+        session, auto_commit=False
+    )
+    project_subscription_repository.update_project_subscription(
+        project_subscription.id,
+        stripe_product_id=new_product_id,
+        base_price_id=new_base_price_id,
+        call_price_id=new_call_price_id,
+        order_price_id=new_order_price_id,
+    )
+
+    logger.info(
+        f"Updated Stripe subscription items for project {project.id}",
+        extra={
+            "project_id": str(project.id),
+            "stripe_subscription_id": stripe_subscription_id,
+            "new_product_id": new_product_id,
+            "base_price_id": new_base_price_id,
+            "call_price_id": new_call_price_id,
+            "order_price_id": new_order_price_id,
+        },
+    )
+
+
 def _update_stripe_subscription_for_plan_switch(
     session: Session,
     current_subscription: db.AccountSubscription,

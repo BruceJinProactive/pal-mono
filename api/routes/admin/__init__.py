@@ -3274,6 +3274,28 @@ def switch_subscription_plan(
 
 
 @admin_router.post(
+    "/accounts/{account_name}/projects/{project_id}/switch_plan",
+    status_code=status.HTTP_200_OK,
+)
+def switch_project_subscription_plan(
+    account_name: str,
+    project_id: uuid.UUID,
+    request: SwitchPlanRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> SwitchPlanResponse:
+    return _subscription.switch_project_subscription_plan(
+        context=context,
+        session=session,
+        account_name=account_name,
+        project_id=project_id,
+        request=request,
+    )
+
+
+@admin_router.post(
     "/accounts/{account_name}/reset_current_subscription",
     status_code=status.HTTP_200_OK,
 )
