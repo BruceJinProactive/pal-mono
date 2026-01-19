@@ -99,8 +99,6 @@ class ToastTool(Toolkit):
         default_coupon_id: str | None = None,
         token_api_endpoint: str | None = "ws-api.toasttab.com",
         general_api_endpoint: str | None = "ws-api.toasttab.com",
-        # todo: refactor self.sandbox logic.
-        sandbox: bool = False,
         hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/toast",
         enable_hosted_checkout: bool = False,
         payment_iframe_token_ttl_seconds: int = 15 * 60,
@@ -133,7 +131,6 @@ class ToastTool(Toolkit):
         self.default_coupon_id = default_coupon_id
         self.token_api_endpoint = token_api_endpoint
         self.general_api_endpoint = general_api_endpoint
-        self.sandbox = sandbox
         self._cached_store_info: str | None = None
         # Use sandbox iframe endpoint for hosted checkout
         self.hosted_payment_iframe_endpoint = hosted_payment_iframe_endpoint
@@ -181,7 +178,7 @@ class ToastTool(Toolkit):
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_bearer_token"):
-            if self.sandbox:
+            if "sandbox" not in str(self.general_api_endpoint):
                 return get_toast_access_token_from_aws(
                     self.token_api_endpoint,
                     token_name="TOAST_SANDBOX_ACCESS_TOKEN",
@@ -1670,7 +1667,7 @@ class ToastTool(Toolkit):
         # Get iframe bearer token for frontend to initialize Toast payment widget
         payment_api_endpoint = (
             "https://ws-sandbox-api.eng.toasttab.com"
-            if self.sandbox
+            if "sandbox" not in str(self.general_api_endpoint)
             else "https://ws-api.toasttab.com"
         )
 
