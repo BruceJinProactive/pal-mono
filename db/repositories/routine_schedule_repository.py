@@ -216,6 +216,7 @@ class RoutineScheduleRepositoryAsync:
                 schedule.is_active = is_active
 
             await self.session.flush()
+            await self.session.refresh(schedule)
             return schedule
         except SQLAlchemyError as e:
             await self.session.rollback()
