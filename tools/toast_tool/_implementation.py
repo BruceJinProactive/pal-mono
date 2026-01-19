@@ -94,9 +94,6 @@ class ToastTool(Toolkit):
         namespace: str,
         tool_metadata: ToolMetadata,
         index_name: str | None = None,
-        loyalty_enabled: bool = False,
-        coupons_enabled: bool = False,
-        default_coupon_id: str | None = None,
         token_api_endpoint: str | None = "ws-api.toasttab.com",
         general_api_endpoint: str | None = "ws-api.toasttab.com",
         hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/toast",
@@ -126,9 +123,6 @@ class ToastTool(Toolkit):
         self.namespace = namespace
         self.index_name = index_name
         self.tool_metadata = tool_metadata
-        self.loyalty_enabled = loyalty_enabled
-        self.coupons_enabled = coupons_enabled
-        self.default_coupon_id = default_coupon_id
         self.token_api_endpoint = token_api_endpoint
         self.general_api_endpoint = general_api_endpoint
         self._cached_store_info: str | None = None
