@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import TimeoutError as DBTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
@@ -251,6 +252,12 @@ class RawConfig:
                             transfer_destinations[contact.role] = contact.phone_number
                     if transfer_destinations:
                         updated_args["transfer_destinations"] = transfer_destinations
+            except DBTimeoutError as e:
+                # Pool exhaustion/timeout errors must propagate for proper cleanup
+                logger.error(
+                    f"Connection pool timeout fetching contacts for project {self.project.id}: {e}"
+                )
+                raise
             except SQLAlchemyError as e:
                 logger.warning(
                     f"Failed to fetch contacts for project {self.project.id}: {e}"

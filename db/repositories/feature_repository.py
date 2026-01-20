@@ -3,6 +3,7 @@ from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import TimeoutError as DBTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.tables import Feature
@@ -43,6 +44,12 @@ class FeatureRepositoryAsync:
             )
             enabled = result.scalar_one_or_none()
             return enabled if enabled is not None else False
+        except DBTimeoutError as e:
+            # Pool exhaustion/timeout errors must propagate for proper cleanup
+            logger.error(
+                f"Connection pool timeout checking feature {feature}/{identifier_type}/{identifier}: {e}"
+            )
+            raise
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(
@@ -100,6 +107,12 @@ class FeatureRepositoryAsync:
                 await self.session.refresh(new_feature)
                 return new_feature
 
+        except DBTimeoutError as e:
+            # Pool exhaustion/timeout errors must propagate for proper cleanup
+            logger.error(
+                f"Connection pool timeout upserting feature {feature}/{identifier_type}/{identifier}: {e}"
+            )
+            raise
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(
