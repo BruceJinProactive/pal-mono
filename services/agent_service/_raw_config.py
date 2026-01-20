@@ -282,12 +282,7 @@ class RawConfig:
         # Fallback: Use project.transfer_phone_number if no contacts found (deprecated)
         if "transfer_destinations" not in updated_args:
             if self.project.transfer_phone_number:
-                # Mask phone number to avoid logging PII (show only last 4 digits)
-                masked_phone = (
-                    f"***{self.project.transfer_phone_number[-4:]}"
-                    if len(self.project.transfer_phone_number) >= 4
-                    else "***"
-                )
+
                 logger.warning(
                     f"Using deprecated transfer_phone_number fallback for project "
                     f"{self.project.id} ({self.project.name}). "
@@ -295,12 +290,17 @@ class RawConfig:
                     extra={
                         "project_id": str(self.project.id),
                         "project_name": self.project.name,
-                        "transfer_phone_number": masked_phone,
+                        "transfer_phone_number": self.project.transfer_phone_number,
                     },
                 )
+
                 updated_args["transfer_destinations"] = {
                     "general": self.project.transfer_phone_number
                 }
+
+        logger.info(
+            f"[DEBUG] transfer_destinations after fallback: {updated_args.get('transfer_destinations')}"
+        )
 
         # transfer_message still comes from project
         if self.project.transfer_message:

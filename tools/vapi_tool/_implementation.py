@@ -121,6 +121,7 @@ class VapiTool(Toolkit):
             The destination phone number/SIP URI, or None if not found.
             Falls back to "general" if specific purpose not found.
         """
+        purpose = "general"
         destination = self.transfer_destinations.get(purpose)
 
         if destination:
