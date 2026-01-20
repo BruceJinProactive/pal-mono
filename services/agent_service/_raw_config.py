@@ -4,8 +4,6 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.exc import TimeoutError as DBTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
@@ -24,8 +22,6 @@ from agent import (
     ToolMetadata,
 )
 from agent.model import ModelProvider
-from db.repositories.contact_repository import ContactRepositoryAsync
-from db.repositories.project_contact_repository import ProjectContactRepositoryAsync
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, IdentifierType, TargetTier
 from services import features_service
@@ -229,44 +225,59 @@ class RawConfig:
         """
         updated_args = tool_args.copy()
 
-        # Primary: Build transfer_destinations from contacts table
-        if session:
-            try:
-                project_contact_repo = ProjectContactRepositoryAsync(session)
-                contact_ids = await project_contact_repo.list_contacts_by_project(
-                    self.project.id
+        # Validate/normalize transfer_destinations coming from raw_config
+        if "transfer_destinations" in updated_args:
+            td = updated_args["transfer_destinations"]
+            if td is None or td == {}:
+                # Treat empty as missing so fallback can apply
+                updated_args.pop("transfer_destinations", None)
+            elif not isinstance(td, dict):
+                raise ValueError(
+                    "'transfer_destinations' must be a dict of role -> phone."
                 )
 
-                if contact_ids:
-                    contact_repo = ContactRepositoryAsync(session)
-                    contacts = await contact_repo.batch_list_contacts(contact_ids)
-                    # Frontend enforces one contact per role; defensive check for duplicates
-                    transfer_destinations = {}
-                    for contact in contacts:
-                        if contact.role in transfer_destinations:
-                            logger.warning(
-                                f"Duplicate contact role '{contact.role}' for project "
-                                f"{self.project.id}, using first contact"
-                            )
-                        else:
-                            transfer_destinations[contact.role] = contact.phone_number
-                    if transfer_destinations:
-                        updated_args["transfer_destinations"] = transfer_destinations
-            except DBTimeoutError as e:
-                # Pool exhaustion/timeout errors must propagate for proper cleanup
-                logger.error(
-                    f"Connection pool timeout fetching contacts for project {self.project.id}: {e}"
-                )
-                raise
-            except SQLAlchemyError as e:
-                logger.warning(
-                    f"Failed to fetch contacts for project {self.project.id}: {e}"
-                )
-            except Exception:
-                logger.exception(
-                    f"Unexpected error while fetching contacts for project {self.project.id}"
-                )
-                raise
+        # TEMPORARILY COMMENTED OUT: Reading transfer_destinations from DB
+        # Now reading from tool_args (raw_config) instead for testing
+        # TODO: Re-enable after testing is complete
+        #
+        # # Primary: Build transfer_destinations from contacts table
+        # if session:
+        #     try:
+        #         project_contact_repo = ProjectContactRepositoryAsync(session)
+        #         contact_ids = await project_contact_repo.list_contacts_by_project(
+        #             self.project.id
+        #         )
+        #
+        #         if contact_ids:
+        #             contact_repo = ContactRepositoryAsync(session)
+        #             contacts = await contact_repo.batch_list_contacts(contact_ids)
+        #             # Frontend enforces one contact per role; defensive check for duplicates
+        #             transfer_destinations = {}
+        #             for contact in contacts:
+        #                 if contact.role in transfer_destinations:
+        #                     logger.warning(
+        #                         f"Duplicate contact role '{contact.role}' for project "
+        #                         f"{self.project.id}, using first contact"
+        #                     )
+        #                 else:
+        #                     transfer_destinations[contact.role] = contact.phone_number
+        #             if transfer_destinations:
+        #                 updated_args["transfer_destinations"] = transfer_destinations
+        #     except DBTimeoutError as e:
+        #         # Pool exhaustion/timeout errors must propagate for proper cleanup
+        #         logger.error(
+        #             f"Connection pool timeout fetching contacts for project {self.project.id}: {e}"
+        #         )
+        #         raise
+        #     except SQLAlchemyError as e:
+        #         logger.warning(
+        #             f"Failed to fetch contacts for project {self.project.id}: {e}"
+        #         )
+        #     except Exception:
+        #         logger.exception(
+        #             f"Unexpected error while fetching contacts for project {self.project.id}"
+        #         )
+        #         raise
 
         # Fallback: Use project.transfer_phone_number if no contacts found (deprecated)
         if "transfer_destinations" not in updated_args:
