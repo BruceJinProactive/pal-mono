@@ -279,10 +279,25 @@ class RawConfig:
         #         )
         #         raise
 
-        # Fallback: Use project.transfer_phone_number if no contacts found (deprecated)
+        # Fallback 1: Use destination_number from raw_config if provided (deprecated)
+        if "transfer_destinations" not in updated_args:
+            destination_number = updated_args.pop("destination_number", None)
+            if destination_number:
+                logger.warning(
+                    f"Using deprecated destination_number from raw_config for project "
+                    f"{self.project.id} ({self.project.name}). "
+                    f"Please migrate to transfer_destinations.",
+                    extra={
+                        "project_id": str(self.project.id),
+                        "project_name": self.project.name,
+                        "destination_number": destination_number,
+                    },
+                )
+                updated_args["transfer_destinations"] = {"general": destination_number}
+
+        # Fallback 2: Use project.transfer_phone_number if no contacts found (deprecated)
         if "transfer_destinations" not in updated_args:
             if self.project.transfer_phone_number:
-
                 logger.warning(
                     f"Using deprecated transfer_phone_number fallback for project "
                     f"{self.project.id} ({self.project.name}). "
@@ -293,7 +308,6 @@ class RawConfig:
                         "transfer_phone_number": self.project.transfer_phone_number,
                     },
                 )
-
                 updated_args["transfer_destinations"] = {
                     "general": self.project.transfer_phone_number
                 }

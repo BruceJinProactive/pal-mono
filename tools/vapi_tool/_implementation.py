@@ -99,6 +99,7 @@ class VapiTool(Toolkit):
         transfer_destinations: dict[str, str],
         transfer_message: str | None = None,
         show_agent_caller_id: bool = False,
+        **kwargs,  # Accept and ignore unknown args from raw_config
     ):
         super().__init__(name="vapi_tool")
         self.tool_metadata = tool_metadata
