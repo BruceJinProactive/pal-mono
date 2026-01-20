@@ -117,6 +117,19 @@ def handle_stripe_checkout_success(
     if not response:
         return response
 
+    # Route to appropriate handler based on subscription type
+    if response.subscription_type == "project":
+        return _handle_project_stripe_checkout_success(session, context, response)
+    else:
+        return _handle_account_stripe_checkout_success(session, context, response)
+
+
+def _handle_account_stripe_checkout_success(
+    session: Session,
+    context: UserContext,
+    response: StripeCheckoutResponse,
+) -> StripeCheckoutResponse:
+    """Handle checkout success for account-level subscriptions."""
     data = {
         "stripe_subscription_id": response.stripe_subscription_id,
         "status": SubscriptionStatus.active,
@@ -130,7 +143,7 @@ def handle_stripe_checkout_success(
         force_update=True,
     )
     logger.info(
-        "Successfully updated subscription's stripe id",
+        "Successfully updated account subscription's stripe id",
         extra={
             "account_subscription_id": response.subscription_external_id,
             "stripe_subscription_id": response.stripe_subscription_id,
@@ -169,6 +182,113 @@ def handle_stripe_checkout_success(
             "Failed to grant plan activation credit",
             extra={
                 "account_id": str(response.account_id),
+                "subscription_id": str(response.subscription_external_id),
+                "error": str(e),
+            },
+            exc_info=True,
+        )
+
+    return response
+
+
+def _handle_project_stripe_checkout_success(
+    session: Session,
+    context: UserContext,
+    response: StripeCheckoutResponse,
+) -> StripeCheckoutResponse:
+    """Handle checkout success for project-level subscriptions."""
+    if not response.project_id:
+        logger.error(
+            "Project ID missing from checkout response for project subscription",
+            extra={"external_id": str(response.subscription_external_id)},
+        )
+        raise ValueError("Project ID required for project subscription checkout")
+
+    # Get the project subscription
+    project_subscription_repo = ProjectSubscriptionRepository(session)
+    project_subscription = (
+        project_subscription_repo.get_project_subscription_by_external_id(
+            response.subscription_external_id
+        )
+    )
+
+    if not project_subscription:
+        logger.error(
+            "Project subscription not found",
+            extra={"external_id": str(response.subscription_external_id)},
+        )
+        raise ValueError(
+            f"Project subscription {response.subscription_external_id} not found"
+        )
+
+    # Determine status based on trial
+    if project_subscription.trial_start_date:
+        status = SubscriptionStatus.trialing
+    else:
+        status = SubscriptionStatus.active
+
+    # Update project subscription with Stripe ID and status
+    data = {
+        "stripe_subscription_id": response.stripe_subscription_id,
+        "status": status,
+    }
+
+    updated_subscription = update_project_subscription(
+        session=session,
+        context=context,
+        project_id=response.project_id,
+        external_id=response.subscription_external_id,
+        update_data=data,
+        force_update=True,
+    )
+
+    logger.info(
+        "Successfully updated project subscription's stripe id",
+        extra={
+            "project_id": str(response.project_id),
+            "project_subscription_external_id": str(response.subscription_external_id),
+            "stripe_subscription_id": response.stripe_subscription_id,
+            "status": status.value,
+        },
+    )
+
+    # Grant credit based on plan's credit_amount upon activation (if applicable)
+    try:
+        if updated_subscription and updated_subscription.subscription_plan_id:
+            subscription_plan_repo = SubscriptionPlanRepository(session)
+            plan = subscription_plan_repo.get_subscription_plan_by_id(
+                updated_subscription.subscription_plan_id
+            )
+
+            if plan and plan.credit_amount:
+                account = account_service.get_account_by_id(
+                    session, response.account_id
+                )
+                if account and account.stripe_customer_id:
+                    credit_amount = plan.credit_amount
+                    grant_credit_to_account(
+                        account=account,
+                        credit_amount_cents=credit_amount,
+                        currency="usd",
+                        description=f"Plan activation credit: {plan.name}",
+                        issued_by="system",
+                        metadata={
+                            "issued_via": "stripe_checkout_success",
+                            "request_source": "project_plan_activation",
+                            "plan_name": plan.name,
+                            "project_id": str(response.project_id),
+                        },
+                    )
+                else:
+                    logger.warning(
+                        "Cannot grant credit: account not found or no stripe customer ID",
+                        extra={"account_id": str(response.account_id)},
+                    )
+    except Exception as e:
+        logger.error(
+            "Failed to grant plan activation credit for project subscription",
+            extra={
+                "project_id": str(response.project_id),
                 "subscription_id": str(response.subscription_external_id),
                 "error": str(e),
             },
@@ -1216,6 +1336,8 @@ def create_stripe_checkout_url_for_project(
         existing_customer_id=existing_stripe_customer_id,
         referral_code=referral_code,
         account_coupon_id=account_coupon_id,
+        subscription_type="project",
+        project_id=project_id,
     )
 
     if not checkout_session or not checkout_session.url:

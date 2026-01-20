@@ -296,6 +296,8 @@ def create_checkout_session(
     existing_customer_id: str | None = None,
     referral_code: str | None = None,
     account_coupon_id: str | None = None,
+    subscription_type: str = "account",
+    project_id: uuid.UUID | None = None,
 ) -> Session:
     """
     Creates a new checkout session that allows user to subscribe to our product and
@@ -312,6 +314,8 @@ def create_checkout_session(
         referral_code: Optional Rewardful referral token from ?via= parameter
         account_coupon_id: Optional Stripe coupon ID from account to apply to the subscription.
                           Supports both one-time and recurring coupons.
+        subscription_type: Type of subscription - "account" or "project" (default: "account")
+        project_id: Optional project UUID (required if subscription_type is "project")
 
     Returns:
         Stripe checkout session object
@@ -387,9 +391,16 @@ def create_checkout_session(
 
     try:
         # Build checkout session metadata
-        checkout_metadata = {}
+        checkout_metadata = {
+            "subscription_type": subscription_type,
+            "subscription_external_id": str(subscription_external_id),
+        }
+
         if referral_code:
             checkout_metadata["rewardful_referral"] = referral_code
+
+        if project_id:
+            checkout_metadata["project_id"] = str(project_id)
 
         session_params = {
             "mode": "subscription",
@@ -400,9 +411,8 @@ def create_checkout_session(
             "cancel_url": f"{redirect_url_prefix}?action=payment_cancelled",
         }
 
-        # Add metadata to checkout session if we have any
-        if checkout_metadata:
-            session_params["metadata"] = checkout_metadata
+        # Always add metadata to checkout session
+        session_params["metadata"] = checkout_metadata
 
         if existing_customer_id:
             session_params["customer"] = existing_customer_id
@@ -527,12 +537,31 @@ def handle_checkout_success(
 
     external_id = parse_uuid(subscription.metadata.get(SUBSCRIPTION_EXTERNAL_ID))
 
-    logger.info("Successfully handled stripe checkout success event")
+    # Check metadata for subscription type and project_id (handle None metadata)
+    subscription_type = (
+        session.metadata.get("subscription_type", "account")
+        if session.metadata
+        else "account"
+    )
+    project_id_str = session.metadata.get("project_id") if session.metadata else None
+    project_id = parse_uuid(project_id_str) if project_id_str else None
+
+    logger.info(
+        "Successfully handled stripe checkout success event",
+        extra={
+            "subscription_type": subscription_type,
+            "project_id": str(project_id) if project_id else None,
+            "external_id": str(external_id),
+        },
+    )
+
     return StripeCheckoutResponse(
         account_id=parse_uuid(session.client_reference_id),
         customer_id=str(subscription.customer),
         stripe_subscription_id=subscription_id,
         subscription_external_id=external_id,
+        subscription_type=subscription_type,
+        project_id=project_id,
     )
 
 

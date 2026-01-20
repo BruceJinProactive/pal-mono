@@ -82,3 +82,5 @@ class StripeCheckoutResponse(BaseModel):
     customer_id: str
     stripe_subscription_id: str
     subscription_external_id: uuid.UUID
+    subscription_type: str = "account"  # "account" or "project"
+    project_id: uuid.UUID | None = None
