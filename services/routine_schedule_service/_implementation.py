@@ -105,9 +105,14 @@ async def create_schedule(
         effective_until=request.effective_until,
     )
 
+    # Build response before commit to avoid async I/O issues
+    # (session.commit() expires objects, and accessing attributes
+    # in sync _build_schedule_response would trigger greenlet errors)
+    response = _build_schedule_response(schedule)
+
     await session.commit()
 
-    return _build_schedule_response(schedule)
+    return response
 
 
 async def get_schedule(
@@ -213,9 +218,14 @@ async def update_schedule(
             headers={"Content-Type": "application/json"},
         )
 
+    # Build response before commit to avoid async I/O issues
+    # (session.commit() expires objects, and accessing attributes
+    # in sync _build_schedule_response would trigger greenlet errors)
+    response = _build_schedule_response(updated)
+
     await session.commit()
 
-    return _build_schedule_response(updated)
+    return response
 
 
 async def delete_schedule(
