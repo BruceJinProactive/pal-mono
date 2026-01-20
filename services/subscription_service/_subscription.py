@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal as D
 from typing import Any, List, Optional
 
-import stripe
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -2539,13 +2538,9 @@ def create_independent_project_subscription(
             f"Project {project_id} already has an active subscription that overlaps with the requested dates"
         )
 
-    # Determine initial status
-    if trial_start_date:
-        status = SubscriptionStatus.trialing
-    elif start_date <= datetime.now(UTC):
-        status = SubscriptionStatus.active
-    else:
-        status = SubscriptionStatus.pending
+    # Determine initial status - always start as pending like account subscriptions
+    # Status will be updated to trialing/active when Stripe subscription is created via checkout
+    status = SubscriptionStatus.pending
 
     # Create the project subscription record
     external_id = uuid.uuid4()
@@ -2554,7 +2549,7 @@ def create_independent_project_subscription(
         external_id=external_id,
         version=1,
         project_id=project_id,
-        subscription_id=external_id,  # For compatibility with existing schema
+        subscription_id=external_id,  # For independent subscriptions
         subscription_plan_id=plan.id,
         payment_method=payment_method,
         trial_start_date=trial_start_date,
@@ -2567,7 +2562,9 @@ def create_independent_project_subscription(
         recurring_credit_frequency=subscription_params.recurring_credit_frequency,
     )
 
-    # Create Stripe product and subscription if payment method is autopay
+    # Create Stripe product and prices (but NOT the subscription yet)
+    # The Stripe subscription will be created via checkout session callback
+    # This matches the account subscription flow
     if payment_method == PaymentMethod.autopay:
         # Ensure project has Stripe customer ID (project-level customer for independent subscriptions)
         if not project.stripe_customer_id:
@@ -2671,72 +2668,20 @@ def create_independent_project_subscription(
                 },
             )
 
-        # Create Stripe subscription
-        price_ids = [call_price_id]
-        if base_price_id:
-            price_ids.insert(0, base_price_id)
-        if project_subscription.order_price_id:
-            price_ids.append(project_subscription.order_price_id)
-
-        # Create Stripe subscription items
-        items = [{"price": price_id} for price_id in price_ids]
-
-        # Generate idempotency key for safe retry behavior
-        idempotency_key = f"project_sub_{external_id}"
-
-        stripe_subscription_params: dict[str, Any] = {
-            "customer": project.stripe_customer_id,
-            "items": items,
-            "metadata": {
-                "project_id": str(project_id),
-                "project_name": project.name,
-                "account_id": str(account.id),
-                "account_name": account.name,
-                "plan_id": str(plan.id),
-            },
-        }
-
-        if plan.free_trial_days and trial_start_date:
-            stripe_subscription_params["trial_period_days"] = plan.free_trial_days
-
-        # Apply coupon - project-level takes precedence over account-level
-        coupon_to_apply = project.stripe_coupon_id or account.stripe_coupon_id
-        if coupon_to_apply:
-            from services.subscription_service import _stripe_subscription
-
-            try:
-                _stripe_subscription.validate_stripe_coupon(coupon_to_apply)
-                stripe_subscription_params["coupon"] = coupon_to_apply
-                coupon_source = "project" if project.stripe_coupon_id else "account"
-                logger.info(
-                    f"Applying {coupon_source}-level coupon {coupon_to_apply} to subscription",
-                    extra={
-                        "project_id": str(project_id),
-                        "coupon_id": coupon_to_apply,
-                        "coupon_source": coupon_source,
-                    },
-                )
-            except ValueError as e:
-                logger.error(
-                    f"Coupon validation failed: {e}",
-                    extra={
-                        "project_id": str(project_id),
-                        "coupon_id": coupon_to_apply,
-                    },
-                )
-                raise
-
-        stripe_subscription = stripe.Subscription.create(
-            **stripe_subscription_params,
-            idempotency_key=idempotency_key,
-        )
-        project_subscription.stripe_subscription_id = stripe_subscription.id
-
+        # Note: Stripe subscription is NOT created here
+        # It will be created later via checkout session callback (handle_stripe_checkout_success)
+        # This matches the account subscription flow where products/prices are created first,
+        # then the actual Stripe subscription is created during checkout
         logger.info(
-            "Created Stripe subscription for project",
+            "Created Stripe products and prices for project subscription",
             extra={
                 "project_id": str(project_id),
-                "stripe_subscription_id": stripe_subscription.id,
+                "subscription_external_id": str(external_id),
+                "stripe_product_id": stripe_product_id,
+                "base_price_id": base_price_id,
+                "call_price_id": call_price_id,
+                "order_price_id": project_subscription.order_price_id,
+                "note": "Stripe subscription will be created via checkout callback",
             },
         )
 
