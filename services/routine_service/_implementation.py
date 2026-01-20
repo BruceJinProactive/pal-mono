@@ -21,6 +21,7 @@ from api.schemas.operations.routine import (
     RoutineDetailResponse,
     RoutineItemResponse,
     RoutineResponse,
+    ScheduleResponse,
     UpdateRoutineItemRequest,
     UpdateRoutineRequest,
 )
@@ -37,7 +38,11 @@ from services.routine_service._schedule_calculator import calculate_next_executi
 from utils.log import logger
 
 
-def _build_routine_response(routine: Routine) -> RoutineResponse:
+def _build_routine_response(
+    routine: Routine,
+    item_count: int = 0,
+    schedules: list[ScheduleResponse] | None = None,
+) -> RoutineResponse:
     """Build a RoutineResponse from database model."""
     return RoutineResponse(
         id=routine.id,
@@ -48,6 +53,8 @@ def _build_routine_response(routine: Routine) -> RoutineResponse:
         is_active=routine.is_active,
         created_at=routine.created_at,
         updated_at=routine.updated_at,
+        item_count=item_count,
+        schedules=schedules or [],
     )
 
 
@@ -280,16 +287,53 @@ async def list_routines(
     is_active: bool | None = None,
 ) -> ListRoutinesResponse:
     """
-    List all routines for a project.
+    List all routines for a project with item counts and schedules.
     Authorization is handled in the API layer.
+
+    This function efficiently fetches all data in bulk to avoid N+1 queries
+    and greenlet issues.
     """
     routine_repo = RoutineRepositoryAsync(session)
+    schedule_repo = RoutineScheduleRepositoryAsync(session)
 
+    # Fetch all routines for the project
     routines = await routine_repo.list_routines_by_project(project_id, is_active)
 
+    if not routines:
+        return ListRoutinesResponse(routines=[], total=0)
+
+    # Extract routine IDs for bulk queries
+    routine_ids = [r.id for r in routines]
+
+    # Fetch all data in parallel using asyncio.gather to optimize performance
+    item_counts, schedules_by_routine = await asyncio.gather(
+        routine_repo.count_items_by_routine_ids(routine_ids),
+        schedule_repo.list_schedules_by_routine_ids(routine_ids),
+    )
+
+    # Build response objects with all data already fetched
+    routine_responses = []
+    for routine in routines:
+        # Get item count (defaults to 0 if not found)
+        item_count = item_counts.get(routine.id, 0)
+
+        # Get schedules for this routine (defaults to empty list)
+        schedule_models = schedules_by_routine.get(routine.id, [])
+
+        # Convert schedule models to response objects
+        # Use model_validate to avoid accessing lazy-loaded attributes
+        schedule_responses = [
+            ScheduleResponse.model_validate(s) for s in schedule_models
+        ]
+
+        # Build routine response with all data
+        routine_responses.append(
+            _build_routine_response(routine, item_count, schedule_responses)
+        )
+
     return ListRoutinesResponse(
-        routines=[_build_routine_response(r) for r in routines],
-        total=len(routines),
+        routines=routine_responses,
+        total=len(routine_responses),
     )
 
 

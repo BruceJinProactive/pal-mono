@@ -2415,6 +2415,10 @@ async def list_executions(
 )
 async def get_execution(
     execution_id: uuid.UUID,
+    details: bool = Query(
+        default=False,
+        description="Include full routine and submission details",
+    ),
     context: UserContext = Depends(authenticate_user),
     session: AsyncSession = Depends(db.get_db_async),
 ) -> ExecutionDetailResponse:
@@ -2424,10 +2428,13 @@ async def get_execution(
     Path Parameters:
     - execution_id: UUID of the execution
 
+    Query Parameters:
+    - details: If true, includes full routine and submission details
+
     Returns:
     - ExecutionDetailResponse with execution details
     """
-    return await _routines.get_execution(execution_id, context, session)
+    return await _routines.get_execution(execution_id, context, session, details)
 
 
 # ==============================================================================

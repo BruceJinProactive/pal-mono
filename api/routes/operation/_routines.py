@@ -225,9 +225,12 @@ async def get_execution(
     execution_id: UUID,
     context: UserContext,
     session: AsyncSession,
+    details: bool = False,
 ) -> ExecutionDetailResponse:
     """Get an execution by ID."""
-    return await routine_execution_service.get_execution(execution_id, context, session)
+    return await routine_execution_service.get_execution(
+        execution_id, context, session, details
+    )
 
 
 # ============================================================================

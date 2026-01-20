@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.schemas.operations.routine import (
     ExecutionDetailResponse,
     ListExecutionsResponse,
+    RoutineDetailResponse,
+    SubmissionDetailResponse,
 )
 from db.repositories import (
     RoutineExecutionRepositoryAsync,
@@ -30,8 +32,11 @@ def _build_execution_response(
     routine_name: str | None,
     routine_category: RoutineCategory | None,
     routine_item_count: int,
+    submission_id: UUID | None,
     submission_status: SubmissionStatus | None,
     submission_completed_count: int,
+    routine_detail: RoutineDetailResponse | None = None,
+    submission_detail: SubmissionDetailResponse | None = None,
 ) -> ExecutionDetailResponse:
     """
     Build ExecutionDetailResponse from execution data.
@@ -62,9 +67,12 @@ def _build_execution_response(
         routine_category=routine_category,
         routine_item_count=routine_item_count,
         has_submission=submission_status is not None,
+        submission_id=submission_id,
         submission_status=submission_status,
         submission_completed_count=submission_completed_count,
         submission_total_count=routine_item_count,
+        routine=routine_detail,
+        submission=submission_detail,
     )
 
 
@@ -72,11 +80,18 @@ async def get_execution(
     execution_id: UUID,
     context: UserContext,
     session: AsyncSession,
+    details: bool = False,
 ) -> ExecutionDetailResponse:
     """
     Get an execution by ID.
     Authorization is handled in the API layer.
     """
+    from services.routine_service._implementation import _build_routine_detail_response
+    from services.routine_submission_service._implementation import (
+        _build_item_response,
+        _build_submission_detail_response,
+    )
+
     execution_repo = RoutineExecutionRepositoryAsync(session)
     routine_repo = RoutineRepositoryAsync(session)
     submission_repo = RoutineSubmissionRepositoryAsync(session)
@@ -99,21 +114,55 @@ async def get_execution(
     routine_name = routine.name if routine else None
     routine_category = routine.category if routine else None
     routine_item_count = len(routine_items)
+    submission_id = submission.id if submission else None
     submission_status = submission.status if submission else None
 
-    # Calculate submission completion
+    # Calculate submission completion and fetch responses
     submission_completed_count = 0
+    responses = []
     if submission:
         responses = await submission_repo.list_responses_by_submission(submission.id)
         submission_completed_count = len(responses)
+
+    # Build detailed responses if requested
+    routine_detail: RoutineDetailResponse | None = None
+    submission_detail: SubmissionDetailResponse | None = None
+
+    if details:
+        # Build routine detail with items
+        if routine:
+            routine_detail = await _build_routine_detail_response(
+                routine, routine_items
+            )
+
+        # Build submission detail with responses (reuse already-fetched responses)
+        if submission and responses:
+            # Build item lookup for enriching responses
+            item_map = {item.id: item for item in routine_items}
+            response_list = []
+            for response in responses:
+                item = item_map.get(response.routine_item_id)
+                response_with_item = await _build_item_response(
+                    response,
+                    item_name=item.name if item else None,
+                    item_description=item.description if item else None,
+                    is_required=item.is_required if item else True,
+                )
+                response_list.append(response_with_item)
+            submission_detail = _build_submission_detail_response(
+                submission, response_list, routine_name
+            )
 
     return _build_execution_response(
         execution,
         routine_name,
         routine_category,
         routine_item_count,
+        submission_id,
         submission_status,
         submission_completed_count,
+        routine_detail,
+        submission_detail,
     )
 
 
@@ -175,6 +224,7 @@ async def list_executions(
         routine_name = routine.name if routine else None
         routine_category = routine.category if routine else None
         routine_item_count = routine_item_counts.get(execution.routine_id, 0)
+        submission_id = submission.id if submission else None
         submission_status = submission.status if submission else None
         submission_completed_count = (
             len(responses_by_submission.get(submission.id, [])) if submission else 0
@@ -186,6 +236,7 @@ async def list_executions(
                 routine_name,
                 routine_category,
                 routine_item_count,
+                submission_id,
                 submission_status,
                 submission_completed_count,
             )
@@ -240,6 +291,7 @@ async def update_execution_status(
     routine_name = routine.name if routine else None
     routine_category = routine.category if routine else None
     routine_item_count = len(routine_items)
+    submission_id = submission.id if submission else None
     submission_status = submission.status if submission else None
 
     # Calculate submission completion
@@ -253,6 +305,7 @@ async def update_execution_status(
         routine_name,
         routine_category,
         routine_item_count,
+        submission_id,
         submission_status,
         submission_completed_count,
     )

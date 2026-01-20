@@ -30,6 +30,7 @@ async def get_execution(
     execution_id: UUID,
     context: UserContext,
     session: AsyncSession,
+    details: bool = False,
 ) -> ExecutionDetailResponse:
     """
     Get an execution by ID.
@@ -38,11 +39,12 @@ async def get_execution(
         execution_id: UUID of the execution
         context: User authentication context
         session: Database session
+        details: Include full routine and submission details
 
     Returns:
         ExecutionDetailResponse object
     """
-    return await _implementation.get_execution(execution_id, context, session)
+    return await _implementation.get_execution(execution_id, context, session, details)
 
 
 async def list_executions(

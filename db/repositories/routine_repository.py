@@ -426,3 +426,41 @@ class RoutineRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error listing items by routine ids: {e}")
             return {}
+
+    async def count_items_by_routine_ids(
+        self,
+        routine_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, int]:
+        """
+        Count items for multiple routines in a single query.
+
+        Args:
+            routine_ids: List of routine UUIDs
+
+        Returns:
+            Dict mapping routine_id to item count
+        """
+        try:
+            if not routine_ids:
+                return {}
+
+            from sqlalchemy import func
+
+            stmt = (
+                select(RoutineItem.routine_id, func.count(RoutineItem.id))
+                .where(RoutineItem.routine_id.in_(routine_ids))
+                .group_by(RoutineItem.routine_id)
+            )
+            result = await self.session.execute(stmt)
+            rows = result.all()
+
+            # Create dict with counts, defaulting to 0 for routines with no items
+            counts = {routine_id: 0 for routine_id in routine_ids}
+            for routine_id, count in rows:
+                counts[routine_id] = count
+
+            return counts
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error counting items by routine ids: {e}")
+            return {routine_id: 0 for routine_id in routine_ids}

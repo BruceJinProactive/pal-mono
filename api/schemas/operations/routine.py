@@ -316,6 +316,10 @@ class RoutineResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime | None
+    item_count: int = Field(default=0, description="Number of items in the routine")
+    schedules: list["ScheduleResponse"] = Field(
+        default_factory=list, description="Schedules for the routine"
+    )
 
 
 class RoutineDetailResponse(RoutineResponse):
@@ -433,9 +437,18 @@ class ExecutionDetailResponse(ExecutionResponse):
     routine_category: RoutineCategory | None = None
     routine_item_count: int = 0
     has_submission: bool = False
+    submission_id: uuid.UUID | None = None
     submission_status: SubmissionStatus | None = None
     submission_completed_count: int = 0
     submission_total_count: int = 0
+    routine: RoutineDetailResponse | None = Field(
+        default=None,
+        description="Full routine details (only included when details=true)",
+    )
+    submission: SubmissionDetailResponse | None = Field(
+        default=None,
+        description="Full submission details (only included when details=true and has_submission=true)",
+    )
 
 
 class ListExecutionsResponse(BaseModel):

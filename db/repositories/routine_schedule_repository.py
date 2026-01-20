@@ -267,3 +267,41 @@ class RoutineScheduleRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error deleting schedules by routine: {e}")
             return 0
+
+    async def list_schedules_by_routine_ids(
+        self,
+        routine_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, list[RoutineSchedule]]:
+        """
+        List all schedules for multiple routines in a single query.
+
+        Args:
+            routine_ids: List of routine UUIDs
+
+        Returns:
+            Dict mapping routine_id to list of RoutineSchedule objects
+        """
+        try:
+            if not routine_ids:
+                return {}
+
+            stmt = (
+                select(RoutineSchedule)
+                .where(RoutineSchedule.routine_id.in_(routine_ids))
+                .order_by(RoutineSchedule.routine_id, RoutineSchedule.created_at.desc())
+            )
+            result = await self.session.execute(stmt)
+            schedules = list(result.scalars().all())
+
+            # Group schedules by routine_id
+            schedules_by_routine: dict[uuid.UUID, list[RoutineSchedule]] = {
+                routine_id: [] for routine_id in routine_ids
+            }
+            for schedule in schedules:
+                schedules_by_routine[schedule.routine_id].append(schedule)
+
+            return schedules_by_routine
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error listing schedules by routine ids: {e}")
+            return {routine_id: [] for routine_id in routine_ids}
