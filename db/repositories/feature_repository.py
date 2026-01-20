@@ -33,6 +33,9 @@ class FeatureRepositoryAsync:
 
         Returns:
             bool: True if the feature is enabled, False otherwise (including if not found)
+
+        Raises:
+            DBTimeoutError: On connection pool timeout (propagates for proper cleanup)
         """
         try:
             result = await self.session.execute(
@@ -55,7 +58,7 @@ class FeatureRepositoryAsync:
             logger.error(
                 f"Error checking feature enablement for {feature}/{identifier_type}/{identifier}: {e}"
             )
-            return False
+            raise
 
     async def upsert(
         self,
@@ -107,12 +110,6 @@ class FeatureRepositoryAsync:
                 await self.session.refresh(new_feature)
                 return new_feature
 
-        except DBTimeoutError as e:
-            # Pool exhaustion/timeout errors must propagate for proper cleanup
-            logger.error(
-                f"Connection pool timeout upserting feature {feature}/{identifier_type}/{identifier}: {e}"
-            )
-            raise
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(
