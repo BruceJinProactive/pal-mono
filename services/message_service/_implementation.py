@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 import db
 from agent import Agent
+from agent.framework.internal.filler_words_manager import FillerWordsManager
 from agent.input_output import Output
 from agent.storage._implementation import query_history_messages
 from api.schemas.chat.message import (
@@ -429,8 +430,12 @@ async def get_chat_response_stream(
             request_conversation_id = request_message.conversation_id
 
             # Get account info for metadata
+            # NOTE: Adding "agent" here causes a redundant DB load since construct_agent_spec()
+            # also loads the agent via get_agent(agent_id). Future optimization: return
+            # filler_words_config from construct_agent_spec() to eliminate this extra query.
+            # See: services/agent_service/_implementation.py lines 239-241
             await session.refresh(user, attribute_names=["id"])
-            await session.refresh(project, attribute_names=["account"])
+            await session.refresh(project, attribute_names=["account", "agent"])
             account_name = project.account.name
             testing = (
                 getattr(message.metadata, "testing", False)
@@ -561,6 +566,66 @@ async def get_chat_response_stream(
                         f"account_name:{account_name}",
                     ],
                 )
+
+                # ════════════════════════════════════════════════════════
+                # CHAT FILLER INJECTION (mirrors agno implementation)
+                # ════════════════════════════════════════════════════════
+                # Wrapped in try/except to ensure filler failures don't break streaming.
+                # Filler is a UX enhancement; graceful degradation is appropriate.
+                chat_filler = ""
+                try:
+                    filler_words_config = project.agent.filler_words or {}
+                    chat_filler_percentage = filler_words_config.get(
+                        "chat_filler_words_percentage", 80
+                    )
+
+                    filler_manager = FillerWordsManager(
+                        agent_id=str(agent_id),
+                        account_name=account_name,
+                        chat_filler_words_percentage=chat_filler_percentage,
+                        tool_calling_filler_words_percentage=0,  # Not used
+                    )
+                    chat_filler = filler_manager.get_chat_filler_for_input(
+                        current_message
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to generate chat filler",
+                        extra={
+                            "error": str(e),
+                            "agent_id": str(agent_id),
+                            "account_name": account_name,
+                        },
+                    )
+
+                if chat_filler:
+                    send_dd_histogram_metrics(
+                        "message_service.filler_chunk_yielded",
+                        request_context.request_time,
+                        [
+                            f"agent_id:{agent_id}",
+                            f"account_name:{account_name}",
+                        ],
+                    )
+                    filler_chunk = ChatCompletionChunk(
+                        id=f"chatcmpl-{uuid.uuid4().hex}",
+                        object="chat.completion.chunk",
+                        created=int(
+                            datetime.datetime.now(datetime.timezone.utc).timestamp()
+                        ),
+                        model=message.recipient_identifier,
+                        choices=[
+                            ChunkChoice(
+                                index=0,
+                                delta=ChoiceDelta(
+                                    role="assistant", content=chat_filler
+                                ),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
+                    yield filler_chunk
+                    collected_content.append(chat_filler)
 
                 # Stream from pal-agents
                 async with trace_async_block("Message Service Streaming"):
