@@ -172,7 +172,7 @@ class ToastTool(Toolkit):
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
         with LLMObs.task(name="get_toast_bearer_token"):
-            if "sandbox" not in str(self.general_api_endpoint):
+            if "sandbox" in str(self.general_api_endpoint):
                 return get_toast_access_token_from_aws(
                     self.token_api_endpoint,
                     token_name="TOAST_SANDBOX_ACCESS_TOKEN",
@@ -1659,14 +1659,9 @@ class ToastTool(Toolkit):
         full_name = (customer.firstName + " " + customer.lastName).strip()
 
         # Get iframe bearer token for frontend to initialize Toast payment widget
-        payment_api_endpoint = (
-            "https://ws-sandbox-api.eng.toasttab.com"
-            if "sandbox" not in str(self.general_api_endpoint)
-            else "https://ws-api.toasttab.com"
-        )
 
         iframe_bearer_token = get_toast_access_token_from_aws(
-            token_api_endpoint=payment_api_endpoint,
+            token_api_endpoint=self.token_api_endpoint,
             token_name="TOAST_PAYMENT_IFRAME_ACCESS_TOKEN",
             credential_name="TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS",
         )
