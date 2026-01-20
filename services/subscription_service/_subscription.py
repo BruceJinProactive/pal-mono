@@ -227,20 +227,20 @@ def _handle_project_stripe_checkout_success(
     else:
         status = SubscriptionStatus.active
 
-    # Update project subscription with Stripe ID and status
-    data = {
-        "stripe_subscription_id": response.stripe_subscription_id,
-        "status": status,
-    }
-
-    updated_subscription = update_project_subscription(
-        session=session,
-        context=context,
-        project_id=response.project_id,
-        external_id=response.subscription_external_id,
-        update_data=data,
-        force_update=True,
+    # Update project subscription with Stripe ID and status directly (no versioning)
+    # We use the repository method directly to avoid creating a new version
+    updated_subscription = project_subscription_repo.update_project_subscription(
+        id=project_subscription.id,
+        stripe_subscription_id=response.stripe_subscription_id,
+        status=status,
     )
+
+    if not updated_subscription:
+        raise ValueError(
+            f"Failed to update project subscription {response.subscription_external_id}"
+        )
+
+    session.commit()
 
     logger.info(
         "Successfully updated project subscription's stripe id",
