@@ -3274,6 +3274,28 @@ def switch_subscription_plan(
 
 
 @admin_router.post(
+    "/accounts/{account_name}/projects/{project_id}/subscriptions/{external_id}/checkout"
+)
+def create_project_subscription_checkout_session(
+    account_name: str,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    request: CreateCheckoutSessionRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> str:
+    """
+    Creates a Stripe checkout session for an independent project subscription.
+    The subscription must be active and not have a stripe_subscription_id.
+    """
+    return _subscription.create_project_checkout_session(
+        context, session, account_name, project_id, external_id, request
+    )
+
+
+@admin_router.post(
     "/accounts/{account_name}/projects/{project_id}/switch_plan",
     status_code=status.HTTP_200_OK,
 )

@@ -1059,6 +1059,172 @@ def create_stripe_checkout_url(
     return checkout_session.url
 
 
+def create_stripe_checkout_url_for_project(
+    session: Session,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    customer_email: str | None,
+    redirect_url_prefix: str,
+    referral_code: str | None = None,
+) -> str | None:
+    """
+    Create a Stripe checkout URL for an independent project subscription.
+
+    This function creates a checkout session for project subscriptions that have
+    their own Stripe billing (subscription_id == external_id).
+
+    Args:
+        session: Database session
+        project_id: UUID of the project
+        external_id: External ID of the project subscription
+        customer_email: Optional email for the customer
+        redirect_url_prefix: URL prefix for success/cancel redirects
+        referral_code: Optional Rewardful referral token from ?via= parameter
+
+    Returns:
+        Checkout URL string or None if subscription not found
+
+    Raises:
+        ValueError: If subscription already has Stripe ID or is account-linked
+        RuntimeError: If no valid prices found
+    """
+    project_subscription_repo = ProjectSubscriptionRepository(session)
+
+    # Get project subscription by external_id
+    project_subscription = (
+        project_subscription_repo.get_project_subscription_by_external_id(external_id)
+    )
+
+    if not project_subscription or project_subscription.project_id != project_id:
+        return None
+
+    # Validate this is an independent project subscription
+    if project_subscription.subscription_id != project_subscription.external_id:
+        raise ValueError(
+            "Cannot create checkout for account-linked project subscription. "
+            "Use account-level checkout instead."
+        )
+
+    # Validate subscription doesn't already have a Stripe subscription ID
+    # It's ok for cancelled subscriptions to have a stripe ID from previous checkouts
+    if (
+        project_subscription.status != SubscriptionStatus.cancelled
+        and project_subscription.stripe_subscription_id
+    ):
+        raise ValueError("Subscription already has a Stripe subscription ID")
+
+    # Get project details for better descriptions
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+
+    project_name = project.name
+    project_display_name = (
+        project.display_name if project.display_name else project_name
+    )
+
+    # Collect all line items for the checkout session
+    line_items = []
+    price_details = []
+
+    # Add base price (monthly fee)
+    if project_subscription.base_price_id:
+        line_items.append(
+            {
+                "price": project_subscription.base_price_id,
+                "quantity": 1,
+            }
+        )
+        price_details.append(
+            {
+                "project_subscription_id": str(project_subscription.id),
+                "project_id": str(project_id),
+                "project_name": project_name,
+                "project_display_name": project_display_name,
+                "price_type": "monthly_fee",
+                "price_id": project_subscription.base_price_id,
+                "description": f"Monthly fee for {project_display_name}",
+            }
+        )
+
+    # Add call usage price (metered billing)
+    if project_subscription.call_price_id:
+        line_items.append(
+            {
+                "price": project_subscription.call_price_id,
+            }
+        )
+        price_details.append(
+            {
+                "project_subscription_id": str(project_subscription.id),
+                "project_id": str(project_id),
+                "project_name": project_name,
+                "project_display_name": project_display_name,
+                "price_type": "call_usage",
+                "price_id": project_subscription.call_price_id,
+                "description": f"Call usage for {project_display_name}",
+            }
+        )
+
+    # Add order usage price (metered billing)
+    if project_subscription.order_price_id:
+        line_items.append(
+            {
+                "price": project_subscription.order_price_id,
+            }
+        )
+        price_details.append(
+            {
+                "project_subscription_id": str(project_subscription.id),
+                "project_id": str(project_id),
+                "project_name": project_name,
+                "project_display_name": project_display_name,
+                "price_type": "order_usage",
+                "price_id": project_subscription.order_price_id,
+                "description": f"Order usage for {project_display_name}",
+            }
+        )
+
+    if not line_items:
+        raise RuntimeError("No valid price IDs found for checkout session")
+
+    logger.info(
+        "Creating project checkout session",
+        extra={
+            "project_id": str(project_id),
+            "subscription_external_id": str(external_id),
+            "price_details": price_details,
+            "line_items_count": len(line_items),
+        },
+    )
+
+    # Get account for customer information
+    account = account_service.get_account_by_id(session, project.account_id)
+    if not account:
+        raise ValueError(f"Account {project.account_id} not found")
+
+    existing_stripe_customer_id = account.stripe_customer_id
+    account_coupon_id = account.stripe_coupon_id
+
+    # Create checkout session with project-specific prices
+    checkout_session = _stripe_subscription.create_checkout_session(
+        account_id=project.account_id,
+        customer_email=customer_email,
+        subscription_external_id=external_id,
+        line_items=line_items,
+        redirect_url_prefix=redirect_url_prefix,
+        start_date=project_subscription.start_date,
+        existing_customer_id=existing_stripe_customer_id,
+        referral_code=referral_code,
+        account_coupon_id=account_coupon_id,
+    )
+
+    if not checkout_session or not checkout_session.url:
+        raise RuntimeError("Failed to create checkout session")
+
+    return checkout_session.url
+
+
 def get_project_subscriptions_by_subscription_external_id(
     session: Session,
     context: UserContext,

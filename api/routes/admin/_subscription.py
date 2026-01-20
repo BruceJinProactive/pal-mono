@@ -842,6 +842,64 @@ def switch_subscription_plan(
         )
 
 
+def create_project_checkout_session(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    project_id: uuid.UUID,
+    external_id: uuid.UUID,
+    request: CreateCheckoutSessionRequest,
+) -> str:
+    """Create a Stripe checkout session for an independent project subscription.
+    Authorization is handled by require_account_permission in route decorator.
+    """
+    # Get account to validate it exists
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found")
+
+    # Get project to validate it exists and belongs to account
+    project = project_service.get_project(session, project_id)
+    if not project:
+        raise not_found_error(f"Project {project_id} not found")
+
+    if project.account_id != account.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project does not belong to this account",
+        )
+
+    try:
+        checkout_url = subscription_service.create_stripe_checkout_url_for_project(
+            session=session,
+            project_id=project_id,
+            external_id=external_id,
+            customer_email=(
+                str(request.customer_email) if request.customer_email else None
+            ),
+            redirect_url_prefix=str(request.redirect_url_prefix),
+            referral_code=request.referral_code,
+        )
+    except RuntimeError as err:
+        logger.exception(str(err))
+        raise HTTPException(
+            status_code=500,
+            detail=str(err),
+        )
+    except ValueError as err:
+        raise HTTPException(
+            status_code=400,
+            detail=str(err),
+        )
+
+    if not checkout_url:
+        raise not_found_error(
+            f"Project subscription {external_id} not found in project: {project_id}"
+        )
+
+    return checkout_url
+
+
 def switch_project_subscription_plan(
     context: UserContext,
     session: Session,

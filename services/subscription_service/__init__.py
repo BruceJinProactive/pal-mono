@@ -30,6 +30,7 @@ from ._subscription import (
     create_independent_project_subscription,
     create_project_subscription,
     create_stripe_checkout_url,
+    create_stripe_checkout_url_for_project,
     create_stripe_customer_for_account,
     get_account_credit_balance,
     get_account_credit_grants,
@@ -91,6 +92,7 @@ __all__ = [
     "get_subscription_plan_by_id",
     # Stripe functions
     "create_stripe_checkout_url",
+    "create_stripe_checkout_url_for_project",
     "create_stripe_customer_for_account",
     "get_stripe_customer_info_for_account",
     "update_stripe_customer_for_account",
