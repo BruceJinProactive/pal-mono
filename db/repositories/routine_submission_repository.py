@@ -570,3 +570,43 @@ class RoutineSubmissionRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error deleting item response: {e}")
             return False
+
+    async def list_responses_by_submission_ids(
+        self,
+        submission_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, list[RoutineItemResponse]]:
+        """
+        List all responses for multiple submissions in a single query.
+
+        Args:
+            submission_ids: List of submission UUIDs
+
+        Returns:
+            Dict mapping submission_id to list of RoutineItemResponse objects
+        """
+        try:
+            if not submission_ids:
+                return {}
+
+            stmt = (
+                select(RoutineItemResponse)
+                .where(RoutineItemResponse.submission_id.in_(submission_ids))
+                .order_by(
+                    RoutineItemResponse.submission_id, RoutineItemResponse.created_at
+                )
+            )
+            result = await self.session.execute(stmt)
+            responses = list(result.scalars().all())
+
+            # Group responses by submission_id
+            responses_by_submission: dict[uuid.UUID, list[RoutineItemResponse]] = {}
+            for response in responses:
+                if response.submission_id not in responses_by_submission:
+                    responses_by_submission[response.submission_id] = []
+                responses_by_submission[response.submission_id].append(response)
+
+            return responses_by_submission
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error listing responses by submission ids: {e}")
+            return {}

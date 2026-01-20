@@ -388,3 +388,41 @@ class RoutineRepositoryAsync:
         if not items:
             return 0
         return max(item.sort_order for item in items) + 1
+
+    async def list_items_by_routine_ids(
+        self,
+        routine_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, list[RoutineItem]]:
+        """
+        List all items for multiple routines in a single query.
+
+        Args:
+            routine_ids: List of routine UUIDs
+
+        Returns:
+            Dict mapping routine_id to list of RoutineItem objects
+        """
+        try:
+            if not routine_ids:
+                return {}
+
+            stmt = (
+                select(RoutineItem)
+                .where(RoutineItem.routine_id.in_(routine_ids))
+                .order_by(RoutineItem.routine_id, RoutineItem.sort_order)
+            )
+            result = await self.session.execute(stmt)
+            items = list(result.scalars().all())
+
+            # Group items by routine_id
+            items_by_routine: dict[uuid.UUID, list[RoutineItem]] = {}
+            for item in items:
+                if item.routine_id not in items_by_routine:
+                    items_by_routine[item.routine_id] = []
+                items_by_routine[item.routine_id].append(item)
+
+            return items_by_routine
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error listing items by routine ids: {e}")
+            return {}

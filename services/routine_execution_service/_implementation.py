@@ -21,28 +21,50 @@ from db.repositories import (
     RoutineSubmissionRepositoryAsync,
 )
 from db.tables.routine_executions import RoutineExecution
-from db.tables.types import ExecutionStatus
+from db.tables.types import ExecutionStatus, RoutineCategory, SubmissionStatus
 from services.auth_types import UserContext
 
 
 def _build_execution_response(
     execution: RoutineExecution,
-    routine_name: str | None = None,
-    has_submission: bool = False,
+    routine_name: str | None,
+    routine_category: RoutineCategory | None,
+    routine_item_count: int,
+    submission_status: SubmissionStatus | None,
+    submission_completed_count: int,
 ) -> ExecutionDetailResponse:
-    """Build an ExecutionDetailResponse from database model."""
+    """
+    Build ExecutionDetailResponse from execution data.
+    All SQLAlchemy attributes are accessed immediately to prevent greenlet issues.
+    """
+    # Extract all execution attributes immediately
+    execution_id = execution.id
+    execution_routine_id = execution.routine_id
+    execution_schedule_id = execution.schedule_id
+    execution_scheduled_start = execution.scheduled_start
+    execution_scheduled_end = execution.scheduled_end
+    execution_status = execution.status
+    execution_assigned_user_id = execution.assigned_user_id
+    execution_created_at = execution.created_at
+    execution_updated_at = execution.updated_at
+
     return ExecutionDetailResponse(
-        id=execution.id,
-        routine_id=execution.routine_id,
-        schedule_id=execution.schedule_id,
-        scheduled_start=execution.scheduled_start,
-        scheduled_end=execution.scheduled_end,
-        status=execution.status,
-        assigned_user_id=execution.assigned_user_id,
-        created_at=execution.created_at,
-        updated_at=execution.updated_at,
+        id=execution_id,
+        routine_id=execution_routine_id,
+        schedule_id=execution_schedule_id,
+        scheduled_start=execution_scheduled_start,
+        scheduled_end=execution_scheduled_end,
+        status=execution_status,
+        assigned_user_id=execution_assigned_user_id,
+        created_at=execution_created_at,
+        updated_at=execution_updated_at,
         routine_name=routine_name,
-        has_submission=has_submission,
+        routine_category=routine_category,
+        routine_item_count=routine_item_count,
+        has_submission=submission_status is not None,
+        submission_status=submission_status,
+        submission_completed_count=submission_completed_count,
+        submission_total_count=routine_item_count,
     )
 
 
@@ -68,15 +90,31 @@ async def get_execution(
             headers={"Content-Type": "application/json"},
         )
 
-    # Get routine name
+    # Fetch all related data
     routine = await routine_repo.get_routine_by_id(execution.routine_id)
-    routine_name = routine.name if routine else None
-
-    # Check if has submission
+    routine_items = await routine_repo.list_items_by_routine(execution.routine_id)
     submission = await submission_repo.get_submission_by_execution_id(execution_id)
-    has_submission = submission is not None
 
-    return _build_execution_response(execution, routine_name, has_submission)
+    # Extract data immediately to prevent greenlet issues
+    routine_name = routine.name if routine else None
+    routine_category = routine.category if routine else None
+    routine_item_count = len(routine_items)
+    submission_status = submission.status if submission else None
+
+    # Calculate submission completion
+    submission_completed_count = 0
+    if submission:
+        responses = await submission_repo.list_responses_by_submission(submission.id)
+        submission_completed_count = len(responses)
+
+    return _build_execution_response(
+        execution,
+        routine_name,
+        routine_category,
+        routine_item_count,
+        submission_status,
+        submission_completed_count,
+    )
 
 
 async def list_executions(
@@ -106,29 +144,54 @@ async def list_executions(
     if not executions:
         return ListExecutionsResponse(executions=[], total=0)
 
-    # Get routines for name lookup
+    # Fetch all routines and build lookup
     routines = await routine_repo.list_routines_by_project(project_id)
-    routine_names = {r.id: r.name for r in routines}
+    routine_map = {r.id: r for r in routines}
 
-    # Get submissions for these executions
+    # Fetch routine items in batch (single DB call)
+    items_by_routine = await routine_repo.list_items_by_routine_ids(
+        list(routine_map.keys())
+    )
+    routine_item_counts = {rid: len(items) for rid, items in items_by_routine.items()}
+
+    # Fetch submissions in batch
     execution_ids = [e.id for e in executions]
     submissions = await submission_repo.list_submissions_by_execution_ids(execution_ids)
-    execution_has_submission = {s.execution_id for s in submissions}
+    submission_map = {s.execution_id: s for s in submissions}
 
-    # Build responses
-    responses = [
-        _build_execution_response(
-            execution=e,
-            routine_name=routine_names.get(e.routine_id),
-            has_submission=e.id in execution_has_submission,
-        )
-        for e in executions
-    ]
-
-    return ListExecutionsResponse(
-        executions=responses,
-        total=len(responses),
+    # Fetch item responses in batch (single DB call)
+    submission_ids = [s.id for s in submissions]
+    responses_by_submission = await submission_repo.list_responses_by_submission_ids(
+        submission_ids
     )
+
+    # Build response list
+    result = []
+    for execution in executions:
+        # Extract all data immediately to prevent greenlet issues
+        routine = routine_map.get(execution.routine_id)
+        submission = submission_map.get(execution.id)
+
+        routine_name = routine.name if routine else None
+        routine_category = routine.category if routine else None
+        routine_item_count = routine_item_counts.get(execution.routine_id, 0)
+        submission_status = submission.status if submission else None
+        submission_completed_count = (
+            len(responses_by_submission.get(submission.id, [])) if submission else 0
+        )
+
+        result.append(
+            _build_execution_response(
+                execution,
+                routine_name,
+                routine_category,
+                routine_item_count,
+                submission_status,
+                submission_completed_count,
+            )
+        )
+
+    return ListExecutionsResponse(executions=result, total=len(result))
 
 
 async def update_execution_status(
@@ -168,12 +231,28 @@ async def update_execution_status(
 
     await session.commit()
 
-    # Get routine name
+    # Fetch all related data
     routine = await routine_repo.get_routine_by_id(updated.routine_id)
-    routine_name = routine.name if routine else None
-
-    # Check if has submission
+    routine_items = await routine_repo.list_items_by_routine(updated.routine_id)
     submission = await submission_repo.get_submission_by_execution_id(execution_id)
-    has_submission = submission is not None
 
-    return _build_execution_response(updated, routine_name, has_submission)
+    # Extract data immediately to prevent greenlet issues
+    routine_name = routine.name if routine else None
+    routine_category = routine.category if routine else None
+    routine_item_count = len(routine_items)
+    submission_status = submission.status if submission else None
+
+    # Calculate submission completion
+    submission_completed_count = 0
+    if submission:
+        responses = await submission_repo.list_responses_by_submission(submission.id)
+        submission_completed_count = len(responses)
+
+    return _build_execution_response(
+        updated,
+        routine_name,
+        routine_category,
+        routine_item_count,
+        submission_status,
+        submission_completed_count,
+    )

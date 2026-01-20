@@ -430,7 +430,12 @@ class ExecutionDetailResponse(ExecutionResponse):
     """Response model for an execution with routine info."""
 
     routine_name: str | None = None
+    routine_category: RoutineCategory | None = None
+    routine_item_count: int = 0
     has_submission: bool = False
+    submission_status: SubmissionStatus | None = None
+    submission_completed_count: int = 0
+    submission_total_count: int = 0
 
 
 class ListExecutionsResponse(BaseModel):
