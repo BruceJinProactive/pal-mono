@@ -169,6 +169,10 @@ class VapiTool(Toolkit):
             # call from PSTN phones. <Dial> keeps Twilio in the call path
             # and bridges PSTN caller to SIP endpoint.
             # IMPORTANT: "mode" is required when using transferPlan per VAPI support
+            # NOTE: Do NOT set callerId for SIP transfers - adding callerId to the
+            # destination object causes VAPI to ignore transferPlan.sipVerb and fall
+            # back to using <Refer>, which fails for PSTN callers. For SIP, caller ID
+            # must be configured at the SIP trunk level, not per-transfer.
             destination = {
                 "type": "sip",
                 "sipUri": destination_number,
@@ -177,8 +181,39 @@ class VapiTool(Toolkit):
                     "sipVerb": "dial",
                 },
             }
+            logger.debug(
+                "[VapiTool._build_transfer_payload] SIP transfer - callerId not set "
+                "(must be configured at trunk level to preserve sipVerb: dial)"
+            )
         else:
             destination = {"type": "number", "number": destination_number}
+            # Set caller ID for phone number transfers only
+            # When show_agent_caller_id is True: store sees AI agent's phone number
+            # When show_agent_caller_id is False (default): store sees customer's phone number
+            if self.show_agent_caller_id:
+                if self.tool_metadata and self.tool_metadata.store_phone:
+                    destination["callerId"] = self.tool_metadata.store_phone
+                    logger.debug(
+                        f"[VapiTool._build_transfer_payload] Setting callerId to agent phone: "
+                        f"{_mask_phone(self.tool_metadata.store_phone)}"
+                    )
+                else:
+                    logger.warning(
+                        "[VapiTool._build_transfer_payload] show_agent_caller_id is enabled but "
+                        "store_phone is unavailable; callerId will not be set"
+                    )
+            else:
+                if self.tool_metadata and self.tool_metadata.customer_phone:
+                    destination["callerId"] = self.tool_metadata.customer_phone
+                    logger.debug(
+                        f"[VapiTool._build_transfer_payload] Setting callerId to customer phone: "
+                        f"{_mask_phone(self.tool_metadata.customer_phone)}"
+                    )
+                else:
+                    logger.debug(
+                        "[VapiTool._build_transfer_payload] customer_phone is unavailable; "
+                        "callerId will not be set"
+                    )
 
         # Set caller ID based on project preference
         # When show_agent_caller_id is True: store sees AI agent's phone number
