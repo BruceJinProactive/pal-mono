@@ -37,6 +37,9 @@ from utils.request_context import RequestContext
 
 from . import _utils
 
+# Accounts that use the pal-agents framework instead of the legacy agent system
+PAL_AGENTS_ACCOUNTS = ["proactiveailab-transformer", "comida"]
+
 
 def get_filler_message(message: Message) -> Message:
     # Collection of filler phrases for voice responses
@@ -127,7 +130,7 @@ async def get_chat_response_async(
         # **************** Step 2: Construct agent, get input, and generate output ****************
         # Initialize current_message for memory ingestion (defined in pal-agents branch)
         current_message = ""
-        if account_name in ["proactiveailab-transformer"]:
+        if account_name in PAL_AGENTS_ACCOUNTS:
             # NEW FLOW: Use pal-agents
 
             spec = await agent_service.construct_agent_spec(
@@ -323,7 +326,7 @@ async def get_chat_response_async(
 
         # Memory ingestion for pal-agents flow (fire-and-forget)
         # Only triggers for pal-agents accounts; agno agents are unaffected
-        if account_name in ["proactiveailab-transformer"]:
+        if account_name in PAL_AGENTS_ACCOUNTS:
             # Use early-captured values to avoid SQLAlchemy lazy load issues
             asyncio.create_task(
                 get_ingestion_service().ingest_interaction(
@@ -453,7 +456,7 @@ async def get_chat_response_stream(
             current_message = ""
 
             # ========== CHUNK GENERATION (if/else by account) ==========
-            if account_name in ["proactiveailab-transformer"]:
+            if account_name in PAL_AGENTS_ACCOUNTS:
                 # PAL-AGENTS PATH
 
                 spec = await agent_service.construct_agent_spec(
@@ -859,7 +862,7 @@ async def get_chat_response_stream(
 
                 # Memory ingestion for pal-agents flow (fire-and-forget)
                 # Only triggers for pal-agents accounts; agno agents are unaffected
-                if account_name in ["proactiveailab-transformer"]:
+                if account_name in PAL_AGENTS_ACCOUNTS:
                     # Use early-captured values to avoid SQLAlchemy lazy load issues
                     asyncio.create_task(
                         get_ingestion_service().ingest_interaction(
