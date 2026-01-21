@@ -885,7 +885,7 @@ class AsyncProjectSubscriptionRepository:
                 .filter(
                     ProjectSubscription.stripe_subscription_id
                     == stripe_subscription_id,
-                    ProjectSubscription.deleted == False,
+                    ProjectSubscription.deleted.is_(False),
                 )
                 .order_by(ProjectSubscription.version.desc())
                 .limit(1)
@@ -906,7 +906,7 @@ class AsyncProjectSubscriptionRepository:
         try:
             query = select(ProjectSubscription).filter(
                 ProjectSubscription.id == subscription_id,
-                ProjectSubscription.deleted == False,
+                ProjectSubscription.deleted.is_(False),
             )
             result = await self.session.execute(query)
             subscription = result.scalar_one_or_none()
