@@ -4,7 +4,6 @@ Notion Client Management Module
 Provides centralized Notion client creation and management.
 """
 
-import os
 import threading
 
 from notion_client import AsyncClient
@@ -48,23 +47,6 @@ def get_notion_client() -> AsyncClient:
         return _client_instance
 
 
-def get_notion_database_id() -> str:
-    """
-    Get the Notion database ID from environment variables.
-
-    Returns:
-        str: The Notion database ID
-
-    Raises:
-        ValueError: If database ID is not configured
-    """
-    database_id = os.environ.get("NOTION_DATABASE_ID")
-    if not database_id:
-        logger.error("[Notion] NOTION_DATABASE_ID not configured")
-        raise ValueError("Notion database ID not configured")
-    return database_id
-
-
 def get_notion_feedback_database_id() -> str:
     """
     Get the Notion feedback database ID from environment variables.
@@ -78,7 +60,7 @@ def get_notion_feedback_database_id() -> str:
     Raises:
         ValueError: If feedback database ID is not configured
     """
-    database_id = os.environ.get("NOTION_FEEDBACK_DB_ID")
+    database_id = get_server_secret_with_fallback("NOTION_FEEDBACK_DB_ID")
     if not database_id:
         logger.error("[Notion] NOTION_FEEDBACK_DB_ID not configured")
         raise ValueError("Notion feedback database ID not configured")
