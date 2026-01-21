@@ -14,7 +14,6 @@ import uuid
 from datetime import datetime
 
 import boto3
-from ddtrace.trace import tracer
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -214,90 +213,61 @@ For invalid/problematic images:
             },
         }
 
-    # Call LLM Vision API using provider abstraction
+    # Call LLM Vision API using provider abstraction (tracing disabled via Pin.override)
     try:
-        # Create a wrapper function that runs LLM call in a new trace context
-        # This breaks the trace inheritance from the parent request (e.g., voice interaction)
-        # so monitoring analysis appears as a separate trace in Datadog
-        def call_llm_with_new_trace():
-            # Get the current context and clear it to start a fresh trace
-            # This prevents inheriting the parent trace from voice/agent interactions
-            current_context = tracer.current_trace_context()
+        # Initialize provider with config-specific model settings
+        # Config-level settings override environment variables
+        from services.monitoring_service._providers import (
+            MonitoringLLMConfig,
+            MonitoringLLMProvider,
+        )
 
-            # Temporarily clear the trace context to create an independent trace
-            tracer.context_provider.activate(None)
-
-            try:
-                # Initialize provider with config-specific model settings
-                # Config-level settings override environment variables
-                from services.monitoring_service._providers import (
-                    MonitoringLLMConfig,
-                    MonitoringLLMProvider,
-                )
-
-                # Create custom config if model settings are specified in the monitoring config
-                if llm_provider or llm_model:
-                    logger.info(
-                        f"[Monitoring LLM] Using model config from database rules - Provider: {llm_provider or 'default'}, Model: {llm_model or 'default'}"
+        # Create custom config if model settings are specified in the monitoring config
+        if llm_provider or llm_model:
+            logger.info(
+                f"[Monitoring LLM] Using model config from database rules - Provider: {llm_provider or 'default'}, Model: {llm_model or 'default'}"
+            )
+            provider_enum = None
+            resolved_model = llm_model  # Use separate variable to avoid scope issues
+            if llm_provider:
+                try:
+                    provider_enum = MonitoringLLMProvider(llm_provider.lower())
+                except ValueError:
+                    logger.warning(
+                        f"Invalid provider '{llm_provider}' in monitoring config, using default provider and clearing model"
                     )
-                    provider_enum = None
-                    resolved_model = (
-                        llm_model  # Use separate variable to avoid scope issues
-                    )
-                    if llm_provider:
-                        try:
-                            provider_enum = MonitoringLLMProvider(llm_provider.lower())
-                        except ValueError:
-                            logger.warning(
-                                f"Invalid provider '{llm_provider}' in monitoring config, using default provider and clearing model"
-                            )
-                            # Clear the model when provider is invalid to prevent mismatch
-                            # between provider and model (e.g., gemini model with azure provider)
-                            resolved_model = None
+                    # Clear the model when provider is invalid to prevent mismatch
+                    # between provider and model (e.g., gemini model with azure provider)
+                    resolved_model = None
 
-                    custom_config = MonitoringLLMConfig(
-                        provider=provider_enum, model=resolved_model
-                    )
-                    provider = create_monitoring_llm_provider(config=custom_config)
-                else:
-                    # Use default config from environment variables
-                    logger.info(
-                        "[Monitoring LLM] Using model config from environment variables"
-                    )
-                    provider = create_monitoring_llm_provider()
+            custom_config = MonitoringLLMConfig(
+                provider=provider_enum, model=resolved_model
+            )
+            provider = create_monitoring_llm_provider(config=custom_config)
+        else:
+            # Use default config from environment variables
+            logger.info(
+                "[Monitoring LLM] Using model config from environment variables"
+            )
+            provider = create_monitoring_llm_provider()
 
-                # Log the final resolved configuration
-                logger.info(
-                    f"[Monitoring LLM] Provider initialized - Final config: Provider={provider.config.provider.value}, Model={provider.config.model}"
-                )
+        # Log the final resolved configuration
+        logger.info(
+            f"[Monitoring LLM] Provider initialized - Final config: Provider={provider.config.provider.value}, Model={provider.config.model}"
+        )
 
-                # Add tags to current span
-                with tracer.trace(
-                    "monitoring.llm_provider_call",
-                    service="pal-mono-monitoring",
-                ) as span:
-                    span.set_tag("monitoring.config_id", str(monitoring_config_id))
-                    span.set_tag("monitoring.image_url", image_url)
-                    span.set_tag(
-                        "monitoring.llm_provider", provider.config.provider.value
-                    )
-                    span.set_tag("monitoring.llm_model", provider.config.model)
-
-                    return provider.analyze_image(
-                        system_instruction=system_instruction,
-                        analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
-                        reference_images=reference_images_for_provider,
-                        camera_image_base64=camera_image_base64,
-                        response_format=response_format,
-                    )
-            finally:
-                # Restore the original context after the call
-                if current_context:
-                    tracer.context_provider.activate(current_context)
-
-        # Run blocking LLM call in thread pool with new trace context
+        # Run blocking LLM call in thread pool (tracing disabled via Pin.override on clients)
         loop = asyncio.get_running_loop()
-        analysis_result = await loop.run_in_executor(None, call_llm_with_new_trace)
+        analysis_result = await loop.run_in_executor(
+            None,
+            lambda: provider.analyze_image(
+                system_instruction=system_instruction,
+                analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
+                reference_images=reference_images_for_provider,
+                camera_image_base64=camera_image_base64,
+                response_format=response_format,
+            ),
+        )
 
         logger.info(
             f"Monitoring LLM analysis completed for config {monitoring_config_id}",

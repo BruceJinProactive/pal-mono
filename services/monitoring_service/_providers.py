@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
-from ddtrace.trace import tracer
+from ddtrace._trace.pin import Pin  # type: ignore[reportPrivateUsage]
 from google import genai
 from google.genai.types import GenerateContentConfig, Part
 from openai import AzureOpenAI
@@ -172,6 +172,12 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             api_key=api_key, azure_endpoint=endpoint, api_version=api_version
         )
 
+        # Disable Datadog tracing for this client (LLMObs.enable() auto-patches OpenAI)
+        # This prevents monitoring LLM calls from appearing in voice agent traces
+        pin = Pin.get_from(self.client)
+        if pin:
+            pin.remove_from(self.client)
+
         # Get Azure deployment name for the model
         self.deployment_name = self._get_model_deployment(config.model)
 
@@ -269,29 +275,17 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             response_format if response_format else {"type": "json_object"}
         )
 
-        # Make Azure OpenAI API call with custom tracing
-        # Note: Auto-instrumentation will still create child spans, but they'll be under
-        # the pal-mono-monitoring service, making them easy to filter in Datadog
+        # Make Azure OpenAI API call (tracing disabled for monitoring)
         logger.info(
             f"[Monitoring LLM] Using Azure OpenAI - Model: {self.config.model}, Deployment: {self.deployment_name}, Max Tokens: {self.config.max_tokens}"
         )
 
-        with tracer.trace(
-            "monitoring.vision_analysis",
-            service="pal-mono-monitoring",
-            resource="azure.openai.vision.analysis",
-        ) as span:
-            span.set_tag("monitoring.model", self.config.model)
-            span.set_tag("monitoring.deployment", self.deployment_name)
-            span.set_tag("monitoring.provider", "azure")
-            span.set_tag("monitoring.internal", "true")
-
-            response = self.client.chat.completions.create(
-                model=self.deployment_name,  # Use deployment name, not model name
-                messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
-                response_format=openai_response_format,  # type: ignore[arg-type]
-                max_tokens=self.config.max_tokens,
-            )
+        response = self.client.chat.completions.create(
+            model=self.deployment_name,  # Use deployment name, not model name
+            messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
+            response_format=openai_response_format,  # type: ignore[arg-type]
+            max_tokens=self.config.max_tokens,
+        )
 
         # Parse and return response with defensive error handling
         try:
@@ -332,6 +326,12 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
             raise ValueError(f"Failed to retrieve Google API key: {str(e)}") from e
 
         self.client = genai.Client(api_key=api_key)
+
+        # Disable Datadog tracing for this client (LLMObs.enable() auto-patches libraries)
+        # This prevents monitoring LLM calls from appearing in voice agent traces
+        pin = Pin.get_from(self.client)
+        if pin:
+            pin.remove_from(self.client)
 
     def analyze_image(
         self,
@@ -380,84 +380,73 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
             Part.from_bytes(data=camera_image_bytes, mime_type="image/jpeg")
         )
 
-        # Make Gemini API call with custom tracing
-        # Note: Auto-instrumentation will still create child spans, but they'll be under
-        # the pal-mono-monitoring service, making them easy to filter in Datadog
+        # Make Gemini API call (tracing disabled for monitoring)
         logger.info(
             f"[Monitoring LLM] Using Google Gemini - Model: {self.config.model}, Max Tokens: {self.config.max_tokens}"
         )
 
-        with tracer.trace(
-            "monitoring.vision_analysis",
-            service="pal-mono-monitoring",
-            resource="gemini.vision.analysis",
-        ) as span:
-            span.set_tag("monitoring.model", self.config.model)
-            span.set_tag("monitoring.provider", "google")
-            span.set_tag("monitoring.internal", "true")
+        # Configure generation with JSON schema support
+        generation_config_params = {
+            "max_output_tokens": self.config.max_tokens,
+            "temperature": 0.0,  # Deterministic for monitoring
+            "response_mime_type": "application/json",
+        }
 
-            # Configure generation with JSON schema support
-            generation_config_params = {
-                "max_output_tokens": self.config.max_tokens,
-                "temperature": 0.0,  # Deterministic for monitoring
-                "response_mime_type": "application/json",
-            }
-
-            # Gemini supports native JSON schema via response_schema parameter
-            # This is similar to OpenAI's structured outputs
-            if response_format:
-                # Handle OpenAI-style structured output format
-                if isinstance(response_format, dict) and "type" in response_format:
-                    # OpenAI format: {"type": "json_schema", "json_schema": {...}}
-                    if response_format.get("type") == "json_schema":
-                        schema = response_format.get("json_schema", {}).get("schema")
-                        if schema:
-                            # Gemini doesn't support additionalProperties, so remove it recursively
-                            # Create a deep copy to avoid modifying the original schema
-                            gemini_schema = copy.deepcopy(schema)
-                            gemini_schema = _strip_additional_properties(gemini_schema)
-                            generation_config_params["response_schema"] = gemini_schema
-                            logger.info(
-                                "[Monitoring LLM] Using structured output with native Gemini JSON schema"
-                            )
-                        else:
-                            # No valid schema found in json_schema format
-                            content_parts.append(
-                                '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-                            )
-                            logger.warning(
-                                "[Monitoring LLM] json_schema type specified but no schema found, falling back to prompt instructions"
-                            )
+        # Gemini supports native JSON schema via response_schema parameter
+        # This is similar to OpenAI's structured outputs
+        if response_format:
+            # Handle OpenAI-style structured output format
+            if isinstance(response_format, dict) and "type" in response_format:
+                # OpenAI format: {"type": "json_schema", "json_schema": {...}}
+                if response_format.get("type") == "json_schema":
+                    schema = response_format.get("json_schema", {}).get("schema")
+                    if schema:
+                        # Gemini doesn't support additionalProperties, so remove it recursively
+                        # Create a deep copy to avoid modifying the original schema
+                        gemini_schema = copy.deepcopy(schema)
+                        gemini_schema = _strip_additional_properties(gemini_schema)
+                        generation_config_params["response_schema"] = gemini_schema
+                        logger.info(
+                            "[Monitoring LLM] Using structured output with native Gemini JSON schema"
+                        )
                     else:
-                        # Plain JSON object mode - add instruction to content
+                        # No valid schema found in json_schema format
                         content_parts.append(
                             '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
                         )
-                        logger.info(
-                            "[Monitoring LLM] Using JSON object mode with prompt instructions"
+                        logger.warning(
+                            "[Monitoring LLM] json_schema type specified but no schema found, falling back to prompt instructions"
                         )
                 else:
-                    # Direct schema provided - also strip additionalProperties
-                    cleaned_schema = copy.deepcopy(response_format)
-                    cleaned_schema = _strip_additional_properties(cleaned_schema)
-                    generation_config_params["response_schema"] = cleaned_schema
+                    # Plain JSON object mode - add instruction to content
+                    content_parts.append(
+                        '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
+                    )
                     logger.info(
-                        "[Monitoring LLM] Using structured output with direct schema"
+                        "[Monitoring LLM] Using JSON object mode with prompt instructions"
                     )
             else:
-                # Default: instruct for standard monitoring response format
-                content_parts.append(
-                    '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
+                # Direct schema provided - also strip additionalProperties
+                cleaned_schema = copy.deepcopy(response_format)
+                cleaned_schema = _strip_additional_properties(cleaned_schema)
+                generation_config_params["response_schema"] = cleaned_schema
+                logger.info(
+                    "[Monitoring LLM] Using structured output with direct schema"
                 )
-                logger.info("[Monitoring LLM] Using default JSON response format")
-
-            generation_config = GenerateContentConfig(**generation_config_params)
-
-            response = self.client.models.generate_content(
-                model=self.config.model,
-                contents=content_parts,  # type: ignore[arg-type]
-                config=generation_config,
+        else:
+            # Default: instruct for standard monitoring response format
+            content_parts.append(
+                '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
             )
+            logger.info("[Monitoring LLM] Using default JSON response format")
+
+        generation_config = GenerateContentConfig(**generation_config_params)
+
+        response = self.client.models.generate_content(
+            model=self.config.model,
+            contents=content_parts,  # type: ignore[arg-type]
+            config=generation_config,
+        )
 
         # Parse and return response with defensive error handling
         try:
