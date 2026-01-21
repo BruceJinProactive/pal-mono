@@ -10,7 +10,7 @@ import threading
 from notion_client import AsyncClient
 
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback
+from utils.secret import get_server_secret_with_fallback
 
 # Global client instance for reuse
 _client_instance: AsyncClient | None = None
@@ -37,7 +37,7 @@ def get_notion_client() -> AsyncClient:
     with _client_lock:
         if _client_instance is None:
             try:
-                api_key = get_client_secret_with_fallback("NOTION_API_KEY")
+                api_key = get_server_secret_with_fallback("NOTION_API_KEY")
             except ValueError as e:
                 logger.error(f"[Notion] Failed to get API key: {e}")
                 raise ValueError("Notion API key not configured") from e

@@ -11,7 +11,7 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_bolt.async_app import AsyncApp
 
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback
+from utils.secret import get_server_secret_with_fallback
 
 # Global Slack app instance and thread safety
 _slack_app = None
@@ -30,7 +30,7 @@ def get_slack_bot_token() -> str:
         ValueError: If Slack bot token not configured
     """
     try:
-        bot_token = get_client_secret_with_fallback("SLACK_BOT_TOKEN")
+        bot_token = get_server_secret_with_fallback("SLACK_BOT_TOKEN")
         return bot_token
     except ValueError as e:
         logger.error(f"[Slackbot] SLACK_BOT_TOKEN not found: {e}")
@@ -45,8 +45,8 @@ def create_slack_app() -> AsyncApp | None:
         AsyncApp | None: Configured Slack app or None if credentials not available
     """
     try:
-        bot_token = get_client_secret_with_fallback("SLACK_BOT_TOKEN")
-        signing_secret = get_client_secret_with_fallback("SLACK_SIGNING_SECRET")
+        bot_token = get_server_secret_with_fallback("SLACK_BOT_TOKEN")
+        signing_secret = get_server_secret_with_fallback("SLACK_SIGNING_SECRET")
     except ValueError as e:
         logger.warning(
             f"[Slackbot] Slack credentials not found: {e} - Event handling disabled"

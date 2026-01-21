@@ -10,7 +10,7 @@ import threading
 from slack_sdk.web.async_client import AsyncWebClient
 
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback
+from utils.secret import get_server_secret_with_fallback
 
 # Default Slack channel for all services
 DEFAULT_SLACK_CHANNEL = "#test-channel"
@@ -40,7 +40,7 @@ def get_slack_client() -> AsyncWebClient:
     with _client_lock:
         if _client_instance is None:
             try:
-                bot_token = get_client_secret_with_fallback("SLACK_BOT_TOKEN")
+                bot_token = get_server_secret_with_fallback("SLACK_BOT_TOKEN")
             except ValueError as e:
                 logger.error(f"[Slack] Failed to get bot token: {e}")
                 raise ValueError("Slack bot token not configured")
