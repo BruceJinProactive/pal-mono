@@ -229,16 +229,7 @@ class RawConfig:
         """
         updated_args = tool_args.copy()
 
-        # Validate/normalize transfer_destinations coming from raw_config
-        if "transfer_destinations" in updated_args:
-            td = updated_args["transfer_destinations"]
-            if td is None or td == {}:
-                # Treat empty as missing so fallback can apply
-                updated_args.pop("transfer_destinations", None)
-            elif not isinstance(td, dict):
-                raise ValueError(
-                    "'transfer_destinations' must be a dict of role -> phone."
-                )
+        updated_args.pop("transfer_destinations", None)
 
         # Primary: Build transfer_destinations from contacts table
         if session:
@@ -286,40 +277,13 @@ class RawConfig:
                 )
                 raise
 
-        # Fallback 1: Use project.transfer_phone_number if no contacts found (deprecated)
-        if "transfer_destinations" not in updated_args:
-            if self.project.transfer_phone_number:
-                logger.warning(
-                    f"Using deprecated transfer_phone_number fallback for project "
-                    f"{self.project.id} ({self.project.name}). "
-                    f"Please migrate to contacts table.",
-                    extra={
-                        "project_id": str(self.project.id),
-                        "project_name": self.project.name,
-                    },
-                )
-                updated_args["transfer_destinations"] = {
-                    "general": self.project.transfer_phone_number
-                }
-
-        destination_number = updated_args.pop("destination_number", None)
-        # Fallback 2: Use destination_number from raw_config if provided (deprecated)
-        if "transfer_destinations" not in updated_args:
-            if destination_number:
-                logger.warning(
-                    f"Using deprecated destination_number from raw_config for project "
-                    f"{self.project.id} ({self.project.name}). "
-                    f"Please migrate to transfer_destinations.",
-                    extra={
-                        "project_id": str(self.project.id),
-                        "project_name": self.project.name,
-                    },
-                )
-                updated_args["transfer_destinations"] = {"general": destination_number}
-
         # transfer_message still comes from project
         if self.project.transfer_message:
             updated_args["transfer_message"] = self.project.transfer_message
+
+        if "transfer_destinations" not in updated_args:
+            # Secondary: Fallback to deprecated project.transfer_phone_number
+            updated_args["transfer_destinations"] = {}
 
         return updated_args
 
