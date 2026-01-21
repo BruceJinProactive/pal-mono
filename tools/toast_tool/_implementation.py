@@ -1120,9 +1120,19 @@ class ToastTool(Toolkit):
                     f"`order` object in type {type(order)} but expected type Order.\n"
                     f"`order` object: {order}"
                 )
-            logger.debug(f"[ToastTool._construct_order] Constructed order: {order}")
 
             # Note: lastName suffix will be added in _finalize_order_details after validation
+
+            # Update customer email to orderingagent+phoneNumber@palona.ai
+            for check in order.checks:
+                if check.customer and check.customer.phone:
+                    formatted_phone = format_phone_number(check.customer.phone)
+                    if formatted_phone:
+                        check.customer.email = (
+                            f"orderingagent+{formatted_phone}@palona.ai"
+                        )
+
+            logger.debug(f"[ToastTool._construct_order] Constructed order: {order}")
 
             return order
         except ValidationError as e:
