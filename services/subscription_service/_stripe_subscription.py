@@ -412,6 +412,7 @@ def create_checkout_session(
             "client_reference_id": str(account_id),
             "success_url": f"{redirect_url_prefix}?action=payment_success&session_id={{CHECKOUT_SESSION_ID}}",
             "cancel_url": f"{redirect_url_prefix}?action=payment_cancelled",
+            "payment_method_types": ["card", "us_bank_account"],
         }
 
         # Always add metadata to checkout session
