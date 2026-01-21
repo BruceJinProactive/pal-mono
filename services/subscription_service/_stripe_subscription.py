@@ -10,7 +10,10 @@ from typing_extensions import Literal
 
 from db.repositories.account_repository import AccountRepository
 from db.repositories.project_repository import ProjectRepository
-from db.repositories.subscription_repository import AsyncAccountSubscriptionRepository
+from db.repositories.subscription_repository import (
+    AsyncAccountSubscriptionRepository,
+    AsyncProjectSubscriptionRepository,
+)
 from db.tables.types import SubscriptionStatus
 from services.subscription_service.schema import (
     StripeCheckoutResponse,
@@ -1087,6 +1090,7 @@ async def update_subscription_status_from_stripe(
 ) -> bool:
     """
     Update subscription status based on Stripe status.
+    Handles both account and project subscriptions.
 
     Args:
         async_session: Async database session
@@ -1096,12 +1100,40 @@ async def update_subscription_status_from_stripe(
     Returns:
         True if status was updated, False otherwise
     """
-    sub_repo = AsyncAccountSubscriptionRepository(async_session)
-    db_subscription = await sub_repo.get_account_subscription_by_stripe_subscription_id(
+    # Try account subscription first
+    account_sub_repo = AsyncAccountSubscriptionRepository(async_session)
+    db_subscription = (
+        await account_sub_repo.get_account_subscription_by_stripe_subscription_id(
+            stripe_subscription_id
+        )
+    )
+
+    if db_subscription:
+        new_status = map_stripe_status(stripe_status)
+        if not new_status:
+            logger.warning(f"Unknown Stripe status: {stripe_status}")
+            return False
+
+        if db_subscription.status != new_status:
+            old_status = (
+                db_subscription.status.value if db_subscription.status else "None"
+            )
+            await account_sub_repo.update_account_subscription_status(
+                db_subscription.id, new_status
+            )
+            logger.info(
+                f"Updated account subscription {stripe_subscription_id} status from {old_status} to {new_status.value}"
+            )
+            return True
+        return False
+
+    # Try project subscription
+    project_sub_repo = AsyncProjectSubscriptionRepository(async_session)
+    project_subscription = await project_sub_repo.get_project_subscription_by_stripe_id(
         stripe_subscription_id
     )
 
-    if not db_subscription:
+    if not project_subscription:
         logger.warning(
             f"No subscription found for stripe_subscription_id: {stripe_subscription_id}"
         )
@@ -1112,13 +1144,15 @@ async def update_subscription_status_from_stripe(
         logger.warning(f"Unknown Stripe status: {stripe_status}")
         return False
 
-    if db_subscription.status != new_status:
-        old_status = db_subscription.status.value
-        await sub_repo.update_account_subscription_status(
-            db_subscription.id, new_status
+    if project_subscription.status != new_status:
+        old_status = (
+            project_subscription.status.value if project_subscription.status else "None"
+        )
+        await project_sub_repo.update_project_subscription_status(
+            project_subscription.id, new_status
         )
         logger.info(
-            f"Updated subscription {stripe_subscription_id} status from {old_status} to {new_status.value}"
+            f"Updated project subscription {stripe_subscription_id} status from {old_status} to {new_status.value}"
         )
         return True
 
@@ -1132,6 +1166,7 @@ async def handle_subscription_deleted(
 ) -> bool:
     """
     Handle subscription deletion from Stripe.
+    Handles both account and project subscriptions.
 
     Sets status to cancelled and updates end_date if provided.
 
@@ -1143,25 +1178,51 @@ async def handle_subscription_deleted(
     Returns:
         True if subscription was updated, False otherwise
     """
-    sub_repo = AsyncAccountSubscriptionRepository(async_session)
-    db_subscription = await sub_repo.get_account_subscription_by_stripe_subscription_id(
+    # Try account subscription first
+    account_sub_repo = AsyncAccountSubscriptionRepository(async_session)
+    db_subscription = (
+        await account_sub_repo.get_account_subscription_by_stripe_subscription_id(
+            stripe_subscription_id
+        )
+    )
+
+    if db_subscription:
+        await account_sub_repo.update_account_subscription_status(
+            db_subscription.id, SubscriptionStatus.cancelled
+        )
+
+        if canceled_at and not db_subscription.end_date:
+            db_subscription.end_date = datetime.fromtimestamp(
+                canceled_at, tz=timezone.utc
+            )
+            await async_session.flush()
+
+        logger.info(f"Account subscription {stripe_subscription_id} cancelled")
+        return True
+
+    # Try project subscription
+    project_sub_repo = AsyncProjectSubscriptionRepository(async_session)
+    project_subscription = await project_sub_repo.get_project_subscription_by_stripe_id(
         stripe_subscription_id
     )
 
-    if not db_subscription:
+    if not project_subscription:
         logger.warning(
             f"No subscription found for stripe_subscription_id: {stripe_subscription_id}"
         )
         return False
 
-    await sub_repo.update_account_subscription_status(
-        db_subscription.id, SubscriptionStatus.cancelled
+    await project_sub_repo.update_project_subscription_status(
+        project_subscription.id, SubscriptionStatus.cancelled
     )
 
-    if canceled_at and not db_subscription.end_date:
-        db_subscription.end_date = datetime.fromtimestamp(canceled_at, tz=timezone.utc)
+    if canceled_at and not project_subscription.end_date:
+        project_subscription.end_date = datetime.fromtimestamp(
+            canceled_at, tz=timezone.utc
+        )
+        await async_session.flush()
 
-    logger.info(f"Subscription {stripe_subscription_id} cancelled")
+    logger.info(f"Project subscription {stripe_subscription_id} cancelled")
     return True
 
 

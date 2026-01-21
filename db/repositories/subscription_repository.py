@@ -864,3 +864,67 @@ class AsyncAccountSubscriptionRepository:
                 extra={"account_id": account_id},
             )
             return []
+
+
+class AsyncProjectSubscriptionRepository:
+    """Async repository for project subscription operations."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_project_subscription_by_stripe_id(
+        self, stripe_subscription_id: str
+    ) -> Optional[ProjectSubscription]:
+        """Get a project subscription by Stripe subscription ID asynchronously.
+
+        Returns the latest version ordered by version DESC to ensure deterministic results.
+        """
+        try:
+            query = (
+                select(ProjectSubscription)
+                .filter(
+                    ProjectSubscription.stripe_subscription_id
+                    == stripe_subscription_id,
+                    ProjectSubscription.deleted == False,
+                )
+                .order_by(ProjectSubscription.version.desc())
+                .limit(1)
+            )
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except SQLAlchemyError as e:
+            logger.error(
+                f"Error retrieving project subscription by stripe_subscription_id: {e}",
+                extra={"stripe_subscription_id": stripe_subscription_id},
+            )
+            return None
+
+    async def update_project_subscription_status(
+        self, subscription_id: uuid.UUID, new_status: SubscriptionStatus
+    ) -> Optional[ProjectSubscription]:
+        """Update project subscription status by ID asynchronously."""
+        try:
+            query = select(ProjectSubscription).filter(
+                ProjectSubscription.id == subscription_id,
+                ProjectSubscription.deleted == False,
+            )
+            result = await self.session.execute(query)
+            subscription = result.scalar_one_or_none()
+
+            if not subscription:
+                return None
+
+            subscription.status = new_status
+            await self.session.flush()
+            await self.session.refresh(subscription)
+            return subscription
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(
+                f"Error updating project subscription status: {e}",
+                extra={
+                    "subscription_id": str(subscription_id),
+                    "status": new_status,
+                },
+            )
+            raise
