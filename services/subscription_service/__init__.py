@@ -21,6 +21,7 @@ from ._plan import (
 from ._stripe_subscription import (
     handle_subscription_deleted,
     sync_account_subscriptions,
+    sync_subscription_from_stripe,
     update_subscription_status_from_stripe,
 )
 from ._subscription import (
@@ -109,6 +110,7 @@ __all__ = [
     "unlink_subscription_from_account",
     # Stripe sync functions
     "sync_account_subscriptions",
+    "sync_subscription_from_stripe",
     "update_subscription_status_from_stripe",
     "handle_subscription_deleted",
     # Coupon management functions

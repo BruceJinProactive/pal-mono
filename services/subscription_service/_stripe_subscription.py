@@ -1209,7 +1209,9 @@ async def handle_subscription_deleted(
 
     if not project_subscription:
         logger.warning(
-            f"No subscription found for stripe_subscription_id: {stripe_subscription_id}"
+            f"No subscription found (account or project) for stripe_subscription_id: {stripe_subscription_id}. "
+            "This could mean: 1) Subscription was already deleted, 2) Subscription ID mismatch, "
+            "3) Test subscription not in database"
         )
         return False
 
@@ -1225,6 +1227,194 @@ async def handle_subscription_deleted(
 
     logger.info(f"Project subscription {stripe_subscription_id} cancelled")
     return True
+
+
+async def sync_subscription_from_stripe(
+    async_session: AsyncSession,
+    stripe_subscription_id: str,
+    stripe_subscription_data: dict[str, Any],
+) -> bool:
+    """
+    Comprehensive sync of subscription data from Stripe webhook.
+    Updates status, items (prices), quantities, trial dates, and other fields.
+    Handles both account and project subscriptions.
+
+    Args:
+        async_session: Async database session
+        stripe_subscription_id: The Stripe subscription ID
+        stripe_subscription_data: Full subscription object from Stripe webhook
+
+    Returns:
+        True if subscription was updated, False otherwise
+    """
+    stripe_status = stripe_subscription_data.get("status")
+    items = stripe_subscription_data.get("items", {}).get("data", [])
+    trial_end = stripe_subscription_data.get("trial_end")
+    trial_start = stripe_subscription_data.get("trial_start")
+    cancel_at = stripe_subscription_data.get("cancel_at")
+    canceled_at = stripe_subscription_data.get("canceled_at")
+    current_period_end = stripe_subscription_data.get("current_period_end")
+
+    updated = False
+
+    # Try account subscription first
+    account_sub_repo = AsyncAccountSubscriptionRepository(async_session)
+    db_subscription = (
+        await account_sub_repo.get_account_subscription_by_stripe_subscription_id(
+            stripe_subscription_id
+        )
+    )
+
+    if db_subscription:
+        # Update status
+        if stripe_status:
+            new_status = map_stripe_status(stripe_status)
+            if new_status and db_subscription.status != new_status:
+                old_status = (
+                    db_subscription.status.value if db_subscription.status else "None"
+                )
+                await account_sub_repo.update_account_subscription_status(
+                    db_subscription.id, new_status
+                )
+                logger.info(
+                    f"Synced account subscription {stripe_subscription_id} status: {old_status} -> {new_status.value}"
+                )
+                updated = True
+
+        # Update trial dates
+        if trial_start and not db_subscription.trial_start_date:
+            db_subscription.trial_start_date = datetime.fromtimestamp(
+                trial_start, tz=timezone.utc
+            )
+            updated = True
+            logger.info(
+                f"Synced account subscription {stripe_subscription_id} trial_start_date"
+            )
+
+        # Update end date if canceled
+        timestamp = canceled_at or cancel_at
+        if timestamp and not db_subscription.end_date:
+            db_subscription.end_date = datetime.fromtimestamp(
+                timestamp, tz=timezone.utc
+            )
+            updated = True
+            logger.info(
+                f"Synced account subscription {stripe_subscription_id} end_date"
+            )
+
+        if updated:
+            await async_session.flush()
+        return updated
+
+    # Try project subscription
+    project_sub_repo = AsyncProjectSubscriptionRepository(async_session)
+    project_subscription = await project_sub_repo.get_project_subscription_by_stripe_id(
+        stripe_subscription_id
+    )
+
+    if not project_subscription:
+        logger.warning(
+            f"No subscription found for stripe_subscription_id: {stripe_subscription_id}"
+        )
+        return False
+
+    # Update status
+    if stripe_status:
+        new_status = map_stripe_status(stripe_status)
+        if new_status and project_subscription.status != new_status:
+            old_status = (
+                project_subscription.status.value
+                if project_subscription.status
+                else "None"
+            )
+            await project_sub_repo.update_project_subscription_status(
+                project_subscription.id, new_status
+            )
+            logger.info(
+                f"Synced project subscription {stripe_subscription_id} status: {old_status} -> {new_status.value}"
+            )
+            updated = True
+
+    # Update price IDs from subscription items
+    if items:
+        for item in items:
+            price = item.get("price", {})
+            price_id = price.get("id")
+            nickname = price.get("nickname", "")
+
+            if not price_id:
+                continue
+
+            # Map price nicknames to database fields
+            # Nicknames from Stripe: "Base Monthly Fee", "Call Usage", "Order Usage"
+            nickname_lower = nickname.lower()
+
+            if (
+                "base" in nickname_lower
+                and project_subscription.base_price_id != price_id
+            ):
+                project_subscription.base_price_id = price_id
+                updated = True
+                logger.info(
+                    f"Synced project subscription {stripe_subscription_id} base_price_id: {price_id}"
+                )
+            elif (
+                "call" in nickname_lower
+                and project_subscription.call_price_id != price_id
+            ):
+                project_subscription.call_price_id = price_id
+                updated = True
+                logger.info(
+                    f"Synced project subscription {stripe_subscription_id} call_price_id: {price_id}"
+                )
+            elif (
+                "order" in nickname_lower
+                and project_subscription.order_price_id != price_id
+            ):
+                project_subscription.order_price_id = price_id
+                updated = True
+                logger.info(
+                    f"Synced project subscription {stripe_subscription_id} order_price_id: {price_id}"
+                )
+
+    # Update trial dates
+    if trial_start and not project_subscription.trial_start_date:
+        project_subscription.trial_start_date = datetime.fromtimestamp(
+            trial_start, tz=timezone.utc
+        )
+        updated = True
+        logger.info(
+            f"Synced project subscription {stripe_subscription_id} trial_start_date"
+        )
+
+    # Update start date if not set
+    if current_period_end and not project_subscription.start_date:
+        # Use trial_end or current_period_start as start_date
+        start_timestamp = trial_end or stripe_subscription_data.get(
+            "current_period_start"
+        )
+        if start_timestamp:
+            project_subscription.start_date = datetime.fromtimestamp(
+                start_timestamp, tz=timezone.utc
+            )
+            updated = True
+            logger.info(
+                f"Synced project subscription {stripe_subscription_id} start_date"
+            )
+
+    # Update end date if canceled
+    timestamp = canceled_at or cancel_at
+    if timestamp and not project_subscription.end_date:
+        project_subscription.end_date = datetime.fromtimestamp(
+            timestamp, tz=timezone.utc
+        )
+        updated = True
+        logger.info(f"Synced project subscription {stripe_subscription_id} end_date")
+
+    if updated:
+        await async_session.flush()
+
+    return updated
 
 
 async def sync_account_subscriptions(

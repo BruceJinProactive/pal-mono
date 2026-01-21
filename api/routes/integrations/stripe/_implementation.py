@@ -258,11 +258,11 @@ async def _handle_subscription_updated(
     """
     Handle customer.subscription.updated webhook event.
 
-    Syncs the subscription status from Stripe to the database.
+    Syncs the full subscription data (status, items, prices, quantities, trial dates, etc.)
+    from Stripe to the database.
     """
     subscription = event_data.get("object", {})
     stripe_subscription_id = subscription.get("id")
-    stripe_status = subscription.get("status")
 
     if not stripe_subscription_id:
         logger.warning(
@@ -270,12 +270,13 @@ async def _handle_subscription_updated(
         )
         return
 
-    updated = await subscription_service.update_subscription_status_from_stripe(
-        async_session, stripe_subscription_id, stripe_status
+    # Use comprehensive sync function to update all fields
+    updated = await subscription_service.sync_subscription_from_stripe(
+        async_session, stripe_subscription_id, subscription
     )
     if updated:
         logger.info(
-            "[Stripe Webhook] Updated subscription status from Stripe",
+            "[Stripe Webhook] Synced subscription data from Stripe",
             extra={
                 "stripe_subscription_id": stripe_subscription_id,
                 "event": "subscription.updated",
@@ -283,10 +284,9 @@ async def _handle_subscription_updated(
         )
     else:
         logger.info(
-            "[Stripe Webhook] Subscription updated, status unchanged",
+            "[Stripe Webhook] Subscription updated, no changes detected",
             extra={
                 "stripe_subscription_id": stripe_subscription_id,
-                "stripe_status": stripe_status,
             },
         )
 
@@ -309,12 +309,25 @@ async def _handle_subscription_deleted(
         )
         return
 
+    logger.info(
+        "[Stripe Webhook] Processing subscription deletion",
+        extra={
+            "stripe_subscription_id": stripe_subscription_id,
+            "canceled_at": canceled_at,
+        },
+    )
+
     updated = await subscription_service.handle_subscription_deleted(
         async_session, stripe_subscription_id, canceled_at
     )
     if updated:
         logger.info(
-            "[Stripe Webhook] Subscription cancelled",
+            "[Stripe Webhook] Subscription cancelled successfully",
+            extra={"stripe_subscription_id": stripe_subscription_id},
+        )
+    else:
+        logger.warning(
+            "[Stripe Webhook] Failed to cancel subscription - subscription not found in database",
             extra={"stripe_subscription_id": stripe_subscription_id},
         )
 
