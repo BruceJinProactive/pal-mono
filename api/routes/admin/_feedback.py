@@ -1,5 +1,8 @@
+import os
+import re
 import uuid
 from collections import defaultdict
+from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -17,6 +20,8 @@ from services import (
     account_service,
     feedback_service,
     message_service,
+    notion_service,
+    postmark_service,
     slack_service,
     user_service,
 )
@@ -139,39 +144,213 @@ async def create_feedback(
     context: UserContext,
     session: Session,
 ) -> Feedback:
+    """
+    Create feedback and trigger integrations (Notion, Slack, Email).
+
+    Workflow:
+    1. Save feedback to SQL database (fire-and-forget logging)
+    2. Create Notion ticket in Feedback Inbox
+    3. Send receipt email to user (immediate confirmation)
+    4. Send Slack notification with interactive buttons (for FDE triage)
+
+    Note: All integrations are fire-and-forget. If any external service fails,
+    we log the error but still return 200 OK to avoid user-facing errors.
+    """
     # Validate & authorize feedback create request
     message = message_service.get_message_by_id(session, feedback_create.message_id)
     if not message:
         raise not_found_error(f"Message {feedback_create.message_id} does not exist.")
     account = message.conversation.user.account
+    conversation = message.conversation
     _check_account_access(context, account, session)
 
-    # Process create - store user's email in author_identifier
+    # Save to SQL database (fire-and-forget logging)
     feedback = _to_db_feedback(feedback_create)
     feedback.author_identifier = context.email
     feedback.author_name = context.display_name or None
     feedback.message_id = feedback_create.message_id
     persisted_feedback = feedback_service.create_feedback(session, feedback)
 
-    # Send Slack notification after successful persistence
-    # This runs asynchronously and won't affect the API response or DB transaction
+    logger.info(
+        "[Feedback] Created feedback record in database",
+        extra={
+            "feedback_id": str(persisted_feedback.id),
+            "conversation_id": str(conversation.id),
+            "account": account.name,
+        },
+    )
+
+    # Build conversation link with full URL
+    console_base = os.environ.get(
+        "PAL_CONSOLE_BASE_URL", "https://lat-console.palona.ai"
+    )
+
+    conversation_link = (
+        f"{console_base}/hosting/conversations?conversationId={conversation.id}"
+    )
+
+    # Create Notion ticket
+    notion_ticket_url = None
+    notion_page_id = None
     try:
-        await slack_service.send_feedback_notification(
+        notion_ticket_url = await notion_service.create_feedback_ticket(
             client_name=account.name,
-            user_email=context.email,
-            tags=persisted_feedback.tags,
+            user_name=context.display_name or context.email,
             feedback_text=persisted_feedback.note,
-            conversation_id=str(message.conversation_id),
+            conversation_link=conversation_link,
+            conversation_id=str(conversation.id),
+            tags=persisted_feedback.tags,
             reaction=persisted_feedback.reaction,
-            feedback_id=str(persisted_feedback.id),
-        )
-    except Exception as e:
-        # Log but don't fail the request if Slack notification fails
-        logger.error(
-            f"Failed to send Slack notification for feedback {persisted_feedback.id}: {e}"
+            user_email=context.email,
         )
 
+        if notion_ticket_url:
+            # Extract Notion page ID from URL for Slack button payload
+            notion_page_id = _extract_notion_page_id(notion_ticket_url)
+            if notion_page_id:
+                logger.info(
+                    "[Feedback] Created Notion ticket and extracted page ID",
+                    extra={
+                        "feedback_id": str(persisted_feedback.id),
+                        "notion_url": notion_ticket_url,
+                        "notion_page_id": notion_page_id,
+                    },
+                )
+            else:
+                logger.warning(
+                    "[Feedback] Created Notion ticket but failed to extract page ID from URL",
+                    extra={
+                        "feedback_id": str(persisted_feedback.id),
+                        "notion_url": notion_ticket_url,
+                    },
+                )
+        else:
+            logger.warning("[Feedback] Notion ticket creation returned None")
+    except Exception as e:
+        logger.error(
+            f"[Feedback] Error creating Notion ticket: {e}",
+            extra={"feedback_id": str(persisted_feedback.id)},
+            exc_info=True,
+        )
+
+    # Send receipt email using PostMark (resilient - errors are logged but don't fail request)
+    try:
+        email_sent = await postmark_service.send_feedback_receipt(
+            user_email=context.email,
+            user_name=context.display_name,
+        )
+        # Extract email domain for logging (avoid PII exposure)
+        email_domain = (
+            context.email.split("@")[-1] if "@" in context.email else "unknown"
+        )
+        if email_sent:
+            logger.info(
+                "[Feedback] Sent receipt email",
+                extra={"email_domain": email_domain},
+            )
+        else:
+            logger.warning(
+                "[Feedback] Receipt email not sent",
+                extra={"email_domain": email_domain},
+            )
+    except Exception as e:
+        logger.error(
+            f"[Feedback] Error sending receipt email: {e}",
+            exc_info=True,
+        )
+
+    # Send Slack notification with interactive buttons (resilient)
+    try:
+        client_channel = slack_service.get_feedback_channel_for_client(account.name)
+        slack_result = await slack_service.send_feedback_notification(
+            client_name=account.name,
+            user_email=context.email,
+            user_name=context.display_name,
+            tags=persisted_feedback.tags,
+            feedback_text=persisted_feedback.note,
+            conversation_id=str(conversation.id),
+            conversation_link=conversation_link,
+            notion_ticket_url=notion_ticket_url,
+            notion_page_id=notion_page_id,
+            reaction=persisted_feedback.reaction,
+            feedback_id=str(persisted_feedback.id),
+            channel_override=client_channel,
+        )
+        if slack_result:
+            logger.info(
+                "[Feedback] Sent Slack notification",
+                extra={
+                    "feedback_id": str(persisted_feedback.id),
+                    "channel": client_channel or "default",
+                    "message_ts": slack_result.get("ts"),
+                },
+            )
+        else:
+            logger.warning("[Feedback] Slack notification not sent")
+    except Exception as e:
+        logger.error(
+            f"[Feedback] Error sending Slack notification: {e}",
+            extra={"feedback_id": str(persisted_feedback.id)},
+            exc_info=True,
+        )
+
+    # Return the created feedback (always succeeds even if integrations fail)
     return _builder.build_feedback(persisted_feedback)
+
+
+def _extract_notion_page_id(notion_url: str) -> Optional[str]:
+    """
+    Extract Notion page ID from URL.
+
+    Notion URLs format: https://www.notion.so/Title-{page_id}?...
+    Example: https://www.notion.so/Feedback-Client-A-2ee7e6e39cdc8157bd28fc1f8f085f3c
+
+    The page ID is always the last 32 hex characters (no dashes).
+
+    Args:
+        notion_url: The Notion page URL
+
+    Returns:
+        str: The page ID (32 hex chars without dashes), or None if extraction fails
+
+    Examples:
+        >>> _extract_notion_page_id("https://www.notion.so/Feedback-Client-A-2ee7e6e39cdc8157bd28fc1f8f085f3c")
+        '2ee7e6e39cdc8157bd28fc1f8f085f3c'
+    """
+    try:
+        parts = notion_url.split("/")
+        if len(parts) > 0:
+            page_id_part = parts[-1].split("?")[0]
+
+            if len(page_id_part) >= 32:
+                page_id = page_id_part[-32:]
+                try:
+                    int(page_id, 16)
+                    logger.debug(
+                        "[Feedback] Successfully extracted Notion page ID",
+                        extra={
+                            "notion_url": notion_url,
+                            "page_id": page_id,
+                        },
+                    )
+                    return page_id
+                except ValueError:
+                    match = re.search(r"([a-f0-9]{32})", page_id_part.lower())
+                    if match:
+                        return match.group(1)
+
+        logger.warning(
+            "[Feedback] Could not extract valid 32-character hex page ID from URL",
+            extra={"notion_url": notion_url},
+        )
+        return None
+
+    except Exception as e:
+        logger.warning(
+            f"[Feedback] Failed to extract Notion page ID from URL: {e}",
+            extra={"notion_url": notion_url},
+        )
+        return None
 
 
 async def update_feedback(

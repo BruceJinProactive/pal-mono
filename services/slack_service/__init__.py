@@ -21,7 +21,12 @@ from utils.log import logger
 
 from ._bot import _get_slack_handler
 from ._client import get_slack_channel_from_env_key
-from ._feedback import send_feedback_notification
+from ._feedback import (
+    get_feedback_channel_for_client,
+    send_feedback_notification,
+    update_feedback_message,
+    update_feedback_message_with_button_state,
+)
 from ._messages import send_slack_message
 from ._reports import send_report_to_slack as _send_report_to_slack
 
@@ -108,5 +113,8 @@ __all__ = [
     "send_report_to_slack",
     "send_slack_message",
     "send_feedback_notification",
+    "update_feedback_message",
+    "update_feedback_message_with_button_state",
+    "get_feedback_channel_for_client",
     "get_slack_channel_from_env_key",
 ]

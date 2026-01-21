@@ -7,6 +7,7 @@ import db
 from api.routes.endpoints import endpoints
 from api.routes.integrations.adora import adora_router
 from api.routes.integrations.olo import olo_router
+from api.routes.integrations.slack import slack_router
 from api.routes.integrations.square import _implementation as square_implementation
 from api.routes.integrations.stripe import _implementation as stripe_implementation
 from api.routes.integrations.toast import _implementation as toast_implementation
@@ -26,6 +27,9 @@ integrations_router.include_router(toast_router)
 
 # Include the Olo router
 integrations_router.include_router(olo_router)
+
+# Include the Slack router
+integrations_router.include_router(slack_router)
 
 
 @integrations_router.get("/square/install", status_code=status.HTTP_200_OK)

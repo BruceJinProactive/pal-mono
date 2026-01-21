@@ -1,1 +1,1 @@
-from . import integration_service
+from . import integration_service, notion_service
