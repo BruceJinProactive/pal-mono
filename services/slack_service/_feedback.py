@@ -4,13 +4,13 @@ Slack Feedback Notification Module
 Provides functionality to send feedback notifications to Slack using Block Kit formatting.
 """
 
-import os
 from typing import Any, Dict, List, Optional
 
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
 from ._client import get_slack_client
 
@@ -57,9 +57,11 @@ async def send_feedback_notification(
         if channel_override:
             channel_id = channel_override
         else:
-            channel_id = get_feedback_channel_for_client(client_name) or os.environ.get(
-                "SLACK_CHANNEL_ID"
-            )
+            try:
+                default_channel = get_server_secret_with_fallback("SLACK_CHANNEL_ID")
+            except ValueError:
+                default_channel = None
+            channel_id = get_feedback_channel_for_client(client_name) or default_channel
 
         if not channel_id:
             logger.error("[Slack Feedback] No Slack channel configured")
