@@ -1,14 +1,16 @@
 import copy
 import uuid
 from dataclasses import asdict
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
 from db.repositories.account_repository import AccountRepositoryAsync
+from db.tables.accounts import AccountStatus
 from db.tables.change_log import ChangeResourceType
+from db.tables.types import SubscriptionStatus
 from services.account_service.schema import AccountParams
 from services.auth_types import UserContext
 from services.history_service import change_log_context
@@ -59,6 +61,41 @@ def filter_accounts_by_name(
     account_repository = db.AccountRepository(session)
     accounts = account_repository.filter_accounts_by_name(keyword, load_subscription)
     return accounts
+
+
+def filter_accounts(
+    session: Session,
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    status: Optional[List[AccountStatus]] = None,
+    subscription_status: Optional[List[SubscriptionStatus]] = None,
+    load_subscription: bool = False,
+) -> Tuple[List[db.Account], int]:
+    """
+    Filter accounts with pagination and multiple filter options.
+
+    Args:
+        session: Database session
+        keyword: Optional keyword to filter by name/display_name
+        page: Page number (1-indexed)
+        page_size: Number of items per page
+        status: Optional list of account statuses to filter by
+        subscription_status: Optional list of subscription statuses to filter by
+        load_subscription: If True, eagerly loads current subscription to avoid N+1 queries
+
+    Returns:
+        Tuple of (list of accounts, total count)
+    """
+    account_repository = db.AccountRepository(session)
+    return account_repository.filter_accounts(
+        keyword=keyword,
+        page=page,
+        page_size=page_size,
+        status=status,
+        subscription_status=subscription_status,
+        load_subscription=load_subscription,
+    )
 
 
 def create_account(

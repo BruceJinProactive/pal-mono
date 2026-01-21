@@ -1,10 +1,12 @@
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
+from db.tables.accounts import AccountStatus
+from db.tables.types import SubscriptionStatus
 from services.auth_types import UserContext
 
 from . import _implementation
@@ -155,12 +157,48 @@ def filter_accounts_by_name(
     return _implementation.filter_accounts_by_name(session, keyword, load_subscription)
 
 
+def filter_accounts(
+    session: Session,
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    status: Optional[List[AccountStatus]] = None,
+    subscription_status: Optional[List[SubscriptionStatus]] = None,
+    load_subscription: bool = False,
+) -> Tuple[List[db.Account], int]:
+    """
+    Filter accounts with pagination and multiple filter options.
+
+    Args:
+        session (Session): The database session.
+        keyword (Optional[str], optional): The keyword to search for in account names.
+        page (int, optional): Page number (1-indexed). Defaults to 1.
+        page_size (int, optional): Number of items per page. Defaults to 20.
+        status (Optional[List[db.AccountStatus]], optional): List of account statuses to filter by.
+        subscription_status (Optional[List[SubscriptionStatus]], optional): List of subscription statuses to filter by.
+        load_subscription (bool, optional): If True, eagerly loads current subscription to avoid N+1 queries.
+
+    Returns:
+        Tuple[List[db.Account], int]: Tuple of (accounts matching filters, total count).
+    """
+    return _implementation.filter_accounts(
+        session=session,
+        keyword=keyword,
+        page=page,
+        page_size=page_size,
+        status=status,
+        subscription_status=subscription_status,
+        load_subscription=load_subscription,
+    )
+
+
 __all__ = [
     "AccountParams",
     "get_account",
     "get_account_async",
     "mget_accounts",
     "filter_accounts_by_name",
+    "filter_accounts",
     "create_account",
     "update_account",
     "delete_account",

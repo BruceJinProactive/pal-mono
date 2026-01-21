@@ -1,3 +1,4 @@
+import math
 import os
 from datetime import UTC, datetime
 
@@ -20,6 +21,7 @@ from api.schemas.admin.account import (
 from api.schemas.admin.agent import AgentSummary
 from db import AccountRepository, ConversationStatus
 from db.tables.accounts import AccountStatus
+from db.tables.types import SubscriptionStatus
 from services import (
     account_service,
     admin_service,
@@ -41,15 +43,29 @@ def list_accounts(
     context: UserContext,
     session: Session,
     keyword: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+    status: list[AccountStatus] | None = None,
+    subscription_status: list[SubscriptionStatus] | None = None,
 ) -> ListAccountsResponse:
-    accounts = account_service.filter_accounts_by_name(
-        session, keyword=keyword, load_subscription=True
+    accounts, total = account_service.filter_accounts(
+        session,
+        keyword=keyword,
+        page=page,
+        page_size=page_size,
+        status=status,
+        subscription_status=subscription_status,
+        load_subscription=True,
     )
 
-    response = ListAccountsResponse(
-        accounts=[build_account_summary(account) for account in accounts]
+    total_pages = math.ceil(total / page_size) if total > 0 else 0
+    return ListAccountsResponse(
+        accounts=[build_account_summary(account) for account in accounts],
+        total=total,
+        total_pages=total_pages,
+        page=page,
+        page_size=page_size,
     )
-    return response
 
 
 def get_account(

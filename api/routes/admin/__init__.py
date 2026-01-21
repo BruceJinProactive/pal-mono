@@ -225,9 +225,10 @@ from api.schemas.admin.voice_config import (
     UpdateVoiceConfigRequest,
     VoiceConfig,
 )
+from db.tables.accounts import AccountStatus
 from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
-from db.tables.types import Channel, CheckStatus
+from db.tables.types import Channel, CheckStatus, SubscriptionStatus
 from services.admin_service.schema import CognitoUser
 from services.auth_service import (
     require_account_permission,
@@ -356,11 +357,21 @@ def list_accounts(
     keyword: str = Query(
         None, description="Optional keyword to filter the accounts by name"
     ),
+    page: int = Query(1, gt=0, description="Page number"),
+    page_size: int = Query(20, gt=0, le=100, description="Items per page"),
+    status: list[AccountStatus] | None = Query(
+        None, description="Filter by account status"
+    ),
+    subscription_status: list[SubscriptionStatus] | None = Query(
+        None, description="Filter by subscription status"
+    ),
 ) -> ListAccountsResponse:
     """
     Retrieve a list of accounts that are associated with the current user.
     """
-    return _account.list_accounts(context, session, keyword)
+    return _account.list_accounts(
+        context, session, keyword, page, page_size, status, subscription_status
+    )
 
 
 @admin_router.put("/accounts", status_code=status.HTTP_201_CREATED)

@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -17,6 +17,7 @@ from db.tables import (
     User,
 )
 from db.tables.accounts import AccountStatus
+from db.tables.types import SubscriptionStatus
 from utils.log import logger
 
 
@@ -146,6 +147,80 @@ class AccountRepository:
             self.session.rollback()
             logger.error(f"Error filtering accounts by name: {e}")
             return []
+
+    def filter_accounts(
+        self,
+        keyword: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+        status: Optional[List[AccountStatus]] = None,
+        subscription_status: Optional[List[SubscriptionStatus]] = None,
+        load_subscription: bool = False,
+    ) -> Tuple[List[Account], int]:
+        """
+        Filter accounts with pagination and multiple filter options.
+
+        Args:
+            keyword: Optional keyword to filter by name/display_name
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+            status: Optional list of account statuses to filter by
+            subscription_status: Optional list of subscription statuses to filter by
+            load_subscription: If True, eagerly loads current subscription
+
+        Returns:
+            Tuple of (list of accounts, total count)
+        """
+        try:
+            # Base query - exclude deleted accounts
+            query = self.session.query(Account).filter(
+                Account.status != AccountStatus.deleted
+            )
+
+            # Apply keyword filter (name/display_name)
+            if keyword:
+                query = query.filter(
+                    (Account.name.ilike(f"%{keyword}%"))
+                    | (Account.display_name.ilike(f"%{keyword}%"))
+                )
+
+            # Apply status filter
+            if status:
+                query = query.filter(Account.status.in_(status))
+
+            # Apply subscription_status filter (requires join)
+            if subscription_status:
+                query = query.join(
+                    AccountSubscription,
+                    Account.current_subscription_id == AccountSubscription.id,
+                ).filter(AccountSubscription.status.in_(subscription_status))
+
+            # Get total count before applying eager-loading options
+            # This prevents count inflation from joinedload on Account.subscriptions
+            total_count = query.count()
+
+            # Eager load subscriptions if requested (apply after count)
+            if load_subscription:
+                query = query.options(
+                    joinedload(Account.subscriptions).joinedload(
+                        AccountSubscription.subscription_plan
+                    )
+                )
+
+            # Apply pagination and ordering
+            offset = (page - 1) * page_size
+            accounts = (
+                query.order_by(Account.created_at.desc())
+                .offset(offset)
+                .limit(page_size)
+                .all()
+            )
+
+            return accounts, total_count
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error filtering accounts: {e}")
+            return [], 0
 
     def update_account(
         self, account_name: str, expected_version: int | None = None, **kwargs
