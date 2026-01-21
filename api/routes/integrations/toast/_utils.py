@@ -347,9 +347,14 @@ def _update_stock_in_project_product_info(
     try:
         for project in projects:
             # Lock the row to avoid lost updates when multiple webhooks touch the same project concurrently
+            # Use populate_existing() to force SQLAlchemy to refresh the object from the database,
+            # bypassing the identity map cache. This is critical when multiple concurrent webhooks
+            # are updating the same project - without it, a transaction may read stale data from
+            # the identity map even after acquiring the lock, causing lost updates.
             locked = (
                 session.query(Project)
                 .filter(Project.id == project.id)
+                .populate_existing()
                 .with_for_update(nowait=False)
                 .one()
             )
