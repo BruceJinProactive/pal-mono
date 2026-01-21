@@ -2646,8 +2646,8 @@ wheels = [
 
 [[package]]
 name = "pal-agents"
-version = "0.2.17"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.17#339918e3ea4052ccc3fcc73e7bd1157a793c9acf" }
+version = "0.2.18"
+source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.18#94cc57a72a779d240672a07cd242a074dd928c43" }
 dependencies = [
     { name = "agenticmem" },
     { name = "datadog" },
@@ -2763,7 +2763,7 @@ requires-dist = [
     { name = "llama-index-vector-stores-pinecone", specifier = "==0.7.1" },
     { name = "mem0ai", specifier = "==0.1.48" },
     { name = "openai", specifier = "==1.95.1" },
-    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.17" },
+    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.18" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
     { name = "polyline", specifier = "==2.0.2" },
@@ -2791,8 +2791,8 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "pal-tools"
-version = "0.1.10"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-tools.git?rev=v0.1.10#80739fb4b2b0fcf8abb190f1e05e5c9fddcb77bb" }
+version = "0.1.11"
+source = { git = "https://github.com/Proactive-AI-Lab/pal-tools.git?rev=v0.1.11#171f6776493cf6492eecfdfb2ddf9dbe1175990f" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
