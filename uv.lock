@@ -2518,6 +2518,18 @@ wheels = [
 ]
 
 [[package]]
+name = "notion-client"
+version = "2.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9b/ff/06695dca5d0691346fbd89ba300a2ceeeaf0b0632fe8235b588e83e505a3/notion_client-2.7.0.tar.gz", hash = "sha256:31bde3ae03ede77650cadce136152916efdd86579ff65f49fc6705fbe462e2fb", size = 26384, upload-time = "2025-10-31T12:10:15.264Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/6a/9716315432f5aba4c82979f9677aeb101018f0e790835721dc4e01deb933/notion_client-2.7.0-py2.py3-none-any.whl", hash = "sha256:9057a8ac2103ff245556c2a5102bde1d2ccdd3505f66bcc130fc31857731d91e", size = 16999, upload-time = "2025-10-31T12:10:13.835Z" },
+]
+
+[[package]]
 name = "numpy"
 version = "2.3.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2696,11 +2708,13 @@ dependencies = [
     { name = "llama-index-llms-groq" },
     { name = "llama-index-vector-stores-pinecone" },
     { name = "mem0ai" },
+    { name = "notion-client" },
     { name = "openai" },
     { name = "pal-agents" },
     { name = "pgvector" },
     { name = "pinecone" },
     { name = "polyline" },
+    { name = "postmarker" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -2762,11 +2776,13 @@ requires-dist = [
     { name = "llama-index-llms-groq", specifier = "==0.4.1" },
     { name = "llama-index-vector-stores-pinecone", specifier = "==0.7.1" },
     { name = "mem0ai", specifier = "==0.1.48" },
+    { name = "notion-client", specifier = ">=2.7.0" },
     { name = "openai", specifier = "==1.95.1" },
     { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.18" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
     { name = "polyline", specifier = "==2.0.2" },
+    { name = "postmarker", specifier = ">=1.0.0" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.2.1" },
     { name = "pyright", marker = "extra == 'dev'", specifier = "~=1.1.382" },
     { name = "pytest", specifier = "==8.3.2" },
@@ -2952,6 +2968,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/85/a9/ec3bbc23b6f3c23c52e0b5795b1357cca74aa5cfb254213f1e471fef9b4d/posthog-3.25.0.tar.gz", hash = "sha256:9168f3e7a0a5571b6b1065c41b3c171fbc68bfe72c3ac0bfd6e3d2fcdb7df2ca", size = 75968, upload-time = "2025-04-15T21:15:45.552Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/e2/c158366e621562ef224f132e75c1d1c1fce6b078a19f7d8060451a12d4b9/posthog-3.25.0-py2.py3-none-any.whl", hash = "sha256:85db78c13d1ecb11aed06fad53759c4e8fb3633442c2f3d0336bc0ce8a585d30", size = 89115, upload-time = "2025-04-15T21:15:43.934Z" },
+]
+
+[[package]]
+name = "postmarker"
+version = "1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/51/79/a527c6e91bc1c6980bc779b83249f59bf1cba8b259147c799934297cc7a8/postmarker-1.0.tar.gz", hash = "sha256:e735303fdf8ede667a1c6e64a95a96e97f0dabbeca726d0ae1f066bdd799fe34", size = 21627, upload-time = "2022-01-15T14:11:24.201Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a1/4b/045369491569fda223d2e0bc821534de14278dd4facdb386405ea17b9d80/postmarker-1.0-py3-none-any.whl", hash = "sha256:0fa49f236c7193650896cbf31bbfac34043e352574c6c7e3e2ad2b954704f064", size = 24134, upload-time = "2022-01-15T14:11:22.732Z" },
 ]
 
 [[package]]
