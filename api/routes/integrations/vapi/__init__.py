@@ -39,7 +39,7 @@ vapi_router = APIRouter(prefix="/vapi", tags=["Integrations"])
 
 
 @vapi_router.post(
-    "/",
+    "",
     status_code=status.HTTP_200_OK,
     responses={
         200: {"description": "Successful response"},
