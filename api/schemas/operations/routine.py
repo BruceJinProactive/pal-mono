@@ -519,8 +519,10 @@ class SubmissionResponse(BaseModel):
     execution_id: uuid.UUID
     status: SubmissionStatus
     submitted_by: uuid.UUID | None
+    submitted_by_name: str | None = None
     submitted_at: datetime | None
     reviewed_by: uuid.UUID | None
+    reviewed_by_name: str | None = None
     reviewed_at: datetime | None
     review_notes: str | None
     created_at: datetime

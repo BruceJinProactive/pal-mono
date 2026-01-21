@@ -149,8 +149,8 @@ async def get_execution(
                     is_required=item.is_required if item else True,
                 )
                 response_list.append(response_with_item)
-            submission_detail = _build_submission_detail_response(
-                submission, response_list, routine_name
+            submission_detail = await _build_submission_detail_response(
+                submission, response_list, session, routine_name
             )
 
     return _build_execution_response(

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.routine import (
@@ -25,6 +26,7 @@ from db.repositories import (
     RoutineRepositoryAsync,
     RoutineSubmissionRepositoryAsync,
 )
+from db.tables.account_user import AccountUser
 from db.tables.routine_item_responses import RoutineItemResponse
 from db.tables.routine_submissions import RoutineSubmission
 from db.tables.types import ExecutionStatus, ItemResponseStatus, SubmissionStatus
@@ -32,15 +34,56 @@ from services.auth_types import UserContext
 from utils.log import logger
 
 
-def _build_submission_response(submission: RoutineSubmission) -> SubmissionResponse:
-    """Build a SubmissionResponse from database model."""
+async def _get_user_name_by_id(
+    session: AsyncSession, user_id: UUID | None
+) -> str | None:
+    """Get user's full name from AccountUser table by user_id.
+
+    Args:
+        session: Async database session
+        user_id: UUID of the user to look up
+
+    Returns:
+        User's full name if found, None otherwise
+    """
+    if not user_id:
+        return None
+
+    try:
+        query = select(AccountUser).filter(AccountUser.user_id == user_id)
+        result = await session.execute(query)
+        account_user = result.scalars().first()
+        return account_user.name if account_user else None
+    except Exception as e:
+        logger.error(f"Error fetching user name for user_id {user_id}: {e}")
+        return None
+
+
+async def _build_submission_response(
+    submission: RoutineSubmission, session: AsyncSession
+) -> SubmissionResponse:
+    """Build a SubmissionResponse from database model.
+
+    Args:
+        submission: The submission database model
+        session: Async database session for fetching user names
+
+    Returns:
+        SubmissionResponse with user names populated
+    """
+    # Fetch user names if user IDs are present
+    submitted_by_name = await _get_user_name_by_id(session, submission.submitted_by)
+    reviewed_by_name = await _get_user_name_by_id(session, submission.reviewed_by)
+
     return SubmissionResponse(
         id=submission.id,
         execution_id=submission.execution_id,
         status=submission.status,
         submitted_by=submission.submitted_by,
+        submitted_by_name=submitted_by_name,
         submitted_at=submission.submitted_at,
         reviewed_by=submission.reviewed_by,
+        reviewed_by_name=reviewed_by_name,
         reviewed_at=submission.reviewed_at,
         review_notes=submission.review_notes,
         created_at=submission.created_at,
@@ -81,19 +124,36 @@ async def _build_item_response(
     )
 
 
-def _build_submission_detail_response(
+async def _build_submission_detail_response(
     submission: RoutineSubmission,
     responses: list[ItemResponseWithItemResponse],
+    session: AsyncSession,
     routine_name: str | None = None,
 ) -> SubmissionDetailResponse:
-    """Build a SubmissionDetailResponse from database models."""
+    """Build a SubmissionDetailResponse from database models.
+
+    Args:
+        submission: The submission database model
+        responses: List of item responses with details
+        session: Async database session for fetching user names
+        routine_name: Optional routine name
+
+    Returns:
+        SubmissionDetailResponse with user names populated
+    """
+    # Fetch user names if user IDs are present
+    submitted_by_name = await _get_user_name_by_id(session, submission.submitted_by)
+    reviewed_by_name = await _get_user_name_by_id(session, submission.reviewed_by)
+
     return SubmissionDetailResponse(
         id=submission.id,
         execution_id=submission.execution_id,
         status=submission.status,
         submitted_by=submission.submitted_by,
+        submitted_by_name=submitted_by_name,
         submitted_at=submission.submitted_at,
         reviewed_by=submission.reviewed_by,
+        reviewed_by_name=reviewed_by_name,
         reviewed_at=submission.reviewed_at,
         review_notes=submission.review_notes,
         created_at=submission.created_at,
@@ -168,9 +228,10 @@ async def start_submission(
     routine_name = routine.name if routine else None
 
     # Return empty responses list (items haven't been responded to yet)
-    return _build_submission_detail_response(
+    return await _build_submission_detail_response(
         submission=submission,
         responses=[],
+        session=session,
         routine_name=routine_name,
     )
 
@@ -514,8 +575,8 @@ async def submit_for_review(
 
     # Build response before commit to avoid async I/O issues
     # (session.commit() expires objects, and accessing attributes
-    # in sync _build_submission_response would trigger greenlet errors)
-    response = _build_submission_response(updated)
+    # in async _build_submission_response would trigger greenlet errors)
+    response = await _build_submission_response(updated, session)
 
     await session.commit()
 
@@ -579,9 +640,10 @@ async def get_submission(
 
     responses = await asyncio.gather(*response_tasks)
 
-    return _build_submission_detail_response(
+    return await _build_submission_detail_response(
         submission=submission,
         responses=responses,
+        session=session,
         routine_name=routine_name,
     )
 
@@ -659,13 +721,13 @@ async def list_pending_review(
 
         responses = await asyncio.gather(*response_tasks)
 
-        submissions.append(
-            _build_submission_detail_response(
-                submission=submission,
-                responses=responses,
-                routine_name=routine_name,
-            )
+        submission_detail = await _build_submission_detail_response(
+            submission=submission,
+            responses=responses,
+            session=session,
+            routine_name=routine_name,
         )
+        submissions.append(submission_detail)
 
     return ListPendingReviewResponse(
         submissions=submissions,
@@ -723,8 +785,8 @@ async def approve_submission(
 
     # Build response before commit to avoid async I/O issues
     # (session.commit() expires objects, and accessing attributes
-    # in sync _build_submission_response would trigger greenlet errors)
-    response = _build_submission_response(updated)
+    # in async _build_submission_response would trigger greenlet errors)
+    response = await _build_submission_response(updated, session)
 
     await session.commit()
 
@@ -784,8 +846,8 @@ async def reject_submission(
 
     # Build response before commit to avoid async I/O issues
     # (session.commit() expires objects, and accessing attributes
-    # in sync _build_submission_response would trigger greenlet errors)
-    response = _build_submission_response(updated)
+    # in async _build_submission_response would trigger greenlet errors)
+    response = await _build_submission_response(updated, session)
 
     await session.commit()
 
@@ -872,7 +934,7 @@ async def reset_to_draft(
     )
 
     # Build response before commit to avoid async I/O issues
-    response = _build_submission_response(updated)
+    response = await _build_submission_response(updated, session)
 
     await session.commit()
 
