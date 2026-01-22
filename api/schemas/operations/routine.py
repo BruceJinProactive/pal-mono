@@ -492,6 +492,7 @@ class ItemResponseResponse(BaseModel):
     ai_result: dict[str, Any] | None
     ai_passed: bool | None
     ai_confidence: Decimal | None
+    ai_details: str | None
     status: ItemResponseStatus
     created_at: datetime
     updated_at: datetime | None

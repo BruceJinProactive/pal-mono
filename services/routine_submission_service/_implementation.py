@@ -106,6 +106,11 @@ async def _build_item_response(
     else:
         image_url = None
 
+    # Extract ai_details from ai_result JSON
+    ai_details = None
+    if response.ai_result and isinstance(response.ai_result, dict):
+        ai_details = response.ai_result.get("details")
+
     return ItemResponseWithItemResponse(
         id=response.id,
         submission_id=response.submission_id,
@@ -115,6 +120,7 @@ async def _build_item_response(
         ai_result=response.ai_result,
         ai_passed=response.ai_passed,
         ai_confidence=response.ai_confidence,
+        ai_details=ai_details,
         status=response.status,
         created_at=response.created_at,
         updated_at=response.updated_at,
@@ -492,6 +498,11 @@ async def add_response(
         presigned_url = None
         logger.debug("[add_response] No image URL to convert")
 
+    # Extract ai_details from ai_result JSON
+    ai_details = None
+    if response_data["ai_result"] and isinstance(response_data["ai_result"], dict):
+        ai_details = response_data["ai_result"].get("details")
+
     result = ItemResponseWithItemResponse(
         id=response_data["id"],
         submission_id=response_data["submission_id"],
@@ -501,6 +512,7 @@ async def add_response(
         ai_result=response_data["ai_result"],
         ai_passed=response_data["ai_passed"],
         ai_confidence=response_data["ai_confidence"],
+        ai_details=ai_details,
         status=response_data["status"],
         created_at=response_data["created_at"],
         updated_at=response_data["updated_at"],
