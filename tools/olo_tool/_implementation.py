@@ -68,7 +68,7 @@ class OloTool(Toolkit):
         tool_metadata: ToolMetadata,
         client_credentials: str | None = None,
         use_signed_auth: bool = True,
-        hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/olo",
+        hosted_payment_iframe_endpoint: str = "https://console.palona.ai/checkout/olo",
         enable_hosted_checkout: bool = False,
         payment_iframe_token_ttl_seconds: int = 15 * 60,
         backdoor_tool_prompt: dict | None = None,

@@ -96,7 +96,7 @@ class ToastTool(Toolkit):
         index_name: str | None = None,
         token_api_endpoint: str | None = "ws-api.toasttab.com",
         general_api_endpoint: str | None = "ws-api.toasttab.com",
-        hosted_payment_iframe_endpoint: str = "http://localhost:3000/checkout/toast",
+        hosted_payment_iframe_endpoint: str = "https://console.palona.ai/checkout/toast",
         enable_hosted_checkout: bool = False,
         payment_iframe_token_ttl_seconds: int = 15 * 60,
         backdoor_tool_prompt: dict | None = None,
@@ -126,7 +126,6 @@ class ToastTool(Toolkit):
         self.token_api_endpoint = token_api_endpoint
         self.general_api_endpoint = general_api_endpoint
         self._cached_store_info: str | None = None
-        # Use sandbox iframe endpoint for hosted checkout
         self.hosted_payment_iframe_endpoint = hosted_payment_iframe_endpoint
         self.enable_hosted_checkout = enable_hosted_checkout
         self.payment_iframe_token_ttl_seconds = payment_iframe_token_ttl_seconds
