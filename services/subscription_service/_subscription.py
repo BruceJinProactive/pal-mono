@@ -63,7 +63,7 @@ def _send_subscription_activated_notification(
             account_id=account.id,
             payload={
                 "plan_name": plan.name,
-                "price": float(plan.monthly_fee or 0),
+                "price": float(plan.monthly_fee or 0) / 100,  # Convert cents to dollars
                 "currency": "USD",
                 "trial_end": trial_end_formatted,
             },
@@ -3309,7 +3309,7 @@ def _send_project_subscription_activated_notification(
             payload={
                 "plan_name": plan.name,
                 "project_name": project.name,
-                "price": float(plan.monthly_fee or 0),
+                "price": float(plan.monthly_fee or 0) / 100,  # Convert cents to dollars
                 "currency": "USD",
                 "trial_end": trial_end_formatted,
             },

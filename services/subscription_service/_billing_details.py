@@ -409,19 +409,6 @@ def get_billing_cycle_info(
     try:
         stripe_sub = stripe.Subscription.retrieve(stripe_subscription_id)
 
-        # Log the entire subscription object for debugging
-        logger.info(
-            f"Retrieved Stripe subscription {stripe_subscription_id} - Full object",
-            extra={
-                "stripe_subscription_id": stripe_subscription_id,
-                "subscription_object": (
-                    stripe_sub.to_dict()
-                    if hasattr(stripe_sub, "to_dict")
-                    else str(stripe_sub)
-                ),
-            },
-        )
-
         # Get items safely - could be property or dict key
         items = None
         if hasattr(stripe_sub, "items"):
@@ -434,24 +421,6 @@ def get_billing_cycle_info(
         if items is None and hasattr(stripe_sub, "__getitem__"):
             # Try dict access
             items = stripe_sub.get("items")
-
-        logger.debug(
-            f"Subscription {stripe_subscription_id} quick check",
-            extra={
-                "has_items": bool(
-                    items and items.get("data")
-                    if isinstance(items, dict)
-                    else items and hasattr(items, "data")
-                ),
-                "has_current_period_end": hasattr(stripe_sub, "current_period_end") and bool(stripe_sub.current_period_end),  # type: ignore
-                "has_current_period_start": hasattr(stripe_sub, "current_period_start") and bool(stripe_sub.current_period_start),  # type: ignore
-                "subscription_status": (
-                    stripe_sub.status
-                    if hasattr(stripe_sub, "status")
-                    else stripe_sub.get("status")
-                ),
-            },
-        )
 
         # Determine billing cycle
         items_data = (
