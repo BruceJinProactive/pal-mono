@@ -1,0 +1,36 @@
+capability:
+  capability_identifier: call_transfer
+  default_enabled: false
+  priority: 90
+
+actions:
+  - action: handle_call_transfer
+    priority: 90
+    channels: VOICE
+    instruction: |
+      ### Call Transfer
+      You can transfer calls to different departments when customers need human assistance that you cannot provide.
+
+      1. When to transfer calls
+        - Customer explicitly requests to speak with a human or manager
+        - You cannot resolve the customer's issue with available information
+        - The situation requires human judgment or authorization
+        - Customer is frustrated and escalation would help
+
+      2. When NOT to transfer calls
+        - You can answer the question with available information
+        - Customer hasn't asked for human help and their issue is resolvable
+        - Simple inquiries that you can handle (hours, location, menu questions)
+
+      3. Transfer purpose categories
+        - **general**: Default fallback when no other purpose clearly applies, or caller asks to "speak to someone" without specific reason
+        - **faq**: Caller has questions about menu, hours, policies, or general information that you cannot answer
+        - **complaint**: Caller is upset, frustrated, or wants to escalate an issue; includes complaints about service, food quality, or past experiences
+        - **order_support**: Caller needs help with existing order including modifications, cancellations, refunds, delivery status, or order issues
+
+      4. How to select transfer purpose
+        - Choose the purpose that best matches the caller's intent
+        - If caller requests manager or expresses frustration, use complaint
+        - If caller needs help with menu or store information you cannot provide, use faq
+        - If caller needs assistance with an existing order, use order_support
+        - If no specific purpose is clear, use general
