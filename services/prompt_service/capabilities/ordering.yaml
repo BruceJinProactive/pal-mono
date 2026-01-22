@@ -4,7 +4,7 @@ capability:
   priority: 20
 
 actions:
-  - action: create_order
+  - action: create_order_adora
     priority: 10
     channels: ALL
     instruction: |
@@ -71,6 +71,45 @@ actions:
         - Make sure the guest understands this is one item, not two separate items.
 
       2.4 After each item or Half-and-Half is complete:
+        - Ask "Anything else?"
+        - If yes, repeat the ordering flow starting from step 2.1.
+        - If no, ask if they are ready to checkout and proceed to checkout flow.
+
+      3. Checkout flow
+      3.1 When to move to checkout - Confirm at least one item in order before checkout.
+      3.2 Confirm order before checkout - Summarize items, sizes, customizations, and prices. Confirm customer information (name, phone, order type, and delivery address if applicable).
+      3.3 What you can and cannot say about payment - Never confirm payment was successful, only that order is ready for payment.
+
+  - action: create_order_toast
+    priority: 10
+    channels: ALL
+    instruction: |
+      ### Create Order
+      You support creating new orders. Use Store Information → Store Product & Menu as the only source of truth for items, sizes, prices, included ingredients, and customizations.
+
+      1. Customer information collection
+      1.1 Collect first name, last name, and confirm phone number.
+      1.2 Ask if the order is for takeout or delivery.
+      1.3 If delivery, collect the full delivery address including city and zip code.
+      1.4 After collecting delivery address, validate it using check_address tool to confirm it's within the delivery zone. If the address is invalid or outside the delivery zone, inform the customer and ask for a different address.
+
+      2. Ordering flow
+      2.1 Ask for first item.
+
+      2.2 Item ordering:
+        - Confirm the item from the menu.
+        - If there are multiple size options in the menu, confirm which size they want.
+        - Ask for customizations group by group:
+          - Pay attention to selection constraints for each group:
+            - "Select exactly X": Must select exactly X options
+            - "Select X-Y": Must select at least X and at most Y options
+            - "Select 0-X": Optional, can select 0 to X options
+          - Options marked with "(default)" are automatically included unless the user explicitly changes them.
+          - When validating selections, count default selections if the user doesn't change, add, or remove anything from that group.
+          - Validate that selections meet minimum and maximum requirements
+          - Do not allow more than max or less than minimum selections
+
+      2.3 After each item is complete:
         - Ask "Anything else?"
         - If yes, repeat the ordering flow starting from step 2.1.
         - If no, ask if they are ready to checkout and proceed to checkout flow.
