@@ -237,7 +237,8 @@ async def create_feedback(
     try:
         email_sent = await postmark_service.send_feedback_receipt(
             user_email=context.email,
-            user_name=context.display_name,
+            user_name=context.display_name or context.email or "Valued Customer",
+            feedback_text=persisted_feedback.note or "",
         )
         # Extract email domain for logging (avoid PII exposure)
         email_domain = (

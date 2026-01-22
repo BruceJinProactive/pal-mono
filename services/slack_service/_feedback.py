@@ -186,7 +186,6 @@ async def send_feedback_notification(
                             "text": "Changes Now Live 🚀",
                             "emoji": True,
                         },
-                        "style": "primary",  # Green button
                         "value": button_value,
                         "action_id": "action_live",
                     },

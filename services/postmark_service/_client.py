@@ -5,11 +5,11 @@ Provides centralized Postmark client creation and management.
 """
 
 import threading
-from typing import Optional
 
 from postmarker.core import PostmarkClient
 
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
 # Global client instance for reuse
 _client_instance: PostmarkClient | None = None
@@ -17,29 +17,41 @@ _client_instance: PostmarkClient | None = None
 _client_lock = threading.Lock()
 
 
-def get_postmark_client() -> Optional[PostmarkClient]:
+def get_postmark_client() -> PostmarkClient:
     """
     Get or create a Postmark client instance.
-
-    CURRENTLY DISABLED: Returns None.
 
     Uses a singleton pattern to reuse the same client instance.
     Fetches the API token from environment or AWS Secrets Manager on first use.
 
     Returns:
-        Optional[PostmarkClient]: Configured Postmark client, or None if disabled
+        PostmarkClient: Configured Postmark client
 
     Raises:
         ValueError: If no token available
     """
-    # DISABLED: Postmark client creation is currently disabled
-    logger.debug("[Postmark] Client creation disabled - returning None")
-    return None
+    global _client_instance
+
+    with _client_lock:
+        if _client_instance is None:
+            try:
+                api_token = get_server_secret_with_fallback("POSTMARK_API_TOKEN")
+                if not api_token:
+                    logger.error("[Postmark] POSTMARK_API_TOKEN not configured")
+                    raise ValueError("Postmark API token not configured")
+
+                _client_instance = PostmarkClient(server_token=api_token)
+                logger.debug("[Postmark] Client instance created successfully")
+            except Exception as e:
+                logger.error(f"[Postmark] Failed to create client: {e}")
+                raise
+
+    return _client_instance
 
 
 def get_postmark_sender_email() -> str:
     """
-    Get the Postmark sender email from environment variables.
+    Get the Postmark sender email from environment variables or AWS Secrets Manager.
 
     Returns:
         str: The verified sender email address
@@ -47,12 +59,15 @@ def get_postmark_sender_email() -> str:
     Raises:
         ValueError: If sender email is not configured
     """
-    # sender_email = os.environ.get("POSTMARK_SENDER_EMAIL")
-    # if not sender_email:
-    #     logger.error("[Postmark] POSTMARK_SENDER_EMAIL not configured")
-    #     raise ValueError("Postmark sender email not configured")
-    # return sender_email
-    return ""
+    try:
+        sender_email = get_server_secret_with_fallback("POSTMARK_SENDER_EMAIL")
+        if not sender_email:
+            logger.error("[Postmark] POSTMARK_SENDER_EMAIL not configured")
+            raise ValueError("Postmark sender email not configured")
+        return sender_email
+    except Exception as e:
+        logger.error(f"[Postmark] Failed to get sender email: {e}")
+        raise
 
 
 def reset_client() -> None:
