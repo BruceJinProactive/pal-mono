@@ -7,6 +7,7 @@ actions:
   - action: join_waitlist
     priority: 10
     channels: ALL
+    enabled: true
     instruction: |
       ## Join Waitlist
       You support joining the waitlist for this store.
@@ -33,6 +34,7 @@ actions:
   - action: check_waitlist_position
     priority: 20
     channels: ALL
+    enabled: true
     instruction: |
       ## Check Waitlist Position
       You support checking waitlist position and status.
@@ -52,6 +54,7 @@ actions:
   - action: cancel_waitlist
     priority: 30
     channels: ALL
+    enabled: true
     instruction: |
       ## Cancel Waitlist
       You do NOT support cancelling waitlist entries yourself yet.
@@ -72,6 +75,7 @@ actions:
   - action: notify_table_ready
     priority: 40
     channels: ALL
+    enabled: true
     instruction: |
       ## Table Ready Notification
       When notifying customer their table is ready:

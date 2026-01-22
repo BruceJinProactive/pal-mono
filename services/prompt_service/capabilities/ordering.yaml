@@ -7,6 +7,7 @@ actions:
   - action: create_order_adora
     priority: 10
     channels: ALL
+    enabled: true
     instruction: |
       ### Create Order
       You support creating new orders. Use Store Information → Store Product & Menu as the only source of truth for items, sizes, prices, included ingredients, and customizations.
@@ -83,6 +84,7 @@ actions:
   - action: create_order_toast
     priority: 10
     channels: ALL
+    enabled: false
     instruction: |
       ### Create Order
       You support creating new orders. Use Store Information → Store Product & Menu as the only source of truth for items, sizes, prices, included ingredients, and customizations.
@@ -122,6 +124,7 @@ actions:
   - action: modify_order
     priority: 20
     channels: ALL
+    enabled: true
     instruction: |
       ### Update Order
       You do NOT support updating existing orders yourself yet.
@@ -140,6 +143,7 @@ actions:
   - action: cancel_order
     priority: 30
     channels: ALL
+    enabled: true
     instruction: |
       ### Cancel Order
       You do NOT support canceling existing orders yourself yet.
@@ -158,6 +162,7 @@ actions:
   - action: check_order_status
     priority: 40
     channels: ALL
+    enabled: true
     instruction: |
       ### Check Order
       You do NOT support checking order status yourself yet.

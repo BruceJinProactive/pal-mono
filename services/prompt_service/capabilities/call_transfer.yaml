@@ -7,6 +7,7 @@ actions:
   - action: handle_call_transfer
     priority: 90
     channels: VOICE
+    enabled: true
     instruction: |
       ### Call Transfer
       You can transfer calls to different departments when customers need human assistance that you cannot provide.

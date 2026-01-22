@@ -45,6 +45,7 @@ class Action:
     instruction: str  # The prompt/instruction text for this action
     channel: ChannelType = "ALL"  # Channel-specific override (SMS, VOICE, EMAIL, ALL)
     priority: int = 50  # Priority for ordering (lower = higher priority)
+    enabled: bool = True  # Whether this action is enabled (defaults to True)
 
 
 @dataclass
@@ -141,6 +142,7 @@ class PromptFactoryV2:
                             instruction=action_data.get("instruction", ""),
                             channel=parse_channel(channel_str),
                             priority=action_data.get("priority", 50),
+                            enabled=action_data.get("enabled", False),
                         )
                         capability.actions.append(action)
                     except Exception as e:
@@ -219,14 +221,12 @@ class PromptFactoryV2:
                 # Add actions if present
                 if agent_cap.id in actions_by_capability:
                     for db_action in actions_by_capability[agent_cap.id]:
-                        # Only include enabled actions
-                        if not db_action.enabled:
-                            continue
                         action = Action(
                             action=db_action.action,
                             instruction=db_action.prompt,  # DB uses 'prompt' field
                             channel=parse_channel(db_action.channel),
                             priority=db_action.priority,
+                            enabled=db_action.enabled,  # Preserve enabled state from DB
                         )
                         capability.actions.append(action)
 
@@ -343,6 +343,9 @@ class PromptFactoryV2:
                 continue
 
             actions = capability.actions
+
+            # Filter out disabled actions
+            actions = [action for action in actions if action.enabled]
 
             if channel:
                 # Filter actions by channel - include if action is for ALL or matches the specific channel

@@ -173,6 +173,10 @@ class DefaultAction(BaseModel):
         ...,
         description="Supported channels (ALL, SMS, VOICE, EMAIL)",
     )
+    enabled: bool = Field(
+        default=True,
+        description="Whether this action is enabled by default",
+    )
 
 
 class DefaultCapability(BaseModel):

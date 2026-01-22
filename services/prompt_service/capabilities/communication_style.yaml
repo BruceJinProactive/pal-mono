@@ -7,6 +7,7 @@ actions:
   - action: communication_guidelines
     priority: 10
     channels: ALL
+    enabled: true
     instruction: |
       ### Communication Style & Tone
       Keep responses SHORT and conversational. Follow these rules:

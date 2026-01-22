@@ -7,6 +7,7 @@ actions:
   - action: make_reservation
     priority: 10
     channels: ALL
+    enabled: true
     instruction: |
       ### Create Reservation
       You support creating new reservations.
@@ -31,6 +32,7 @@ actions:
   - action: modify_reservation
     priority: 20
     channels: ALL
+    enabled: true
     instruction: |
       ### Update Reservation
       You do NOT support updating reservations yourself yet.
@@ -50,6 +52,7 @@ actions:
   - action: cancel_reservation
     priority: 30
     channels: ALL
+    enabled: true
     instruction: |
       ### Cancel Reservation
       You do NOT support canceling reservations yourself yet.
@@ -69,6 +72,7 @@ actions:
   - action: check_reservation
     priority: 40
     channels: ALL
+    enabled: true
     instruction: |
       ### Check Reservation
       You support checking reservation details.

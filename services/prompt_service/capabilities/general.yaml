@@ -7,6 +7,7 @@ actions:
   - action: provide_store_hours
     priority: 10
     channels: ALL
+    enabled: true  # Default: true (action is enabled). Set to false to disable.
     instruction: |
       ### Business hour
       You answer all questions about when this store is open or closed, and the opening hours for certain days.
@@ -33,6 +34,7 @@ actions:
   - action: provide_location
     priority: 20
     channels: ALL
+    enabled: true
     instruction: |
       ### Location
       You answer all questions about where this store is located and how to get there.
@@ -56,6 +58,7 @@ actions:
   - action: answer_faq
     priority: 40
     channels: ALL
+    enabled: true
     instruction: |
       ### Frequently Asked Questions
       You answer common questions about this store based on the FAQ information provided.
@@ -82,6 +85,7 @@ actions:
   - action: provide_menu_info
     priority: 45
     channels: ALL
+    enabled: true
     instruction: |
       ### Menu and Products
       You answer all questions about menu items, products, and offerings available at this store.
@@ -126,6 +130,7 @@ actions:
   - action: understand_adora_menu_structure
     priority: 46
     channels: ALL
+    enabled: false
     instruction: |
       ### Adora Menu Structure
       This action defines how to parse and understand menu items from Adora platform.
@@ -163,6 +168,7 @@ actions:
   - action: understand_toast_menu_structure
     priority: 46
     channels: ALL
+    enabled: false
     instruction: |
       ### Toast Menu Structure
       This action defines how to parse and understand menu items from Toast platform.
@@ -205,6 +211,7 @@ actions:
   - action: provide_promotion_info
     priority: 50
     channels: ALL
+    enabled: true
     instruction: |
       ### Promotion
       You answer all questions about current deals, specials, coupons, and discounts for this store.
