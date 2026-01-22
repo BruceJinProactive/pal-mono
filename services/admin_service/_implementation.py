@@ -1127,6 +1127,7 @@ def create_account_user(
                     ),
                     "sender_name": "Support Team",
                 },
+                bcc_emails=["notifications@palona.ai"],
             )
             logger.info(f"Welcome email sent to {user_email}")
         except Exception as e:

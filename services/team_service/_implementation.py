@@ -277,6 +277,7 @@ def create_invitation(
             to_email=params.email,
             template_id=template_id,
             template_model=template_model,
+            bcc_emails=["notifications@palona.ai"],
         )
         logger.info(
             f"Invitation email sent to {params.email} for account {account.name}"
@@ -928,6 +929,7 @@ def resend_invitation(
             to_email=invitation.email,
             template_id=template_id,
             template_model=template_model,
+            bcc_emails=["notifications@palona.ai"],
         )
         logger.info(
             f"Invitation email resent to {invitation.email} for account {account.name}"
