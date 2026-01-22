@@ -304,6 +304,7 @@ async def create_capability_action(
         prompt=data.prompt,
         channel=data.channel.upper(),  # Normalize to uppercase
         priority=data.priority,
+        enabled=data.enabled,
     )
 
     action = await action_repo.create(new_action)
@@ -365,6 +366,8 @@ async def update_capability_action(
         update_data["channel"] = data.channel.upper()
     if data.priority is not None:
         update_data["priority"] = data.priority
+    if data.enabled is not None:
+        update_data["enabled"] = data.enabled
 
     if not update_data:
         # No fields to update
@@ -415,6 +418,7 @@ async def upsert_capability_action(
         prompt=data.prompt,
         channel=data.channel.upper(),  # Normalize to uppercase
         priority=data.priority,
+        enabled=data.enabled,
     )
 
     if not action:

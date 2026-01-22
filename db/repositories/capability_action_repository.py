@@ -228,6 +228,7 @@ class CapabilityActionRepositoryAsync:
         prompt: str,
         channel: str = "ALL",
         priority: int = 50,
+        enabled: bool = False,
     ) -> CapabilityAction:
         """
         Create or update a capability action.
@@ -238,6 +239,7 @@ class CapabilityActionRepositoryAsync:
             prompt: Prompt text for the action.
             channel: Channel for the action (default: "ALL").
             priority: Priority of the action (lower number = higher priority).
+            enabled: Whether the action is enabled (default: False).
 
         Returns:
             The created or updated CapabilityAction object.
@@ -255,6 +257,7 @@ class CapabilityActionRepositoryAsync:
                 # Update existing action
                 existing.prompt = prompt
                 existing.priority = priority
+                existing.enabled = enabled
                 await self.session.flush()
                 await self.session.commit()
                 await self.session.refresh(existing)
@@ -268,6 +271,7 @@ class CapabilityActionRepositoryAsync:
                     prompt=prompt,
                     channel=channel,
                     priority=priority,
+                    enabled=enabled,
                 )
                 return await self.create(capability_action)
         except SQLAlchemyError as e:

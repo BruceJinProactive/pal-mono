@@ -219,6 +219,9 @@ class PromptFactoryV2:
                 # Add actions if present
                 if agent_cap.id in actions_by_capability:
                     for db_action in actions_by_capability[agent_cap.id]:
+                        # Only include enabled actions
+                        if not db_action.enabled:
+                            continue
                         action = Action(
                             action=db_action.action,
                             instruction=db_action.prompt,  # DB uses 'prompt' field

@@ -88,6 +88,10 @@ class ActionBase(BaseModel):
         le=99,
         description="Priority for action ordering (lower = higher priority)",
     )
+    enabled: bool = Field(
+        default=False,
+        description="Whether this action is enabled",
+    )
 
 
 class ActionCreate(ActionBase):
@@ -116,6 +120,10 @@ class ActionUpdate(BaseModel):
         ge=0,
         le=99,
         description="Priority for action ordering",
+    )
+    enabled: Optional[bool] = Field(
+        None,
+        description="Whether this action is enabled",
     )
 
 
