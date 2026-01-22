@@ -174,7 +174,7 @@ async def send_billing_email(async_session: AsyncSession, event: BillingEvent) -
             to_email=recipient,
             template_id=POSTMARK_TEMPLATES[event.type],
             template_model=template_variables,
-            bcc_emails=["notifications@palona.ai"],
+            bcc_emails=["notifications@proactiveailab.com", "notifications@palona.ai"],
             tag=f"billing-{event.type}",
         )
 
@@ -297,7 +297,7 @@ def send_billing_email_sync(session: Session, event: BillingEvent) -> None:
             to_email=recipient,
             template_id=POSTMARK_TEMPLATES[event.type],
             template_model=template_variables,
-            bcc_emails=["notifications@palona.ai"],
+            bcc_emails=["notifications@proactiveailab.com", "notifications@palona.ai"],
             tag=f"billing-{event.type}",
         )
 

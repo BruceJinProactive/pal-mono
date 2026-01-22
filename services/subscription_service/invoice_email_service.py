@@ -97,7 +97,7 @@ def send_invoice_email_with_analytics(
             template_model=template_model,
             from_email=from_email,
             cc_emails=cc_emails,
-            bcc_emails=["notifications@palona.ai"],
+            bcc_emails=["notifications@proactiveailab.com", "notifications@palona.ai"],
             tag=f"invoice-with-analytics-{scope}",
             attachments=attachments,
         )
