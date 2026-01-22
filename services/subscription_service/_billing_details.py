@@ -422,31 +422,82 @@ def get_billing_cycle_info(
             },
         )
 
+        # Get items safely - could be property or dict key
+        items = None
+        if hasattr(stripe_sub, "items"):
+            items_attr = getattr(stripe_sub, "items", None)
+            # Check if it's a dict-like object with 'data' key
+            if isinstance(items_attr, dict) and "data" in items_attr:
+                items = items_attr
+            elif hasattr(items_attr, "data"):
+                items = items_attr
+        if items is None and hasattr(stripe_sub, "__getitem__"):
+            # Try dict access
+            items = stripe_sub.get("items")
+
         logger.debug(
             f"Subscription {stripe_subscription_id} quick check",
             extra={
-                "has_items": bool(stripe_sub.items and stripe_sub.items.data),
+                "has_items": bool(
+                    items and items.get("data")
+                    if isinstance(items, dict)
+                    else items and hasattr(items, "data")
+                ),
                 "has_current_period_end": hasattr(stripe_sub, "current_period_end") and bool(stripe_sub.current_period_end),  # type: ignore
                 "has_current_period_start": hasattr(stripe_sub, "current_period_start") and bool(stripe_sub.current_period_start),  # type: ignore
-                "subscription_status": stripe_sub.status,
+                "subscription_status": (
+                    stripe_sub.status
+                    if hasattr(stripe_sub, "status")
+                    else stripe_sub.get("status")
+                ),
             },
         )
 
         # Determine billing cycle
-        if stripe_sub.items and stripe_sub.items.data:
-            price = stripe_sub.items.data[0].price
-            if price.recurring:
-                interval = price.recurring.interval
-                billing_cycle = (
-                    "monthly"
-                    if interval == "month"
-                    else "annual" if interval == "year" else interval
+        items_data = (
+            items.get("data")
+            if isinstance(items, dict)
+            else (items.data if items and hasattr(items, "data") else None)
+        )
+        if items_data and len(items_data) > 0:
+            first_item = items_data[0]
+            price = (
+                first_item.get("price")
+                if isinstance(first_item, dict)
+                else (first_item.price if hasattr(first_item, "price") else None)
+            )
+            if price:
+                recurring = (
+                    price.get("recurring")
+                    if isinstance(price, dict)
+                    else (price.recurring if hasattr(price, "recurring") else None)
                 )
-            else:
-                logger.warning(
-                    f"Subscription {stripe_subscription_id} has non-recurring price",
-                    extra={"price_id": price.id if price else None},
-                )
+                if recurring:
+                    interval = (
+                        recurring.get("interval")
+                        if isinstance(recurring, dict)
+                        else (
+                            recurring.interval
+                            if hasattr(recurring, "interval")
+                            else None
+                        )
+                    )
+                    if interval:
+                        billing_cycle = (
+                            "monthly"
+                            if interval == "month"
+                            else "annual" if interval == "year" else interval
+                        )
+                else:
+                    price_id = (
+                        price.get("id")
+                        if isinstance(price, dict)
+                        else (price.id if hasattr(price, "id") else None)
+                    )
+                    logger.warning(
+                        f"Subscription {stripe_subscription_id} has non-recurring price",
+                        extra={"price_id": price_id},
+                    )
         else:
             logger.warning(
                 f"Subscription {stripe_subscription_id} has no items",
@@ -468,20 +519,26 @@ def get_billing_cycle_info(
         # Some Stripe subscriptions have period dates on items instead of subscription
         if (
             (period_start_ts is None or period_end_ts is None)
-            and stripe_sub.items
-            and stripe_sub.items.data
+            and items_data
+            and len(items_data) > 0
         ):
-            first_item = stripe_sub.items.data[0]
-            if period_end_ts is None and hasattr(first_item, "current_period_end") and first_item.current_period_end:  # type: ignore
-                period_end_ts = first_item.current_period_end  # type: ignore
-                logger.debug(
-                    f"Using current_period_end from subscription item for {stripe_subscription_id}"
-                )
-            if period_start_ts is None and hasattr(first_item, "current_period_start") and first_item.current_period_start:  # type: ignore
-                period_start_ts = first_item.current_period_start  # type: ignore
-                logger.debug(
-                    f"Using current_period_start from subscription item for {stripe_subscription_id}"
-                )
+            first_item = items_data[0]
+
+            if period_end_ts is None:
+                item_period_end = first_item.get("current_period_end") if isinstance(first_item, dict) else (first_item.current_period_end if hasattr(first_item, "current_period_end") else None)  # type: ignore
+                if item_period_end:
+                    period_end_ts = item_period_end
+                    logger.debug(
+                        f"Using current_period_end from subscription item for {stripe_subscription_id}"
+                    )
+
+            if period_start_ts is None:
+                item_period_start = first_item.get("current_period_start") if isinstance(first_item, dict) else (first_item.current_period_start if hasattr(first_item, "current_period_start") else None)  # type: ignore
+                if item_period_start:
+                    period_start_ts = item_period_start
+                    logger.debug(
+                        f"Using current_period_start from subscription item for {stripe_subscription_id}"
+                    )
 
         # Convert timestamps to datetime
         if period_end_ts:
