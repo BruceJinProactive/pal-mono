@@ -7,7 +7,7 @@ from sqlalchemy import UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
-from sqlalchemy.types import DateTime, Integer, String, Text
+from sqlalchemy.types import Boolean, DateTime, Integer, String, Text
 
 from .base import Base
 
@@ -63,6 +63,14 @@ class CapabilityAction(Base):
         Integer,
         nullable=False,
         default=50,
+    )
+
+    # Whether this action is enabled
+    enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
     )
 
     # Timestamps
