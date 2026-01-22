@@ -28,7 +28,12 @@ def calculate_current_billing_period(
     start_date: datetime,
 ) -> tuple[int, int]:
     """
-    Calculate the current billing period based on subscription start date.
+    DEPRECATED: Do not use this function.
+
+    This function manually calculates billing periods and does NOT match Stripe's actual billing cycle.
+    Stripe uses billing_cycle_anchor, trials, and other factors that this calculation ignores.
+
+    Always use current_period_start and current_period_end from Stripe Subscription API instead.
 
     Args:
         start_date: Subscription start date (timezone-aware)
@@ -113,31 +118,28 @@ def get_usage_metrics(
                 subscription.stripe_subscription_id
             )
 
-            # Try to get period from Stripe subscription
+            # Get period from Stripe subscription
+            # This is the source of truth for billing cycles and should always be used
             if hasattr(stripe_sub, "current_period_start") and hasattr(stripe_sub, "current_period_end"):  # type: ignore
                 if stripe_sub.current_period_start and stripe_sub.current_period_end:  # type: ignore
                     period_start = stripe_sub.current_period_start  # type: ignore
                     period_end = stripe_sub.current_period_end  # type: ignore
+                    logger.debug(
+                        f"Using Stripe billing period for subscription {subscription.stripe_subscription_id}",
+                        extra={
+                            "period_start": period_start,
+                            "period_end": period_end,
+                        },
+                    )
         except Exception as e:
             logger.warning(
                 f"Failed to retrieve Stripe subscription {subscription.stripe_subscription_id}: {e}"
             )
 
-        # Fallback: Calculate period from subscription start_date
+        # If we couldn't get period from Stripe, we cannot calculate usage accurately
+        # Do not fall back to manual calculation as it won't match Stripe's billing cycle
         if period_start is None or period_end is None:
-            if subscription.start_date:
-                period_start, period_end = calculate_current_billing_period(
-                    subscription.start_date
-                )
-            else:
-                logger.warning(
-                    "Cannot determine billing period: no Stripe period and no start_date",
-                    extra={
-                        "subscription_id": str(subscription.id),
-                        "stripe_subscription_id": subscription.stripe_subscription_id,
-                    },
-                )
-                return usage
+            return usage
 
         # Fetch meter event summaries for all projects under this account
         project_repo = ProjectRepository(session)
@@ -407,6 +409,29 @@ def get_billing_cycle_info(
     try:
         stripe_sub = stripe.Subscription.retrieve(stripe_subscription_id)
 
+        # Log the entire subscription object for debugging
+        logger.info(
+            f"Retrieved Stripe subscription {stripe_subscription_id} - Full object",
+            extra={
+                "stripe_subscription_id": stripe_subscription_id,
+                "subscription_object": (
+                    stripe_sub.to_dict()
+                    if hasattr(stripe_sub, "to_dict")
+                    else str(stripe_sub)
+                ),
+            },
+        )
+
+        logger.debug(
+            f"Subscription {stripe_subscription_id} quick check",
+            extra={
+                "has_items": bool(stripe_sub.items and stripe_sub.items.data),
+                "has_current_period_end": hasattr(stripe_sub, "current_period_end") and bool(stripe_sub.current_period_end),  # type: ignore
+                "has_current_period_start": hasattr(stripe_sub, "current_period_start") and bool(stripe_sub.current_period_start),  # type: ignore
+                "subscription_status": stripe_sub.status,
+            },
+        )
+
         # Determine billing cycle
         if stripe_sub.items and stripe_sub.items.data:
             price = stripe_sub.items.data[0].price
@@ -417,16 +442,63 @@ def get_billing_cycle_info(
                     if interval == "month"
                     else "annual" if interval == "year" else interval
                 )
+            else:
+                logger.warning(
+                    f"Subscription {stripe_subscription_id} has non-recurring price",
+                    extra={"price_id": price.id if price else None},
+                )
+        else:
+            logger.warning(
+                f"Subscription {stripe_subscription_id} has no items",
+                extra={"stripe_subscription_id": stripe_subscription_id},
+            )
 
         # Get billing dates
+        # Try subscription level first (most common location)
         # Type ignore: Stripe's type stubs may not include period attributes
-        if hasattr(stripe_sub, "current_period_end") and stripe_sub.current_period_end:  # type: ignore
-            next_billing_date = datetime.fromtimestamp(stripe_sub.current_period_end)  # type: ignore
-            current_period_end = next_billing_date
+        period_start_ts = None
+        period_end_ts = None
 
+        if hasattr(stripe_sub, "current_period_end") and stripe_sub.current_period_end:  # type: ignore
+            period_end_ts = stripe_sub.current_period_end  # type: ignore
         if hasattr(stripe_sub, "current_period_start") and stripe_sub.current_period_start:  # type: ignore
-            current_period_start = datetime.fromtimestamp(
-                stripe_sub.current_period_start  # type: ignore
+            period_start_ts = stripe_sub.current_period_start  # type: ignore
+
+        # Fallback: Check subscription items if not found at subscription level
+        # Some Stripe subscriptions have period dates on items instead of subscription
+        if (
+            (period_start_ts is None or period_end_ts is None)
+            and stripe_sub.items
+            and stripe_sub.items.data
+        ):
+            first_item = stripe_sub.items.data[0]
+            if period_end_ts is None and hasattr(first_item, "current_period_end") and first_item.current_period_end:  # type: ignore
+                period_end_ts = first_item.current_period_end  # type: ignore
+                logger.debug(
+                    f"Using current_period_end from subscription item for {stripe_subscription_id}"
+                )
+            if period_start_ts is None and hasattr(first_item, "current_period_start") and first_item.current_period_start:  # type: ignore
+                period_start_ts = first_item.current_period_start  # type: ignore
+                logger.debug(
+                    f"Using current_period_start from subscription item for {stripe_subscription_id}"
+                )
+
+        # Convert timestamps to datetime
+        if period_end_ts:
+            next_billing_date = datetime.fromtimestamp(period_end_ts)
+            current_period_end = next_billing_date
+        else:
+            logger.warning(
+                f"Subscription {stripe_subscription_id} missing current_period_end at both subscription and item level",
+                extra={"stripe_subscription_id": stripe_subscription_id},
+            )
+
+        if period_start_ts:
+            current_period_start = datetime.fromtimestamp(period_start_ts)
+        else:
+            logger.warning(
+                f"Subscription {stripe_subscription_id} missing current_period_start at both subscription and item level",
+                extra={"stripe_subscription_id": stripe_subscription_id},
             )
 
         logger.info(
@@ -436,12 +508,19 @@ def get_billing_cycle_info(
                 "next_billing_date": (
                     next_billing_date.isoformat() if next_billing_date else None
                 ),
+                "current_period_start": (
+                    current_period_start.isoformat() if current_period_start else None
+                ),
+                "current_period_end": (
+                    current_period_end.isoformat() if current_period_end else None
+                ),
             },
         )
     except Exception as e:
         logger.error(
-            f"Error fetching billing cycle: {e}",
+            f"Error fetching billing cycle from Stripe API: {e}",
             extra={"stripe_subscription_id": stripe_subscription_id},
+            exc_info=True,
         )
 
     return billing_cycle, next_billing_date, current_period_start, current_period_end
