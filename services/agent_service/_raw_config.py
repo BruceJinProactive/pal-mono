@@ -370,6 +370,11 @@ class RawConfig:
 
             _set_tool(tool_name, tool_args, access_metadata)
 
+        # Apply ProjectIntegration-provided tools (can be overridden by project.raw_config)
+        for tool_name, tool_args, access_metadata in integration_tool_entries:
+            _set_tool(tool_name, tool_args, access_metadata)
+
+        # Apply project.raw_config tool overrides
         for tool_name, overrides in project_tool_overrides.items():
             override_args_raw = overrides.get("tool_args", {}) or {}
             override_args: Dict[str, Any] = _ensure_dict(override_args_raw)
@@ -393,10 +398,6 @@ class RawConfig:
                         else False
                     ),
                 )
-
-        # Apply ProjectIntegration-provided tools
-        for tool_name, tool_args, access_metadata in integration_tool_entries:
-            _set_tool(tool_name, tool_args, access_metadata)
 
         final_identifiers: List[ToolIdentifier] = []
 
