@@ -617,7 +617,7 @@ def list_namespaces(
                 namespaces.append(
                     NamespaceInfo(
                         namespace=namespace,
-                        index_name=project_index_name or "projects",
+                        index_name=project_index_name or "agents",
                         project_id=project.id,
                         project_name=project.name,
                         account_id=account.id,
