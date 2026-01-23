@@ -21,7 +21,6 @@ from services import (
     feedback_service,
     message_service,
     notion_service,
-    postmark_service,
     slack_service,
     user_service,
 )
@@ -232,37 +231,38 @@ async def create_feedback(
             extra={"feedback_id": str(persisted_feedback.id)},
             exc_info=True,
         )
-
-    # Send receipt email using PostMark (resilient - errors are logged but don't fail request)
-    try:
-        email_sent = await postmark_service.send_feedback_receipt(
-            user_email=context.email,
-            user_name=context.display_name or context.email or "Valued Customer",
-            feedback_text=persisted_feedback.note or "",
-        )
-        # Extract email domain for logging (avoid PII exposure)
-        email_domain = (
-            context.email.split("@")[-1] if "@" in context.email else "unknown"
-        )
-        if email_sent:
-            logger.info(
-                "[Feedback] Sent receipt email",
-                extra={"email_domain": email_domain},
-            )
-        else:
-            logger.warning(
-                "[Feedback] Receipt email not sent",
-                extra={"email_domain": email_domain},
-            )
-    except Exception as e:
-        logger.error(
-            f"[Feedback] Error sending receipt email: {e}",
-            exc_info=True,
-        )
+    # Send receipt email using PostMark (DISABLED - disconnected from feedback integration)
+    # Uncomment below to re-enable Postmark receipt emails
+    # try:
+    #     email_sent = await postmark_service.send_feedback_receipt(
+    #         user_email=context.email,
+    #         user_name=context.display_name or context.email or "Valued Customer",
+    #         feedback_text=persisted_feedback.note or "",
+    #     )
+    #     # Extract email domain for logging (avoid PII exposure)
+    #     email_domain = (
+    #         context.email.split("@")[-1] if "@" in context.email else "unknown"
+    #     )
+    #     if email_sent:
+    #         logger.info(
+    #             "[Feedback] Sent receipt email",
+    #             extra={"email_domain": email_domain},
+    #         )
+    #     else:
+    #         logger.warning(
+    #             "[Feedback] Receipt email not sent",
+    #             extra={"email_domain": email_domain},
+    #         )
+    # except Exception as e:
+    #     logger.error(
+    #         f"[Feedback] Error sending receipt email: {e}",
+    #         exc_info=True,
+    #     )
+    logger.debug("[Feedback] Postmark receipt email disabled")
 
     # Send Slack notification with interactive buttons (resilient)
+    # Note: Channel routing is automatic based on client name
     try:
-        client_channel = slack_service.get_feedback_channel_for_client(account.name)
         slack_result = await slack_service.send_feedback_notification(
             client_name=account.name,
             user_email=context.email,
@@ -275,14 +275,13 @@ async def create_feedback(
             notion_page_id=notion_page_id,
             reaction=persisted_feedback.reaction,
             feedback_id=str(persisted_feedback.id),
-            channel_override=client_channel,
         )
         if slack_result:
             logger.info(
                 "[Feedback] Sent Slack notification",
                 extra={
                     "feedback_id": str(persisted_feedback.id),
-                    "channel": client_channel or "default",
+                    "channel": slack_result.get("channel", "auto"),
                     "message_ts": slack_result.get("ts"),
                 },
             )

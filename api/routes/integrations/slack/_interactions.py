@@ -14,7 +14,7 @@ from urllib.parse import parse_qs
 
 from fastapi import HTTPException, Request, status
 
-from services import notion_service, postmark_service, slack_service
+from services import notion_service
 from utils.log import logger
 
 
@@ -278,157 +278,121 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
         )
 
         # Handle different actions (all operations are fire-and-forget)
+        status_text = ""
+        new_status = ""
+        clicked_action_name = ""
+
         if action_id == "action_investigating":
             # ACTION A: 'Investigating' button clicked
-            # 1. Update Slack message with button state change
-            # 2. Update Notion status to "Investigating"
-            # 3. NO email sent (to avoid spamming the client)
-
-            if channel_id and message_ts:
-                try:
-                    await slack_service.update_feedback_message_with_button_state(
-                        channel_id=channel_id,
-                        message_ts=message_ts,
-                        status_text="👀 Investigating...",
-                        clicked_action="investigating",
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"[Slack Interactions] Failed to update Slack message: {e}",
-                        extra={"conversation_id": conversation_id},
-                        exc_info=True,
-                    )
-            else:
-                logger.warning(
-                    "[Slack Interactions] Skipping Slack message update - missing channel_id or message_ts",
-                    extra={"conversation_id": conversation_id},
-                )
-
-            # Sync to Notion (Slack is source of truth)
-            await _update_notion_status(
-                notion_page_id=notion_page_id,
-                status="Investigating",
-                conversation_id=conversation_id,
-            )
-
-            logger.info(
-                "[Slack Interactions] Feedback marked as investigating",
-                extra={
-                    "conversation_id": conversation_id,
-                    "notion_page_id": notion_page_id,
-                    "action": "investigating",
-                    "clicked_by": user_name,
-                },
-            )
-
+            status_text = "👀 Investigating..."
+            new_status = "Investigating"
+            clicked_action_name = "investigating"
         elif action_id == "action_live":
             # ACTION B: 'Changes Now Live' button clicked
-            # 1. Update Slack message with button state change
-            # 2. Update Notion status to "Changes Now Live"
-            # 3. Send resolution email to the user (extracted from payload)
-
-            if channel_id and message_ts:
-                try:
-                    await slack_service.update_feedback_message_with_button_state(
-                        channel_id=channel_id,
-                        message_ts=message_ts,
-                        status_text="✅ Fix is Live! Email sent to client.",
-                        clicked_action="live",
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"[Slack Interactions] Failed to update Slack message: {e}",
-                        extra={"conversation_id": conversation_id},
-                        exc_info=True,
-                    )
-            else:
-                logger.warning(
-                    "[Slack Interactions] Skipping Slack message update - missing channel_id or message_ts",
-                    extra={"conversation_id": conversation_id},
-                )
-
-            # Sync to Notion (Slack is source of truth)
-            await _update_notion_status(
-                notion_page_id=notion_page_id,
-                status="Changes Now Live",
-                conversation_id=conversation_id,
-            )
-
-            # Send resolution email to the user (using email from button payload - STATELESS)
-            if user_email:
-                try:
-                    await postmark_service.send_resolution_notice(
-                        user_email=user_email,
-                    )
-                except Exception as e:
-                    # Extract email domain for logging (avoid PII exposure)
-                    email_domain = (
-                        user_email.split("@")[-1] if "@" in user_email else "unknown"
-                    )
-                    logger.error(
-                        f"[Slack Interactions] Failed to send resolution email: {e}",
-                        extra={"email_domain": email_domain},
-                        exc_info=True,
-                    )
-
-            logger.info(
-                "[Slack Interactions] Feedback marked as live and resolution email sent",
-                extra={
-                    "conversation_id": conversation_id,
-                    "notion_page_id": notion_page_id,
-                    "action": "changes_live",
-                    "clicked_by": user_name,
-                },
-            )
-
+            status_text = "✅ Fix is Live!"
+            new_status = "Changes Now Live"
+            clicked_action_name = "live"
         elif action_id == "action_deferred":
             # ACTION C: 'Deferred' button clicked
-            # 1. Update Slack message with button state change
-            # 2. Update Notion status to "Out of Scope"
-            # 3. NO email sent (feedback is out of scope)
-
-            if channel_id and message_ts:
-                try:
-                    await slack_service.update_feedback_message_with_button_state(
-                        channel_id=channel_id,
-                        message_ts=message_ts,
-                        status_text="⏸️ Out of scope",
-                        clicked_action="deferred",
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"[Slack Interactions] Failed to update Slack message: {e}",
-                        extra={"conversation_id": conversation_id},
-                        exc_info=True,
-                    )
-            else:
-                logger.warning(
-                    "[Slack Interactions] Skipping Slack message update - missing channel_id or message_ts",
-                    extra={"conversation_id": conversation_id},
-                )
-
-            # Sync to Notion (Slack is source of truth)
-            await _update_notion_status(
-                notion_page_id=notion_page_id,
-                status="Out of Scope",
-                conversation_id=conversation_id,
-            )
-
-            logger.info(
-                "[Slack Interactions] Feedback marked as deferred (out of scope)",
-                extra={
-                    "conversation_id": conversation_id,
-                    "notion_page_id": notion_page_id,
-                    "action": "deferred",
-                    "clicked_by": user_name,
-                },
-            )
-
+            status_text = "⏸️ Out of scope"
+            new_status = "Out of Scope"
+            clicked_action_name = "deferred"
         else:
             logger.warning(
                 f"[Slack Interactions] Unknown action: {action_id}",
                 extra={"action_id": action_id},
             )
+            return {"ok": True}
+
+        # Update the message blocks with new button states
+        blocks = message.get("blocks", [])
+
+        # Update buttons - keep them clickable but style the active one
+        for block in blocks:
+            if block.get("type") == "actions":
+                elements = block.get("elements", [])
+                if any(
+                    el.get("action_id")
+                    in ["action_investigating", "action_live", "action_deferred"]
+                    for el in elements
+                ):
+                    new_elements = []
+
+                    # Helper to create clickable buttons with active state styling
+                    def make_btn(label, action, emoji=""):
+                        is_active = clicked_action_name == action
+                        btn = {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": f"{label} {emoji}"
+                                + (" ✓" if is_active else ""),
+                                "emoji": True,
+                            },
+                            "action_id": f"action_{action}",
+                            "value": button_value,
+                        }
+                        if is_active:
+                            btn["style"] = "primary"
+                        return btn
+
+                    new_elements.append(
+                        make_btn("Investigating", "investigating", "👀")
+                    )
+                    new_elements.append(make_btn("Changes Now Live", "live", "🚀"))
+                    new_elements.append(make_btn("Deferred", "deferred", "⏸️"))
+
+                    block["elements"] = new_elements
+
+        # Remove old status context and add new one
+        blocks = [
+            b
+            for b in blocks
+            if b.get("type") != "context" or "Status" not in str(b.get("elements", []))
+        ]
+
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": f"*Status:* {status_text}"}],
+            }
+        )
+
+        # Update Slack message using chat.update API
+        if channel_id and message_ts:
+            try:
+                from services.slack_service._client import get_slack_client
+
+                client = get_slack_client()
+                await client.chat_update(
+                    channel=channel_id,
+                    ts=message_ts,
+                    blocks=blocks,
+                    text=f"Feedback update: {status_text}",
+                )
+            except Exception as e:
+                logger.error(
+                    f"[Slack Interactions] Failed to update Slack message: {e}",
+                    extra={"conversation_id": conversation_id},
+                    exc_info=True,
+                )
+
+        # Sync to Notion (Slack is source of truth)
+        await _update_notion_status(
+            notion_page_id=notion_page_id,
+            status=new_status,
+            conversation_id=conversation_id,
+        )
+
+        logger.info(
+            f"[Slack Interactions] Feedback marked as {clicked_action_name}",
+            extra={
+                "conversation_id": conversation_id,
+                "notion_page_id": notion_page_id,
+                "action": clicked_action_name,
+                "clicked_by": user_name,
+            },
+        )
 
         # Return success response (required by Slack)
         return {"ok": True}

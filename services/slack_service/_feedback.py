@@ -14,16 +14,94 @@ from utils.secret import get_server_secret_with_fallback
 
 from ._client import get_slack_client
 
-# Client-specific Slack channel routing
-CLIENT_CHANNEL_MAP = {
-    # "Client A": "C0A8UD7J9D1",
-}
+
+def _normalize_client_name_for_channel(client_name: str) -> str:
+    """
+    Convert client name to Slack channel naming convention.
+
+    Simply prepends "client-" to the client name without any transformation.
+
+    Args:
+        client_name: The account name from the database
+
+    Returns:
+        str: Channel name in format "client-{client_name}"
+    """
+    normalized = client_name.lower()
+    normalized = normalized.replace(" ", "-")
+
+    return f"client-{normalized}"
 
 
-def get_feedback_channel_for_client(client_name: str) -> Optional[str]:
-    """Get the Slack channel ID for a specific client's feedback."""
-    normalized_name = client_name.strip()
-    return CLIENT_CHANNEL_MAP.get(normalized_name)
+async def get_feedback_channel_for_client(
+    client_name: str, slack_client: AsyncWebClient
+) -> Optional[str]:
+    """
+    Get the Slack channel ID for a specific client's feedback.
+
+        find channel by name using naming convention: client-{normalized_name}
+
+    Args:
+        client_name: The account name from database
+        slack_client: Slack API client for looking up channels
+
+    Returns:
+        Optional[str]: Channel ID if found, None otherwise
+    """
+    # Generate expected channel name from client name
+    expected_channel_name = _normalize_client_name_for_channel(client_name)
+    logger.debug(
+        f"[Slack] Looking for channel: {expected_channel_name} (from client: {client_name})"
+    )
+
+    try:
+        # Search for channel by name
+        # Note: conversations_list returns all channels the bot is a member of
+        cursor = None
+        while True:
+            if cursor:
+                response = await slack_client.conversations_list(
+                    types="public_channel,private_channel",
+                    limit=200,
+                    cursor=cursor,
+                )
+            else:
+                response = await slack_client.conversations_list(
+                    types="public_channel,private_channel",
+                    limit=200,
+                )
+
+            if not response["ok"]:
+                logger.error(
+                    f"[Slack] Failed to list channels: {response.get('error')}"
+                )
+                return None
+
+            # Search for matching channel name
+            channels = response.get("channels", [])
+            for channel in channels:
+                if channel.get("name") == expected_channel_name:
+                    logger.info(
+                        f"[Slack] Found channel {expected_channel_name} with ID {channel['id']}"
+                    )
+                    return channel["id"]
+
+            # Check if there are more pages
+            cursor = response.get("response_metadata", {}).get("next_cursor")
+            if not cursor:
+                break
+
+        logger.warning(
+            f"[Slack] No channel found with name {expected_channel_name} for client {client_name}"
+        )
+        return None
+
+    except Exception as e:
+        logger.error(
+            f"[Slack] Error looking up channel for {client_name}: {e}",
+            exc_info=True,
+        )
+        return None
 
 
 async def send_feedback_notification(
@@ -53,18 +131,27 @@ async def send_feedback_notification(
                 logger.error(f"[Slack Feedback] Failed to get Slack client: {e}")
                 return None
 
-        # Use channel override if provided, otherwise use default
+        # Determine channel ID: override > client-specific > default
         if channel_override:
             channel_id = channel_override
         else:
-            try:
-                default_channel = get_server_secret_with_fallback("SLACK_CHANNEL_ID")
-            except ValueError:
-                default_channel = None
-            channel_id = get_feedback_channel_for_client(client_name) or default_channel
+            # Try to find client-specific channel by name
+            channel_id = await get_feedback_channel_for_client(client_name, client)
+
+            # Fall back to default channel if client-specific not found
+            if not channel_id:
+                try:
+                    channel_id = get_server_secret_with_fallback("SLACK_CHANNEL_ID")
+                    logger.info(
+                        f"[Slack Feedback] No client-specific channel found for {client_name}, using default"
+                    )
+                except ValueError:
+                    channel_id = None
 
         if not channel_id:
-            logger.error("[Slack Feedback] No Slack channel configured")
+            logger.error(
+                f"[Slack Feedback] No Slack channel configured for client {client_name}"
+            )
             return None
 
         # Build the emoji based on reaction
@@ -308,9 +395,15 @@ async def update_feedback_message_with_button_state(
     message_ts: str,
     status_text: str,
     clicked_action: str,
+    button_value: str,
     client: Optional[AsyncWebClient] = None,
 ) -> bool:
-    """Update message status and disable/update buttons."""
+    """
+    Update message status and button styling while keeping buttons clickable.
+
+    Only one button will show as "active" (primary style + checkmark) at a time.
+    Users can click different buttons to change the status.
+    """
     try:
         if client is None:
             try:
@@ -333,7 +426,7 @@ async def update_feedback_message_with_button_state(
         existing_message = messages[0]
         blocks = existing_message.get("blocks", [])
 
-        # Update buttons to disabled state
+        # Update buttons - keep them clickable but style the active one
         for block in blocks:
             if block.get("type") == "actions":
                 elements = block.get("elements", [])
@@ -344,25 +437,29 @@ async def update_feedback_message_with_button_state(
                 ):
                     new_elements = []
 
-                    # Helper to create disabled buttons
-                    def make_btn(label, action):
+                    # Helper to create clickable buttons with active state styling
+                    def make_btn(label, action, emoji=""):
+                        is_active = clicked_action == action
                         btn = {
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": label
-                                + (" ✓" if clicked_action == action else ""),
+                                "text": f"{label} {emoji}"
+                                + (" ✓" if is_active else ""),
                                 "emoji": True,
                             },
-                            "action_id": f"action_{action}_disabled",
+                            "action_id": f"action_{action}",
+                            "value": button_value,
                         }
-                        if clicked_action == action:
+                        if is_active:
                             btn["style"] = "primary"
                         return btn
 
-                    new_elements.append(make_btn("Investigating", "investigating"))
-                    new_elements.append(make_btn("Changes Now Live 🚀", "live"))
-                    new_elements.append(make_btn("Deferred", "deferred"))
+                    new_elements.append(
+                        make_btn("Investigating", "investigating", "👀")
+                    )
+                    new_elements.append(make_btn("Changes Now Live", "live", "🚀"))
+                    new_elements.append(make_btn("Deferred", "deferred", "⏸️"))
 
                     block["elements"] = new_elements
 
