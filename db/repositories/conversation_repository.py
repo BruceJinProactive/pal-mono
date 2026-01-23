@@ -320,48 +320,37 @@ class ConversationRepository:
         Get distinct values for language, purpose, and ended_reason fields
         for conversations belonging to an account.
 
+        Uses a single query with array_agg to reduce database round trips.
+
         Returns:
             tuple: (languages, purposes, ended_reasons)
         """
         try:
-            languages = (
-                self.session.query(Conversation.language)
-                .join(User, Conversation.user_id == User.id)
-                .filter(
-                    User.account_id == account_id,
-                    Conversation.language.is_not(None),
+            # Use array_agg with distinct to get all values in a single query
+            # This reduces 3 database round trips to 1
+            result = (
+                self.session.query(
+                    func.array_agg(func.distinct(Conversation.language)).filter(
+                        Conversation.language.is_not(None)
+                    ),
+                    func.array_agg(func.distinct(Conversation.purpose)).filter(
+                        Conversation.purpose.is_not(None)
+                    ),
+                    func.array_agg(func.distinct(Conversation.ended_reason)).filter(
+                        Conversation.ended_reason.is_not(None)
+                    ),
                 )
-                .distinct()
-                .all()
+                .join(User, Conversation.user_id == User.id)
+                .filter(User.account_id == account_id)
+                .one()
             )
 
-            purposes = (
-                self.session.query(Conversation.purpose)
-                .join(User, Conversation.user_id == User.id)
-                .filter(
-                    User.account_id == account_id,
-                    Conversation.purpose.is_not(None),
-                )
-                .distinct()
-                .all()
-            )
+            # array_agg returns None if no rows match, convert to empty list
+            languages = result[0] or []
+            purposes = result[1] or []
+            ended_reasons = result[2] or []
 
-            ended_reasons = (
-                self.session.query(Conversation.ended_reason)
-                .join(User, Conversation.user_id == User.id)
-                .filter(
-                    User.account_id == account_id,
-                    Conversation.ended_reason.is_not(None),
-                )
-                .distinct()
-                .all()
-            )
-
-            return (
-                [lang[0] for lang in languages],
-                [purpose[0] for purpose in purposes],
-                [reason[0] for reason in ended_reasons],
-            )
+            return (languages, purposes, ended_reasons)
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving distinct filter values: {e}")
