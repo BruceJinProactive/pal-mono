@@ -48,6 +48,7 @@ class AdoraV2Tool(Toolkit):
         namespace: str,
         tool_metadata: ToolMetadata,
         backdoor_tool_prompt: dict | None = None,
+        force_payment_link: bool = False,
         **kwargs,
     ):
         super().__init__(name="adora_v2_tool")
@@ -57,6 +58,7 @@ class AdoraV2Tool(Toolkit):
         self.namespace = namespace
         self.tool_metadata = tool_metadata
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
+        self.force_payment_link = force_payment_link
 
         # Cache for bearer token with async lock
         self._cached_bearer_token: str | None = None
@@ -521,6 +523,13 @@ class AdoraV2Tool(Toolkit):
                     type_id=address_data["type_id"],  # type: ignore
                 )
                 order_request.payment_type = PaymentType.PAYMENT_LINK
+
+        # Enforce force_payment_link setting for all order types
+        if self.force_payment_link:
+            order_request.payment_type = PaymentType.PAYMENT_LINK
+            logger.debug(
+                "[AdoraV2Tool.fulfill_order] Enforcing payment_type=PAYMENT_LINK on order_request due to force_payment_link=True"
+            )
 
         logger.debug(
             f"[AdoraV2Tool.fulfill_order] Final order request: {order_request.model_dump()}"
