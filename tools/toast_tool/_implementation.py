@@ -93,7 +93,7 @@ class ToastTool(Toolkit):
         store_id: str,
         namespace: str,
         tool_metadata: ToolMetadata,
-        index_name: str | None = None,
+        index_name: str | None = "agents",
         token_api_endpoint: str | None = "ws-api.toasttab.com",
         general_api_endpoint: str | None = "ws-api.toasttab.com",
         hosted_payment_iframe_endpoint: str = "https://console.palona.ai/checkout/toast",
