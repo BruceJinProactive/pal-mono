@@ -179,9 +179,11 @@ class CreateProjectIntegrationRequest(BaseModel):
 
 
 class UpdateProjectIntegrationRequest(BaseModel):
-    """Update Project Integration Request"""
+    """Update Project Integration Request - fields are optional for PATCH"""
 
-    store_identifier: str = Field(..., description="Store identifier for this project")
+    store_identifier: Optional[str] = Field(
+        default=None, description="Store identifier for this project"
+    )
     tool_name: Optional[str] = Field(
         default=None, description="Name of the tool being linked"
     )

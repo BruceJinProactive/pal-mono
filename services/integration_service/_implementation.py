@@ -215,7 +215,7 @@ def create_project_integration(
         return project_integration_repository.create_project_integration(
             project_id=uuid.UUID(params.project_id),
             integration_id=uuid.UUID(params.integration_id),
-            store_identifier=params.store_identifier,
+            store_identifier=params.store_identifier or "",
             tool_name=params.tool_name,
             config=params.config or {},
         )

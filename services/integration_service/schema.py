@@ -46,7 +46,7 @@ class ProjectIntegrationParams:
 
     project_id: str
     integration_id: str
-    store_identifier: str
+    store_identifier: Optional[str] = None
     tool_name: Optional[str] = None
     config: Optional[Dict] = None
 
