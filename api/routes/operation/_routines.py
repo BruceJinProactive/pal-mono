@@ -214,10 +214,11 @@ async def list_executions(
     status_filter: ExecutionStatus | None = None,
     date_filter: date | None = None,
     routine_id: UUID | None = None,
+    timezone: str | None = None,
 ) -> ListExecutionsResponse:
     """List executions for routines in a project."""
     return await routine_execution_service.list_executions(
-        project_id, context, session, status_filter, date_filter, routine_id
+        project_id, context, session, status_filter, date_filter, routine_id, timezone
     )
 
 

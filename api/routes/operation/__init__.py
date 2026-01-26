@@ -2372,6 +2372,42 @@ async def delete_schedule(
 # ==============================================================================
 
 
+async def _get_project_timezone(project_id: uuid.UUID, session: AsyncSession) -> str:
+    """
+    Get the timezone string for a project.
+
+    Args:
+        project_id: UUID of the project
+        session: Async database session
+
+    Returns:
+        IANA timezone string (e.g., 'America/Los_Angeles')
+
+    Raises:
+        HTTPException: If project not found
+    """
+    project_repo = ProjectRepositoryAsync(session)
+    project = await project_repo.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Validate timezone and return with fallback
+    tz_str = project.timezone or "America/Los_Angeles"
+    try:
+        ZoneInfo(tz_str)
+    except ZoneInfoNotFoundError:
+        logger.warning(
+            f"Invalid timezone '{project.timezone}' for project {project_id}, "
+            "falling back to America/Los_Angeles"
+        )
+        tz_str = "America/Los_Angeles"
+    return tz_str
+
+
 async def _get_project_today(project_id: uuid.UUID, session: AsyncSession) -> date:
     """
     Get today's date in the project's timezone.
@@ -2386,22 +2422,8 @@ async def _get_project_today(project_id: uuid.UUID, session: AsyncSession) -> da
     Raises:
         HTTPException: If project not found
     """
-    project_repo = ProjectRepositoryAsync(session)
-    project = await project_repo.get_project(project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found",
-            headers={"Content-Type": "application/json"},
-        )
-    try:
-        project_tz = ZoneInfo(project.timezone or "America/Los_Angeles")
-    except ZoneInfoNotFoundError:
-        logger.warning(
-            f"Invalid timezone '{project.timezone}' for project {project_id}, "
-            "falling back to America/Los_Angeles"
-        )
-        project_tz = ZoneInfo("America/Los_Angeles")
+    tz_str = await _get_project_timezone(project_id, session)
+    project_tz = ZoneInfo(tz_str)
     return datetime.now(project_tz).date()
 
 
@@ -2453,6 +2475,9 @@ async def list_executions(
     # Convert datetime to date if provided
     date_only = date_filter.date() if date_filter else None
 
+    # Get project timezone for correct date filtering
+    project_timezone = await _get_project_timezone(project_id, session)
+
     # Check if user has history permission
     # Handle non-UUID usernames (e.g., "guest") by denying history access
     try:
@@ -2470,7 +2495,8 @@ async def list_executions(
 
     # If no history access, enforce today-only filter
     if not has_history_access:
-        today = await _get_project_today(project_id, session)
+        # Calculate today from the timezone we already have
+        today = datetime.now(ZoneInfo(project_timezone)).date()
         if date_only and date_only != today:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -2480,7 +2506,13 @@ async def list_executions(
         date_only = today
 
     return await _routines.list_executions(
-        project_id, context, session, status_filter, date_only, routine_id
+        project_id,
+        context,
+        session,
+        status_filter,
+        date_only,
+        routine_id,
+        project_timezone,
     )
 
 

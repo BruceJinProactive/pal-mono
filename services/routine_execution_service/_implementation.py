@@ -173,6 +173,7 @@ async def list_executions(
     status_filter: ExecutionStatus | None = None,
     date_filter: date | None = None,
     routine_id: UUID | None = None,
+    timezone: str | None = None,
 ) -> ListExecutionsResponse:
     """
     List executions for routines in a project.
@@ -187,6 +188,7 @@ async def list_executions(
         status_filter: Optional filter by execution status
         date_filter: Optional filter by date (pre-enforced by API layer for permissions)
         routine_id: Optional filter by routine
+        timezone: IANA timezone string for correct date filtering (e.g., 'America/Los_Angeles')
     """
     execution_repo = RoutineExecutionRepositoryAsync(session)
     routine_repo = RoutineRepositoryAsync(session)
@@ -198,6 +200,7 @@ async def list_executions(
         status=status_filter,
         scheduled_date=date_filter,
         routine_id=routine_id,
+        timezone=timezone,
     )
 
     if not executions:

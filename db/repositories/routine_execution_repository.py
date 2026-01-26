@@ -6,9 +6,10 @@ Provides async database operations for routine executions.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import Date, and_, cast, delete, select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -95,6 +96,7 @@ class RoutineExecutionRepositoryAsync:
         status: ExecutionStatus | None = None,
         scheduled_date: date | None = None,
         routine_id: uuid.UUID | None = None,
+        timezone: str | None = None,
     ) -> list[RoutineExecution]:
         """
         List executions for routines belonging to a project.
@@ -104,6 +106,8 @@ class RoutineExecutionRepositoryAsync:
             status: Optional filter by status
             scheduled_date: Optional filter by scheduled date (YYYY-MM-DD)
             routine_id: Optional filter by specific routine
+            timezone: IANA timezone string for date filtering (e.g., 'America/Los_Angeles').
+                     Required when scheduled_date is provided for correct timezone handling.
 
         Returns:
             List of RoutineExecution objects
@@ -120,9 +124,30 @@ class RoutineExecutionRepositoryAsync:
                 stmt = stmt.where(RoutineExecution.status == status)
 
             if scheduled_date is not None:
-                # Filter by date portion of scheduled_start using SQL date cast
+                # Use timezone-aware datetime range filtering to correctly match
+                # executions that fall within the specified date in the given timezone.
+                # This avoids issues where CAST(scheduled_start AS DATE) would use
+                # the database server's timezone (UTC) instead of the project's timezone.
+                try:
+                    tz = ZoneInfo(timezone or "America/Los_Angeles")
+                except ZoneInfoNotFoundError:
+                    logger.warning(
+                        f"Invalid timezone '{timezone}', falling back to America/Los_Angeles"
+                    )
+                    tz = ZoneInfo("America/Los_Angeles")
+
+                # Calculate the start and end of the day in the project's timezone
+                day_start = datetime.combine(scheduled_date, time.min, tzinfo=tz)
+                day_end = datetime.combine(
+                    scheduled_date + timedelta(days=1), time.min, tzinfo=tz
+                )
+
+                # Filter executions where scheduled_start falls within this day
                 stmt = stmt.where(
-                    cast(RoutineExecution.scheduled_start, Date) == scheduled_date
+                    and_(
+                        RoutineExecution.scheduled_start >= day_start,
+                        RoutineExecution.scheduled_start < day_end,
+                    )
                 )
 
             if routine_id is not None:
