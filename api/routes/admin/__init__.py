@@ -359,7 +359,7 @@ def list_accounts(
         None, description="Optional keyword to filter the accounts by name"
     ),
     page: int = Query(1, gt=0, description="Page number"),
-    page_size: int = Query(20, gt=0, le=100, description="Items per page"),
+    page_size: int = Query(20, gt=0, le=150, description="Items per page"),
     status: list[AccountStatus] | None = Query(
         None, description="Filter by account status"
     ),
