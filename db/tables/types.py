@@ -81,6 +81,7 @@ class CallPurpose(str, enum.Enum):
     waitlist = "waitlist"  # waitlist inquiries
     takeout_issue = "takeout_issue"  # missing pickup items, wrong location
     third_party_order = "third_party_order"  # DoorDash/other app order updates
+    delivery = "delivery"  # delivery orders, availability, zones, fees, or issues
 
     # Complaints & service
     customer_service = "customer_service"  # non-urgent management / general service
