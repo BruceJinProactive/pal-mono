@@ -1,8 +1,6 @@
 import os
-import re
 import uuid
 from collections import defaultdict
-from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -37,6 +35,7 @@ def _check_account_access(context: UserContext, account, session: Session) -> No
     # Admin has full access
     if context.role == UserRole.Admin:
         return
+
     # Check permission on account
     user_id = UUID(context.username)
     if not check_permission(user_id, f"accounts/{account.id}", "account.read", session):
@@ -144,17 +143,17 @@ async def create_feedback(
     session: Session,
 ) -> Feedback:
     """
-    Create feedback and trigger integrations (Notion, Slack, Email).
+    Create feedback and trigger (Slack and Notion) integrations
 
-    Workflow:
+    Flow:
     1. Save feedback to SQL database (fire-and-forget logging)
     2. Create Notion ticket in Feedback Inbox
-    3. Send receipt email to user (immediate confirmation)
     4. Send Slack notification with interactive buttons (for FDE triage)
 
     Note: All integrations are fire-and-forget. If any external service fails,
     we log the error but still return 200 OK to avoid user-facing errors.
     """
+
     # Validate & authorize feedback create request
     message = message_service.get_message_by_id(session, feedback_create.message_id)
     if not message:
@@ -163,7 +162,7 @@ async def create_feedback(
     conversation = message.conversation
     _check_account_access(context, account, session)
 
-    # Save to SQL database (fire-and-forget logging)
+    # Save to SQL database
     feedback = _to_db_feedback(feedback_create)
     feedback.author_identifier = context.email
     feedback.author_name = context.display_name or None
@@ -179,13 +178,11 @@ async def create_feedback(
         },
     )
 
-    # Build conversation link with full URL
-    console_base = os.environ.get(
+    CONSOLE_BASE_URL = os.getenv(
         "PAL_CONSOLE_BASE_URL", "https://lat-console.palona.ai"
     )
-
     conversation_link = (
-        f"{console_base}/hosting/conversations?conversationId={conversation.id}"
+        f"{CONSOLE_BASE_URL}/hosting/conversations?conversationId={conversation.id}"
     )
 
     # Create Notion ticket
@@ -203,9 +200,11 @@ async def create_feedback(
             user_email=context.email,
         )
 
+        # Extract Notion page ID from URL for Slack button payload
         if notion_ticket_url:
-            # Extract Notion page ID from URL for Slack button payload
-            notion_page_id = _extract_notion_page_id(notion_ticket_url)
+            notion_page_id = await notion_service.extract_notion_page_id(
+                notion_ticket_url
+            )
             if notion_page_id:
                 logger.info(
                     "[Feedback] Created Notion ticket and extracted page ID",
@@ -231,37 +230,9 @@ async def create_feedback(
             extra={"feedback_id": str(persisted_feedback.id)},
             exc_info=True,
         )
-    # Send receipt email using PostMark (DISABLED - disconnected from feedback integration)
-    # Uncomment below to re-enable Postmark receipt emails
-    # try:
-    #     email_sent = await postmark_service.send_feedback_receipt(
-    #         user_email=context.email,
-    #         user_name=context.display_name or context.email or "Valued Customer",
-    #         feedback_text=persisted_feedback.note or "",
-    #     )
-    #     # Extract email domain for logging (avoid PII exposure)
-    #     email_domain = (
-    #         context.email.split("@")[-1] if "@" in context.email else "unknown"
-    #     )
-    #     if email_sent:
-    #         logger.info(
-    #             "[Feedback] Sent receipt email",
-    #             extra={"email_domain": email_domain},
-    #         )
-    #     else:
-    #         logger.warning(
-    #             "[Feedback] Receipt email not sent",
-    #             extra={"email_domain": email_domain},
-    #         )
-    # except Exception as e:
-    #     logger.error(
-    #         f"[Feedback] Error sending receipt email: {e}",
-    #         exc_info=True,
-    #     )
+    # NOTE: To re-enable: use postmark_service.send_feedback_receipt()
     logger.debug("[Feedback] Postmark receipt email disabled")
 
-    # Send Slack notification with interactive buttons (resilient)
-    # Note: Channel routing is automatic based on client name
     try:
         slack_result = await slack_service.send_feedback_notification(
             client_name=account.name,
@@ -296,61 +267,6 @@ async def create_feedback(
 
     # Return the created feedback (always succeeds even if integrations fail)
     return _builder.build_feedback(persisted_feedback)
-
-
-def _extract_notion_page_id(notion_url: str) -> Optional[str]:
-    """
-    Extract Notion page ID from URL.
-
-    Notion URLs format: https://www.notion.so/Title-{page_id}?...
-    Example: https://www.notion.so/Feedback-Client-A-2ee7e6e39cdc8157bd28fc1f8f085f3c
-
-    The page ID is always the last 32 hex characters (no dashes).
-
-    Args:
-        notion_url: The Notion page URL
-
-    Returns:
-        str: The page ID (32 hex chars without dashes), or None if extraction fails
-
-    Examples:
-        >>> _extract_notion_page_id("https://www.notion.so/Feedback-Client-A-2ee7e6e39cdc8157bd28fc1f8f085f3c")
-        '2ee7e6e39cdc8157bd28fc1f8f085f3c'
-    """
-    try:
-        parts = notion_url.split("/")
-        if len(parts) > 0:
-            page_id_part = parts[-1].split("?")[0]
-
-            if len(page_id_part) >= 32:
-                page_id = page_id_part[-32:]
-                try:
-                    int(page_id, 16)
-                    logger.debug(
-                        "[Feedback] Successfully extracted Notion page ID",
-                        extra={
-                            "notion_url": notion_url,
-                            "page_id": page_id,
-                        },
-                    )
-                    return page_id
-                except ValueError:
-                    match = re.search(r"([a-f0-9]{32})", page_id_part.lower())
-                    if match:
-                        return match.group(1)
-
-        logger.warning(
-            "[Feedback] Could not extract valid 32-character hex page ID from URL",
-            extra={"notion_url": notion_url},
-        )
-        return None
-
-    except Exception as e:
-        logger.warning(
-            f"[Feedback] Failed to extract Notion page ID from URL: {e}",
-            extra={"notion_url": notion_url},
-        )
-        return None
 
 
 async def update_feedback(

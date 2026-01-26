@@ -1,12 +1,15 @@
 """
-Slack Report Formatting Module
+Slack Formatting Module
 
-This module handles formatting of analytics data into professional Slack messages,
-including table generation, section building, and report assembly.
+This module provides reusable Slack Block Kit builders and formatters for:
+- Generic notification blocks (headers, sections, buttons, context)
+- Analytics report formatting with tables
+- Section building and report assembly
 """
 
 import uuid
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -16,7 +19,138 @@ from utils.log import logger
 from ._access_control import get_project_display_name
 
 # =============================================================================
-# CONSTANTS AND CONFIGURATION
+# GENERIC SLACK BLOCK BUILDERS (Reusable across projects)
+# =============================================================================
+
+
+def build_header_block(text: str, emoji: bool = True) -> Dict[str, Any]:
+    """
+    Build a Slack header block.
+
+    Args:
+        text: Header text (max 150 characters)
+        emoji: Whether to allow emoji in text
+
+    Returns:
+        Dict[str, Any]: Slack header block
+    """
+    return {
+        "type": "header",
+        "text": {"type": "plain_text", "text": text, "emoji": emoji},
+    }
+
+
+def build_section_block(
+    text: str, fields: Optional[List[Dict[str, str]]] = None
+) -> Dict[str, Any]:
+    """
+    Build a Slack section block with optional fields.
+
+    Args:
+        text: Main section text (markdown supported)
+        fields: Optional list of field dicts with 'type' and 'text'
+
+    Returns:
+        Dict[str, Any]: Slack section block
+    """
+    block = {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+    if fields:
+        block["fields"] = fields
+    return block
+
+
+def build_fields_section(fields: List[tuple[str, str]]) -> Dict[str, Any]:
+    """
+    Build a section block with a grid of labeled fields.
+
+    Args:
+        fields: List of (label, value) tuples
+
+    Returns:
+        Dict[str, Any]: Slack section block with fields
+
+    Example:
+        >>> build_fields_section([("*User:*", "John Doe"), ("*Email:*", "john@example.com")])
+    """
+    field_list = [
+        {"type": "mrkdwn", "text": f"{label}\n{value}"} for label, value in fields
+    ]
+    return {"type": "section", "fields": field_list}
+
+
+def build_divider_block() -> Dict[str, Any]:
+    """Build a Slack divider block."""
+    return {"type": "divider"}
+
+
+def build_context_block(elements: List[str]) -> Dict[str, Any]:
+    """
+    Build a Slack context block with text elements.
+
+    Args:
+        elements: List of text strings (markdown supported)
+
+    Returns:
+        Dict[str, Any]: Slack context block
+    """
+    return {
+        "type": "context",
+        "elements": [{"type": "mrkdwn", "text": elem} for elem in elements],
+    }
+
+
+def build_button(
+    text: str,
+    action_id: str,
+    value: str,
+    url: Optional[str] = None,
+    style: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Build a Slack button element.
+
+    Args:
+        text: Button text
+        action_id: Action ID for handling clicks
+        value: Button value payload
+        url: Optional URL for link buttons
+        style: Optional style ("primary", "danger")
+
+    Returns:
+        Dict[str, Any]: Slack button element
+    """
+    button = {
+        "type": "button",
+        "text": {"type": "plain_text", "text": text, "emoji": True},
+        "action_id": action_id,
+    }
+
+    if url:
+        button["url"] = url
+    else:
+        button["value"] = value
+
+    if style:
+        button["style"] = style
+
+    return button
+
+
+def build_actions_block(elements: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Build a Slack actions block with buttons or other interactive elements.
+
+    Args:
+        elements: List of button/select menu elements
+
+    Returns:
+        Dict[str, Any]: Slack actions block
+    """
+    return {"type": "actions", "elements": elements}
+
+
+# =============================================================================
+# ANALYTICS REPORT CONSTANTS AND CONFIGURATION
 # =============================================================================
 
 # Report name to data key mapping for cleaner code

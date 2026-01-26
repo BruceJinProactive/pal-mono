@@ -15,6 +15,8 @@ from urllib.parse import parse_qs
 from fastapi import HTTPException, Request, status
 
 from services import notion_service
+from services.slack_service import make_feedback_button
+from services.slack_service._client import get_slack_client
 from utils.log import logger
 
 
@@ -316,44 +318,37 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     in ["action_investigating", "action_live", "action_deferred"]
                     for el in elements
                 ):
-                    new_elements = []
-
-                    # Helper to create clickable buttons with active state styling
-                    def make_btn(label, action, emoji=""):
-                        is_active = clicked_action_name == action
-                        btn = {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": f"{label} {emoji}"
-                                + (" ✓" if is_active else ""),
-                                "emoji": True,
-                            },
-                            "action_id": f"action_{action}",
-                            "value": button_value,
-                        }
-                        if is_active:
-                            btn["style"] = "primary"
-                        return btn
-
-                    new_elements.append(
-                        make_btn("Investigating", "investigating", "👀")
-                    )
-                    new_elements.append(make_btn("Changes Now Live", "live", "🚀"))
-                    new_elements.append(make_btn("Deferred", "deferred", "⏸️"))
-
+                    new_elements = [
+                        make_feedback_button(
+                            "Investigating",
+                            "investigating",
+                            button_value,
+                            is_active=clicked_action_name == "investigating",
+                            emoji="👀",
+                        ),
+                        make_feedback_button(
+                            "Changes Now Live",
+                            "live",
+                            button_value,
+                            is_active=clicked_action_name == "live",
+                            emoji="🚀",
+                        ),
+                        make_feedback_button(
+                            "Deferred",
+                            "deferred",
+                            button_value,
+                            is_active=clicked_action_name == "deferred",
+                            emoji="⏸️",
+                        ),
+                    ]
                     block["elements"] = new_elements
 
-        # Remove old status context and add new one
-        blocks = [
-            b
-            for b in blocks
-            if b.get("type") != "context" or "Status" not in str(b.get("elements", []))
-        ]
-
+        # Remove old status context block and add new one
+        blocks = [b for b in blocks if b.get("block_id") != "feedback_status"]
         blocks.append(
             {
                 "type": "context",
+                "block_id": "feedback_status",
                 "elements": [{"type": "mrkdwn", "text": f"*Status:* {status_text}"}],
             }
         )
@@ -361,8 +356,6 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
         # Update Slack message using chat.update API
         if channel_id and message_ts:
             try:
-                from services.slack_service._client import get_slack_client
-
                 client = get_slack_client()
                 await client.chat_update(
                     channel=channel_id,

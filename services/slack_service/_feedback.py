@@ -4,33 +4,50 @@ Slack Feedback Notification Module
 Provides functionality to send feedback notifications to Slack using Block Kit formatting.
 """
 
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from utils.log import logger
-from utils.secret import get_server_secret_with_fallback
 
-from ._client import get_slack_client
+from ._client import DEFAULT_SLACK_CHANNEL, get_slack_client
+from ._formatting import (
+    build_actions_block,
+    build_button,
+    build_context_block,
+    build_divider_block,
+    build_fields_section,
+    build_header_block,
+    build_section_block,
+)
+
+# Channel lookup cache: {client_name: (channel_id, timestamp)}
+# TTL: 5 minutes (300 seconds)
+_CHANNEL_CACHE: Dict[str, Tuple[Optional[str], float]] = {}
+_CHANNEL_CACHE_TTL = 300
 
 
-def _normalize_client_name_for_channel(client_name: str) -> str:
+def make_feedback_button(
+    label: str, action: str, button_value: str, is_active: bool = False, emoji: str = ""
+) -> Dict[str, Any]:
     """
-    Convert client name to Slack channel naming convention.
-
-    Simply prepends "client-" to the client name without any transformation.
+    Create a feedback status button with optional active state styling.
 
     Args:
-        client_name: The account name from the database
+        label: Button label text
+        action: Action ID suffix (e.g., "investigating", "live", "deferred")
+        button_value: Button value payload (conversation_id|notion_page_id|user_email)
+        is_active: Whether this button is currently active (shows checkmark + primary style)
+        emoji: Optional emoji to append to label
 
     Returns:
-        str: Channel name in format "client-{client_name}"
+        dict: Slack button block element
     """
-    normalized = client_name.lower()
-    normalized = normalized.replace(" ", "-")
-
-    return f"client-{normalized}"
+    text = f"{label} {emoji}" + (" ✓" if is_active else "")
+    style = "primary" if is_active else None
+    return build_button(text, f"action_{action}", button_value, style=style)
 
 
 async def get_feedback_channel_for_client(
@@ -39,7 +56,7 @@ async def get_feedback_channel_for_client(
     """
     Get the Slack channel ID for a specific client's feedback.
 
-        find channel by name using naming convention: client-{normalized_name}
+    Uses a 5-minute cache to reduce Slack API calls.
 
     Args:
         client_name: The account name from database
@@ -48,8 +65,23 @@ async def get_feedback_channel_for_client(
     Returns:
         Optional[str]: Channel ID if found, None otherwise
     """
-    # Generate expected channel name from client name
-    expected_channel_name = _normalize_client_name_for_channel(client_name)
+    # Normalize cache key to lowercase to prevent duplicates
+    cache_key = client_name.lower()
+
+    # Check cache first
+    current_time = time.time()
+    if cache_key in _CHANNEL_CACHE:
+        channel_id, cached_time = _CHANNEL_CACHE[cache_key]
+        if current_time - cached_time < _CHANNEL_CACHE_TTL:
+            logger.debug(
+                f"[Slack] Using cached channel ID for client {client_name}: {channel_id}"
+            )
+            return channel_id
+
+    # Generate expected channel name from normalized client name
+    expected_channel_name = cache_key.replace(" ", "-")
+    expected_channel_name = f"client-{expected_channel_name}"
+
     logger.debug(
         f"[Slack] Looking for channel: {expected_channel_name} (from client: {client_name})"
     )
@@ -59,32 +91,31 @@ async def get_feedback_channel_for_client(
         # Note: conversations_list returns all channels the bot is a member of
         cursor = None
         while True:
+            params = {
+                "types": "public_channel,private_channel",
+                "limit": 200,
+            }
             if cursor:
-                response = await slack_client.conversations_list(
-                    types="public_channel,private_channel",
-                    limit=200,
-                    cursor=cursor,
-                )
-            else:
-                response = await slack_client.conversations_list(
-                    types="public_channel,private_channel",
-                    limit=200,
-                )
+                params["cursor"] = cursor
+
+            response = await slack_client.conversations_list(**params)
 
             if not response["ok"]:
                 logger.error(
                     f"[Slack] Failed to list channels: {response.get('error')}"
                 )
                 return None
-
             # Search for matching channel name
             channels = response.get("channels", [])
             for channel in channels:
                 if channel.get("name") == expected_channel_name:
+                    channel_id = channel["id"]
                     logger.info(
-                        f"[Slack] Found channel {expected_channel_name} with ID {channel['id']}"
+                        f"[Slack] Found channel {expected_channel_name} with ID {channel_id}"
                     )
-                    return channel["id"]
+                    # Cache the result using normalized key
+                    _CHANNEL_CACHE[cache_key] = (channel_id, current_time)
+                    return channel_id
 
             # Check if there are more pages
             cursor = response.get("response_metadata", {}).get("next_cursor")
@@ -94,6 +125,8 @@ async def get_feedback_channel_for_client(
         logger.warning(
             f"[Slack] No channel found with name {expected_channel_name} for client {client_name}"
         )
+        # Cache the "not found" result to avoid repeated lookups
+        _CHANNEL_CACHE[cache_key] = (None, current_time)
         return None
 
     except Exception as e:
@@ -131,173 +164,94 @@ async def send_feedback_notification(
                 logger.error(f"[Slack Feedback] Failed to get Slack client: {e}")
                 return None
 
-        # Determine channel ID: override > client-specific > default
+        # Determine channel ID: override > client-specific > default fallback
         if channel_override:
             channel_id = channel_override
         else:
-            # Try to find client-specific channel by name
             channel_id = await get_feedback_channel_for_client(client_name, client)
 
-            # Fall back to default channel if client-specific not found
+            # Fallback to default channel if client-specific channel not found
             if not channel_id:
-                try:
-                    channel_id = get_server_secret_with_fallback("SLACK_CHANNEL_ID")
-                    logger.info(
-                        f"[Slack Feedback] No client-specific channel found for {client_name}, using default"
-                    )
-                except ValueError:
-                    channel_id = None
+                channel_id = DEFAULT_SLACK_CHANNEL
+                logger.warning(
+                    f"[Slack Feedback] No client-specific channel found for {client_name}, "
+                    f"using default fallback: {channel_id}"
+                )
 
-        if not channel_id:
-            logger.error(
-                f"[Slack Feedback] No Slack channel configured for client {client_name}"
-            )
-            return None
-
-        # Build the emoji based on reaction
+        # Build reaction emoji
         reaction_emoji = ""
         if reaction == "thumbs_up":
             reaction_emoji = "👍 "
         elif reaction == "thumbs_down":
             reaction_emoji = "👎 "
 
-        # --- BLOCK 1: Header ---
-        blocks = [
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": f"{reaction_emoji}New Feedback from {client_name}",
-                    "emoji": True,
-                },
-            }
-        ]
+        # Build blocks using generic builders
+        blocks = []
 
-        # --- BLOCK 2: Compact Metadata (User, Email, Tags) ---
-        # Using 'fields' creates a nice two-column grid layout
-        fields = []
+        # Header
+        blocks.append(
+            build_header_block(f"{reaction_emoji}New Feedback from {client_name}")
+        )
 
-        # User Info
+        # Metadata fields (user, email, tags)
+        field_data = []
         if user_name:
-            fields.append({"type": "mrkdwn", "text": f"*User:*\n{user_name}"})
+            field_data.append(("*User:*", user_name))
         if user_email:
-            fields.append({"type": "mrkdwn", "text": f"*Email:*\n{user_email}"})
-
-        # Tags (formatted as badges)
+            field_data.append(("*Email:*", user_email))
         if tags:
             tags_display = " ".join([f"`{tag}`" for tag in tags])
-            fields.append({"type": "mrkdwn", "text": f"*Tags:*\n{tags_display}"})
+            field_data.append(("*Tags:*", tags_display))
 
-        # Add the fields section if we have data
-        if fields:
-            blocks.append({"type": "section", "fields": fields})
+        if field_data:
+            blocks.append(build_fields_section(field_data))
 
-        # --- BLOCK 3: Divider & Feedback Content ---
-        blocks.append({"type": "divider"})
-
+        # Divider and feedback content
+        blocks.append(build_divider_block())
         if feedback_text:
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*Feedback:*\n>{feedback_text}",  # Blockquote format
-                    },
-                }
-            )
+            blocks.append(build_section_block(f"*Feedback:*\n>{feedback_text}"))
 
-        # --- BLOCK 4: Links (View Convo / Open Notion) ---
+        # Link buttons
         link_buttons = []
         if conversation_link:
             link_buttons.append(
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "View Convo 💬",
-                        "emoji": True,
-                    },
-                    "url": conversation_link,
-                    "action_id": "view_conversation",
-                }
+                build_button(
+                    "View Convo 💬", "view_conversation", "", url=conversation_link
+                )
             )
         if notion_ticket_url:
             link_buttons.append(
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Notion Ticket 📝",
-                        "emoji": True,
-                    },
-                    "url": notion_ticket_url,
-                    "action_id": "open_notion",
-                }
+                build_button(
+                    "Notion Ticket 📝", "open_notion", "", url=notion_ticket_url
+                )
             )
-
         if link_buttons:
-            blocks.append({"type": "actions", "elements": link_buttons})
+            blocks.append(build_actions_block(link_buttons))
 
-        # --- BLOCK 5: Status Actions (The Control Panel) ---
-        # Build button value payload: conversation_id|notion_page_id|user_email
+        # Status action buttons
         button_value = f"{conversation_id}|{notion_page_id or ''}|{user_email}"
-
+        blocks.append(build_section_block("*Update Status:*"))
         blocks.append(
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*Update Status:*",
-                },
-            }
+            build_actions_block(
+                [
+                    make_feedback_button(
+                        "Investigating", "investigating", button_value, emoji="👀"
+                    ),
+                    make_feedback_button(
+                        "Changes Now Live", "live", button_value, emoji="🚀"
+                    ),
+                    make_feedback_button(
+                        "Deferred", "deferred", button_value, emoji="⏸️"
+                    ),
+                ]
+            )
         )
 
-        blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Investigating 👀",
-                            "emoji": True,
-                        },
-                        "value": button_value,
-                        "action_id": "action_investigating",
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Changes Now Live 🚀",
-                            "emoji": True,
-                        },
-                        "value": button_value,
-                        "action_id": "action_live",
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Deferred ⏸️",
-                            "emoji": True,
-                        },
-                        "value": button_value,
-                        "action_id": "action_deferred",
-                    },
-                ],
-            }
-        )
-
-        # --- BLOCK 6: Context (IDs) ---
-        context_elements = []
-        context_elements.append({"type": "mrkdwn", "text": f"ID: `{conversation_id}`"})
-
+        # Context (IDs)
+        context_items = [f"ID: `{conversation_id}`"]
         if feedback_id:
-            context_elements.append({"type": "mrkdwn", "text": f"Ref: `{feedback_id}`"})
-
-        blocks.append({"type": "context", "elements": context_elements})
+            context_items.append(f"Ref: `{feedback_id}`")
+        blocks.append(build_context_block(context_items))
 
         # Send the message to Slack
         response = await client.chat_postMessage(
@@ -435,44 +389,38 @@ async def update_feedback_message_with_button_state(
                     in ["action_investigating", "action_live", "action_deferred"]
                     for el in elements
                 ):
-                    new_elements = []
-
-                    # Helper to create clickable buttons with active state styling
-                    def make_btn(label, action, emoji=""):
-                        is_active = clicked_action == action
-                        btn = {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": f"{label} {emoji}"
-                                + (" ✓" if is_active else ""),
-                                "emoji": True,
-                            },
-                            "action_id": f"action_{action}",
-                            "value": button_value,
-                        }
-                        if is_active:
-                            btn["style"] = "primary"
-                        return btn
-
-                    new_elements.append(
-                        make_btn("Investigating", "investigating", "👀")
-                    )
-                    new_elements.append(make_btn("Changes Now Live", "live", "🚀"))
-                    new_elements.append(make_btn("Deferred", "deferred", "⏸️"))
-
+                    new_elements = [
+                        make_feedback_button(
+                            "Investigating",
+                            "investigating",
+                            button_value,
+                            is_active=clicked_action == "investigating",
+                            emoji="👀",
+                        ),
+                        make_feedback_button(
+                            "Changes Now Live",
+                            "live",
+                            button_value,
+                            is_active=clicked_action == "live",
+                            emoji="🚀",
+                        ),
+                        make_feedback_button(
+                            "Deferred",
+                            "deferred",
+                            button_value,
+                            is_active=clicked_action == "deferred",
+                            emoji="⏸️",
+                        ),
+                    ]
                     block["elements"] = new_elements
 
-        # Update status context
-        blocks = [
-            b
-            for b in blocks
-            if b.get("type") != "context" or "Status" not in str(b.get("elements", []))
-        ]
+        # Remove old status context block and add new one
+        blocks = [b for b in blocks if b.get("block_id") != "feedback_status"]
 
         blocks.append(
             {
                 "type": "context",
+                "block_id": "feedback_status",
                 "elements": [{"type": "mrkdwn", "text": f"*Status:* {status_text}"}],
             }
         )

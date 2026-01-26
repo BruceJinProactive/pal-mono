@@ -21,9 +21,6 @@ def get_notion_client() -> AsyncClient:
     """
     Get or create a Notion async client instance.
 
-    Uses a singleton pattern to reuse the same client instance.
-    Fetches the API token from AWS Secrets Manager on first use.
-
     Returns:
         AsyncClient: Configured Notion client
 

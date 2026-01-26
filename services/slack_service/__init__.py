@@ -23,9 +23,19 @@ from ._bot import _get_slack_handler
 from ._client import get_slack_channel_from_env_key
 from ._feedback import (
     get_feedback_channel_for_client,
+    make_feedback_button,
     send_feedback_notification,
     update_feedback_message,
     update_feedback_message_with_button_state,
+)
+from ._formatting import (
+    build_actions_block,
+    build_button,
+    build_context_block,
+    build_divider_block,
+    build_fields_section,
+    build_header_block,
+    build_section_block,
 )
 from ._messages import send_slack_message
 from ._reports import send_report_to_slack as _send_report_to_slack
@@ -116,5 +126,13 @@ __all__ = [
     "update_feedback_message",
     "update_feedback_message_with_button_state",
     "get_feedback_channel_for_client",
+    "make_feedback_button",
+    "build_header_block",
+    "build_section_block",
+    "build_fields_section",
+    "build_divider_block",
+    "build_context_block",
+    "build_button",
+    "build_actions_block",
     "get_slack_channel_from_env_key",
 ]
