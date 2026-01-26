@@ -207,6 +207,10 @@ class RawConfig:
                     )
                 config_copy = {**config_copy, **nested_args}
 
+            # Auto-inject store_id from store_identifier column if present
+            if integration.store_identifier:
+                config_copy["store_id"] = integration.store_identifier
+
             tools.append((tool_name, config_copy, access_metadata))
 
         return tools
