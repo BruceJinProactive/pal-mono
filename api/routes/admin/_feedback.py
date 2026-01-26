@@ -143,12 +143,14 @@ async def create_feedback(
     session: Session,
 ) -> Feedback:
     """
-    Create feedback and trigger (Slack and Notion) integrations
+    Create feedback and trigger (Slack and Notion) integrations for negative feedback only
 
     Flow:
-    1. Save feedback to SQL database (fire-and-forget logging)
-    2. Create Notion ticket in Feedback Inbox
-    4. Send Slack notification with interactive buttons (for FDE triage)
+    1. Save feedback to SQL database (always)
+    2. If positive feedback (thumbs_up): Return early, skip external integrations
+    3. If negative feedback (thumbs_down):
+       - Create Notion ticket in Feedback Inbox
+       - Send Slack notification with interactive buttons (for FDE triage)
 
     Note: All integrations are fire-and-forget. If any external service fails,
     we log the error but still return 200 OK to avoid user-facing errors.
@@ -175,8 +177,20 @@ async def create_feedback(
             "feedback_id": str(persisted_feedback.id),
             "conversation_id": str(conversation.id),
             "account": account.name,
+            "reaction": persisted_feedback.reaction,
         },
     )
+
+    # Skip external integrations (Slack, Notion) for positive feedback
+    if persisted_feedback.reaction == "thumbs_up":
+        logger.info(
+            "[Feedback] Skipping external integrations for positive feedback",
+            extra={
+                "feedback_id": str(persisted_feedback.id),
+                "reaction": persisted_feedback.reaction,
+            },
+        )
+        return _builder.build_feedback(persisted_feedback)
 
     CONSOLE_BASE_URL = os.getenv(
         "PAL_CONSOLE_BASE_URL", "https://lat-console.palona.ai"
@@ -185,7 +199,7 @@ async def create_feedback(
         f"{CONSOLE_BASE_URL}/hosting/conversations?conversationId={conversation.id}"
     )
 
-    # Create Notion ticket
+    # Create Notion ticket (only for negative feedback)
     notion_ticket_url = None
     notion_page_id = None
     try:
@@ -233,6 +247,7 @@ async def create_feedback(
     # NOTE: To re-enable: use postmark_service.send_feedback_receipt()
     logger.debug("[Feedback] Postmark receipt email disabled")
 
+    # Send Slack notification (only for negative feedback)
     try:
         slack_result = await slack_service.send_feedback_notification(
             client_name=account.name,
