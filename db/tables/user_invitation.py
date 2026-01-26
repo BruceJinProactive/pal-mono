@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, Enum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.expression import text
 from sqlalchemy.types import DateTime, String
@@ -22,12 +22,16 @@ class UserInvitation(Base):
 
     On acceptance, creates:
     1. AccountUser record (membership)
-    2. ResourceRoleAssignment record (role on account resource)
+    2. ResourceRoleAssignment record (role on account or project resource)
 
     Token must be cryptographically secure (use secrets.token_urlsafe(48))
 
     Roles are arbitrary strings allowing flexible role definitions.
-    Examples: 'owner', 'manager', 'viewer', 'billing_admin', 'content_editor', etc.
+    Examples: 'owner', 'manager', 'viewer', 'staff', etc.
+
+    Project-level assignments:
+    - If project_ids is NULL: Creates account-level role (access to all projects)
+    - If project_ids is a list: Creates project-level role for each project
     """
 
     __tablename__ = "user_invitations"
@@ -45,6 +49,11 @@ class UserInvitation(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     account_role: Mapped[str] = mapped_column(
         String(50), nullable=False, comment="Role to assign on acceptance"
+    )
+    project_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)),
+        nullable=True,
+        comment="Project IDs to assign on acceptance, NULL = account-level access",
     )
     invited_by: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -74,4 +83,5 @@ class UserInvitation(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<UserInvitation(email={self.email}, account_id={self.account_id}, account_role={self.account_role}, status={self.status.value})>"
+        project_info = f", project_ids={self.project_ids}" if self.project_ids else ""
+        return f"<UserInvitation(email={self.email}, account_id={self.account_id}, account_role={self.account_role}{project_info}, status={self.status.value})>"
