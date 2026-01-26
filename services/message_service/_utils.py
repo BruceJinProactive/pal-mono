@@ -640,6 +640,7 @@ _CALL_PURPOSE_MAPPING = {
     "waitlist": CallPurpose.waitlist,
     "takeout_issue": CallPurpose.takeout_issue,
     "third_party_order": CallPurpose.third_party_order,
+    "delivery": CallPurpose.delivery,
     "customer_service": CallPurpose.customer_service,
     "complaint_service": CallPurpose.complaint_service,
     "complaint_food_safety": CallPurpose.complaint_food_safety,

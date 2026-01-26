@@ -13,6 +13,7 @@ Identify all the main reasons for the customer's call.
 	- waitlist: Calls to join, check, or manage the restaurant's waitlist.
 	- takeout_issue: Issues specifically related to takeout orders (e.g., delays, missing items, pickup problems).
 	- third_party_order: Questions or issues about orders placed via third-party apps (DoorDash, UberEats, etc.).
+	- delivery: Calls involving delivery - placing delivery orders, asking about delivery availability, delivery areas/zones, delivery fees, delivery times, or issues with deliveries.
 	- customer_service: General customer service inquiries not tied to a specific order (e.g., feedback, inquiries about promotions).
 	- complaint_service: Complaints about service quality (e.g., staff interactions, slow service, rude behavior).
 	- complaint_food_safety: Serious complaints about food safety (e.g., food poisoning, contamination, allergies mishandled).
@@ -45,7 +46,7 @@ You are NOT allowed to invent or use values outside of the enums below.
 If the call does not match any category, you must choose "other".
 
 Valid CallPurpose values (list, multiple allowed, but "other" can only be used once and never combined with other categories):
-["store_info","menu_info","ordering","reservation","waitlist","takeout_issue","third_party_order","customer_service","complaint_service","complaint_food_safety","dietary_specific","lost_and_found","reservation_change","other"]
+["store_info","menu_info","ordering","reservation","waitlist","takeout_issue","third_party_order","delivery","customer_service","complaint_service","complaint_food_safety","dietary_specific","lost_and_found","reservation_change","other"]
 
 Valid Language Spoken values (exactly one):
 ["english","spanish","chinese","other"]
