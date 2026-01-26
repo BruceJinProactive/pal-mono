@@ -23,6 +23,7 @@ import db
 from db.repositories import (
     AccountRepository,
     AccountUserRepository,
+    ProjectRepository,
     ResourceRoleAssignmentRepository,
     UserInvitationRepository,
 )
@@ -33,6 +34,8 @@ from services.admin_service._utils import generate_password
 from services.auth_types import UserContext, UserRole
 from services.team_service.invitation_token import generate_invitation_jwt
 from services.team_service.schema import (
+    ACCOUNT_ROLE_PRECEDENCE,
+    PROJECT_ROLE_PRECEDENCE,
     AcceptInvitationParams,
     InvitationParams,
     SwitchAccountParams,
@@ -52,6 +55,42 @@ TEAM_INVITATION_PENDING_USER_TEMPLATE_ID = 42173054  # For users who never logge
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
+
+
+def _get_highest_precedence_role(
+    roles: list[str], precedence_list: list[str]
+) -> str | None:
+    """
+    Find the highest precedence role from a list of roles.
+
+    Iterates through roles (usually 1) and finds the one with the lowest
+    index in the precedence list. More efficient than iterating precedence
+    list when roles list is small.
+
+    Args:
+        roles: List of role strings from database
+        precedence_list: Ordered list of roles (highest precedence first)
+
+    Returns:
+        The highest precedence role, or None if no roles match
+    """
+    if not roles:
+        return None
+
+    best_role = None
+    best_idx = len(precedence_list)
+
+    for role in roles:
+        try:
+            idx = precedence_list.index(role)
+            if idx < best_idx:
+                best_idx = idx
+                best_role = role
+        except ValueError:
+            # Role not in precedence list, skip
+            continue
+
+    return best_role
 
 
 def get_cognito_user_status(
@@ -105,25 +144,27 @@ def create_invitation(
 
     Steps:
     1. Get account by name
-    2. Check if user is already a member of the account
-    3. Check for existing pending invitation
-    4. Generate secure token
-    5. Check Cognito user status and create if needed
-    6. Create invitation record
-    7. Send invitation email
-    8. Return invitation
+    2. Validate project_ids if provided (must belong to account)
+    3. Check if user is already a member of the account
+    4. Check for existing pending invitation
+    5. Generate secure token
+    6. Check Cognito user status and create if needed
+    7. Create invitation record
+    8. Send invitation email
+    9. Return invitation
 
     Args:
         session: Database session
         context: User context for audit logging
         account_name: Name of the account
-        params: Invitation parameters (email, role)
+        params: Invitation parameters (email, role, project_ids)
 
     Returns:
         db.UserInvitation: Created invitation record
 
     Raises:
-        ValueError: If account not found, user is already a member, or duplicate invitation exists
+        ValueError: If account not found, user is already a member, duplicate invitation exists,
+                    or project_ids are invalid
     """
     # 1. Get account
     account_repo = AccountRepository(session)
@@ -131,7 +172,39 @@ def create_invitation(
     if not account:
         raise ValueError(f"Account '{account_name}' not found")
 
-    # 2. Check if user is already a member of the account
+    # 2. Validate project_ids if provided
+    unique_project_ids: list[UUID] | None = None
+    if params.project_ids is not None:
+        # Reject empty list (empty list should not mean "all projects")
+        if len(params.project_ids) == 0:
+            raise ValueError("project_ids cannot be an empty list")
+
+        # Deduplicate project_ids while preserving order
+        seen: set[UUID] = set()
+        unique_project_ids = []
+        for pid in params.project_ids:
+            if pid not in seen:
+                seen.add(pid)
+                unique_project_ids.append(pid)
+
+        project_repo = ProjectRepository(session, auto_commit=False)
+        projects = project_repo.get_projects_by_ids(unique_project_ids)
+
+        # Check all requested project IDs were found
+        found_ids = {p.id for p in projects}
+        missing_ids = set(unique_project_ids) - found_ids
+        if missing_ids:
+            raise ValueError(f"Project(s) not found: {missing_ids}")
+
+        # Check all projects belong to this account
+        invalid_projects = [p for p in projects if p.account_id != account.id]
+        if invalid_projects:
+            invalid_ids = [p.id for p in invalid_projects]
+            raise ValueError(
+                f"Project(s) do not belong to account '{account_name}': {invalid_ids}"
+            )
+
+    # 3. Check if user is already a member of the account
     account_user_repo = AccountUserRepository(session)
     existing_member = account_user_repo.get_by_email_and_account(
         params.email, account.id
@@ -139,16 +212,16 @@ def create_invitation(
     if existing_member:
         raise ValueError("User is already a member of this account")
 
-    # 3. Check for existing pending invitation
+    # 4. Check for existing pending invitation
     invitation_repo = UserInvitationRepository(session)
     if invitation_repo.has_pending_for_email(account.id, params.email):
         raise ValueError("Pending invitation already exists for this email")
 
-    # 4. Generate secure token
+    # 5. Generate secure token
     invitation_token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
 
-    # 5. Check Cognito user status and create if needed
+    # 6. Check Cognito user status and create if needed
     user_name = params.email.split("@")[0].replace(".", " ").title()
     password = generate_password()
 
@@ -198,7 +271,7 @@ def create_invitation(
                     logger.error(f"Failed to create Cognito user for invitation: {e}")
                     raise ValueError(f"Failed to create Cognito user: {error_code}")
 
-    # 6. Create invitation record
+    # 7. Create invitation record
     try:
         invitation = invitation_repo.create(
             account_id=account.id,
@@ -207,11 +280,12 @@ def create_invitation(
             invited_by=UUID(context.username),
             invitation_token=invitation_token,
             expires_at=expires_at,
+            project_ids=unique_project_ids,
         )
     except Exception as e:
-        raise ValueError(f"Failed to create invitation: {str(e)}")
+        raise ValueError(f"Failed to create invitation: {e!s}") from e
 
-    # 7. Send invitation email based on user status
+    # 8. Send invitation email based on user status
     try:
         # Get inviter name for personalization
         inviter_name = context.display_name or "A team member"
@@ -299,7 +373,9 @@ def list_team_members(
     list[str | None],
     list[str],
     list[str],
+    list[dict[str, str] | None],
     list[db.UserInvitation],
+    list[dict[str, str] | None],
 ]:
     """
     List all team members for an account with their roles and pending invitations.
@@ -307,10 +383,10 @@ def list_team_members(
     Steps:
     1. Get account by name
     2. Get all account users (with optional status filter)
-    3. For each user, get their role
+    3. For each user, get their role and store access info
     4. Apply filters (role, search)
     5. Get pending invitations for the account
-    6. Return account users, their metadata, and pending invitations
+    6. Return account users, their metadata, store info, and pending invitations
 
     Args:
         session: Database session
@@ -321,9 +397,11 @@ def list_team_members(
         Tuple of:
         - list[db.AccountUser]: Account user records
         - list[str | None]: Account roles for each user
-        - list[str]: Emails for each user (mock data)
-        - list[str]: Display names for each user (mock data)
+        - list[str]: Emails for each user
+        - list[str]: Display names for each user
+        - list[dict[str, str] | None]: Store access per user (None = all stores, dict = {id: name})
         - list[db.UserInvitation]: Pending invitations
+        - list[dict[str, str] | None]: Store access per invitation
 
     Raises:
         ValueError: If account not found
@@ -341,25 +419,69 @@ def list_team_members(
         account.id, status=status_filter
     )
 
-    # 3. For each user, get their role and build lists
+    # 3. Get all projects for this account (for store name lookup)
+    project_repo = ProjectRepository(session, auto_commit=False)
+    projects = project_repo.get_projects_by_account_id(account.id)
+    project_map = {p.id: p.display_name or p.name for p in projects}
+    project_ids = list(project_map.keys())
+
+    # 4. Pre-fetch all project role assignments in one query to avoid O(users × projects)
     role_repo = ResourceRoleAssignmentRepository(session)
+    all_project_assignments = role_repo.get_assignments_for_resources(
+        ResourceType.PROJECT, project_ids
+    )
+
+    # Build maps: user_id -> set of project_ids, user_id -> list of roles
+    user_project_ids: dict[UUID, set[UUID]] = {}
+    user_all_roles: dict[UUID, list[str]] = {}
+    for assignment in all_project_assignments:
+        if assignment.user_id not in user_project_ids:
+            user_project_ids[assignment.user_id] = set()
+            user_all_roles[assignment.user_id] = []
+        user_project_ids[assignment.user_id].add(assignment.resource_id)
+        user_all_roles[assignment.user_id].append(assignment.role)
+
+    # 5. For each user, get their role, store access info, and build lists
     filtered_users = []
     roles = []
     emails = []
     names = []
+    store_access_list: list[dict[str, str] | None] = []
 
     for au in account_users:
-        # Get roles for this user on this account
-        user_roles = role_repo.get_roles_for_resource(
+        # Get roles for this user on this account (account-level)
+        user_account_roles = role_repo.get_roles_for_resource(
             au.user_id, ResourceType.ACCOUNT, account.id
         )
 
-        # Get primary account role (first owner, else manager, else viewer)
-        account_role = None
-        for r in ["owner", "manager", "viewer"]:
-            if r in user_roles:
-                account_role = r
-                break
+        # Get primary account role using precedence helper
+        account_role = _get_highest_precedence_role(
+            user_account_roles, ACCOUNT_ROLE_PRECEDENCE
+        )
+
+        # Determine store access
+        if user_account_roles:
+            # User has account-level role -> access to all stores
+            store_access: dict[str, str] | None = None
+        else:
+            # Check project-level roles from pre-fetched maps
+            project_ids_with_roles = user_project_ids.get(au.user_id, set())
+
+            if project_ids_with_roles:
+                # Get highest precedence role from all project roles
+                account_role = _get_highest_precedence_role(
+                    user_all_roles.get(au.user_id, []), PROJECT_ROLE_PRECEDENCE
+                )
+
+                # Build store access dict mapping store_id -> store_name
+                store_access = {
+                    str(pid): project_map[pid]
+                    for pid in project_ids_with_roles
+                    if pid in project_map
+                }
+            else:
+                # No roles at all (shouldn't happen normally)
+                store_access = {}
 
         # Apply role filter
         if filters.role and (not account_role or account_role != filters.role):
@@ -377,12 +499,37 @@ def list_team_members(
         roles.append(account_role)
         emails.append(member_email)
         names.append(member_name)
+        store_access_list.append(store_access)
 
     # 5. Get pending invitations for the account
     invitation_repo = UserInvitationRepository(session)
     pending_invitations = invitation_repo.get_pending_for_account(account.id)
 
-    return filtered_users, roles, emails, names, pending_invitations
+    # 6. Build store access for invitations
+    invitation_store_access: list[dict[str, str] | None] = []
+    for invitation in pending_invitations:
+        if invitation.project_ids:
+            # Project-level invitation - dict mapping store_id -> store_name
+            invitation_store_access.append(
+                {
+                    str(pid): project_map[pid]
+                    for pid in invitation.project_ids
+                    if pid in project_map
+                }
+            )
+        else:
+            # Account-level invitation
+            invitation_store_access.append(None)
+
+    return (
+        filtered_users,
+        roles,
+        emails,
+        names,
+        store_access_list,
+        pending_invitations,
+        invitation_store_access,
+    )
 
 
 def update_member_role(
@@ -728,19 +875,38 @@ def accept_invitation(
     except Exception as e:
         raise ValueError(f"Failed to create account membership: {str(e)}")
 
-    # 6. Assign role
+    # 6. Assign role(s)
     role_repo = ResourceRoleAssignmentRepository(session)
     try:
-        role_repo.add_role(
-            user_id=user_id,
-            resource_type=ResourceType.ACCOUNT,
-            resource_id=account.id,
-            role=invitation.account_role,
-            assigned_by=invitation.invited_by,
-            reason="Accepted invitation",
-        )
+        if invitation.project_ids:
+            # Project-level role assignment (atomic bulk insert)
+            role_repo.add_roles_bulk(
+                user_id=user_id,
+                resource_type=ResourceType.PROJECT,
+                resource_ids=invitation.project_ids,
+                role=invitation.account_role,
+                assigned_by=invitation.invited_by,
+                reason="Accepted invitation",
+            )
+            logger.info(
+                f"Assigned project-level role '{invitation.account_role}' to user {user_id} "
+                f"for {len(invitation.project_ids)} project(s)"
+            )
+        else:
+            # Account-level role assignment (access to all projects)
+            role_repo.add_role(
+                user_id=user_id,
+                resource_type=ResourceType.ACCOUNT,
+                resource_id=account.id,
+                role=invitation.account_role,
+                assigned_by=invitation.invited_by,
+                reason="Accepted invitation",
+            )
+            logger.info(
+                f"Assigned account-level role '{invitation.account_role}' to user {user_id}"
+            )
     except Exception as e:
-        raise ValueError(f"Failed to assign role: {str(e)}")
+        raise ValueError(f"Failed to assign role: {str(e)}") from e
 
     # 7. Mark invitation as accepted
     try:
@@ -966,6 +1132,7 @@ def list_user_accounts(
 
     Returns:
         List of tuples: (account, primary_role, last_accessed)
+        Role is the highest precedence role from account-level or project-level.
     """
     # 1. Get all account memberships for current user
     account_user_repo = AccountUserRepository(session)
@@ -975,6 +1142,7 @@ def list_user_accounts(
     # 2. For each membership, get account details and role
     account_repo = AccountRepository(session)
     role_repo = ResourceRoleAssignmentRepository(session)
+    project_repo = ProjectRepository(session, auto_commit=False)
     result = []
 
     for membership in account_memberships:
@@ -982,17 +1150,29 @@ def list_user_accounts(
         if not account:
             continue
 
-        # Get user's role on this account
+        # Get user's account-level role
         user_roles = role_repo.get_roles_for_resource(
             user_id, ResourceType.ACCOUNT, account.id
         )
 
-        # Get primary role
-        primary_role = None
-        for r in ["owner", "manager", "viewer"]:
-            if r in user_roles:
-                primary_role = r
-                break
+        # Get primary role from account-level roles
+        primary_role = _get_highest_precedence_role(user_roles, ACCOUNT_ROLE_PRECEDENCE)
+
+        # If no account-level role, check project-level roles
+        if primary_role is None:
+            projects = project_repo.get_projects_by_account_id(account.id)
+            all_project_roles: list[str] = []
+
+            for project in projects:
+                project_roles = role_repo.get_roles_for_resource(
+                    user_id, ResourceType.PROJECT, project.id
+                )
+                all_project_roles.extend(project_roles)
+
+            # Get the highest precedence role across all projects
+            primary_role = _get_highest_precedence_role(
+                all_project_roles, PROJECT_ROLE_PRECEDENCE
+            )
 
         # TODO: Track actual last access
         last_accessed = membership.added_at
@@ -1028,6 +1208,7 @@ def list_user_accounts_by_email(
 
     Returns:
         List of tuples: (user_id, account, primary_role, last_accessed)
+        Role is the highest precedence role from account-level or project-level.
 
     Raises:
         ValueError: If user is not an admin, AWS Cognito not configured,
@@ -1078,6 +1259,7 @@ def list_user_accounts_by_email(
     # 5. For each membership, get account details and role
     account_repo = AccountRepository(session)
     role_repo = ResourceRoleAssignmentRepository(session)
+    project_repo = ProjectRepository(session, auto_commit=False)
     result = []
 
     for membership in account_memberships:
@@ -1085,17 +1267,29 @@ def list_user_accounts_by_email(
         if not account:
             continue
 
-        # Get user's role on this account
+        # Get user's account-level role
         user_roles = role_repo.get_roles_for_resource(
             user_id, ResourceType.ACCOUNT, account.id
         )
 
-        # Get primary role
-        primary_role = None
-        for r in ["owner", "manager", "viewer"]:
-            if r in user_roles:
-                primary_role = r
-                break
+        # Get primary role from account-level roles
+        primary_role = _get_highest_precedence_role(user_roles, ACCOUNT_ROLE_PRECEDENCE)
+
+        # If no account-level role, check project-level roles
+        if primary_role is None:
+            projects = project_repo.get_projects_by_account_id(account.id)
+            all_project_roles: list[str] = []
+
+            for project in projects:
+                project_roles = role_repo.get_roles_for_resource(
+                    user_id, ResourceType.PROJECT, project.id
+                )
+                all_project_roles.extend(project_roles)
+
+            # Get the highest precedence role across all projects
+            primary_role = _get_highest_precedence_role(
+                all_project_roles, PROJECT_ROLE_PRECEDENCE
+            )
 
         # TODO: Track actual last access
         last_accessed = membership.added_at
@@ -1123,6 +1317,7 @@ def validate_account_access(
 
     Returns:
         Tuple of (account, primary_role)
+        Role is the highest precedence role from account-level or project-level.
 
     Raises:
         ValueError: If account not found or user doesn't have access
@@ -1133,20 +1328,34 @@ def validate_account_access(
     if not account:
         raise ValueError("Account not found")
 
-    # Get user's role on this account
+    # Get user's account-level role
     role_repo = ResourceRoleAssignmentRepository(session)
     user_id = UUID(context.username)
     user_roles = role_repo.get_roles_for_resource(
         user_id, ResourceType.ACCOUNT, account.id
     )
 
-    # Get primary role
-    primary_role = None
-    for r in ["owner", "manager", "viewer"]:
-        if r in user_roles:
-            primary_role = r
-            break
+    # Get primary role from account-level roles
+    primary_role = _get_highest_precedence_role(user_roles, ACCOUNT_ROLE_PRECEDENCE)
 
+    # If no account-level role, check project-level roles
+    if primary_role is None:
+        project_repo = ProjectRepository(session, auto_commit=False)
+        projects = project_repo.get_projects_by_account_id(account.id)
+        all_project_roles: list[str] = []
+
+        for project in projects:
+            project_roles = role_repo.get_roles_for_resource(
+                user_id, ResourceType.PROJECT, project.id
+            )
+            all_project_roles.extend(project_roles)
+
+        # Get the highest precedence role across all projects
+        primary_role = _get_highest_precedence_role(
+            all_project_roles, PROJECT_ROLE_PRECEDENCE
+        )
+
+    # User must have a role
     if not primary_role:
         raise ValueError("User does not have access to this account")
 

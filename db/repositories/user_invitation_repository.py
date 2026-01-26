@@ -31,16 +31,18 @@ class UserInvitationRepository:
         invited_by: uuid.UUID,
         invitation_token: str,
         expires_at: datetime,
+        project_ids: list[uuid.UUID] | None = None,
     ) -> UserInvitation:
         """Create a new invitation.
 
         Args:
             account_id: UUID of the account
             email: Email address to invite
-            account_role: Role to assign on acceptance (e.g., 'owner', 'manager', 'viewer')
+            account_role: Role to assign on acceptance (e.g., 'owner', 'manager', 'viewer', 'staff')
             invited_by: UUID of user who sent the invitation
             invitation_token: Secure token (use secrets.token_urlsafe(48))
             expires_at: Expiration datetime
+            project_ids: Optional list of project IDs for project-level access
 
         Returns:
             The created UserInvitation object
@@ -61,6 +63,7 @@ class UserInvitationRepository:
                 account_id=account_id,
                 email=email,
                 account_role=account_role,
+                project_ids=project_ids,
                 invited_by=invited_by,
                 invitation_token=invitation_token,
                 expires_at=expires_at,
@@ -74,8 +77,9 @@ class UserInvitationRepository:
                 self.session.flush()
 
             self.session.refresh(db_invitation)
+            project_info = f" for projects {project_ids}" if project_ids else ""
             logger.info(
-                f"Created invitation: {email} to account {account_id} with role {account_role}"
+                f"Created invitation: {email} to account {account_id} with role {account_role}{project_info}"
             )
             return db_invitation
         except SQLAlchemyError as e:
