@@ -7,7 +7,6 @@ Handles Slack interactive components (button clicks, modals, etc.)
 import hashlib
 import hmac
 import json
-import os
 import time
 from typing import Any, Dict
 from urllib.parse import parse_qs
@@ -18,6 +17,7 @@ from services import notion_service
 from services.slack_service import make_feedback_button
 from services.slack_service._client import get_slack_client
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
 
 def verify_slack_signature(
@@ -132,10 +132,13 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
         - The SQL database is NOT queried during interactions (fire-and-forget logging only)
     """
     try:
-        # Get Slack signing secret
-        signing_secret = os.environ.get("SLACK_SIGNING_SECRET")
-        if not signing_secret:
-            logger.error("[Slack Interactions] SLACK_SIGNING_SECRET not configured")
+        # Get Slack signing secret from AWS Secrets Manager or environment
+        try:
+            signing_secret = get_server_secret_with_fallback("SLACK_SIGNING_SECRET")
+        except ValueError as e:
+            logger.error(
+                f"[Slack Interactions] SLACK_SIGNING_SECRET not configured: {e}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Slack signing secret not configured",
