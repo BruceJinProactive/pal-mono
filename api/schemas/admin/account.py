@@ -75,7 +75,7 @@ class ListAccountsResponse(BaseModel):
     total: int = Field(..., description="Total number of accounts matching filters")
     total_pages: int = Field(..., description="Total number of pages")
     page: int = Field(..., ge=1, description="Current page number")
-    page_size: int = Field(..., ge=1, le=100, description="Items per page")
+    page_size: int = Field(..., ge=1, le=150, description="Items per page")
 
 
 class UpdateAccountRequest(BaseModel):
