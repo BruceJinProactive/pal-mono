@@ -287,6 +287,15 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             max_tokens=self.config.max_tokens,
         )
 
+        # Log token usage
+        if response.usage:
+            logger.info(
+                f"[Monitoring LLM] Azure OpenAI token usage - "
+                f"Prompt: {response.usage.prompt_tokens}, "
+                f"Completion: {response.usage.completion_tokens}, "
+                f"Total: {response.usage.total_tokens}"
+            )
+
         # Parse and return response with defensive error handling
         try:
             content = response.choices[0].message.content or "{}"
@@ -447,6 +456,15 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
             contents=content_parts,  # type: ignore[arg-type]
             config=generation_config,
         )
+
+        # Log token usage
+        if response.usage_metadata:
+            logger.info(
+                f"[Monitoring LLM] Gemini token usage - "
+                f"Prompt: {response.usage_metadata.prompt_token_count}, "
+                f"Completion: {response.usage_metadata.candidates_token_count}, "
+                f"Total: {response.usage_metadata.total_token_count}"
+            )
 
         # Parse and return response with defensive error handling
         try:
