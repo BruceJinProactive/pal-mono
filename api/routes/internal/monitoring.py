@@ -13,7 +13,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
-from db.repositories import SignalFeedRepositoryAsync
+from db.repositories import (
+    AccountRepositoryAsync,
+    ProjectRepositoryAsync,
+    SignalFeedRepositoryAsync,
+    SignalSourceRepositoryAsync,
+)
 from db.repositories.monitoring_config_repository import MonitoringConfigRepositoryAsync
 from db.tables import MonitoringConfig
 from services import monitoring_service
@@ -148,12 +153,48 @@ async def record_capture(
     try:
         captured_at = request.captured_at or datetime.now(timezone.utc)
 
+        source_repo = SignalSourceRepositoryAsync(session)
+        source = await source_repo.get_by_id(request.signal_source_id)
+
+        # Build log metadata with camera details for Datadog alerts
+        log_extra = {
+            "signal_source_id": str(request.signal_source_id),
+            "captured_at": captured_at.isoformat(),
+            "event_type": "camera_capture",  # For Datadog filtering
+        }
+
+        if source:
+            account_repo = AccountRepositoryAsync(session)
+            project_repo = ProjectRepositoryAsync(session)
+
+            account = await account_repo.get_account_by_id(source.account_id)
+            project = (
+                await project_repo.get_project(source.project_id)
+                if source.project_id
+                else None
+            )
+
+            # Extract camera_id from config, fallback to source.id
+            camera_id = source.config.get("camera_id") if source.config else None
+            camera_name = source.name or "Unnamed Camera"
+
+            # Add camera metadata to logs
+            log_extra["camera_id"] = camera_id or str(source.id)
+            log_extra["signal_source_uuid"] = str(source.id)  # Keep UUID for reference
+            log_extra["camera_name"] = camera_name
+            log_extra["account_id"] = str(source.account_id)
+            log_extra["account_name"] = account.name if account else "Unknown Account"
+
+            # Only add project info if project_id exists
+            if source.project_id:
+                log_extra["project_id"] = str(source.project_id)
+                log_extra["project_name"] = (
+                    project.name if project else "Unknown Project"
+                )
+
         logger.info(
-            f"[Internal API] Recording capture for signal_source_id={request.signal_source_id}",
-            extra={
-                "signal_source_id": str(request.signal_source_id),
-                "captured_at": captured_at.isoformat(),
-            },
+            f"[CameraCapture] Camera capture recorded: {log_extra.get('camera_name', request.signal_source_id)}",
+            extra=log_extra,
         )
 
         feed_repo = SignalFeedRepositoryAsync(session)
@@ -162,11 +203,12 @@ async def record_capture(
         if feed:
             await feed_repo.update_last_capture(feed.id, captured_at)
             logger.info(
-                f"[Internal API] Updated signal feed {feed.id} last_capture_at to {captured_at}",
+                f"[CameraCapture] Updated signal feed {feed.id} last_capture_at",
                 extra={
                     "feed_id": str(feed.id),
                     "signal_source_id": str(request.signal_source_id),
                     "last_capture_at": captured_at.isoformat(),
+                    "event_type": "camera_capture_success",
                 },
             )
             return RecordCaptureResponse(

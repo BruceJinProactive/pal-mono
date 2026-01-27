@@ -1,5 +1,5 @@
 from . import checkpoint_repository
-from .account_repository import AccountRepository
+from .account_repository import AccountRepository, AccountRepositoryAsync
 from .account_user_repository import AccountUserRepository
 from .agent_capability_repository import AgentCapabilityRepositoryAsync
 from .agent_repository import AgentRepository, AgentRepositoryAsync
