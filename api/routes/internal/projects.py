@@ -388,35 +388,16 @@ async def update_knowledge(
                 headers={"Content-Type": "application/json"},
             )
 
-        # Get index_name and namespace from adora_tool.tool_args
-        raw_config = project.raw_config or {}
-        tools_config = raw_config.get("tools", {})
-        identifiers = tools_config.get("identifiers") or []
+        # Get index_name and namespace with priority:
+        # 1. adora_v2_tool from project_integration (config column)
+        # 2. adora_v2_tool from raw_config
+        # 3. adora_tool from raw_config (legacy fallback)
 
-        # Find adora_tool and get its tool_args
-        adora_tool_args = {}
-        for identifier in identifiers:
-            if (
-                isinstance(identifier, dict)
-                and identifier.get("tool_name") == "adora_tool"
-            ):
-                adora_tool_args = identifier.get("tool_args", {})
-                break
+        pinecone_index_name = None
+        pinecone_namespace = None
+        tool_source = None
 
-        pinecone_index_name = adora_tool_args.get("index_name")
-        pinecone_namespace = adora_tool_args.get("namespace")
-
-        if not pinecone_index_name:
-            raise ValueError(
-                f"Project {project_id} does not have adora_tool.tool_args.index_name configured"
-            )
-
-        if not pinecone_namespace:
-            raise ValueError(
-                f"Project {project_id} does not have adora_tool.tool_args.namespace configured"
-            )
-
-        # Get POS integration for this project
+        # Check project_integration for adora_v2_tool
         project_integration_repository = db.ProjectIntegrationRepository(session)
         project_integrations = (
             project_integration_repository.get_project_integrations_by_project_id(
@@ -424,7 +405,82 @@ async def update_knowledge(
             )
         )
 
-        # Find the Adora POS integration
+        for pi in project_integrations:
+            if pi.tool_name == "adora_v2_tool":
+                pi_config = pi.config or {}
+                pinecone_namespace = pi_config.get("namespace")
+                pinecone_index_name = pi_config.get("index_name")
+                tool_source = "project_integration.adora_v2_tool"
+                logger.debug(
+                    "[Adora Menu Updater] Found adora_v2_tool in project_integration",
+                    extra={
+                        "project_id": project_id,
+                        "namespace": pinecone_namespace,
+                        "index_name": pinecone_index_name,
+                    },
+                )
+                break
+
+        # Check raw_config for adora_v2_tool, then adora_tool
+        if not pinecone_namespace or not pinecone_index_name:
+            raw_config = project.raw_config or {}
+            tools_config = raw_config.get("tools", {})
+            identifiers = tools_config.get("identifiers") or []
+
+            # First try adora_v2_tool in raw_config
+            for identifier in identifiers:
+                if (
+                    isinstance(identifier, dict)
+                    and identifier.get("tool_name") == "adora_v2_tool"
+                ):
+                    tool_args = identifier.get("tool_args", {})
+                    pinecone_namespace = pinecone_namespace or tool_args.get(
+                        "namespace"
+                    )
+                    pinecone_index_name = pinecone_index_name or tool_args.get(
+                        "index_name"
+                    )
+                    tool_source = tool_source or "raw_config.adora_v2_tool"
+                    break
+
+            # Fallback to adora_tool in raw_config (legacy)
+            if not pinecone_namespace or not pinecone_index_name:
+                for identifier in identifiers:
+                    if (
+                        isinstance(identifier, dict)
+                        and identifier.get("tool_name") == "adora_tool"
+                    ):
+                        tool_args = identifier.get("tool_args", {})
+                        pinecone_namespace = pinecone_namespace or tool_args.get(
+                            "namespace"
+                        )
+                        pinecone_index_name = pinecone_index_name or tool_args.get(
+                            "index_name"
+                        )
+                        tool_source = tool_source or "raw_config.adora_tool"
+                        break
+
+        logger.debug(
+            f"[Adora Menu Updater] Resolved tool config from {tool_source}",
+            extra={
+                "project_id": project_id,
+                "tool_source": tool_source,
+                "namespace": pinecone_namespace,
+                "index_name": pinecone_index_name,
+            },
+        )
+
+        if not pinecone_index_name:
+            raise ValueError(
+                f"Project {project_id} does not have index_name configured (checked project_integration.adora_v2_tool, raw_config.adora_v2_tool, raw_config.adora_tool)"
+            )
+
+        if not pinecone_namespace:
+            raise ValueError(
+                f"Project {project_id} does not have namespace configured (checked project_integration.adora_v2_tool, raw_config.adora_v2_tool, raw_config.adora_tool)"
+            )
+
+        # Find the Adora POS integration (reusing project_integrations from above)
         pos_project_integration = None
         pos_integration = None
         integration_repository = db.IntegrationRepository(session)
@@ -578,8 +634,8 @@ async def update_knowledge(
         # Update project's product_info with the system_prompt_menu
         system_prompt_menu = result.get("system_prompt_menu", "")
         product_info_updated = False
+        project_repo = ProjectRepository(session)
         if system_prompt_menu:
-            project_repo = ProjectRepository(session)
             project_repo.update_project(project_uuid, product_info=system_prompt_menu)
             product_info_updated = True
             logger.debug(
@@ -589,6 +645,20 @@ async def update_knowledge(
                     "product_info_length": len(system_prompt_menu),
                 },
             )
+
+        # Update menu_last_updated in project's raw_config
+        # Use update_project_config which fetches fresh data to avoid clobbering concurrent changes
+        menu_last_updated = datetime.now(timezone.utc).isoformat()
+        project_repo.update_project_config(
+            project_uuid, {"menu_last_updated": menu_last_updated}
+        )
+        logger.debug(
+            f"[Adora Menu Updater] Updated menu_last_updated for project {project_id}",
+            extra={
+                "project_id": project_id,
+                "menu_last_updated": menu_last_updated,
+            },
+        )
 
         logger.debug(
             f"[Adora Menu Updater] Knowledge update complete for project {project_id}",
