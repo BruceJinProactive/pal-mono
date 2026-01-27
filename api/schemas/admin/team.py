@@ -17,12 +17,11 @@ from pydantic import BaseModel, EmailStr
 
 # Enums
 class UserRole(str, Enum):
-    """User roles for account and project-level permissions."""
+    """User roles for account-level permissions."""
 
     OWNER = "owner"
     MANAGER = "manager"
     VIEWER = "viewer"
-    STAFF = "staff"
 
 
 class InvitationStatus(str, Enum):
@@ -36,15 +35,10 @@ class InvitationStatus(str, Enum):
 
 # Team Management Schemas
 class InviteTeamMemberRequest(BaseModel):
-    """Request to invite a new team member.
-
-    For account-level access (owner, manager, viewer): omit project_ids
-    For project-level access (staff, manager): provide project_ids list
-    """
+    """Request to invite a new team member."""
 
     email: EmailStr
     account_role: UserRole
-    project_ids: List[UUID] | None = None
 
 
 class InvitationResponse(BaseModel):
@@ -53,7 +47,6 @@ class InvitationResponse(BaseModel):
     invitation_id: UUID
     email: str
     account_role: UserRole
-    project_ids: List[UUID] | None = None
     invitation_token: str
     expires_at: datetime
     status: InvitationStatus
@@ -70,9 +63,6 @@ class TeamMemberResponse(BaseModel):
     added_at: datetime
     last_active: Optional[datetime] = None
     resource_roles: List[dict] = []  # Empty for V1, future project/agent roles
-    store_access: dict[str, str] | None = (
-        None  # None = all stores, {"uuid": "name"} = specific stores
-    )
 
 
 class TeamInvitationResponse(BaseModel):
@@ -81,11 +71,7 @@ class TeamInvitationResponse(BaseModel):
     invitation_id: UUID
     email: str
     account_role: UserRole
-    project_ids: List[UUID] | None = None
     status: str  # pending
-    store_access: dict[str, str] | None = (
-        None  # None = all stores, {"uuid": "name"} = specific stores
-    )
 
 
 class TeamMembersListResponse(BaseModel):
@@ -117,7 +103,6 @@ class InvitationDetailsResponse(BaseModel):
     account_display_name: str | None = None
     invited_by: str  # name or email of inviter
     role: UserRole
-    project_ids: List[UUID] | None = None
     expires_at: datetime
     status: InvitationStatus
 
@@ -167,7 +152,6 @@ class PendingInvitationResponse(BaseModel):
     account_display_name: Optional[str] = None
     invited_by: str  # name or email of inviter
     role: UserRole
-    project_ids: List[UUID] | None = None
     expires_at: datetime
     status: InvitationStatus
 
@@ -249,64 +233,3 @@ class SwitchAccountResponse(BaseModel):
     account_id: UUID
     account_name: str
     role: Optional[UserRole] = None
-
-
-# =============================================================================
-# Project Role Assignment Schemas (Staff RBAC)
-# =============================================================================
-
-
-class ProjectRole(str, Enum):
-    """User roles for project-level permissions."""
-
-    STAFF = "staff"
-    MANAGER = "manager"
-    VIEWER = "viewer"
-
-
-class AssignProjectRoleRequest(BaseModel):
-    """Request to assign a user a role on a specific project."""
-
-    user_id: UUID
-    role: ProjectRole
-
-
-class AssignProjectRoleResponse(BaseModel):
-    """Response after assigning a project role."""
-
-    user_id: UUID
-    project_id: UUID
-    role: str
-    assigned_at: datetime
-
-
-class RemoveProjectRoleRequest(BaseModel):
-    """Request to remove a user's role from a specific project."""
-
-    user_id: UUID
-    role: ProjectRole
-
-
-class RemoveProjectRoleResponse(BaseModel):
-    """Response after removing a project role."""
-
-    user_id: UUID
-    project_id: UUID
-    role: str
-    removed: bool
-
-
-class ProjectRoleAssignment(BaseModel):
-    """Project role assignment details."""
-
-    user_id: UUID
-    role: str
-    assigned_at: datetime
-    assigned_by: Optional[UUID] = None
-
-
-class ListProjectRolesResponse(BaseModel):
-    """List of role assignments for a project."""
-
-    project_id: UUID
-    assignments: List[ProjectRoleAssignment]

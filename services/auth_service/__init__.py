@@ -8,7 +8,6 @@ In v1, permissions are config-based for simplicity. In v2, they'll migrate to da
 from services.auth_service.authorization import (
     VALID_RESOURCE_TYPES,
     check_permission,
-    get_merged_permissions,
     get_role_permissions,
     get_user_role_on_account,
     parse_resource_id,
@@ -23,19 +22,16 @@ from services.auth_service.config import (
 )
 from services.auth_service.dependencies import (
     PermissionChecker,
-    require_account_membership,
     require_account_permission,
     require_agent_permission,
     require_campaign_permission,
     require_checklist_permission,
-    require_execution_permission,
     require_feedback_permission,
     require_history_permission,
     require_knowledge_permission,
     require_permission,
     require_project_permission,
-    require_routine_permission,
-    require_submission_permission,
+    require_resource_permission,
     require_subscription_permission,
 )
 from services.auth_service.resolution import (
@@ -48,7 +44,6 @@ __all__ = [
     # Authorization functions
     "get_user_role_on_account",
     "get_role_permissions",
-    "get_merged_permissions",
     "check_permission",
     "parse_resource_id",
     # Resolution functions
@@ -59,20 +54,16 @@ __all__ = [
     "PermissionChecker",
     "require_permission",
     # FastAPI dependency factories (recommended for most use cases)
-    "require_account_membership",
     "require_account_permission",
     "require_project_permission",
     "require_checklist_permission",
     "require_agent_permission",
+    "require_resource_permission",
     "require_history_permission",
     "require_feedback_permission",
     "require_campaign_permission",
     "require_knowledge_permission",
     "require_subscription_permission",
-    # Routine/Execution/Submission permission factories
-    "require_routine_permission",
-    "require_execution_permission",
-    "require_submission_permission",
     # Config and constants
     "ROLE_PERMISSIONS",
     "PERMISSION_REGISTRY",

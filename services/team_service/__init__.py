@@ -81,9 +81,7 @@ def list_team_members(
     list[str | None],
     list[str],
     list[str],
-    list[dict[str, str] | None],
     list[db.UserInvitation],
-    list[dict[str, str] | None],
 ]:
     """
     List all team members for an account with their roles and metadata.
@@ -102,15 +100,13 @@ def list_team_members(
         - list[str | None]: Account roles for each user
         - list[str]: Email addresses from account_users table
         - list[str]: Display names from account_users table
-        - list[dict[str, str] | None]: Store access per user (None = all stores, dict = {id: name})
         - list[db.UserInvitation]: Pending invitations for the account
-        - list[dict[str, str] | None]: Store access per invitation
 
     Raises:
         ValueError: If account not found.
 
     Example:
-        >>> users, roles, emails, names, store_access, invitations, inv_store_access = list_team_members(
+        >>> users, roles, emails, names, invitations = list_team_members(
         ...     session, "acme-corp",
         ...     TeamMemberFilters(role="owner", status="active")
         ... )
@@ -292,7 +288,6 @@ def list_user_accounts(
 
     Returns:
         List of tuples: (account, primary_role, last_accessed).
-        Role is the highest precedence role from account-level or project-level.
 
     Example:
         >>> accounts = list_user_accounts(session, context)
@@ -320,7 +315,6 @@ def list_user_accounts_by_email(
 
     Returns:
         List of tuples: (user_id, account, primary_role, last_accessed).
-        Role is the highest precedence role from account-level or project-level.
 
     Raises:
         ValueError: If user is not an admin, AWS Cognito not configured,
@@ -352,7 +346,6 @@ def validate_account_access(
 
     Returns:
         Tuple of (account, primary_role).
-        Role is the highest precedence role from account-level or project-level.
 
     Raises:
         ValueError: If account not found or user doesn't have access.

@@ -88,12 +88,7 @@ async def add_response(
         Created/updated ItemResponseWithItemResponse object
     """
     return await _implementation.add_response(
-        submission_id,
-        routine_item_id,
-        file,
-        notes,
-        context,
-        session,
+        submission_id, routine_item_id, file, notes, context, session
     )
 
 

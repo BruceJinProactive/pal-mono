@@ -1,7 +1,6 @@
 import uuid
 from enum import Enum
 from typing import Optional
-from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -28,9 +27,6 @@ class ResourceType(str, Enum):
     CAMPAIGN = "campaign"
     KNOWLEDGE = "knowledge"
     SUBSCRIPTION = "subscription"
-    ROUTINE = "routine"
-    EXECUTION = "execution"
-    SUBMISSION = "submission"
 
     @classmethod
     def from_plural(cls, plural: str) -> "ResourceType":
@@ -57,9 +53,6 @@ class ResourceType(str, Enum):
             "campaigns": cls.CAMPAIGN,
             "knowledges": cls.KNOWLEDGE,
             "subscriptions": cls.SUBSCRIPTION,
-            "routines": cls.ROUTINE,
-            "executions": cls.EXECUTION,
-            "submissions": cls.SUBMISSION,
         }
         if plural not in mapping:
             raise ValueError(f"Unknown resource type: {plural}")
@@ -83,9 +76,6 @@ class ResourceType(str, Enum):
             self.CAMPAIGN: "campaigns",
             self.KNOWLEDGE: "knowledges",
             self.SUBSCRIPTION: "subscriptions",
-            self.ROUTINE: "routines",
-            self.EXECUTION: "executions",
-            self.SUBMISSION: "submissions",
         }
         return mapping[self]
 
@@ -236,38 +226,6 @@ class ResourceRoleAssignmentRepository:
             logger.error(f"Error retrieving assignments for resource: {e}")
             return []
 
-    def get_assignments_for_resources(
-        self, resource_type: ResourceType, resource_ids: list[uuid.UUID]
-    ) -> list[ResourceRoleAssignment]:
-        """Get all role assignments for multiple resources in a single query.
-
-        Used for batch lookups to avoid O(n) queries when processing multiple resources.
-
-        Args:
-            resource_type: ResourceType enum (e.g., ResourceType.PROJECT)
-            resource_ids: List of resource UUIDs to fetch assignments for
-
-        Returns:
-            List of ResourceRoleAssignment objects for all specified resources
-        """
-        if not resource_ids:
-            return []
-
-        resource_type_str = self._normalize_resource_type(resource_type)
-        try:
-            return (
-                self.session.query(ResourceRoleAssignment)
-                .filter(
-                    ResourceRoleAssignment.resource_type == resource_type_str,
-                    ResourceRoleAssignment.resource_id.in_(resource_ids),
-                )
-                .all()
-            )
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error retrieving assignments for resources: {e}")
-            return []
-
     def add_role(
         self,
         user_id: uuid.UUID,
@@ -360,104 +318,6 @@ class ResourceRoleAssignmentRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error adding role: {e}")
-            raise
-
-    def add_roles_bulk(
-        self,
-        user_id: uuid.UUID,
-        resource_type: ResourceType,
-        resource_ids: list[uuid.UUID],
-        role: str,
-        assigned_by: Optional[uuid.UUID] = None,
-        reason: Optional[str] = None,
-    ) -> list[ResourceRoleAssignment]:
-        """Add the same role to a user on multiple resources atomically.
-
-        This is more efficient than calling add_role() in a loop as it:
-        1. Checks for existing assignments in a single query
-        2. Inserts all new assignments in a single batch
-
-        Idempotent - existing assignments are returned without modification.
-
-        Args:
-            user_id: UUID of the user
-            resource_type: ResourceType enum (e.g., ResourceType.PROJECT)
-            resource_ids: List of resource UUIDs to assign the role on
-            role: Role string (e.g., 'staff', 'manager')
-            assigned_by: Optional UUID of user who made this assignment
-            reason: Optional reason for assignment
-
-        Returns:
-            List of all ResourceRoleAssignment objects (existing + newly created)
-
-        Raises:
-            SQLAlchemyError: If there's a database error during operation
-        """
-        if not resource_ids:
-            return []
-
-        # Deduplicate resource_ids while preserving order
-        seen: set[UUID] = set()
-        unique_resource_ids: list[UUID] = []
-        for rid in resource_ids:
-            if rid not in seen:
-                seen.add(rid)
-                unique_resource_ids.append(rid)
-
-        resource_type_str = self._normalize_resource_type(resource_type)
-        try:
-            # Find existing assignments in one query
-            existing = (
-                self.session.query(ResourceRoleAssignment)
-                .filter(
-                    ResourceRoleAssignment.user_id == user_id,
-                    ResourceRoleAssignment.resource_type == resource_type_str,
-                    ResourceRoleAssignment.resource_id.in_(unique_resource_ids),
-                    ResourceRoleAssignment.role == role,
-                )
-                .all()
-            )
-            existing_resource_ids = {a.resource_id for a in existing}
-
-            # Create new assignments for resources that don't have one
-            new_assignments = []
-            for resource_id in unique_resource_ids:
-                if resource_id not in existing_resource_ids:
-                    new_assignments.append(
-                        ResourceRoleAssignment(
-                            id=uuid.uuid4(),
-                            user_id=user_id,
-                            resource_type=resource_type_str,
-                            resource_id=resource_id,
-                            role=role,
-                            assigned_by=assigned_by,
-                            reason=reason,
-                        )
-                    )
-
-            if new_assignments:
-                # Bulk insert all new assignments atomically
-                self.session.add_all(new_assignments)
-
-                if self.auto_commit:
-                    self.session.commit()
-                else:
-                    self.session.flush()
-
-                # Refresh to get DB-generated values
-                for assignment in new_assignments:
-                    self.session.refresh(assignment)
-
-                logger.info(
-                    f"Bulk added {len(new_assignments)} role assignments: "
-                    f"user {user_id} as {role} on {resource_type_str} resources"
-                )
-
-            return existing + new_assignments
-
-        except SQLAlchemyError as e:
-            self.session.rollback()
-            logger.error(f"Error in bulk add roles: {e}")
             raise
 
     def remove_role(

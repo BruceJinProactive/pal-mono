@@ -5,7 +5,7 @@ This module handles permission checking for the RBAC system.
 In v1, permissions are loaded from config. In v2, they'll come from database.
 """
 
-from typing import TYPE_CHECKING, Optional, Set
+from typing import Optional, Set
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -22,9 +22,6 @@ from services.auth_service.resolution import (
 )
 from utils.log import logger
 
-if TYPE_CHECKING:
-    pass
-
 # Valid resource types for RBAC (v1)
 VALID_RESOURCE_TYPES = {
     "accounts",
@@ -35,10 +32,6 @@ VALID_RESOURCE_TYPES = {
     "data",
     "histories",
     "feedbacks",
-    # Routine-related resources
-    "routines",
-    "executions",
-    "submissions",
 }
 
 
@@ -153,41 +146,12 @@ def get_role_permissions(role: str) -> Set[str]:
     return ROLE_PERMISSIONS.get(role, set())
 
 
-def get_merged_permissions(roles: list[str]) -> Set[str]:
-    """
-    Get merged permissions from multiple roles.
-
-    When a user has multiple roles, their effective permissions are the union
-    of all permissions from each role.
-
-    Args:
-        roles: List of role strings (e.g., ['staff', 'manager'])
-
-    Returns:
-        Set of all permission names from all roles. If any role has wildcard (*),
-        returns {'*'}.
-    """
-    if not roles:
-        return set()
-
-    merged: Set[str] = set()
-    for role in roles:
-        permissions = get_role_permissions(role)
-        # If any role has wildcard, return immediately
-        if "*" in permissions:
-            return {"*"}
-        merged.update(permissions)
-
-    return merged
-
-
 def check_permission(
     user_id: UUID,
     resource_id: str,
     permission_name: str,
     session: Session,
     check_hierarchy: bool = True,
-    user_role: Optional[str] = None,
 ) -> bool:
     """
     Check if user has permission on resource with identifier resolution and hierarchical checking.
@@ -196,17 +160,15 @@ def check_permission(
     - Name or UUID identifiers for accounts (e.g., "accounts/palona" or "accounts/uuid")
     - UUID identifiers for other resources
     - Hierarchical permission checking (checklist → project → account)
-    - Admin bypass (when user_role="Admin", grants all permissions)
 
     Process:
-    1. Check for admin bypass (if user_role provided)
-    2. Parse resource_id into (resource_type, identifier)
-    3. Resolve identifier to UUID using resolution layer
-    4. Check direct permission on resource
-    5. If not found AND check_hierarchy=True:
+    1. Parse resource_id into (resource_type, identifier)
+    2. Resolve identifier to UUID using resolution layer
+    3. Check direct permission on resource
+    4. If not found AND check_hierarchy=True:
        - Get parent resource (e.g., checklist → project)
        - Recursively check parent permissions
-    6. Return result
+    5. Return result
 
     Args:
         user_id: User ID
@@ -215,7 +177,6 @@ def check_permission(
         permission_name: Permission to check (e.g., "project.create", "checklist.read")
         session: Database session
         check_hierarchy: Whether to check parent resources if permission not found (default True)
-        user_role: Optional user role string for admin bypass (e.g., "Admin")
 
     Returns:
         True if user has permission, False otherwise
@@ -226,15 +187,7 @@ def check_permission(
 
         >>> check_permission(user_id, "checklists/uuid", "checklist.read", session)
         True  # May be granted via checklist, project, or account role
-
-        >>> check_permission(user_id, "any/resource", "any.permission", session, user_role="Admin")
-        True  # Admin bypass
     """
-    # Admin bypass - admins have all permissions
-    if user_role == "Admin":
-        logger.debug(f"Permission granted: User {user_id} is Admin (bypass)")
-        return True
-
     try:
         # Parse and validate resource_id format
         resource_type, identifier = parse_resource_id(resource_id)
@@ -257,14 +210,17 @@ def check_permission(
         )
 
         if roles:
-            # Merge permissions from all roles
-            permissions = get_merged_permissions(roles)
+            # V1: Use first role (assumes single role per user per resource)
+            # V2 will check all roles
+            role = roles[0]
+
+            # Get permissions for role
+            permissions = get_role_permissions(role)
 
             # Check permission (wildcard * means all permissions)
             if "*" in permissions or permission_name in permissions:
                 logger.debug(
-                    f"Permission granted: User {user_id} has {permission_name} "
-                    f"via roles {roles} on {resource_id}"
+                    f"Permission granted: User {user_id} has {permission_name} via role {role} on {resource_id}"
                 )
                 return True
 
@@ -283,7 +239,6 @@ def check_permission(
                     permission_name=permission_name,
                     session=session,
                     check_hierarchy=True,  # Continue checking up the hierarchy
-                    user_role=user_role,  # Pass through for consistency (already checked)
                 )
 
         # No permission found

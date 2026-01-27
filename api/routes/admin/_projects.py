@@ -17,10 +17,6 @@ from api.schemas.admin.project import (
     ProjectUpdateResult,
     UpdateProjectRequest,
 )
-from db.repositories.resource_role_assignment_repository import (
-    ResourceRoleAssignmentRepository,
-    ResourceType,
-)
 from db.repositories.voice_config_repository import VoiceConfigRepository
 from services import (
     account_service,
@@ -229,31 +225,8 @@ async def list_account_projects(
     if not account:
         raise not_found_error(f"Account {account_name} not found")
 
-    # Get all projects for the account
-    all_projects = project_service.get_projects_by_account_id(session, account.id)
-
-    # Check if user has account-level role (grants access to all projects)
-    user_id = uuid.UUID(context.username)
-    role_repo = ResourceRoleAssignmentRepository(session, auto_commit=False)
-    account_roles = role_repo.get_roles_for_resource(
-        user_id=user_id,
-        resource_type=ResourceType.ACCOUNT,
-        resource_id=account.id,
-    )
-
-    if account_roles:
-        # User has account-level role - return all projects
-        return [build_project(project) for project in all_projects]
-
-    # User only has project-level roles - filter to assigned projects
-    project_assignments = role_repo.get_assignments_for_user(
-        user_id=user_id,
-        resource_type=ResourceType.PROJECT,
-    )
-    accessible_project_ids = {a.resource_id for a in project_assignments}
-
-    filtered_projects = [p for p in all_projects if p.id in accessible_project_ids]
-    return [build_project(project) for project in filtered_projects]
+    projects = project_service.get_projects_by_account_id(session, account.id)
+    return [build_project(project) for project in projects]
 
 
 def get_project(

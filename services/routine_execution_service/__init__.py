@@ -64,7 +64,7 @@ async def list_executions(
         context: User authentication context
         session: Database session
         status_filter: Optional filter by status
-        date_filter: Optional filter by scheduled date (enforced by API layer for permission)
+        date_filter: Optional filter by scheduled date
         routine_id: Optional filter by specific routine
         timezone: IANA timezone string for correct date filtering (e.g., 'America/Los_Angeles')
 

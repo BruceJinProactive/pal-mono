@@ -271,12 +271,7 @@ async def add_response(
 ) -> ItemResponseWithItemResponse:
     """Add a response to a submission item."""
     return await routine_submission_service.add_response(
-        submission_id,
-        routine_item_id,
-        file,
-        notes,
-        context,
-        session,
+        submission_id, routine_item_id, file, notes, context, session
     )
 
 

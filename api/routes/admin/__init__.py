@@ -231,7 +231,6 @@ from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
 from db.tables.types import Channel, CheckStatus, SubscriptionStatus
 from services.admin_service.schema import CognitoUser
 from services.auth_service import (
-    require_account_membership,
     require_account_permission,
     require_agent_permission,
     require_campaign_permission,
@@ -495,14 +494,13 @@ async def list_account_agents(
 @admin_router.get("/accounts/{account_name}/projects")
 async def list_account_projects(
     account_name: str,
-    context: UserContext = Depends(require_account_membership(authenticate_user)),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> list[Project]:
     """
     Retrieve a list of projects associated with the given account name.
-
-    Returns all projects for users with account-level roles (owner, manager, viewer).
-    Returns only assigned projects for users with project-level roles (staff).
     """
     return await _projects.list_account_projects(account_name, context, session)
 
@@ -553,7 +551,9 @@ def get_account_status(
 @admin_router.get("/accounts/{account_name}/terms_status")
 def get_account_terms_status(
     account_name: str,
-    context: UserContext = Depends(require_account_membership(authenticate_user)),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> TermsStatusResponse:
     """
@@ -2099,14 +2099,6 @@ async def list_team_members(
 
     Supports filtering by role, status, and search.
     Any authenticated user with account access can view team members.
-
-    Each member includes a store_access field:
-    - store_access: None for account-level access (all stores)
-    - store_access: {"uuid": "store_name", ...} for project-level access
-
-    Response is sorted:
-    1. Account-level members first (store_access = None)
-    2. Then project-level members sorted by store names alphabetically
     """
     return await _team.list_team_members(
         account_name, context, session, role, status, search

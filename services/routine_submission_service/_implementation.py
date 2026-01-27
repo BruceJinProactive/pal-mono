@@ -253,14 +253,6 @@ async def add_response(
     """
     Add a response to a submission item.
     Authorization is handled in the API layer.
-
-    Args:
-        submission_id: UUID of the submission
-        routine_item_id: UUID of the routine item to respond to
-        file: Optional image file
-        notes: Optional notes
-        context: User authentication context
-        session: Async database session
     """
     logger.info(
         f"[add_response] Starting - submission_id={submission_id}, "
@@ -545,11 +537,6 @@ async def submit_for_review(
     """
     Submit a draft submission for manager review.
     Authorization is handled in the API layer.
-
-    Args:
-        submission_id: UUID of the submission
-        context: User authentication context
-        session: Async database session
     """
     submission_repo = RoutineSubmissionRepositoryAsync(session)
     execution_repo = RoutineExecutionRepositoryAsync(session)
@@ -563,18 +550,19 @@ async def submit_for_review(
             headers={"Content-Type": "application/json"},
         )
 
-    # Get user ID from context
-    try:
-        user_id = UUID(context.username)
-    except (ValueError, TypeError):
-        user_id = None
-
     if submission.status != SubmissionStatus.draft:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Submission is not in draft status (current: {submission.status})",
             headers={"Content-Type": "application/json"},
         )
+
+    # Get user ID from context
+    user_id = None
+    try:
+        user_id = UUID(context.username)
+    except (ValueError, TypeError):
+        pass
 
     # Update submission status
     updated = await submission_repo.update_submission(
