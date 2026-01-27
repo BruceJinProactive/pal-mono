@@ -11,6 +11,7 @@ from notion_client import AsyncClient
 
 from utils.log import logger
 
+from ._client import get_notion_client
 from ._pages import (
     create_page,
     get_client_page_id_by_account_name,
@@ -26,6 +27,7 @@ from ._properties import (
     build_title_property,
     build_url_property,
 )
+from ._utils import format_notion_page_id
 
 
 # =============================================================================
@@ -184,3 +186,76 @@ async def update_feedback_status(
         )
 
     return success
+
+
+async def create_client_page(
+    account_name: str,
+    account_display_name: str,
+    client: Optional[AsyncClient] = None,
+) -> Optional[str]:
+    """
+    Create a client page in the Clients Master Database.
+
+    Args:
+        account_name: Name of the client account
+        account_display_name: Display name of the client account
+        client: Optional Notion client to reuse
+
+    Returns:
+        str: URL of the created Notion page, or None if creation failed
+    """
+    try:
+        if client is None:
+            try:
+                client = get_notion_client()
+            except ValueError as e:
+                logger.error(f"[Notion] Failed to get Notion client: {e}")
+                return None
+
+        # Clients Master Database ID
+        clients_db_id = format_notion_page_id("1c58c0822e4980908856f2668ce991b4")
+
+        # Build properties - Name (title) with display name, and account_name (select) with account name
+        properties = {
+            "Name": build_title_property(account_display_name),
+            "account_name": build_select_property(account_name),
+            "FDE": {
+                "people": [
+                    {
+                        "object": "user",
+                        "id": "d3e8c082-2e49-8331-b777-017744527515",
+                    }
+                ]
+            },
+        }
+
+        # Use generic create_page function (no children blocks needed)
+        page_url = await create_page(
+            database_id=clients_db_id,
+            properties=properties,
+            children=None,
+            client=client,
+        )
+
+        if page_url:
+            logger.info(
+                "[Notion] Successfully created client page",
+                extra={
+                    "account_name": account_name,
+                    "account_display_name": account_display_name,
+                    "notion_page_url": page_url,
+                },
+            )
+
+        return page_url
+
+    except Exception as e:
+        logger.error(
+            f"[Notion] Failed to create client page: {e}",
+            extra={
+                "account_name": account_name,
+                "account_display_name": account_display_name,
+            },
+            exc_info=True,
+        )
+        return None

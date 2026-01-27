@@ -440,6 +440,7 @@ async def update_feedback_message_with_button_state(
 
 async def send_self_onboarding_notification(
     account_name: str,
+    account_display_name: str,
     user_email: str,
     user_name: Optional[str] = None,
     project_name: Optional[str] = None,
@@ -453,6 +454,7 @@ async def send_self_onboarding_notification(
 
     Args:
         account_name: Name of the newly created account
+        account_display_name: Display name of the newly created account
         user_email: Email of the user who completed onboarding
         user_name: Name of the user (optional)
         project_name: Name of the created project (optional)
@@ -482,6 +484,7 @@ async def send_self_onboarding_notification(
         # Account information
         field_data = [
             ("*Account:*", account_name),
+            ("*Display Name:*", account_display_name),
         ]
         if user_name:
             field_data.append(("*User:*", user_name))
@@ -513,7 +516,7 @@ async def send_self_onboarding_notification(
         blocks.append(build_context_block([f"Completed at: `{pst_time_str}`"]))
 
         # Action buttons
-        button_value = f"{account_name}|{user_email}"
+        button_value = f"{account_name}|{account_display_name}|{user_email}"
         blocks.append(
             build_actions_block(
                 [

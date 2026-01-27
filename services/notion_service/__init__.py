@@ -24,6 +24,7 @@ Domain-Specific Functions:
 
 from ._client import get_notion_client
 from ._feedback import (
+    create_client_page,
     create_feedback_ticket,
     get_client_page_id_by_account_name,
     update_feedback_status,
@@ -54,10 +55,11 @@ __all__ = [
     "build_url_property",
     "build_relation_property",
     "build_paragraph_block",
-    # Domain-specific (feedback)
+    # Domain-specific (feedback and clients)
     "create_feedback_ticket",
     "update_feedback_status",
     "get_client_page_id_by_account_name",
+    "create_client_page",
     # Utilities
     "extract_notion_page_id",
     "format_notion_page_id",

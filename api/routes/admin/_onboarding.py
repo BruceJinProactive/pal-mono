@@ -411,6 +411,7 @@ async def self_onboarding(
     try:
         await slack_service.send_self_onboarding_notification(
             account_name=account_name,
+            account_display_name=request.account_display_name,
             user_email=request.email,
             user_name=request.user_name,
             project_name=request.project_name,

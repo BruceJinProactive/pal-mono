@@ -112,7 +112,7 @@ async def _handle_onboarding_accept(
     Updates the Slack message to show accepted status.
 
     Args:
-        button_value: Format "account_name|user_email"
+        button_value: Format "account_name|account_display_name|user_email"
         channel_id: Slack channel ID
         message_ts: Slack message timestamp
         message: Original Slack message
@@ -123,25 +123,43 @@ async def _handle_onboarding_accept(
     """
     # Parse button value
     parts = button_value.split("|")
-    if len(parts) != 2:
+    if len(parts) != 3:
         logger.error(
             f"[Slack Interactions] Invalid onboarding button value format: {button_value}"
         )
         return {"ok": True}
 
-    account_name, user_email = parts
+    account_name, account_display_name, user_email = parts
 
     logger.info(
         "[Slack Interactions] Onboarding 'Accept' clicked",
         extra={
             "account_name": account_name,
+            "account_display_name": account_display_name,
             "user_email": user_email,
             "clicked_by": clicked_by,
         },
     )
 
-    # Simple status message
-    status_text = f"✅ {account_name} has been accepted by @{clicked_by}"
+    # Create Notion client page
+    notion_url = None
+    try:
+        notion_url = await notion_service.create_client_page(
+            account_name=account_name,
+            account_display_name=account_display_name,
+        )
+    except Exception as e:
+        logger.error(
+            f"[Slack Interactions] Failed to create Notion client page: {e}",
+            extra={"account_name": account_name},
+            exc_info=True,
+        )
+
+    # Build status message
+    if notion_url:
+        status_text = f"✅ {account_name} has been accepted by @{clicked_by} - <{notion_url}|View in Notion>"
+    else:
+        status_text = f"✅ {account_name} has been accepted by @{clicked_by} (Notion page creation failed)"
 
     # Update Slack message - remove buttons and add status
     blocks = message.get("blocks", [])
@@ -186,7 +204,7 @@ async def _handle_onboarding_discard(
     Updates the Slack message to show discarded status.
 
     Args:
-        button_value: Format "account_name|user_email"
+        button_value: Format "account_name|account_display_name|user_email"
         channel_id: Slack channel ID
         message_ts: Slack message timestamp
         message: Original Slack message
@@ -197,18 +215,19 @@ async def _handle_onboarding_discard(
     """
     # Parse button value
     parts = button_value.split("|")
-    if len(parts) != 2:
+    if len(parts) != 3:
         logger.error(
             f"[Slack Interactions] Invalid onboarding button value format: {button_value}"
         )
         return {"ok": True}
 
-    account_name, user_email = parts
+    account_name, account_display_name, user_email = parts
 
     logger.info(
         "[Slack Interactions] Onboarding 'Discard' clicked",
         extra={
             "account_name": account_name,
+            "account_display_name": account_display_name,
             "user_email": user_email,
             "clicked_by": clicked_by,
         },
