@@ -23,12 +23,17 @@ Domain-Specific Functions:
 """
 
 from ._client import get_notion_client
-from ._feedback import create_feedback_ticket, update_feedback_status
+from ._feedback import (
+    create_feedback_ticket,
+    get_client_page_id_by_account_name,
+    update_feedback_status,
+)
 from ._pages import create_page, update_page_properties
 from ._properties import (
     build_email_property,
     build_multi_select_property,
     build_paragraph_block,
+    build_relation_property,
     build_rich_text_property,
     build_select_property,
     build_title_property,
@@ -47,10 +52,12 @@ __all__ = [
     "build_multi_select_property",
     "build_email_property",
     "build_url_property",
+    "build_relation_property",
     "build_paragraph_block",
     # Domain-specific (feedback)
     "create_feedback_ticket",
     "update_feedback_status",
+    "get_client_page_id_by_account_name",
     # Utilities
     "extract_notion_page_id",
     "format_notion_page_id",

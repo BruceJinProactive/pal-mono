@@ -38,6 +38,19 @@ def build_url_property(url: str) -> Dict[str, Any]:
     return {"url": url}
 
 
+def build_relation_property(page_ids: List[str]) -> Dict[str, Any]:
+    """
+    Build a Notion relation property.
+
+    Args:
+        page_ids: List of Notion page IDs to relate to (formatted with or without dashes)
+
+    Returns:
+        dict: Notion relation property object
+    """
+    return {"relation": [{"id": page_id} for page_id in page_ids]}
+
+
 def build_paragraph_block(text: str) -> Dict[str, Any]:
     """Build a Notion paragraph block."""
     return {
