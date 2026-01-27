@@ -11,8 +11,11 @@ from notion_client import AsyncClient
 
 from utils.log import logger
 
-from ._client import get_notion_client, get_notion_feedback_database_id
-from ._pages import create_page, update_page_properties
+from ._pages import (
+    create_page,
+    get_client_page_id_by_account_name,
+    update_page_properties,
+)
 from ._properties import (
     build_email_property,
     build_multi_select_property,
@@ -23,79 +26,11 @@ from ._properties import (
     build_title_property,
     build_url_property,
 )
-from ._utils import format_notion_page_id
+
 
 # =============================================================================
 # FEEDBACK-SPECIFIC FUNCTIONS
 # =============================================================================
-
-
-async def get_client_page_id_by_account_name(
-    account_name: str, client: Optional[AsyncClient] = None
-) -> Optional[str]:
-    """
-    Query the Clients Master Database to find the client page ID by account_name.
-
-    Args:
-        account_name: The account name to search for
-        client: Optional Notion client to reuse
-
-    Returns:
-        str: The Notion page ID of the client, or None if not found
-    """
-    try:
-        if client is None:
-            try:
-                client = get_notion_client()
-            except ValueError as e:
-                logger.error(f"[Notion] Failed to get Notion client: {e}")
-                return None
-
-        # At this point client is guaranteed to be not None
-        assert client is not None
-
-        # Clients Master Database ID (format with dashes for API calls)
-        clients_db_id = format_notion_page_id("1c58c0822e4980908856f2668ce991b4")
-
-        # Query the database using notion_client's built-in method
-        data = await client.databases.query(
-            database_id=clients_db_id,
-            filter={
-                "property": "account_name",
-                "select": {"equals": account_name},
-            },
-        )
-
-        results = data.get("results", [])
-        if not results:
-            logger.warning(
-                f"[Notion] No client found with account_name: {account_name}",
-                extra={"account_name": account_name},
-            )
-            return None
-
-        # Return the first matching page ID
-        client_page_id = results[0].get("id")
-        if client_page_id:
-            # Format without dashes for consistency
-            client_page_id = format_notion_page_id(client_page_id).replace("-", "")
-            logger.info(
-                f"[Notion] Found client page for account: {account_name}",
-                extra={"account_name": account_name, "client_page_id": client_page_id},
-            )
-            return client_page_id
-
-        return None
-
-    except Exception as e:
-        logger.error(
-            f"[Notion] Error querying Clients Master Database: {e}",
-            extra={"account_name": account_name},
-            exc_info=True,
-        )
-        return None
-
-
 async def create_feedback_ticket(
     client_name: str,
     user_name: Optional[str],
@@ -127,11 +62,7 @@ async def create_feedback_ticket(
     Returns:
         str: URL of the created Notion page, or None if creation failed
     """
-    try:
-        database_id = get_notion_feedback_database_id()
-    except ValueError as e:
-        logger.error(f"[Notion] Failed to get feedback database ID: {e}")
-        return None
+    feedback_database_id = "2f48c0822e498004a390e305518953a5"
 
     # Query Clients Master Database to get client page ID for relation
     client_page_id = await get_client_page_id_by_account_name(client_name, client)
@@ -183,7 +114,7 @@ async def create_feedback_ticket(
 
     # Use generic create_page function
     page_url = await create_page(
-        database_id=database_id,
+        database_id=feedback_database_id,
         properties=properties,
         children=children,
         client=client,

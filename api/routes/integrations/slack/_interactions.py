@@ -458,7 +458,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
 
         if action_id == "action_investigating":
             # ACTION A: 'Investigating' button clicked
-            status_text = "👀 Investigating..."
+            status_text = "👀 Looking into it..."
             new_status = "Investigating"
             clicked_action_name = "investigating"
         elif action_id == "action_live":

@@ -44,26 +44,6 @@ def get_notion_client() -> AsyncClient:
         return _client_instance
 
 
-def get_notion_feedback_database_id() -> str:
-    """
-    Get the Notion feedback database ID from environment variables.
-
-    This is a separate database specifically for feedback tickets,
-    distinct from the main sprint/project board.
-
-    Returns:
-        str: The Notion feedback database ID
-
-    Raises:
-        ValueError: If feedback database ID is not configured
-    """
-    database_id = get_server_secret_with_fallback("NOTION_FEEDBACK_DB_ID")
-    if not database_id:
-        logger.error("[Notion] NOTION_FEEDBACK_DB_ID not configured")
-        raise ValueError("Notion feedback database ID not configured")
-    return database_id
-
-
 def reset_client() -> None:
     """
     Reset the cached Notion client instance.
