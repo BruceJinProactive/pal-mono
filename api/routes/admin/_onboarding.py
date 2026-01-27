@@ -407,7 +407,7 @@ async def self_onboarding(
 
     session.commit()
 
-    # Send notification to #client-updates Slack channel
+    # Send notification to #test-channel Slack channel
     try:
         await slack_service.send_self_onboarding_notification(
             account_name=account_name,

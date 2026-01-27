@@ -99,6 +99,156 @@ async def _update_notion_status(
         )
 
 
+async def _handle_onboarding_accept(
+    button_value: str,
+    channel_id: str,
+    message_ts: str,
+    message: Dict[str, Any],
+    clicked_by: str,
+) -> Dict[str, Any]:
+    """
+    Handle 'Accept' button click for self-onboarding notifications.
+
+    Updates the Slack message to show accepted status.
+
+    Args:
+        button_value: Format "account_name|user_email"
+        channel_id: Slack channel ID
+        message_ts: Slack message timestamp
+        message: Original Slack message
+        clicked_by: Slack username of person who clicked the button
+
+    Returns:
+        dict: Success response for Slack
+    """
+    # Parse button value
+    parts = button_value.split("|")
+    if len(parts) != 2:
+        logger.error(
+            f"[Slack Interactions] Invalid onboarding button value format: {button_value}"
+        )
+        return {"ok": True}
+
+    account_name, user_email = parts
+
+    logger.info(
+        "[Slack Interactions] Onboarding 'Accept' clicked",
+        extra={
+            "account_name": account_name,
+            "user_email": user_email,
+            "clicked_by": clicked_by,
+        },
+    )
+
+    # Simple status message
+    status_text = f"✅ {account_name} has been accepted by @{clicked_by}"
+
+    # Update Slack message - remove buttons and add status
+    blocks = message.get("blocks", [])
+    blocks = [b for b in blocks if b.get("type") != "actions"]
+    blocks.append(
+        {
+            "type": "context",
+            "block_id": "onboarding_status",
+            "elements": [{"type": "mrkdwn", "text": status_text}],
+        }
+    )
+
+    # Update Slack message
+    try:
+        client = get_slack_client()
+        await client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            blocks=blocks,
+            text=f"Onboarding accepted: {account_name}",
+        )
+    except Exception as e:
+        logger.error(
+            f"[Slack Interactions] Failed to update Slack message: {e}",
+            extra={"account_name": account_name},
+            exc_info=True,
+        )
+
+    return {"ok": True}
+
+
+async def _handle_onboarding_discard(
+    button_value: str,
+    channel_id: str,
+    message_ts: str,
+    message: Dict[str, Any],
+    clicked_by: str,
+) -> Dict[str, Any]:
+    """
+    Handle 'Discard' button click for self-onboarding notifications.
+
+    Updates the Slack message to show discarded status.
+
+    Args:
+        button_value: Format "account_name|user_email"
+        channel_id: Slack channel ID
+        message_ts: Slack message timestamp
+        message: Original Slack message
+        clicked_by: Slack username of person who clicked the button
+
+    Returns:
+        dict: Success response for Slack
+    """
+    # Parse button value
+    parts = button_value.split("|")
+    if len(parts) != 2:
+        logger.error(
+            f"[Slack Interactions] Invalid onboarding button value format: {button_value}"
+        )
+        return {"ok": True}
+
+    account_name, user_email = parts
+
+    logger.info(
+        "[Slack Interactions] Onboarding 'Discard' clicked",
+        extra={
+            "account_name": account_name,
+            "user_email": user_email,
+            "clicked_by": clicked_by,
+        },
+    )
+
+    # Update Slack message - remove buttons and add status
+    blocks = message.get("blocks", [])
+    blocks = [b for b in blocks if b.get("type") != "actions"]
+    blocks.append(
+        {
+            "type": "context",
+            "block_id": "onboarding_status",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"❌ {account_name} has been discarded by @{clicked_by}",
+                }
+            ],
+        }
+    )
+
+    # Update Slack message
+    try:
+        client = get_slack_client()
+        await client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            blocks=blocks,
+            text=f"Onboarding discarded: {account_name}",
+        )
+    except Exception as e:
+        logger.error(
+            f"[Slack Interactions] Failed to update Slack message: {e}",
+            extra={"account_name": account_name},
+            exc_info=True,
+        )
+
+    return {"ok": True}
+
+
 async def handle_interactions(request: Request) -> Dict[str, Any]:
     """
     Handle Slack interaction payloads (button clicks) - STATELESS.
@@ -302,6 +452,24 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
             status_text = "⏸️ Out of scope"
             new_status = "Out of Scope"
             clicked_action_name = "deferred"
+        elif action_id == "onboarding_accept":
+            # ACTION D: 'Accept' button clicked for self-onboarding
+            return await _handle_onboarding_accept(
+                button_value=button_value,
+                channel_id=channel_id,
+                message_ts=message_ts,
+                message=message,
+                clicked_by=user_name,
+            )
+        elif action_id == "onboarding_discard":
+            # ACTION E: 'Discard' button clicked for self-onboarding
+            return await _handle_onboarding_discard(
+                button_value=button_value,
+                channel_id=channel_id,
+                message_ts=message_ts,
+                message=message,
+                clicked_by=user_name,
+            )
         else:
             logger.warning(
                 f"[Slack Interactions] Unknown action: {action_id}",

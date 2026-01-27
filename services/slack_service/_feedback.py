@@ -445,11 +445,11 @@ async def send_self_onboarding_notification(
     project_name: Optional[str] = None,
     agent_name: Optional[str] = None,
     phone_number: Optional[str] = None,
-    channel: str = "#client-updates",
+    channel: str = "#test-channel",
     client: Optional[AsyncWebClient] = None,
 ) -> Optional[Dict[str, Any]]:
     """
-    Send a notification to #client-updates channel when self-onboarding completes.
+    Send a notification to #test-channel when self-onboarding completes.
 
     Args:
         account_name: Name of the newly created account
@@ -458,7 +458,7 @@ async def send_self_onboarding_notification(
         project_name: Name of the created project (optional)
         agent_name: Name of the created agent (optional)
         phone_number: Assigned phone number (optional)
-        channel: Slack channel to send notification (default: #client-updates)
+        channel: Slack channel to send notification (default: #test-channel)
         client: Optional Slack client to reuse
 
     Returns:
@@ -511,6 +511,27 @@ async def send_self_onboarding_notification(
         pst_time_str = pst_now.strftime("%Y-%m-%d %I:%M:%S %p PST")
 
         blocks.append(build_context_block([f"Completed at: `{pst_time_str}`"]))
+
+        # Action buttons
+        button_value = f"{account_name}|{user_email}"
+        blocks.append(
+            build_actions_block(
+                [
+                    build_button(
+                        "Accept ✓",
+                        "onboarding_accept",
+                        button_value,
+                        style="primary",
+                    ),
+                    build_button(
+                        "Discard ✗",
+                        "onboarding_discard",
+                        button_value,
+                        style="danger",
+                    ),
+                ]
+            )
+        )
 
         # Send the message to Slack
         response = await client.chat_postMessage(
