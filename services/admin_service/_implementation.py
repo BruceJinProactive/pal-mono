@@ -1372,9 +1372,12 @@ def signup_self_onboarding_user(
 ) -> CognitoUser:
     """
     Creates (or reuses) a Cognito user without sending email and sets a permanent password.
-    Returns True if the user is ready to sign in; raises on real errors.
+    Allows existing users to create multiple accounts by linking them to new accounts.
+    Returns CognitoUser with session; raises on real errors.
     """
     cognito = boto3.client("cognito-idp", region_name=AWS_REGION)
+
+    user_already_exists = False
 
     # 1) Try to create user (suppress invite)
     try:
@@ -1402,15 +1405,16 @@ def signup_self_onboarding_user(
                     {"Name": "name", "Value": user_name},
                 ],
             )
+        logger.info(f"[Cognito] Created new user {user_email}")
 
     except ClientError as e:
         code = e.response.get("Error", {}).get("Code")
         if code == "UsernameExistsException":
-            # Idempotent: user already exists; continue to set permanent password
+            # User already exists; we'll link them to the new account
+            user_already_exists = True
             logger.info(
-                f"[Cognito] User {user_email} already exists; ensuring permanent password."
+                f"[Cognito] User {user_email} already exists; linking to new account {account_name}"
             )
-            raise ValueError(f"User {user_email} already exists") from e
         else:
             logger.error(f"[Cognito] admin_create_user failed for {user_email}: {e}")
             raise ValueError(
@@ -1475,7 +1479,7 @@ def signup_self_onboarding_user(
             logger.error(f"Account {account_name} not found for user {user_email}")
             raise ValueError(f"Account {account_name} not found")
 
-        # Create account_user record
+        # Create account_user record (links user to new account)
         account_user_repo = AccountUserRepository(session)
         account_user_repo.create(
             account_id=account.id,
@@ -1485,9 +1489,15 @@ def signup_self_onboarding_user(
             added_by=None,  # Self-onboarding user
             status=AccountUserStatus.active,
         )
-        logger.info(
-            f"Created account_user record for {user_email} in account {account_name}"
-        )
+
+        if user_already_exists:
+            logger.info(
+                f"Linked existing user {user_email} to new account {account_name}"
+            )
+        else:
+            logger.info(
+                f"Created new user {user_email} and linked to account {account_name}"
+            )
 
         role_repo = ResourceRoleAssignmentRepository(session)
         role_repo.add_role(
