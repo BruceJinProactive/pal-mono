@@ -8,7 +8,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from db.session import AsyncSessionLocal
 from utils.log import logger
 
-from ._utils import handle_menu_update, send_order_notification, update_order_status
+from ._utils import (
+    handle_menu_update,
+    handle_order_threshold_update,
+    send_order_notification,
+    update_order_status,
+)
 from .schemas import AdoraWebhookRequest
 
 
@@ -75,6 +80,29 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                         )
 
                     result = await handle_menu_update(session, webhook_request)
+
+                    if result["status"] == "success":
+                        return JSONResponse(
+                            status_code=status.HTTP_200_OK,
+                            content=result,
+                        )
+                    else:
+                        return JSONResponse(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            content=result,
+                        )
+
+                elif webhook_request.Event == "update_order_threshold":
+                    logger.debug(
+                        f"[AdoraWebhook] handling Adora webhook {webhook_request.Event} event",
+                        extra={"webhook_body": body},
+                    )
+
+                    # Note: orderThreshold can be None (omitted) to remove the limit
+                    # Handle order threshold update
+                    result = await handle_order_threshold_update(
+                        session, webhook_request
+                    )
 
                     if result["status"] == "success":
                         return JSONResponse(

@@ -49,6 +49,7 @@ class AdoraV2Tool(Toolkit):
         tool_metadata: ToolMetadata,
         backdoor_tool_prompt: dict | None = None,
         force_payment_link: bool = False,
+        order_threshold: float | None = None,
         **kwargs,
     ):
         super().__init__(name="adora_v2_tool")
@@ -59,6 +60,7 @@ class AdoraV2Tool(Toolkit):
         self.tool_metadata = tool_metadata
         self.backdoor_tool_prompt = backdoor_tool_prompt or {}
         self.force_payment_link = force_payment_link
+        self.order_threshold = order_threshold
 
         # Cache for bearer token with async lock
         self._cached_bearer_token: str | None = None
