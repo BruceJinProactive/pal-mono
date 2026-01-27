@@ -436,3 +436,111 @@ async def update_feedback_message_with_button_state(
     except Exception as e:
         logger.error(f"[Slack] Error updating message buttons: {e}")
         return False
+
+
+async def send_self_onboarding_notification(
+    account_name: str,
+    user_email: str,
+    user_name: Optional[str] = None,
+    project_name: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    phone_number: Optional[str] = None,
+    channel: str = "#client-updates",
+    client: Optional[AsyncWebClient] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Send a notification to #client-updates channel when self-onboarding completes.
+
+    Args:
+        account_name: Name of the newly created account
+        user_email: Email of the user who completed onboarding
+        user_name: Name of the user (optional)
+        project_name: Name of the created project (optional)
+        agent_name: Name of the created agent (optional)
+        phone_number: Assigned phone number (optional)
+        channel: Slack channel to send notification (default: #client-updates)
+        client: Optional Slack client to reuse
+
+    Returns:
+        dict: Response from Slack API or None if failed
+    """
+    try:
+        # Get Slack client
+        if client is None:
+            try:
+                client = get_slack_client()
+            except ValueError as e:
+                logger.error(f"[Slack Self-Onboarding] Failed to get Slack client: {e}")
+                return None
+
+        # Build blocks using generic builders
+        blocks = []
+
+        # Header
+        blocks.append(build_header_block("🎉 New Self-Onboarding Completed"))
+
+        # Account information
+        field_data = [
+            ("*Account:*", account_name),
+        ]
+        if user_name:
+            field_data.append(("*User:*", user_name))
+        field_data.append(("*Email:*", user_email))
+
+        blocks.append(build_fields_section(field_data))
+
+        # Additional details if provided
+        blocks.append(build_divider_block())
+        detail_fields = []
+        if project_name:
+            detail_fields.append(("*Project:*", project_name))
+        if agent_name:
+            detail_fields.append(("*Agent:*", agent_name))
+        if phone_number:
+            detail_fields.append(("*Phone Number:*", phone_number))
+
+        if detail_fields:
+            blocks.append(build_fields_section(detail_fields))
+
+        # Context - convert UTC to PST
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        utc_now = datetime.now(ZoneInfo("UTC"))
+        pst_now = utc_now.astimezone(ZoneInfo("America/Los_Angeles"))
+        pst_time_str = pst_now.strftime("%Y-%m-%d %I:%M:%S %p PST")
+
+        blocks.append(build_context_block([f"Completed at: `{pst_time_str}`"]))
+
+        # Send the message to Slack
+        response = await client.chat_postMessage(
+            channel=channel,
+            blocks=blocks,
+            text=f"New self-onboarding completed for {account_name}",
+        )
+
+        logger.info(
+            "[Slack Self-Onboarding] Successfully sent self-onboarding notification",
+            extra={
+                "account_name": account_name,
+                "user_email": user_email,
+                "channel": channel,
+            },
+        )
+
+        if hasattr(response, "data") and isinstance(response.data, dict):
+            return response.data
+        return {"ok": response.get("ok", True), "ts": response.get("ts")}
+
+    except SlackApiError as e:
+        logger.error(
+            f"[Slack Self-Onboarding] Slack API error: {e.response['error']}",
+            extra={"account_name": account_name, "error_details": e.response},
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            f"[Slack Self-Onboarding] Unexpected error: {e}",
+            extra={"account_name": account_name},
+        )
+        return None

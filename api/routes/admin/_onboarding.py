@@ -23,7 +23,13 @@ from api.schemas.admin.onboarding import (
 from api.schemas.admin.voice_config import CreateVoiceConfigRequest
 from db.session import AsyncSessionLocal, SyncSessionLocal
 from db.tables.accounts import AccountStatus, OnboardingMethod
-from services import account_service, admin_service, agent_service, project_service
+from services import (
+    account_service,
+    admin_service,
+    agent_service,
+    project_service,
+    slack_service,
+)
 from services.admin_service import ProjectSetup
 from services.admin_service.schema import CognitoUser
 from services.agent_service import AgentParams
@@ -400,6 +406,24 @@ async def self_onboarding(
     logger.debug(f"[SelfOnboarding] Completed self onboarding for user {request.email}")
 
     session.commit()
+
+    # Send notification to #client-updates Slack channel
+    try:
+        await slack_service.send_self_onboarding_notification(
+            account_name=account_name,
+            user_email=request.email,
+            user_name=request.user_name,
+            project_name=request.project_name,
+            agent_name=request.agent_name,
+            phone_number=request.phone_number,
+        )
+    except Exception as e:
+        # Log error but don't fail the onboarding process
+        logger.error(
+            f"[SelfOnboarding] Failed to send Slack notification: {e}",
+            extra={"account_name": account_name, "user_email": request.email},
+        )
+
     _set_user_session(response, user.email, user.session)
     account_response = get_account_status(account_name, guest_context, session)
     return SelfOnboardingResponse(
