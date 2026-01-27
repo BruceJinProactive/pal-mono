@@ -412,10 +412,11 @@ async def self_onboarding(
         await slack_service.send_self_onboarding_notification(
             account_name=account_name,
             account_display_name=request.account_display_name,
+            account_description=request.account_description,
             user_email=request.email,
             user_name=request.user_name,
             project_name=request.project_name,
-            agent_name=request.agent_name,
+            project_address=request.project_address,
             phone_number=request.phone_number,
         )
     except Exception as e:

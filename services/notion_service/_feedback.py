@@ -223,7 +223,7 @@ async def create_client_page(
                 "people": [
                     {
                         "object": "user",
-                        "id": "d3e8c082-2e49-8331-b777-017744527515",
+                        "id": "e21e8323-2e3c-4d61-bd2e-a2f2c0b1546f",
                     }
                 ]
             },
