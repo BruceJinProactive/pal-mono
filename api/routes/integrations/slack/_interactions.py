@@ -357,7 +357,36 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
         action_id = action.get("action_id")
         button_value = action.get("value", "")
 
-        # Parse button value: conversation_id|notion_page_id|user_email
+        # Get message and channel info (needed for all actions)
+        channel = payload.get("channel", {})
+        channel_id = channel.get("id")
+        message = payload.get("message", {})
+        message_ts = message.get("ts")
+
+        # Get user who clicked the button
+        user = payload.get("user", {})
+        user_name = user.get("name", "Unknown")
+
+        # Handle onboarding actions first (different button value format)
+        if action_id in ["onboarding_accept", "onboarding_discard"]:
+            if action_id == "onboarding_accept":
+                return await _handle_onboarding_accept(
+                    button_value=button_value,
+                    channel_id=channel_id,
+                    message_ts=message_ts,
+                    message=message,
+                    clicked_by=user_name,
+                )
+            else:  # onboarding_discard
+                return await _handle_onboarding_discard(
+                    button_value=button_value,
+                    channel_id=channel_id,
+                    message_ts=message_ts,
+                    message=message,
+                    clicked_by=user_name,
+                )
+
+        # Parse button value for feedback actions: conversation_id|notion_page_id|user_email
         # STATELESS: All data needed for the interaction is embedded in the button payload
         # We do NOT query the database - this makes the handler fully stateless
         parts = button_value.split("|")
@@ -401,12 +430,6 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                 detail="Invalid notion_page_id format",
             )
 
-        # Get message and channel info
-        channel = payload.get("channel", {})
-        channel_id = channel.get("id")
-        message = payload.get("message", {})
-        message_ts = message.get("ts")
-
         # Log warning if channel_id or message_ts is missing (graceful degradation)
         if not channel_id or not message_ts:
             logger.warning(
@@ -417,10 +440,6 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     "conversation_id": conversation_id,
                 },
             )
-
-        # Get user who clicked the button
-        user = payload.get("user", {})
-        user_name = user.get("name", "Unknown")
 
         logger.info(
             f"[Slack Interactions] Button clicked: {action_id}",
@@ -452,24 +471,6 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
             status_text = "⏸️ Out of scope"
             new_status = "Out of Scope"
             clicked_action_name = "deferred"
-        elif action_id == "onboarding_accept":
-            # ACTION D: 'Accept' button clicked for self-onboarding
-            return await _handle_onboarding_accept(
-                button_value=button_value,
-                channel_id=channel_id,
-                message_ts=message_ts,
-                message=message,
-                clicked_by=user_name,
-            )
-        elif action_id == "onboarding_discard":
-            # ACTION E: 'Discard' button clicked for self-onboarding
-            return await _handle_onboarding_discard(
-                button_value=button_value,
-                channel_id=channel_id,
-                message_ts=message_ts,
-                message=message,
-                clicked_by=user_name,
-            )
         else:
             logger.warning(
                 f"[Slack Interactions] Unknown action: {action_id}",
