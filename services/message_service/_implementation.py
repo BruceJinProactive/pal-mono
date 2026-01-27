@@ -38,7 +38,11 @@ from utils.request_context import RequestContext
 from . import _utils
 
 # Accounts that use the pal-agents framework instead of the legacy agent system
-PAL_AGENTS_ACCOUNTS = ["proactiveailab-transformer", "comida"]
+PAL_AGENTS_ACCOUNTS = [
+    "proactiveailab-transformer",
+    "comida",
+    "madrestauranthospitalitygroup",
+]
 
 
 def get_filler_message(message: Message) -> Message:

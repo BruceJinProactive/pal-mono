@@ -270,6 +270,7 @@ class VapiTool(Toolkit):
                 - "faq": Questions about menu, hours, location, etc.
                 - "complaint": Customer complaints or escalations
                 - "order_support": Issues with existing orders
+                - "catering": Catering inquiries
                 Defaults to "general" if specified purpose is not configured.
 
         NEVER invoke this tool if user is NOT communicating via voice channel.
