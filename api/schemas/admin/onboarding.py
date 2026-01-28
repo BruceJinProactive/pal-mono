@@ -124,10 +124,6 @@ class SelfOnboardingRequest(BaseModel):
     )
     project_address: str = Field(..., description="Address of the created project")
     project_timezone: str = Field(..., description="Timezone of the created project")
-    is_google_user: bool = Field(
-        ..., description="Specifies whether the user is a google user or not"
-    )
-    google_credential: str = Field(..., description="Specifies google credentials")
 
 
 class SelfOnboardingResponse(BaseModel):

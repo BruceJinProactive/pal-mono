@@ -391,10 +391,7 @@ async def self_onboarding(
     await self_onboard_voice_config(project_id, request, guest_context, session)
 
     # Create Cognito user. If this fails, the account and agent will be hard deleted.
-    if request.is_google_user:
-        user = signup_google_user(request, session)
-    else:
-        user = self_onboard_user(request, session)
+    user = self_onboard_user(request, session)
 
     if not user or not user.session:
         raise HTTPException(
@@ -412,7 +409,6 @@ async def self_onboarding(
         await slack_service.send_self_onboarding_notification(
             account_name=account_name,
             account_display_name=request.account_display_name,
-            account_description=request.account_description,
             user_email=request.email,
             user_name=request.user_name,
             project_name=request.project_name,
@@ -772,39 +768,6 @@ def self_onboard_user(request: SelfOnboardingRequest, session: Session) -> Cogni
             session=session,
         )
         logger.debug(f"[SelfOnboarding] Created Cognito user for {request.email}")
-    except ValueError as e:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-            headers={"Content-Type": "application/json"},
-        )
-
-    if not user or not user.session:
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to fully create user session",
-            headers={"Content-Type": "application/json"},
-        )
-
-    return user
-
-
-def signup_google_user(request: SelfOnboardingRequest, session: Session) -> CognitoUser:
-    """
-    Sign up a user using Google OAuth and create a Cognito user account.
-
-    Args:
-        request: GoogleSignUpRequest containing user details
-        session: Database session for rollback if needed
-    """
-    try:
-        user = admin_service.signup_google_user(
-            google_credential=request.google_credential,
-            account_name=request.account_name,
-            session=session,
-        )
     except ValueError as e:
         session.rollback()
         raise HTTPException(
