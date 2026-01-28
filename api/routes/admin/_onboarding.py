@@ -454,6 +454,8 @@ def self_onboard_account(
     account_params.phone_number = request.phone_number
     account_params.business_description = request.account_description
     account_params.terms_accepted = request.terms_accepted
+    # Default notification email to owner's email
+    account_params.notification_email = request.email
     try:
         new_account = account_service.create_account(
             session=session,
