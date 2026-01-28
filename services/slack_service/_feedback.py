@@ -14,7 +14,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 from services import notion_service
 from utils.log import logger
 
-from ._client import get_slack_client
+from ._client import get_slack_client, get_slack_user_id
 from ._formatting import (
     build_actions_block,
     build_button,
@@ -184,8 +184,22 @@ async def send_feedback_notification(
 
         # Look up "Assigned to FDE" from Notion using the client's FDE person field
         fde_name: Optional[str] = None
+        fde_display_value: str = "Unassigned"
+
         try:
             fde_name = await notion_service.get_feedback_fde(client_name)
+
+            if fde_name:
+                # Resolve the name to a Slack ID to trigger a notification
+                fde_user_id = await get_slack_user_id(fde_name, client)
+
+                if fde_user_id:
+                    # Format as Slack mention: <@U12345>
+                    fde_display_value = f"<@{fde_user_id}>"
+                else:
+                    # Fallback to plain text if user not found in Slack
+                    fde_display_value = fde_name
+
         except Exception as e:
             logger.error(
                 f"[Slack Feedback] Failed to retrieve Assigned to FDE from Notion: {e}",
@@ -218,7 +232,8 @@ async def send_feedback_notification(
             tags_display = " ".join([f"`{tag}`" for tag in tags])
             field_data.append(("*Tags:*", tags_display))
         # Include FDE assignment if available (from Notion rollup)
-        field_data.append(("*Assigned to FDE:*", fde_name or "Unassigned"))
+        # Use the resolved Slack mention or fallback to plain text
+        field_data.append(("*Assigned to FDE:*", fde_display_value or "Unassigned"))
 
         if field_data:
             blocks.append(build_fields_section(field_data))
