@@ -1413,7 +1413,7 @@ async def list_monitoring_configs(
 
 
 @operation_router.get(
-    "/monitoring/configs/{config_id}",
+    "/projects/{project_id}/monitoring/configs/{config_id}",
     response_model=MonitoringConfigResponse,
     responses={
         403: {"model": ErrorResponse},
@@ -1422,25 +1422,28 @@ async def list_monitoring_configs(
     },
 )
 async def get_monitoring_config(
+    project_id: uuid.UUID,
     config_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    async_session: AsyncSession = Depends(db.get_db_async),
-    sync_session: Session = Depends(db.get_db),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
 ) -> MonitoringConfigResponse:
     """
     Get a monitoring configuration by ID.
 
     Path Parameters:
+    - project_id: UUID of the project
     - config_id: UUID of the monitoring configuration
 
     Returns:
     - MonitoringConfigResponse with config details
     """
+    _ = context  # Used by require_project_permission
     return await _monitoring.get_monitoring_config(
         config_id=config_id,
-        async_session=async_session,
-        sync_session=sync_session,
-        context=context,
+        session=session,
+        project_id=project_id,
     )
 
 

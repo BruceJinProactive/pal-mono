@@ -413,24 +413,6 @@ async def get_config(
     return None
 
 
-async def get_config_by_id(
-    session: AsyncSession,
-    config_id: uuid.UUID,
-) -> MonitoringConfig | None:
-    """
-    Get a monitoring configuration by ID without project verification.
-
-    Args:
-        session: Async database session.
-        config_id: Config UUID.
-
-    Returns:
-        MonitoringConfig if found, None otherwise.
-    """
-    config_repo = MonitoringConfigRepositoryAsync(session)
-    return await config_repo.get_by_id(config_id)
-
-
 async def update_config(
     session: AsyncSession,
     project_id: uuid.UUID,
