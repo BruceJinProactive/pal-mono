@@ -11,9 +11,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
+from services import notion_service
 from utils.log import logger
 
-from ._client import DEFAULT_SLACK_CHANNEL, get_slack_client
+from ._client import get_slack_client
 from ._formatting import (
     build_actions_block,
     build_button,
@@ -155,6 +156,8 @@ async def send_feedback_notification(
 ) -> Optional[Dict[str, Any]]:
     """
     Send a formatted feedback notification to Slack using Block Kit.
+    Looks up the Notion 'Assigned to FDE' rollup (via the Client relation)
+    and includes it in the Slack message when available.
     """
     try:
         # Get Slack client and channel
@@ -173,11 +176,22 @@ async def send_feedback_notification(
 
             # Fallback to default channel if client-specific channel not found
             if not channel_id:
-                channel_id = DEFAULT_SLACK_CHANNEL
+                channel_id = "client-feedback"
                 logger.warning(
                     f"[Slack Feedback] No client-specific channel found for {client_name}, "
                     f"using default fallback: {channel_id}"
                 )
+
+        # Look up "Assigned to FDE" from Notion using the client's FDE person field
+        fde_name: Optional[str] = None
+        try:
+            fde_name = await notion_service.get_feedback_fde(client_name)
+        except Exception as e:
+            logger.error(
+                f"[Slack Feedback] Failed to retrieve Assigned to FDE from Notion: {e}",
+                extra={"client_name": client_name},
+                exc_info=True,
+            )
 
         # Build reaction emoji
         reaction_emoji = ""
@@ -194,8 +208,8 @@ async def send_feedback_notification(
             build_header_block(f"{reaction_emoji}New Feedback from {client_name}")
         )
 
-        # Metadata fields (user, email, tags)
-        field_data = []
+        # Metadata fields (user, email, tags, FDE)
+        field_data: List[tuple[str, str]] = []
         if user_name:
             field_data.append(("*User:*", user_name))
         if user_email:
@@ -203,6 +217,8 @@ async def send_feedback_notification(
         if tags:
             tags_display = " ".join([f"`{tag}`" for tag in tags])
             field_data.append(("*Tags:*", tags_display))
+        # Include FDE assignment if available (from Notion rollup)
+        field_data.append(("*Assigned to FDE:*", fde_name or "Unassigned"))
 
         if field_data:
             blocks.append(build_fields_section(field_data))
@@ -249,9 +265,9 @@ async def send_feedback_notification(
         )
 
         # Context (IDs)
-        context_items = [f"ID: `{conversation_id}`"]
+        context_items = [f"Conversation ID: `{conversation_id}`"]
         if feedback_id:
-            context_items.append(f"Ref: `{feedback_id}`")
+            context_items.append(f"Feedback ID: `{feedback_id}`")
         blocks.append(build_context_block(context_items))
 
         # Send the message to Slack
@@ -270,9 +286,18 @@ async def send_feedback_notification(
             },
         )
 
+        # Normalize response payload and attach assigned_to_fde for downstream usage
         if hasattr(response, "data") and isinstance(response.data, dict):
-            return response.data
-        return {"ok": response.get("ok", True), "ts": response.get("ts")}
+            result: Dict[str, Any] = dict(response.data)
+        else:
+            result = {
+                "ok": response.get("ok", True),
+                "ts": response.get("ts"),
+            }
+
+        # Expose the resolved FDE on the function result
+        result["assigned_to_fde"] = fde_name
+        return result
 
     except SlackApiError as e:
         logger.error(

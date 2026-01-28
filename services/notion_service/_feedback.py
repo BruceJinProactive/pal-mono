@@ -188,6 +188,85 @@ async def update_feedback_status(
     return success
 
 
+async def get_feedback_fde(
+    client_name: str, client: Optional[AsyncClient] = None
+) -> Optional[str]:
+    """
+    Get the FDE assigned to a client by reading the `FDE` person property
+    directly from the client page in the Clients Master Database.
+
+    Args:
+        client_name: The Pal client/account name.
+        client: Optional Notion AsyncClient. If not provided, a shared client
+            will be created via get_notion_client().
+
+    Returns:
+        str: The FDE's name or email, or None if not found.
+    """
+    try:
+        # Ensure we have a Notion client
+        if client is None:
+            try:
+                client = get_notion_client()
+            except ValueError as e:
+                logger.error(
+                    f"[Notion] Failed to get Notion client for FDE lookup: {e}",
+                    extra={"client_name": client_name},
+                )
+                return None
+
+        # Look up the client page in the Clients Master Database
+        client_page_id = await get_client_page_id_by_account_name(
+            client_name, client=client
+        )
+        if not client_page_id:
+            logger.warning(
+                "[Notion] No client page found when resolving FDE",
+                extra={"client_name": client_name},
+            )
+            return None
+
+        # Retrieve the client page with properties
+        formatted_client_page_id = format_notion_page_id(client_page_id)
+        page = await client.pages.retrieve(formatted_client_page_id)
+
+        # Read the `FDE` person property directly
+        props = page.get("properties", {}) or {}
+        fde_prop = props.get("FDE")
+        if not isinstance(fde_prop, dict) or fde_prop.get("type") != "people":
+            logger.warning(
+                "[Notion] 'FDE' property missing or not a people property on client page",
+                extra={
+                    "client_name": client_name,
+                    "client_page_id": client_page_id,
+                    "fde_prop_type": (
+                        fde_prop.get("type") if isinstance(fde_prop, dict) else None
+                    ),
+                },
+            )
+            return None
+
+        people_list = fde_prop.get("people", []) or []
+        if not people_list:
+            return None
+
+        # Notion config limits this to 1 person; take the first
+        first_person = people_list[0]
+        if not isinstance(first_person, dict):
+            return None
+
+        name = first_person.get("name") or first_person.get("email")
+        return name or None
+
+    except Exception as e:
+        logger.error(
+            f"[Notion] Failed to retrieve FDE for ticket: {str(e)}",
+            extra={"client_name": client_name},
+            exc_info=True,
+        )
+        return None
+
+
 async def create_client_page(
     account_name: str,
     account_display_name: str,

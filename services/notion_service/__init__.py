@@ -26,10 +26,14 @@ from ._client import get_notion_client
 from ._feedback import (
     create_client_page,
     create_feedback_ticket,
-    get_client_page_id_by_account_name,
+    get_feedback_fde,
     update_feedback_status,
 )
-from ._pages import create_page, update_page_properties
+from ._pages import (
+    create_page,
+    get_client_page_id_by_account_name,
+    update_page_properties,
+)
 from ._properties import (
     build_email_property,
     build_multi_select_property,
@@ -59,6 +63,7 @@ __all__ = [
     "create_feedback_ticket",
     "update_feedback_status",
     "get_client_page_id_by_account_name",
+    "get_feedback_fde",
     "create_client_page",
     # Utilities
     "extract_notion_page_id",
