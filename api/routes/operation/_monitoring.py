@@ -9,6 +9,7 @@ import asyncio
 import math
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +28,13 @@ from api.schemas.operations.monitoring import (
     UpdateMonitoringConfigRequest,
 )
 from services import monitoring_service
+from services.auth_service.authorization import check_permission
 from utils.log import logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from services.auth_types import UserContext
 
 
 async def create_monitoring_config(
@@ -253,27 +260,29 @@ async def list_monitoring_configs(
 
 async def get_monitoring_config(
     config_id: uuid.UUID,
-    session: AsyncSession,
-    project_id: uuid.UUID,
+    async_session: AsyncSession,
+    sync_session: "Session",
+    context: "UserContext",
 ) -> MonitoringConfigResponse:
     """
     Get a monitoring configuration by ID.
 
     Args:
         config_id: Config UUID.
-        session: Async database session.
-        project_id: Project UUID (for authorization).
+        async_session: Async database session.
+        sync_session: Sync database session for permission checks.
+        context: User context for authorization.
 
     Returns:
         MonitoringConfigResponse.
 
     Raises:
-        HTTPException: If config not found.
+        HTTPException: If config not found or unauthorized.
     """
     try:
-        config = await monitoring_service.get_config(
-            session=session,
-            project_id=project_id,
+        # First, fetch the config to get its project_id
+        config = await monitoring_service.get_config_by_id(
+            session=async_session,
             config_id=config_id,
         )
 
@@ -281,6 +290,22 @@ async def get_monitoring_config(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Monitoring configuration {config_id} not found",
+                headers={"Content-Type": "application/json"},
+            )
+
+        # Validate user has access to the project
+        project_id = config.project_id
+        has_permission = check_permission(
+            user_id=uuid.UUID(context.username),
+            resource_id=f"projects/{project_id}",
+            permission_name="project.read",
+            session=sync_session,
+        )
+
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Unauthorized access to project {project_id}",
                 headers={"Content-Type": "application/json"},
             )
 
