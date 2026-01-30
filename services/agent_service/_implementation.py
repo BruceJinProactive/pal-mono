@@ -1,7 +1,7 @@
 import copy
 import uuid
 from dataclasses import asdict
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pal_agents import Spec
 from pal_agents.spec import KnowledgeSpec, MemorySpec, ModelSpec, PromptSpec, ToolSpec
@@ -98,7 +98,16 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
     return tool_specs
 
 
-def _agent_config_to_spec(agent_config: AgentConfig) -> Spec:
+# Account-specific model size overrides (default is "m")
+ModelSize = Literal["xs", "s", "m", "l", "xl"]
+ACCOUNT_MODEL_OVERRIDES: dict[str, ModelSize] = {
+    "comida": "xs",
+}
+
+
+def _agent_config_to_spec(
+    agent_config: AgentConfig, account_name: str | None = None
+) -> Spec:
     """Convert pal-mono AgentConfig to pal-agents Spec.
 
     This is a pure conversion function with no side effects or database access.
@@ -106,6 +115,7 @@ def _agent_config_to_spec(agent_config: AgentConfig) -> Spec:
 
     Args:
         agent_config: The fully-built pal-mono agent configuration.
+        account_name: Optional account name for model size selection.
 
     Returns:
         Spec: pal-agents specification ready for Agent instantiation.
@@ -142,13 +152,20 @@ def _agent_config_to_spec(agent_config: AgentConfig) -> Spec:
     if tool_specs:
         logger.debug(f"Tools enabled: {[t.tool_name for t in tool_specs]}")
 
+    # ========== Build ModelSpec ==========
+    # Use account-specific override if configured, otherwise default to "m"
+    default_model_size: ModelSize = "m"
+    model_size: ModelSize = ACCOUNT_MODEL_OVERRIDES.get(
+        account_name or "", default_model_size
+    )
+
     # ========== Build final Spec ==========
     return Spec(
         prompt=prompt_spec,
         knowledge=knowledge_spec,
         memory=memory_spec,
         tools=tool_specs,
-        model=ModelSpec(size="m"),  # Hardcoded per requirements
+        model=ModelSpec(size=model_size),
     )
 
 
@@ -161,6 +178,7 @@ async def construct_agent_spec(
     channel: Channel,
     sender_identifier: str | None = None,
     receiver_identifier: str | None = None,
+    account_name: str | None = None,
 ) -> Spec:
     """Build a pal_agents.Spec from database configuration.
 
@@ -176,6 +194,7 @@ async def construct_agent_spec(
         channel: Communication channel (sms, voice, web).
         sender_identifier: Phone number or user identifier.
         receiver_identifier: Receiver identifier for phone channels (optional).
+        account_name: Account name for model size selection (optional).
 
     Returns:
         Spec: pal-agents specification with prompt, knowledge, memory, and tools.
@@ -203,7 +222,7 @@ async def construct_agent_spec(
     logger.debug("Built AgentConfig, converting to pal-agents Spec")
 
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
-    return _agent_config_to_spec(agent_config)
+    return _agent_config_to_spec(agent_config, account_name=account_name)
 
 
 async def construct_agent_config(
