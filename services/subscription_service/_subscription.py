@@ -1610,7 +1610,7 @@ def switch_subscription_plan(
     context: UserContext,
     account: db.Account,
     new_plan_id: uuid.UUID,
-    prorate: bool = True,
+    prorate: bool = False,
 ) -> tuple[db.AccountSubscription, str, str]:
     if not account.current_subscription_id:
         raise ValueError("Account has no active subscription to switch")
@@ -1717,7 +1717,7 @@ def switch_project_subscription_plan(
     context: UserContext,
     project_id: uuid.UUID,
     new_plan_id: uuid.UUID,
-    prorate: bool = True,
+    prorate: bool = False,
 ) -> tuple[db.ProjectSubscription, str, str]:
     """
     Switch an independent project subscription to a different plan.
@@ -1876,7 +1876,8 @@ def _update_stripe_subscription_for_project_plan_switch(
     Update Stripe subscription items for a single project's plan switch.
 
     Creates new products/prices for the new plan and updates the subscription
-    items, removing old ones and adding new ones with prorating.
+    items, removing old ones and adding new ones. Proration behavior is controlled
+    by the prorate parameter.
     """
     if not project_subscription.stripe_subscription_id:
         raise ValueError(
@@ -2041,7 +2042,8 @@ def _update_stripe_subscription_for_plan_switch(
     Update Stripe subscription items for plan switching.
 
     This creates new products/prices for the new plan and updates the subscription
-    items, removing old ones and adding new ones with prorating.
+    items, removing old ones and adding new ones. Proration behavior is controlled
+    by the prorate parameter.
     """
     if not current_subscription.stripe_subscription_id:
         raise ValueError("Subscription must have Stripe subscription ID to update")

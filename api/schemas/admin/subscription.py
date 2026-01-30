@@ -506,7 +506,9 @@ class ListAccountCreditGrantsResponse(BaseModel):
 
 class SwitchPlanRequest(BaseModel):
     new_plan_id: uuid.UUID
-    prorate: bool = True
+    prorate: bool = (
+        False  # New prices take effect in next billing cycle (no prorated billing)
+    )
 
 
 class SwitchPlanResponse(BaseModel):
