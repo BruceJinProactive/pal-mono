@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import (
@@ -14,6 +15,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 import db
 from api.routes.admin._auth import authenticate_user
@@ -87,9 +89,13 @@ from api.schemas.operations.signal_source import (
 from db.repositories.project_repository import ProjectRepositoryAsync
 from db.tables.types import CheckStatus, ExecutionStatus
 from services import signal_source_service
+from services.auth_service.authorization import check_permission
 from services.auth_service.dependencies import (
     require_checklist_permission,
+    require_execution_permission,
     require_project_permission,
+    require_routine_permission,
+    require_submission_permission,
 )
 from services.auth_types import UserContext
 from utils.log import logger
@@ -1944,9 +1950,6 @@ async def list_routines(
     return await _routines.list_routines(project_id, context, session, is_active)
 
 
-# TODO: Add require_routine_permission or require_project_permission for proper
-# project-scoped authorization. Currently only authenticates user without verifying
-# they have access to the routine's project. See checklist endpoints for reference.
 @operation_router.get(
     "/routines/{routine_id}",
     response_model=RoutineDetailResponse,
@@ -1958,8 +1961,11 @@ async def list_routines(
 )
 async def get_routine(
     routine_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_routine_permission("routine.read", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> RoutineDetailResponse:
     """
     Get a routine by ID with its items.
@@ -1973,8 +1979,6 @@ async def get_routine(
     return await _routines.get_routine(routine_id, context, session)
 
 
-# TODO: Add require_routine_permission or require_project_permission for proper
-# project-scoped authorization. See checklist endpoints for reference.
 @operation_router.patch(
     "/routines/{routine_id}",
     response_model=RoutineResponse,
@@ -1988,8 +1992,11 @@ async def get_routine(
 async def update_routine(
     routine_id: uuid.UUID,
     request: UpdateRoutineRequest,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_routine_permission("routine.write", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> RoutineResponse:
     """
     Update a routine.
@@ -2009,8 +2016,6 @@ async def update_routine(
     return await _routines.update_routine(routine_id, request, context, session)
 
 
-# TODO: Add require_routine_permission or require_project_permission for proper
-# project-scoped authorization. See checklist endpoints for reference.
 @operation_router.delete(
     "/routines/{routine_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -2022,8 +2027,11 @@ async def update_routine(
 )
 async def delete_routine(
     routine_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_routine_permission("routine.write", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> None:
     """
     Delete a routine.
@@ -2053,8 +2061,11 @@ async def delete_routine(
 async def add_routine_item(
     routine_id: uuid.UUID,
     request: CreateRoutineItemRequest,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_routine_permission("routine.write", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> RoutineItemResponse:
     """
     Add an item to a routine.
@@ -2426,19 +2437,24 @@ async def _get_project_today(project_id: uuid.UUID, session: AsyncSession) -> da
 )
 async def list_executions(
     project_id: uuid.UUID,
-    status_filter: ExecutionStatus | None = Query(
-        None, alias="status", description="Filter by execution status"
-    ),
-    date_filter: datetime | None = Query(
-        None, alias="date", description="Filter by scheduled date"
-    ),
-    routine_id: uuid.UUID | None = Query(
-        None, description="Filter by specific routine"
-    ),
-    context: UserContext = Depends(
-        require_project_permission("project.read", authenticate_user)
-    ),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_project_permission("execution.read.today", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
+    sync_session: Annotated[Session, Depends(db.get_db)],
+    status_filter: Annotated[
+        ExecutionStatus | None,
+        Query(alias="status", description="Filter by execution status"),
+    ] = None,
+    date_filter: Annotated[
+        datetime | None,
+        Query(alias="date", description="Filter by scheduled date"),
+    ] = None,
+    routine_id: Annotated[
+        uuid.UUID | None,
+        Query(description="Filter by specific routine"),
+    ] = None,
 ) -> ListExecutionsResponse:
     """
     List executions for routines in a project.
@@ -2453,12 +2469,40 @@ async def list_executions(
 
     Returns:
     - ListExecutionsResponse with executions and total count
+
+    Note: Users without execution.read.history permission can only view today's executions.
     """
     # Convert datetime to date if provided
     date_only = date_filter.date() if date_filter else None
 
     # Get project timezone for correct date filtering
     project_timezone = await _get_project_timezone(project_id, session)
+
+    # Check if user has history permission
+    # Handle non-UUID usernames (e.g., "guest") by denying history access
+    try:
+        user_id = uuid.UUID(context.username)
+        # Run sync permission check in thread pool to avoid blocking async event loop
+        has_history_access = await run_in_threadpool(
+            check_permission,
+            user_id=user_id,
+            resource_id=f"projects/{project_id}",
+            permission_name="execution.read.history",
+            session=sync_session,
+        )
+    except (ValueError, TypeError):
+        has_history_access = False
+
+    # If no history access, enforce today-only filter
+    if not has_history_access:
+        today = await _get_project_today(project_id, session)
+        if date_only and date_only != today:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Can only view today's executions",
+                headers={"Content-Type": "application/json"},
+            )
+        date_only = today
 
     return await _routines.list_executions(
         project_id,
@@ -2482,12 +2526,17 @@ async def list_executions(
 )
 async def get_execution(
     execution_id: uuid.UUID,
+    context: Annotated[
+        UserContext,
+        Depends(
+            require_execution_permission("execution.read.today", authenticate_user)
+        ),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
     details: bool = Query(
         default=False,
         description="Include full routine and submission details",
     ),
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
 ) -> ExecutionDetailResponse:
     """
     Get an execution by ID.
@@ -2522,8 +2571,11 @@ async def get_execution(
 )
 async def start_submission(
     execution_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_execution_permission("submission.create", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> SubmissionDetailResponse:
     """
     Start a submission for an execution (creates draft).
@@ -2550,8 +2602,11 @@ async def start_submission(
 )
 async def get_submission(
     submission_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_submission_permission("submission.create", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> SubmissionDetailResponse:
     """
     Get a submission with its responses.
@@ -2578,11 +2633,14 @@ async def get_submission(
 )
 async def add_response(
     submission_id: uuid.UUID,
+    context: Annotated[
+        UserContext,
+        Depends(require_submission_permission("submission.write", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
     routine_item_id: uuid.UUID = Form(...),
     file: UploadFile | None = File(None),
     notes: str | None = Form(None),
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
 ) -> ItemResponseWithItemResponse:
     """
     Add a response to a submission item.
@@ -2615,8 +2673,11 @@ async def add_response(
 )
 async def submit_for_review(
     submission_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_submission_permission("submission.write", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> SubmissionResponse:
     """
     Submit a draft submission for manager review.
@@ -2645,10 +2706,11 @@ async def submit_for_review(
 )
 async def list_pending_review(
     project_id: uuid.UUID,
-    context: UserContext = Depends(
-        require_project_permission("project.read", authenticate_user)
-    ),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_project_permission("submission.review", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> ListPendingReviewResponse:
     """
     List submissions pending manager review.
@@ -2674,8 +2736,11 @@ async def list_pending_review(
 )
 async def approve_submission(
     submission_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_submission_permission("submission.review", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> SubmissionResponse:
     """
     Approve a submitted submission.
@@ -2702,8 +2767,11 @@ async def approve_submission(
 async def reject_submission(
     submission_id: uuid.UUID,
     request: RejectSubmissionRequest,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_submission_permission("submission.review", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> SubmissionResponse:
     """
     Reject a submitted submission with notes.
@@ -2732,8 +2800,11 @@ async def reject_submission(
 )
 async def reset_to_draft(
     submission_id: uuid.UUID,
-    context: UserContext = Depends(authenticate_user),
-    session: AsyncSession = Depends(db.get_db_async),
+    context: Annotated[
+        UserContext,
+        Depends(require_submission_permission("submission.write", authenticate_user)),
+    ],
+    session: Annotated[AsyncSession, Depends(db.get_db_async)],
 ) -> SubmissionResponse:
     """
     Reset a submission back to draft status for resubmission.

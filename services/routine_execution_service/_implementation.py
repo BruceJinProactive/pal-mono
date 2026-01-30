@@ -178,14 +178,15 @@ async def list_executions(
     """
     List executions for routines in a project.
 
-    Authorization is handled in the API layer.
+    Authorization is handled in the API layer, including date filtering
+    for users without history access.
 
     Args:
         project_id: UUID of the project
         context: User authentication context
         session: Async database session
         status_filter: Optional filter by execution status
-        date_filter: Optional filter by date
+        date_filter: Optional filter by date (pre-enforced by API layer for permissions)
         routine_id: Optional filter by routine
         timezone: IANA timezone string for correct date filtering (e.g., 'America/Los_Angeles')
     """

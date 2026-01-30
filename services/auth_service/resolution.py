@@ -8,6 +8,7 @@ and hierarchical resource relationship lookups.
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.repositories import checklist_repository
@@ -16,6 +17,9 @@ from db.repositories.agent_repository import AgentRepository
 from db.repositories.change_log_repository import ChangeLogRepository
 from db.repositories.feedback_repository import FeedbackRepository
 from db.repositories.project_repository import ProjectRepository
+from db.tables.routine_executions import RoutineExecution
+from db.tables.routine_submissions import RoutineSubmission
+from db.tables.routines import Routine
 from utils.log import logger
 
 
@@ -132,6 +136,28 @@ def resolve_resource_identifier(
         if not feedback:
             raise ValueError(f"Feedback with ID {resource_id} not found")
 
+    elif resource_type == "routines":
+        result = session.execute(select(Routine).where(Routine.id == resource_id))
+        routine = result.scalar_one_or_none()
+        if not routine:
+            raise ValueError(f"Routine with ID {resource_id} not found")
+
+    elif resource_type == "executions":
+        result = session.execute(
+            select(RoutineExecution).where(RoutineExecution.id == resource_id)
+        )
+        execution = result.scalar_one_or_none()
+        if not execution:
+            raise ValueError(f"Execution with ID {resource_id} not found")
+
+    elif resource_type == "submissions":
+        result = session.execute(
+            select(RoutineSubmission).where(RoutineSubmission.id == resource_id)
+        )
+        submission = result.scalar_one_or_none()
+        if not submission:
+            raise ValueError(f"Submission with ID {resource_id} not found")
+
     return resource_id
 
 
@@ -143,6 +169,9 @@ def get_parent_resource(
 
     Resource hierarchy:
     - checklist → project → account
+    - routine → project → account
+    - execution → project (via routine)
+    - submission → project (via execution → routine)
     - project → account
     - agent → account
     - history → account
@@ -170,6 +199,42 @@ def get_parent_resource(
             if checklist and checklist.project_id:
                 return ("projects", checklist.project_id)
             logger.debug(f"Checklist {resource_id} has no parent project or not found")
+
+        elif resource_type == "routines":
+            # Sync query since RoutineRepositoryAsync is async-only
+            result = session.execute(select(Routine).where(Routine.id == resource_id))
+            routine = result.scalar_one_or_none()
+            if routine and routine.project_id:
+                return ("projects", routine.project_id)
+            logger.debug(f"Routine {resource_id} has no parent project or not found")
+
+        elif resource_type == "executions":
+            # Get execution → routine → project using JOIN (single query)
+            result = session.execute(
+                select(Routine.project_id)
+                .join(RoutineExecution, RoutineExecution.routine_id == Routine.id)
+                .where(RoutineExecution.id == resource_id)
+            )
+            project_id = result.scalar_one_or_none()
+            if project_id:
+                return ("projects", project_id)
+            logger.debug(f"Execution {resource_id} has no parent project or not found")
+
+        elif resource_type == "submissions":
+            # Get submission → execution → routine → project using JOINs (single query)
+            result = session.execute(
+                select(Routine.project_id)
+                .join(RoutineExecution, RoutineExecution.routine_id == Routine.id)
+                .join(
+                    RoutineSubmission,
+                    RoutineSubmission.execution_id == RoutineExecution.id,
+                )
+                .where(RoutineSubmission.id == resource_id)
+            )
+            project_id = result.scalar_one_or_none()
+            if project_id:
+                return ("projects", project_id)
+            logger.debug(f"Submission {resource_id} has no parent project or not found")
 
         elif resource_type == "projects":
             project_repo = ProjectRepository(session, auto_commit=False)

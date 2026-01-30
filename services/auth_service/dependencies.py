@@ -2,132 +2,633 @@
 RBAC FastAPI Dependencies
 
 Provides dependency injection for permission checking in FastAPI endpoints.
+
+Architecture:
+- PermissionChecker: Class-based dependency for query parameter resource IDs
+- require_permission: Factory for PermissionChecker
+- _create_resource_permission_dependency: Generic factory for path-parameter-based checks
+- require_*_permission: Pre-configured factories for specific resource types
 """
 
+from functools import partial
 from typing import Any, Callable, Coroutine
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Query, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 import db
+from db.repositories.account_user_repository import AccountUserRepository
 from services.auth_service.authorization import check_permission
+from services.auth_service.resolution import resolve_resource_identifier
 from services.auth_types import UserContext, UserRole
 from utils.log import logger
+
+# =============================================================================
+# GENERIC PERMISSION CHECKING CORE
+# =============================================================================
+
+
+def _check_and_raise(
+    user_id: UUID,
+    resource_id: str,
+    permission: str,
+    user_email: str,
+    user_role: UserRole,
+    session: Session,
+) -> None:
+    """
+    Core permission check logic. Raises HTTPException if permission denied.
+
+    Admin bypass is handled centrally in check_permission().
+
+    Args:
+        user_id: User's UUID
+        resource_id: Resource identifier (e.g., "projects/uuid")
+        permission: Permission to check (e.g., "project.read")
+        user_email: User's email for logging
+        user_role: User's role for admin bypass
+        session: Database session
+
+    Raises:
+        HTTPException: 403 if permission denied
+    """
+    has_permission = check_permission(
+        user_id=user_id,
+        resource_id=resource_id,
+        permission_name=permission,
+        session=session,
+        user_role=user_role.value if user_role else None,
+    )
+
+    if not has_permission:
+        logger.warning(
+            f"Permission denied: User {user_email} lacks {permission} on {resource_id}",
+            extra={"user_id": str(user_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing required permission: {permission}",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+def _extract_user_id(current_user: UserContext) -> UUID:
+    """
+    Extract UUID from UserContext.username.
+
+    Args:
+        current_user: Authenticated user context
+
+    Returns:
+        User's UUID
+
+    Raises:
+        HTTPException: 403 if username is not a valid UUID
+    """
+    try:
+        return UUID(current_user.username)
+    except (ValueError, AttributeError) as err:
+        logger.error(f"Invalid user ID in UserContext: {current_user.username}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid user credentials",
+            headers={"Content-Type": "application/json"},
+        ) from err
+
+
+# =============================================================================
+# SPECIALIZED PERMISSION DEPENDENCY FACTORIES
+# =============================================================================
+# Each factory creates dependencies with explicit parameter names so FastAPI
+# can properly inject path parameters. This pattern follows the same approach
+# as _create_account_permission_dependency.
+
+
+def _create_permission_dependency_impl(
+    resource_uuid: UUID,
+    resource_type: str,
+    permission: str,
+    current_user: UserContext,
+    session: Session,
+) -> UserContext:
+    """
+    Shared implementation for permission checking.
+
+    Args:
+        resource_uuid: UUID of the resource from path parameter
+        resource_type: Plural resource type (e.g., "projects", "routines")
+        permission: Permission name to check
+        current_user: Authenticated user context
+        session: Database session
+
+    Returns:
+        UserContext if permission granted
+
+    Raises:
+        HTTPException: 403 if permission denied
+    """
+    user_id = _extract_user_id(current_user)
+    resource_id = f"{resource_type}/{resource_uuid}"
+
+    _check_and_raise(
+        user_id=user_id,
+        resource_id=resource_id,
+        permission=permission,
+        user_email=current_user.email,
+        user_role=current_user.role,
+        session=session,
+    )
+
+    return current_user
+
+
+# -----------------------------------------------------------------------------
+# Account Permission (special - uses account_name string, not UUID)
+# -----------------------------------------------------------------------------
+
+
+def require_account_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for account resources."""
+
+    async def dependency(
+        account_name: str,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        user_id = _extract_user_id(current_user)
+        resource_id = f"accounts/{account_name}"
+
+        await run_in_threadpool(
+            partial(
+                _check_and_raise,
+                user_id=user_id,
+                resource_id=resource_id,
+                permission=permission,
+                user_email=current_user.email,
+                user_role=current_user.role,
+                session=session,
+            )
+        )
+
+        return current_user
+
+    return dependency
+
+
+def require_account_membership(
+    auth_dependency: Callable,
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """
+    Create a membership-only dependency for account resources.
+
+    Unlike require_account_permission, this only checks that the user is a member
+    of the account (via account_users table) without requiring specific permissions.
+    Useful for endpoints that any team member should access regardless of role.
+
+    Args:
+        auth_dependency: Authentication dependency (e.g., authenticate_user)
+
+    Returns:
+        Dependency that validates account membership
+    """
+
+    async def dependency(
+        account_name: str,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        user_id = _extract_user_id(current_user)
+
+        # Admin bypass
+        if current_user.role and current_user.role.value == "Admin":
+            return current_user
+
+        def check_membership() -> None:
+            # Resolve account name to UUID
+            try:
+                account_id = resolve_resource_identifier(
+                    "accounts", account_name, session
+                )
+            except ValueError as e:
+                logger.warning(f"Account resolution failed: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Account '{account_name}' not found",
+                    headers={"Content-Type": "application/json"},
+                ) from e
+
+            # Check membership
+            account_user_repo = AccountUserRepository(session, auto_commit=False)
+            if not account_user_repo.is_member(user_id, account_id):
+                logger.warning(
+                    f"Membership denied: User {current_user.email} is not a member of {account_name}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="User is not a member of this account",
+                    headers={"Content-Type": "application/json"},
+                )
+
+        await run_in_threadpool(check_membership)
+
+        return current_user
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Project Permission
+# -----------------------------------------------------------------------------
+
+
+def require_project_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for project resources."""
+
+    async def dependency(
+        project_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                project_id,
+                "projects",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Checklist Permission
+# -----------------------------------------------------------------------------
+
+
+def require_checklist_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for checklist resources."""
+
+    async def dependency(
+        checklist_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                checklist_id,
+                "checklists",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Agent Permission
+# -----------------------------------------------------------------------------
+
+
+def require_agent_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for agent resources."""
+
+    async def dependency(
+        agent_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                agent_id,
+                "agents",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# History Permission
+# -----------------------------------------------------------------------------
+
+
+def require_history_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for history/changelog resources."""
+
+    async def dependency(
+        change_log_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                change_log_id,
+                "histories",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Feedback Permission
+# -----------------------------------------------------------------------------
+
+
+def require_feedback_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for feedback resources."""
+
+    async def dependency(
+        feedback_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                feedback_id,
+                "feedbacks",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Campaign Permission
+# -----------------------------------------------------------------------------
+
+
+def require_campaign_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for campaign resources."""
+
+    async def dependency(
+        campaign_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                campaign_id,
+                "campaigns",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Knowledge Permission
+# -----------------------------------------------------------------------------
+
+
+def require_knowledge_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for knowledge resources."""
+
+    async def dependency(
+        knowledge_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                knowledge_id,
+                "knowledges",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Subscription Permission
+# -----------------------------------------------------------------------------
+
+
+def require_subscription_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for subscription resources."""
+
+    async def dependency(
+        subscription_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                subscription_id,
+                "subscriptions",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Routine Permission
+# -----------------------------------------------------------------------------
+
+
+def require_routine_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for routine resources."""
+
+    async def dependency(
+        routine_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                routine_id,
+                "routines",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Execution Permission
+# -----------------------------------------------------------------------------
+
+
+def require_execution_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for execution resources."""
+
+    async def dependency(
+        execution_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                execution_id,
+                "executions",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# -----------------------------------------------------------------------------
+# Submission Permission
+# -----------------------------------------------------------------------------
+
+
+def require_submission_permission(
+    permission: str, auth_dependency: Callable
+) -> Callable[..., Coroutine[Any, Any, UserContext]]:
+    """Create a permission dependency for submission resources."""
+
+    async def dependency(
+        submission_id: UUID,
+        current_user: UserContext = Depends(auth_dependency),
+        session: Session = Depends(db.get_db),
+    ) -> UserContext:
+        return await run_in_threadpool(
+            partial(
+                _create_permission_dependency_impl,
+                submission_id,
+                "submissions",
+                permission,
+                current_user,
+                session,
+            )
+        )
+
+    return dependency
+
+
+# =============================================================================
+# LEGACY CLASS-BASED PERMISSION CHECKER
+# =============================================================================
 
 
 class PermissionChecker:
     """
-    FastAPI dependency for permission checking (V1 - multi-resource support).
+    FastAPI dependency for permission checking via query parameter.
 
-    Combines authentication and authorization into a single dependency.
-    Automatically chains with the provided auth_dependency to verify both
-    the user's identity and their permissions on the specified resource.
+    NOTE: For most use cases, prefer the factory functions like
+    require_project_permission(), require_checklist_permission(), etc.
+    which automatically extract resource IDs from path parameters.
 
-    Requires resource_id as a query parameter in format "resource_type/uuid".
-
-    Note: For most use cases, prefer the specialized helper functions like
-    require_checklist_permission(), require_project_permission(), etc. which
-    automatically extract resource IDs from path parameters.
+    This class is useful when the resource_id must be passed as a query parameter.
 
     Usage:
-        from api.routes.admin._auth import authenticate_user
-        from services.auth_service import PermissionChecker
-
-        # Client must pass ?resource_id=checklists/uuid-here
         @router.post("/admin/actions")
         async def perform_action(
-            context: UserContext = Depends(PermissionChecker("checklist.write", authenticate_user)),
-            session: Session = Depends(db.get_db)
+            context: UserContext = Depends(
+                PermissionChecker("checklist.write", authenticate_user)
+            ),
         ):
-            # context is now authenticated AND has checklist.write permission
+            # Client must pass ?resource_id=checklists/uuid-here
             pass
     """
 
     def __init__(self, required_permission: str, auth_dependency: Callable):
-        """
-        Initialize the permission checker.
-
-        Args:
-            required_permission: Permission name (e.g., 'project.create')
-            auth_dependency: Authentication dependency function (e.g., authenticate_user)
-        """
         self.required_permission = required_permission
         self.auth_dependency = auth_dependency
 
     def __call__(self) -> Callable:
-        """
-        Returns the actual dependency function with auth_dependency captured in closure.
-
-        This method is called once when the dependency is registered.
-        It returns a function that FastAPI will call on each request.
-        """
-        # Capture self in closure to avoid "self not defined" issues with Depends()
         required_permission = self.required_permission
         auth_dependency = self.auth_dependency
 
         async def permission_dependency(
             resource_id: str = Query(
                 ...,
-                description="Resource ID in format 'resource_type/uuid' (e.g., 'accounts/xxx', 'checklists/yyy')",
-                pattern="^(accounts|projects|agents|checklists|plans|data)/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                description="Resource ID in format 'resource_type/uuid'",
+                pattern=r"^[a-z]+/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
             ),
             current_user: UserContext = Depends(auth_dependency),
             session: Session = Depends(db.get_db),
         ) -> UserContext:
-            """
-            Check if current user has required permission on resource.
-
-            Args:
-                resource_id: Resource identifier in format "resource_type/uuid"
-                current_user: Authenticated user (injected by FastAPI via auth_dependency)
-                session: Database session
-
-            Returns:
-                UserContext if permission granted
-
-            Raises:
-                HTTPException: 400 if resource_id format invalid
-                HTTPException: 403 if permission denied
-            """
-            # Extract user_id from UserContext username (which is UUID)
             try:
-                user_id = UUID(current_user.username)
-            except (ValueError, AttributeError) as err:
-                logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid user credentials",
-                    headers={"Content-Type": "application/json"},
-                ) from err
+                user_id = _extract_user_id(current_user)
+            except HTTPException:
+                # Re-raise original HTTPException for consistency with factory functions
+                raise
 
-            # Check permission (with validation)
             try:
-                has_permission = check_permission(
-                    user_id=user_id,
-                    resource_id=resource_id,
-                    permission_name=required_permission,
-                    session=session,
+                await run_in_threadpool(
+                    partial(
+                        _check_and_raise,
+                        user_id=user_id,
+                        resource_id=resource_id,
+                        permission=required_permission,
+                        user_email=current_user.email,
+                        user_role=current_user.role,
+                        session=session,
+                    )
                 )
+            except HTTPException:
+                raise
             except ValueError as err:
-                # Invalid resource_id format - return HTTP 400
                 logger.error(f"Invalid resource_id format: {err}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid resource_id format: {str(err)}",
+                    detail=f"Invalid resource_id format: {err!s}",
                     headers={"Content-Type": "application/json"},
                 ) from err
-
-            if not has_permission:
-                logger.warning(
-                    f"Permission denied: User {current_user.email} lacks {required_permission} on {resource_id}",
-                    extra={"user_id": str(user_id)},
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Missing required permission: {required_permission}",
-                    headers={"Content-Type": "application/json"},
-                )
 
             return current_user
 
@@ -136,822 +637,17 @@ class PermissionChecker:
 
 def require_permission(permission: str, auth_dependency: Callable) -> PermissionChecker:
     """
-    Create a permission checker dependency.
+    Create a query-parameter-based permission checker dependency.
 
-    Combines authentication and authorization into a single dependency.
-    Automatically chains with the provided auth_dependency to verify both
-    the user's identity and their permissions on the specified account.
+    For path-parameter-based checking, use the specific factories like
+    require_project_permission(), require_routine_permission(), etc.
 
     Usage:
-        from api.routes.admin._auth import authenticate_user
-
         @router.post("/admin/projects")
         async def create_project(
-            account_id: UUID,
             user = Depends(require_permission("project.create", authenticate_user)),
-            session: Session = Depends(db.get_db)
         ):
-            # user is now authenticated AND has project.create permission
+            # Client must pass ?resource_id=accounts/uuid
             pass
     """
     return PermissionChecker(permission, auth_dependency)
-
-
-def require_account_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Factory for account-level permission checking.
-
-    Creates a FastAPI dependency that automatically extracts account name from
-    path parameters, constructs the resource_id, and checks permissions.
-    Supports both legacy (account membership) and RBAC modes via feature flag.
-
-    Args:
-        permission: Permission name (e.g., "project.create", "account.read")
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks account permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        # Works with account name
-        @router.get("/accounts/{account_name}/settings")
-        async def get_settings(
-            account_name: str,  # Can be "palona" or UUID
-            context: UserContext = Depends(
-                require_account_permission("account.read", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has account.read/write permission
-            pass
-    """
-
-    async def dependency(
-        account_name: str,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Check permission via RBAC system
-        resource_id = f"accounts/{account_name}"
-
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        # TODO: admin override should be explicit
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency
-
-
-def require_project_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Factory for project-level permission checking.
-
-    Creates a FastAPI dependency that automatically extracts project_id from
-    path parameters, constructs the resource_id, and checks permissions.
-    Supports both legacy (account membership) and RBAC modes via feature flag.
-
-    Args:
-        permission: Permission name (e.g., "project.read")
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks project permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        @router.get("/projects/{project_id}/checklists")
-        async def list_checklists(
-            project_id: UUID,
-            context: UserContext = Depends(
-                require_project_permission("project.read", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has project.read permission
-            pass
-    """
-
-    async def dependency(
-        project_id: UUID,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Check permission via RBAC system
-        resource_id = f"projects/{project_id}"
-
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency
-
-
-def require_checklist_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Factory for checklist-level permission checking.
-
-    Creates a FastAPI dependency that automatically extracts checklist_id from
-    path parameters, constructs the resource_id, and checks permissions.
-
-    Args:
-        permission: Permission name (e.g., "checklist.read")
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks checklist permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        @router.get("/checklists/{checklist_id}")
-        async def get_checklist(
-            checklist_id: UUID,
-            context: UserContext = Depends(
-                require_checklist_permission("checklist.read", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has checklist.read permission
-            pass
-    """
-
-    async def dependency(
-        checklist_id: UUID,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Construct resource_id
-        resource_id = f"checklists/{checklist_id}"
-
-        # Check permission
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency
-
-
-def require_agent_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Factory for agent-level permission checking.
-
-    Creates a FastAPI dependency that automatically extracts agent_id from
-    path parameters, constructs the resource_id, and checks permissions.
-    Supports both legacy (account membership) and RBAC modes via feature flag.
-
-    Args:
-        permission: Permission name (e.g., "agent.read")
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks agent permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        @router.get("/agents/{agent_id}")
-        async def get_agent(
-            agent_id: UUID,
-            context: UserContext = Depends(
-                require_agent_permission("agent.read", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has agent.read permission
-            pass
-    """
-
-    async def dependency(
-        agent_id: UUID,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Check permission via RBAC system
-        resource_id = f"agents/{agent_id}"
-
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency
-
-
-def require_resource_permission(
-    permission: str, resource_type: str, param_name: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Generic factory for resource-level permission checking.
-
-    Creates a FastAPI dependency that extracts a resource ID from request parameters
-    using the specified param_name, constructs the resource_id, and checks permissions.
-
-    Args:
-        permission: Permission name (e.g., "checklist.read")
-        resource_type: Resource type (e.g., "checklists", "projects")
-        param_name: Name of the path/query parameter containing the resource UUID
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks resource permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        # For custom resource types not covered by specific helpers
-        @router.get("/plans/{plan_id}")
-        async def get_plan(
-            plan_id: UUID,
-            context: UserContext = Depends(
-                require_resource_permission("plan.read", "plans", "plan_id", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has plan.read permission
-            pass
-    """
-
-    async def dependency(
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-        **path_params,
-    ) -> UserContext:
-        # Extract resource_id from path parameters
-        if param_name not in path_params:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Missing required path parameter: {param_name}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        resource_uuid = path_params[param_name]
-
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Construct resource_id
-        resource_id = f"{resource_type}/{resource_uuid}"
-
-        # Check permission
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency
-
-
-def require_history_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Factory for history/change-log-level permission checking.
-
-    Creates a FastAPI dependency that automatically extracts change_log_id from
-    path parameters, constructs the resource_id, and checks permissions.
-    Uses hierarchical permission checking to look up to parent account.
-
-    Args:
-        permission: Permission name (e.g., "account.read")
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks history permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        @router.get("/changes/{change_log_id}")
-        async def get_change_log(
-            change_log_id: UUID,
-            context: UserContext = Depends(
-                require_history_permission("account.read", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has permission
-            pass
-    """
-
-    async def dependency(
-        change_log_id: UUID,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Construct resource_id
-        resource_id = f"histories/{change_log_id}"
-
-        # Check permission
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency
-
-
-def require_feedback_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Factory for feedback-level permission checking.
-
-    Creates a FastAPI dependency that automatically extracts feedback_id from
-    path parameters, constructs the resource_id, and checks permissions.
-    Uses hierarchical permission checking to look up to parent account.
-
-    Args:
-        permission: Permission name (e.g., "account.read")
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks feedback permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        @router.get("/feedbacks/{feedback_id}")
-        async def get_feedback(
-            feedback_id: UUID,
-            context: UserContext = Depends(
-                require_feedback_permission("account.read", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has permission
-            pass
-    """
-
-    async def dependency(
-        feedback_id: UUID,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Construct resource_id
-        resource_id = f"feedbacks/{feedback_id}"
-
-        # Check permission
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency
-
-
-def require_campaign_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Factory for campaign-level permission checking.
-
-    Creates a FastAPI dependency that automatically extracts campaign_id from
-    path parameters, constructs the resource_id, and checks permissions.
-    Uses hierarchical permission checking to look up to parent account.
-
-    Args:
-        permission: Permission name (e.g., "account.read")
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks campaign permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        @router.get("/campaigns/{campaign_id}")
-        async def get_campaign(
-            campaign_id: UUID,
-            context: UserContext = Depends(
-                require_campaign_permission("account.read", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has permission
-            pass
-    """
-
-    async def dependency(
-        campaign_id: UUID,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Construct resource_id
-        resource_id = f"campaigns/{campaign_id}"
-
-        # Check permission
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency
-
-
-def require_knowledge_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Factory for knowledge-level permission checking.
-
-    Creates a FastAPI dependency that automatically extracts knowledge_id from
-    path parameters, constructs the resource_id, and checks permissions.
-    Uses hierarchical permission checking to look up to parent account.
-
-    Args:
-        permission: Permission name (e.g., "account.read")
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks knowledge permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        @router.get("/knowledges/{knowledge_id}")
-        async def get_knowledge(
-            knowledge_id: UUID,
-            context: UserContext = Depends(
-                require_knowledge_permission("account.read", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has permission
-            pass
-    """
-
-    async def dependency(
-        knowledge_id: UUID,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Construct resource_id
-        resource_id = f"knowledges/{knowledge_id}"
-
-        # Check permission
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency
-
-
-def require_subscription_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """
-    Factory for subscription-level permission checking.
-
-    Creates a FastAPI dependency that automatically extracts subscription_id from
-    path parameters, constructs the resource_id, and checks permissions.
-    Uses hierarchical permission checking to look up to parent account.
-
-    Args:
-        permission: Permission name (e.g., "account.read")
-        auth_dependency: Authentication dependency (e.g., authenticate_user)
-
-    Returns:
-        FastAPI dependency function that checks subscription permissions
-
-    Usage:
-        from api.routes.admin._auth import authenticate_user
-
-        @router.get("/subscriptions/{subscription_id}")
-        async def get_subscription(
-            subscription_id: UUID,
-            context: UserContext = Depends(
-                require_subscription_permission("account.read", authenticate_user)
-            ),
-            session: Session = Depends(db.get_db)
-        ):
-            # context is authenticated AND has permission
-            pass
-    """
-
-    async def dependency(
-        subscription_id: UUID,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        # Extract user_id from UserContext
-        try:
-            user_id = UUID(current_user.username)
-        except (ValueError, AttributeError) as err:
-            logger.error(f"Invalid user ID in UserContext: {current_user.username}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user credentials",
-                headers={"Content-Type": "application/json"},
-            ) from err
-
-        # Construct resource_id
-        resource_id = f"subscriptions/{subscription_id}"
-
-        # Check permission
-        has_permission = check_permission(
-            user_id=user_id,
-            resource_id=resource_id,
-            permission_name=permission,
-            session=session,
-        )
-
-        if not has_permission:
-            logger.warning(
-                f"Permission denied: User {current_user.email} lacks {permission} on {resource_id}",
-                extra={"user_id": str(user_id)},
-            )
-
-        is_admin = current_user.role == UserRole.Admin
-
-        if not has_permission and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-                headers={"Content-Type": "application/json"},
-            )
-
-        return current_user
-
-    return dependency

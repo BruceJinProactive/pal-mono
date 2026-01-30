@@ -83,6 +83,7 @@ async def invite_team_member(
             params=InvitationParams(
                 email=request.email,
                 account_role=request.account_role.value,
+                project_ids=request.project_ids,
             ),
         )
     except ValueError as e:
@@ -107,6 +108,7 @@ async def invite_team_member(
         invitation_id=invitation.id,
         email=invitation.email,
         account_role=UserRole(invitation.account_role),
+        project_ids=invitation.project_ids,
         invitation_token=invitation.invitation_token,
         expires_at=invitation.expires_at,
         status=api_status,
@@ -127,27 +129,40 @@ async def list_team_members(
     Route handler that:
     1. Calls team service to list members and invitations
     2. Converts DB models to API response
+
+    Members include store_access field:
+    - store_access: None for account-level access (all stores), dict {id: name} for project-level
+
+    Response is sorted:
+    1. Account-level members first (store_access = None)
+    2. Then project-level members sorted by store names alphabetically
     """
     # Call service to list team members and invitations
     try:
-        account_users, roles, emails, names, pending_invitations = (
-            team_service.list_team_members(
-                session=session,
-                account_name=account_name,
-                filters=TeamMemberFilters(role=role, status=status, search=search),
-            )
+        (
+            account_users,
+            roles,
+            emails,
+            names,
+            store_access_list,
+            pending_invitations,
+            invitation_store_access,
+        ) = team_service.list_team_members(
+            session=session,
+            account_name=account_name,
+            filters=TeamMemberFilters(role=role, status=status, search=search),
         )
     except ValueError as e:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(e),
             headers={"Content-Type": "application/json"},
-        )
+        ) from e
 
-    # 3. Convert DB models to API response
+    # Convert DB models to API response
     members = []
-    for au, account_role, member_email, member_name in zip(
-        account_users, roles, emails, names
+    for au, account_role, member_email, member_name, store_access in zip(
+        account_users, roles, emails, names, store_access_list
     ):
         # If this is the current user, use their real email and name
         if str(au.user_id) == context.username:
@@ -164,20 +179,41 @@ async def list_team_members(
                 added_at=au.added_at,
                 last_active=None,  # TODO: Track last_active
                 resource_roles=[],  # V2 feature
+                store_access=store_access,
             )
         )
 
-    # 4. Convert pending invitations to API response
+    # Sort members: account-level first (store_access is None), then by store names alphabetically
+    def member_sort_key(m: TeamMemberResponse) -> tuple[int, str]:
+        if m.store_access is None:
+            return (0, "")
+        return (1, ", ".join(sorted(m.store_access.values())))
+
+    members.sort(key=member_sort_key)
+
+    # Convert pending invitations to API response
     invitations = []
-    for invitation in pending_invitations:
+    for invitation, inv_store_access in zip(
+        pending_invitations, invitation_store_access
+    ):
         invitations.append(
             TeamInvitationResponse(
                 invitation_id=invitation.id,
                 email=invitation.email,
                 account_role=UserRole(invitation.account_role),
+                project_ids=invitation.project_ids,
                 status=invitation.status.value,
+                store_access=inv_store_access,
             )
         )
+
+    # Sort invitations: account-level first, then by store names alphabetically
+    def invitation_sort_key(i: TeamInvitationResponse) -> tuple[int, str]:
+        if i.store_access is None:
+            return (0, "")
+        return (1, ", ".join(sorted(i.store_access.values())))
+
+    invitations.sort(key=invitation_sort_key)
 
     return TeamMembersListResponse(
         members=members,
@@ -306,6 +342,7 @@ async def get_invitation_details(
         account_display_name=account_display_name,
         invited_by=inviter_email,
         role=UserRole(invitation.account_role),
+        project_ids=invitation.project_ids,
         expires_at=invitation.expires_at,
         status=api_status,
     )
@@ -453,6 +490,7 @@ async def get_pending_invitations_for_user(
                 account_display_name=account_display_name,
                 invited_by=inviter_name,
                 role=UserRole(invitation.account_role),
+                project_ids=invitation.project_ids,
                 expires_at=invitation.expires_at,
                 status=InvitationStatus(invitation.status.value),
             )
