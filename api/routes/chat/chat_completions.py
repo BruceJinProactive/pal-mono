@@ -410,7 +410,6 @@ async def chat_completions_agno(
                 )
 
                 collected_content = []
-                collected_chunks = []  # Buffer chunks for SIP transfer detection
                 if response_stream:
                     chunk_count = 0
                     url_filter = create_url_filter()
@@ -423,7 +422,7 @@ async def chat_completions_agno(
                         ],
                     )
 
-                    # First pass: collect all chunks for URL filtering
+                    # Stream chunks immediately as they arrive
                     async for chunk in response_stream:
                         chunk_count += 1
                         chunk_data = _convert_chunk_to_dict(chunk)
@@ -434,10 +433,14 @@ async def chat_completions_agno(
                             if choices
                             else ""
                         )
+
+                        # Collect content for URL extraction later
                         collected_content.append(content)
+
+                        # Apply URL filtering to this chunk
                         filtered_content = url_filter.filter_content(content)
 
-                        # Store chunk with filtered content for later yielding
+                        # Yield chunk immediately if content passes filter
                         if filtered_content is not None:
                             if (
                                 chunk_data.get("choices")
@@ -447,33 +450,31 @@ async def chat_completions_agno(
                                     chunk_data["choices"][0]["delta"][
                                         "content"
                                     ] = filtered_content
-                            collected_chunks.append(chunk_data)
 
-                    # Yield all collected chunks
-                    for idx, chunk_data in enumerate(collected_chunks):
-                        yield f"data: {json.dumps(chunk_data)}\n\n"
+                            # Track TTFT on first chunk
+                            if chunk_count == 1:
+                                time_diff = (
+                                    datetime.datetime.now(datetime.timezone.utc)
+                                    - request_context.request_time
+                                ).total_seconds() * 1000
+                                logger.debug(
+                                    f"[ChatCompletions] TTFT is {time_diff}",
+                                    extra={
+                                        "recipient_identifier": recipient_identifier,
+                                        "sender_identifier": sender_identifier,
+                                    },
+                                )
+                                send_dd_histogram_metrics(
+                                    "chat_completions.sent_first_chunk",
+                                    request_context.request_time,
+                                    [
+                                        f"sender_identifier:{sender_identifier}",
+                                        f"recipient_identifier:{recipient_identifier}",
+                                    ],
+                                )
 
-                        if idx == 0:
-                            time_diff = (
-                                datetime.datetime.now(datetime.timezone.utc)
-                                - request_context.request_time
-                            ).total_seconds() * 1000
-                            logger.debug(
-                                f"[ChatCompletions] TTFT is {time_diff}",
-                                extra={
-                                    "recipient_identifier": recipient_identifier,
-                                    "sender_identifier": sender_identifier,
-                                },
-                            )
-
-                            send_dd_histogram_metrics(
-                                "chat_completions.sent_first_chunk",
-                                request_context.request_time,
-                                [
-                                    f"sender_identifier:{sender_identifier}",
-                                    f"recipient_identifier:{recipient_identifier}",
-                                ],
-                            )
+                            # Stream chunk to client immediately
+                            yield f"data: {json.dumps(chunk_data)}\n\n"
 
                     # Log completion of stream
                     logger.info(
