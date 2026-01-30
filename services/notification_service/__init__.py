@@ -5,10 +5,12 @@ from . import _implementation
 from .schema import (
     BillingEvent,
     BillingEventType,
+    InvoiceUpcomingPayload,
     PaymentFailedPayload,
     PaymentSucceededPayload,
     SubscriptionActivatedPayload,
     SubscriptionCancelledPayload,
+    SubscriptionTrialWillEndPayload,
 )
 
 
@@ -94,6 +96,8 @@ __all__ = [
     "BillingEventType",
     "SubscriptionActivatedPayload",
     "SubscriptionCancelledPayload",
+    "SubscriptionTrialWillEndPayload",
     "PaymentFailedPayload",
     "PaymentSucceededPayload",
+    "InvoiceUpcomingPayload",
 ]

@@ -332,6 +332,126 @@ async def _handle_subscription_deleted(
         )
 
 
+async def _handle_subscription_trial_will_end(
+    event_data: dict[str, Any], async_session: AsyncSession
+) -> None:
+    """
+    Handle customer.subscription.trial_will_end webhook event.
+
+    Sends a notification 3 days before trial ends to remind customer.
+    """
+    subscription = event_data.get("object", {})
+    stripe_customer_id = subscription.get("customer")
+    trial_end = subscription.get("trial_end")
+
+    if not stripe_customer_id:
+        logger.warning(
+            "[Stripe Webhook] customer.subscription.trial_will_end missing customer ID"
+        )
+        return
+
+    account_id = await _get_account_id_from_stripe_customer(
+        async_session, stripe_customer_id
+    )
+    if not account_id:
+        return
+
+    # Get plan information
+    items = subscription.get("items", {}).get("data", [])
+    plan_name = "Your Plan"
+    if items and len(items) > 0:
+        plan_name = items[0].get("price", {}).get("nickname", "Your Plan")
+
+    # Calculate days until trial end
+    days_until_trial_end = 3  # Stripe sends this 3 days before trial ends
+    trial_end_date = ""
+    if trial_end:
+        trial_end_date = datetime.fromtimestamp(trial_end, tz=timezone.utc).strftime(
+            "%B %d, %Y"
+        )
+
+    billing_event = BillingEvent(
+        type=BillingEventType.SUBSCRIPTION_TRIAL_WILL_END,
+        account_id=account_id,
+        payload={
+            "plan_name": plan_name,
+            "trial_end_date": trial_end_date,
+            "days_until_trial_end": days_until_trial_end,
+        },
+    )
+
+    await handle_billing_event(async_session, billing_event)
+
+    logger.info(
+        "[Stripe Webhook] Processed customer.subscription.trial_will_end",
+        extra={"account_id": str(account_id)},
+    )
+
+
+async def _handle_invoice_upcoming(
+    event_data: dict[str, Any], async_session: AsyncSession
+) -> None:
+    """
+    Handle invoice.upcoming webhook event.
+
+    Sends a notification when an invoice will be charged soon (typically 3-7 days before).
+    """
+    invoice = event_data.get("object", {})
+    stripe_customer_id = invoice.get("customer")
+
+    if not stripe_customer_id:
+        logger.warning("[Stripe Webhook] invoice.upcoming missing customer ID")
+        return
+
+    account_id = await _get_account_id_from_stripe_customer(
+        async_session, stripe_customer_id
+    )
+    if not account_id:
+        return
+
+    period_start = invoice.get("period_start")
+    period_end = invoice.get("period_end")
+    next_payment_attempt = invoice.get("next_payment_attempt")
+
+    billing_event = BillingEvent(
+        type=BillingEventType.INVOICE_UPCOMING,
+        account_id=account_id,
+        payload={
+            "amount_due": float(invoice.get("amount_due", 0))
+            / 100,  # Convert cents to dollars
+            "currency": invoice.get("currency", "usd").upper(),
+            "next_payment_date": (
+                datetime.fromtimestamp(next_payment_attempt, tz=timezone.utc).strftime(
+                    "%B %d, %Y"
+                )
+                if next_payment_attempt
+                else ""
+            ),
+            "period_start": (
+                datetime.fromtimestamp(period_start, tz=timezone.utc).strftime(
+                    "%B %d, %Y"
+                )
+                if period_start
+                else ""
+            ),
+            "period_end": (
+                datetime.fromtimestamp(period_end, tz=timezone.utc).strftime(
+                    "%B %d, %Y"
+                )
+                if period_end
+                else ""
+            ),
+        },
+    )
+
+    await handle_billing_event(async_session, billing_event)
+
+    logger.info(
+        "[Stripe Webhook] Processed invoice.upcoming",
+        extra={"account_id": str(account_id)},
+    )
+
+
 # ============================================================================
 # Payment Event Handlers (Log Only)
 # ============================================================================
@@ -569,6 +689,8 @@ async def handle_stripe_webhook(request: Request) -> dict[str, str]:
                 await _handle_invoice_payment_succeeded(event_data, async_session)
             elif event_type == "invoice.finalized":
                 await _handle_invoice_finalized(event_data, async_session)
+            elif event_type == "invoice.upcoming":
+                await _handle_invoice_upcoming(event_data, async_session)
             # Subscription events
             elif event_type == "customer.subscription.created":
                 await _handle_subscription_created(event_data, async_session)
@@ -576,6 +698,8 @@ async def handle_stripe_webhook(request: Request) -> dict[str, str]:
                 await _handle_subscription_updated(event_data, async_session)
             elif event_type == "customer.subscription.deleted":
                 await _handle_subscription_deleted(event_data, async_session)
+            elif event_type == "customer.subscription.trial_will_end":
+                await _handle_subscription_trial_will_end(event_data, async_session)
             # Payment events (log only - no DB)
             elif event_type == "payment_intent.succeeded":
                 await _handle_payment_intent_succeeded(event_data)

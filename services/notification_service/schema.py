@@ -10,9 +10,11 @@ class BillingEventType(str, Enum):
 
     SUBSCRIPTION_ACTIVATED = "subscription_activated"
     SUBSCRIPTION_CANCELLED = "subscription_cancelled"
+    SUBSCRIPTION_TRIAL_WILL_END = "subscription_trial_will_end"
     PAYMENT_FAILED = "payment_failed"
     PAYMENT_SUCCEEDED = "payment_succeeded"
     INVOICE_SENT = "invoice_sent"
+    INVOICE_UPCOMING = "invoice_upcoming"
     INVOICE_PAYMENT_DUE_SOON = "invoice_payment_due_soon"
     INVOICE_OVERDUE = "invoice_overdue"
 
@@ -107,3 +109,21 @@ class InvoiceOverduePayload(BaseModel):
     due_date: str
     days_overdue: int
     invoice_url: str
+
+
+class SubscriptionTrialWillEndPayload(BaseModel):
+    """Payload for SUBSCRIPTION_TRIAL_WILL_END events."""
+
+    plan_name: str
+    trial_end_date: str
+    days_until_trial_end: int
+
+
+class InvoiceUpcomingPayload(BaseModel):
+    """Payload for INVOICE_UPCOMING events."""
+
+    amount_due: float
+    currency: str
+    next_payment_date: str
+    period_start: str
+    period_end: str

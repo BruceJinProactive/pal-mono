@@ -11,8 +11,10 @@ from .schema import BillingEvent, BillingEventType
 POSTMARK_TEMPLATES = {
     BillingEventType.SUBSCRIPTION_ACTIVATED: 42419409,
     BillingEventType.SUBSCRIPTION_CANCELLED: 42419436,
+    BillingEventType.SUBSCRIPTION_TRIAL_WILL_END: 43276310,
     BillingEventType.PAYMENT_FAILED: 42419416,
     BillingEventType.PAYMENT_SUCCEEDED: 42419437,
+    BillingEventType.INVOICE_UPCOMING: 43276324,
 }
 
 
@@ -93,6 +95,27 @@ def _build_template_variables(event: BillingEvent, account_name: str) -> dict[st
                     payload.get("amount_paid", 0), payload.get("currency", "USD")
                 ),
                 "invoice_url": payload.get("invoice_url", ""),
+                "period_start": payload.get("period_start", ""),
+                "period_end": payload.get("period_end", ""),
+            }
+        )
+
+    elif event.type == BillingEventType.SUBSCRIPTION_TRIAL_WILL_END:
+        variables.update(
+            {
+                "plan_name": payload.get("plan_name", "Unknown Plan"),
+                "trial_end_date": payload.get("trial_end_date", ""),
+                "days_until_trial_end": str(payload.get("days_until_trial_end", 0)),
+            }
+        )
+
+    elif event.type == BillingEventType.INVOICE_UPCOMING:
+        variables.update(
+            {
+                "amount_due_formatted": _format_currency_amount(
+                    payload.get("amount_due", 0), payload.get("currency", "USD")
+                ),
+                "next_payment_date": payload.get("next_payment_date", ""),
                 "period_start": payload.get("period_start", ""),
                 "period_end": payload.get("period_end", ""),
             }
