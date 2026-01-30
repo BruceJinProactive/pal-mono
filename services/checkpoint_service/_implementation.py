@@ -184,6 +184,15 @@ def compare_checkpoint_images(
         max_tokens=_constants.OPENAI_MAX_TOKENS,
     )
 
+    # Log token usage
+    if response.usage:
+        logger.info(
+            f"[Checkpoint LLM] OpenAI token usage - "
+            f"Prompt: {response.usage.prompt_tokens}, "
+            f"Completion: {response.usage.completion_tokens}, "
+            f"Total: {response.usage.total_tokens}"
+        )
+
     comparison_result_json = json.loads(response.choices[0].message.content or "{}")
 
     # Remove confidence_score if present
