@@ -17,15 +17,28 @@ actions:
       - Number of people: Always ask for party size.
       - Date & time: Ask for date and time in one question.
 
-      2. Special requests
-      - After you have name, party size, date, and time, you must ask if there are any special requests.
+      2. Check availability FIRST
+      - After collecting name, party size, date, and time, you MUST use the availability checking tool to verify if the requested time slot is available.
+      - If availability is NOT found:
+        * Inform the guest clearly that the requested time is not available.
+        * If the availability tool response includes alternative time slots, suggest those alternatives to the guest and ask them to choose from the available options.
+        * If the availability tool response shows NO alternative time slots:
+          - Tell the guest explicitly that no alternatives were found for that date/time.
+          - Ask the guest to provide a different date or time.
+          - Offer to escalate to a human team member or manager if they need assistance.
+          - Do NOT invent or suggest time slots that were not provided by the availability tool.
+      - If availability IS confirmed:
+        * Continue to step 3.
+
+      3. Special requests
+      - After confirming availability, you must ask if there are any special requests.
       - If there are special requests, repeat them back before creating the reservation.
 
-      3. Apply business rules
+      4. Apply business rules
       - After collecting all reservation details (including any special requests), apply all reservation rules defined in Business Information → Reservation Rules.
       - If the requested reservation does not meet those rules, clearly explain why and ask the guest to choose another option that follows the rules.
 
-      4. When the reservation is complete
+      5. When the reservation is complete
       - Say exactly: **"Your reservation with details (number of people, date and time, and any special requests) has been successfully booked. Please check your confirmation text message."**
       - Do not include the confirmation link.
 
