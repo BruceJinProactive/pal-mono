@@ -61,6 +61,16 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         """
         Check if a reservation is available for the given party size, date, and time.
 
+        When to use:
+            - Customer asks to check if a specific time slot is available
+            - Customer wants to know alternative times near their preferred time
+            - Before attempting to make a reservation to confirm availability
+
+        Do NOT use when:
+            - Making an actual reservation (use make_reservation instead)
+            - Checking general restaurant hours or operating status
+            - Adding customer to waitlist (use join_waitlist_queue instead)
+
         Args:
             party_size (int, required):
                 Number of guests in the reservation. Must be greater than 0.
@@ -74,7 +84,10 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                 (e.g., "19:30" for 7:30 PM, "12:00" for noon).
 
         Returns:
-            str: Availability status message or an explanation if input is invalid.
+            str: If requested time is available, returns confirmation message.
+                If unavailable, returns up to 2 alternative times within 1 hour
+                before or after the requested time. If no alternatives found,
+                returns unavailable message.
         """
         try:
             requested_datetime_string = f"{date} {time}"
@@ -106,7 +119,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                     suggestions_str = ", ".join(suggestions)
                     return f"Your requested time {requested_datetime_string} is not available. Here are nearby available times: {suggestions_str}"
                 else:
-                    return f"Sorry, no available time slots found near {requested_datetime_string}."
+                    return f"No tables available at {requested_datetime_string} or within 1 hour before/after. Would you like to try a different date or time?"
 
         except Exception as e:
             logger.error(f"[MiniTable] Error checking availability: {str(e)}")
@@ -125,6 +138,16 @@ class MiniTableTool(Toolkit, BaseReservationTool):
     ) -> str:
         """
         Create a new reservation for the restaurant.
+
+        When to use:
+            - Customer wants to book a table after confirming availability
+            - Customer provides all required information (name, party size, date, time)
+            - Creating a confirmed reservation at a specific time slot
+
+        Do NOT use when:
+            - Only checking if a time is available (use check_availability instead)
+            - Adding customer to waitlist (use join_waitlist_queue instead)
+            - Customer hasn't confirmed the specific date/time they want
 
         Args:
             name (str, required):
@@ -147,12 +170,10 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                 Default is "".
 
         Returns:
-            str: A confirmation message containing the booking ID and status if successful.
-                Example: "Reservation created: booking_id=ABC123, status=confirmed".
-                If validation or API errors occur, an error message is returned instead.
-
-        Notes:
-            - Reservations are created with a default duration of 3600 seconds (1 hour).
+            str: Success returns booking confirmation with booking_id, status
+                (CONFIRMED or PENDING_MERCHANT_CONFIRMATION), and status_link for
+                changes/cancellation. Failure returns error for: slot unavailable,
+                already booked same slot, daily limit reached, or reservations not enabled.
         """
         logger.debug(
             f"[MiniTable] Making reservation for {name}, party_size: {party_size}, date: {date}, time: {time}"
@@ -192,8 +213,19 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             booking_failure = result.get("booking_failure")
             if booking_failure:
                 cause = booking_failure.get("cause", "UNKNOWN_ERROR")
-                message = booking_failure.get("message", f"Booking failed: {cause}")
-                return f"Unable to create reservation: {message}"
+
+                # Map error codes to user-friendly messages
+                error_messages = {
+                    "SLOT_UNAVAILABLE": "This time slot is no longer available. Please check availability again.",
+                    "SLOT_ALREADY_BOOKED_BY_USER": "You already have a reservation at this time.",
+                    "DAILY_LIMIT_REACHED": "Maximum reservations for today reached. Please try a different date.",
+                    "RESERVE_NOT_ENABLE": "Reservations are not currently enabled at this restaurant.",
+                }
+
+                user_message = error_messages.get(
+                    cause, booking_failure.get("message", f"Booking failed: {cause}")
+                )
+                return f"Unable to create reservation: {user_message}"
 
             # Handle successful booking
             booking = result.get("booking", {})
@@ -241,6 +273,24 @@ class MiniTableTool(Toolkit, BaseReservationTool):
     def get_waitlist_status(self) -> str:  # type: ignore[misc]
         """
         Get current waitlist status and wait times for the restaurant.
+
+        When to use:
+            - Customer asks if the waitlist is open
+            - Customer wants to know current wait times before joining
+            - Checking how many parties are ahead for different party sizes
+
+        Do NOT use when:
+            - Adding customer to waitlist (use join_waitlist_queue instead)
+            - Checking a specific customer's position (use get_user_wait_status instead)
+            - Making a reservation (use make_reservation instead)
+
+        Args:
+            None
+
+        Returns:
+            str: If closed, returns status with reason (e.g., "not enabled").
+                If open, returns wait estimates by party size categories showing
+                number of parties ahead for each range (1-10, 11-20, 21+ people).
         """
         try:
             logger.debug(
@@ -299,6 +349,16 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         """
         Add a customer to the restaurant's waitlist queue.
 
+        When to use:
+            - Customer wants to join the waitlist when tables aren't immediately available
+            - Customer prefers waitlist over making a reservation for a later time
+            - Waitlist is open and customer has confirmed they want to join
+
+        Do NOT use when:
+            - Making a reservation for a specific time (use make_reservation instead)
+            - Only checking waitlist status (use get_waitlist_status instead)
+            - Checking existing waitlist position (use get_user_wait_status instead)
+
         Args:
             name (str, required):
                 Customer name.
@@ -311,12 +371,10 @@ class MiniTableTool(Toolkit, BaseReservationTool):
                 special requests (default: empty string).
 
         Returns:
-            str: A status message describing the result of the operation. Possible values include:
-                - Success messages with waitlist details (e.g., waitlist ID, code, position in line).
-                - User-friendly error messages if the waitlist is full, disabled,
-                or the customer already has an entry.
-                - VALIDATION ERRORS FOR INVALID INPUT.
-                - A GENERIC ERROR MESSAGE IF AN UNEXPECTED FAILURE OCCURS.
+            str: Success returns waitlist confirmation with waitlist_id, wait_code,
+                position (parties ahead), and status_link for changes/cancellation.
+                Failure returns error for: already on waitlist, waitlist full, or
+                waitlist not enabled.
         """
         logger.debug(
             f"[MiniTable] Adding to waitlist: {name}, party_size: {party_size}"
@@ -413,11 +471,23 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         """
         Get today's waitlist entries for a specific phone number.
 
+        When to use:
+            - Customer asks about their current position in the waitlist
+            - Customer wants to check status of their waitlist entry
+            - Customer wants to see if their table is ready (SERVICE_READY status)
+
+        Do NOT use when:
+            - Adding customer to waitlist (use join_waitlist_queue instead)
+            - Checking general waitlist status (use get_waitlist_status instead)
+            - Making a reservation (use make_reservation instead)
+
         Args:
             None
 
         Returns:
-            str: Waitlist entries and status information for the phone number
+            str: Returns all of today's waitlist entries for the customer's phone number.
+                Each entry includes status (WAITING, SERVICE_READY), wait_code, party_size,
+                parties_ahead_count, and created_time. Returns message if no entries found.
         """
         try:
             # Get customer phone from tool metadata
