@@ -98,6 +98,10 @@ class CreateMonitoringRunResponse(BaseModel):
     error_message: str | None = Field(
         None, description="Error message if analysis failed or image was invalid"
     )
+    skipped: bool = Field(
+        default=False,
+        description="True if run was skipped (e.g., outside business hours)",
+    )
 
 
 class RecordCaptureRequest(BaseModel):
@@ -459,9 +463,19 @@ async def create_monitoring_run(
 
         analysis_result = analysis_details.get("analysis_result", {})
         result_status = analysis_result.get("result")
+        was_skipped = analysis_details.get("skipped", False)
 
         # Log result
-        if result_status == "error":
+        if was_skipped:
+            logger.info(
+                f"[Internal API] Monitoring run skipped for config {request.monitoring_config_id}",
+                extra={
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "run_id": str(monitoring_run.id),
+                    "reason": analysis_result.get("reason"),
+                },
+            )
+        elif result_status == "error":
             logger.warning(
                 f"[Internal API] LLM analysis returned error for config {request.monitoring_config_id}",
                 extra={
@@ -489,6 +503,7 @@ async def create_monitoring_run(
             started_at=monitoring_run.started_at,
             completed_at=monitoring_run.completed_at,
             error_message=monitoring_run.error_message,
+            skipped=was_skipped,
         )
 
     except HTTPException:

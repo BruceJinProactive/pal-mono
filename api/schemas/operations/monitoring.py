@@ -131,6 +131,10 @@ class AIAnalysisRules(BaseModel):
         None,
         description="Field definitions for structured output. If not provided, uses default {result: 'pass'|'fail'|'error', details: string}",
     )
+    skip_outside_business_hours: bool = Field(
+        default=False,
+        description="Skip image processing when captured outside business hours. Uses project's business_hours and timezone settings.",
+    )
 
 
 # MonitoringRules type alias
@@ -201,6 +205,10 @@ class UpdateMonitoringConfigRequest(BaseModel):
         description="LLM model configuration override (provider and model)",
     )
     enabled: bool | None = Field(None, description="Updated enabled status")
+    skip_outside_business_hours: bool | None = Field(
+        None,
+        description="Skip image processing when captured outside business hours",
+    )
 
 
 class ReplaceReferenceImageMapping(BaseModel):

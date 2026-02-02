@@ -3,6 +3,11 @@
 Provides business logic for monitoring configuration and run CRUD operations.
 """
 
+from ._business_hours import (
+    BusinessHoursCheckResult,
+    is_within_business_hours,
+    parse_captured_at,
+)
 from ._implementation import (
     build_config_response,
     build_run_list_response,
@@ -40,4 +45,7 @@ __all__ = [
     "cleanup_reference_images",
     "generate_monitoring_llm_prompt",
     "create_monitoring_run_with_analysis",
+    "is_within_business_hours",
+    "parse_captured_at",
+    "BusinessHoursCheckResult",
 ]

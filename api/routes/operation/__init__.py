@@ -1472,6 +1472,7 @@ async def update_monitoring_config(
     structured_output: str | None = Form(None),
     model: str | None = Form(None),
     enabled: bool | None = Form(None),
+    skip_outside_business_hours: bool | None = Form(None),
     # Reference image operations (send only what changes)
     add_images: list[UploadFile] = File(default=[]),
     add_descriptions: list[str] = Form(default=[]),
@@ -1497,6 +1498,7 @@ async def update_monitoring_config(
     - prompt: Updated AI analysis prompt
     - model: JSON string with LLM model configuration (e.g., '{"provider": "google", "model": "gemini-3-flash-preview"}')
     - enabled: Updated enabled status
+    - skip_outside_business_hours: Skip image processing when captured outside business hours
 
     Reference Image Operations (send only what you want to change):
     - add_images: New image files to add
@@ -1619,6 +1621,7 @@ async def update_monitoring_config(
         structured_output=parsed_structured_output,
         model=parsed_model,
         enabled=enabled,
+        skip_outside_business_hours=skip_outside_business_hours,
     )
 
     return await _monitoring.update_monitoring_config(

@@ -11,7 +11,7 @@ import base64
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import boto3
 from fastapi import HTTPException, status
@@ -20,8 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.repositories import (
     MonitoringConfigRepositoryAsync,
     MonitoringRunRepositoryAsync,
+    ProjectRepositoryAsync,
 )
 from db.tables import MonitoringRun
+from services.monitoring_service._business_hours import (
+    is_within_business_hours,
+    parse_captured_at,
+)
 from services.monitoring_service._providers import create_monitoring_llm_provider
 from utils.log import logger
 
@@ -339,6 +344,7 @@ async def create_monitoring_run_with_analysis(
     """
     config_repo = MonitoringConfigRepositoryAsync(session)
     run_repo = MonitoringRunRepositoryAsync(session)
+    project_repo = ProjectRepositoryAsync(session)
 
     # Verify monitoring config exists before proceeding
     config = await config_repo.get_by_id(monitoring_config_id)
@@ -355,6 +361,61 @@ async def create_monitoring_run_with_analysis(
             "triggered_at": datetime.utcnow().isoformat(),
             "image_url": image_url,
         }
+
+    # Check business hours if enabled
+    rules = config.rules or {}
+    skip_outside_hours = rules.get("skip_outside_business_hours", False)
+
+    if skip_outside_hours:
+        captured_at = parse_captured_at(trigger_metadata)
+        if captured_at:
+            project = await project_repo.get_project(config.project_id)
+            if project:
+                hours_check = is_within_business_hours(
+                    captured_at=captured_at,
+                    business_hours=project.business_hours,
+                    timezone_str=project.timezone,
+                )
+
+                if not hours_check.is_open:
+                    logger.info(
+                        f"Skipping monitoring run - outside business hours: {hours_check.reason}",
+                        extra={
+                            "config_id": str(monitoring_config_id),
+                            "captured_at": captured_at.isoformat(),
+                            "reason": hours_check.reason,
+                            "period_info": hours_check.period_info,
+                        },
+                    )
+
+                    # Create run record with skipped status
+                    skipped_result = {
+                        "result": "skipped",
+                        "reason": "outside_business_hours",
+                        "details": hours_check.reason,
+                        "business_hours_check": {
+                            "is_open": hours_check.is_open,
+                            "reason": hours_check.reason,
+                            "period_info": hours_check.period_info,
+                        },
+                    }
+
+                    skipped_run = MonitoringRun(
+                        monitoring_config_id=monitoring_config_id,
+                        trigger_metadata=trigger_metadata,
+                        started_at=datetime.now(timezone.utc),
+                        completed_at=datetime.now(timezone.utc),
+                        evaluation_result=skipped_result,
+                        error_message=None,
+                    )
+
+                    created_run = await run_repo.create(skipped_run)
+
+                    return created_run, {
+                        "prompt_sent": {},
+                        "analysis_result": skipped_result,
+                        "skipped": True,
+                    }
 
     # Record start time
     started_at = datetime.utcnow()
