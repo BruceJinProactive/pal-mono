@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from api.schemas.admin.account import AccountStatusResponse, CreateAccountRequest
 from api.schemas.admin.agent import CreateAgentRequest
 from api.schemas.admin.project import CreateProjectRequest
+from db.tables.accounts import AccountSegment
 
 
 class OnboardingAgentProject(BaseModel):
@@ -92,6 +93,10 @@ class SelfOnboardingRequest(BaseModel):
         default=None,
         description="Whether terms are accepted at signup (optional)",
     )
+    segment: AccountSegment | None = Field(
+        default=None,
+        description="Business segment: smb (small & medium business), mm (mid-market), or ent (enterprise)",
+    )
 
     # User parameters
     user_name: str = Field(..., description="Name of the created user")
@@ -124,6 +129,12 @@ class SelfOnboardingRequest(BaseModel):
     )
     project_address: str = Field(..., description="Address of the created project")
     project_timezone: str = Field(..., description="Timezone of the created project")
+    google_place_id: str | None = Field(
+        default=None, description="Google Place ID for the project location"
+    )
+    product_info: str | None = Field(
+        default=None, description="Menu/product information for the project"
+    )
 
 
 class SelfOnboardingResponse(BaseModel):

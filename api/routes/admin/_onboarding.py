@@ -454,6 +454,7 @@ def self_onboard_account(
     account_params.phone_number = request.phone_number
     account_params.business_description = request.account_description
     account_params.terms_accepted = request.terms_accepted
+    account_params.segment = request.segment
     # Default notification email to owner's email
     account_params.notification_email = request.email
     try:
@@ -532,7 +533,7 @@ def self_onboard_project(
     Self onboard a project. This function creates a project with the given project_name
 
     Args:
-        request: A SelfOnboardingRequest object containing the project name, display name, store hours, address, and timezone.
+        request: A SelfOnboardingRequest object containing the project name, display name, store hours, address, timezone, google_place_id, and product_info.
         context: A UserContext object containing the user context.
         session: A Session object containing the database session.
         account_name: A string containing the account name.
@@ -546,10 +547,11 @@ def self_onboard_project(
     project_params.name = request.project_name
     project_params.display_name = request.project_display_name
     project_params.agent_id = agent_id
-    # project_params.timezone = request.project_timezone
     project_params.store_hours = request.project_store_hours
     project_params.address = request.project_address
     project_params.timezone = request.project_timezone
+    project_params.google_place_id = request.google_place_id
+    project_params.product_info = request.product_info
     try:
         new_project = project_service.create_project(
             session=session,
