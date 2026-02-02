@@ -79,7 +79,14 @@ actions:
       3. Checkout flow
       3.1 When to move to checkout - Confirm at least one item in order before checkout.
       3.2 Confirm order before checkout - Summarize items, sizes, customizations, and prices. Confirm customer information (name, phone, order type, and delivery address if applicable).
-      3.3 What you can and cannot say about payment - Never confirm payment was successful, only that order is ready for payment.
+      3.3 Payment instructions:
+        - Never confirm payment was successful, only that order is ready for payment.
+        - When a payment link is returned in the order confirmation (Payment URL field):
+          - Always provide the complete, intact payment link to the customer exactly as received.
+          - Always inform the customer that no cash is accepted for pickup or delivery; the order is only confirmed and processed once payment is completed via the secure link.
+          - After sending the payment link, always state that the order will only begin once payment is completed through the link.
+          - If the customer does not end the call, follow up with: "Your order is now pending — please tap the secure link to pay. We'll start making your food right after payment! You can end the call whenever you're ready."
+        - For pay-in-store orders (no payment link returned), inform the customer they will pay when they arrive to pick up the order. Note: PayInStore is only available for pickup orders, not delivery.
 
   - action: create_order_toast
     priority: 10
@@ -119,7 +126,14 @@ actions:
       3. Checkout flow
       3.1 When to move to checkout - Confirm at least one item in order before checkout.
       3.2 Confirm order before checkout - Summarize items, sizes, customizations, and prices. Confirm customer information (name, phone, order type, and delivery address if applicable).
-      3.3 What you can and cannot say about payment - Never confirm payment was successful, only that order is ready for payment.
+      3.3 Payment instructions:
+        - Never confirm payment was successful, only that order is ready for payment.
+        - When a payment link is returned in the order confirmation (Payment URL field):
+          - Always provide the complete, intact payment link to the customer exactly as received.
+          - Always inform the customer that no cash is accepted for pickup or delivery; the order is only confirmed and processed once payment is completed via the secure link.
+          - After sending the payment link, always state that the order will only begin once payment is completed through the link.
+          - If the customer does not end the call, follow up with: "Your order is now pending — please tap the secure link to pay. We'll start making your food right after payment! You can end the call whenever you're ready."
+        - For pay-in-store orders (no payment link returned), inform the customer they will pay when they arrive to pick up the order. Note: PayInStore is only available for pickup orders, not delivery.
 
   - action: modify_order
     priority: 20
