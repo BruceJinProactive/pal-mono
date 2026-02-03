@@ -267,6 +267,146 @@ async def get_feedback_fde(
         return None
 
 
+async def get_feedback_tickets_by_client(
+    client_name: str, client: Optional[AsyncClient] = None
+) -> list[dict]:
+    """
+    Query the Feedback Inbox database for all feedback tickets for a specific client.
+
+    Uses the Client relation to accurately match tickets by resolving the client page ID
+    from the Clients Master Database first.
+
+    Args:
+        client_name: The Pal client/account name (must match account_name in Clients database).
+        client: Optional Notion AsyncClient. If not provided, a shared client
+            will be created via get_notion_client().
+
+    Returns:
+        list[dict]: List of feedback ticket data with 'conversation_id' and 'status' fields.
+            Returns empty list if query fails or no tickets found.
+    """
+    try:
+        # Ensure we have a Notion client
+        if client is None:
+            try:
+                client = get_notion_client()
+            except ValueError as e:
+                logger.error(
+                    f"[Notion] Failed to get Notion client for feedback query: {e}",
+                    extra={"client_name": client_name},
+                )
+                return []
+
+        # Step 1: Get the client page ID from Clients Master Database
+        # This ensures we're matching the exact client by account_name
+        client_page_id = await get_client_page_id_by_account_name(client_name, client)
+        if not client_page_id:
+            logger.warning(
+                f"[Notion] No client page found for account_name: {client_name}",
+                extra={"client_name": client_name},
+            )
+            return []
+
+        # Normalize the page ID format for comparison (remove dashes)
+        normalized_client_page_id = format_notion_page_id(client_page_id).replace(
+            "-", ""
+        )
+
+        # Feedback Inbox Database ID
+        feedback_database_id = "2f48c0822e498004a390e305518953a5"
+
+        # Step 2: Query all feedback tickets
+        # Note: Notion API doesn't support filtering by relation properties directly,
+        # so we fetch all tickets and filter by Client relation in code
+        all_tickets = []
+        has_more = True
+        start_cursor = None
+
+        while has_more:
+            query_params = {"database_id": feedback_database_id, "page_size": 100}
+            if start_cursor:
+                query_params["start_cursor"] = start_cursor
+
+            data = await client.databases.query(**query_params)
+            results = data.get("results", [])
+            all_tickets.extend(results)
+
+            has_more = data.get("has_more", False)
+            start_cursor = data.get("next_cursor")
+
+        # Step 3: Filter tickets by exact Client relation match
+        client_tickets = []
+        for ticket in all_tickets:
+            props = ticket.get("properties", {}) or {}
+
+            # Check the Client relation property
+            client_relation = props.get("Client", {})
+            if client_relation.get("type") != "relation":
+                continue
+
+            # Check if this ticket's Client relation includes our target client page ID
+            relation_ids = client_relation.get("relation", [])
+            ticket_matches = False
+
+            for rel in relation_ids:
+                rel_id = rel.get("id", "")
+                # Normalize the relation ID for comparison (remove dashes)
+                normalized_rel_id = format_notion_page_id(rel_id).replace("-", "")
+                if normalized_rel_id == normalized_client_page_id:
+                    ticket_matches = True
+                    break
+
+            if not ticket_matches:
+                continue
+
+            # Extract ticket data
+            # Get status
+            status_prop = props.get("Status", {})
+            status = None
+            if status_prop.get("type") == "select":
+                status_select = status_prop.get("select")
+                if status_select:
+                    status = status_select.get("name")
+
+            # Get conversation ID
+            conv_id_prop = props.get("Conversation ID", {})
+            conversation_id = None
+            if conv_id_prop.get("type") == "rich_text":
+                conv_id_parts = conv_id_prop.get("rich_text", [])
+                conversation_id = "".join(
+                    part.get("plain_text", "") for part in conv_id_parts
+                )
+
+            if conversation_id:
+                client_tickets.append(
+                    {
+                        "conversation_id": conversation_id,
+                        "status": status,
+                        "page_id": ticket.get("id"),
+                    }
+                )
+
+        logger.info(
+            f"[Notion] Found {len(client_tickets)} feedback tickets for client {client_name}",
+            extra={
+                "client_name": client_name,
+                "client_page_id": normalized_client_page_id,
+                "total_tickets": len(all_tickets),
+                "filtered_tickets": len(client_tickets),
+            },
+        )
+
+        return client_tickets
+
+    except Exception as e:
+        logger.error(
+            f"[Notion] Failed to query feedback tickets for client: {str(e)}",
+            extra={"client_name": client_name},
+            exc_info=True,
+        )
+        return []
+
+
 async def create_client_page(
     account_name: str,
     account_display_name: str,

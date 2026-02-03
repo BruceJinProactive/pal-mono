@@ -27,6 +27,7 @@ from ._feedback import (
     create_client_page,
     create_feedback_ticket,
     get_feedback_fde,
+    get_feedback_tickets_by_client,
     update_feedback_status,
 )
 from ._pages import (
@@ -64,6 +65,7 @@ __all__ = [
     "update_feedback_status",
     "get_client_page_id_by_account_name",
     "get_feedback_fde",
+    "get_feedback_tickets_by_client",
     "create_client_page",
     # Utilities
     "extract_notion_page_id",
