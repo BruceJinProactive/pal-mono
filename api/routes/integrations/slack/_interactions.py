@@ -7,13 +7,14 @@ Handles Slack interactive components (button clicks, modals, etc.)
 import hashlib
 import hmac
 import json
+import os
 import time
 from typing import Any, Dict
 from urllib.parse import parse_qs
 
 from fastapi import HTTPException, Request, status
 
-from services import notion_service
+from services import notion_service, postmark_service
 from services.slack_service import make_feedback_button
 from services.slack_service._client import get_slack_client
 from utils.log import logger
@@ -282,9 +283,9 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
     1. Verify Slack signature for security
     2. Parse button payload to extract: conversation_id, notion_page_id, user_email
     3. Handle action based on button clicked:
-       - 'Investigating': Update Slack message + Update Notion status (NO email)
+       - 'Investigating': Update Slack message + Update Notion status + Send feedback receipt email
        - 'Changes Now Live': Update Slack message + Update Notion status + Send resolution email
-       - 'Deferred': Update Slack message + Update Notion status to "Out of Scope" (NO email)
+       - 'Deferred': Update Slack message + Update Notion status to "Out of Scope" + Send backlog email
 
     Args:
         request: FastAPI Request object containing Slack interaction payload
@@ -384,7 +385,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
 
         # Get user who clicked the button
         user = payload.get("user", {})
-        user_name = user.get("name", "Unknown")
+        slack_user_name = user.get("name", "Unknown")
 
         # Handle onboarding actions first (different button value format)
         if action_id in ["onboarding_accept", "onboarding_discard"]:
@@ -394,7 +395,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     channel_id=channel_id,
                     message_ts=message_ts,
                     message=message,
-                    clicked_by=user_name,
+                    clicked_by=slack_user_name,
                 )
             else:  # onboarding_discard
                 return await _handle_onboarding_discard(
@@ -402,24 +403,44 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     channel_id=channel_id,
                     message_ts=message_ts,
                     message=message,
-                    clicked_by=user_name,
+                    clicked_by=slack_user_name,
                 )
 
-        # Parse button value for feedback actions: conversation_id|notion_page_id|user_email
+        # Parse button value for feedback actions
         # STATELESS: All data needed for the interaction is embedded in the button payload
         # We do NOT query the database - this makes the handler fully stateless
-        parts = button_value.split("|")
-        if len(parts) != 3:
-            logger.error(
-                "[Slack Interactions] Invalid button value format (expected: conversation_id|notion_page_id|user_email)",
-                extra={"button_value": button_value},
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid button value format",
-            )
+        #
+        # New format (JSON): {"conversation_id": "...", "notion_page_id": "...", "user_email": "...", "user_name": "...", "feedback_text": "...", "tags": [...]}
+        # Legacy format (pipe-delimited): conversation_id|notion_page_id|user_email
+        conversation_id = ""
+        notion_page_id = ""
+        user_email = ""
+        user_name = ""
+        feedback_text = ""
+        tags: list[str] = []
 
-        conversation_id, notion_page_id, user_email = parts
+        # Try parsing as JSON first (new format)
+        try:
+            payload_data = json.loads(button_value)
+            conversation_id = payload_data.get("conversation_id", "")
+            notion_page_id = payload_data.get("notion_page_id", "")
+            user_email = payload_data.get("user_email", "")
+            user_name = payload_data.get("user_name", "")
+            feedback_text = payload_data.get("feedback_text", "")
+            tags = payload_data.get("tags", [])
+        except json.JSONDecodeError as e:
+            # Fall back to legacy pipe-delimited format for backward compatibility
+            parts = button_value.split("|")
+            if len(parts) != 3:
+                logger.error(
+                    "[Slack Interactions] Invalid button value format (expected JSON or pipe-delimited)",
+                    extra={"button_value": button_value},
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid button value format",
+                ) from e
+            conversation_id, notion_page_id, user_email = parts
 
         # Validate extracted values
         if not conversation_id or not user_email:
@@ -466,7 +487,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                 "action_id": action_id,
                 "conversation_id": conversation_id,
                 "notion_page_id": notion_page_id,
-                "clicked_by": user_name,
+                "clicked_by": slack_user_name,
             },
         )
 
@@ -567,6 +588,119 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
             status=new_status,
             conversation_id=conversation_id,
         )
+
+        # Send feedback receipt email (only for 'Investigating' action)
+        if clicked_action_name == "investigating" and user_email:
+            try:
+                email_sent = await postmark_service.send_feedback_receipt(
+                    user_email=user_email,
+                    user_name=user_name or user_email,
+                    feedback_text=feedback_text,
+                )
+                if email_sent:
+                    logger.info(
+                        "[Slack Interactions] Sent feedback receipt email to user",
+                        extra={
+                            "conversation_id": conversation_id,
+                            "user_email": user_email,
+                        },
+                    )
+                else:
+                    logger.warning(
+                        "[Slack Interactions] Feedback receipt email not sent",
+                        extra={
+                            "conversation_id": conversation_id,
+                            "user_email": user_email,
+                        },
+                    )
+            except Exception as e:
+                logger.error(
+                    f"[Slack Interactions] Error sending feedback receipt email: {e}",
+                    extra={
+                        "conversation_id": conversation_id,
+                        "user_email": user_email,
+                    },
+                    exc_info=True,
+                )
+
+        # Construct conversation link (used by resolution and backlog emails)
+        console_base_url = os.getenv(
+            "PAL_CONSOLE_BASE_URL", "https://console.palona.ai"
+        )
+        conversation_link = (
+            f"{console_base_url}/hosting/conversations?conversationId={conversation_id}"
+        )
+
+        # Send resolution notice email (only for 'Changes Now Live' action)
+        if clicked_action_name == "live" and user_email:
+            try:
+                email_sent = await postmark_service.send_resolution_notice(
+                    user_email=user_email,
+                    user_name=user_name or user_email,
+                    tags=tags,
+                    feedback_content=feedback_text,
+                    action_url=conversation_link,
+                )
+                if email_sent:
+                    logger.info(
+                        "[Slack Interactions] Sent resolution notice email to user",
+                        extra={
+                            "conversation_id": conversation_id,
+                            "user_email": user_email,
+                        },
+                    )
+                else:
+                    logger.warning(
+                        "[Slack Interactions] Resolution notice email not sent",
+                        extra={
+                            "conversation_id": conversation_id,
+                            "user_email": user_email,
+                        },
+                    )
+            except Exception as e:
+                logger.error(
+                    f"[Slack Interactions] Error sending resolution notice email: {e}",
+                    extra={
+                        "conversation_id": conversation_id,
+                        "user_email": user_email,
+                    },
+                    exc_info=True,
+                )
+
+        # Send feedback backlog email (only for 'Deferred' action)
+        if clicked_action_name == "deferred" and user_email:
+            try:
+                email_sent = await postmark_service.send_feedback_backlog(
+                    user_email=user_email,
+                    user_name=user_name or user_email,
+                    feedback_text=feedback_text,
+                    conversation_url=conversation_link,
+                )
+                if email_sent:
+                    logger.info(
+                        "[Slack Interactions] Sent feedback backlog email to user",
+                        extra={
+                            "conversation_id": conversation_id,
+                            "user_email": user_email,
+                        },
+                    )
+                else:
+                    logger.warning(
+                        "[Slack Interactions] Feedback backlog email not sent",
+                        extra={
+                            "conversation_id": conversation_id,
+                            "user_email": user_email,
+                        },
+                    )
+            except Exception as e:
+                logger.error(
+                    f"[Slack Interactions] Error sending feedback backlog email: {e}",
+                    extra={
+                        "conversation_id": conversation_id,
+                        "user_email": user_email,
+                    },
+                    exc_info=True,
+                )
 
         logger.info(
             f"[Slack Interactions] Feedback marked as {clicked_action_name}",

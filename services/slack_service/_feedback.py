@@ -4,6 +4,7 @@ Slack Feedback Notification Module
 Provides functionality to send feedback notifications to Slack using Block Kit formatting.
 """
 
+import json
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -40,7 +41,7 @@ def make_feedback_button(
     Args:
         label: Button label text
         action: Action ID suffix (e.g., "investigating", "live", "deferred")
-        button_value: Button value payload (conversation_id|notion_page_id|user_email)
+        button_value: JSON-encoded button payload containing conversation_id, notion_page_id, user_email, user_name, feedback_text, and tags
         is_active: Whether this button is currently active (shows checkmark + primary style)
         emoji: Optional emoji to append to label
 
@@ -261,7 +262,16 @@ async def send_feedback_notification(
             blocks.append(build_actions_block(link_buttons))
 
         # Status action buttons
-        button_value = f"{conversation_id}|{notion_page_id or ''}|{user_email}"
+        # Encode button payload as JSON to handle special characters and multiple fields
+        button_payload = {
+            "conversation_id": conversation_id,
+            "notion_page_id": notion_page_id or "",
+            "user_email": user_email,
+            "user_name": user_name or "",
+            "feedback_text": feedback_text or "",
+            "tags": tags or [],
+        }
+        button_value = json.dumps(button_payload)
         blocks.append(build_section_block("*Update Status:*"))
         blocks.append(
             build_actions_block(
