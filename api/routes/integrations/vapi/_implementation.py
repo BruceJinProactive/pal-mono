@@ -1373,312 +1373,490 @@ async def handle_session_closure(message_data, session: AsyncSession):
 
 async def handle_create_vapi_assistant(
     create_request,
-) -> str:
-    """Create a new VAPI assistant or squad using the server SDK."""
+) -> dict[str, str | None]:
+    """Create a new VAPI assistant or squad using the server SDK.
 
-    vapi_client = _get_vapi_client()
-    logger.info(f"Creating VAPI assistant for {create_request.name}")
-
-    # For Multilingual: create a squad instead of a single assistant
-    if create_request.language == "Multilingual":
-        logger.info(f"Creating multilingual squad for {create_request.name}")
-
-        # Step 1: Create all assistant members first
-        triage_config, english_config, spanish_config, chinese_config = (
-            _build_multilingual_squad(create_request)
-        )
-
-        # Create assistants
-        triage = await vapi_client.assistants.create(**triage_config)
-        english = await vapi_client.assistants.create(**english_config)
-        spanish = await vapi_client.assistants.create(**spanish_config)
-        chinese = await vapi_client.assistants.create(**chinese_config)
-
-        logger.info(
-            f"Created assistants: triage={triage.id} ({triage.name}), english={english.id} ({english.name}), spanish={spanish.id} ({spanish.name}), chinese={chinese.id} ({chinese.name})"
-        )
-
-        # Step 2: Create squad with assistant IDs and routing configuration
-        squad_data = {
-            "name": create_request.name,
-            "members": [
-                {
-                    "assistant_id": triage.id,
-                    "assistant_destinations": [
-                        {
-                            "type": "assistant",
-                            "assistant_name": english.name,
-                            "message": "Transferring you to our English specialist...",
-                            "description": "Transfer to English language assistant",
-                            "transfer_mode": "rolling-history",
-                        },
-                        {
-                            "type": "assistant",
-                            "assistant_name": spanish.name,
-                            "message": "¡Está bien, no hay problema!",
-                            "description": "Transfer to Spanish language assistant",
-                            "transfer_mode": "rolling-history",
-                        },
-                        {
-                            "type": "assistant",
-                            "assistant_name": chinese.name,
-                            "message": "好的，没问题！",
-                            "description": "Transfer to Chinese language assistant",
-                            "transfer_mode": "rolling-history",
-                        },
-                    ],
-                },
-                {"assistant_id": english.id},
-                {"assistant_id": spanish.id},
-                {"assistant_id": chinese.id},
-            ],
-            "members_overrides": {
-                "metadata": {
-                    "source": "admin-console",
-                    "type": "multilingual_squad",
-                    "assistant_ids": [triage.id, english.id, spanish.id, chinese.id],
-                }
-            },
-        }
-        squad = await vapi_client.squads.create(**squad_data)
-        logger.info(f"Successfully created VAPI squad: {squad.id}")
-        return squad.id
-
-    # For single language: create a single assistant
-    assistant_data = _build_assistant(create_request)
-    assistant = await vapi_client.assistants.create(**assistant_data)
-    logger.info(f"Successfully created VAPI assistant: {assistant.id}")
-    return assistant.id
-
-
-def _build_multilingual_squad(create_request) -> tuple[dict, dict, dict, dict]:
-    """Build multilingual squad configuration with triage and language assistants.
-
-    System Prompt Assignment:
-    - English: Uses create_request.systemPrompt directly
-    - Spanish: Prepends language enforcement rules + create_request.systemPrompt
-    - Chinese: Prepends language enforcement rules + create_request.systemPrompt
-
-    First Message (Language-Specific):
-    - English: "Hello! How can I help you today?"
-    - Spanish: "¡Hola! ¿Cómo puedo ayudarte hoy?"
-    - Chinese: "你好！我今天能帮你什么？"
-
-    This ensures each language assistant greets in the appropriate language
-    and has the full system instructions from create_request.
+    Interprets languageGroups to determine what to create:
+    - Single group with single language: single-language assistant
+    - Single group with multiple languages: single multilingual assistant
+    - Multiple groups: squad with triage + one assistant per group
 
     Returns:
-        tuple: (triage_config, english_config, spanish_config, chinese_config)
+        dict: {"assistantId": str, "squadId": None} for single assistant
+              {"assistantId": None, "squadId": str} for squad
     """
-    # Language configuration for each supported language
-    # Each assistant will receive: system_prefix + create_request.systemPrompt
-    languages = {
-        "english": {
-            "display": "English",
-            "transcriber_code": "en",
-            "system_prefix": "",  # No prefix, uses systemPrompt as-is
-            "first_message": "Hello! How can I help you today?",
+    vapi_client = _get_vapi_client()
+    language_groups = create_request.languageGroups
+
+    logger.debug(
+        f"[handle_create_vapi_assistant] Creating VAPI assistant for {create_request.name} with language groups: {language_groups}"
+    )
+
+    # Validate language groups
+    if not language_groups or len(language_groups) == 0:
+        raise ValueError("languageGroups must contain at least one group")
+
+    for group in language_groups:
+        if not group or len(group) == 0:
+            raise ValueError("Each language group must contain at least one language")
+        for language in group:
+            if not isinstance(language, str) or not language.strip():
+                raise ValueError("Each language must be a non-empty string")
+
+    # Validate transcribers array if provided
+    transcribers = create_request.transcribers
+    if transcribers is not None:
+        if len(transcribers) != len(language_groups):
+            raise ValueError(
+                f"transcribers length ({len(transcribers)}) must match "
+                f"languageGroups length ({len(language_groups)})"
+            )
+
+    # Case 1: Single group - create a single assistant (possibly multilingual)
+    if len(language_groups) == 1:
+        languages_in_group = language_groups[0]
+        transcriber = transcribers[0] if transcribers else None
+        assistant_data = _build_single_assistant(
+            create_request, languages_in_group, transcriber
+        )
+        assistant = await vapi_client.assistants.create(**assistant_data)
+        logger.debug(
+            f"[handle_create_vapi_assistant] Successfully created VAPI assistant: {assistant.id} for languages: {languages_in_group}"
+        )
+        return {"assistantId": assistant.id, "squadId": None}
+
+    # Case 2: Multiple groups - create a squad with triage
+    logger.debug(
+        f"[handle_create_vapi_assistant] Creating squad for {create_request.name} with {len(language_groups)} language groups"
+    )
+
+    # Build triage and group assistants
+    triage_config = _build_dynamic_triage_assistant(create_request, language_groups)
+    group_configs = [
+        _build_group_assistant(
+            create_request,
+            group,
+            idx,
+            transcribers[idx] if transcribers else None,
+        )
+        for idx, group in enumerate(language_groups)
+    ]
+
+    # Create all assistants with cleanup on failure
+    created_assistants: list = []
+    try:
+        triage = await vapi_client.assistants.create(**triage_config)
+        created_assistants.append(triage)
+        group_assistants = []
+        for config in group_configs:
+            assistant = await vapi_client.assistants.create(**config)
+            created_assistants.append(assistant)
+            group_assistants.append(assistant)
+
+        logger.debug(
+            f"[handle_create_vapi_assistant] Created triage assistant: {triage.id} ({triage.name}) and "
+            f"{len(group_assistants)} group assistants"
+        )
+
+        # Build squad with routing
+        squad_data = _build_squad_data(
+            create_request, triage, group_assistants, language_groups
+        )
+        squad = await vapi_client.squads.create(**squad_data)
+        logger.debug(
+            f"[handle_create_vapi_assistant] Successfully created VAPI squad: {squad.id}"
+        )
+        return {"assistantId": None, "squadId": squad.id}
+    except Exception:
+        # Cleanup any created assistants on failure to avoid orphans
+        for assistant in created_assistants:
+            try:
+                await vapi_client.assistants.delete(assistant.id)
+                logger.debug(
+                    f"[handle_create_vapi_assistant] Cleaned up orphaned assistant: {assistant.id}"
+                )
+            except Exception as cleanup_error:
+                logger.warning(
+                    f"[handle_create_vapi_assistant] Failed to cleanup orphaned assistant {assistant.id}: {cleanup_error}"
+                )
+        raise
+
+
+# Language configuration for supported languages
+LANGUAGE_CONFIG: dict[str, dict[str, str]] = {
+    "English": {
+        "display": "English",
+        "transcriber_code": "en",
+        "system_prefix": "",
+        "first_message": "Hello! How can I help you today?",
+        "transfer_message": "Transferring you to our English specialist...",
+    },
+    "Spanish": {
+        "display": "Spanish",
+        "transcriber_code": "es",
+        "system_prefix": "=== REGLA CRÍTICA DE IDIOMA ===\nDEBES responder SIEMPRE y ÚNICAMENTE en ESPAÑOL.\n\n",
+        "first_message": "¡Hola! ¿Cómo puedo ayudarte hoy?",
+        "transfer_message": "¡Está bien, no hay problema!",
+    },
+    "Chinese": {
+        "display": "Chinese",
+        "transcriber_code": "zh",
+        "system_prefix": '=== 关键语言规则 ===\n你必须始终只用中文回复。请用中文回复数字 比如念时间的时候用中文回复 "1234" 是 "一二三四"。\n\n',
+        "first_message": "你好！我今天能帮你什么？",
+        "transfer_message": "好的，没问题！",
+    },
+}
+
+
+def _get_language_config(language: str) -> dict[str, str]:
+    """Get configuration for a language, with fallback to English-like defaults."""
+    normalized = language.strip().title()
+    if normalized in LANGUAGE_CONFIG:
+        return LANGUAGE_CONFIG[normalized]
+    # Fallback for unknown languages
+    return {
+        "display": normalized,
+        "transcriber_code": "en",
+        "system_prefix": "",
+        "first_message": "Hello! How can I help you today?",
+        "transfer_message": f"Transferring you to our {normalized} specialist...",
+    }
+
+
+def _build_single_assistant(
+    create_request, languages: list[str], transcriber: dict | None = None
+) -> dict:
+    """Build a single assistant configuration for one or more languages.
+
+    Args:
+        create_request: The assistant creation request
+        languages: List of languages this assistant should support
+        transcriber: Optional transcriber config for this assistant
+
+    Returns:
+        dict: Assistant configuration for VAPI
+    """
+    is_multilingual = len(languages) > 1
+
+    # For single-language assistants, prepend language-specific system prefix
+    # For multilingual assistants, use systemPrompt as-is (no language enforcement)
+    primary_config = _get_language_config(languages[0])
+    system_content = (
+        f"{primary_config['system_prefix']}{create_request.systemPrompt}"
+        if not is_multilingual
+        else create_request.systemPrompt
+    )
+
+    # Base assistant configuration
+    assistant_data: dict[str, Any] = {
+        "name": create_request.name,
+        "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "temperature": 0.3,
+            "messages": [{"role": "system", "content": system_content}],
         },
-        "spanish": {
-            "display": "Spanish",
-            "transcriber_code": "es",
-            "system_prefix": "=== REGLA CRÍTICA DE IDIOMA ===\nDEBES responder SIEMPRE y ÚNICAMENTE en ESPAÑOL. \n\n",
-            "first_message": "¡Hola! ¿Cómo puedo ayudarte hoy?",
+        "voice": {
+            "provider": create_request.voice.provider,
+            "model": create_request.voice.model,
+            "voiceId": create_request.voice.voiceId,
         },
-        "chinese": {
-            "display": "Chinese",
-            "transcriber_code": "zh",
-            "system_prefix": "=== 关键语言规则 ===\n你必须始终只用中文回复。请用中文回复数字 比如念时间的时候用中文回复 “1234” 是 “一二三四”。\n\n",
-            "first_message": "你好！我今天能帮你什么？",
+        "metadata": {
+            "source": "admin-console",
+            "type": "single_assistant",
+            "languages": [lang.lower() for lang in languages],
+            "is_multilingual": is_multilingual,
         },
     }
 
-    # Build triage assistant
-    triage = _build_squad_triage_assistant(create_request, languages)
+    # Add optional configurable fields
+    if create_request.firstMessage is not None:
+        assistant_data["first_message"] = create_request.firstMessage
+    if create_request.maxDurationSeconds is not None:
+        assistant_data["max_duration_seconds"] = create_request.maxDurationSeconds
 
-    # Build language-specific assistants
-    assistants = {
-        lang: _build_squad_language_assistant(create_request, lang, config)
-        for lang, config in languages.items()
-    }
+    # Use transcriber config if provided, otherwise use default for English-only
+    if transcriber:
+        assistant_data["transcriber"] = transcriber
+    else:
+        # Check if any non-English languages are present
+        has_non_english = any(lang.strip().lower() != "english" for lang in languages)
+        if has_non_english:
+            raise ValueError(
+                "transcriber configuration is required for non-English language assistants"
+            )
+        # Default to Deepgram nova-3 with en-US for English-only assistants
+        assistant_data["transcriber"] = {
+            "provider": "deepgram",
+            "model": "nova-3",
+            "language": "en-US",
+        }
 
-    return triage, assistants["english"], assistants["spanish"], assistants["chinese"]
+    return assistant_data
 
 
-def _build_squad_triage_assistant(create_request, languages: dict) -> dict:
-    """Build triage assistant for multilingual squad."""
+def _build_dynamic_triage_assistant(
+    create_request, language_groups: list[list[str]]
+) -> dict:
+    """Build triage assistant for dynamic language groups.
+
+    Args:
+        create_request: The assistant creation request
+        language_groups: List of language groups (each group becomes one assistant)
+
+    Returns:
+        dict: Triage assistant configuration
+    """
     triage_name = _format_assistant_name(create_request.name, " (Language Triage)")
 
-    # Build transfer instructions dynamically
-    transfer_rules = [
-        f"- For {config['display']} → transfer to {_format_assistant_name(create_request.name, config['display'])}"
-        for config in languages.values()
-    ]
+    # Build language options for greeting
+    all_languages = []
+    for group in language_groups:
+        all_languages.extend(group)
+    unique_languages = list(
+        dict.fromkeys(all_languages)
+    )  # Preserve order, remove dupes
+
+    # Build greeting with available languages
+    language_options = []
+    for lang in unique_languages:
+        config = _get_language_config(lang)
+        if lang.lower() == "english":
+            language_options.append("English")
+        elif lang.lower() == "spanish":
+            language_options.append("español")
+        elif lang.lower() == "chinese":
+            language_options.append("中文")
+        else:
+            language_options.append(config["display"])
+
+    greeting_languages = (
+        ", ".join(language_options[:-1]) + f", or {language_options[-1]}"
+        if len(language_options) > 1
+        else language_options[0]
+    )
+
+    # Build transfer rules for each group
+    transfer_rules = []
+    for idx, group in enumerate(language_groups):
+        group_name = _get_group_display_name(group)
+        assistant_name = _format_assistant_name(create_request.name, f" ({group_name})")
+        languages_in_group = ", ".join(group)
+        transfer_rules.append(
+            f"- For {languages_in_group} → transfer to {assistant_name}"
+        )
 
     system_prompt = f"""You are the initial language detection assistant.
 
 Your ONLY responsibility is to:
 1. Greet the customer warmly
-2. Identify their preferred language (English, Spanish, or Chinese)
+2. Identify their preferred language
 3. Transfer them to the appropriate language specialist immediately
 
-Say: "Hello! I can help you in English, español, or 中文. Which language would you prefer?"
+Say: "Hello! I can help you in {greeting_languages}. Which language would you prefer?"
 
 IMPORTANT: As soon as you detect the language, transfer immediately to the appropriate assistant:
 {chr(10).join(transfer_rules)}
 
 DO NOT attempt to help with their actual request."""
 
+    default_greeting = f"Hello! I can help you in {greeting_languages}. Which language would you prefer?"
+
+    # Build transcriber config based on languages (same logic as admin console)
+    # Map language names to codes
+    lang_code_map = {
+        "english": "en",
+        "spanish": "es",
+        "chinese": "zh",
+    }
+    lang_codes = [
+        lang_code_map.get(lang.lower(), lang.lower()) for lang in unique_languages
+    ]
+
+    # Determine transcriber config based on language combination
+    has_english = "en" in lang_codes
+    has_spanish = "es" in lang_codes
+    only_english_spanish = len(lang_codes) == 2 and has_english and has_spanish
+
+    if only_english_spanish:
+        # English + Spanish only: use Nova-3 multi
+        transcriber_config: dict[str, Any] = {
+            "provider": "deepgram",
+            "model": "nova-3",
+            "language": "multi",
+        }
+    else:
+        # Other combinations: use Gladia with multiple languages
+        transcriber_config = {
+            "model": "solaria-1",
+            "provider": "gladia",
+            "languages": lang_codes,
+            "languageBehaviour": "automatic multiple languages",
+            "confidenceThreshold": 0.1,
+            "receivePartialTranscripts": True,
+        }
+
     return {
         "name": triage_name,
-        "transcriber": {
-            "provider": "google",
-            "model": "gemini-2.5-flash",
-            "language": "Multilingual",
-        },
-        "model": _build_squad_model_config(0.3, system_prompt),
-        "voice": _build_squad_voice_config(create_request.voiceId),
-        "first_message": create_request.firstMessage
-        or "Hello! I can help you in English, español, or 中文. Which language would you prefer?",
-        "metadata": {
-            "source": "admin-console",
-            "type": "squad_member",
-            "role": "triage",
-        },
-    }
-
-
-def _build_squad_language_assistant(
-    create_request, language: str, config: dict
-) -> dict:
-    """Build language-specific assistant for multilingual squad.
-
-    Each language assistant receives:
-    - The base system prompt from create_request.systemPrompt
-    - A language-specific prefix (if applicable) to enforce language use
-    - A first message in the appropriate language
-    """
-
-    assistant_name = _format_assistant_name(create_request.name, config["display"])
-
-    # Combine language-specific prefix with the base system prompt
-    # This ensures each assistant has the full system instructions
-    system_content = config["system_prefix"] + create_request.systemPrompt
-
-    logger.debug(
-        f"Building {language} assistant with system prompt (length: {len(system_content)} chars)"
-    )
-
-    return {
-        "name": assistant_name,
-        "transcriber": {
-            "provider": "deepgram",
-            "model": "nova-2",
-            "language": config["transcriber_code"],
-        },
-        "model": _build_squad_model_config(0.3, system_content),
-        "voice": _build_squad_voice_config(create_request.voiceId),
-        "first_message": config["first_message"],
-        "metadata": {
-            "source": "admin-console",
-            "type": "squad_member",
-            "role": "language",
-            "language": language,
-        },
-    }
-
-
-def _build_squad_model_config(temperature: float, system_content: str) -> dict:
-    """Build model configuration for squad assistants."""
-    return {
-        "provider": "openai",
-        "model": "gpt-4o",
-        "temperature": temperature,
-        "messages": [{"role": "system", "content": system_content}],
-    }
-
-
-def _build_squad_voice_config(voice_id: str) -> dict:
-    """Build voice configuration for squad assistants."""
-    return {
-        "provider": "cartesia",
-        "model": "sonic-2",
-        "voice_id": voice_id,
-    }
-
-
-def _build_assistant(create_request) -> dict:
-    """Build assistant configuration."""
-    language = create_request.language
-
-    # Base assistant configuration
-    assistant_data = {
-        "name": create_request.name,
+        "transcriber": transcriber_config,
         "model": {
             "provider": "openai",
             "model": "gpt-4o",
             "temperature": 0.3,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": create_request.systemPrompt,
-                }
-            ],
+            "messages": [{"role": "system", "content": system_prompt}],
         },
         "voice": {
-            "provider": "cartesia",
-            "model": "sonic-2",
-            "voice_id": create_request.voiceId,
+            "provider": create_request.voice.provider,
+            "model": create_request.voice.model,
+            "voiceId": create_request.voice.voiceId,
         },
+        "first_message": create_request.firstMessage or default_greeting,
         "metadata": {
             "source": "admin-console",
-            "type": "single_assistant",
-            "language": language.lower() if language else "english",
+            "type": "squad_member",
+            "role": "triage",
+            "language_groups": language_groups,
         },
     }
 
-    # Add optional configurable fields with correct snake_case names
-    if create_request.firstMessage is not None:
-        assistant_data["first_message"] = create_request.firstMessage
-    if create_request.maxDurationSeconds is not None:
-        assistant_data["max_duration_seconds"] = create_request.maxDurationSeconds
 
-    # For English: use standard Deepgram transcriber
-    if language == "English":
-        return assistant_data
+def _get_group_display_name(languages: list[str]) -> str:
+    """Get a display name for a language group."""
+    if len(languages) == 1:
+        return _get_language_config(languages[0])["display"]
+    return "+".join(_get_language_config(lang)["display"] for lang in languages)
 
-    # For Spanish and Chinese: add language-specific transcriber configurations
-    language_settings = {
-        "Spanish": {
-            "transcriber": {
-                "provider": "deepgram",
-                "model": "nova-2",
-                "language": "es",
-            },
-            "language_instruction": "\n\n=== REGLA CRÍTICA DE IDIOMA ===\nDEBES responder SIEMPRE y ÚNICAMENTE en ESPAÑOL.\nNUNCA uses inglés u otro idioma.\nToda tu conversación debe ser 100% en español.\nMantén una conversación natural con el usuario.\nNo termines la llamada a menos que el usuario lo pida explícitamente.",
+
+def _build_group_assistant(
+    create_request,
+    languages: list[str],
+    group_index: int,
+    transcriber: dict | None = None,
+) -> dict:
+    """Build an assistant for a language group in a squad.
+
+    Args:
+        create_request: The assistant creation request
+        languages: Languages this assistant handles
+        group_index: Index of this group (for naming)
+        transcriber: Optional transcriber config for this assistant
+
+    Returns:
+        dict: Assistant configuration for this language group
+    """
+    group_name = _get_group_display_name(languages)
+    assistant_name = _format_assistant_name(create_request.name, f" ({group_name})")
+
+    # Get first message based on primary language
+    primary_config = _get_language_config(languages[0])
+    first_message = primary_config["first_message"]
+
+    # For single-language groups, prepend language-specific system prefix
+    # For multilingual groups, use systemPrompt as-is (no language enforcement)
+    system_content = (
+        f"{primary_config['system_prefix']}{create_request.systemPrompt}"
+        if len(languages) == 1
+        else create_request.systemPrompt
+    )
+
+    assistant_data: dict[str, Any] = {
+        "name": assistant_name,
+        "model": {
+            "provider": "openai",
+            "model": "gpt-4o",
+            "temperature": 0.3,
+            "messages": [{"role": "system", "content": system_content}],
         },
-        "Chinese": {
-            "transcriber": {
-                "provider": "deepgram",
-                "model": "nova-2",
-                "language": "zh-CN",
-            },
-            "language_instruction": "\n\n=== 关键语言规则 ===\n你必须始终只用中文回复。\n绝对不要使用英语或其他语言。\n你的整个对话必须100%用中文。\n与用户进行自然对话。\n除非用户明确要求，否则不要结束通话.",
+        "voice": {
+            "provider": create_request.voice.provider,
+            "model": create_request.voice.model,
+            "voiceId": create_request.voice.voiceId,
+        },
+        "first_message": first_message,
+        "metadata": {
+            "source": "admin-console",
+            "type": "squad_member",
+            "role": "language",
+            "languages": [lang.lower() for lang in languages],
+            "group_index": group_index,
         },
     }
 
-    if language in language_settings:
-        settings = language_settings[language]
-
-        # Add transcriber configuration
-        assistant_data["transcriber"] = settings["transcriber"]
-
-        # Prepend language instruction to system prompt (at the beginning for maximum prominence)
-        assistant_data["model"]["messages"][0]["content"] = (
-            settings["language_instruction"] + "\n\n" + create_request.systemPrompt
-        )
+    # Use transcriber config if provided, otherwise use default for English-only
+    if transcriber:
+        assistant_data["transcriber"] = transcriber
+    else:
+        # Check if any non-English languages are present
+        has_non_english = any(lang.strip().lower() != "english" for lang in languages)
+        if has_non_english:
+            raise ValueError(
+                "transcriber configuration is required for non-English language assistants"
+            )
+        # Default to Deepgram nova-3 with en-US for English-only assistants
+        assistant_data["transcriber"] = {
+            "provider": "deepgram",
+            "model": "nova-3",
+            "language": "en-US",
+        }
 
     return assistant_data
+
+
+def _build_squad_data(
+    create_request,
+    triage,
+    group_assistants: list,
+    language_groups: list[list[str]],
+) -> dict:
+    """Build squad configuration with triage and language group assistants.
+
+    Args:
+        create_request: The assistant creation request
+        triage: The created triage assistant
+        group_assistants: List of created group assistants
+        language_groups: The original language groups
+
+    Returns:
+        dict: Squad configuration for VAPI
+    """
+    # Build assistant destinations for triage
+    assistant_destinations = []
+    for idx, (assistant, languages) in enumerate(
+        zip(group_assistants, language_groups)
+    ):
+        primary_config = _get_language_config(languages[0])
+        assistant_destinations.append(
+            {
+                "type": "assistant",
+                "assistant_name": assistant.name,
+                "message": primary_config["transfer_message"],
+                "description": f"Transfer to {_get_group_display_name(languages)} assistant",
+                "transfer_mode": "swap-system-message-in-history",
+            }
+        )
+
+    # Build members list
+    members = [
+        {
+            "assistant_id": triage.id,
+            "assistant_destinations": assistant_destinations,
+        }
+    ]
+    for assistant in group_assistants:
+        members.append({"assistant_id": assistant.id})
+
+    return {
+        "name": create_request.name,
+        "members": members,
+        "members_overrides": {
+            "metadata": {
+                "source": "admin-console",
+                "type": "multilingual_squad",
+                "assistant_ids": [triage.id] + [a.id for a in group_assistants],
+                "language_groups": language_groups,
+            }
+        },
+    }
 
 
 async def handle_delete_vapi_assistant(assistant_id: str):

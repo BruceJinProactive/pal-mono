@@ -10,6 +10,14 @@ from api.schemas.error.error import ErrorResponse
 from ._implementation import api_vapi_server, handle_create_vapi_assistant
 
 
+class VoiceConfig(BaseModel):
+    """Voice configuration for VAPI assistant."""
+
+    provider: str = Field(..., description="Voice provider (e.g., 'cartesia')")
+    model: str = Field(..., description="Voice model (e.g., 'sonic-2')")
+    voiceId: str = Field(..., description="Voice ID for speech synthesis")
+
+
 class CreateVapiAssistantRequest(BaseModel):
     """Request model for creating a VAPI assistant."""
 
@@ -19,19 +27,40 @@ class CreateVapiAssistantRequest(BaseModel):
         None, description="Optional call duration limit in seconds"
     )
     systemPrompt: str = Field(..., description="System prompt for the AI model")
-    voiceId: str = Field(..., description="Voice ID for speech synthesis")
-    language: str = Field(
+    voice: VoiceConfig = Field(
+        ..., description="Voice configuration from admin console"
+    )
+    languageGroups: list[list[str]] = Field(
         ...,
-        description="Language: English, Spanish, Chinese, or Multilingual (creates a squad with all languages)",
+        description=(
+            "Language groups for assistant creation. "
+            "Single group with one language (e.g., [['English']]) creates a single-language assistant. "
+            "Single group with multiple languages (e.g., [['English', 'Chinese']]) creates a single multilingual assistant. "
+            "Multiple groups (e.g., [['English'], ['Chinese']]) creates a squad with triage and separate assistants per group."
+        ),
+    )
+    transcribers: list[dict] | None = Field(
+        None,
+        description=(
+            "List of transcriber configurations, one per language group. "
+            "Each transcriber contains provider, model, language, and other settings. "
+            "Must have same length as languageGroups if provided. "
+            "Required for non-English assistants. "
+            "For English-only assistants, defaults to Deepgram nova-3 en-US if not provided."
+        ),
     )
 
 
 class CreateVapiAssistantResponse(BaseModel):
     """Response model for creating a VAPI assistant or squad."""
 
-    assistantId: str = Field(
-        ...,
-        description="The ID of the created VAPI assistant (or squad ID if language is Multilingual)",
+    assistantId: str | None = Field(
+        None,
+        description="The ID of the created VAPI assistant (only set for single-group requests)",
+    )
+    squadId: str | None = Field(
+        None,
+        description="The ID of the created VAPI squad (only set for multi-group requests)",
     )
 
 
@@ -92,16 +121,19 @@ async def create_vapi_assistant(
     - firstMessage: Optional greeting message
     - maxDurationSeconds: Optional call duration limit
     - systemPrompt: System prompt for the AI model
-    - voiceId: Voice ID for speech synthesis
+    - voice: Voice configuration from admin console (provider, model, voiceId)
+    - languageGroups: Language groups that define single vs squad creation
+    - transcribers: Optional per-group transcriber configs (provider, model, language, etc.)
 
     Fixed configuration:
-    - Transcriber: Deepgram with en-US language
-    - Model: OpenAI GPT-4o with temperature 0.7
-    - Voice Provider: Cartesia
+    - Model: OpenAI GPT-4o with temperature 0.3
     """
     try:
-        assistant_id = await handle_create_vapi_assistant(create_request)
-        return CreateVapiAssistantResponse(assistantId=assistant_id)
+        result = await handle_create_vapi_assistant(create_request)
+        return CreateVapiAssistantResponse(
+            assistantId=result["assistantId"],
+            squadId=result["squadId"],
+        )
     except ValueError as e:
         # Validation or input errors
         raise HTTPException(status_code=400, detail=str(e))
