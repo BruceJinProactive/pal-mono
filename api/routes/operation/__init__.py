@@ -107,6 +107,7 @@ from . import (
     _monitoring,
     _routines,
     _signal_sources,
+    _video_upload,
 )
 
 operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
@@ -177,6 +178,51 @@ async def upload_camera_image(
 
     path = f"security/cameras/{account_id}/{project_id}/{camera_id}"
     return await asset_implementation.upload_asset(image, path, {})
+
+
+@operation_router.post(
+    "/accounts/{account_id}/projects/{project_id}/cameras/{camera_id}/upload-video",
+    response_model=AssetResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def upload_camera_video(
+    account_id: str,
+    project_id: str,
+    camera_id: str,
+    video: UploadFile = File(...),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> AssetResponse:
+    """
+    Upload a video segment from a camera to S3 using streaming.
+
+    This endpoint is designed for camera recording systems to upload video
+    segments directly. It uses streaming upload to handle large video files
+    efficiently without loading the entire file into memory.
+
+    Path Parameters:
+    - account_id: The account ID
+    - project_id: The project ID
+    - camera_id: The camera identifier (from signal source config)
+
+    Request body (multipart/form-data):
+    - video: The video file to upload (.mkv, .mp4, .mov, .avi, .webm)
+
+    Returns:
+    - url: S3 key of the uploaded video
+
+    The video will be stored at:
+    security/cameras/{account_id}/{project_id}/{camera_id}/videos/{date}/{filename}
+    """
+    return await _video_upload.upload_camera_video(
+        account_id=account_id,
+        project_id=project_id,
+        camera_id=camera_id,
+        video=video,
+        session=session,
+    )
 
 
 @operation_router.get("/health")
