@@ -41,7 +41,6 @@ from . import _utils
 PAL_AGENTS_ACCOUNTS = [
     "proactiveailab-transformer",
     "comida",
-    "madrestauranthospitalitygroup",
 ]
 
 
