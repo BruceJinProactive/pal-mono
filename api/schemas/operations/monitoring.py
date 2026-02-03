@@ -10,7 +10,47 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# ============================================================================
+# MONITORING TIME WINDOW SCHEMA
+# ============================================================================
+
+
+class MonitoringTimeWindow(BaseModel):
+    """Configuration for monitoring time window.
+
+    When enabled, monitoring runs will only execute during the specified time window.
+    Times are in HH:MM 24-hour format and interpreted in the project's timezone.
+
+    Supports overnight windows (e.g., 22:00-02:00 for late-night venues).
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether to restrict monitoring to the specified time window",
+    )
+    start_time: str | None = Field(
+        default=None,
+        pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$",
+        description="Start time in HH:MM 24-hour format (e.g., '06:00', '22:00')",
+    )
+    end_time: str | None = Field(
+        default=None,
+        pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$",
+        description="End time in HH:MM 24-hour format (e.g., '22:00', '02:00')",
+    )
+
+    @model_validator(mode="after")
+    def validate_times_when_enabled(self) -> "MonitoringTimeWindow":
+        """Validate that start_time and end_time are provided when enabled."""
+        if self.enabled:
+            if not self.start_time or not self.end_time:
+                raise ValueError(
+                    "Both start_time and end_time are required when time window is enabled"
+                )
+        return self
+
 
 # ============================================================================
 # RULES SCHEMAS
@@ -131,9 +171,9 @@ class AIAnalysisRules(BaseModel):
         None,
         description="Field definitions for structured output. If not provided, uses default {result: 'pass'|'fail'|'error', details: string}",
     )
-    skip_outside_business_hours: bool = Field(
-        default=False,
-        description="Skip image processing when captured outside business hours. Uses project's business_hours and timezone settings.",
+    monitoring_time_window: MonitoringTimeWindow | None = Field(
+        None,
+        description="Optional time window configuration to restrict when monitoring runs execute",
     )
 
 
@@ -205,9 +245,9 @@ class UpdateMonitoringConfigRequest(BaseModel):
         description="LLM model configuration override (provider and model)",
     )
     enabled: bool | None = Field(None, description="Updated enabled status")
-    skip_outside_business_hours: bool | None = Field(
+    monitoring_time_window: MonitoringTimeWindow | None = Field(
         None,
-        description="Skip image processing when captured outside business hours",
+        description="Updated time window configuration to restrict when monitoring runs execute",
     )
 
 

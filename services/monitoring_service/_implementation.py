@@ -570,15 +570,24 @@ async def update_config(
 
         updates["rules"] = current_rules
 
-    # Handle skip_outside_business_hours update (part of rules)
-    if request.skip_outside_business_hours is not None:
+    # Handle monitoring_time_window update (part of rules)
+    if request.monitoring_time_window is not None:
         # Get current rules or initialize empty, preserving any already-staged updates
         current_rules = copy.deepcopy(
             updates.get("rules", config.rules if config.rules else {})
         )
-        current_rules["skip_outside_business_hours"] = (
-            request.skip_outside_business_hours
-        )
+
+        # Convert MonitoringTimeWindow to dict, excluding None values
+        time_window_dict = request.monitoring_time_window.model_dump(exclude_none=True)
+
+        # If time_window_dict only has enabled=False, remove from rules
+        if not time_window_dict.get("enabled", False):
+            if "monitoring_time_window" in current_rules:
+                del current_rules["monitoring_time_window"]
+        else:
+            # Set the monitoring time window configuration
+            current_rules["monitoring_time_window"] = time_window_dict
+
         updates["rules"] = current_rules
 
     # Handle reference image operations

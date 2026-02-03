@@ -15,12 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import db
 from db.repositories import (
     AccountRepositoryAsync,
+    MonitoringRunRepositoryAsync,
     ProjectRepositoryAsync,
     SignalFeedRepositoryAsync,
     SignalSourceRepositoryAsync,
 )
 from db.repositories.monitoring_config_repository import MonitoringConfigRepositoryAsync
-from db.tables import MonitoringConfig
+from db.tables import MonitoringConfig, MonitoringRun
 from services import monitoring_service
 from utils.log import logger
 
@@ -404,6 +405,8 @@ async def create_monitoring_run(
     Run AI analysis on a camera image and save the monitoring run to database.
 
     Returns the created monitoring run with prompt and analysis results.
+    If the monitoring config has a time window configured and the current time
+    is outside that window, the run will be skipped and result will be "skipped".
 
     Called by Monitoring Image Processor Lambda.
 
@@ -439,6 +442,53 @@ async def create_monitoring_run(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="image_url is required",
+            )
+
+        # Check time window before running LLM analysis
+        time_window_config = None
+        if config.rules:
+            time_window_config = config.rules.get("monitoring_time_window")
+
+        should_skip, skip_reason = await monitoring_service.should_skip_monitoring(
+            session=session,
+            project_id=config.project_id,
+            time_window_config=time_window_config,
+        )
+
+        if should_skip:
+            # Create a skipped run record
+            run_repo = MonitoringRunRepositoryAsync(session)
+            skipped_run = MonitoringRun(
+                monitoring_config_id=request.monitoring_config_id,
+                trigger_metadata={
+                    **request.trigger_metadata,
+                    "skipped": True,
+                    "skip_reason": skip_reason,
+                },
+                started_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
+                evaluation_result={"result": "skipped", "reason": skip_reason},
+            )
+            created_run = await run_repo.create(skipped_run)
+
+            logger.info(
+                f"[Internal API] Monitoring run skipped for config {request.monitoring_config_id}",
+                extra={
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "run_id": str(created_run.id),
+                    "skip_reason": skip_reason,
+                },
+            )
+
+            return CreateMonitoringRunResponse(
+                run_id=created_run.id,
+                monitoring_config_id=request.monitoring_config_id,
+                prompt_sent={},
+                analysis_result={"result": "skipped", "reason": skip_reason},
+                started_at=created_run.started_at,
+                completed_at=created_run.completed_at,
+                error_message=None,
+                skipped=True,
             )
 
         # Run LLM analysis and create monitoring run

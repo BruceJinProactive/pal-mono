@@ -53,6 +53,7 @@ from api.schemas.operations.monitoring import (
     ListMonitoringRunsResponse,
     MonitoringConfigResponse,
     MonitoringRunResponse,
+    MonitoringTimeWindow,
     TriggerRunRequest,
     TriggerRunResponse,
     UpdateMonitoringConfigRequest,
@@ -1322,6 +1323,7 @@ async def create_monitoring_config(
     structured_output: str | None = Form(None),
     model: str | None = Form(None),
     enabled: bool = Form(True),
+    monitoring_time_window: str | None = Form(None),
     reference_images: list[UploadFile] = File(default=[]),
     reference_image_descriptions: list[str] = Form(default=[]),
     context: UserContext = Depends(
@@ -1342,6 +1344,7 @@ async def create_monitoring_config(
     - prompt (required): AI analysis prompt (1-2000 characters)
     - model (optional): JSON string with LLM model configuration (e.g., '{"provider": "google", "model": "gemini-3-flash-preview"}')
     - enabled (optional, default: true): Whether monitoring is active
+    - monitoring_time_window (optional): JSON string with time window config (e.g., '{"enabled": true, "start_time": "06:00", "end_time": "22:00"}')
     - reference_images (optional): Multiple image files for reference
     - reference_image_descriptions (optional): Descriptions for each reference image (must match number of images)
 
@@ -1391,11 +1394,24 @@ async def create_monitoring_config(
                 detail=f"Invalid model format: {str(e)}",
             )
 
+    # Parse monitoring_time_window if provided
+    parsed_time_window = None
+    if monitoring_time_window:
+        try:
+            time_window_data = json.loads(monitoring_time_window)
+            parsed_time_window = MonitoringTimeWindow(**time_window_data)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid monitoring_time_window format: {str(e)}",
+            )
+
     # Build the request object from form fields
     rules = AIAnalysisRules(
         prompt=prompt,
         reference_images=[],  # Will be populated after upload
         structured_output=parsed_structured_output,
+        monitoring_time_window=parsed_time_window,
     )
 
     request = CreateMonitoringConfigRequest(
@@ -1518,7 +1534,7 @@ async def update_monitoring_config(
     structured_output: str | None = Form(None),
     model: str | None = Form(None),
     enabled: bool | None = Form(None),
-    skip_outside_business_hours: bool | None = Form(None),
+    monitoring_time_window: str | None = Form(None),
     # Reference image operations (send only what changes)
     add_images: list[UploadFile] = File(default=[]),
     add_descriptions: list[str] = Form(default=[]),
@@ -1659,6 +1675,18 @@ async def update_monitoring_config(
                 detail=f"Invalid model format: {str(e)}",
             )
 
+    # Parse monitoring_time_window if provided
+    parsed_time_window = None
+    if monitoring_time_window:
+        try:
+            time_window_data = json.loads(monitoring_time_window)
+            parsed_time_window = MonitoringTimeWindow(**time_window_data)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid monitoring_time_window format: {str(e)}",
+            )
+
     # Build request object
     request = UpdateMonitoringConfigRequest(
         name=name,
@@ -1667,7 +1695,7 @@ async def update_monitoring_config(
         structured_output=parsed_structured_output,
         model=parsed_model,
         enabled=enabled,
-        skip_outside_business_hours=skip_outside_business_hours,
+        monitoring_time_window=parsed_time_window,
     )
 
     return await _monitoring.update_monitoring_config(
