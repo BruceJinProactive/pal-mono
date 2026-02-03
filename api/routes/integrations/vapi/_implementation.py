@@ -372,20 +372,56 @@ async def _measure_voice_to_voice_latency(message_data: dict) -> None:
         f"[VAPI DEBUG] Retrieving logs for call {call_id} to measure voice-to-voice latency"
     )
     try:
-        logger.debug("[VAPI DEBUG] Starting log retrieval for call")
+        logger.debug(f"[VAPI DEBUG] Starting log retrieval for call_id={call_id}")
+
+        # Also try calls.get to see if latency data is there
+        try:
+            call_details = await vapi_client.calls.get(id=call_id)
+            logger.debug(f"[VAPI DEBUG] call_details type: {type(call_details)}")
+            logger.debug(
+                f"[VAPI DEBUG] call_details.analysis: {getattr(call_details, 'analysis', 'N/A')}"
+            )
+            logger.debug(
+                f"[VAPI DEBUG] call_details.artifact: {getattr(call_details, 'artifact', 'N/A')}"
+            )
+            logger.debug(
+                f"[VAPI DEBUG] call_details.costs: {getattr(call_details, 'costs', 'N/A')}"
+            )
+            logger.debug(
+                f"[VAPI DEBUG] call_details.cost_breakdown: {getattr(call_details, 'cost_breakdown', 'N/A')}"
+            )
+        except Exception as call_err:
+            logger.debug(f"[VAPI DEBUG] calls.get failed: {call_err}")
+
         logs_pager = await vapi_client.logs.get(call_id=call_id, type="Call")
 
-        # Debug: inspect the pager's raw response and items directly
-        if logs_pager.response and hasattr(logs_pager.response, "_response"):
-            raw_resp = logs_pager.response._response
-            logger.debug(
-                f"[VAPI DEBUG] Raw HTTP status: {raw_resp.status_code}, "
-                f"body: {raw_resp.text[:2000]}"
-            )
-        logger.debug(
-            f"[VAPI DEBUG] logs_pager.items: {logs_pager.items}, "
-            f"has_next: {logs_pager.has_next}"
-        )
+        # Debug: output everything about logs_pager
+        logger.debug(f"[VAPI DEBUG] logs_pager: {logs_pager}")
+        logger.debug(f"[VAPI DEBUG] logs_pager type: {type(logs_pager)}")
+        logger.debug(f"[VAPI DEBUG] logs_pager.items: {logs_pager.items}")
+        logger.debug(f"[VAPI DEBUG] logs_pager.has_next: {logs_pager.has_next}")
+        logger.debug(f"[VAPI DEBUG] logs_pager.response: {logs_pager.response}")
+        if logs_pager.items:
+            logger.debug(f"[VAPI DEBUG] items length: {len(logs_pager.items)}")
+            for i, item in enumerate(logs_pager.items[:5]):  # First 5 items
+                logger.debug(f"[VAPI DEBUG] item[{i}]: {item}")
+                logger.debug(f"[VAPI DEBUG] item[{i}] type: {type(item)}")
+                logger.debug(
+                    f"[VAPI DEBUG] item[{i}] dict: {item.__dict__ if hasattr(item, '__dict__') else 'no __dict__'}"
+                )
+        if logs_pager.response:
+            logger.debug(f"[VAPI DEBUG] response type: {type(logs_pager.response)}")
+            try:
+                # NOTE: Accessing private _response for debugging only - remove before production
+                raw = getattr(logs_pager.response, "_response", None)
+                if raw:
+                    logger.debug(
+                        f"[VAPI DEBUG] raw response status: {getattr(raw, 'status_code', 'N/A')}"
+                    )
+            except Exception as debug_err:
+                logger.debug(
+                    f"[VAPI DEBUG] Could not inspect raw response: {debug_err}"
+                )
 
         # Collect and filter logs from the pager
         log_count = 0
