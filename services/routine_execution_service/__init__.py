@@ -57,6 +57,7 @@ async def list_executions(
     end_date: date | None = None,
     routine_id: UUID | None = None,
     timezone: str | None = None,
+    include_details: bool = False,
 ) -> ListExecutionsResponse:
     """
     List executions for routines in a project.
@@ -71,6 +72,7 @@ async def list_executions(
         end_date: Optional end date for date range filtering (inclusive)
         routine_id: Optional filter by specific routine
         timezone: IANA timezone string for correct date filtering (e.g., 'America/Los_Angeles')
+        include_details: If True, includes full submission details with responses
 
     Returns:
         ListExecutionsResponse with executions and total count
@@ -85,6 +87,7 @@ async def list_executions(
         end_date,
         routine_id,
         timezone,
+        include_details,
     )
 
 

@@ -28,6 +28,7 @@ from db.repositories import (
 )
 from db.tables.account_user import AccountUser
 from db.tables.routine_item_responses import RoutineItemResponse
+from db.tables.routine_items import RoutineItem
 from db.tables.routine_submissions import RoutineSubmission
 from db.tables.types import ExecutionStatus, ItemResponseStatus, SubmissionStatus
 from services.auth_types import UserContext
@@ -128,6 +129,94 @@ async def _build_item_response(
         item_description=item_description,
         is_required=is_required,
     )
+
+
+async def _build_item_response_batch(
+    responses: list[RoutineItemResponse],
+    item_map: dict[UUID, RoutineItem],
+) -> list[ItemResponseWithItemResponse]:
+    """Build multiple ItemResponseWithItemResponse objects with parallel S3 URL generation.
+
+    This function parallelizes presigned URL generation for all images to avoid
+    sequential S3 API calls which would be a major performance bottleneck.
+
+    Args:
+        responses: List of routine item responses
+        item_map: Dictionary mapping item_id to item object
+
+    Returns:
+        List of ItemResponseWithItemResponse objects with presigned URLs
+    """
+    from services.asset_service import map_uri_to_s3_url
+
+    # Step 1: Extract all SQLAlchemy attributes immediately to prevent greenlet issues
+    response_data = []
+    image_url_list = []
+    for response in responses:
+        # Extract all response attributes
+        data = {
+            "id": response.id,
+            "submission_id": response.submission_id,
+            "routine_item_id": response.routine_item_id,
+            "image_url": response.image_url,
+            "notes": response.notes,
+            "ai_result": response.ai_result,
+            "ai_passed": response.ai_passed,
+            "ai_confidence": response.ai_confidence,
+            "status": response.status,
+            "created_at": response.created_at,
+            "updated_at": response.updated_at,
+        }
+
+        # Extract item attributes
+        item = item_map.get(data["routine_item_id"])
+        data["item_name"] = item.name if item else None
+        data["item_description"] = item.description if item else None
+        data["is_required"] = item.is_required if item else True
+
+        # Extract ai_details from ai_result JSON
+        data["ai_details"] = None
+        if data["ai_result"] and isinstance(data["ai_result"], dict):
+            data["ai_details"] = data["ai_result"].get("details")
+
+        response_data.append(data)
+        image_url_list.append(data["image_url"])
+
+    # Step 2: Generate all presigned URLs in parallel (major performance optimization)
+    async def get_presigned_url(image_url: str | None) -> str | None:
+        if image_url:
+            return await asyncio.to_thread(map_uri_to_s3_url, image_url)
+        return None
+
+    # Gather all S3 calls concurrently
+    presigned_urls = await asyncio.gather(
+        *[get_presigned_url(url) for url in image_url_list]
+    )
+
+    # Step 3: Build response objects using extracted data and pre-generated URLs
+    result = []
+    for i, data in enumerate(response_data):
+        result.append(
+            ItemResponseWithItemResponse(
+                id=data["id"],
+                submission_id=data["submission_id"],
+                routine_item_id=data["routine_item_id"],
+                image_url=presigned_urls[i],  # Pre-generated presigned URL
+                notes=data["notes"],
+                ai_result=data["ai_result"],
+                ai_passed=data["ai_passed"],
+                ai_confidence=data["ai_confidence"],
+                ai_details=data["ai_details"],
+                status=data["status"],
+                created_at=data["created_at"],
+                updated_at=data["updated_at"],
+                item_name=data["item_name"],
+                item_description=data["item_description"],
+                is_required=data["is_required"],
+            )
+        )
+
+    return result
 
 
 async def _build_submission_detail_response(

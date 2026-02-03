@@ -2540,6 +2540,12 @@ async def list_executions(
         uuid.UUID | None,
         Query(description="Filter by specific routine"),
     ] = None,
+    include: Annotated[
+        str | None,
+        Query(
+            description="Include additional data: 'details' for full submission details"
+        ),
+    ] = None,
 ) -> ListExecutionsResponse:
     """
     List executions for routines in a project.
@@ -2553,6 +2559,7 @@ async def list_executions(
     - start_date (optional): Filter by start date (inclusive, for date range)
     - end_date (optional): Filter by end date (inclusive, for date range)
     - routine_id (optional): Filter by specific routine
+    - include (optional): Include additional data ('details' for full submission details)
 
     Returns:
     - ListExecutionsResponse with executions and total count
@@ -2619,6 +2626,7 @@ async def list_executions(
         end_date_only,
         routine_id,
         project_timezone,
+        include_details=(include == "details"),
     )
 
 

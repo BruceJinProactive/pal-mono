@@ -217,6 +217,7 @@ async def list_executions(
     end_date: date | None = None,
     routine_id: UUID | None = None,
     timezone: str | None = None,
+    include_details: bool = False,
 ) -> ListExecutionsResponse:
     """List executions for routines in a project."""
     return await routine_execution_service.list_executions(
@@ -229,6 +230,7 @@ async def list_executions(
         end_date,
         routine_id,
         timezone,
+        include_details,
     )
 
 

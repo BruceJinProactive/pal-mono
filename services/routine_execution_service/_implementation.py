@@ -5,6 +5,7 @@ Business logic for routine execution operations.
 Authorization is handled in the API layer.
 """
 
+import asyncio
 from datetime import date
 from uuid import UUID
 
@@ -176,6 +177,7 @@ async def list_executions(
     end_date: date | None = None,
     routine_id: UUID | None = None,
     timezone: str | None = None,
+    include_details: bool = False,
 ) -> ListExecutionsResponse:
     """
     List executions for routines in a project.
@@ -193,6 +195,7 @@ async def list_executions(
         end_date: Optional end date for date range filtering (inclusive)
         routine_id: Optional filter by routine
         timezone: IANA timezone string for correct date filtering (e.g., 'America/Los_Angeles')
+        include_details: If True, includes full submission details with responses
     """
     execution_repo = RoutineExecutionRepositoryAsync(session)
     routine_repo = RoutineRepositoryAsync(session)
@@ -249,6 +252,64 @@ async def list_executions(
             len(responses_by_submission.get(submission.id, [])) if submission else 0
         )
 
+        # Build submission detail if requested and submission exists
+        submission_detail = None
+        if include_details and submission:
+            from services.routine_submission_service._implementation import (
+                _build_item_response_batch,
+            )
+
+            # Extract all submission attributes immediately to prevent greenlet issues
+            submission_data = {
+                "id": submission.id,
+                "execution_id": submission.execution_id,
+                "status": submission.status,
+                "submitted_by": submission.submitted_by,
+                "submitted_at": submission.submitted_at,
+                "reviewed_by": submission.reviewed_by,
+                "reviewed_at": submission.reviewed_at,
+                "review_notes": submission.review_notes,
+                "created_at": submission.created_at,
+                "updated_at": submission.updated_at,
+            }
+
+            responses = responses_by_submission.get(submission_data["id"], [])
+            if responses:
+                # Build item lookup for enriching responses
+                routine_items = items_by_routine.get(execution.routine_id, [])
+                item_map = {item.id: item for item in routine_items}
+
+                # Build responses with batch presigned URL generation (parallelized S3 calls)
+                response_list = await _build_item_response_batch(responses, item_map)
+
+                # Fetch user names in parallel
+                from services.routine_submission_service._implementation import (
+                    _get_user_name_by_id,
+                )
+
+                submitted_by_name, reviewed_by_name = await asyncio.gather(
+                    _get_user_name_by_id(session, submission_data["submitted_by"]),
+                    _get_user_name_by_id(session, submission_data["reviewed_by"]),
+                )
+
+                # Build submission detail using extracted data
+                submission_detail = SubmissionDetailResponse(
+                    id=submission_data["id"],
+                    execution_id=submission_data["execution_id"],
+                    status=submission_data["status"],
+                    submitted_by=submission_data["submitted_by"],
+                    submitted_by_name=submitted_by_name,
+                    submitted_at=submission_data["submitted_at"],
+                    reviewed_by=submission_data["reviewed_by"],
+                    reviewed_by_name=reviewed_by_name,
+                    reviewed_at=submission_data["reviewed_at"],
+                    review_notes=submission_data["review_notes"],
+                    created_at=submission_data["created_at"],
+                    updated_at=submission_data["updated_at"],
+                    responses=response_list,
+                    routine_name=routine_name,
+                )
+
         result.append(
             _build_execution_response(
                 execution,
@@ -258,6 +319,8 @@ async def list_executions(
                 submission_id,
                 submission_status,
                 submission_completed_count,
+                routine_detail=None,
+                submission_detail=submission_detail,
             )
         )
 
