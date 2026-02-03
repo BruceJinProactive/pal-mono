@@ -376,15 +376,24 @@ async def _measure_voice_to_voice_latency(message_data: dict) -> None:
         logs_pager = await vapi_client.logs.get(call_id=call_id, type="Call")
 
         # Collect and filter logs from the pager
+        log_count = 0
         async for log in logs_pager:
+            log_count += 1
             # Filter for turn latency logs
             log_level = getattr(log, "level", None)
             log_message = getattr(log, "log", None)
+            logger.debug(
+                f"[VAPI DEBUG] Log #{log_count} for call {call_id}: level={log_level}, message={log_message[:100] if log_message else None}"
+            )
             if log_level == "INFO" and log_message and "Turn latency:" in log_message:
                 logger.debug(
                     f"[VAPI DEBUG] Processing log for call {call_id}: {log_message}"
                 )
                 send_dd_latency(log_message, call_id, customer_number, phone_number)
+
+        logger.debug(
+            f"[VAPI DEBUG] Finished processing {log_count} logs for call {call_id}"
+        )
 
     except Exception as e:
         logger.error(f"Failed to retrieve logs for call {call_id}: {str(e)}")
