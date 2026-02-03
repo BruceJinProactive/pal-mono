@@ -375,6 +375,18 @@ async def _measure_voice_to_voice_latency(message_data: dict) -> None:
         logger.debug("[VAPI DEBUG] Starting log retrieval for call")
         logs_pager = await vapi_client.logs.get(call_id=call_id, type="Call")
 
+        # Debug: inspect the pager's raw response and items directly
+        if logs_pager.response and hasattr(logs_pager.response, "_response"):
+            raw_resp = logs_pager.response._response
+            logger.debug(
+                f"[VAPI DEBUG] Raw HTTP status: {raw_resp.status_code}, "
+                f"body: {raw_resp.text[:2000]}"
+            )
+        logger.debug(
+            f"[VAPI DEBUG] logs_pager.items: {logs_pager.items}, "
+            f"has_next: {logs_pager.has_next}"
+        )
+
         # Collect and filter logs from the pager
         log_count = 0
         async for log in logs_pager:
