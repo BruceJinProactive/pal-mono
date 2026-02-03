@@ -123,12 +123,12 @@ def _update_stock_section(
 
     # Extract current section content
     section = content[section_start:section_end]
-    # Pattern matches both old format (with ID) and new format (without ID)
-    # Old: "- Item Name (ID: guid) is OUT OF STOCK..."
-    # New: "- Item Name is OUT OF STOCK..."
-    item_pattern = (
-        rf"- {re.escape(item_name)}(?: \(ID: {re.escape(item_guid)}\))?.*?(\r?\n|$)"
-    )
+    # Pattern for exact item name matching
+    # Matches: "- Item Name is OUT OF STOCK..." to end of line including newline
+    # Uses \s+ to handle any whitespace between name and "is OUT OF STOCK"
+    # (?:\r?\n|$) forces match to end of line and consumes newline if present
+    # This prevents partial line matches that would leave dangling text
+    item_pattern = rf"^- {re.escape(item_name)}\s+is OUT OF STOCK.*?(?:\r?\n|$)"
 
     if stock_message is not None:
         # Adding or updating item
@@ -136,12 +136,14 @@ def _update_stock_section(
             f"[_update_stock_section] Adding/updating item '{item_name}' (guid: {item_guid}) in out-of-stock section"
         )
 
-        if re.search(item_pattern, section):
+        if re.search(item_pattern, section, re.MULTILINE):
             # Item exists, update it
             logger.debug(
                 f"[_update_stock_section] Item '{item_name}' already exists, updating it"
             )
-            new_section = re.sub(item_pattern, f"{stock_message}\n", section)
+            new_section = re.sub(
+                item_pattern, f"{stock_message}\n", section, flags=re.MULTILINE
+            )
         else:
             # Item doesn't exist, add it
             logger.debug(
@@ -168,7 +170,7 @@ def _update_stock_section(
         logger.debug(f"[_update_stock_section] Pattern: {item_pattern}")
         logger.debug(f"[_update_stock_section] Section content:\n{section}")
 
-        new_section = re.sub(item_pattern, "", section)
+        new_section = re.sub(item_pattern, "", section, flags=re.MULTILINE)
 
         if new_section == section:
             logger.warning(
