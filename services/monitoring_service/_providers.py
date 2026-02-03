@@ -27,22 +27,25 @@ from utils.secret import get_server_secret_with_fallback
 
 def _strip_additional_properties(schema: dict[str, Any]) -> dict[str, Any]:
     """
-    Recursively remove 'additionalProperties' from a JSON schema.
+    Recursively remove 'additionalProperties' and custom fields from a JSON schema.
 
-    Gemini doesn't support the 'additionalProperties' field, so we need to
-    strip it from all levels of the schema.
+    Gemini doesn't support the 'additionalProperties' field or custom non-standard
+    JSON Schema fields like 'enum_metadata', so we strip them from all levels.
 
     Args:
         schema: JSON schema dictionary
 
     Returns:
-        Schema with 'additionalProperties' removed at all levels
+        Schema with 'additionalProperties' and custom fields removed at all levels
     """
     if not isinstance(schema, dict):
         return schema
 
-    # Remove additionalProperties at current level
-    cleaned = {k: v for k, v in schema.items() if k != "additionalProperties"}
+    # Remove additionalProperties and custom fields at current level
+    # enum_metadata is a custom field used for UI display (colors, descriptions)
+    # but is not part of the JSON Schema spec and causes Gemini validation errors
+    custom_fields = {"additionalProperties", "enum_metadata"}
+    cleaned = {k: v for k, v in schema.items() if k not in custom_fields}
 
     # Recursively clean nested schemas
     for key, value in cleaned.items():

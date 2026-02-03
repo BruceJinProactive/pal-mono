@@ -2452,7 +2452,15 @@ async def list_executions(
     ] = None,
     date_filter: Annotated[
         datetime | None,
-        Query(alias="date", description="Filter by scheduled date"),
+        Query(alias="date", description="Filter by scheduled date (single day)"),
+    ] = None,
+    start_date: Annotated[
+        datetime | None,
+        Query(description="Filter by start date (inclusive, for date range)"),
+    ] = None,
+    end_date: Annotated[
+        datetime | None,
+        Query(description="Filter by end date (inclusive, for date range)"),
     ] = None,
     routine_id: Annotated[
         uuid.UUID | None,
@@ -2467,7 +2475,9 @@ async def list_executions(
 
     Query Parameters:
     - status (optional): Filter by execution status
-    - date (optional): Filter by scheduled date
+    - date (optional): Filter by scheduled date (single day, takes precedence over date range)
+    - start_date (optional): Filter by start date (inclusive, for date range)
+    - end_date (optional): Filter by end date (inclusive, for date range)
     - routine_id (optional): Filter by specific routine
 
     Returns:
@@ -2476,7 +2486,15 @@ async def list_executions(
     Note: Users without execution.read.history permission can only view today's executions.
     """
     # Convert datetime to date if provided
-    date_only = date_filter.date() if date_filter else None
+    # When date_filter is provided, it takes precedence and range filters are cleared
+    if date_filter:
+        date_only = date_filter.date()
+        start_date_only = None
+        end_date_only = None
+    else:
+        date_only = None
+        start_date_only = start_date.date() if start_date else None
+        end_date_only = end_date.date() if end_date else None
 
     # Get project timezone for correct date filtering
     project_timezone = await _get_project_timezone(project_id, session)
@@ -2499,13 +2517,23 @@ async def list_executions(
     # If no history access, enforce today-only filter
     if not has_history_access:
         today = await _get_project_today(project_id, session)
+        # Check single date filter
         if date_only and date_only != today:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Can only view today's executions",
                 headers={"Content-Type": "application/json"},
             )
+        # Check date range filter
+        if start_date_only or end_date_only:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Can only view today's executions",
+                headers={"Content-Type": "application/json"},
+            )
         date_only = today
+        start_date_only = None
+        end_date_only = None
 
     return await _routines.list_executions(
         project_id,
@@ -2513,6 +2541,8 @@ async def list_executions(
         session,
         status_filter,
         date_only,
+        start_date_only,
+        end_date_only,
         routine_id,
         project_timezone,
     )
@@ -2714,6 +2744,14 @@ async def list_pending_review(
         Depends(require_project_permission("submission.review", authenticate_user)),
     ],
     session: Annotated[AsyncSession, Depends(db.get_db_async)],
+    start_date: Annotated[
+        datetime | None,
+        Query(description="Filter by start date (inclusive, for date range)"),
+    ] = None,
+    end_date: Annotated[
+        datetime | None,
+        Query(description="Filter by end date (inclusive, for date range)"),
+    ] = None,
 ) -> ListPendingReviewResponse:
     """
     List submissions pending manager review.
@@ -2721,10 +2759,20 @@ async def list_pending_review(
     Path Parameters:
     - project_id: UUID of the project
 
+    Query Parameters:
+    - start_date (optional): Filter by start date (inclusive, for date range)
+    - end_date (optional): Filter by end date (inclusive, for date range)
+
     Returns:
     - ListPendingReviewResponse with pending submissions and total count
     """
-    return await _routines.list_pending_review(project_id, context, session)
+    # Convert datetime to date if provided
+    start_date_only = start_date.date() if start_date else None
+    end_date_only = end_date.date() if end_date else None
+
+    return await _routines.list_pending_review(
+        project_id, context, session, start_date_only, end_date_only
+    )
 
 
 @operation_router.post(

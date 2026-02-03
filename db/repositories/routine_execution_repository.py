@@ -95,6 +95,8 @@ class RoutineExecutionRepositoryAsync:
         project_id: uuid.UUID,
         status: ExecutionStatus | None = None,
         scheduled_date: date | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
         routine_id: uuid.UUID | None = None,
         timezone: str | None = None,
     ) -> list[RoutineExecution]:
@@ -104,10 +106,12 @@ class RoutineExecutionRepositoryAsync:
         Args:
             project_id: UUID of the project (filters via routine.project_id)
             status: Optional filter by status
-            scheduled_date: Optional filter by scheduled date (YYYY-MM-DD)
+            scheduled_date: Optional filter by scheduled date (YYYY-MM-DD) - single date
+            start_date: Optional filter by start date (inclusive) - for date ranges
+            end_date: Optional filter by end date (inclusive) - for date ranges
             routine_id: Optional filter by specific routine
             timezone: IANA timezone string for date filtering (e.g., 'America/Los_Angeles').
-                     Required when scheduled_date is provided for correct timezone handling.
+                     Required when date filtering is used for correct timezone handling.
 
         Returns:
             List of RoutineExecution objects
@@ -123,6 +127,7 @@ class RoutineExecutionRepositoryAsync:
             if status is not None:
                 stmt = stmt.where(RoutineExecution.status == status)
 
+            # Handle date filtering (single date takes precedence over date range)
             if scheduled_date is not None:
                 # Use timezone-aware datetime range filtering to correctly match
                 # executions that fall within the specified date in the given timezone.
@@ -137,18 +142,49 @@ class RoutineExecutionRepositoryAsync:
                     tz = ZoneInfo("America/Los_Angeles")
 
                 # Calculate the start and end of the day in the project's timezone
+                # Convert to UTC for DB comparison (DB stores timestamps in UTC)
                 day_start = datetime.combine(scheduled_date, time.min, tzinfo=tz)
+                day_start_utc = day_start.astimezone(ZoneInfo("UTC"))
+
                 day_end = datetime.combine(
                     scheduled_date + timedelta(days=1), time.min, tzinfo=tz
                 )
+                day_end_utc = day_end.astimezone(ZoneInfo("UTC"))
 
                 # Filter executions where scheduled_start falls within this day
                 stmt = stmt.where(
                     and_(
-                        RoutineExecution.scheduled_start >= day_start,
-                        RoutineExecution.scheduled_start < day_end,
+                        RoutineExecution.scheduled_start >= day_start_utc,
+                        RoutineExecution.scheduled_start < day_end_utc,
                     )
                 )
+            elif start_date is not None or end_date is not None:
+                # Handle date range filtering
+                try:
+                    tz = ZoneInfo(timezone or "America/Los_Angeles")
+                except ZoneInfoNotFoundError:
+                    logger.warning(
+                        f"Invalid timezone '{timezone}', falling back to America/Los_Angeles"
+                    )
+                    tz = ZoneInfo("America/Los_Angeles")
+
+                if start_date is not None:
+                    # Start from the beginning of start_date in the project's timezone
+                    # Convert to UTC for DB comparison (DB stores timestamps in UTC)
+                    range_start = datetime.combine(start_date, time.min, tzinfo=tz)
+                    range_start_utc = range_start.astimezone(ZoneInfo("UTC"))
+                    stmt = stmt.where(
+                        RoutineExecution.scheduled_start >= range_start_utc
+                    )
+
+                if end_date is not None:
+                    # End at the beginning of the day after end_date (exclusive)
+                    # Convert to UTC for DB comparison (DB stores timestamps in UTC)
+                    range_end = datetime.combine(
+                        end_date + timedelta(days=1), time.min, tzinfo=tz
+                    )
+                    range_end_utc = range_end.astimezone(ZoneInfo("UTC"))
+                    stmt = stmt.where(RoutineExecution.scheduled_start < range_end_utc)
 
             if routine_id is not None:
                 stmt = stmt.where(RoutineExecution.routine_id == routine_id)

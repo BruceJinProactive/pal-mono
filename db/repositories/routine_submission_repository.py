@@ -146,12 +146,16 @@ class RoutineSubmissionRepositoryAsync:
     async def list_pending_review_submissions(
         self,
         execution_ids: list[uuid.UUID],
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> list[RoutineSubmission]:
         """
         List submissions awaiting manager review.
 
         Args:
             execution_ids: List of execution IDs (from routines in the project)
+            start_date: Optional start datetime for filtering by submitted_at (inclusive)
+            end_date: Optional end datetime for filtering by submitted_at (inclusive)
 
         Returns:
             List of RoutineSubmission objects with status 'submitted'
@@ -160,14 +164,19 @@ class RoutineSubmissionRepositoryAsync:
             if not execution_ids:
                 return []
 
-            stmt = (
-                select(RoutineSubmission)
-                .where(
-                    RoutineSubmission.execution_id.in_(execution_ids),
-                    RoutineSubmission.status == SubmissionStatus.submitted,
-                )
-                .order_by(RoutineSubmission.submitted_at.desc())
+            stmt = select(RoutineSubmission).where(
+                RoutineSubmission.execution_id.in_(execution_ids),
+                RoutineSubmission.status == SubmissionStatus.submitted,
             )
+
+            # Apply date range filters if provided
+            if start_date is not None:
+                stmt = stmt.where(RoutineSubmission.submitted_at >= start_date)
+
+            if end_date is not None:
+                stmt = stmt.where(RoutineSubmission.submitted_at <= end_date)
+
+            stmt = stmt.order_by(RoutineSubmission.submitted_at.desc())
             result = await self.session.execute(stmt)
             return list(result.scalars().all())
         except SQLAlchemyError as e:

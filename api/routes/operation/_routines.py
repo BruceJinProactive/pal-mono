@@ -213,12 +213,22 @@ async def list_executions(
     session: AsyncSession,
     status_filter: ExecutionStatus | None = None,
     date_filter: date | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
     routine_id: UUID | None = None,
     timezone: str | None = None,
 ) -> ListExecutionsResponse:
     """List executions for routines in a project."""
     return await routine_execution_service.list_executions(
-        project_id, context, session, status_filter, date_filter, routine_id, timezone
+        project_id,
+        context,
+        session,
+        status_filter,
+        date_filter,
+        start_date,
+        end_date,
+        routine_id,
+        timezone,
     )
 
 
@@ -300,10 +310,12 @@ async def list_pending_review(
     project_id: UUID,
     context: UserContext,
     session: AsyncSession,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> ListPendingReviewResponse:
     """List submissions pending manager review."""
     return await routine_submission_service.list_pending_review(
-        project_id, context, session
+        project_id, context, session, start_date, end_date
     )
 
 

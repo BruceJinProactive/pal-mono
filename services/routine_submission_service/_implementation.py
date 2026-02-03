@@ -7,7 +7,7 @@ Authorization is handled in the API layer.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
@@ -681,11 +681,23 @@ async def list_pending_review(
     project_id: UUID,
     context: UserContext,
     session: AsyncSession,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> ListPendingReviewResponse:
     """
     List submissions pending manager review.
     Authorization is handled in the API layer.
+
+    Args:
+        project_id: UUID of the project
+        context: User authentication context
+        session: Async database session
+        start_date: Optional start date for filtering submissions (inclusive)
+        end_date: Optional end date for filtering submissions (inclusive)
     """
+    from datetime import datetime, time, timedelta
+    from zoneinfo import ZoneInfo
+
     routine_repo = RoutineRepositoryAsync(session)
     execution_repo = RoutineExecutionRepositoryAsync(session)
     submission_repo = RoutineSubmissionRepositoryAsync(session)
@@ -709,9 +721,29 @@ async def list_pending_review(
     # Build routine name lookup
     routine_names = {r.id: r.name for r in routines}
 
-    # Get pending submissions
+    # Convert date range to datetime range if provided
+    start_datetime = None
+    end_datetime = None
+    if start_date is not None or end_date is not None:
+        # Use America/Los_Angeles timezone for date filtering
+        tz = ZoneInfo("America/Los_Angeles")
+
+        if start_date is not None:
+            # Create datetime in project timezone and convert to UTC for DB query
+            start_datetime = datetime.combine(start_date, time.min, tzinfo=tz)
+            start_datetime = start_datetime.astimezone(timezone.utc)
+
+        if end_date is not None:
+            # End datetime is the end of the end_date (beginning of next day)
+            # Create datetime in project timezone and convert to UTC for DB query
+            end_datetime = datetime.combine(
+                end_date + timedelta(days=1), time.min, tzinfo=tz
+            )
+            end_datetime = end_datetime.astimezone(timezone.utc)
+
+    # Get pending submissions with optional date filtering
     pending_submissions = await submission_repo.list_pending_review_submissions(
-        execution_ids
+        execution_ids, start_datetime, end_datetime
     )
 
     # Build responses with details

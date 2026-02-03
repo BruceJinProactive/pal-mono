@@ -8,6 +8,7 @@ Includes AI-powered verification for routine items.
 Authorization is handled in the API layer.
 """
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import UploadFile
@@ -144,6 +145,8 @@ async def list_pending_review(
     project_id: UUID,
     context: UserContext,
     session: AsyncSession,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> ListPendingReviewResponse:
     """
     List submissions pending manager review.
@@ -152,11 +155,15 @@ async def list_pending_review(
         project_id: UUID of the project
         context: User authentication context
         session: Database session
+        start_date: Optional start date for filtering submissions (inclusive)
+        end_date: Optional end date for filtering submissions (inclusive)
 
     Returns:
         ListPendingReviewResponse with submissions and total count
     """
-    return await _implementation.list_pending_review(project_id, context, session)
+    return await _implementation.list_pending_review(
+        project_id, context, session, start_date, end_date
+    )
 
 
 async def approve_submission(

@@ -53,6 +53,8 @@ async def list_executions(
     session: AsyncSession,
     status_filter: ExecutionStatus | None = None,
     date_filter: date | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
     routine_id: UUID | None = None,
     timezone: str | None = None,
 ) -> ListExecutionsResponse:
@@ -65,6 +67,8 @@ async def list_executions(
         session: Database session
         status_filter: Optional filter by status
         date_filter: Optional filter by scheduled date (enforced by API layer for permission)
+        start_date: Optional start date for date range filtering (inclusive)
+        end_date: Optional end date for date range filtering (inclusive)
         routine_id: Optional filter by specific routine
         timezone: IANA timezone string for correct date filtering (e.g., 'America/Los_Angeles')
 
@@ -72,7 +76,15 @@ async def list_executions(
         ListExecutionsResponse with executions and total count
     """
     return await _implementation.list_executions(
-        project_id, context, session, status_filter, date_filter, routine_id, timezone
+        project_id,
+        context,
+        session,
+        status_filter,
+        date_filter,
+        start_date,
+        end_date,
+        routine_id,
+        timezone,
     )
 
 

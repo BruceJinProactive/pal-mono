@@ -172,6 +172,8 @@ async def list_executions(
     session: AsyncSession,
     status_filter: ExecutionStatus | None = None,
     date_filter: date | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
     routine_id: UUID | None = None,
     timezone: str | None = None,
 ) -> ListExecutionsResponse:
@@ -186,7 +188,9 @@ async def list_executions(
         context: User authentication context
         session: Async database session
         status_filter: Optional filter by execution status
-        date_filter: Optional filter by date (pre-enforced by API layer for permissions)
+        date_filter: Optional filter by date (pre-enforced by API layer for permissions) - single date
+        start_date: Optional start date for date range filtering (inclusive)
+        end_date: Optional end date for date range filtering (inclusive)
         routine_id: Optional filter by routine
         timezone: IANA timezone string for correct date filtering (e.g., 'America/Los_Angeles')
     """
@@ -199,6 +203,8 @@ async def list_executions(
         project_id=project_id,
         status=status_filter,
         scheduled_date=date_filter,
+        start_date=start_date,
+        end_date=end_date,
         routine_id=routine_id,
         timezone=timezone,
     )
