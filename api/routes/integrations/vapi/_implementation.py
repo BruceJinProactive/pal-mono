@@ -292,6 +292,7 @@ def send_dd_latency(
     call_id: str,
     customer_number: str,
     phone_number: str,
+    account_name: str = "",
 ) -> None:
     """
     Send latency metrics for a single turn to DataDog.
@@ -302,11 +303,13 @@ def send_dd_latency(
         call_id: Call ID for tagging
         customer_number: Customer phone number for tagging
         phone_number: Business phone number for tagging
+        account_name: Account name for tagging
     """
     base_tags = [
         f"call_id:{call_id}",
         f"customer_number:{customer_number}",
         f"phone_number:{phone_number}",
+        f"account_name:{account_name}",
     ]
 
     turn_latency = latency_data.get("turnLatency")
@@ -357,13 +360,16 @@ def send_dd_latency(
         )
 
 
-async def _measure_voice_to_voice_latency(message_data: dict) -> None:
+async def _measure_voice_to_voice_latency(
+    message_data: dict, account_name: str = ""
+) -> None:
     """
     Measure conversation turn-taking latency for a completed call and send metrics to DataDog.
     Extracts latency data from VAPI end-of-call-report webhook payload.
 
     Args:
         message_data: Message data from VAPI end-of-call-report webhook
+        account_name: Account name for tagging metrics
     """
     call_data = message_data.get("call", {})
     call_id = call_data.get("id")
@@ -381,7 +387,7 @@ async def _measure_voice_to_voice_latency(message_data: dict) -> None:
         return
 
     for turn in turn_latencies:
-        send_dd_latency(turn, call_id, customer_number, phone_number)
+        send_dd_latency(turn, call_id, customer_number, phone_number, account_name)
 
     logger.info(
         f"Sent {len(turn_latencies)} turn latency metrics to DataDog for call {call_id}"
@@ -1303,7 +1309,8 @@ async def handle_session_closure(message_data, session: AsyncSession):
         await session.refresh(project, attribute_names=["account"])
 
         # Measure and record voice-to-voice latency metrics
-        await _measure_voice_to_voice_latency(message_data)
+        account_name = (project.account.name or "") if project.account else ""
+        await _measure_voice_to_voice_latency(message_data, account_name)
 
         # Send webhook on hangup asynchronously if the business number is allowlisted
         webhook_url, webhook_secret, allowed_numbers = _get_webhook_config()
