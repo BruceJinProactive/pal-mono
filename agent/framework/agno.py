@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import time
 import uuid
@@ -216,7 +217,69 @@ class AgnoAgent:
                     yield filler_output
 
                 chunk_index = 0
-                async for chunk in result:
+                last_output_time = time.time()
+                filler_timeout = 10.0  # Send additional filler words every 10 seconds
+                received_first_content = (
+                    False  # Track if we've received any real content
+                )
+
+                # Create async iterator from result
+                result_iter = result.__aiter__()
+                pending_task = None  # Track the task waiting for next chunk
+
+                while True:
+                    # Create or reuse task to get next chunk
+                    if pending_task is None:
+                        pending_task = asyncio.create_task(result_iter.__anext__())
+
+                    # Only use timeout if we haven't received first content yet
+                    if not received_first_content:
+                        done, pending = await asyncio.wait(
+                            {pending_task}, timeout=filler_timeout
+                        )
+
+                        if not done:
+                            # Timeout occurred, send filler word but keep task running
+                            current_time = time.time()
+                            time_since_last_output = current_time - last_output_time
+
+                            logger.debug(
+                                f"[AgnoAgent] No response for {time_since_last_output:.1f}s, sending additional filler word",
+                                extra={
+                                    "agent_id": self.config.metadata.agent_id,
+                                    "account_name": self.config.metadata.account_name,
+                                },
+                            )
+
+                            # Get another filler word
+                            additional_filler = (
+                                self.filler_manager.get_chat_filler_for_input(
+                                    input.content
+                                )
+                            )
+
+                            if additional_filler:
+                                filler_output = Output(
+                                    content=additional_filler,
+                                    documents=[],
+                                    images=[],
+                                )
+                                output_content += filler_output.content
+                                yield filler_output
+                                last_output_time = current_time
+
+                            # Continue waiting for the same task (don't cancel it)
+                            continue
+
+                    try:
+                        # Get the chunk from the completed task
+                        chunk = await pending_task
+                        pending_task = None  # Reset for next iteration
+                    except StopAsyncIteration:
+                        # Stream finished
+                        break
+
+                    # Process the chunk
                     if isinstance(chunk, RunResponseContentEvent):
                         # Skip chunks without valid content
                         content = getattr(chunk, "content", None)
@@ -230,6 +293,9 @@ class AgnoAgent:
                                 },
                             )
                             continue
+
+                        # Mark that we've received first content - no more filler words needed
+                        received_first_content = True
 
                         chunk_index += 1
                         if chunk_index == 1:
