@@ -4,7 +4,14 @@ from dataclasses import asdict
 from typing import Any, Dict, Literal, Optional
 
 from pal_agents import Spec
-from pal_agents.spec import KnowledgeSpec, MemorySpec, ModelSpec, PromptSpec, ToolSpec
+from pal_agents.spec import (
+    GenericAPISpec,
+    KnowledgeSpec,
+    MemorySpec,
+    ModelSpec,
+    PromptSpec,
+    ToolSpec,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -98,15 +105,50 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
     return tool_specs
 
 
-# Account-specific model size overrides (default is "m")
+# Valid model sizes for pal-agents
 ModelSize = Literal["xs", "s", "m", "l", "xl"]
-ACCOUNT_MODEL_OVERRIDES: dict[str, ModelSize] = {
-    "comida": "xs",
-}
+DEFAULT_MODEL_SIZE: ModelSize = "xs"
+
+
+def _build_generic_api_spec_from_raw_config(raw_config: dict) -> GenericAPISpec:
+    """Build GenericAPISpec from project raw_config.
+
+    Extracts generic_api configuration from the project's raw_config and
+    constructs a GenericAPISpec for the pal-agents framework. API documentation
+    is intentionally not included here - it should be injected via the prompt system.
+
+    Args:
+        raw_config: The project's raw_config dictionary.
+
+    Returns:
+        GenericAPISpec: Configuration for the generic API provider.
+            Returns disabled spec if generic_api is not enabled.
+    """
+    generic_api_config = raw_config.get("generic_api", {})
+
+    if not generic_api_config.get("enabled"):
+        return GenericAPISpec()
+
+    # Build auth dict if bearer_token is provided
+    auth = None
+    bearer_token = generic_api_config.get("bearer_token")
+    if bearer_token:
+        auth = {"type": "bearer", "token": bearer_token}
+
+    return GenericAPISpec(
+        enabled=True,
+        api_docs="",  # Docs come from prompt system, not here
+        base_url=generic_api_config.get("base_url"),
+        auth=auth,
+        allowed_paths=generic_api_config.get("allowed_paths", []),
+        timeout=generic_api_config.get("timeout", 10.0),
+    )
 
 
 def _agent_config_to_spec(
-    agent_config: AgentConfig, account_name: str | None = None
+    agent_config: AgentConfig,
+    model_size: ModelSize | None = None,
+    generic_api_spec: GenericAPISpec | None = None,
 ) -> Spec:
     """Convert pal-mono AgentConfig to pal-agents Spec.
 
@@ -115,7 +157,8 @@ def _agent_config_to_spec(
 
     Args:
         agent_config: The fully-built pal-mono agent configuration.
-        account_name: Optional account name for model size selection.
+        model_size: Model size from project raw_config (defaults to DEFAULT_MODEL_SIZE).
+        generic_api_spec: Optional GenericAPISpec for external API calling.
 
     Returns:
         Spec: pal-agents specification ready for Agent instantiation.
@@ -153,11 +196,8 @@ def _agent_config_to_spec(
         logger.debug(f"Tools enabled: {[t.tool_name for t in tool_specs]}")
 
     # ========== Build ModelSpec ==========
-    # Use account-specific override if configured, otherwise default to "m"
-    default_model_size: ModelSize = "m"
-    model_size: ModelSize = ACCOUNT_MODEL_OVERRIDES.get(
-        account_name or "", default_model_size
-    )
+    # Use model_size from raw_config, or default
+    effective_model_size = model_size or DEFAULT_MODEL_SIZE
 
     # ========== Build final Spec ==========
     return Spec(
@@ -165,7 +205,8 @@ def _agent_config_to_spec(
         knowledge=knowledge_spec,
         memory=memory_spec,
         tools=tool_specs,
-        model=ModelSpec(size=model_size),
+        model=ModelSpec(size=effective_model_size),
+        generic_api=generic_api_spec or GenericAPISpec(),
     )
 
 
@@ -178,7 +219,7 @@ async def construct_agent_spec(
     channel: Channel,
     sender_identifier: str | None = None,
     receiver_identifier: str | None = None,
-    account_name: str | None = None,
+    raw_config: dict | None = None,
 ) -> Spec:
     """Build a pal_agents.Spec from database configuration.
 
@@ -194,7 +235,7 @@ async def construct_agent_spec(
         channel: Communication channel (sms, voice, web).
         sender_identifier: Phone number or user identifier.
         receiver_identifier: Receiver identifier for phone channels (optional).
-        account_name: Account name for model size selection (optional).
+        raw_config: Project raw_config dict (if provided, skips extra DB fetch).
 
     Returns:
         Spec: pal-agents specification with prompt, knowledge, memory, and tools.
@@ -221,8 +262,27 @@ async def construct_agent_spec(
 
     logger.debug("Built AgentConfig, converting to pal-agents Spec")
 
+    # Use provided raw_config or default to empty dict
+    effective_raw_config = raw_config or {}
+
+    generic_api_spec = _build_generic_api_spec_from_raw_config(effective_raw_config)
+
+    if generic_api_spec.enabled:
+        logger.debug(
+            f"GenericAPI enabled: base_url={generic_api_spec.base_url}, "
+            f"allowed_paths={generic_api_spec.allowed_paths}"
+        )
+
+    # Extract model size from raw_config (defaults to DEFAULT_MODEL_SIZE if not specified)
+    model_size_raw = effective_raw_config.get("model")
+    model_size: ModelSize | None = None
+    if model_size_raw in ("xs", "s", "m", "l", "xl"):
+        model_size = model_size_raw  # type: ignore[assignment]
+
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
-    return _agent_config_to_spec(agent_config, account_name=account_name)
+    return _agent_config_to_spec(
+        agent_config, model_size=model_size, generic_api_spec=generic_api_spec
+    )
 
 
 async def construct_agent_config(

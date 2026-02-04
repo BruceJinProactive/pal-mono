@@ -25,7 +25,7 @@ async def construct_agent_spec(
     channel: Channel,
     sender_identifier: str | None = None,
     receiver_identifier: str | None = None,
-    account_name: str | None = None,
+    raw_config: dict | None = None,
 ) -> Spec:
     """Build a pal_agents.Spec from database configuration."""
     return await _implementation.construct_agent_spec(
@@ -37,7 +37,7 @@ async def construct_agent_spec(
         channel,
         sender_identifier,
         receiver_identifier,
-        account_name,
+        raw_config,
     )
 
 

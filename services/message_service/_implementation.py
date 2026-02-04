@@ -37,12 +37,6 @@ from utils.request_context import RequestContext
 
 from . import _utils
 
-# Accounts that use the pal-agents framework instead of the legacy agent system
-PAL_AGENTS_ACCOUNTS = [
-    "proactiveailab-transformer",
-    "comida",
-]
-
 
 def get_filler_message(message: Message) -> Message:
     # Collection of filler phrases for voice responses
@@ -88,9 +82,13 @@ async def get_chat_response_async(
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
 
-        # Store project_id and account_id early while object is attached to session
+        # Store project_id, account_id, and raw_config early while object is attached to session
         project_id = project.id
         project_account_id = project.account_id  # Capture early for memory ingestion
+        project_raw_config = project.raw_config or {}
+
+        # Check if project uses pal-agents framework (from raw_config)
+        use_pal_agents = project_raw_config.get("use_pal_agents", False)
 
         # Get user_id by sender channel/number with user_service
         user, is_new_sms_user = await user_service.get_user_async(
@@ -133,7 +131,7 @@ async def get_chat_response_async(
         # **************** Step 2: Construct agent, get input, and generate output ****************
         # Initialize current_message for memory ingestion (defined in pal-agents branch)
         current_message = ""
-        if account_name in PAL_AGENTS_ACCOUNTS:
+        if use_pal_agents:
             # NEW FLOW: Use pal-agents
 
             spec = await agent_service.construct_agent_spec(
@@ -144,7 +142,7 @@ async def get_chat_response_async(
                 conversation_id=request_message.conversation_id,
                 channel=message.channel,
                 sender_identifier=message.sender_identifier,
-                account_name=account_name,
+                raw_config=project_raw_config,
             )
 
             pal_agent = PalAgent(spec=spec)
@@ -329,8 +327,8 @@ async def get_chat_response_async(
         await session.refresh(request_message, attribute_names=["conversation_id"])
 
         # Memory ingestion for pal-agents flow (fire-and-forget)
-        # Only triggers for pal-agents accounts; agno agents are unaffected
-        if account_name in PAL_AGENTS_ACCOUNTS:
+        # Only triggers for pal-agents projects; agno agents are unaffected
+        if use_pal_agents:
             # Use early-captured values to avoid SQLAlchemy lazy load issues
             asyncio.create_task(
                 get_ingestion_service().ingest_interaction(
@@ -380,8 +378,12 @@ async def get_chat_response_stream(
         try:
             # ==== Step 1: Get project, user, and save request message ====
             project = await project_service.get_project_async(session, message)
-            # Capture account_id early while object is attached to session (for memory ingestion)
+            # Capture account_id and raw_config early while object is attached to session
             project_account_id = project.account_id
+            project_raw_config = project.raw_config or {}
+
+            # Check if project uses pal-agents framework (from raw_config)
+            use_pal_agents = project_raw_config.get("use_pal_agents", False)
 
             user, is_new_sms_user = await user_service.get_user_async(
                 session, project, message
@@ -459,8 +461,8 @@ async def get_chat_response_stream(
             # Initialize current_message for memory ingestion (defined in pal-agents branch)
             current_message = ""
 
-            # ========== CHUNK GENERATION (if/else by account) ==========
-            if account_name in PAL_AGENTS_ACCOUNTS:
+            # ========== CHUNK GENERATION (if/else by project config) ==========
+            if use_pal_agents:
                 # PAL-AGENTS PATH
 
                 spec = await agent_service.construct_agent_spec(
@@ -471,7 +473,7 @@ async def get_chat_response_stream(
                     conversation_id=request_message.conversation_id,
                     channel=message.channel,
                     sender_identifier=message.sender_identifier,
-                    account_name=account_name,
+                    raw_config=project_raw_config,
                 )
                 pal_agent = PalAgent(spec=spec)
 
@@ -866,8 +868,8 @@ async def get_chat_response_stream(
                 await session.refresh(user, attribute_names=["id"])
 
                 # Memory ingestion for pal-agents flow (fire-and-forget)
-                # Only triggers for pal-agents accounts; agno agents are unaffected
-                if account_name in PAL_AGENTS_ACCOUNTS:
+                # Only triggers for pal-agents projects; agno agents are unaffected
+                if use_pal_agents:
                     # Use early-captured values to avoid SQLAlchemy lazy load issues
                     asyncio.create_task(
                         get_ingestion_service().ingest_interaction(
