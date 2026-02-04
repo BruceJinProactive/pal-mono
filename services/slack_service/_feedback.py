@@ -264,7 +264,7 @@ async def send_feedback_notification(
         # Status action buttons
         # Encode button payload as JSON to handle special characters and multiple fields
         button_payload = {
-            "conversation_id": conversation_id,
+            "feedback_id": feedback_id or "",
             "notion_page_id": notion_page_id or "",
             "user_email": user_email,
             "user_name": user_name or "",

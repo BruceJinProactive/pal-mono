@@ -59,7 +59,8 @@ def verify_slack_signature(
 async def _update_notion_status(
     notion_page_id: str,
     status: str,
-    conversation_id: str,
+    conversation_id: str = "",
+    feedback_id: str = "",
 ) -> None:
     """
     Helper function to update Notion feedback status.
@@ -67,7 +68,8 @@ async def _update_notion_status(
     Args:
         notion_page_id: The Notion page ID (can be empty string)
         status: The status to set (e.g., "Investigating", "Changes Now Live", "Out of Scope")
-        conversation_id: The conversation ID for logging purposes
+        conversation_id: The conversation ID for logging purposes (optional)
+        feedback_id: The feedback ID for logging purposes (optional)
     """
     if notion_page_id:
         try:
@@ -96,7 +98,7 @@ async def _update_notion_status(
             "[Slack Interactions] Skipping Notion update - notion_page_id is empty. "
             "This usually means the Slack message was created before Notion integration was set up. "
             "Create a new feedback ticket to test the full integration.",
-            extra={"conversation_id": conversation_id},
+            extra={"feedback_id": feedback_id, "conversation_id": conversation_id},
         )
 
 
@@ -410,8 +412,10 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
         # STATELESS: All data needed for the interaction is embedded in the button payload
         # We do NOT query the database - this makes the handler fully stateless
         #
-        # New format (JSON): {"conversation_id": "...", "notion_page_id": "...", "user_email": "...", "user_name": "...", "feedback_text": "...", "tags": [...]}
+        # New format (JSON): {"feedback_id": "...", "notion_page_id": "...", "user_email": "...", "user_name": "...", "feedback_text": "...", "tags": [...]}
+        # Legacy format (JSON): {"conversation_id": "...", "notion_page_id": "...", "user_email": "..."}
         # Legacy format (pipe-delimited): conversation_id|notion_page_id|user_email
+        feedback_id = ""
         conversation_id = ""
         notion_page_id = ""
         user_email = ""
@@ -422,7 +426,10 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
         # Try parsing as JSON first (new format)
         try:
             payload_data = json.loads(button_value)
-            conversation_id = payload_data.get("conversation_id", "")
+            feedback_id = payload_data.get("feedback_id", "")
+            # For backward compatibility, check for conversation_id if feedback_id is not present
+            if not feedback_id:
+                conversation_id = payload_data.get("conversation_id", "")
             notion_page_id = payload_data.get("notion_page_id", "")
             user_email = payload_data.get("user_email", "")
             user_name = payload_data.get("user_name", "")
@@ -443,10 +450,11 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
             conversation_id, notion_page_id, user_email = parts
 
         # Validate extracted values
-        if not conversation_id or not user_email:
+        if not feedback_id and not conversation_id:
             logger.error(
-                "[Slack Interactions] Missing required values in button payload",
+                "[Slack Interactions] Missing required values in button payload (need feedback_id or conversation_id)",
                 extra={
+                    "feedback_id": feedback_id,
                     "conversation_id": conversation_id,
                     "notion_page_id": notion_page_id,
                 },
@@ -454,6 +462,19 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Missing required payload values",
+            )
+
+        if not user_email:
+            logger.error(
+                "[Slack Interactions] Missing user_email in button payload",
+                extra={
+                    "feedback_id": feedback_id,
+                    "conversation_id": conversation_id,
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing user_email in payload",
             )
 
         # Validate notion_page_id format (must be empty or 32-character hex string)
@@ -485,6 +506,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
             f"[Slack Interactions] Button clicked: {action_id}",
             extra={
                 "action_id": action_id,
+                "feedback_id": feedback_id,
                 "conversation_id": conversation_id,
                 "notion_page_id": notion_page_id,
                 "clicked_by": slack_user_name,
@@ -587,6 +609,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
             notion_page_id=notion_page_id,
             status=new_status,
             conversation_id=conversation_id,
+            feedback_id=feedback_id,
         )
 
         # Send feedback receipt email (only for 'Investigating' action)
@@ -601,6 +624,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     logger.info(
                         "[Slack Interactions] Sent feedback receipt email to user",
                         extra={
+                            "feedback_id": feedback_id,
                             "conversation_id": conversation_id,
                             "user_email": user_email,
                         },
@@ -609,6 +633,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     logger.warning(
                         "[Slack Interactions] Feedback receipt email not sent",
                         extra={
+                            "feedback_id": feedback_id,
                             "conversation_id": conversation_id,
                             "user_email": user_email,
                         },
@@ -617,6 +642,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                 logger.error(
                     f"[Slack Interactions] Error sending feedback receipt email: {e}",
                     extra={
+                        "feedback_id": feedback_id,
                         "conversation_id": conversation_id,
                         "user_email": user_email,
                     },
@@ -627,7 +653,13 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
         console_base_url = os.getenv(
             "PAL_CONSOLE_BASE_URL", "https://console.palona.ai"
         )
-        conversation_link = f"{console_base_url}/hosting/conversations?conversationId={conversation_id}&tab=feedback"
+        # Use feedbackId if available, otherwise fall back to conversationId for legacy support
+        if feedback_id:
+            conversation_link = (
+                f"{console_base_url}/hosting/conversations?feedbackId={feedback_id}"
+            )
+        else:
+            conversation_link = f"{console_base_url}/hosting/conversations?conversationId={conversation_id}&tab=feedback"
 
         # Send resolution notice email (only for 'Changes Now Live' action)
         if clicked_action_name == "live" and user_email:
@@ -643,6 +675,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     logger.info(
                         "[Slack Interactions] Sent resolution notice email to user",
                         extra={
+                            "feedback_id": feedback_id,
                             "conversation_id": conversation_id,
                             "user_email": user_email,
                         },
@@ -651,6 +684,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     logger.warning(
                         "[Slack Interactions] Resolution notice email not sent",
                         extra={
+                            "feedback_id": feedback_id,
                             "conversation_id": conversation_id,
                             "user_email": user_email,
                         },
@@ -659,6 +693,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                 logger.error(
                     f"[Slack Interactions] Error sending resolution notice email: {e}",
                     extra={
+                        "feedback_id": feedback_id,
                         "conversation_id": conversation_id,
                         "user_email": user_email,
                     },
@@ -678,6 +713,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     logger.info(
                         "[Slack Interactions] Sent feedback backlog email to user",
                         extra={
+                            "feedback_id": feedback_id,
                             "conversation_id": conversation_id,
                             "user_email": user_email,
                         },
@@ -686,6 +722,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     logger.warning(
                         "[Slack Interactions] Feedback backlog email not sent",
                         extra={
+                            "feedback_id": feedback_id,
                             "conversation_id": conversation_id,
                             "user_email": user_email,
                         },
@@ -694,6 +731,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                 logger.error(
                     f"[Slack Interactions] Error sending feedback backlog email: {e}",
                     extra={
+                        "feedback_id": feedback_id,
                         "conversation_id": conversation_id,
                         "user_email": user_email,
                     },
@@ -703,6 +741,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
         logger.info(
             f"[Slack Interactions] Feedback marked as {clicked_action_name}",
             extra={
+                "feedback_id": feedback_id,
                 "conversation_id": conversation_id,
                 "notion_page_id": notion_page_id,
                 "action": clicked_action_name,

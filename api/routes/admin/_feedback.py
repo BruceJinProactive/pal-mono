@@ -193,7 +193,9 @@ async def create_feedback(
         return _builder.build_feedback(persisted_feedback)
 
     CONSOLE_BASE_URL = os.getenv("PAL_CONSOLE_BASE_URL", "https://console.palona.ai")
-    conversation_link = f"{CONSOLE_BASE_URL}/hosting/conversations?conversationId={conversation.id}&tab=feedback"
+    conversation_link = (
+        f"{CONSOLE_BASE_URL}/hosting/conversations?feedbackId={persisted_feedback.id}"
+    )
 
     # Create Notion ticket (only for negative feedback)
     notion_ticket_url = None
