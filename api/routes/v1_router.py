@@ -8,6 +8,7 @@ from api.routes.integrations import integrations_router
 from api.routes.internal import internal_router
 from api.routes.operation import operation_router
 from api.routes.status import status_router
+from api.routes.telephony import telephony_router
 
 v1_router = APIRouter(prefix="/v1")
 v1_router.include_router(admin_router)
@@ -17,4 +18,5 @@ v1_router.include_router(asset_router)
 v1_router.include_router(integrations_router)
 v1_router.include_router(operation_router)
 v1_router.include_router(catering_router)
+v1_router.include_router(telephony_router)
 v1_router.include_router(internal_router)
