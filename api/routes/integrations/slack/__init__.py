@@ -15,6 +15,27 @@ from . import _interactions
 slack_router = APIRouter(prefix="/slack", tags=["Slack Integration"])
 
 
+@slack_router.post("/events", status_code=http_status.HTTP_200_OK)
+async def slack_events(request: Request):
+    """
+    Handle Slack events (app mentions, direct messages, etc.).
+
+    This endpoint receives Slack event payloads when:
+    - Someone @mentions the bot
+    - Someone sends a DM to the bot
+    - Other subscribed events occur
+
+    Slack sends a URL verification challenge when you first configure this endpoint.
+    The endpoint must respond with the challenge value to complete verification.
+
+    Returns:
+        Response: FastAPI Response object from Slack Bolt handler
+    """
+    from services import slack_service
+
+    return await slack_service.handle_slack_events(request)
+
+
 @slack_router.get("/interactions", status_code=http_status.HTTP_200_OK)
 async def slack_interactions_verify(_request: Request):
     """
