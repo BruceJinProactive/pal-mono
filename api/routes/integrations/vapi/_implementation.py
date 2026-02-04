@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -264,44 +263,57 @@ async def _send_hangup_webhook_background(
         )
 
 
-def send_dd_latency(
-    log_message: str, call_id: str, customer_number: str, phone_number: str
-) -> None:
+def _extract_turn_latencies(message_data: dict) -> list[dict]:
     """
-    Extract latency metrics from VAPI log message and send to DataDog.
+    Extract turn latency data from VAPI end-of-call-report webhook payload.
 
     Args:
-        log_message: Log message containing latency data
+        message_data: The end-of-call-report webhook payload
+
+    Returns:
+        List of dicts, each containing latency metrics for one turn:
+        - turnLatency, modelLatency, voiceLatency, transcriberLatency, endpointingLatency
+    """
+
+    artifact = message_data.get("artifact") or {}
+    if not isinstance(artifact, dict):
+        return []
+    performance_metrics = artifact.get("performanceMetrics") or {}
+    if not isinstance(performance_metrics, dict):
+        return []
+    turn_latencies = performance_metrics.get("turnLatencies") or []
+    if not isinstance(turn_latencies, list):
+        return []
+    return [t for t in turn_latencies if isinstance(t, dict)]
+
+
+def send_dd_latency(
+    latency_data: dict,
+    call_id: str,
+    customer_number: str,
+    phone_number: str,
+) -> None:
+    """
+    Send latency metrics for a single turn to DataDog.
+
+    Args:
+        latency_data: Dict with keys: turnLatency, modelLatency, voiceLatency,
+                      transcriberLatency, endpointingLatency (all in ms)
         call_id: Call ID for tagging
         customer_number: Customer phone number for tagging
         phone_number: Business phone number for tagging
     """
-    # Extract turn latency
-    turn_latency_match = re.search(r"Turn latency: (\d+)ms", log_message)
-    turn_latency = int(turn_latency_match.group(1)) if turn_latency_match else None
-
-    # Extract transcriber latency
-    transcriber_match = re.search(r"transcriber: (\d+)ms", log_message)
-    transcriber_latency = int(transcriber_match.group(1)) if transcriber_match else None
-
-    # Extract model latency
-    model_match = re.search(r"model: (\d+)ms", log_message)
-    model_latency = int(model_match.group(1)) if model_match else None
-
-    # Extract voice latency
-    voice_match = re.search(r"voice: (\d+)ms", log_message)
-    voice_latency = int(voice_match.group(1)) if voice_match else None
-
-    logger.debug(
-        f"Extracted latencies for call {call_id} (from {customer_number} to {phone_number}): turn={turn_latency}ms, transcriber={transcriber_latency}ms, model={model_latency}ms, voice={voice_latency}ms"
-    )
-
-    # Send individual metrics to DataDog
     base_tags = [
         f"call_id:{call_id}",
         f"customer_number:{customer_number}",
         f"phone_number:{phone_number}",
     ]
+
+    turn_latency = latency_data.get("turnLatency")
+    model_latency = latency_data.get("modelLatency")
+    voice_latency = latency_data.get("voiceLatency")
+    transcriber_latency = latency_data.get("transcriberLatency")
+    endpointing_latency = latency_data.get("endpointingLatency")
 
     if turn_latency is not None:
         dd_histogram_duration(
@@ -309,17 +321,6 @@ def send_dd_latency(
             duration_ms=turn_latency,
             tags=base_tags + ["component:total"],
         )
-    else:
-        logger.debug(f"Turn latency not found in log message for call {call_id}")
-
-    if transcriber_latency is not None:
-        dd_histogram_duration(
-            name="vapi.transcriber_latency",
-            duration_ms=transcriber_latency,
-            tags=base_tags + ["component:transcriber"],
-        )
-    else:
-        logger.debug(f"Transcriber latency not found in log message for call {call_id}")
 
     if model_latency is not None:
         dd_histogram_duration(
@@ -327,8 +328,6 @@ def send_dd_latency(
             duration_ms=model_latency,
             tags=base_tags + ["component:model"],
         )
-    else:
-        logger.debug(f"Model latency not found in log message for call {call_id}")
 
     if voice_latency is not None:
         dd_histogram_duration(
@@ -336,116 +335,51 @@ def send_dd_latency(
             duration_ms=voice_latency,
             tags=base_tags + ["component:voice"],
         )
-    else:
-        logger.debug(f"Voice latency not found in log message for call {call_id}")
+
+    if transcriber_latency is not None:
+        dd_histogram_duration(
+            name="vapi.transcriber_latency",
+            duration_ms=transcriber_latency,
+            tags=base_tags + ["component:transcriber"],
+        )
+
+    if endpointing_latency is not None:
+        dd_histogram_duration(
+            name="vapi.endpointing_latency",
+            duration_ms=endpointing_latency,
+            tags=base_tags + ["component:endpointing"],
+        )
 
 
 async def _measure_voice_to_voice_latency(message_data: dict) -> None:
     """
     Measure conversation turn-taking latency for a completed call and send metrics to DataDog.
-    Distinguishes between user-to-agent and agent-to-user response latencies.
+    Extracts latency data from VAPI end-of-call-report webhook payload.
 
     Args:
-        message_data: Message data sent from VAPI webhook
+        message_data: Message data from VAPI end-of-call-report webhook
     """
     call_data = message_data.get("call", {})
     call_id = call_data.get("id")
 
-    # Extract caller information
     customer_data = message_data.get("customer", {})
     customer_number = customer_data.get("number", "")
 
-    # Extract business information
     phone_number_data = message_data.get("phoneNumber", {})
     phone_number = phone_number_data.get("number", "")
 
-    # Initialize VAPI client
-    vapi_token = os.environ.get("VAPI_API_KEY")
-    if not vapi_token:
-        logger.error("VAPI_API_KEY environment variable not set")
+    turn_latencies = _extract_turn_latencies(message_data)
+
+    if not turn_latencies:
+        logger.debug(f"No turn latencies found for call {call_id}")
         return
 
-    vapi_client = AsyncVapi(token=vapi_token)
+    for turn in turn_latencies:
+        send_dd_latency(turn, call_id, customer_number, phone_number)
 
-    # Get logs for this call
-    logger.debug(
-        f"[VAPI DEBUG] Retrieving logs for call {call_id} to measure voice-to-voice latency"
+    logger.info(
+        f"Sent {len(turn_latencies)} turn latency metrics to DataDog for call {call_id}"
     )
-    try:
-        logger.debug(f"[VAPI DEBUG] Starting log retrieval for call_id={call_id}")
-
-        # Also try calls.get to see if latency data is there
-        try:
-            call_details = await vapi_client.calls.get(id=call_id)
-            logger.debug(f"[VAPI DEBUG] call_details type: {type(call_details)}")
-            logger.debug(
-                f"[VAPI DEBUG] call_details.analysis: {getattr(call_details, 'analysis', 'N/A')}"
-            )
-            logger.debug(
-                f"[VAPI DEBUG] call_details.artifact: {getattr(call_details, 'artifact', 'N/A')}"
-            )
-            logger.debug(
-                f"[VAPI DEBUG] call_details.costs: {getattr(call_details, 'costs', 'N/A')}"
-            )
-            logger.debug(
-                f"[VAPI DEBUG] call_details.cost_breakdown: {getattr(call_details, 'cost_breakdown', 'N/A')}"
-            )
-        except Exception as call_err:
-            logger.debug(f"[VAPI DEBUG] calls.get failed: {call_err}")
-
-        logs_pager = await vapi_client.logs.get(call_id=call_id, type="Call")
-
-        # Debug: output everything about logs_pager
-        logger.debug(f"[VAPI DEBUG] logs_pager: {logs_pager}")
-        logger.debug(f"[VAPI DEBUG] logs_pager type: {type(logs_pager)}")
-        logger.debug(f"[VAPI DEBUG] logs_pager.items: {logs_pager.items}")
-        logger.debug(f"[VAPI DEBUG] logs_pager.has_next: {logs_pager.has_next}")
-        logger.debug(f"[VAPI DEBUG] logs_pager.response: {logs_pager.response}")
-        if logs_pager.items:
-            logger.debug(f"[VAPI DEBUG] items length: {len(logs_pager.items)}")
-            for i, item in enumerate(logs_pager.items[:5]):  # First 5 items
-                logger.debug(f"[VAPI DEBUG] item[{i}]: {item}")
-                logger.debug(f"[VAPI DEBUG] item[{i}] type: {type(item)}")
-                logger.debug(
-                    f"[VAPI DEBUG] item[{i}] dict: {item.__dict__ if hasattr(item, '__dict__') else 'no __dict__'}"
-                )
-        if logs_pager.response:
-            logger.debug(f"[VAPI DEBUG] response type: {type(logs_pager.response)}")
-            try:
-                # NOTE: Accessing private _response for debugging only - remove before production
-                raw = getattr(logs_pager.response, "_response", None)
-                if raw:
-                    logger.debug(
-                        f"[VAPI DEBUG] raw response status: {getattr(raw, 'status_code', 'N/A')}"
-                    )
-            except Exception as debug_err:
-                logger.debug(
-                    f"[VAPI DEBUG] Could not inspect raw response: {debug_err}"
-                )
-
-        # Collect and filter logs from the pager
-        log_count = 0
-        async for log in logs_pager:
-            log_count += 1
-            # Filter for turn latency logs
-            log_level = getattr(log, "level", None)
-            log_message = getattr(log, "log", None)
-            logger.debug(
-                f"[VAPI DEBUG] Log #{log_count} for call {call_id}: level={log_level}, message={log_message[:100] if log_message else None}"
-            )
-            if log_level == "INFO" and log_message and "Turn latency:" in log_message:
-                logger.debug(
-                    f"[VAPI DEBUG] Processing log for call {call_id}: {log_message}"
-                )
-                send_dd_latency(log_message, call_id, customer_number, phone_number)
-
-        logger.debug(
-            f"[VAPI DEBUG] Finished processing {log_count} logs for call {call_id}"
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to retrieve logs for call {call_id}: {str(e)}")
-        return
 
 
 async def api_vapi_server(request: Request, session: AsyncSession) -> JSONResponse:
