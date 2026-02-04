@@ -854,15 +854,12 @@ async def get_chat_response_stream(
                 logger.debug(
                     f"Persist streaming outbound message: {response_message.to_dict()} to user: {user.id}"
                 )
-                await message_repo.create_message(
-                    user_id=user.id,
-                    project_id=project.id,
+                # Use add_message_to_conversation with the known conversation_id
+                # instead of create_message which does a lookup that can find
+                # the wrong conversation when multiple active conversations exist
+                await message_repo.add_message_to_conversation(
+                    conversation_id=request_conversation_id,
                     message_body=response_message.to_dict(),
-                    channel=(
-                        response_message.channel.value
-                        if response_message.channel
-                        else "unknown"
-                    ),
                 )
 
                 await session.refresh(user, attribute_names=["id"])
