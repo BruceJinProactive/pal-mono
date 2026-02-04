@@ -117,6 +117,10 @@ def _build_generic_api_spec_from_raw_config(raw_config: dict) -> GenericAPISpec:
     constructs a GenericAPISpec for the pal-agents framework. API documentation
     is intentionally not included here - it should be injected via the prompt system.
 
+    Auth configuration format:
+        {"auth": {"type": "bearer", "token": "..."}}
+        {"auth": {"type": "basic", "username": "...", "password": "..."}}
+
     Args:
         raw_config: The project's raw_config dictionary.
 
@@ -129,17 +133,11 @@ def _build_generic_api_spec_from_raw_config(raw_config: dict) -> GenericAPISpec:
     if not generic_api_config.get("enabled"):
         return GenericAPISpec()
 
-    # Build auth dict if bearer_token is provided
-    auth = None
-    bearer_token = generic_api_config.get("bearer_token")
-    if bearer_token:
-        auth = {"type": "bearer", "token": bearer_token}
-
     return GenericAPISpec(
         enabled=True,
         api_docs="",  # Docs come from prompt system, not here
         base_url=generic_api_config.get("base_url"),
-        auth=auth,
+        auth=generic_api_config.get("auth"),
         allowed_paths=generic_api_config.get("allowed_paths", []),
         timeout=generic_api_config.get("timeout", 10.0),
     )
