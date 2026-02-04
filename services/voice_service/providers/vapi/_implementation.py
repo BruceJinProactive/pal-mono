@@ -177,6 +177,16 @@ class VAPIProvider:
             },
         }
 
+        # Enable accent localization to improve accent quality for sonic-3
+        if voice_model == "sonic-3":
+            vapi_voice_config["generationConfig"] = {
+                "speed": 1,  # double or null 0.6-1.5 Defaults to 1
+                "volume": 1,  # double or null 0.5-2 Defaults to 1
+                "experimental": {
+                    "accentLocalization": 1
+                },  # Toggle accent localization for sonic-3: 0 (disabled, default) or 1 (enabled). When enabled, the voice adapts to match the transcript language accent while preserving vocal characteristics.
+            }
+
         # Add chunkPlan with formatPlan only if replacements exist
         if voice_config.replacements:
             chunk_plan = {"formatPlan": {"replacements": []}}
