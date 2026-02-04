@@ -627,9 +627,7 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
         console_base_url = os.getenv(
             "PAL_CONSOLE_BASE_URL", "https://console.palona.ai"
         )
-        conversation_link = (
-            f"{console_base_url}/hosting/conversations?conversationId={conversation_id}"
-        )
+        conversation_link = f"{console_base_url}/hosting/conversations?conversationId={conversation_id}&tab=feedback"
 
         # Send resolution notice email (only for 'Changes Now Live' action)
         if clicked_action_name == "live" and user_email:

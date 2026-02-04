@@ -31,9 +31,32 @@ async def slack_events(request: Request):
     Returns:
         Response: FastAPI Response object from Slack Bolt handler
     """
+    import json
+
     from services import slack_service
 
-    return await slack_service.handle_slack_events(request)
+    # Read the body once (can only be read once per request)
+    body_bytes = await request.body()
+
+    try:
+        # Parse JSON to check for URL verification challenge
+        data = json.loads(body_bytes.decode("utf-8"))
+
+        # Handle URL verification challenge directly
+        if data.get("type") == "url_verification":
+            challenge = data.get("challenge")
+            if challenge:
+                logger.info(
+                    f"[Slack Events] URL verification challenge received: {challenge}"
+                )
+                return {"challenge": challenge}
+
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logger.warning(f"[Slack Events] Could not parse request body as JSON: {e}")
+        # Continue to let Slack Bolt handler process it
+
+    # For other events, pass body bytes to the service handler
+    return await slack_service.handle_slack_events(request, body_bytes)
 
 
 @slack_router.get("/interactions", status_code=http_status.HTTP_200_OK)

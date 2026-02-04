@@ -46,32 +46,44 @@ from ._reports import send_report_to_slack as _send_report_to_slack
 # =============================================================================
 
 
-async def handle_slack_events(request) -> Response:
+async def handle_slack_events(request, body_bytes: bytes | None = None) -> Response:
     """
-    Handle all Slack events by passing untouched request to Slack Bolt handler.
-    This allows proper signature verification and URL verification by Slack Bolt.
+    Handle all Slack events by passing request to Slack Bolt handler.
 
     Args:
-        request: FastAPI Request object (untouched - no request.json() called)
+        request: FastAPI Request object
+        body_bytes: Optional pre-read request body bytes (if body was already consumed)
 
     Returns:
         FastAPI Response object from Slack Bolt handler
     """
     try:
-        # Get Slack handler and let it handle everything (including URL verification)
-        # Important: Don't call request.json() as it breaks Bolt's signature verification
+        # Get Slack handler
         handler = _get_slack_handler()
-        if handler:
-            return await handler.handle(request)
-        else:
+        if not handler:
             logger.error("[Slackbot] Slack handler not configured")
             return JSONResponse(
                 status_code=503,
                 content={"status": "error", "message": "Slack handler not configured"},
             )
 
+        # If body was already read, reconstruct the request
+        if body_bytes is not None:
+
+            async def receive():
+                return {"type": "http.request", "body": body_bytes}
+
+            # Reconstruct request with the pre-read body
+            from fastapi import Request
+
+            reconstructed_request = Request(scope=request.scope, receive=receive)
+            return await handler.handle(reconstructed_request)
+        else:
+            # Body not consumed yet, pass original request
+            return await handler.handle(request)
+
     except Exception as e:
-        logger.error(f"[Slackbot] Error handling Slack event: {e}")
+        logger.error(f"[Slackbot] Error handling Slack event: {e}", exc_info=True)
         return JSONResponse(
             status_code=500, content={"status": "error", "message": str(e)}
         )
