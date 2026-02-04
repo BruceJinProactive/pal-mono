@@ -62,8 +62,11 @@ def create_slack_app() -> AsyncApp | None:
         """Shared logic to process messages from both mentions and DMs."""
         message_text = event.get("text", "").lower()
 
+        # Check for feedback-status command (must come before feedback check)
+        if "feedback-status" in message_text:
+            await _commands.handle_feedback_status_request(event, client)
         # Check for feedback command
-        if "feedback" in message_text:
+        elif "feedback" in message_text:
             await _commands.handle_feedback_request(event, client)
         # Check for daily report
         elif "daily" in message_text:

@@ -425,6 +425,265 @@ async def handle_custom_date_request(message, client):
         logger.error(f"[Slackbot] Error handling custom date request: {e}")
 
 
+async def handle_feedback_status_request(message, client):
+    """
+    Handle feedback-status requests like "/feedback-status client-name" or "feedback-status for client-name".
+
+    Shows ALL feedback for the specified client, grouped by status type.
+
+    Args:
+        message: Slack message object
+        client: Slack client object
+    """
+    # Import here to avoid circular dependency
+    from collections import defaultdict
+
+    from services import (
+        account_service,
+        feedback_service,
+        message_service,
+        notion_service,
+        user_service,
+    )
+
+    try:
+        slack_channel = message.get("channel")
+        user = message["user"]
+        message_text = message.get("text", "")
+
+        # Parse client name from message
+        # Support formats: "feedback-status client-name", "feedback-status for client-name", "/feedback-status client-name"
+        client_name = None
+
+        # Try "for client-name" format first
+        client_name = parse_account_name_from_message(message_text)
+
+        # If not found, try to extract client name directly after "feedback-status"
+        if not client_name:
+            match = re.search(
+                r"feedback-status\s+([a-zA-Z0-9_-]+)", message_text, re.IGNORECASE
+            )
+            if match:
+                client_name = match.group(1).strip()
+
+        if not client_name:
+            # Send help message if parsing failed
+            help_text = (
+                "📊 *Feedback Status Command Help*\n\n"
+                "Please use the format: `feedback-status <client-name>` or `feedback-status for <client-name>`\n\n"
+                "Examples:\n"
+                "• `feedback-status acme-restaurant`\n"
+                "• `feedback-status for burger-place`\n"
+                "• `/feedback-status romeo`\n\n"
+                "This will show all feedback for the specified client, grouped by status."
+            )
+
+            await client.chat_postMessage(
+                channel=slack_channel, text=help_text, mrkdwn=True
+            )
+            return
+
+        logger.info(
+            f"[Slackbot] User {user} requested feedback status for client '{client_name}' in channel {slack_channel}"
+        )
+
+        # Send "processing" message
+        await client.chat_postMessage(
+            channel=slack_channel,
+            text=f"🔍 Fetching all feedback for *{client_name}*...",
+            mrkdwn=True,
+        )
+
+        # Get database session
+        session = SyncSessionLocal()
+        try:
+            # 1. Validate account exists
+            account = account_service.get_account(session, client_name)
+            if not account:
+                await client.chat_postMessage(
+                    channel=slack_channel,
+                    text=f"❌ Account `{client_name}` not found. Please check the account name and try again.",
+                    mrkdwn=True,
+                )
+                return
+
+            # 2. Get all conversations for this account
+            account_users = user_service.get_users_by_account_id(session, account.id)
+            account_users_ids = [user.id for user in account_users]
+            _, account_conversations = message_service.get_conversations_by_users(
+                session, 1, 1000, account_users_ids
+            )
+            conversation_ids = {
+                conversation.id for conversation in account_conversations
+            }
+
+            # 3. Get all feedbacks and filter for this account's conversations
+            all_feedbacks = feedback_service.get_feedbacks(session)
+            if not all_feedbacks:
+                await client.chat_postMessage(
+                    channel=slack_channel,
+                    text=f"✅ No feedback found for *{client_name}*.",
+                    mrkdwn=True,
+                )
+                return
+
+            # Build map of message_id -> feedbacks
+            msg_id_to_feedbacks = defaultdict(list)
+            for feedback in all_feedbacks:
+                msg_id_to_feedbacks[feedback.message_id].append(feedback)
+
+            message_ids = list(msg_id_to_feedbacks)
+            feedback_messages = message_service.get_messages_by_ids(
+                session, message_ids
+            )
+            feedback_messages_dict = {msg.id: msg for msg in feedback_messages}
+
+            # Filter for this account's feedbacks
+            account_feedbacks = []
+            for msg in feedback_messages:
+                if msg.conversation_id in conversation_ids:
+                    account_feedbacks.extend(msg_id_to_feedbacks[msg.id])
+
+            # 4. Filter for thumbs_down feedback only
+            negative_feedbacks = [
+                f for f in account_feedbacks if f.reaction == "thumbs_down"
+            ]
+
+            if not negative_feedbacks:
+                await client.chat_postMessage(
+                    channel=slack_channel,
+                    text=f"✅ No negative feedback found for *{client_name}*.",
+                    mrkdwn=True,
+                )
+                return
+
+            # 5. Query Notion for feedback ticket statuses
+            notion_tickets = await notion_service.get_feedback_tickets_by_client(
+                client_name
+            )
+
+            # Build map of conversation_id -> status
+            conv_id_to_status = {}
+            for ticket in notion_tickets:
+                conv_id = ticket.get("conversation_id")
+                status = ticket.get("status")
+                if conv_id:
+                    conv_id_to_status[conv_id] = status
+
+            # 6. Group feedback by status
+            status_groups = defaultdict(list)
+
+            for feedback in negative_feedbacks:
+                feedback_msg = feedback_messages_dict[feedback.message_id]
+                conversation_id = str(feedback_msg.conversation_id)
+                status = conv_id_to_status.get(conversation_id, "New")
+
+                status_groups[status].append((feedback, feedback_msg))
+
+            # 7. Format and send results grouped by status
+            # Define status order for display
+            status_order = [
+                "New",
+                "Investigating",
+                "In Progress",
+                "Changes Now Live",
+                "Resolved",
+                "Out of Scope",
+            ]
+
+            # Build response message
+            response_lines = [
+                f"📊 *Feedback Status for {client_name}*",
+                f"Found *{len(negative_feedbacks)}* feedback items:\n",
+            ]
+
+            total_shown = 0
+            for status in status_order:
+                if status not in status_groups:
+                    continue
+
+                feedbacks_in_status = status_groups[status]
+
+                # Add status header with count
+                status_emoji = {
+                    "New": "🆕",
+                    "Investigating": "👀",
+                    "In Progress": "⏳",
+                    "Changes Now Live": "✅",
+                    "Resolved": "✔️",
+                    "Out of Scope": "🚫",
+                }.get(status, "📌")
+
+                response_lines.append(
+                    f"\n*{status_emoji} {status}* ({len(feedbacks_in_status)} items)"
+                )
+
+                # Sort by created_at (most recent first)
+                feedbacks_in_status.sort(key=lambda x: x[0].created_at, reverse=True)
+
+                # Show up to 5 items per status
+                for i, (feedback, feedback_msg) in enumerate(
+                    feedbacks_in_status[:5], 1
+                ):
+                    # Format date
+                    created_date = feedback.created_at.strftime("%Y-%m-%d %H:%M")
+
+                    # Get feedback text (truncate if too long)
+                    feedback_text = feedback.note or "(No text provided)"
+                    if len(feedback_text) > 80:
+                        feedback_text = feedback_text[:80] + "..."
+
+                    # Get tags
+                    tags_display = ""
+                    if feedback.tags:
+                        tags_display = f" | _Tags: {', '.join(feedback.tags)}_"
+
+                    # Add to response
+                    response_lines.append(
+                        f"  • {created_date} | {feedback_text}{tags_display}"
+                    )
+                    total_shown += 1
+
+                if len(feedbacks_in_status) > 5:
+                    response_lines.append(
+                        f"  _...and {len(feedbacks_in_status) - 5} more_"
+                    )
+
+            if total_shown < len(negative_feedbacks):
+                response_lines.append(
+                    f"\n_Showing {total_shown} of {len(negative_feedbacks)} feedback items._"
+                )
+
+            response_text = "\n".join(response_lines)
+
+            await client.chat_postMessage(
+                channel=slack_channel, text=response_text, mrkdwn=True
+            )
+
+            logger.info(
+                f"[Slackbot] Feedback status request completed for {client_name}: {len(negative_feedbacks)} total items"
+            )
+
+        finally:
+            session.close()
+
+    except Exception as e:
+        logger.error(
+            f"[Slackbot] Error handling feedback status request: {e}", exc_info=True
+        )
+        try:
+            slack_channel = message.get("channel")
+            await client.chat_postMessage(
+                channel=slack_channel,
+                text=f"❌ An error occurred while fetching feedback: {str(e)}",
+                mrkdwn=True,
+            )
+        except Exception as slack_error:
+            logger.error(
+                f"[Slackbot] Failed to send error message to Slack: {slack_error}"
+            )
+
+
 async def handle_feedback_request(message, client):
     """
     Handle feedback requests like "/feedback client-name" or "feedback for client-name".
