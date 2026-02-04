@@ -109,7 +109,7 @@ async def upload_camera_video(
         logger.error(
             "Unsupported video file extension",
             extra={
-                "filename": filename,
+                "video_filename": filename,
                 "extension": ext,
                 "supported_extensions": list(SUPPORTED_VIDEO_EXTENSIONS.keys()),
             },
@@ -136,7 +136,7 @@ async def upload_camera_video(
         logger.error(
             "Video file exceeds maximum size",
             extra={
-                "filename": filename,
+                "video_filename": filename,
                 "file_size": file_size,
                 "max_size": MAX_VIDEO_SIZE_BYTES,
             },
@@ -160,7 +160,7 @@ async def upload_camera_video(
             f"Uploading video to S3: {s3_key}",
             extra={
                 "camera_id": camera_id,
-                "filename": filename,
+                "video_filename": filename,
                 "extension": ext,
                 "content_type": content_type,
                 "file_size": file_size,
@@ -189,7 +189,7 @@ async def upload_camera_video(
             f"Video uploaded successfully: {s3_key}",
             extra={
                 "camera_id": camera_id,
-                "filename": filename,
+                "video_filename": filename,
                 "s3_key": s3_key,
             },
         )
@@ -203,7 +203,7 @@ async def upload_camera_video(
             f"S3 upload failed: {error_code}",
             extra={
                 "camera_id": camera_id,
-                "filename": filename,
+                "video_filename": filename,
                 "s3_key": s3_key,
                 "error": str(e),
             },
@@ -217,7 +217,7 @@ async def upload_camera_video(
             f"Unexpected error during video upload: {e}",
             extra={
                 "camera_id": camera_id,
-                "filename": filename,
+                "video_filename": filename,
                 "s3_key": s3_key,
             },
         )
