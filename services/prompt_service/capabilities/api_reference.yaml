@@ -1,0 +1,194 @@
+capability:
+  capability_identifier: api_reference
+  default_enabled: false
+  priority: 50
+
+actions:
+  - action: minitable_documentation
+    priority: 10
+    channels: ALL
+    enabled: false
+    instruction: |
+      ### MiniTable Reservation & Waitlist API
+
+      Base URL: {MINITABLE_BASE_URL}
+      Authentication: Handled automatically (do not include auth headers)
+      Merchant ID: {MINITABLE_MERCHANT_ID}
+
+      IMPORTANT: All endpoints are POST and require a JSON body. Always include the body parameter.
+
+      ---
+
+      #### 1. Suggest Availability
+      POST {MINITABLE_BASE_URL}/reserve/availability/suggest
+
+      Checks if a time slot is available. If unavailable, suggests alternative times
+      within 1 hour before or after. Returns max 2 suggestions.
+
+      Request Body (REQUIRED):
+      {
+          "merchant_id": "{MINITABLE_MERCHANT_ID}",
+          "party_size": 2,                          // INTEGER (required)
+          "slot_time": {                            // Single object (required)
+              "start_sec": "2025-08-31 11:00",      // Format: "YYYY-MM-DD HH:MM"
+              "duration_sec": 1800                  // Seconds (1800 = 30 min)
+          }
+      }
+
+      Example tool call:
+      execute_api_request(
+          method="POST",
+          url="{MINITABLE_BASE_URL}/reserve/availability/suggest",
+          body={
+              "merchant_id": "{MINITABLE_MERCHANT_ID}",
+              "party_size": 2,
+              "slot_time": {"start_sec": "2025-08-31 11:00", "duration_sec": 1800}
+          }
+      )
+
+      Response (available):
+      {"party_size": 2, "slot_time_availability": {"slot_time": {"start_sec": "2025-08-31 12:00", "duration_sec": 1800}, "available": true}, "suggest_slot_time": []}
+
+      Response (unavailable with suggestions):
+      {"party_size": 2, "slot_time_availability": {"slot_time": {"start_sec": "2025-08-31 11:00", "duration_sec": 1800}, "available": false}, "suggest_slot_time": [{"start_sec": "2025-08-31 10:30", "duration_sec": 1800}, {"start_sec": "2025-08-31 11:45", "duration_sec": 1800}]}
+
+      ---
+
+      #### 2. Create Reservation
+      POST {MINITABLE_BASE_URL}/reserve/create
+
+      Creates a reservation. Possible error codes: RESERVE_NOT_ENABLE, SLOT_UNAVAILABLE,
+      SLOT_ALREADY_BOOKED_BY_USER, DAILY_LIMIT_REACHED.
+
+      Request Body (REQUIRED):
+      {
+          "telephone": "+1 5551234567",             // STRING (required)
+          "customer_name": "John",                  // STRING (required)
+          "slot": {                                 // OBJECT (required)
+              "merchant_id": "{MINITABLE_MERCHANT_ID}",
+              "start_sec": "2025-08-31 12:00",
+              "duration_sec": 1800,
+              "party_size": 2
+          },
+          "note": "Birthday dinner"                 // STRING (optional)
+      }
+
+      Example tool call:
+      execute_api_request(
+          method="POST",
+          url="{MINITABLE_BASE_URL}/reserve/create",
+          body={
+              "telephone": "+1 5551234567",
+              "customer_name": "John",
+              "slot": {
+                  "merchant_id": "{MINITABLE_MERCHANT_ID}",
+                  "start_sec": "2025-08-31 12:00",
+                  "duration_sec": 1800,
+                  "party_size": 2
+              },
+              "note": "Birthday dinner"
+          }
+      )
+
+      Response (success):
+      {"booking": {"booking_id": "r_0e27463d_8907", "slot": {"merchant_id": "...", "start_sec": "2025-10-01 11:00", "duration_sec": 1800, "party_size": 2}, "status": "CONFIRMED", "status_link": "https://..."}}
+
+      Response (failure):
+      {"booking_failure": {"cause": "SLOT_ALREADY_BOOKED_BY_USER"}}
+
+      ---
+
+      #### 3. Get Reservation List
+      POST {MINITABLE_BASE_URL}/reserve/list
+
+      Gets future reservations by phone number.
+
+      Request Body (REQUIRED):
+      {
+          "telephone": "+1 5551234567"              // STRING (required)
+      }
+
+      Example tool call:
+      execute_api_request(
+          method="POST",
+          url="{MINITABLE_BASE_URL}/reserve/list",
+          body={"telephone": "+1 5551234567"}
+      )
+
+      Response:
+      {"bookings": [{"booking_id": "r_0e27463d_8907"}]}
+
+      ---
+
+      #### 4. Check Waitlist Status
+      POST {MINITABLE_BASE_URL}/waitlist/status/check
+
+      Checks if waitlist is open and current wait times.
+
+      Request Body (REQUIRED):
+      {
+          "merchant_id": "{MINITABLE_MERCHANT_ID}"  // STRING (required)
+      }
+
+      Example tool call:
+      execute_api_request(
+          method="POST",
+          url="{MINITABLE_BASE_URL}/waitlist/status/check",
+          body={"merchant_id": "{MINITABLE_MERCHANT_ID}"}
+      )
+
+      Response (closed):
+      {"status": "Closed", "reason": "Not enable"}
+
+      Response (open):
+      {"status": "Open", "reason": "", "wait_estimate": {"A": {"parties_ahead_count": 0, "from_people_number": 1, "to_people_number": 10}, "B": {"parties_ahead_count": 0, "from_people_number": 11, "to_people_number": 20}, "C": {"parties_ahead_count": 0, "from_people_number": 21, "to_people_number": 9999}}}
+
+      ---
+
+      #### 5. Create Waitlist Entry
+      POST {MINITABLE_BASE_URL}/waitlist/create
+
+      Adds customer to waitlist. Error codes: WAITLIST_NOT_ENABLE, EXISTING_WAITLIST_ENTRY.
+
+      Request Body (REQUIRED):
+      {
+          "merchant_id": "{MINITABLE_MERCHANT_ID}",  // STRING (required)
+          "party_size": 2,                           // INTEGER (required)
+          "telephone": "+1 5551234567",              // STRING (required)
+          "customer_name": "John",                   // STRING (required)
+          "note": "Window seat preferred"            // STRING (optional)
+      }
+
+      Example tool call:
+      execute_api_request(
+          method="POST",
+          url="{MINITABLE_BASE_URL}/waitlist/create",
+          body={
+              "merchant_id": "{MINITABLE_MERCHANT_ID}",
+              "party_size": 2,
+              "telephone": "+1 5551234567",
+              "customer_name": "John"
+          }
+      )
+
+      Response (success):
+      {"waitlist_id": "pre_e9ff6377_8907", "wait_code": "A2", "left_count": 1, "status_link": "https://..."}
+
+      Response (failure):
+      {"waitlist_business_logic_failure": {"cause": "EXISTING_WAITLIST_ENTRY", "description": "You already joined the waitlist before."}}
+
+      ---
+
+      #### Usage Notes
+      - All endpoints use POST method
+      - All endpoints require a JSON body - always include the body parameter
+      - start_sec format is "YYYY-MM-DD HH:MM" (not actual seconds)
+      - duration_sec is typically 1800 (30 min) or 3600 (1 hour)
+      - party_size is always INTEGER
+
+  - action: adora_documentation
+    priority: 20
+    channels: ALL
+    enabled: false
+    instruction: |
+      ### Adora API Documentation
