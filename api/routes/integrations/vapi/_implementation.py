@@ -315,6 +315,12 @@ def send_dd_latency(
     transcriber_latency = latency_data.get("transcriberLatency")
     endpointing_latency = latency_data.get("endpointingLatency")
 
+    logger.debug(
+        f"[VAPI DEBUG]Sending latency metrics for call {call_id}: "
+        f"turn={turn_latency}ms, model={model_latency}ms, voice={voice_latency}ms, "
+        f"transcriber={transcriber_latency}ms, endpointing={endpointing_latency}ms"
+    )
+
     if turn_latency is not None:
         dd_histogram_duration(
             name="vapi.turn_latency",
