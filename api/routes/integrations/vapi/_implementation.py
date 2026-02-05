@@ -33,7 +33,6 @@ from services import (
 from services.message_service._utils import transform_vapi_conversation_data
 from services.subscription_service import _stripe_product
 from services.subscription_service.stripe_usage_billing import send_meter_event
-from services.voice_service.providers.vapi._implementation import VAPIProvider
 from utils.dd import dd_histogram_duration
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
@@ -1604,12 +1603,6 @@ def _build_single_assistant(
             "language": "en-US",
         }
 
-    # Add stop speaking plan
-    vapi_provider = VAPIProvider()
-    assistant_data["stop_speaking_plan"] = vapi_provider._create_stop_speaking_plan(
-        snake_case=True
-    )
-
     return assistant_data
 
 
@@ -1714,7 +1707,7 @@ DO NOT attempt to help with their actual request."""
             "receivePartialTranscripts": True,
         }
 
-    triage_config = {
+    return {
         "name": triage_name,
         "transcriber": transcriber_config,
         "model": {
@@ -1736,14 +1729,6 @@ DO NOT attempt to help with their actual request."""
             "language_groups": language_groups,
         },
     }
-
-    # Add stop speaking plan
-    vapi_provider = VAPIProvider()
-    triage_config["stop_speaking_plan"] = vapi_provider._create_stop_speaking_plan(
-        snake_case=True
-    )
-
-    return triage_config
 
 
 def _get_group_display_name(languages: list[str]) -> str:
@@ -1824,12 +1809,6 @@ def _build_group_assistant(
             "model": "nova-3",
             "language": "en-US",
         }
-
-    # Add stop speaking plan
-    vapi_provider = VAPIProvider()
-    assistant_data["stop_speaking_plan"] = vapi_provider._create_stop_speaking_plan(
-        snake_case=True
-    )
 
     return assistant_data
 
