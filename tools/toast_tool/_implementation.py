@@ -15,6 +15,7 @@ from agno.tools.toolkit import Toolkit
 from cryptography.fernet import Fernet
 from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, task, tool
+from geopy.distance import geodesic
 from pydantic import ValidationError
 from shapely import Point, Polygon
 
@@ -77,6 +78,9 @@ VIA_AGENT_SUFFIX = "(via PalonaAI)"
 
 # Fernet encryption key for payment iframe tokens (same as Olo for consistency)
 HARD_CODED_PAYMENT_IFRAME_SECRET = "xK8dP2m_QrZ7vN4wL9cF3bJ6hT5yU1gS0aE8iO-pMxA="
+
+# Default delivery radius in miles when polygon is unavailable
+DELIVERY_RADIUS_MILES = 8
 
 # TODO: Fix type: ignore comments throughout this file
 # Issue: The @task decorator from ddtrace.llmobs.decorators wraps return values,
@@ -197,22 +201,22 @@ class ToastTool(Toolkit):
                 credential_name="TOAST_PAYMENT_IFRAME_CLIENT_CREDENTIALS",
             )
 
-    def _get_delivery_area(self) -> str:
+    def _get_delivery_area(self) -> str | None:
         """
         Retrieves the delivery area polyline string from store configuration.
 
         Returns:
-            str: Either the polyline string or an error message
+            str | None: Polyline string if available, None if unavailable or on error
         """
         store_info_str = self.get_store_info()
         if store_info_str == "Failed to get the store information, please try again.":
-            return store_info_str
+            return None
 
         try:
             store_info = json.loads(store_info_str)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse store info JSON: {e}")
-            return "Failed to process store information."
+            return None
 
         polyline_str = (
             store_info.get("delivery", {}).get("area")
@@ -220,53 +224,118 @@ class ToastTool(Toolkit):
             else None
         )
 
-        if not polyline_str:
-            return "Delivery area information is not available."
+        # Return None if polyline_str is None, empty string, or whitespace
+        if not polyline_str or not polyline_str.strip():
+            logger.debug(
+                "[ToastTool._get_delivery_area] Delivery area polygon not available"
+            )
+            return None
 
         return polyline_str
 
+    def _calculate_distance_miles(
+        self, lat1: float, lng1: float, lat2: float, lng2: float
+    ) -> float:
+        """
+        Calculate the distance between two coordinates in miles using geopy.
+
+        Args:
+            lat1: Latitude of first point
+            lng1: Longitude of first point
+            lat2: Latitude of second point
+            lng2: Longitude of second point
+
+        Returns:
+            float: Distance in miles
+        """
+        return geodesic((lat1, lng1), (lat2, lng2)).miles
+
     @task
-    def _validate_address(
-        self, canonical_address: DeliveryAddress | None
-    ) -> tuple[bool, str]:
+    def _validate_address(self, canonical_address: DeliveryAddress) -> bool | str:
         """
         Validates if an address is within the delivery zone polygon.
+        Falls back to radius-based validation if polygon is unavailable.
 
         Args:
             canonical_address: The address to validate with lat/lng
 
         Returns:
-            tuple[bool, str]: (is_valid, message)
+            bool | str: True if valid, False if outside area, str error message if unable to validate
         """
-        # Validate input
-        if not canonical_address:
-            return (False, "Could you provide your complete address?")
-
-        # Get store delivery area
+        # Get store delivery area polygon
         polyline_str = self._get_delivery_area()
-        # Check if polyline_str is an error message
-        if polyline_str in [
-            "Failed to get the store information, please try again.",
-            "Failed to process store information.",
-            "Delivery area information is not available.",
-        ]:
-            return (False, polyline_str)
 
-        # Decode and validate
+        # If polygon is not available, fall back to radius-based validation
+        if polyline_str is None:
+            logger.debug(
+                "[ToastTool._validate_address] Polygon not available, using radius-based validation"
+            )
+            return self._validate_address_by_radius(
+                canonical_address, DELIVERY_RADIUS_MILES
+            )
+
+        # Polygon available - proceed with polygon validation
         try:
             decoded = polyline.decode(polyline_str, geojson=True)
             polygon = Polygon([(lng, lat) for lng, lat in decoded])
 
             point = Point(canonical_address.lng, canonical_address.lat)
 
-            if polygon.contains(point):
-                return (True, "Address is within the delivery area.")
-            else:
-                return (False, "Address is outside the delivery area.")
+            return polygon.contains(point)
 
         except Exception as e:
             logger.error(f"Error validating delivery zone: {e}")
-            return (False, "Failed to validate delivery area.")
+            # If polygon validation fails, fall back to radius check
+            logger.debug(
+                "[ToastTool._validate_address] Polygon validation failed, using radius-based validation"
+            )
+            return self._validate_address_by_radius(
+                canonical_address, DELIVERY_RADIUS_MILES
+            )
+
+    def _validate_address_by_radius(
+        self, canonical_address: DeliveryAddress, radius_miles: float
+    ) -> bool | str:
+        """
+        Validates if an address is within the specified radius of the restaurant.
+
+        Args:
+            canonical_address: The address to validate with lat/lng
+            radius_miles: Maximum delivery radius in miles
+
+        Returns:
+            bool | str: True if valid, False if outside radius, str error message if unable to validate
+        """
+        # Get restaurant location
+        restaurant_coords = self._get_restaurant_location()
+        if not restaurant_coords:
+            return (
+                "Unable to validate delivery area due to missing restaurant location."
+            )
+
+        restaurant_lat, restaurant_lng = restaurant_coords
+
+        # Calculate distance
+        try:
+            distance_miles = self._calculate_distance_miles(
+                restaurant_lat,
+                restaurant_lng,
+                canonical_address.lat,
+                canonical_address.lng,
+            )
+
+            logger.debug(
+                f"[ToastTool._validate_address_by_radius] Distance: {distance_miles:.2f} miles, "
+                f"Radius: {radius_miles} miles"
+            )
+
+            return distance_miles <= radius_miles
+
+        except Exception as e:
+            logger.error(
+                f"[ToastTool._validate_address_by_radius] Error calculating distance: {e}"
+            )
+            return "Unable to calculate delivery distance. Please try again."
 
     @tool
     def check_address(self, address: str) -> str:
@@ -303,9 +372,17 @@ class ToastTool(Toolkit):
             return message
 
         # Step 4: Validate delivery zone (DELEGATED to helper method)
-        validate_success, validate_message = self._validate_address(delivery_address)  # type: ignore
+        result = self._validate_address(delivery_address)  # type: ignore
 
-        return validate_message
+        # If result is a string, it's an error message - return it directly
+        if isinstance(result, str):
+            return result
+
+        # Otherwise it's a bool - construct appropriate message
+        if result:
+            return "Address is within the delivery area."
+        else:
+            return "Address is outside the delivery area."
 
     @tool
     def get_store_info_tool(self) -> str:
@@ -372,6 +449,37 @@ class ToastTool(Toolkit):
 
         general = store_info.get("general") or {}
         return general.get("name")
+
+    def _get_restaurant_location(self) -> tuple[float, float] | None:
+        """
+        Extracts restaurant latitude and longitude from store info.
+
+        Returns:
+            tuple[float, float] | None: (latitude, longitude) if available, None otherwise
+        """
+        store_info_str = self.get_store_info()
+        if not store_info_str or store_info_str.startswith("Failed to "):
+            return None
+
+        try:
+            store_info = json.loads(store_info_str)
+        except json.JSONDecodeError:
+            logger.error(
+                "[ToastTool._get_restaurant_location] Failed to parse store_info JSON"
+            )
+            return None
+
+        location = store_info.get("location") or {}
+        latitude = location.get("latitude")
+        longitude = location.get("longitude")
+
+        if latitude is None or longitude is None:
+            logger.warning(
+                "[ToastTool._get_restaurant_location] Restaurant location coordinates not available"
+            )
+            return None
+
+        return (latitude, longitude)
 
     @tool
     def check_online_ordering_status(self) -> str:
