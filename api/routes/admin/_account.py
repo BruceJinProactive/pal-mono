@@ -529,3 +529,38 @@ async def update_notification_preferences(
         notification_preferences=notification_prefs,
         notification_email=updated_account.notification_email,
     )
+
+
+async def backfill_accounts_without_owners(
+    context: UserContext,
+    session: Session,
+    dry_run: bool = False,
+) -> dict:
+    """
+    Backfill accounts that have no owners with environment-specific default owners.
+
+    For LAT: jacob+palona.lat@proactiveailab.com and kelvin+lat@proactiveailab.com
+    For PRD: jacob+palona@proactiveailab.com and kelvin@proactiveailab.com
+
+    Args:
+        context: User context for authorization
+        session: Database session
+        dry_run: If True, only return what would be changed without making changes
+
+    Returns:
+        Dict containing accounts that would be/were updated and owners added
+    """
+    try:
+        result = admin_service.backfill_accounts_without_owners(
+            session=session,
+            context=context,
+            dry_run=dry_run,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to backfill accounts without owners: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to backfill accounts: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        )
