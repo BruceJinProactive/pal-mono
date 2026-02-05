@@ -165,7 +165,7 @@ class MessageRepositoryAsync:
             latest_conversation is None
             or latest_conversation.status != ConversationStatus.ACTIVE
         ):
-            metadata = message_body.get("metadata", {})
+            metadata = message_body.get("metadata") or {}
             is_test_message = metadata.get("testing", False)
             logger.debug(
                 "[db.message_repository.create_message] Creating new conversation",
@@ -260,7 +260,7 @@ class MessageRepositoryAsync:
             raise ValueError(f"No user found with id {user_id}")
 
         # Always create a new conversation for voice calls
-        metadata = message_body.get("metadata", {})
+        metadata = message_body.get("metadata") or {}
         is_test_message = metadata.get("testing", False)
 
         new_conversation = Conversation(
@@ -489,7 +489,7 @@ class MessageRepository:
 
         # Step 4: If no conversation exists, create one for the user
         if not conversation:
-            metadata = message_body.get("metadata", {})
+            metadata = message_body.get("metadata") or {}
             is_test_message = metadata.get("testing", False)
 
             conversation = Conversation(user_id=user.id, is_test=is_test_message)

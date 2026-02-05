@@ -95,7 +95,7 @@ class Message(BaseModel):
             "media": self.media.dict() if self.media is not None else None,
             "context": self.context,
             "timestamp": self.timestamp.isoformat(),
-            "metadata": self.metadata.dict() if self.metadata is not None else None,
+            "metadata": self.metadata.dict() if self.metadata is not None else {},
             "extras": self.extras.dict() if self.extras is not None else None,
         }
 
