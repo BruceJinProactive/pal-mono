@@ -165,8 +165,8 @@ async def get_chat_response_async(
                 account_id=str(project.account_id),
                 account_name=account_name,
                 agent_id=str(agent_id),
-                timezone=project.timezone,
-                channel=message.channel.value if message.channel else None,
+                timezone=project.timezone or "America/Los_Angeles",
+                channel=message.channel.value,
             )
 
             # Fetch conversation history
@@ -517,8 +517,8 @@ async def get_chat_response_stream(
                     account_id=str(project.account_id),
                     account_name=account_name,
                     agent_id=str(agent_id),
-                    timezone=project.timezone,
-                    channel=message.channel.value if message.channel else None,
+                    timezone=project.timezone or "America/Los_Angeles",
+                    channel=message.channel.value,
                     # Voice-specific fields (extra="allow" permits these)
                     call_id=call_id,  # type: ignore[call-arg]
                     vapi_control_url=vapi_control_url,  # type: ignore[call-arg]
