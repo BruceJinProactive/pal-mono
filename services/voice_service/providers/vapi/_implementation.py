@@ -240,6 +240,29 @@ class VAPIProvider:
                 "waitSeconds": 0.1,
             }
 
+    def _create_stop_speaking_plan(self, snake_case: bool = False) -> dict:
+        """Create stopSpeakingPlan configuration.
+
+        Args:
+            snake_case: If True, return snake_case keys for Python SDK.
+                       If False (default), return camelCase keys for raw API.
+
+        Returns:
+            dict: Stop speaking plan configuration (nested object only)
+        """
+        if snake_case:
+            return {
+                "num_words": 0,
+                "voice_seconds": 0.4,
+                "backoff_seconds": 0,
+            }
+        else:
+            return {
+                "numWords": 0,
+                "voiceSeconds": 0.4,
+                "backoffSeconds": 0,
+            }
+
     def _get_analysis_plan(self) -> dict:
         """
         Returns the complete analysis plan configuration for VAPI structured data extraction.
@@ -381,6 +404,7 @@ class VAPIProvider:
             "startSpeakingPlan": self._create_start_speaking_plan(
                 voice_config.language
             ),
+            "stopSpeakingPlan": self._create_stop_speaking_plan(),
             "firstMessageInterruptionsEnabled": not only_assistant,
             "firstMessageMode": "assistant-speaks-first",
             "analysisPlan": self._get_analysis_plan(),
@@ -441,6 +465,7 @@ class VAPIProvider:
             "startSpeakingPlan": self._create_start_speaking_plan(
                 triage_config.language
             ),
+            "stopSpeakingPlan": self._create_stop_speaking_plan(),
         }
 
         # Apply custom raw_config overrides if provided
@@ -660,6 +685,7 @@ DO NOT attempt to help with their actual request - only identify language prefer
             "silenceTimeoutSeconds": 60,
             "backgroundSpeechDenoisingPlan": {"smartDenoisingPlan": {"enabled": True}},
             "startSpeakingPlan": self._create_start_speaking_plan(language),
+            "stopSpeakingPlan": self._create_stop_speaking_plan(),
             "firstMessageInterruptionsEnabled": True,
             "firstMessageMode": "assistant-speaks-first",
             "analysisPlan": self._get_analysis_plan(),
