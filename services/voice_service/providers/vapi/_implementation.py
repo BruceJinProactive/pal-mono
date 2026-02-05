@@ -25,6 +25,16 @@ CARTESIA_SPEED_MAPPING = {
     SpeechRate.fastest: "fastest",
 }
 
+# Numeric speed mapping for generationConfig (used by sonic-3)
+# Maps SpeechRate enum to numeric values (0.6-1.5 range)
+CARTESIA_SONIC3_SPEED_MAPPING = {
+    SpeechRate.slowest: 0.6,  # minimum supported
+    SpeechRate.slower: 0.8,  # midpoint between 0.6 and 1.0
+    SpeechRate.normal: 1.0,  # default
+    SpeechRate.faster: 1.25,  # midpoint between 1.0 and 1.5
+    SpeechRate.fastest: 1.5,  # maximum supported
+}
+
 
 class VoiceConfigProtocol(Protocol):
     """Protocol defining the interface for voice configuration objects."""
@@ -177,14 +187,20 @@ class VAPIProvider:
             },
         }
 
-        # Enable accent localization to improve accent quality for sonic-3
+        # Add generationConfig for sonic-3 model with speed control and accent localization
         if voice_model == "sonic-3":
             vapi_voice_config["generationConfig"] = {
-                "speed": 1,  # double or null 0.6-1.5 Defaults to 1
-                "volume": 1,  # double or null 0.5-2 Defaults to 1
+                # Speed: 0.6-1.5, synced with voice_config.speech_rate
+                "speed": CARTESIA_SONIC3_SPEED_MAPPING.get(
+                    voice_config.speech_rate, 1.0
+                ),
+                # Volume: 0.5-2.0, defaults to 1.0
+                "volume": 1,
                 "experimental": {
+                    # Accent localization: 0 (disabled, default) or 1 (enabled)
+                    # When enabled, voice adapts to match transcript language accent while preserving vocal characteristics
                     "accentLocalization": 1
-                },  # Toggle accent localization for sonic-3: 0 (disabled, default) or 1 (enabled). When enabled, the voice adapts to match the transcript language accent while preserving vocal characteristics.
+                },
             }
 
         # Add chunkPlan with formatPlan only if replacements exist
