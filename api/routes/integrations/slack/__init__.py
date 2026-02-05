@@ -25,38 +25,16 @@ async def slack_events(request: Request):
     - Someone sends a DM to the bot
     - Other subscribed events occur
 
-    Slack sends a URL verification challenge when you first configure this endpoint.
-    The endpoint must respond with the challenge value to complete verification.
+    Slack Bolt automatically handles URL verification challenges and signature verification.
 
     Returns:
         Response: FastAPI Response object from Slack Bolt handler
     """
-    import json
-
     from services import slack_service
 
-    # Read the body once (can only be read once per request)
-    body_bytes = await request.body()
-
-    try:
-        # Parse JSON to check for URL verification challenge
-        data = json.loads(body_bytes.decode("utf-8"))
-
-        # Handle URL verification challenge directly
-        if data.get("type") == "url_verification":
-            challenge = data.get("challenge")
-            if challenge:
-                logger.info(
-                    f"[Slack Events] URL verification challenge received: {challenge}"
-                )
-                return {"challenge": challenge}
-
-    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        logger.warning(f"[Slack Events] Could not parse request body as JSON: {e}")
-        # Continue to let Slack Bolt handler process it
-
-    # For other events, pass body bytes to the service handler
-    return await slack_service.handle_slack_events(request, body_bytes)
+    # Pass the original untouched request to Slack Bolt
+    # Bolt will handle URL verification, signature verification, and event routing
+    return await slack_service.handle_slack_events(request)
 
 
 @slack_router.get("/interactions", status_code=http_status.HTTP_200_OK)
