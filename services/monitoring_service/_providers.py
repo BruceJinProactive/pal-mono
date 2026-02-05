@@ -294,6 +294,7 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
         if response.usage:
             logger.info(
                 f"[Monitoring LLM] Azure OpenAI token usage - "
+                f"Model: {self.config.model}, "
                 f"Prompt: {response.usage.prompt_tokens}, "
                 f"Completion: {response.usage.completion_tokens}, "
                 f"Total: {response.usage.total_tokens}"
@@ -464,6 +465,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
         if response.usage_metadata:
             logger.info(
                 f"[Monitoring LLM] Gemini token usage - "
+                f"Model: {self.config.model}, "
                 f"Prompt: {response.usage_metadata.prompt_token_count}, "
                 f"Completion: {response.usage_metadata.candidates_token_count}, "
                 f"Total: {response.usage_metadata.total_token_count}"
