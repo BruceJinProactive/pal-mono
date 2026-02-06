@@ -140,6 +140,7 @@ def _build_generic_api_spec_from_raw_config(raw_config: dict) -> GenericAPISpec:
         auth=generic_api_config.get("auth"),
         allowed_paths=generic_api_config.get("allowed_paths", []),
         timeout=generic_api_config.get("timeout", 10.0),
+        inject=generic_api_config.get("inject"),
     )
 
 
