@@ -24,8 +24,10 @@ Domain-Specific Functions:
 
 from ._client import get_notion_client
 from ._feedback import (
+    RESOLVED_STATUSES,
     create_client_page,
     create_feedback_ticket,
+    get_all_feedback_tickets,
     get_feedback_fde,
     get_feedback_tickets_by_client,
     update_feedback_status,
@@ -66,7 +68,9 @@ __all__ = [
     "get_client_page_id_by_account_name",
     "get_feedback_fde",
     "get_feedback_tickets_by_client",
+    "get_all_feedback_tickets",
     "create_client_page",
+    "RESOLVED_STATUSES",
     # Utilities
     "extract_notion_page_id",
     "format_notion_page_id",

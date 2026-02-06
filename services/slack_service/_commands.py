@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 
 from db.session import SyncSessionLocal
+from services.notion_service import RESOLVED_STATUSES
 from utils.log import logger
 
 # =============================================================================
@@ -431,20 +432,15 @@ async def handle_feedback_status_request(message, client):
 
     Shows ALL feedback for the specified client, grouped by status type.
 
+    Queries Notion ONLY (no database queries).
+
     Args:
         message: Slack message object
         client: Slack client object
     """
-    # Import here to avoid circular dependency
     from collections import defaultdict
 
-    from services import (
-        account_service,
-        feedback_service,
-        message_service,
-        notion_service,
-        user_service,
-    )
+    from services import notion_service
 
     try:
         slack_channel = message.get("channel")
@@ -494,178 +490,119 @@ async def handle_feedback_status_request(message, client):
             mrkdwn=True,
         )
 
-        # Get database session
-        session = SyncSessionLocal()
-        try:
-            # 1. Validate account exists
-            account = account_service.get_account(session, client_name)
-            if not account:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text=f"❌ Account `{client_name}` not found. Please check the account name and try again.",
-                    mrkdwn=True,
-                )
-                return
+        # Query Notion for thumbs_down feedback tickets for this client
+        negative_feedbacks = await notion_service.get_feedback_tickets_by_client(
+            client_name, reaction_filter="thumbs_down"
+        )
 
-            # 2. Get all conversations for this account
-            account_users = user_service.get_users_by_account_id(session, account.id)
-            account_users_ids = [user.id for user in account_users]
-            _, account_conversations = message_service.get_conversations_by_users(
-                session, 1, 1000, account_users_ids
-            )
-            conversation_ids = {
-                conversation.id for conversation in account_conversations
-            }
-
-            # 3. Get all feedbacks and filter for this account's conversations
-            all_feedbacks = feedback_service.get_feedbacks(session)
-            if not all_feedbacks:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text=f"✅ No feedback found for *{client_name}*.",
-                    mrkdwn=True,
-                )
-                return
-
-            # Build map of message_id -> feedbacks
-            msg_id_to_feedbacks = defaultdict(list)
-            for feedback in all_feedbacks:
-                msg_id_to_feedbacks[feedback.message_id].append(feedback)
-
-            message_ids = list(msg_id_to_feedbacks)
-            feedback_messages = message_service.get_messages_by_ids(
-                session, message_ids
-            )
-            feedback_messages_dict = {msg.id: msg for msg in feedback_messages}
-
-            # Filter for this account's feedbacks
-            account_feedbacks = []
-            for msg in feedback_messages:
-                if msg.conversation_id in conversation_ids:
-                    account_feedbacks.extend(msg_id_to_feedbacks[msg.id])
-
-            # 4. Filter for thumbs_down feedback only
-            negative_feedbacks = [
-                f for f in account_feedbacks if f.reaction == "thumbs_down"
-            ]
-
-            if not negative_feedbacks:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text=f"✅ No negative feedback found for *{client_name}*.",
-                    mrkdwn=True,
-                )
-                return
-
-            # 5. Query Notion for feedback ticket statuses
-            notion_tickets = await notion_service.get_feedback_tickets_by_client(
-                client_name
-            )
-
-            # Build map of conversation_id -> status
-            conv_id_to_status = {}
-            for ticket in notion_tickets:
-                conv_id = ticket.get("conversation_id")
-                status = ticket.get("status")
-                if conv_id:
-                    conv_id_to_status[conv_id] = status
-
-            # 6. Group feedback by status
-            status_groups = defaultdict(list)
-
-            for feedback in negative_feedbacks:
-                feedback_msg = feedback_messages_dict[feedback.message_id]
-                conversation_id = str(feedback_msg.conversation_id)
-                status = conv_id_to_status.get(conversation_id, "New")
-
-                status_groups[status].append((feedback, feedback_msg))
-
-            # 7. Format and send results grouped by status
-            # Define status order for display
-            status_order = [
-                "New",
-                "Investigating",
-                "In Progress",
-                "Changes Now Live",
-                "Resolved",
-                "Out of Scope",
-            ]
-
-            # Build response message (show client name prominently for easy lookup)
-            response_lines = [
-                f"📊 *Feedback Status for `{client_name}`*",
-                f"Found *{len(negative_feedbacks)}* feedback item{'s' if len(negative_feedbacks) != 1 else ''}:\n",
-            ]
-
-            total_shown = 0
-            for status in status_order:
-                if status not in status_groups:
-                    continue
-
-                feedbacks_in_status = status_groups[status]
-
-                # Add status header with count
-                status_emoji = {
-                    "New": "🆕",
-                    "Investigating": "👀",
-                    "In Progress": "⏳",
-                    "Changes Now Live": "✅",
-                    "Resolved": "✔️",
-                    "Out of Scope": "🚫",
-                }.get(status, "📌")
-
-                response_lines.append(
-                    f"\n*{status_emoji} {status}* ({len(feedbacks_in_status)} items)"
-                )
-
-                # Sort by created_at (most recent first)
-                feedbacks_in_status.sort(key=lambda x: x[0].created_at, reverse=True)
-
-                # Show up to 5 items per status
-                for i, (feedback, feedback_msg) in enumerate(
-                    feedbacks_in_status[:5], 1
-                ):
-                    # Format date
-                    created_date = feedback.created_at.strftime("%Y-%m-%d %H:%M")
-
-                    # Get feedback text (truncate if too long)
-                    feedback_text = feedback.note or "(No text provided)"
-                    if len(feedback_text) > 80:
-                        feedback_text = feedback_text[:80] + "..."
-
-                    # Get tags
-                    tags_display = ""
-                    if feedback.tags:
-                        tags_display = f" | _Tags: {', '.join(feedback.tags)}_"
-
-                    # Add to response
-                    response_lines.append(
-                        f"  • {created_date} | {feedback_text}{tags_display}"
-                    )
-                    total_shown += 1
-
-                if len(feedbacks_in_status) > 5:
-                    response_lines.append(
-                        f"  _...and {len(feedbacks_in_status) - 5} more_"
-                    )
-
-            if total_shown < len(negative_feedbacks):
-                response_lines.append(
-                    f"\n_Showing {total_shown} of {len(negative_feedbacks)} feedback items._"
-                )
-
-            response_text = "\n".join(response_lines)
-
+        if not negative_feedbacks:
             await client.chat_postMessage(
-                channel=slack_channel, text=response_text, mrkdwn=True
+                channel=slack_channel,
+                text=f"✅ No negative feedback found for *{client_name}*.",
+                mrkdwn=True,
+            )
+            return
+
+        # Group feedback by status
+        status_groups = defaultdict(list)
+
+        for ticket in negative_feedbacks:
+            status = ticket.get("status", "New") or "New"
+            status_groups[status].append(ticket)
+
+        # Define status order for display
+        status_order = [
+            "New",
+            "Investigating",
+            "In Progress",
+            "Changes Now Live",
+            "Resolved",
+            "Out of Scope",
+        ]
+
+        # Add any unexpected statuses to the end (so we don't drop them)
+        for status in status_groups.keys():
+            if status not in status_order:
+                status_order.append(status)
+
+        # Build response message
+        response_lines = [
+            f"📊 *Feedback Status for `{client_name}`*",
+            f"Found *{len(negative_feedbacks)}* feedback item{'s' if len(negative_feedbacks) != 1 else ''}:\n",
+        ]
+
+        total_shown = 0
+        for status in status_order:
+            if status not in status_groups:
+                continue
+
+            feedbacks_in_status = status_groups[status]
+
+            # Add status header with count
+            status_emoji = {
+                "New": "🆕",
+                "Investigating": "👀",
+                "In Progress": "⏳",
+                "Changes Now Live": "✅",
+                "Resolved": "✔️",
+                "Out of Scope": "🚫",
+            }.get(status, "📌")
+
+            response_lines.append(
+                f"\n*{status_emoji} {status}* ({len(feedbacks_in_status)} items)"
             )
 
-            logger.info(
-                f"[Slackbot] Feedback status request completed for {client_name}: {len(negative_feedbacks)} total items"
+            # Sort by created_time (most recent first)
+            feedbacks_in_status.sort(
+                key=lambda x: x.get("created_time", ""), reverse=True
             )
 
-        finally:
-            session.close()
+            # Show up to 5 items per status
+            for ticket in feedbacks_in_status[:5]:
+                # Format date
+                created_time_str = ticket.get("created_time") or ""
+                try:
+                    created_dt = datetime.fromisoformat(
+                        created_time_str.replace("Z", "+00:00")
+                    )
+                    created_date = created_dt.strftime("%Y-%m-%d %H:%M")
+                except ValueError:
+                    created_date = "Unknown date"
+
+                # Get feedback text (truncate if too long)
+                feedback_text = ticket.get("feedback_text") or "(No text provided)"
+                if len(feedback_text) > 80:
+                    feedback_text = feedback_text[:80] + "..."
+
+                # Get tags
+                tags_display = ""
+                tags = ticket.get("tags", [])
+                if tags:
+                    tags_display = f" | _Tags: {', '.join(tags)}_"
+
+                # Add to response
+                response_lines.append(
+                    f"  • {created_date} | {feedback_text}{tags_display}"
+                )
+                total_shown += 1
+
+            if len(feedbacks_in_status) > 5:
+                response_lines.append(f"  _...and {len(feedbacks_in_status) - 5} more_")
+
+        if total_shown < len(negative_feedbacks):
+            response_lines.append(
+                f"\n_Showing {total_shown} of {len(negative_feedbacks)} feedback items._"
+            )
+
+        response_text = "\n".join(response_lines)
+
+        await client.chat_postMessage(
+            channel=slack_channel, text=response_text, mrkdwn=True
+        )
+
+        logger.info(
+            f"[Slackbot] Feedback status request completed for {client_name}: {len(negative_feedbacks)} total items"
+        )
 
     except Exception as e:
         logger.error(
@@ -688,20 +625,13 @@ async def handle_feedback_all_clients_summary(message, client):
     """
     Show summary of all clients with unresolved negative feedback.
 
+    Queries Notion ONLY (no database queries).
+
     Args:
         message: Slack message object
         client: Slack client object
     """
-    # Import here to avoid circular dependency
-    from collections import defaultdict
-
-    from services import (
-        account_service,
-        feedback_service,
-        message_service,
-        notion_service,
-        user_service,
-    )
+    from services import notion_service
 
     try:
         slack_channel = message.get("channel")
@@ -718,198 +648,72 @@ async def handle_feedback_all_clients_summary(message, client):
             mrkdwn=True,
         )
 
-        # Get database session
-        session = SyncSessionLocal()
-        try:
-            # 1. Get all accounts (paginate to ensure we don't miss any)
-            all_accounts = []
-            page = 1
-            page_size = 100
-            while True:
-                accounts_page, total = account_service.filter_accounts(
-                    session, page=page, page_size=page_size
-                )
-                if not accounts_page:
-                    break
-                all_accounts.extend(accounts_page)
+        # Query Notion for unresolved negative feedback (filtered at API level for efficiency)
+        # Default filters: exclude_resolved=True, reaction_filter="thumbs_down"
+        tickets_by_account = await notion_service.get_all_feedback_tickets()
 
-                # If we've fetched all accounts, stop
-                if len(all_accounts) >= total:
-                    break
-
-                page += 1
-
-            logger.info(
-                f"[Slackbot] Fetched {len(all_accounts)} accounts for feedback summary"
-            )
-
-            if not all_accounts:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text="✅ No accounts found.",
-                    mrkdwn=True,
-                )
-                return
-
-            # 2. Get all feedbacks
-            all_feedbacks = feedback_service.get_feedbacks(session)
-            if not all_feedbacks:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text="✅ No feedback found for any client.",
-                    mrkdwn=True,
-                )
-                return
-
-            # Build map of message_id -> feedbacks
-            msg_id_to_feedbacks = defaultdict(list)
-            for feedback in all_feedbacks:
-                msg_id_to_feedbacks[feedback.message_id].append(feedback)
-
-            message_ids = list(msg_id_to_feedbacks)
-            feedback_messages = message_service.get_messages_by_ids(
-                session, message_ids
-            )
-
-            # 3. Pre-build conversation_id -> account mapping (more efficient than per-account scans)
-            conv_to_account = {}
-            for account in all_accounts:
-                # Get users for this account
-                account_users = user_service.get_users_by_account_id(
-                    session, account.id
-                )
-                account_users_ids = [user.id for user in account_users]
-
-                # Paginate conversations to avoid missing data for high-volume accounts
-                page = 1
-                page_size = 100
-                while True:
-                    total_convs, conversations_page = (
-                        message_service.get_conversations_by_users(
-                            session, page, page_size, account_users_ids
-                        )
-                    )
-                    if not conversations_page:
-                        break
-
-                    # Map conversation_id -> account.name
-                    for conv in conversations_page:
-                        conv_to_account[conv.id] = account.name
-
-                    # If we've fetched all conversations, stop
-                    if page * page_size >= total_convs:
-                        break
-
-                    page += 1
-
-            # 4. Filter all negative feedback and group by account (single pass)
-            account_negative_feedbacks = defaultdict(list)
-            for msg in feedback_messages:
-                account_name = conv_to_account.get(msg.conversation_id)
-                if not account_name:
-                    continue
-
-                feedbacks = msg_id_to_feedbacks[msg.id]
-                negative_feedbacks = [
-                    f for f in feedbacks if f.reaction == "thumbs_down"
-                ]
-
-                if negative_feedbacks:
-                    account_negative_feedbacks[account_name].extend(
-                        [(f, msg) for f in negative_feedbacks]
-                    )
-
-            # 5. Only query Notion for accounts that have negative feedback
-            account_unresolved_counts = defaultdict(int)
-            resolved_statuses = {"Changes Now Live", "Resolved", "Out of Scope"}
-
-            for account_name, feedback_list in account_negative_feedbacks.items():
-                # Query Notion for this account's feedback ticket statuses
-                notion_tickets = await notion_service.get_feedback_tickets_by_client(
-                    account_name
-                )
-
-                # Build map of conversation_id -> status
-                conv_id_to_status = {}
-                for ticket in notion_tickets:
-                    conv_id = ticket.get("conversation_id")
-                    status = ticket.get("status")
-                    if conv_id:
-                        conv_id_to_status[conv_id] = status
-
-                # Count unresolved feedback for this account
-                unresolved_count = 0
-                for _, feedback_msg in feedback_list:
-                    conversation_id = str(feedback_msg.conversation_id)
-                    status = conv_id_to_status.get(conversation_id)
-
-                    # If no status found or status is not in resolved_statuses, it's unresolved
-                    if not status or status not in resolved_statuses:
-                        unresolved_count += 1
-
-                if unresolved_count > 0:
-                    account_unresolved_counts[account_name] = unresolved_count
-
-            logger.info(
-                f"[Slackbot] Processed feedback for {len(account_negative_feedbacks)} accounts with negative feedback"
-            )
-
-            # 4. Format and send results
-            if not account_unresolved_counts:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text="✅ No unresolved feedback found for any client!",
-                    mrkdwn=True,
-                )
-                return
-
-            # Sort by unresolved count (descending)
-            sorted_accounts = sorted(
-                account_unresolved_counts.items(), key=lambda x: x[1], reverse=True
-            )
-
-            # Build response message
-            total_unresolved = sum(account_unresolved_counts.values())
-            response_lines = [
-                "📋 *Clients with Unresolved Feedback*",
-                f"Found *{len(sorted_accounts)}* clients with *{total_unresolved}* total unresolved items:\n",
-            ]
-
-            for account_name, count in sorted_accounts[:20]:
-                # Use different emoji based on urgency
-                if count >= 10:
-                    emoji = "🔴"
-                elif count >= 5:
-                    emoji = "🟡"
-                else:
-                    emoji = "🟢"
-
-                # Show account name prominently so users can look it up
-                response_lines.append(
-                    f"{emoji} *`{account_name}`*: {count} unresolved item{'s' if count != 1 else ''}"
-                )
-
-            if len(sorted_accounts) > 20:
-                response_lines.append(
-                    f"\n_Showing top 20 of {len(sorted_accounts)} clients with unresolved feedback._"
-                )
-
-            response_lines.append(
-                "\n_Use `feedback <client-name>` to see details for a specific client._"
-            )
-
-            response_text = "\n".join(response_lines)
-
+        if not tickets_by_account:
             await client.chat_postMessage(
-                channel=slack_channel, text=response_text, mrkdwn=True
+                channel=slack_channel,
+                text="✅ No unresolved feedback found for any client.",
+                mrkdwn=True,
+            )
+            return
+
+        # Count unresolved feedback for each account (already filtered at API level)
+        account_unresolved_counts = {
+            account_name: len(tickets)
+            for account_name, tickets in tickets_by_account.items()
+        }
+
+        logger.info(
+            f"[Slackbot] Found {len(account_unresolved_counts)} accounts with unresolved feedback"
+        )
+
+        # Sort by unresolved count (descending)
+        sorted_accounts = sorted(
+            account_unresolved_counts.items(), key=lambda x: x[1], reverse=True
+        )
+
+        # Build response message
+        total_unresolved = sum(account_unresolved_counts.values())
+        response_lines = [
+            "📋 *Clients with Unresolved Feedback*",
+            f"Found *{len(sorted_accounts)}* clients with *{total_unresolved}* total unresolved items:\n",
+        ]
+
+        for account_name, count in sorted_accounts[:20]:
+            # Use different emoji based on urgency
+            if count >= 10:
+                emoji = "🔴"
+            elif count >= 5:
+                emoji = "🟡"
+            else:
+                emoji = "🟢"
+
+            # Show account name prominently so users can look it up
+            response_lines.append(
+                f"{emoji} *`{account_name}`*: {count} unresolved item{'s' if count != 1 else ''}"
             )
 
-            logger.info(
-                f"[Slackbot] All clients feedback summary completed: {len(sorted_accounts)} clients, {total_unresolved} unresolved"
+        if len(sorted_accounts) > 20:
+            response_lines.append(
+                f"\n_Showing top 20 of {len(sorted_accounts)} clients with unresolved feedback._"
             )
 
-        finally:
-            session.close()
+        response_lines.append(
+            "\n_Use `feedback <client-name>` to see details for a specific client._"
+        )
+
+        response_text = "\n".join(response_lines)
+
+        await client.chat_postMessage(
+            channel=slack_channel, text=response_text, mrkdwn=True
+        )
+
+        logger.info(
+            f"[Slackbot] All clients feedback summary completed: {len(sorted_accounts)} clients, {total_unresolved} unresolved"
+        )
 
     except Exception as e:
         logger.error(
@@ -937,20 +741,13 @@ async def handle_feedback_request(message, client):
 
     Unresolved means status is NOT "Changes Now Live", "Resolved", or "Out of Scope".
 
+    Queries Notion ONLY (no database queries).
+
     Args:
         message: Slack message object
         client: Slack client object
     """
-    # Import here to avoid circular dependency
-    from collections import defaultdict
-
-    from services import (
-        account_service,
-        feedback_service,
-        message_service,
-        notion_service,
-        user_service,
-    )
+    from services import notion_service
 
     try:
         slack_channel = message.get("channel")
@@ -988,162 +785,99 @@ async def handle_feedback_request(message, client):
             mrkdwn=True,
         )
 
-        # Get database session
-        session = SyncSessionLocal()
-        try:
-            # 1. Validate account exists
-            account = account_service.get_account(session, client_name)
-            if not account:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text=f"❌ Account `{client_name}` not found. Please check the account name and try again.",
-                    mrkdwn=True,
-                )
-                return
+        # Query Notion for thumbs_down feedback tickets for this client
+        tickets = await notion_service.get_feedback_tickets_by_client(
+            client_name, reaction_filter="thumbs_down"
+        )
 
-            # 2. Get all conversations for this account (same logic as list_account_feedbacks)
-            account_users = user_service.get_users_by_account_id(session, account.id)
-            account_users_ids = [user.id for user in account_users]
-            _, account_conversations = message_service.get_conversations_by_users(
-                session, 1, 1000, account_users_ids
-            )
-            conversation_ids = {
-                conversation.id for conversation in account_conversations
-            }
-
-            # 3. Get all feedbacks and filter for this account's conversations
-            all_feedbacks = feedback_service.get_feedbacks(session)
-            if not all_feedbacks:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text=f"✅ No feedback found for *{client_name}*.",
-                    mrkdwn=True,
-                )
-                return
-
-            # Build map of message_id -> feedbacks
-            msg_id_to_feedbacks = defaultdict(list)
-            for feedback in all_feedbacks:
-                msg_id_to_feedbacks[feedback.message_id].append(feedback)
-
-            message_ids = list(msg_id_to_feedbacks)
-            feedback_messages = message_service.get_messages_by_ids(
-                session, message_ids
-            )
-            feedback_messages_dict = {msg.id: msg for msg in feedback_messages}
-
-            # Filter for this account's feedbacks
-            account_feedbacks = []
-            for msg in feedback_messages:
-                if msg.conversation_id in conversation_ids:
-                    account_feedbacks.extend(msg_id_to_feedbacks[msg.id])
-
-            # 4. Filter for thumbs_down feedback only
-            negative_feedbacks = [
-                f for f in account_feedbacks if f.reaction == "thumbs_down"
-            ]
-
-            if not negative_feedbacks:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text=f"✅ No negative feedback found for *{client_name}*.",
-                    mrkdwn=True,
-                )
-                return
-
-            # 5. Query Notion for feedback ticket statuses
-            notion_tickets = await notion_service.get_feedback_tickets_by_client(
-                client_name
-            )
-
-            # Build map of conversation_id -> status
-            conv_id_to_status = {}
-            for ticket in notion_tickets:
-                conv_id = ticket.get("conversation_id")
-                status = ticket.get("status")
-                if conv_id:
-                    conv_id_to_status[conv_id] = status
-
-            # 6. Filter for unresolved feedback
-            resolved_statuses = {"Changes Now Live", "Resolved", "Out of Scope"}
-            unresolved_feedbacks = []
-
-            for feedback in negative_feedbacks:
-                feedback_msg = feedback_messages_dict[feedback.message_id]
-                conversation_id = str(feedback_msg.conversation_id)
-                status = conv_id_to_status.get(conversation_id)
-
-                # If no status found or status is not in resolved_statuses, it's unresolved
-                if not status or status not in resolved_statuses:
-                    unresolved_feedbacks.append((feedback, feedback_msg, status))
-
-            if not unresolved_feedbacks:
-                await client.chat_postMessage(
-                    channel=slack_channel,
-                    text=f"✅ All negative feedback for *{client_name}* has been resolved!",
-                    mrkdwn=True,
-                )
-                return
-
-            # 7. Format and send results
-            # Sort by created_at (most recent first)
-            unresolved_feedbacks.sort(key=lambda x: x[0].created_at, reverse=True)
-
-            # Build response message (show client name prominently for easy lookup)
-            response_lines = [
-                f"📋 *Unresolved Feedback for `{client_name}`*",
-                f"Found *{len(unresolved_feedbacks)}* unresolved feedback item{'s' if len(unresolved_feedbacks) != 1 else ''}:\n",
-            ]
-
-            for i, (feedback, feedback_msg, status) in enumerate(
-                unresolved_feedbacks[:10], 1
-            ):
-                # Format date
-                created_date = feedback.created_at.strftime("%Y-%m-%d %H:%M")
-
-                # Get feedback text (truncate if too long)
-                feedback_text = feedback.note or "(No text provided)"
-                if len(feedback_text) > 100:
-                    feedback_text = feedback_text[:100] + "..."
-
-                # Get status display
-                status_display = status if status else "New"
-                status_emoji = (
-                    "🆕"
-                    if status_display == "New"
-                    else "👀" if status_display == "Investigating" else "⏳"
-                )
-
-                # Get tags
-                tags_display = ""
-                if feedback.tags:
-                    tags_display = f"\n   _Tags: {', '.join(feedback.tags)}_"
-
-                # Add to response
-                response_lines.append(
-                    f"*{i}.* {status_emoji} *{status_display}* | {created_date}\n"
-                    f"   {feedback_text}{tags_display}\n"
-                    f"   _User: {feedback.author_name or feedback.author_identifier or 'Unknown'}_\n"
-                    f"   _Conversation ID: `{feedback_msg.conversation_id}`_\n"
-                )
-
-            if len(unresolved_feedbacks) > 10:
-                response_lines.append(
-                    f"\n_Showing 10 of {len(unresolved_feedbacks)} unresolved feedback items._"
-                )
-
-            response_text = "\n".join(response_lines)
-
+        if not tickets:
             await client.chat_postMessage(
-                channel=slack_channel, text=response_text, mrkdwn=True
+                channel=slack_channel,
+                text=f"✅ No negative feedback found for *{client_name}*.",
+                mrkdwn=True,
+            )
+            return
+
+        # Filter for unresolved status only (reaction already filtered at API level)
+        unresolved_feedbacks = [
+            ticket
+            for ticket in tickets
+            if not ticket.get("status") or ticket.get("status") not in RESOLVED_STATUSES
+        ]
+
+        if not unresolved_feedbacks:
+            await client.chat_postMessage(
+                channel=slack_channel,
+                text=f"✅ All negative feedback for *{client_name}* has been resolved!",
+                mrkdwn=True,
+            )
+            return
+
+        # Sort by created_time (most recent first)
+        unresolved_feedbacks.sort(key=lambda x: x.get("created_time", ""), reverse=True)
+
+        # Build response message
+        response_lines = [
+            f"📋 *Unresolved Feedback for `{client_name}`*",
+            f"Found *{len(unresolved_feedbacks)}* unresolved feedback item{'s' if len(unresolved_feedbacks) != 1 else ''}:\n",
+        ]
+
+        for i, ticket in enumerate(unresolved_feedbacks[:10], 1):
+            # Format date
+            created_time_str = ticket.get("created_time") or ""
+            try:
+                created_dt = datetime.fromisoformat(
+                    created_time_str.replace("Z", "+00:00")
+                )
+                created_date = created_dt.strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                created_date = "Unknown date"
+
+            # Get feedback text (truncate if too long)
+            feedback_text = ticket.get("feedback_text") or "(No text provided)"
+            if len(feedback_text) > 100:
+                feedback_text = feedback_text[:100] + "..."
+
+            # Get status display
+            status = ticket.get("status")
+            status_display = status if status else "New"
+            status_emoji = (
+                "🆕"
+                if status_display == "New"
+                else "👀" if status_display == "Investigating" else "⏳"
             )
 
-            logger.info(
-                f"[Slackbot] Feedback request completed for {client_name}: {len(unresolved_feedbacks)} unresolved items"
+            # Get tags
+            tags_display = ""
+            tags = ticket.get("tags", [])
+            if tags:
+                tags_display = f"\n   _Tags: {', '.join(tags)}_"
+
+            # Get user
+            user_name = ticket.get("user_name") or ticket.get("user_email") or "Unknown"
+
+            # Add to response
+            response_lines.append(
+                f"*{i}.* {status_emoji} *{status_display}* | {created_date}\n"
+                f"   {feedback_text}{tags_display}\n"
+                f"   _User: {user_name}_\n"
+                f"   _Conversation ID: `{ticket.get('conversation_id')}`_\n"
             )
 
-        finally:
-            session.close()
+        if len(unresolved_feedbacks) > 10:
+            response_lines.append(
+                f"\n_Showing 10 of {len(unresolved_feedbacks)} unresolved feedback items._"
+            )
+
+        response_text = "\n".join(response_lines)
+
+        await client.chat_postMessage(
+            channel=slack_channel, text=response_text, mrkdwn=True
+        )
+
+        logger.info(
+            f"[Slackbot] Feedback request completed for {client_name}: {len(unresolved_feedbacks)} unresolved items"
+        )
 
     except Exception as e:
         logger.error(f"[Slackbot] Error handling feedback request: {e}", exc_info=True)
