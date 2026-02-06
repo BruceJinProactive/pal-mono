@@ -8,7 +8,6 @@ import re
 from datetime import datetime
 
 from db.session import SyncSessionLocal
-from services.notion_service import RESOLVED_STATUSES
 from utils.log import logger
 
 # =============================================================================
@@ -785,25 +784,11 @@ async def handle_feedback_request(message, client):
             mrkdwn=True,
         )
 
-        # Query Notion for thumbs_down feedback tickets for this client
-        tickets = await notion_service.get_feedback_tickets_by_client(
-            client_name, reaction_filter="thumbs_down"
+        # Query Notion for unresolved thumbs_down feedback tickets for this client
+        # Filter at API level for better performance
+        unresolved_feedbacks = await notion_service.get_feedback_tickets_by_client(
+            client_name, reaction_filter="thumbs_down", exclude_resolved=True
         )
-
-        if not tickets:
-            await client.chat_postMessage(
-                channel=slack_channel,
-                text=f"✅ No negative feedback found for *{client_name}*.",
-                mrkdwn=True,
-            )
-            return
-
-        # Filter for unresolved status only (reaction already filtered at API level)
-        unresolved_feedbacks = [
-            ticket
-            for ticket in tickets
-            if not ticket.get("status") or ticket.get("status") not in RESOLVED_STATUSES
-        ]
 
         if not unresolved_feedbacks:
             await client.chat_postMessage(

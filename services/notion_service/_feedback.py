@@ -369,6 +369,7 @@ async def get_feedback_tickets_by_client(
     client_name: str,
     client: Optional[AsyncClient] = None,
     reaction_filter: Optional[str] = None,
+    exclude_resolved: bool = False,
 ) -> list[dict]:
     """
     Query the Feedback Inbox database for all feedback tickets for a specific client.
@@ -381,6 +382,8 @@ async def get_feedback_tickets_by_client(
             will be created via get_notion_client().
         reaction_filter: Filter by reaction type ("thumbs_up", "thumbs_down", or None
             to include all reactions). Default: None (all reactions).
+        exclude_resolved: If True, filters out tickets with status "Changes Now Live",
+            "Resolved", or "Out of Scope" at query time. Default: False.
 
     Returns:
         list[dict]: List of feedback ticket data with fields:
@@ -428,6 +431,25 @@ async def get_feedback_tickets_by_client(
                 {"property": "Reaction", "select": {"equals": reaction_filter}}
             )
 
+        # Filter out resolved statuses if requested
+        if exclude_resolved:
+            filters.append(
+                {
+                    "or": [
+                        {"property": "Status", "select": {"is_empty": True}},
+                        {
+                            "and": [
+                                {
+                                    "property": "Status",
+                                    "select": {"does_not_equal": status},
+                                }
+                                for status in RESOLVED_STATUSES
+                            ]
+                        },
+                    ]
+                }
+            )
+
         all_tickets = []
         has_more = True
         start_cursor = None
@@ -459,7 +481,11 @@ async def get_feedback_tickets_by_client(
             f"[Notion] Found {len(client_tickets)} feedback tickets for client {client_name}",
             extra={
                 "client_name": client_name,
+                "normalized_client_name": normalized_client_name,
                 "ticket_count": len(client_tickets),
+                "reaction_filter": reaction_filter,
+                "exclude_resolved": exclude_resolved,
+                "raw_ticket_count": len(all_tickets),
             },
         )
 
