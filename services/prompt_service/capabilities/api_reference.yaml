@@ -98,29 +98,7 @@ actions:
 
       ---
 
-      #### 3. Get Reservation List
-      POST {MINITABLE_BASE_URL}/reserve/list
-
-      Gets future reservations by phone number.
-
-      Request Body (REQUIRED):
-      {
-          "telephone": "+1 5551234567"              // STRING (required)
-      }
-
-      Example tool call:
-      execute_api_request(
-          method="POST",
-          url="{MINITABLE_BASE_URL}/reserve/list",
-          body={"telephone": "+1 5551234567"}
-      )
-
-      Response:
-      {"bookings": [{"booking_id": "r_0e27463d_8907"}]}
-
-      ---
-
-      #### 4. Check Waitlist Status
+      #### 3. Check Waitlist Status
       POST {MINITABLE_BASE_URL}/waitlist/status/check
 
       Checks if waitlist is open and current wait times.
@@ -145,7 +123,7 @@ actions:
 
       ---
 
-      #### 5. Create Waitlist Entry
+      #### 4. Create Waitlist Entry
       POST {MINITABLE_BASE_URL}/waitlist/create
 
       Adds customer to waitlist. Error codes: WAITLIST_NOT_ENABLE, EXISTING_WAITLIST_ENTRY.
