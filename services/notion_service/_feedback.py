@@ -259,7 +259,6 @@ async def update_feedback_status(
         "Changes Now Live",
         "Out of Scope",
         "Resolved",
-        "In Progress",
     }
 
     if status not in valid_statuses:
@@ -368,7 +367,6 @@ async def get_feedback_fde(
 async def get_feedback_tickets_by_client(
     client_name: str,
     client: Optional[AsyncClient] = None,
-    reaction_filter: Optional[str] = None,
     exclude_resolved: bool = False,
 ) -> list[dict]:
     """
@@ -380,10 +378,10 @@ async def get_feedback_tickets_by_client(
         client_name: The Pal client/account name (matches account_name property).
         client: Optional Notion AsyncClient. If not provided, a shared client
             will be created via get_notion_client().
-        reaction_filter: Filter by reaction type ("thumbs_up", "thumbs_down", or None
-            to include all reactions). Default: None (all reactions).
-        exclude_resolved: If True, filters out tickets with status "Changes Now Live",
-            "Resolved", or "Out of Scope" at query time. Default: False.
+        exclude_resolved: If True, filters out tickets with resolved statuses
+            (Changes Now Live, Resolved, Out of Scope) at query time.
+            When True, only returns tickets with status "New" or "Investigating".
+            Default: False (returns all tickets).
 
     Returns:
         list[dict]: List of feedback ticket data with fields:
@@ -425,27 +423,17 @@ async def get_feedback_tickets_by_client(
             }
         ]
 
-        # Add reaction filter if specified
-        if reaction_filter:
-            filters.append(
-                {"property": "Reaction", "select": {"equals": reaction_filter}}
-            )
-
         # Filter out resolved statuses if requested
         if exclude_resolved:
+            # Instead of excluding resolved statuses, explicitly include non-resolved ones
+            # This avoids nested compound filters which Notion API doesn't support
+            # Non-resolved statuses: New, Investigating, or empty
             filters.append(
                 {
                     "or": [
                         {"property": "Status", "select": {"is_empty": True}},
-                        {
-                            "and": [
-                                {
-                                    "property": "Status",
-                                    "select": {"does_not_equal": status},
-                                }
-                                for status in RESOLVED_STATUSES
-                            ]
-                        },
+                        {"property": "Status", "select": {"equals": "New"}},
+                        {"property": "Status", "select": {"equals": "Investigating"}},
                     ]
                 }
             )
@@ -463,6 +451,23 @@ async def get_feedback_tickets_by_client(
             if start_cursor:
                 query_params["start_cursor"] = start_cursor
 
+            # Debug logging (only log on first page)
+            if not start_cursor:
+                import json
+
+                logger.info(
+                    f"[Notion] Querying feedback for {client_name}",
+                    extra={
+                        "client_name": client_name,
+                        "normalized_client_name": normalized_client_name,
+                        "exclude_resolved": exclude_resolved,
+                        "filter_count": len(filters),
+                        "query_filter": json.dumps(
+                            query_params.get("filter"), indent=2
+                        ),
+                    },
+                )
+
             data = await client.databases.query(**query_params)
             results = data.get("results", [])
             all_tickets.extend(results)
@@ -472,10 +477,14 @@ async def get_feedback_tickets_by_client(
 
         # Extract ticket data with all fields needed for Slack commands
         client_tickets = []
+        status_breakdown = {}
         for ticket in all_tickets:
             parsed_ticket = _parse_ticket_properties(ticket)
             if parsed_ticket:
                 client_tickets.append(parsed_ticket)
+                # Track status breakdown for debugging
+                status = parsed_ticket.get("status") or "Empty"
+                status_breakdown[status] = status_breakdown.get(status, 0) + 1
 
         logger.info(
             f"[Notion] Found {len(client_tickets)} feedback tickets for client {client_name}",
@@ -483,9 +492,9 @@ async def get_feedback_tickets_by_client(
                 "client_name": client_name,
                 "normalized_client_name": normalized_client_name,
                 "ticket_count": len(client_tickets),
-                "reaction_filter": reaction_filter,
                 "exclude_resolved": exclude_resolved,
                 "raw_ticket_count": len(all_tickets),
+                "status_breakdown": status_breakdown,
             },
         )
 
@@ -503,7 +512,6 @@ async def get_feedback_tickets_by_client(
 async def get_all_feedback_tickets(
     client: Optional[AsyncClient] = None,
     exclude_resolved: bool = True,
-    reaction_filter: Optional[str] = "thumbs_down",
     limit: Optional[int] = None,
 ) -> dict[str, list[dict]]:
     """
@@ -515,10 +523,10 @@ async def get_all_feedback_tickets(
     Args:
         client: Optional Notion AsyncClient. If not provided, a shared client
             will be created via get_notion_client().
-        exclude_resolved: If True, filters out tickets with status "Changes Now Live",
-            "Resolved", or "Out of Scope" at query time. Default: True.
-        reaction_filter: Filter by reaction type ("thumbs_up", "thumbs_down", or None
-            to include all reactions). Default: "thumbs_down".
+        exclude_resolved: If True, filters out tickets with resolved statuses
+            (Changes Now Live, Resolved, Out of Scope) at query time.
+            When True, only returns tickets with status "New" or "Investigating".
+            Default: True.
         limit: Optional maximum number of tickets to return across all accounts.
             Useful for large databases to prevent excessive API calls. Default: None (unlimited).
 
@@ -550,29 +558,17 @@ async def get_all_feedback_tickets(
         # Build filter for query-time optimization
         filters = []
 
-        # Filter by reaction if specified
-        if reaction_filter:
-            filters.append(
-                {"property": "Reaction", "select": {"equals": reaction_filter}}
-            )
-
         # Filter out resolved statuses if requested
         if exclude_resolved:
-            # Correct logic: status IS EMPTY OR (status != X AND status != Y AND status != Z)
-            # This properly excludes all resolved statuses while preserving empty statuses
+            # Instead of excluding resolved statuses, explicitly include non-resolved ones
+            # This avoids nested compound filters which Notion API doesn't support
+            # Non-resolved statuses: New, Investigating, or empty
             filters.append(
                 {
                     "or": [
                         {"property": "Status", "select": {"is_empty": True}},
-                        {
-                            "and": [
-                                {
-                                    "property": "Status",
-                                    "select": {"does_not_equal": status},
-                                }
-                                for status in RESOLVED_STATUSES
-                            ]
-                        },
+                        {"property": "Status", "select": {"equals": "New"}},
+                        {"property": "Status", "select": {"equals": "Investigating"}},
                     ]
                 }
             )
@@ -648,7 +644,6 @@ async def get_all_feedback_tickets(
                 "total_tickets": total_parsed,
                 "accounts_count": len(tickets_by_account),
                 "exclude_resolved": exclude_resolved,
-                "reaction_filter": reaction_filter,
                 "limit": limit,
             },
         )

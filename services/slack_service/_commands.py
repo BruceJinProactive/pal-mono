@@ -482,38 +482,34 @@ async def handle_feedback_status_request(message, client):
             f"[Slackbot] User {user} requested feedback status for client '{client_name}' in channel {slack_channel}"
         )
 
-        # Send "processing" message
+        # Send processing message
         await client.chat_postMessage(
             channel=slack_channel,
-            text=f"🔍 Fetching all feedback for *{client_name}*...",
+            text=f"🔍 Fetching feedback status for *{client_name}*...",
             mrkdwn=True,
         )
 
-        # Query Notion for thumbs_down feedback tickets for this client
-        negative_feedbacks = await notion_service.get_feedback_tickets_by_client(
-            client_name, reaction_filter="thumbs_down"
-        )
+        # Query Notion for ALL feedback tickets for this client (all statuses)
+        all_feedbacks = await notion_service.get_feedback_tickets_by_client(client_name)
 
-        if not negative_feedbacks:
+        if not all_feedbacks:
             await client.chat_postMessage(
                 channel=slack_channel,
-                text=f"✅ No negative feedback found for *{client_name}*.",
+                text=f"✅ No feedback found for *{client_name}*.",
                 mrkdwn=True,
             )
             return
 
         # Group feedback by status
         status_groups = defaultdict(list)
-
-        for ticket in negative_feedbacks:
-            status = ticket.get("status", "New") or "New"
+        for ticket in all_feedbacks:
+            status = ticket.get("status") or "New"
             status_groups[status].append(ticket)
 
         # Define status order for display
         status_order = [
             "New",
             "Investigating",
-            "In Progress",
             "Changes Now Live",
             "Resolved",
             "Out of Scope",
@@ -527,7 +523,7 @@ async def handle_feedback_status_request(message, client):
         # Build response message
         response_lines = [
             f"📊 *Feedback Status for `{client_name}`*",
-            f"Found *{len(negative_feedbacks)}* feedback item{'s' if len(negative_feedbacks) != 1 else ''}:\n",
+            f"Found *{len(all_feedbacks)}* feedback item{'s' if len(all_feedbacks) != 1 else ''}:\n",
         ]
 
         total_shown = 0
@@ -541,7 +537,6 @@ async def handle_feedback_status_request(message, client):
             status_emoji = {
                 "New": "🆕",
                 "Investigating": "👀",
-                "In Progress": "⏳",
                 "Changes Now Live": "✅",
                 "Resolved": "✔️",
                 "Out of Scope": "🚫",
@@ -588,19 +583,17 @@ async def handle_feedback_status_request(message, client):
             if len(feedbacks_in_status) > 5:
                 response_lines.append(f"  _...and {len(feedbacks_in_status) - 5} more_")
 
-        if total_shown < len(negative_feedbacks):
+        if total_shown < len(all_feedbacks):
             response_lines.append(
-                f"\n_Showing {total_shown} of {len(negative_feedbacks)} feedback items._"
+                f"\n_Showing {total_shown} of {len(all_feedbacks)} feedback items._"
             )
 
-        response_text = "\n".join(response_lines)
-
         await client.chat_postMessage(
-            channel=slack_channel, text=response_text, mrkdwn=True
+            channel=slack_channel, text="\n".join(response_lines), mrkdwn=True
         )
 
         logger.info(
-            f"[Slackbot] Feedback status request completed for {client_name}: {len(negative_feedbacks)} total items"
+            f"[Slackbot] Returned feedback status for {client_name}: {len(all_feedbacks)} total items"
         )
 
     except Exception as e:
@@ -622,9 +615,9 @@ async def handle_feedback_status_request(message, client):
 
 async def handle_feedback_all_clients_summary(message, client):
     """
-    Show summary of all clients with unresolved negative feedback.
+    Show summary of all clients with unresolved feedback.
 
-    Queries Notion ONLY (no database queries).
+    Unresolved feedback = status "New" or "Investigating"
 
     Args:
         message: Slack message object
@@ -637,19 +630,20 @@ async def handle_feedback_all_clients_summary(message, client):
         user = message["user"]
 
         logger.info(
-            f"[Slackbot] User {user} requested all clients feedback summary in channel {slack_channel}"
+            f"[Slackbot] User {user} requested unresolved feedback summary for all clients"
         )
 
-        # Send "processing" message
+        # Send processing message
         await client.chat_postMessage(
             channel=slack_channel,
             text="🔍 Fetching unresolved feedback for all clients...",
             mrkdwn=True,
         )
 
-        # Query Notion for unresolved negative feedback (filtered at API level for efficiency)
-        # Default filters: exclude_resolved=True, reaction_filter="thumbs_down"
-        tickets_by_account = await notion_service.get_all_feedback_tickets()
+        # Query Notion for unresolved feedback across all clients
+        tickets_by_account = await notion_service.get_all_feedback_tickets(
+            exclude_resolved=True
+        )
 
         if not tickets_by_account:
             await client.chat_postMessage(
@@ -659,88 +653,68 @@ async def handle_feedback_all_clients_summary(message, client):
             )
             return
 
-        # Count unresolved feedback for each account (already filtered at API level)
-        account_unresolved_counts = {
+        # Count tickets per account
+        account_counts = {
             account_name: len(tickets)
             for account_name, tickets in tickets_by_account.items()
         }
 
-        logger.info(
-            f"[Slackbot] Found {len(account_unresolved_counts)} accounts with unresolved feedback"
-        )
-
-        # Sort by unresolved count (descending)
+        # Sort by count (descending)
         sorted_accounts = sorted(
-            account_unresolved_counts.items(), key=lambda x: x[1], reverse=True
+            account_counts.items(), key=lambda x: x[1], reverse=True
         )
 
-        # Build response message
-        total_unresolved = sum(account_unresolved_counts.values())
+        total_unresolved = sum(account_counts.values())
+
+        # Build response
         response_lines = [
             "📋 *Clients with Unresolved Feedback*",
             f"Found *{len(sorted_accounts)}* clients with *{total_unresolved}* total unresolved items:\n",
         ]
 
         for account_name, count in sorted_accounts[:20]:
-            # Use different emoji based on urgency
-            if count >= 10:
-                emoji = "🔴"
-            elif count >= 5:
-                emoji = "🟡"
-            else:
-                emoji = "🟢"
-
-            # Show account name prominently so users can look it up
+            # Urgency indicator
+            emoji = "🔴" if count >= 10 else "🟡" if count >= 5 else "🟢"
             response_lines.append(
-                f"{emoji} *`{account_name}`*: {count} unresolved item{'s' if count != 1 else ''}"
+                f"{emoji} *`{account_name}`*: {count} item{'s' if count != 1 else ''}"
             )
 
         if len(sorted_accounts) > 20:
             response_lines.append(
-                f"\n_Showing top 20 of {len(sorted_accounts)} clients with unresolved feedback._"
+                f"\n_Showing top 20 of {len(sorted_accounts)} clients._"
             )
 
         response_lines.append(
             "\n_Use `feedback <client-name>` to see details for a specific client._"
         )
 
-        response_text = "\n".join(response_lines)
-
         await client.chat_postMessage(
-            channel=slack_channel, text=response_text, mrkdwn=True
+            channel=slack_channel, text="\n".join(response_lines), mrkdwn=True
         )
 
         logger.info(
-            f"[Slackbot] All clients feedback summary completed: {len(sorted_accounts)} clients, {total_unresolved} unresolved"
+            f"[Slackbot] Returned summary: {len(sorted_accounts)} clients, {total_unresolved} total items"
         )
 
     except Exception as e:
-        logger.error(
-            f"[Slackbot] Error handling all clients feedback summary: {e}",
-            exc_info=True,
-        )
+        logger.error(f"[Slackbot] Error fetching feedback summary: {e}", exc_info=True)
         try:
-            slack_channel = message.get("channel")
             await client.chat_postMessage(
-                channel=slack_channel,
-                text=f"❌ An error occurred while fetching feedback: {str(e)}",
+                channel=message.get("channel"),
+                text=f"❌ Error fetching feedback: {str(e)}",
                 mrkdwn=True,
             )
         except Exception as slack_error:
-            logger.error(
-                f"[Slackbot] Failed to send error message to Slack: {slack_error}"
-            )
+            logger.error(f"[Slackbot] Failed to send error: {slack_error}")
 
 
 async def handle_feedback_request(message, client):
     """
     Handle feedback requests:
-    - "feedback" (no client) - Shows summary of all clients with unresolved feedback
-    - "feedback <client-name>" - Shows detailed unresolved feedback for specific client
+    - "feedback" (no client) - Shows all clients with unresolved feedback
+    - "feedback <client-name>" - Shows unresolved feedback for specific client
 
-    Unresolved means status is NOT "Changes Now Live", "Resolved", or "Out of Scope".
-
-    Queries Notion ONLY (no database queries).
+    Unresolved feedback = status "New" or "Investigating" (NOT resolved/closed)
 
     Args:
         message: Slack message object
@@ -754,57 +728,51 @@ async def handle_feedback_request(message, client):
         message_text = message.get("text", "")
 
         # Parse client name from message
-        # Support formats: "feedback client-name", "feedback for client-name", "/feedback client-name"
-        client_name = None
-
-        # Try "for client-name" format first
         client_name = parse_account_name_from_message(message_text)
-
-        # If not found, try to extract client name directly after "feedback"
         if not client_name:
+            # Try extracting client name directly after "feedback"
             match = re.search(
                 r"feedback\s+([a-zA-Z0-9_-]+)", message_text, re.IGNORECASE
             )
             if match:
                 client_name = match.group(1).strip()
 
-        # If no client name provided, show summary of all clients
+        # If no client name, show summary for all clients
         if not client_name:
             await handle_feedback_all_clients_summary(message, client)
             return
 
         logger.info(
-            f"[Slackbot] User {user} requested feedback for client '{client_name}' in channel {slack_channel}"
+            f"[Slackbot] User {user} requested unresolved feedback for '{client_name}'"
         )
 
-        # Send "processing" message
+        # Send processing message
         await client.chat_postMessage(
             channel=slack_channel,
             text=f"🔍 Fetching unresolved feedback for *{client_name}*...",
             mrkdwn=True,
         )
 
-        # Query Notion for unresolved thumbs_down feedback tickets for this client
-        # Filter at API level for better performance
+        # Query Notion for unresolved feedback (status: New or Investigating)
         unresolved_feedbacks = await notion_service.get_feedback_tickets_by_client(
-            client_name, reaction_filter="thumbs_down", exclude_resolved=True
+            client_name, exclude_resolved=True
         )
 
         if not unresolved_feedbacks:
             await client.chat_postMessage(
                 channel=slack_channel,
-                text=f"✅ All negative feedback for *{client_name}* has been resolved!",
+                text=f"✅ No unresolved feedback for *{client_name}*!",
                 mrkdwn=True,
             )
             return
 
-        # Sort by created_time (most recent first)
+        # Sort by most recent first
         unresolved_feedbacks.sort(key=lambda x: x.get("created_time", ""), reverse=True)
 
-        # Build response message
+        # Build response
         response_lines = [
             f"📋 *Unresolved Feedback for `{client_name}`*",
-            f"Found *{len(unresolved_feedbacks)}* unresolved feedback item{'s' if len(unresolved_feedbacks) != 1 else ''}:\n",
+            f"Found *{len(unresolved_feedbacks)}* unresolved item{'s' if len(unresolved_feedbacks) != 1 else ''}:\n",
         ]
 
         for i, ticket in enumerate(unresolved_feedbacks[:10], 1):
@@ -818,32 +786,24 @@ async def handle_feedback_request(message, client):
             except ValueError:
                 created_date = "Unknown date"
 
-            # Get feedback text (truncate if too long)
+            # Get feedback text
             feedback_text = ticket.get("feedback_text") or "(No text provided)"
             if len(feedback_text) > 100:
                 feedback_text = feedback_text[:100] + "..."
 
-            # Get status display
-            status = ticket.get("status")
-            status_display = status if status else "New"
-            status_emoji = (
-                "🆕"
-                if status_display == "New"
-                else "👀" if status_display == "Investigating" else "⏳"
-            )
+            # Get status
+            status = ticket.get("status") or "New"
+            status_emoji = "🆕" if status == "New" else "👀"
 
             # Get tags
-            tags_display = ""
             tags = ticket.get("tags", [])
-            if tags:
-                tags_display = f"\n   _Tags: {', '.join(tags)}_"
+            tags_display = f"\n   _Tags: {', '.join(tags)}_" if tags else ""
 
             # Get user
             user_name = ticket.get("user_name") or ticket.get("user_email") or "Unknown"
 
-            # Add to response
             response_lines.append(
-                f"*{i}.* {status_emoji} *{status_display}* | {created_date}\n"
+                f"*{i}.* {status_emoji} *{status}* | {created_date}\n"
                 f"   {feedback_text}{tags_display}\n"
                 f"   _User: {user_name}_\n"
                 f"   _Conversation ID: `{ticket.get('conversation_id')}`_\n"
@@ -851,29 +811,24 @@ async def handle_feedback_request(message, client):
 
         if len(unresolved_feedbacks) > 10:
             response_lines.append(
-                f"\n_Showing 10 of {len(unresolved_feedbacks)} unresolved feedback items._"
+                f"\n_Showing 10 of {len(unresolved_feedbacks)} unresolved items._"
             )
 
-        response_text = "\n".join(response_lines)
-
         await client.chat_postMessage(
-            channel=slack_channel, text=response_text, mrkdwn=True
+            channel=slack_channel, text="\n".join(response_lines), mrkdwn=True
         )
 
         logger.info(
-            f"[Slackbot] Feedback request completed for {client_name}: {len(unresolved_feedbacks)} unresolved items"
+            f"[Slackbot] Returned {len(unresolved_feedbacks)} unresolved items for {client_name}"
         )
 
     except Exception as e:
         logger.error(f"[Slackbot] Error handling feedback request: {e}", exc_info=True)
         try:
-            slack_channel = message.get("channel")
             await client.chat_postMessage(
-                channel=slack_channel,
-                text=f"❌ An error occurred while fetching feedback: {str(e)}",
+                channel=message.get("channel"),
+                text=f"❌ Error fetching feedback: {str(e)}",
                 mrkdwn=True,
             )
         except Exception as slack_error:
-            logger.error(
-                f"[Slackbot] Failed to send error message to Slack: {slack_error}"
-            )
+            logger.error(f"[Slackbot] Failed to send error: {slack_error}")
