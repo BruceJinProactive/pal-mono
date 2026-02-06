@@ -512,8 +512,8 @@ async def handle_catering_request_created_event(
         # Format the notification message
         message = format_catering_request_message(catering_request)
 
-        notification_success = await send_sms_notification(
-            catering_manager.phone_number, message
+        notification_success = await asyncio.to_thread(
+            send_sms_notification, catering_manager.phone_number, message
         )
         if notification_success:
             logger.debug(
@@ -603,7 +603,7 @@ def _validate_and_format_phone_number(phone_number: str) -> str:
     return formatted
 
 
-async def send_sms_notification(phone_number: str, message: str) -> bool:
+def send_sms_notification(phone_number: str, message: str) -> bool:
     """
     Send SMS notification using configured SMS service.
 

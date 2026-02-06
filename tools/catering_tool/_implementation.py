@@ -5,9 +5,16 @@ from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 
 from agent.tool import ToolMetadata
+from db.repositories.catering_request_repository import CateringRequestRepository
+from db.session import SyncSessionLocal
 from db.tables.catering_requests import FulfillmentType
-from services.catering_service import create_catering_request
+from services.catering_service import create_catering_request, send_sms_notification
 from utils.log import logger
+
+CALLER_CONFIRMATION_MESSAGE = (
+    "Thanks for reaching out. Your catering request has been recorded and sent to the store. "
+    "Someone will get back to you soon."
+)
 
 
 class CateringTool(Toolkit):
@@ -94,6 +101,15 @@ class CateringTool(Toolkit):
 
             raw_session_id = getattr(self.tool_metadata, "session_id", None)
             idempotency_key = str(raw_session_id) if raw_session_id else None
+            request_already_exists = False
+
+            # Pre-check for idempotent replay to avoid sending duplicate caller SMS.
+            if idempotency_key:
+                with SyncSessionLocal() as precheck_session:
+                    existing_request = CateringRequestRepository(
+                        precheck_session
+                    ).get_catering_request_by_idempotency_key(idempotency_key)
+                    request_already_exists = existing_request is not None
 
             catering_request = create_catering_request(
                 project_id=project_id,
@@ -107,6 +123,43 @@ class CateringTool(Toolkit):
                 party_size=party_size,
                 idempotency_key=idempotency_key,
             )
+
+            caller_phone = (
+                self.tool_metadata.customer_phone or contact_phone_number or None
+            )
+            if request_already_exists:
+                logger.debug(
+                    "[CateringTool.create_catering_request] "
+                    "Idempotent replay detected; skipping duplicate caller confirmation SMS.",
+                    extra={
+                        "project_id": str(project_id),
+                        "request_id": str(catering_request.id),
+                        "idempotency_key": idempotency_key,
+                    },
+                )
+            elif caller_phone:
+                sms_sent = send_sms_notification(
+                    caller_phone,
+                    CALLER_CONFIRMATION_MESSAGE,
+                )
+                if not sms_sent:
+                    logger.warning(
+                        "[CateringTool.create_catering_request] "
+                        "Created request but failed to send caller confirmation SMS.",
+                        extra={
+                            "project_id": str(project_id),
+                            "request_id": str(catering_request.id),
+                        },
+                    )
+            else:
+                logger.warning(
+                    "[CateringTool.create_catering_request] "
+                    "Created request but caller phone is unavailable; skipping confirmation SMS.",
+                    extra={
+                        "project_id": str(project_id),
+                        "request_id": str(catering_request.id),
+                    },
+                )
 
             return f"✅ Catering request created successfully! Request ID: {catering_request.id}"
 
