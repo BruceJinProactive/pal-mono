@@ -12,6 +12,7 @@ from api.routes.integrations.square import _implementation as square_implementat
 from api.routes.integrations.stripe import _implementation as stripe_implementation
 from api.routes.integrations.toast import _implementation as toast_implementation
 from api.routes.integrations.toast import toast_router
+from api.routes.integrations.twilio import twilio_router
 from api.routes.integrations.vapi import vapi_router
 
 integrations_router = APIRouter(prefix=endpoints.INTEGRATIONS, tags=["Integrations"])
@@ -30,6 +31,9 @@ integrations_router.include_router(olo_router)
 
 # Include the Slack router
 integrations_router.include_router(slack_router)
+
+# Include the Twilio router
+integrations_router.include_router(twilio_router)
 
 
 @integrations_router.get("/square/install", status_code=status.HTTP_200_OK)
