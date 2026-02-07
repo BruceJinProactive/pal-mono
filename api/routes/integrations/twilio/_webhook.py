@@ -275,9 +275,16 @@ async def handle_voice_webhook(request: Request) -> Response:
 
         # Generate TwiML with optional parameters
         # You can add custom parameters here if needed
+        # Filter out None values to prevent XML escaping errors
+        stream_parameters = {}
+        if from_number:
+            stream_parameters["from_number"] = from_number
+        if to_number:
+            stream_parameters["to_number"] = to_number
+
         twiml_xml = generate_stream_twiml(
             websocket_url=websocket_url,
-            parameters=None,  # Add parameters as needed
+            parameters=stream_parameters if stream_parameters else None,
             message="Please wait while we connect your call.",
         )
 
