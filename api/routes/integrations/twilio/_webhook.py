@@ -211,15 +211,6 @@ async def handle_voice_webhook(request: Request) -> Response:
         form_data = await request.form()
         params = {k: v for k, v in form_data.items() if isinstance(v, str)}
 
-        logger.debug(
-            "[Twilio Webhook] Parsed form data",
-            extra={
-                "param_count": len(params),
-                "param_keys": list(params.keys()),
-                "form_data_count": len(form_data),
-            },
-        )
-
         # Build full URL for signature validation
         # Twilio always calls webhooks via HTTPS in production
 
@@ -254,8 +245,6 @@ async def handle_voice_webhook(request: Request) -> Response:
                 detail="Invalid signature",
                 headers={"Content-Type": "application/json"},
             )
-
-        logger.debug("[Twilio Webhook] Signature validation passed")
 
         # Extract call parameters
         call_sid = params.get("CallSid")
@@ -299,22 +288,6 @@ async def handle_voice_webhook(request: Request) -> Response:
                 "twiml_preview": (
                     twiml_xml[:200] + "..." if len(twiml_xml) > 200 else twiml_xml
                 ),
-            },
-        )
-
-        logger.info(
-            "[Twilio Webhook] TwiML response generated",
-            extra={
-                "call_sid": call_sid,
-                "websocket_url": websocket_url,
-            },
-        )
-
-        logger.debug(
-            "[Twilio Webhook] Returning TwiML response",
-            extra={
-                "status_code": status.HTTP_200_OK,
-                "media_type": "application/xml",
             },
         )
 

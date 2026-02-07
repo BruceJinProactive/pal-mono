@@ -1,9 +1,4 @@
-import base64
-import hashlib
-import hmac
 import json
-import os
-import secrets
 from datetime import datetime, timezone
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -15,71 +10,30 @@ async def handle_twilio_media_stream(websocket: WebSocket):
     """
     Handle Twilio Media Stream WebSocket connection.
 
-    Validates Twilio's X-Twilio-Signature header before accepting the connection
-    to ensure requests originate from Twilio. Logs all events for understanding
+    Logs signature information for debugging. Logs all events for understanding
     the Twilio Media Streams protocol flow.
 
     Args:
         websocket: WebSocket connection from Twilio
     """
-    # Validate Twilio signature before accepting connection
+    # Log signature information for debugging
     twilio_signature = websocket.headers.get("x-twilio-signature")
-    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-
-    if not auth_token:
-        logger.error(
-            "TWILIO_AUTH_TOKEN environment variable not set",
-            extra={"client_host": websocket.client.host if websocket.client else None},
-        )
-        await websocket.close(code=1008)
-        return
-
-    if not twilio_signature:
-        logger.warning(
-            "Missing x-twilio-signature header",
-            extra={"client_host": websocket.client.host if websocket.client else None},
-        )
-        await websocket.close(code=1008)
-        return
-
-    # Build the full URL for signature validation
-    # For WebSocket connections, Twilio signs the upgrade request URL
-    scheme = "wss" if websocket.url.scheme == "wss" else "ws"
-    # Convert to https/http for signature validation (Twilio uses http(s) in signature)
-    signature_scheme = "https" if scheme == "wss" else "http"
     host = websocket.headers.get("host", "")
     path = websocket.url.path
     query = f"?{websocket.url.query}" if websocket.url.query else ""
-    full_url = f"{signature_scheme}://{host}{path}{query}"
+    full_url = f"wss://{host}{path}{query}"
 
-    # Compute expected signature using HMAC-SHA1
-    expected_signature = base64.b64encode(
-        hmac.new(
-            auth_token.encode("utf-8"), full_url.encode("utf-8"), hashlib.sha1
-        ).digest()
-    ).decode("utf-8")
-
-    # Constant-time comparison to prevent timing attacks
-    if not secrets.compare_digest(twilio_signature, expected_signature):
-        logger.warning(
-            "Invalid Twilio signature",
-            extra={
-                "client_host": websocket.client.host if websocket.client else None,
-                "url": full_url,
-            },
-        )
-        await websocket.close(code=1008)
-        return
-
-    # Signature is valid, accept the WebSocket connection
-    await websocket.accept()
-
-    logger.info(
-        "Twilio signature validated successfully",
+    logger.debug(
+        "[TWILIO_WS] WebSocket connection attempt",
         extra={
             "client_host": websocket.client.host if websocket.client else None,
+            "has_signature": twilio_signature is not None,
+            "url": full_url,
         },
     )
+
+    # Accept the WebSocket connection
+    await websocket.accept()
 
     # Track connection state
     stream_sid: str | None = None
@@ -87,8 +41,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
     start_time = datetime.now(timezone.utc)
     media_packet_count = 0
 
-    logger.info(
-        "Twilio WebSocket connection established",
+    logger.debug(
+        "[TWILIO_WS] Twilio WebSocket connection established",
         extra={
             "client_host": websocket.client.host if websocket.client else None,
             "client_port": websocket.client.port if websocket.client else None,
@@ -108,8 +62,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
 
                 if event_type == "connected":
                     # Initial connection event
-                    logger.info(
-                        "Twilio WebSocket 'connected' event received",
+                    logger.debug(
+                        "[TWILIO_WS] Twilio WebSocket 'connected' event received",
                         extra={
                             "protocol": message.get("protocol"),
                             "version": message.get("version"),
@@ -123,8 +77,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                     call_sid = start_data.get("callSid")
                     account_sid = start_data.get("accountSid")
 
-                    logger.info(
-                        "Twilio media stream started",
+                    logger.debug(
+                        "[TWILIO_WS] Twilio media stream started",
                         extra={
                             "stream_sid": stream_sid,
                             "call_sid": call_sid,
@@ -142,16 +96,16 @@ async def handle_twilio_media_stream(websocket: WebSocket):
 
                     # Log periodically (every 100 packets) to avoid log spam
                     if media_packet_count % 100 == 0:
+                        payload = media_data.get("payload", "")
                         logger.debug(
-                            "Received media packets",
+                            "[TWILIO_WS] Received media packets",
                             extra={
                                 "stream_sid": message.get("streamSid"),
                                 "packet_count": media_packet_count,
                                 "last_sequence": message.get("sequenceNumber"),
                                 "last_timestamp": media_data.get("timestamp"),
-                                "payload_size_bytes": len(
-                                    media_data.get("payload", "")
-                                ),
+                                "payload_sample": payload[:50] if payload else "",
+                                "payload_length": len(payload),
                             },
                         )
 
@@ -160,8 +114,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                     stop_data = message.get("stop", {})
                     duration = (datetime.now(timezone.utc) - start_time).total_seconds()
 
-                    logger.info(
-                        "Twilio media stream stopped",
+                    logger.debug(
+                        "[TWILIO_WS] Twilio media stream stopped",
                         extra={
                             "stream_sid": message.get("streamSid"),
                             "call_sid": stop_data.get("callSid"),
@@ -177,7 +131,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                 else:
                     # Unknown event type
                     logger.warning(
-                        "Unknown Twilio WebSocket event type",
+                        "[TWILIO_WS] Unknown Twilio WebSocket event type",
                         extra={
                             "event_type": event_type,
                             "stream_sid": stream_sid,
@@ -187,7 +141,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
 
             except json.JSONDecodeError as e:
                 logger.error(
-                    "Failed to parse Twilio WebSocket message",
+                    "[TWILIO_WS] Failed to parse Twilio WebSocket message",
                     extra={
                         "stream_sid": stream_sid,
                         "error": str(e),
@@ -198,7 +152,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
 
             except Exception as e:
                 logger.error(
-                    "Error processing Twilio WebSocket message",
+                    "[TWILIO_WS] Error processing Twilio WebSocket message",
                     extra={
                         "stream_sid": stream_sid,
                         "event_type": event_type,
@@ -211,8 +165,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
 
     except WebSocketDisconnect:
         duration = (datetime.now(timezone.utc) - start_time).total_seconds()
-        logger.info(
-            "Twilio WebSocket disconnected",
+        logger.debug(
+            "[TWILIO_WS] Twilio WebSocket disconnected",
             extra={
                 "stream_sid": stream_sid,
                 "call_sid": call_sid,
@@ -223,7 +177,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
 
     except Exception as e:
         logger.error(
-            "Unexpected error in Twilio WebSocket handler",
+            "[TWILIO_WS] Unexpected error in Twilio WebSocket handler",
             extra={
                 "stream_sid": stream_sid,
                 "call_sid": call_sid,
