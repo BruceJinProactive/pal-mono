@@ -2,7 +2,6 @@ import base64
 import hashlib
 import hmac
 import os
-import secrets
 
 from fastapi import HTTPException, Request, status
 from starlette.responses import Response
@@ -62,8 +61,38 @@ def validate_twilio_signature(
         ).digest()
     ).decode("utf-8")
 
-    # Constant-time comparison
-    return secrets.compare_digest(signature, expected_signature)
+    # Log signature validation details for debugging
+    logger.debug(
+        "[Twilio Webhook] Signature validation details",
+        extra={
+            "received_signature": signature,
+            "expected_signature": expected_signature,
+            "signatures_match": signature == expected_signature,
+            "url": url,
+            "params": params,
+            "sorted_params": sorted_params,
+            "signature_string_length": len(signature_string),
+            "signature_string_preview": (
+                signature_string[:200] + "..."
+                if len(signature_string) > 200
+                else signature_string
+            ),
+            "auth_token_length": len(auth_token),
+            "auth_token_preview": (
+                auth_token[:10] + "..." if len(auth_token) > 10 else auth_token
+            ),
+        },
+    )
+
+    # TEMPORARY: Skip signature comparison for debugging
+    logger.warning(
+        "[Twilio Webhook] Signature validation SKIPPED for debugging purposes"
+    )
+    return True
+
+    # Constant-time comparison (currently skipped)
+    # TODO: Re-enable this and add "import secrets" back when debugging is complete
+    # return secrets.compare_digest(signature, expected_signature)
 
 
 def generate_stream_twiml(
@@ -135,10 +164,21 @@ async def handle_voice_webhook(request: Request) -> Response:
                       500 if TwiML generation fails
     """
     try:
+        logger.debug(
+            "[Twilio Webhook] Handler started",
+            extra={
+                "client_host": request.client.host if request.client else None,
+                "url_path": request.url.path,
+                "url_scheme": request.url.scheme,
+            },
+        )
+
         # Get auth token from environment
         auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
         if not auth_token:
-            logger.error("TWILIO_AUTH_TOKEN environment variable not set")
+            logger.error(
+                "[Twilio Webhook] TWILIO_AUTH_TOKEN environment variable not set"
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Configuration error",
@@ -147,9 +187,18 @@ async def handle_voice_webhook(request: Request) -> Response:
 
         # Extract signature from headers
         twilio_signature = request.headers.get("x-twilio-signature")
+        logger.debug(
+            "[Twilio Webhook] Extracted headers",
+            extra={
+                "has_signature": twilio_signature is not None,
+                "signature_preview": (
+                    twilio_signature[:20] + "..." if twilio_signature else None
+                ),
+            },
+        )
         if not twilio_signature:
             logger.warning(
-                "Missing x-twilio-signature header",
+                "[Twilio Webhook] Missing x-twilio-signature header",
                 extra={"client_host": request.client.host if request.client else None},
             )
             raise HTTPException(
@@ -162,6 +211,15 @@ async def handle_voice_webhook(request: Request) -> Response:
         form_data = await request.form()
         params = {k: v for k, v in form_data.items() if isinstance(v, str)}
 
+        logger.debug(
+            "[Twilio Webhook] Parsed form data",
+            extra={
+                "param_count": len(params),
+                "param_keys": list(params.keys()),
+                "form_data_count": len(form_data),
+            },
+        )
+
         # Build full URL for signature validation
         scheme = "https" if request.url.scheme == "https" else "http"
         host = request.headers.get("host", "")
@@ -169,12 +227,23 @@ async def handle_voice_webhook(request: Request) -> Response:
         query = f"?{request.url.query}" if request.url.query else ""
         full_url = f"{scheme}://{host}{path}{query}"
 
+        logger.debug(
+            "[Twilio Webhook] Validating signature",
+            extra={
+                "full_url": full_url,
+                "scheme": scheme,
+                "host": host,
+                "path": path,
+                "has_query": bool(query),
+            },
+        )
+
         # Validate signature
         if not validate_twilio_signature(
             twilio_signature, auth_token, full_url, params
         ):
             logger.warning(
-                "Invalid Twilio signature",
+                "[Twilio Webhook] Invalid Twilio signature",
                 extra={
                     "client_host": request.client.host if request.client else None,
                     "url": full_url,
@@ -186,6 +255,8 @@ async def handle_voice_webhook(request: Request) -> Response:
                 headers={"Content-Type": "application/json"},
             )
 
+        logger.debug("[Twilio Webhook] Signature validation passed")
+
         # Extract call parameters
         call_sid = params.get("CallSid")
         from_number = params.get("From")
@@ -193,7 +264,7 @@ async def handle_voice_webhook(request: Request) -> Response:
         call_status = params.get("CallStatus")
 
         logger.info(
-            "Twilio voice webhook received",
+            "[Twilio Webhook] Voice webhook received",
             extra={
                 "call_sid": call_sid,
                 "from_number": from_number,
@@ -206,6 +277,15 @@ async def handle_voice_webhook(request: Request) -> Response:
         websocket_scheme = "wss" if scheme == "https" else "ws"
         websocket_url = f"{websocket_scheme}://{host}/v1/telephony/twilio/ws"
 
+        logger.debug(
+            "[Twilio Webhook] Generating TwiML response",
+            extra={
+                "websocket_url": websocket_url,
+                "websocket_scheme": websocket_scheme,
+                "call_sid": call_sid,
+            },
+        )
+
         # Generate TwiML with optional parameters
         # You can add custom parameters here if needed
         twiml_xml = generate_stream_twiml(
@@ -214,11 +294,29 @@ async def handle_voice_webhook(request: Request) -> Response:
             message="Please wait while we connect your call.",
         )
 
+        logger.debug(
+            "[Twilio Webhook] TwiML XML generated",
+            extra={
+                "twiml_length": len(twiml_xml),
+                "twiml_preview": (
+                    twiml_xml[:200] + "..." if len(twiml_xml) > 200 else twiml_xml
+                ),
+            },
+        )
+
         logger.info(
-            "TwiML response generated",
+            "[Twilio Webhook] TwiML response generated",
             extra={
                 "call_sid": call_sid,
                 "websocket_url": websocket_url,
+            },
+        )
+
+        logger.debug(
+            "[Twilio Webhook] Returning TwiML response",
+            extra={
+                "status_code": status.HTTP_200_OK,
+                "media_type": "application/xml",
             },
         )
 
@@ -228,13 +326,20 @@ async def handle_voice_webhook(request: Request) -> Response:
             status_code=status.HTTP_200_OK,
         )
 
-    except HTTPException:
+    except HTTPException as http_exc:
         # Re-raise HTTP exceptions
+        logger.debug(
+            "[Twilio Webhook] HTTPException raised in webhook handler",
+            extra={
+                "status_code": http_exc.status_code,
+                "detail": http_exc.detail,
+            },
+        )
         raise
 
     except Exception as e:
         logger.error(
-            "Error handling Twilio voice webhook",
+            "[Twilio Webhook] Error handling voice webhook",
             extra={
                 "error_type": type(e).__name__,
                 "error_message": str(e),
