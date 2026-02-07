@@ -1,7 +1,7 @@
 import copy
 import uuid
 from dataclasses import asdict
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal, Optional, cast
 
 from pal_agents import Spec
 from pal_agents.spec import (
@@ -106,8 +106,9 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
 
 
 # Valid model sizes for pal-agents
-ModelSize = Literal["xs", "s", "m", "l", "xl"]
+ModelSize = Literal["xs", "s", "m", "xm", "l", "xl"]
 DEFAULT_MODEL_SIZE: ModelSize = "xs"
+VALID_MODEL_SIZES: set[ModelSize] = {"xs", "s", "m", "xm", "l", "xl"}
 
 
 def _build_generic_api_spec_from_raw_config(raw_config: dict) -> GenericAPISpec:
@@ -275,8 +276,10 @@ async def construct_agent_spec(
     # Extract model size from raw_config (defaults to DEFAULT_MODEL_SIZE if not specified)
     model_size_raw = effective_raw_config.get("model")
     model_size: ModelSize | None = None
-    if model_size_raw in ("xs", "s", "m", "l", "xl"):
-        model_size = model_size_raw  # type: ignore[assignment]
+    if isinstance(model_size_raw, str):
+        normalized_model_size = model_size_raw.strip().lower()
+        if normalized_model_size in VALID_MODEL_SIZES:
+            model_size = cast(ModelSize, normalized_model_size)
 
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
     return _agent_config_to_spec(
