@@ -221,17 +221,17 @@ async def handle_voice_webhook(request: Request) -> Response:
         )
 
         # Build full URL for signature validation
-        scheme = "https" if request.url.scheme == "https" else "http"
+        # Twilio always calls webhooks via HTTPS in production
+
         host = request.headers.get("host", "")
         path = request.url.path
         query = f"?{request.url.query}" if request.url.query else ""
-        full_url = f"{scheme}://{host}{path}{query}"
+        full_url = f"https://{host}{path}{query}"
 
         logger.debug(
             "[Twilio Webhook] Validating signature",
             extra={
                 "full_url": full_url,
-                "scheme": scheme,
                 "host": host,
                 "path": path,
                 "has_query": bool(query),
@@ -273,15 +273,13 @@ async def handle_voice_webhook(request: Request) -> Response:
             },
         )
 
-        # Build WebSocket URL
-        websocket_scheme = "wss" if scheme == "https" else "ws"
-        websocket_url = f"{websocket_scheme}://{host}/v1/telephony/twilio/ws"
+        # Build WebSocket URL (Twilio requires wss, not ws)
+        websocket_url = f"wss://{host}/v1/telephony/twilio/ws"
 
         logger.debug(
             "[Twilio Webhook] Generating TwiML response",
             extra={
                 "websocket_url": websocket_url,
-                "websocket_scheme": websocket_scheme,
                 "call_sid": call_sid,
             },
         )
