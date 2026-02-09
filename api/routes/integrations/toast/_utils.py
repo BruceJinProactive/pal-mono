@@ -838,6 +838,50 @@ async def _process_partner_added_event(
             f"[ToastWebhook._process_partner_added_event] External references - Group: {partner_details.externalGroupRef}, Restaurant: {partner_details.externalRestaurantRef}"
         )
 
+    # Insert webhook data into database
+    try:
+        from db.session import AsyncSessionLocal
+        from db.tables.onboarding_webhook_event import OnboardingWebhookEvent
+        from db.tables.types import OnboardingStatus
+
+        async with AsyncSessionLocal() as session:
+            # Exclude fields we're storing explicitly to avoid duplication
+            extra_data = partner_details.model_dump(
+                exclude={
+                    "restaurantGuid",
+                    "createdByFirstName",
+                    "createdByLastName",
+                    "createdByEmailAddress",
+                    "createdByPhoneNumber",
+                    "restaurantPhoneNumber",
+                }
+            )
+
+            webhook_event = OnboardingWebhookEvent(
+                src="toast",
+                restaurant_guid=partner_details.restaurantGuid,
+                created_by_first_name=partner_details.createdByFirstName,
+                created_by_last_name=partner_details.createdByLastName,
+                created_by_email_address=partner_details.createdByEmailAddress,
+                created_by_phone_number=partner_details.createdByPhoneNumber,
+                restaurant_phone_number=partner_details.restaurantPhoneNumber,
+                extra=extra_data,
+                account_id=None,  # Backfilled later
+                project_id=None,  # Backfilled later
+                onboarding_status=OnboardingStatus.pending,
+            )
+            session.add(webhook_event)
+            await session.commit()
+            logger.info(
+                f"[ToastWebhook._process_partner_added_event] Stored webhook event for restaurant {restaurant_guid}"
+            )
+    except Exception as e:
+        logger.error(
+            f"[ToastWebhook._process_partner_added_event] Failed to store webhook event: {e}",
+            exc_info=True,
+        )
+        # Don't raise - webhook should still succeed
+
     # Send Slack notification for partner_added event
     try:
         from datetime import datetime, timezone
