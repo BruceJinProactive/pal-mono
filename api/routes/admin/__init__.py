@@ -484,7 +484,9 @@ async def backfill_accounts_without_owners(
         False,
         description="If true, only return what would be changed without making changes",
     ),
-    context: UserContext = Depends(require_admin),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
     session: Session = Depends(db.get_db),
 ) -> dict:
     """
