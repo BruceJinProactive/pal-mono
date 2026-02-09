@@ -23,6 +23,7 @@ from .lead import Lead
 from .messages import Message
 from .monitoring_configs import MonitoringConfig
 from .monitoring_runs import MonitoringRun
+from .onboarding_webhook_event import OnboardingWebhookEvent
 from .orders import Order
 from .permission import Permission
 from .phonecalls import PhoneCall
@@ -63,6 +64,7 @@ from .types import (
     InvitationStatus,
     ItemResponseStatus,
     Language,
+    OnboardingStatus,
     PaymentMethod,
     RoutineCategory,
     RoutineFrequency,

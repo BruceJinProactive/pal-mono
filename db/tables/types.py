@@ -315,3 +315,12 @@ class IdentifierType(str, enum.Enum):
     account = "account"
     project = "project"
     user = "user"
+
+
+class OnboardingStatus(str, enum.Enum):
+    """Status of onboarding webhook events."""
+
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
