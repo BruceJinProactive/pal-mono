@@ -1,9 +1,8 @@
 """change memory_enabled default to false
 
 Revision ID: a1b2c3d4e5f7
-Revises: 46d39b27145b
+Revises: 8fc3bde5c547
 Create Date: 2026-02-09 14:30:00.000000
-
 """
 
 from typing import Sequence, Union
@@ -13,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "a1b2c3d4e5f7"
-down_revision: Union[str, None] = "46d39b27145b"
+down_revision: Union[str, None] = "8fc3bde5c547"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
