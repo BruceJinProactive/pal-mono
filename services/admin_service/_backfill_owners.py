@@ -73,7 +73,7 @@ def get_default_owners_for_env() -> list[dict[str, str | uuid.UUID]]:
                 "name": "Jacob Wang",
             },
             {
-                "email": "kelvin+lat@proactiveailab.com",
+                "email": "kelvin@proactiveailab.com",
                 "name": "Kelvin Ren",
             },
         ]
