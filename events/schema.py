@@ -134,3 +134,19 @@ class DatasetGenerationRequested(BaseEvent):
     account_name: str  # Account identifier
     actions: Dict[str, Any]  # Dataset actions (create/update/delete/noop)
     requested_at: datetime
+
+
+@dataclass
+class RoutineExecutionGenerationRequested(BaseEvent):
+    """Event published when routine execution generation is requested."""
+
+    detail_type: ClassVar[str] = "routine.ExecutionGenerationRequested"
+
+    routine_id: UUID
+    schedule_id: UUID
+    project_id: UUID
+    account_id: UUID
+    generation_window_days: int  # Number of days to generate (e.g., 30)
+    last_execution_date: str | None  # ISO date string of last execution (YYYY-MM-DD)
+    requested_at: datetime
+    requested_by: str = "scheduler"  # "scheduler" or "api"

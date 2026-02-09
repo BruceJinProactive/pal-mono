@@ -5,13 +5,18 @@ This service contains business logic for routine execution operations.
 Authorization is handled in the API layer.
 """
 
+import uuid
 from datetime import date
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.routine import (
+    DeleteExecutionsResponse,
+    DiscoveryResponse,
     ExecutionDetailResponse,
+    GenerateExecutionsRequest,
+    GenerateExecutionsResponse,
     ListExecutionsResponse,
 )
 from db.tables.types import ExecutionStatus
@@ -23,6 +28,10 @@ __all__ = [
     "get_execution",
     "list_executions",
     "update_execution_status",
+    # Internal API functions (called by Lambda/Scheduler)
+    "discover_routines_needing_executions",
+    "generate_executions",
+    "delete_future_executions",
 ]
 
 
@@ -111,4 +120,85 @@ async def update_execution_status(
     """
     return await _implementation.update_execution_status(
         execution_id, new_status, context, session
+    )
+
+
+# ============================================================================
+# Internal API Functions (Called by Lambda/Scheduler)
+# ============================================================================
+
+
+async def discover_routines_needing_executions(
+    generation_window_days: int,
+    pending_threshold: int,
+    session: AsyncSession,
+) -> DiscoveryResponse:
+    """
+    Discovery endpoint for routine execution generation.
+
+    Queries database for schedules with fewer than threshold future pending executions
+    and publishes RoutineExecutionGenerationRequested events for each.
+
+    Called by EventBridge Scheduler (daily at 6am UTC).
+
+    Args:
+        generation_window_days: Number of days to generate executions for
+        pending_threshold: Minimum number of future pending executions required
+        session: Async database session
+
+    Returns:
+        DiscoveryResponse with counts and schedule IDs
+    """
+    return await _implementation.discover_routines_needing_executions(
+        generation_window_days, pending_threshold, session
+    )
+
+
+async def generate_executions(
+    request: GenerateExecutionsRequest,
+    session: AsyncSession,
+) -> GenerateExecutionsResponse:
+    """
+    Generate execution records for a schedule.
+
+    Creates execution records using the schedule's configuration and
+    calculate_next_executions utility.
+
+    Called by Lambda function consuming RoutineExecutionGenerationRequested events.
+
+    Args:
+        request: Generation request with schedule_id and count
+        session: Async database session
+
+    Returns:
+        GenerateExecutionsResponse with created execution IDs and date range
+    """
+    return await _implementation.generate_executions(request, session)
+
+
+async def delete_future_executions(
+    schedule_id: uuid.UUID,
+    status_filter: ExecutionStatus,
+    future_only: bool,
+    session: AsyncSession,
+) -> DeleteExecutionsResponse:
+    """
+    Delete future pending executions for a schedule.
+
+    Used when a schedule is updated and executions need to be regenerated.
+    Preserves completed and in_progress executions by default.
+
+    Called by Lambda function after RoutineScheduleUpdated event with requires_regeneration=true.
+
+    Args:
+        schedule_id: UUID of the schedule
+        status_filter: Status of executions to delete
+        future_only: Only delete executions with scheduled_start > NOW()
+        session: Async database session
+
+    Returns:
+        DeleteExecutionsResponse with count and IDs of deleted executions
+    """
+    return await _implementation.delete_future_executions(
+        schedule_id, status_filter, future_only, session
     )

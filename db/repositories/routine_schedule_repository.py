@@ -6,15 +6,27 @@ Provides async database operations for routine schedules.
 from __future__ import annotations
 
 import uuid
-from datetime import date, time
+from datetime import date, datetime, time
+from typing import TypedDict
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.tables.routine_executions import RoutineExecution
 from db.tables.routine_schedules import RoutineSchedule
-from db.tables.types import RoutineFrequency
+from db.tables.routines import Routine
+from db.tables.types import ExecutionStatus, RoutineFrequency
 from utils.log import logger
+
+
+class ScheduleNeedingExecution(TypedDict):
+    """Result type for schedules needing execution replenishment."""
+
+    schedule_id: uuid.UUID
+    routine_id: uuid.UUID
+    project_id: uuid.UUID
+    future_pending_count: int
 
 
 class RoutineScheduleRepositoryAsync:
@@ -305,3 +317,76 @@ class RoutineScheduleRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error listing schedules by routine ids: {e}")
             return {routine_id: [] for routine_id in routine_ids}
+
+    async def find_schedules_needing_executions(
+        self,
+        pending_threshold: int,
+        now_utc: datetime,
+    ) -> list[ScheduleNeedingExecution]:
+        """
+        Find active schedules with fewer than threshold future pending executions.
+
+        This query:
+        1. Joins RoutineSchedule -> Routine -> RoutineExecution
+        2. Counts only future pending executions (scheduled_start > now_utc)
+        3. Filters for active schedules and routines
+        4. Returns schedules where future_pending_count < threshold
+
+        Used by the scheduler to discover which schedules need execution replenishment.
+
+        Args:
+            pending_threshold: Minimum number of future pending executions required
+            now_utc: Current UTC time for future execution filtering
+
+        Returns:
+            List of ScheduleNeedingExecution dicts with schedule metadata
+        """
+        try:
+            stmt = (
+                select(
+                    RoutineSchedule.id.label("schedule_id"),
+                    Routine.id.label("routine_id"),
+                    Routine.project_id,
+                    func.count(RoutineExecution.id).label("future_pending_count"),
+                )
+                .select_from(RoutineSchedule)
+                .join(Routine, RoutineSchedule.routine_id == Routine.id)
+                .outerjoin(
+                    RoutineExecution,
+                    and_(
+                        RoutineExecution.schedule_id == RoutineSchedule.id,
+                        RoutineExecution.status == ExecutionStatus.pending,
+                        RoutineExecution.scheduled_start > now_utc,
+                    ),
+                )
+                .where(
+                    and_(
+                        RoutineSchedule.is_active == True,  # noqa: E712
+                        Routine.is_active == True,  # noqa: E712
+                    )
+                )
+                .group_by(
+                    RoutineSchedule.id,
+                    Routine.id,
+                    Routine.project_id,
+                )
+                .having(func.count(RoutineExecution.id) < pending_threshold)
+            )
+
+            result = await self.session.execute(stmt)
+            rows = result.all()
+
+            # Convert SQLAlchemy Row objects to TypedDict
+            return [
+                ScheduleNeedingExecution(
+                    schedule_id=row.schedule_id,
+                    routine_id=row.routine_id,
+                    project_id=row.project_id,
+                    future_pending_count=row.future_pending_count,
+                )
+                for row in rows
+            ]
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error finding schedules needing executions: {e}")
+            return []

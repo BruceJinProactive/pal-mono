@@ -417,3 +417,67 @@ class RoutineExecutionRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error deleting executions by schedule: {e}")
             return 0
+
+    async def find_executions_for_deletion(
+        self,
+        schedule_id: uuid.UUID,
+        status_filter: ExecutionStatus,
+        future_only: bool,
+        now_utc: datetime,
+    ) -> list[RoutineExecution]:
+        """
+        Find executions matching deletion criteria.
+
+        Args:
+            schedule_id: UUID of the schedule
+            status_filter: Status of executions to find (e.g., pending)
+            future_only: If True, only return executions with scheduled_start > now_utc
+            now_utc: Current UTC time for future filtering
+
+        Returns:
+            List of RoutineExecution objects matching criteria
+        """
+        try:
+            query = select(RoutineExecution).where(
+                and_(
+                    RoutineExecution.schedule_id == schedule_id,
+                    RoutineExecution.status == status_filter,
+                )
+            )
+
+            if future_only:
+                query = query.where(RoutineExecution.scheduled_start > now_utc)
+
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error finding executions for deletion: {e}")
+            return []
+
+    async def get_last_execution_date(
+        self,
+        schedule_id: uuid.UUID,
+    ) -> date | None:
+        """
+        Get the date of the last (most recent) execution for a schedule.
+
+        Args:
+            schedule_id: UUID of the schedule
+
+        Returns:
+            Date of the last execution, or None if no executions exist
+        """
+        try:
+            from sqlalchemy import func
+
+            stmt = select(func.max(RoutineExecution.scheduled_start)).where(
+                RoutineExecution.schedule_id == schedule_id
+            )
+            result = await self.session.execute(stmt)
+            last_execution_datetime = result.scalar_one_or_none()
+            return last_execution_datetime.date() if last_execution_datetime else None
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error getting last execution date: {e}")
+            return None

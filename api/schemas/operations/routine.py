@@ -552,3 +552,60 @@ class ListPendingReviewResponse(BaseModel):
 
     submissions: list[SubmissionDetailResponse]
     total: int
+
+
+# ============================================================================
+# INTERNAL API SCHEMAS (Lambda/Scheduler)
+# ============================================================================
+
+
+class DiscoveryResponse(BaseModel):
+    """Response for routine execution discovery."""
+
+    schedules_found: int = Field(
+        description="Number of schedules needing replenishment"
+    )
+    events_published: int = Field(description="Number of generation events published")
+    schedule_ids: list[uuid.UUID] = Field(
+        default_factory=list, description="Schedule IDs that need replenishment"
+    )
+
+
+class GenerateExecutionsRequest(BaseModel):
+    """Request to generate execution records for a schedule."""
+
+    schedule_id: uuid.UUID = Field(description="Schedule ID to generate executions for")
+    count: int = Field(
+        default=30,
+        ge=1,
+        le=90,
+        description="Number of executions to generate (default 30, max 90)",
+    )
+    from_date: date | None = Field(
+        default=None,
+        description="Starting date for calculation (default: today)",
+    )
+
+
+class GenerateExecutionsResponse(BaseModel):
+    """Response for execution generation."""
+
+    schedule_id: uuid.UUID
+    executions_created: int = Field(description="Number of executions created")
+    execution_ids: list[uuid.UUID] = Field(
+        default_factory=list, description="IDs of created executions"
+    )
+    date_range: dict[str, date | None] = Field(
+        default_factory=dict,
+        description="Date range of generated executions (first_date, last_date)",
+    )
+
+
+class DeleteExecutionsResponse(BaseModel):
+    """Response for deleting future executions."""
+
+    schedule_id: uuid.UUID
+    executions_deleted: int = Field(description="Number of executions deleted")
+    execution_ids: list[uuid.UUID] = Field(
+        default_factory=list, description="IDs of deleted executions"
+    )
