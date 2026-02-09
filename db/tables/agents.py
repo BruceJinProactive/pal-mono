@@ -53,7 +53,7 @@ class Agent(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     memory_enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("true")
+        Boolean, nullable=False, server_default=text("false")
     )
     language: Mapped[Language] = mapped_column(
         Enum(Language, name="agent_language"),
