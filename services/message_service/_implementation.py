@@ -649,40 +649,68 @@ async def get_chat_response_stream(
                         ],
                     )
 
-                    async for chunk in await pal_agent.run(pal_input, stream=True):
-                        if index == 0:
-                            send_dd_histogram_metrics(
-                                "message_service.received_first_chunk",
-                                request_context.request_time,
-                                [
-                                    f"agent_id:{agent_id}",
-                                    f"account_name:{account_name}",
+                    try:
+                        async for chunk in await pal_agent.run(pal_input, stream=True):
+                            if index == 0:
+                                send_dd_histogram_metrics(
+                                    "message_service.received_first_chunk",
+                                    request_context.request_time,
+                                    [
+                                        f"agent_id:{agent_id}",
+                                        f"account_name:{account_name}",
+                                    ],
+                                )
+
+                            if not chunk.content:
+                                continue
+
+                            completion_chunk = ChatCompletionChunk(
+                                id=f"chatcmpl-{uuid.uuid4().hex}",
+                                object="chat.completion.chunk",
+                                created=int(
+                                    datetime.datetime.now(
+                                        datetime.timezone.utc
+                                    ).timestamp()
+                                ),
+                                model=message.recipient_identifier,
+                                choices=[
+                                    ChunkChoice(
+                                        index=index,
+                                        delta=ChoiceDelta(
+                                            role="assistant", content=chunk.content
+                                        ),
+                                        finish_reason=None,
+                                    )
                                 ],
                             )
-
-                        if not chunk.content:
-                            continue
-
-                        completion_chunk = ChatCompletionChunk(
-                            id=f"chatcmpl-{uuid.uuid4().hex}",
-                            object="chat.completion.chunk",
-                            created=int(
-                                datetime.datetime.now(datetime.timezone.utc).timestamp()
-                            ),
-                            model=message.recipient_identifier,
-                            choices=[
-                                ChunkChoice(
-                                    index=index,
-                                    delta=ChoiceDelta(
-                                        role="assistant", content=chunk.content
+                            yield completion_chunk
+                            collected_content.append(chunk.content)
+                            index += 1
+                    except RuntimeError as stream_error:
+                        # ddtrace's async generator wrapper can convert normal
+                        # StopAsyncIteration completion into a RuntimeError.
+                        if (
+                            isinstance(stream_error.__cause__, StopAsyncIteration)
+                            or str(stream_error)
+                            == "async generator raised StopAsyncIteration"
+                        ):
+                            logger.debug(
+                                "pal-agents stream ended with wrapped StopAsyncIteration",
+                                extra={
+                                    "agent_id": str(agent_id),
+                                    "conversation_id": str(request_conversation_id),
+                                    "error": str(stream_error),
+                                    "error_type": type(stream_error).__name__,
+                                    "cause": str(stream_error.__cause__),
+                                    "cause_type": (
+                                        type(stream_error.__cause__).__name__
+                                        if stream_error.__cause__
+                                        else None
                                     ),
-                                    finish_reason=None,
-                                )
-                            ],
-                        )
-                        yield completion_chunk
-                        collected_content.append(chunk.content)
-                        index += 1
+                                },
+                            )
+                        else:
+                            raise
 
             else:
                 # LEGACY PATH - existing agent system
