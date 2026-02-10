@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -419,7 +419,7 @@ async def get_camera_stats_by_accounts(
     try:
         # Calculate the "active" threshold: cameras with last_capture_at within last 3 minutes
         # This matches the logic in api/routes/internal/monitoring.py
-        active_threshold = datetime.utcnow() - timedelta(minutes=3)
+        active_threshold = datetime.now(timezone.utc) - timedelta(minutes=3)
 
         source_repo = SignalSourceRepositoryAsync(session)
 
