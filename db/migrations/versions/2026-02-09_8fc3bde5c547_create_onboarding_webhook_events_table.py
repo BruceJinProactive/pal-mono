@@ -106,4 +106,5 @@ def downgrade() -> None:
         table_name="onboarding_webhook_events",
     )
     op.drop_table("onboarding_webhook_events")
+    op.execute("DROP TYPE IF EXISTS onboardingstatus")
     # ### end Alembic commands ###
