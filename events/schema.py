@@ -146,7 +146,21 @@ class RoutineExecutionGenerationRequested(BaseEvent):
     schedule_id: UUID
     project_id: UUID
     account_id: UUID
-    generation_window_days: int  # Number of days to generate (e.g., 30)
+    generation_count: int  # Number of executions to generate (e.g., 30)
     last_execution_date: str | None  # ISO date string of last execution (YYYY-MM-DD)
     requested_at: datetime
     requested_by: str = "scheduler"  # "scheduler" or "api"
+
+
+@dataclass
+class RoutineScheduleUpdated(BaseEvent):
+    """Event published when a routine schedule is updated."""
+
+    detail_type: ClassVar[str] = "routine.ScheduleUpdated"
+
+    routine_id: UUID
+    schedule_id: UUID
+    project_id: UUID
+    account_id: UUID
+    requires_regeneration: bool
+    updated_at: datetime

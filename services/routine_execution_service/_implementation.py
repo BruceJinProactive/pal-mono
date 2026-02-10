@@ -407,7 +407,7 @@ async def update_execution_status(
 
 
 async def discover_routines_needing_executions(
-    generation_window_days: int,
+    generation_count: int,
     pending_threshold: int,
     session: AsyncSession,
 ) -> DiscoveryResponse:
@@ -420,7 +420,7 @@ async def discover_routines_needing_executions(
     Called by EventBridge Scheduler (daily at 6am UTC).
 
     Args:
-        generation_window_days: Number of days to generate executions for
+        generation_count: Number of executions to generate
         pending_threshold: Minimum number of future pending executions required
         session: Async database session
 
@@ -433,7 +433,7 @@ async def discover_routines_needing_executions(
     logger.info(
         "[RoutineScheduler] Starting execution discovery",
         extra={
-            "generation_window_days": generation_window_days,
+            "generation_count": generation_count,
             "pending_threshold": pending_threshold,
         },
     )
@@ -483,7 +483,7 @@ async def discover_routines_needing_executions(
                 schedule_id=schedule_id,
                 project_id=project_id,
                 account_id=account_id,
-                generation_window_days=generation_window_days,
+                generation_count=generation_count,
                 last_execution_date=(
                     last_execution_date.isoformat() if last_execution_date else None
                 ),

@@ -2348,6 +2348,10 @@ async def create_schedule(
     """
     Create a schedule for a routine.
 
+    Note: Each routine has one schedule, created automatically via the create routine
+    endpoint. Use this endpoint only when a schedule needs to be recreated after deletion.
+    In most cases, use create routine instead.
+
     Path Parameters:
     - routine_id: UUID of the routine
 
@@ -2437,6 +2441,10 @@ async def delete_schedule(
 ) -> None:
     """
     Delete a schedule.
+
+    Note: Each routine has one schedule. Deleting a schedule does not delete its
+    associated routine or existing executions. In most cases, use delete routine
+    instead to cascade-delete the routine, schedule, and all executions together.
 
     Path Parameters:
     - schedule_id: UUID of the schedule

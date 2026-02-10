@@ -37,6 +37,10 @@ async def create_schedule(
     """
     Create a new schedule for a routine.
 
+    Note: Each routine has one schedule, created automatically via create_routine.
+    Use this only when a schedule needs to be recreated after deletion.
+    In most cases, use create_routine instead.
+
     Args:
         routine_id: UUID of the routine
         request: Request containing schedule data
@@ -115,6 +119,10 @@ async def delete_schedule(
 ) -> None:
     """
     Delete a schedule.
+
+    Note: Each routine has one schedule. In most cases, use delete_routine instead
+    to cascade-delete the routine, schedule, and all executions together.
+    This endpoint is for cases where only the schedule needs to be removed.
 
     Args:
         schedule_id: UUID of the schedule

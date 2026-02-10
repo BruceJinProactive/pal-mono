@@ -25,8 +25,8 @@ routines_router = APIRouter(prefix="/routines")
 
 @routines_router.post("/discovery", response_model=DiscoveryResponse)
 async def discover_routines_needing_executions(
-    generation_window_days: int = Query(
-        30, ge=1, le=90, description="Days of executions to generate"
+    generation_count: int = Query(
+        30, ge=1, le=90, description="Number of executions to generate"
     ),
     pending_threshold: int = Query(
         7, ge=1, le=30, description="Minimum future pending executions required"
@@ -42,7 +42,7 @@ async def discover_routines_needing_executions(
     Called daily by EventBridge Scheduler (6am UTC).
 
     Args:
-        generation_window_days: Number of days to generate executions for
+        generation_count: Number of executions to generate
         pending_threshold: Minimum number of future pending executions required
         session: Async database session
 
@@ -51,7 +51,7 @@ async def discover_routines_needing_executions(
     """
     try:
         return await routine_execution_service.discover_routines_needing_executions(
-            generation_window_days, pending_threshold, session
+            generation_count, pending_threshold, session
         )
     except Exception as e:
         logger.error(

@@ -10,6 +10,7 @@ from .schema import (
     GoogleBusinessHoursUpdateRequested,
     KnowledgeUpdateRequested,
     RoutineExecutionGenerationRequested,
+    RoutineScheduleUpdated,
     SampleEvent,
 )
 
@@ -80,4 +81,5 @@ __all__ = [
     "GoogleBusinessHoursUpdateRequested",
     "KnowledgeUpdateRequested",
     "RoutineExecutionGenerationRequested",
+    "RoutineScheduleUpdated",
 ]
