@@ -62,8 +62,11 @@ def create_slack_app() -> AsyncApp | None:
         """Shared logic to process messages from both mentions and DMs."""
         message_text = event.get("text", "").lower()
 
+        # Check for help command (standalone only: "help" or "@Mercury help")
+        if re.search(r"^(\s*<@\w+>\s*)?help\s*$", message_text, re.IGNORECASE):
+            await _commands.handle_help_request(event, client)
         # Check for feedback-status command (must come before feedback check)
-        if "feedback-status" in message_text:
+        elif "feedback-status" in message_text:
             await _commands.handle_feedback_status_request(event, client)
         # Check for feedback command
         elif "feedback" in message_text:
@@ -88,9 +91,9 @@ def create_slack_app() -> AsyncApp | None:
         ):
             await _commands.handle_custom_date_request(event, client)
         else:
-            # Unknown command - send simple error message
+            # Unknown command - suggest help
             channel = event.get("channel")
-            error_text = "Please try again."
+            error_text = "I didn't understand that command. Type `help` to see all available commands."
             await client.chat_postMessage(channel=channel, text=error_text, mrkdwn=True)
 
     # Register app_mention handler to only respond when bot is @mentioned
@@ -116,6 +119,12 @@ def create_slack_app() -> AsyncApp | None:
             and event.get("bot_id") is None
         ):
             await process_message(event, client)
+
+    # Register Home Tab handler
+    @app.event("app_home_opened")
+    async def handle_app_home_opened(event, client):
+        """Handle when user opens the bot's Home Tab."""
+        await _commands.handle_home_tab_opened(event, client)
 
     return app
 

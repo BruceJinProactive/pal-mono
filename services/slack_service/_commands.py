@@ -162,6 +162,80 @@ def parse_custom_date_range(message_text: str) -> tuple[datetime, datetime] | No
 # =============================================================================
 
 
+async def handle_home_tab_opened(event, client):
+    """
+    Handle app_home_opened event to display the bot's Home Tab.
+
+    This is triggered when a user clicks on the bot in the Slack sidebar.
+
+    Args:
+        event: Slack event object containing user and view info
+        client: Slack client object
+    """
+    # Import here to avoid circular dependency
+    from ._formatting import build_home_tab
+
+    try:
+        user_id = event["user"]
+
+        logger.info(f"[Slackbot] User {user_id} opened Home Tab")
+
+        # Build home tab view
+        home_view = build_home_tab()
+
+        # Publish the view to the Home Tab
+        await client.views_publish(user_id=user_id, view=home_view)
+
+        logger.info(f"[Slackbot] Home Tab published successfully for user {user_id}")
+
+    except Exception as e:
+        logger.error(f"[Slackbot] Error publishing Home Tab: {e}", exc_info=True)
+
+
+async def handle_help_request(message, client):
+    """
+    Handle help requests and display comprehensive command reference.
+
+    Args:
+        message: Slack message object
+        client: Slack client object
+    """
+    # Import here to avoid circular dependency
+    from ._formatting import build_help_page
+
+    try:
+        slack_channel = message.get("channel")
+        user = message["user"]
+
+        logger.info(f"[Slackbot] User {user} requested help in channel {slack_channel}")
+
+        # Build help page using formatting module
+        help_blocks = build_help_page()
+
+        # Send help message to Slack
+        await client.chat_postMessage(
+            channel=slack_channel,
+            blocks=help_blocks["blocks"],
+            text="Command Reference",
+        )
+
+        logger.info("[Slackbot] Help page sent successfully")
+
+    except Exception as e:
+        logger.error(f"[Slackbot] Error handling help request: {e}", exc_info=True)
+        try:
+            slack_channel = message.get("channel")
+            await client.chat_postMessage(
+                channel=slack_channel,
+                text="❌ An error occurred while loading the help page.",
+                mrkdwn=True,
+            )
+        except Exception as slack_error:
+            logger.error(
+                f"[Slackbot] Failed to send error message to Slack: {slack_error}"
+            )
+
+
 async def handle_report_request(
     period: str, message, client, custom_dates: tuple[datetime, datetime] | None = None
 ):

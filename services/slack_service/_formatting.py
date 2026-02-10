@@ -931,6 +931,199 @@ def create_conversion_section(unified_accounts: dict) -> dict | None:
 
 
 # =============================================================================
+# HELP/COMMAND REFERENCE FUNCTIONS
+# =============================================================================
+
+
+def build_home_tab() -> dict:
+    """
+    Build Slack Home Tab view with welcome message, quick actions, and command reference.
+
+    The Home Tab is what users see when they click on the bot in the Slack sidebar.
+
+    Returns:
+        dict: Slack Home Tab view structure with blocks
+    """
+    blocks = []
+
+    # Welcome header with emoji
+    blocks.append(build_header_block("👋 Hi, I'm Mercury!"))
+
+    # Introduction section
+    intro_text = (
+        "I'm a junior assistant at Palona AI. Think of me as your helpful teammate who can:\n"
+        "• 📊 Pull analytics reports whenever you need them\n"
+        "• 💬 Check on customer feedback and track issues\n"
+        "• 📈 Show you what's happening with your clients\n\n"
+        "I'm here to make your day easier! DM me directly, or **@mention me** in any channel to get my attention."
+    )
+    blocks.append(build_section_block(intro_text))
+    blocks.append(build_divider_block())
+
+    # Quick Start section
+    blocks.append(build_header_block("🚀 Quick Start"))
+
+    quick_start_text = (
+        "*What I'm usually asked for:*\n"
+        "• `daily` - Yesterday's numbers\n"
+        "• `weekly` - Last 7 days overview\n"
+        "• `feedback` - What customers are saying\n"
+        "• `help` - Full list of what I can do\n\n"
+        "*Pro Tip:* Want to see a specific client? Just add `for <account-name>`\n"
+        "Example: `daily for romeo`\n\n"
+        "*In channels:* Remember to @mention me so I see your message!\n"
+        "Example: `@Mercury daily for romeo`"
+    )
+    blocks.append(build_section_block(quick_start_text))
+    blocks.append(build_divider_block())
+
+    # Analytics section
+    blocks.append(build_header_block("📊 Analytics & Reports"))
+
+    analytics_text = (
+        "*I can pull reports for any timeframe:*\n"
+        "• `daily` / `weekly` / `monthly`\n"
+        "• `last 6 hours` / `last 24 hours`\n"
+        "• `from 2024-01-01 to 2024-01-31`\n\n"
+        "*You'll see:*\n"
+        "• How many users are chatting with us\n"
+        "• Call stats and how often we transfer\n"
+        "• Orders placed and revenue numbers\n"
+        "• Breakdown by location/project"
+    )
+    blocks.append(build_section_block(analytics_text))
+    blocks.append(build_divider_block())
+
+    # Feedback section
+    blocks.append(build_header_block("💬 Customer Feedback"))
+
+    feedback_text = (
+        "*I keep track of what customers are telling us:*\n"
+        "• `feedback` - Show me who needs attention\n"
+        "• `feedback <client-name>` - What's unresolved for this client\n"
+        "• `feedback-status <client-name>` - Full feedback history\n\n"
+        "*How we categorize feedback:*\n"
+        "🆕 New • 👀 Looking into it • ✅ Fixed & live • ✔️ Resolved • 🚫 Out of scope"
+    )
+    blocks.append(build_section_block(feedback_text))
+    blocks.append(build_divider_block())
+
+    # Tips section
+    blocks.append(build_header_block("💡 Good to Know"))
+
+    tips_text = (
+        "• All times I show are in **PST/PDT**\n"
+        "• Client names use hyphens, like `acme-restaurant`\n"
+        "• **In channels:** @mention me so I can see your message\n"
+        "• **In DMs:** Just type your command directly\n"
+        "• For custom dates, you can add specific times (HH:MM)\n"
+        "• Type `help` anytime to see what I can do"
+    )
+    blocks.append(build_section_block(tips_text))
+    blocks.append(build_divider_block())
+
+    # Help section
+    blocks.append(build_header_block("❓ Need Help?"))
+
+    help_text = (
+        "Type `help` in a message to me and I'll show you everything I can do!\n\n"
+        "_I'm always here if you need me. Let's get things done!_ 🚀"
+    )
+    blocks.append(build_section_block(help_text))
+
+    # Footer
+    footer_text = "_Mercury • Your junior assistant at Palona AI_"
+    blocks.append(build_context_block([footer_text]))
+
+    return {"type": "home", "blocks": blocks}
+
+
+def build_help_page() -> dict:
+    """
+    Build comprehensive help page with all available Slack bot commands.
+
+    Returns:
+        dict: Slack blocks structure with command reference and examples
+    """
+    blocks = []
+
+    # Main header
+    blocks.append(build_header_block("🤖 Mercury - Command Reference"))
+
+    # Introduction
+    intro_text = (
+        "Hi! I'm Mercury, your junior assistant at Palona AI. Here's what I can help you with:\n\n"
+        "_Remember: @mention me in channels so I see your message!_"
+    )
+    blocks.append(build_section_block(intro_text))
+    blocks.append(build_divider_block())
+
+    # ===== ANALYTICS COMMANDS SECTION =====
+    blocks.append(build_header_block("📊 Getting Reports"))
+
+    # Daily/Weekly/Monthly reports
+    period_commands_text = (
+        "*Ask me for reports anytime:*\n"
+        "• `daily` / `weekly` / `monthly` - Standard timeframes\n"
+        "• `last 6 hours` - Recent activity (up to 7 days)\n"
+        "• `from 2024-01-01 to 2024-01-31` - Any custom date range\n"
+        "• Add `for <account-name>` to focus on one client\n\n"
+        "*For example (in channels):*\n"
+        "`@Mercury daily for romeo` or `@Mercury last 24 hours`\n\n"
+        "*In DMs, just type:*\n"
+        "`daily for romeo`"
+    )
+    blocks.append(build_section_block(period_commands_text))
+    blocks.append(build_divider_block())
+
+    # ===== FEEDBACK COMMANDS SECTION =====
+    blocks.append(build_header_block("💬 Checking Feedback"))
+
+    feedback_commands_text = (
+        "*I'll show you what customers are saying:*\n"
+        "• `feedback` - Overview of clients needing attention\n"
+        "• `feedback <client-name>` - Open issues for this client\n"
+        "• `feedback-status <client-name>` - Complete feedback history\n\n"
+        "*For example (in channels):*\n"
+        "`@Mercury feedback romeo`\n\n"
+        "*In DMs:*\n"
+        "`feedback romeo`"
+    )
+    blocks.append(build_section_block(feedback_commands_text))
+    blocks.append(build_divider_block())
+
+    # ===== REPORT METRICS SECTION =====
+    blocks.append(build_header_block("📈 What's in the Reports"))
+
+    metrics_text = (
+        "*Engagement metrics I track:*\n"
+        "Users, Conversations, Calls, Call Duration, Transfer Rate, Resolution Rate\n\n"
+        "*Revenue & conversion data:*\n"
+        "Orders, Paid Orders, Revenue, Conversion Rate, Average Order Value"
+    )
+    blocks.append(build_section_block(metrics_text))
+    blocks.append(build_divider_block())
+
+    # ===== TIPS SECTION =====
+    blocks.append(build_header_block("💡 Quick Tips"))
+
+    tips_text = (
+        "• All times I show are in **PST/PDT**\n"
+        "• Client names use hyphens (like `acme-restaurant`)\n"
+        "• **In channels:** Always @mention me (`@Mercury`)\n"
+        "• **In DMs:** Just type commands directly\n"
+        "• You can add specific times with `HH:MM` format"
+    )
+    blocks.append(build_section_block(tips_text))
+
+    # Footer
+    footer_text = "_I'm always here to help! Type `help` anytime. - Mercury_"
+    blocks.append(build_context_block([footer_text]))
+
+    return {"blocks": blocks}
+
+
+# =============================================================================
 # MAIN REPORT FORMATTING FUNCTIONS
 # =============================================================================
 
