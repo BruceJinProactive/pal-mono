@@ -34,6 +34,30 @@ def parse_account_name_from_message(message_text: str) -> str | None:
     return None
 
 
+def parse_account_names_from_message(message_text: str) -> list[str] | None:
+    """
+    Parse multiple comma-separated account names from message text.
+    Supports format: "camera for a,b,c,d" or "camera for a, b, c, d"
+
+    Args:
+        message_text: The full message text from Slack
+
+    Returns:
+        list[str] | None: List of account names if found, None otherwise
+    """
+    # Pattern: "for account1,account2,account3" (with optional spaces)
+    match = re.search(r"for\s+([\w\-,\s]+)", message_text, re.IGNORECASE)
+    if match:
+        accounts_str = match.group(1).strip()
+        # Split by comma and strip whitespace from each account name
+        account_names = [
+            name.strip() for name in accounts_str.split(",") if name.strip()
+        ]
+        return account_names if account_names else None
+
+    return None
+
+
 def parse_last_hours(message_text: str) -> int | None:
     """
     Parse "last X hours" from message text.
@@ -160,36 +184,6 @@ def parse_custom_date_range(message_text: str) -> tuple[datetime, datetime] | No
 # =============================================================================
 # COMMAND HANDLERS
 # =============================================================================
-
-
-async def handle_home_tab_opened(event, client):
-    """
-    Handle app_home_opened event to display the bot's Home Tab.
-
-    This is triggered when a user clicks on the bot in the Slack sidebar.
-
-    Args:
-        event: Slack event object containing user and view info
-        client: Slack client object
-    """
-    # Import here to avoid circular dependency
-    from ._formatting import build_home_tab
-
-    try:
-        user_id = event["user"]
-
-        logger.info(f"[Slackbot] User {user_id} opened Home Tab")
-
-        # Build home tab view
-        home_view = build_home_tab()
-
-        # Publish the view to the Home Tab
-        await client.views_publish(user_id=user_id, view=home_view)
-
-        logger.info(f"[Slackbot] Home Tab published successfully for user {user_id}")
-
-    except Exception as e:
-        logger.error(f"[Slackbot] Error publishing Home Tab: {e}", exc_info=True)
 
 
 async def handle_help_request(message, client):
@@ -902,6 +896,120 @@ async def handle_feedback_request(message, client):
             await client.chat_postMessage(
                 channel=message.get("channel"),
                 text=f"❌ Error fetching feedback: {str(e)}",
+                mrkdwn=True,
+            )
+        except Exception as slack_error:
+            logger.error(f"[Slackbot] Failed to send error: {slack_error}")
+
+
+async def handle_camera_request(message, client):
+    """
+    Handle camera statistics requests.
+
+    Shows camera status for each account line by line.
+    Supports filtering by multiple account names: "camera for a,b,c"
+
+    Args:
+        message: Slack message object
+        client: Slack client object
+    """
+    from db.session import AsyncSessionLocal
+    from services.signal_source_service._implementation import (
+        get_camera_stats_by_accounts,
+    )
+
+    try:
+        slack_channel = message.get("channel")
+        user = message["user"]
+        message_text = message.get("text", "")
+
+        # Parse account names from message
+        account_names = parse_account_names_from_message(message_text)
+
+        if account_names:
+            logger.info(
+                f"[Slackbot] User {user} requested camera statistics for accounts: {', '.join(account_names)}"
+            )
+        else:
+            logger.info(
+                f"[Slackbot] User {user} requested camera statistics for all accounts"
+            )
+
+        # Send processing message
+        await client.chat_postMessage(
+            channel=slack_channel,
+            text="📷 Fetching camera statistics...",
+            mrkdwn=True,
+        )
+
+        # Query camera statistics using service
+        async with AsyncSessionLocal() as session:
+            stats = await get_camera_stats_by_accounts(session, account_names)
+
+        if not stats["accounts"]:
+            filter_text = (
+                f" for accounts: {', '.join(account_names)}" if account_names else ""
+            )
+            await client.chat_postMessage(
+                channel=slack_channel,
+                text=f"📷 *Camera Status*\n\nNo cameras found{filter_text}.",
+                mrkdwn=True,
+            )
+            return
+
+        # Format output: list each account line by line
+        lines = ["📷 *Camera Status*\n"]
+
+        if account_names:
+            lines.append(f"_Filtered by: {', '.join(account_names)}_")
+
+            # Check if some requested accounts were not found
+            found_account_names = {acc["account_name"] for acc in stats["accounts"]}
+            missing_accounts = [
+                name for name in account_names if name not in found_account_names
+            ]
+
+            if missing_accounts:
+                lines.append(f"_⚠️ Not found: {', '.join(missing_accounts)}_")
+
+            lines.append("")  # Empty line for spacing
+
+        # List each account with status indicator
+        for account in stats["accounts"]:
+            account_name = account["account_name"] or account["account_id"][:8]
+            total = account["total_cameras"]
+            active = account["active_cameras"]
+
+            if total == 0:
+                # No cameras for this account - gray circle
+                lines.append(f"⚫ `{account_name}`")
+            elif account["has_active"]:
+                # At least one camera is active - green with count
+                lines.append(f"🟢 `{account_name}` {active}/{total}")
+            else:
+                # Has cameras but none are active - red
+                lines.append(f"🔴 `{account_name}`")
+
+        # Add summary footer
+        lines.append(
+            f"\n_Total: {stats['total_active']}/{stats['total_cameras']} cameras active_"
+        )
+        lines.append("_Active = captured image within last 3 minutes_")
+
+        await client.chat_postMessage(
+            channel=slack_channel, text="\n".join(lines), mrkdwn=True
+        )
+
+        logger.info(
+            f"[Slackbot] Camera statistics sent: {stats['total_active']}/{stats['total_cameras']} active"
+        )
+
+    except Exception as e:
+        logger.error(f"[Slackbot] Error handling camera request: {e}", exc_info=True)
+        try:
+            await client.chat_postMessage(
+                channel=message.get("channel"),
+                text=f"❌ Error fetching camera statistics: {str(e)}",
                 mrkdwn=True,
             )
         except Exception as slack_error:

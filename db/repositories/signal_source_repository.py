@@ -11,7 +11,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.tables import SignalSource
+from db.tables import SignalFeed, SignalSource
+from db.tables.accounts import Account
+from db.tables.types import SignalType
 from utils.log import logger
 
 
@@ -212,4 +214,78 @@ class SignalSourceRepositoryAsync:
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(f"Error checking camera_id existence: {e}")
+            raise
+
+    async def get_cameras_with_feeds_by_account_name(
+        self, account_name: str
+    ) -> list[tuple[SignalSource, SignalFeed | None, str]]:
+        """
+        Get all camera-type signal sources with their feeds for a single account.
+
+        Args:
+            account_name: Account name to filter by.
+
+        Returns:
+            List of tuples containing (SignalSource, SignalFeed or None, account_name).
+
+        Raises:
+            SQLAlchemyError: If there is a database error.
+        """
+        try:
+            # Build query for cameras for a single account
+            query = (
+                select(SignalSource, SignalFeed, Account.name)
+                .join(Account, SignalSource.account_id == Account.id)
+                .outerjoin(SignalFeed, SignalSource.id == SignalFeed.source_id)
+                .where(SignalSource.signal_type == SignalType.camera)
+                .where(Account.name == account_name)
+            )
+
+            result = await self.session.execute(query)
+            # Convert Row objects to tuples for type consistency
+            return [(row[0], row[1], row[2]) for row in result.all()]
+
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(
+                f"Error getting cameras with feeds for account '{account_name}': {e}"
+            )
+            raise
+
+    async def get_cameras_with_feeds_by_account_names(
+        self, account_names: list[str] | None = None
+    ) -> list[tuple[SignalSource, SignalFeed | None, str | None]]:
+        """
+        Get all camera-type signal sources with their feeds, optionally filtered by account names.
+
+        Args:
+            account_names: Optional list of account names to filter by.
+
+        Returns:
+            List of tuples containing (SignalSource, SignalFeed or None, account_name or None).
+            Returns all cameras if account_names is None.
+
+        Raises:
+            SQLAlchemyError: If there is a database error.
+        """
+        try:
+            # Build base query for cameras with eager loading of feeds
+            query = (
+                select(SignalSource, SignalFeed, Account.name)
+                .join(Account, SignalSource.account_id == Account.id)
+                .outerjoin(SignalFeed, SignalSource.id == SignalFeed.source_id)
+                .where(SignalSource.signal_type == SignalType.camera)
+            )
+
+            # Filter by account names if provided
+            if account_names:
+                query = query.where(Account.name.in_(account_names))
+
+            result = await self.session.execute(query)
+            # Convert Row objects to tuples for type consistency
+            return [(row[0], row[1], row[2]) for row in result.all()]
+
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error getting cameras with feeds by accounts: {e}")
             raise

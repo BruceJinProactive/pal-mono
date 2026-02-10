@@ -65,6 +65,9 @@ def create_slack_app() -> AsyncApp | None:
         # Check for help command (standalone only: "help" or "@Mercury help")
         if re.search(r"^(\s*<@\w+>\s*)?help\s*$", message_text, re.IGNORECASE):
             await _commands.handle_help_request(event, client)
+        # Check for camera command
+        elif "camera" in message_text:
+            await _commands.handle_camera_request(event, client)
         # Check for feedback-status command (must come before feedback check)
         elif "feedback-status" in message_text:
             await _commands.handle_feedback_status_request(event, client)
@@ -119,12 +122,6 @@ def create_slack_app() -> AsyncApp | None:
             and event.get("bot_id") is None
         ):
             await process_message(event, client)
-
-    # Register Home Tab handler
-    @app.event("app_home_opened")
-    async def handle_app_home_opened(event, client):
-        """Handle when user opens the bot's Home Tab."""
-        await _commands.handle_home_tab_opened(event, client)
 
     return app
 
