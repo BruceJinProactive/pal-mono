@@ -983,12 +983,14 @@ async def handle_camera_request(message, client):
             if total == 0:
                 # No cameras for this account - gray circle
                 lines.append(f"⚫ `{account_name}`")
-            elif account["has_active"]:
-                # At least one camera is active - green with count
-                lines.append(f"🟢 `{account_name}` {active}/{total}")
             else:
-                # Has cameras but none are active - red
-                lines.append(f"🔴 `{account_name}`")
+                # Has cameras - show count on same line
+                if account["has_active"]:
+                    # At least one camera is active - green with count
+                    lines.append(f"🟢 `{account_name}` {active}/{total}")
+                else:
+                    # Has cameras but none are active - red with count
+                    lines.append(f"🔴 `{account_name}` {active}/{total}")
 
         # Add summary footer
         lines.append(

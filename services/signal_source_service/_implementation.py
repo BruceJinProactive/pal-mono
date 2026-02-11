@@ -5,7 +5,6 @@ Business logic for signal source CRUD operations.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -319,71 +318,6 @@ def build_source_response(
     )
 
 
-async def _process_single_account_cameras(
-    source_repo: SignalSourceRepositoryAsync,
-    account_name: str,
-    active_threshold: datetime,
-) -> dict | None:
-    """
-    Process camera statistics for a single account.
-
-    This function is designed to fail gracefully - if one account fails,
-    it returns None without affecting other accounts being processed concurrently.
-
-    Args:
-        source_repo: SignalSourceRepositoryAsync instance
-        account_name: Account name to process
-        active_threshold: DateTime threshold for determining active cameras
-
-    Returns:
-        dict with account statistics or None if account not found/has no cameras/error occurred
-    """
-    try:
-        logger.debug(f"[CameraStats] Processing account '{account_name}'")
-
-        cameras_with_feeds = await source_repo.get_cameras_with_feeds_by_account_name(
-            account_name
-        )
-
-        if not cameras_with_feeds:
-            logger.warning(
-                f"[CameraStats] Account '{account_name}' not found or has no cameras (skipping)"
-            )
-            return None
-
-        # Process cameras for this account
-        account_id = str(cameras_with_feeds[0][0].account_id)
-        account_data = {
-            "account_id": account_id,
-            "account_name": account_name,
-            "total_cameras": 0,
-            "active_cameras": 0,
-            "has_active": False,
-        }
-
-        for camera, feed, _ in cameras_with_feeds:
-            account_data["total_cameras"] += 1
-
-            # Check if camera is active based on last_capture_at
-            if feed and feed.last_capture_at:
-                if feed.last_capture_at >= active_threshold:
-                    account_data["active_cameras"] += 1
-                    account_data["has_active"] = True
-
-        logger.info(
-            f"[CameraStats] Account '{account_name}': {account_data['active_cameras']}/{account_data['total_cameras']} active"
-        )
-        return account_data
-
-    except Exception as e:
-        # Log error but don't raise - this allows other accounts to continue processing
-        logger.error(
-            f"[CameraStats] Failed to process account '{account_name}': {e}",
-            exc_info=True,
-        )
-        return None
-
-
 async def get_camera_stats_by_accounts(
     session: AsyncSession, account_names: list[str] | None = None
 ) -> dict:
@@ -393,7 +327,7 @@ async def get_camera_stats_by_accounts(
     A camera is considered "active" if its last_capture_at timestamp is within
     the last 3 minutes (matching the admin console logic).
 
-    When multiple account names are provided, they are processed concurrently.
+    Uses a single optimized database query with JOINs for best performance.
 
     Args:
         session: Async database session
@@ -423,98 +357,57 @@ async def get_camera_stats_by_accounts(
 
         source_repo = SignalSourceRepositoryAsync(session)
 
-        # If multiple accounts specified, process them concurrently
-        if account_names and len(account_names) > 1:
+        # Use efficient batch query for all cases
+        # Note: SQLAlchemy async sessions don't support concurrent operations,
+        # so a single JOIN query is both faster and more reliable than parallel queries
+        if account_names:
             logger.info(
-                f"[CameraStats] Processing {len(account_names)} accounts concurrently: {', '.join(account_names)}"
+                f"[CameraStats] Querying camera statistics for {len(account_names)} account(s): {', '.join(account_names)}"
             )
-
-            # Create tasks for each account
-            tasks = [
-                _process_single_account_cameras(
-                    source_repo, account_name, active_threshold
-                )
-                for account_name in account_names
-            ]
-
-            # Execute all tasks concurrently with exception handling
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Process results and track failures
-            accounts_list = []
-            failed_accounts = []
-            not_found_accounts = []
-
-            for i, result in enumerate(results):
-                account_name = account_names[i]
-
-                if isinstance(result, Exception):
-                    # Exception occurred during processing
-                    logger.error(
-                        f"[CameraStats] Exception for account '{account_name}': {result}"
-                    )
-                    failed_accounts.append(account_name)
-                elif result is None:
-                    # Account not found or has no cameras
-                    not_found_accounts.append(account_name)
-                else:
-                    # Successfully processed
-                    accounts_list.append(result)
-
-            # Log summary of concurrent processing
-            if failed_accounts:
-                logger.warning(
-                    f"[CameraStats] {len(failed_accounts)} account(s) failed: {', '.join(failed_accounts)}"
-                )
-            if not_found_accounts:
-                logger.info(
-                    f"[CameraStats] {len(not_found_accounts)} account(s) not found or have no cameras: {', '.join(not_found_accounts)}"
-                )
-            if accounts_list:
-                logger.info(
-                    f"[CameraStats] Successfully processed {len(accounts_list)} account(s)"
-                )
-
         else:
-            # Single account or all accounts - use efficient single query
             logger.info("[CameraStats] Querying camera statistics from database")
 
-            cameras_with_feeds = (
-                await source_repo.get_cameras_with_feeds_by_account_names(account_names)
-            )
+        cameras_with_feeds = await source_repo.get_cameras_with_feeds_by_account_names(
+            account_names
+        )
 
-            if not cameras_with_feeds:
+        if not cameras_with_feeds:
+            if account_names:
+                logger.info(
+                    f"[CameraStats] No cameras found for account(s): {', '.join(account_names)}"
+                )
+            else:
                 logger.info("[CameraStats] No cameras found in database")
-                return {"accounts": [], "total_cameras": 0, "total_active": 0}
+            return {"accounts": [], "total_cameras": 0, "total_active": 0}
 
-            logger.info(f"[CameraStats] Found {len(cameras_with_feeds)} total cameras")
+        logger.info(f"[CameraStats] Found {len(cameras_with_feeds)} total cameras")
 
-            # Group cameras by account_id
-            accounts_map = {}
+        # Group cameras by account_id
+        accounts_map = {}
 
-            for camera, feed, account_name in cameras_with_feeds:
-                account_id = str(camera.account_id)
+        for camera, feed, account_name in cameras_with_feeds:
+            account_id = str(camera.account_id)
 
-                # Initialize account entry if not exists
-                if account_id not in accounts_map:
-                    accounts_map[account_id] = {
-                        "account_id": account_id,
-                        "account_name": account_name,
-                        "total_cameras": 0,
-                        "active_cameras": 0,
-                        "has_active": False,
-                    }
+            # Initialize account entry if not exists
+            if account_id not in accounts_map:
+                accounts_map[account_id] = {
+                    "account_id": account_id,
+                    "account_name": account_name,
+                    "total_cameras": 0,
+                    "active_cameras": 0,
+                    "has_active": False,
+                }
 
-                # Count total cameras
-                accounts_map[account_id]["total_cameras"] += 1
+            # Count total cameras
+            accounts_map[account_id]["total_cameras"] += 1
 
-                # Check if camera is active based on last_capture_at
-                if feed and feed.last_capture_at:
-                    if feed.last_capture_at >= active_threshold:
-                        accounts_map[account_id]["active_cameras"] += 1
-                        accounts_map[account_id]["has_active"] = True
+            # Check if camera is active based on last_capture_at
+            if feed and feed.last_capture_at:
+                if feed.last_capture_at >= active_threshold:
+                    accounts_map[account_id]["active_cameras"] += 1
+                    accounts_map[account_id]["has_active"] = True
 
-            accounts_list = list(accounts_map.values())
+        accounts_list = list(accounts_map.values())
 
         # Sort by account name
         accounts_list.sort(key=lambda x: x["account_name"] or x["account_id"])
