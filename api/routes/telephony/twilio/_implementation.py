@@ -83,7 +83,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                     call_sid = start_data.get("callSid")
                     account_sid = start_data.get("accountSid")
                     custom_params = start_data.get("customParameters", {})
-                    recipient_id = custom_params.get("recipient_id")
+                    recipient_id = custom_params.get("to_number")
 
                     logger.debug(
                         "[TWILIO_WS] Twilio media stream started",
@@ -93,7 +93,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                             "account_sid": account_sid,
                             "tracks": start_data.get("tracks"),
                             "media_format": start_data.get("mediaFormat"),
-                            "has_custom_parameters": bool(custom_params),
+                            "custom_parameters": start_data.get("customParameters"),
                         },
                     )
 
