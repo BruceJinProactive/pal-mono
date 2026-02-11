@@ -143,11 +143,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                         session: RealtimeSession = realtime_session,
                         sid: str = stream_sid,
                     ):
-                        chunk_count = 0
                         try:
                             async for audio_chunk in session.receive_audio_stream():
-                                chunk_count += 1
-
                                 # Send audio back to Twilio using media message format
                                 media_message = {
                                     "event": "media",
@@ -155,17 +152,6 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                                     "media": {"payload": audio_chunk},
                                 }
                                 await websocket.send_text(json.dumps(media_message))
-
-                                # Log periodically (every 50 chunks) to avoid log spam
-                                if chunk_count % 50 == 0:
-                                    logger.debug(
-                                        "[OPENAI→TWILIO] Sent audio chunk to Twilio",
-                                        extra={
-                                            "stream_sid": sid,
-                                            "chunk_count": chunk_count,
-                                            "payload_length": len(audio_chunk),
-                                        },
-                                    )
                         except Exception as e:
                             logger.error(
                                 "[TWILIO_WS] Error streaming from OpenAI",
@@ -186,18 +172,6 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                     if realtime_session:
                         try:
                             await realtime_session.send_audio_chunk(payload)
-
-                            # Log periodically (every 100 packets) to avoid log spam
-                            if media_packet_count % 100 == 0:
-                                logger.debug(
-                                    "[TWILIO→OPENAI] Forwarded audio chunk to OpenAI",
-                                    extra={
-                                        "stream_sid": message.get("streamSid"),
-                                        "packet_count": media_packet_count,
-                                        "sequence": message.get("sequenceNumber"),
-                                        "payload_length": len(payload),
-                                    },
-                                )
                         except Exception as e:
                             logger.error(
                                 "[TWILIO_WS] Error sending audio to OpenAI",
