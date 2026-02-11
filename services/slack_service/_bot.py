@@ -68,6 +68,9 @@ def create_slack_app() -> AsyncApp | None:
         # Check for camera command
         elif "camera" in message_text:
             await _commands.handle_camera_request(event, client)
+        # Check for subscription command
+        elif "subscription" in message_text:
+            await _commands.handle_subscription_request(event, client)
         # Check for feedback-status command (must come before feedback check)
         elif "feedback-status" in message_text:
             await _commands.handle_feedback_status_request(event, client)

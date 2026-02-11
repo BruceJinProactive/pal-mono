@@ -351,9 +351,9 @@ async def get_camera_stats_by_accounts(
             }
     """
     try:
-        # Calculate the "active" threshold: cameras with last_capture_at within last 3 minutes
+        # Calculate the "active" threshold: cameras with last_capture_at within last 5 minutes
         # This matches the logic in api/routes/internal/monitoring.py
-        active_threshold = datetime.now(timezone.utc) - timedelta(minutes=3)
+        active_threshold = datetime.now(timezone.utc) - timedelta(minutes=5)
 
         source_repo = SignalSourceRepositoryAsync(session)
 

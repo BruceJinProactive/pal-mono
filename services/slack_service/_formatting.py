@@ -1002,9 +1002,31 @@ def build_help_page() -> dict:
         "• ⚫ `account` - No cameras configured\n\n"
         "*For example:*\n"
         "`@Mercury camera for romeo,juliet`\n\n"
-        "_Active = captured image within last 3 minutes_"
+        "_Active = captured image within last 5 minutes_"
     )
     blocks.append(build_section_block(camera_commands_text))
+    blocks.append(build_divider_block())
+
+    # ===== SUBSCRIPTION COMMANDS SECTION =====
+    blocks.append(build_header_block("💳 Subscription & Credits"))
+
+    subscription_commands_text = (
+        "*Check account subscription and credit balance:*\n"
+        "• `subscription for <account-name>` - Show subscription status and credit balance\n"
+        "• `subscription` - Auto-detects account in client channels\n\n"
+        "*Information provided:*\n"
+        "• Subscription status (active, trialing, past_due, etc.)\n"
+        "• Plan name and tier\n"
+        "• Start/end dates and trial information\n"
+        "• Payment method\n"
+        "• Current credit balance\n\n"
+        "*For example:*\n"
+        "`@Mercury subscription` in #client-romeo (auto-detects romeo)\n"
+        "`@Mercury subscription for juliet` in any channel\n\n"
+        "*In DMs:*\n"
+        "`subscription for romeo`"
+    )
+    blocks.append(build_section_block(subscription_commands_text))
     blocks.append(build_divider_block())
 
     # ===== REPORT METRICS SECTION =====

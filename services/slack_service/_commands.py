@@ -1016,3 +1016,173 @@ async def handle_camera_request(message, client):
             )
         except Exception as slack_error:
             logger.error(f"[Slackbot] Failed to send error: {slack_error}")
+
+
+async def handle_subscription_request(message, client):
+    """
+    Handle subscription and credit balance requests for an account.
+
+    Shows subscription status and credit balance.
+    Format: "subscription for account-name" or just "subscription" in client channels
+
+    Args:
+        message: Slack message object
+        client: Slack client object
+    """
+    from db.repositories.account_repository import AccountRepositoryAsync
+    from db.session import AsyncSessionLocal
+    from services.subscription_service._subscription import (
+        get_account_credit_balance,
+        get_current_subscription_async,
+    )
+
+    from ._access_control import extract_account_from_channel
+    from ._reports import get_channel_name
+
+    try:
+        slack_channel = message.get("channel")
+        user = message["user"]
+        message_text = message.get("text", "")
+
+        # Parse account name from message
+        account_name = parse_account_name_from_message(message_text)
+
+        # If no account name provided, try to extract from channel name
+        if not account_name:
+            channel_display_name = await get_channel_name(client, slack_channel)
+            account_name = extract_account_from_channel(channel_display_name)
+
+            if account_name:
+                logger.info(
+                    f"[Slackbot] Auto-detected account '{account_name}' from channel '{channel_display_name}'"
+                )
+
+        if not account_name:
+            await client.chat_postMessage(
+                channel=slack_channel,
+                text="💳 Please specify an account name: `subscription for account-name`",
+                mrkdwn=True,
+            )
+            return
+
+        logger.info(
+            f"[Slackbot] User {user} requested subscription info for account: {account_name}"
+        )
+
+        # Send processing message
+        await client.chat_postMessage(
+            channel=slack_channel,
+            text=f"💳 Fetching subscription info for `{account_name}`...",
+            mrkdwn=True,
+        )
+
+        # Query account and subscription data
+        async with AsyncSessionLocal() as session:
+            account_repo = AccountRepositoryAsync(session)
+            account = await account_repo.get_account(account_name)
+
+            if not account:
+                await client.chat_postMessage(
+                    channel=slack_channel,
+                    text=f"❌ Account `{account_name}` not found.",
+                    mrkdwn=True,
+                )
+                return
+
+            # Get subscription
+            subscription = await get_current_subscription_async(session, account)
+
+            # Get credit balance (sync call to Stripe)
+            credit_balance_cents = 0
+            credit_currency = "USD"
+            credit_error = None
+
+            try:
+                if account.stripe_customer_id:
+                    credit_balance_cents, credit_currency = get_account_credit_balance(
+                        account
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"[Slackbot] Could not fetch credit balance for {account_name}: {e}"
+                )
+                credit_error = str(e)
+
+        # Format response
+        lines = [f"💳 *Subscription Info for `{account_name}`*\n"]
+
+        # Subscription status
+        if subscription:
+            status_emoji = {
+                "active": "🟢",
+                "trialing": "🔵",
+                "past_due": "🟡",
+                "unpaid": "🔴",
+                "cancelled": "⚫",
+                "expired": "⚫",
+            }.get(subscription.status.value, "⚪")
+
+            lines.append(
+                f"{status_emoji} *Status:* {subscription.status.value.title()}"
+            )
+
+            # Plan info
+            if subscription.subscription_plan:
+                plan = subscription.subscription_plan
+                lines.append(f"📋 *Plan:* {plan.name}")
+                if plan.tier:
+                    lines.append(f"🎯 *Tier:* {plan.tier.value.upper()}")
+
+            # Dates
+            if subscription.start_date:
+                lines.append(
+                    f"📅 *Start Date:* {subscription.start_date.strftime('%Y-%m-%d')}"
+                )
+            if subscription.end_date:
+                lines.append(
+                    f"📅 *End Date:* {subscription.end_date.strftime('%Y-%m-%d')}"
+                )
+            if subscription.trial_start_date:
+                lines.append(
+                    f"🎁 *Trial Started:* {subscription.trial_start_date.strftime('%Y-%m-%d')}"
+                )
+
+            # Payment method
+            if subscription.payment_method:
+                payment_emoji = (
+                    "💳" if subscription.payment_method.value == "autopay" else "📄"
+                )
+                lines.append(
+                    f"{payment_emoji} *Payment:* {subscription.payment_method.value.title()}"
+                )
+        else:
+            lines.append("⚫ *Status:* No active subscription")
+
+        # Credit balance
+        lines.append("")  # Empty line for spacing
+        if credit_error:
+            lines.append(f"💰 *Credit Balance:* _(Could not fetch: {credit_error})_")
+        else:
+            credit_dollars = credit_balance_cents / 100
+            lines.append(
+                f"💰 *Credit Balance:* ${credit_dollars:,.2f} {credit_currency}"
+            )
+
+        await client.chat_postMessage(
+            channel=slack_channel, text="\n".join(lines), mrkdwn=True
+        )
+
+        logger.info(f"[Slackbot] Subscription info sent for account: {account_name}")
+
+    except Exception as e:
+        logger.error(
+            f"[Slackbot] Error handling subscription request: {e}", exc_info=True
+        )
+        try:
+            await client.chat_postMessage(
+                channel=message.get("channel"),
+                text=f"❌ Error fetching subscription info: {str(e)}",
+                mrkdwn=True,
+            )
+        except Exception as slack_error:
+            logger.error(f"[Slackbot] Failed to send error: {slack_error}")
