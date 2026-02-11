@@ -28,18 +28,18 @@ dependencies = [
   "groq==0.15.0", # Groq API client for fast LLM inference
   "httpcore==1.0.9", # Low-level HTTP transport implementation
   "httpx==0.28.1", # Modern async/sync HTTP client with HTTP/2 support
-  "instructor==1.9.2", # Structured outputs from LLMs using Pydantic models
+  "instructor==1.14.5", # Structured outputs from LLMs using Pydantic models
   "jinja2==3.1.6", # Modern template engine for Python
   "lingua-language-detector==2.1.1", # Fast and accurate language detection library
-  "llama-index-core==0.14.3", # Llma index core module
+  "llama-index-core==0.14.14", # Llma index core module
   "llama-index-embeddings-cohere==0.6.1", # Cohere embeddings integration for LlamaIndex
   "llama-index-llms-gemini==0.6.1", # Google Gemini LLM integration for LlamaIndex
   "llama-index-llms-groq==0.4.1", # Groq LLM integration for LlamaIndex
   "llama-index-vector-stores-pinecone==0.7.1", # Pinecone vector database integration for LlamaIndex
-  "mem0ai==0.1.48", # Personalized AI memory layer for context retention
+  "mem0ai==1.0.3", # Personalized AI memory layer for context retention
   "notion-client==2.2.1",
-  "openai[realtime]==1.109.1", # Official OpenAI API client for GPT models
-  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.50", # Pal-agents AI agent framework (production)
+  "openai==2.20.0", # Official OpenAI API client for GPT models
+  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.51", # Pal-agents AI agent framework (production)
   "pgvector==0.3.2", # PostgreSQL extension for vector similarity search
   "pinecone==7.3.0", # Managed vector database for AI applications
   "polyline==2.0.2", # Google polyline encoding/decoding for GPS coordinates
@@ -58,7 +58,7 @@ dependencies = [
   "stripe>=12,<13", # Official Stripe API client for payment processing
   "twilio==9.3.2", # Twilio API client for SMS, voice, and messaging
   "urlextract==1.9.0", # URL extraction from text using regular expressions
-  "uvicorn==0.30.6", # Lightning-fast ASGI server for async Python web apps
+  "uvicorn>=0.31.1", # Lightning-fast ASGI server for async Python web apps
   "vapi-server-sdk==1.6.0" # Voice AI platform SDK for conversational interfaces
 ]
 
