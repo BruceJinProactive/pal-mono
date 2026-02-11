@@ -1,8 +1,12 @@
+import asyncio
 import json
 from datetime import datetime, timezone
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from db.session import AsyncSessionLocal
+from services import realtime_service
+from services.realtime_service import RealtimeSession
 from utils.log import logger
 
 
@@ -40,6 +44,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
     call_sid: str | None = None
     start_time = datetime.now(timezone.utc)
     media_packet_count = 0
+    realtime_session: RealtimeSession | None = None
+    background_task = None
 
     logger.debug(
         "[TWILIO_WS] Twilio WebSocket connection established",
@@ -76,6 +82,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                     start_data = message.get("start", {})
                     call_sid = start_data.get("callSid")
                     account_sid = start_data.get("accountSid")
+                    custom_params = start_data.get("customParameters", {})
+                    recipient_id = custom_params.get("recipient_id")
 
                     logger.debug(
                         "[TWILIO_WS] Twilio media stream started",
@@ -85,18 +93,93 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                             "account_sid": account_sid,
                             "tracks": start_data.get("tracks"),
                             "media_format": start_data.get("mediaFormat"),
-                            "custom_parameters": start_data.get("customParameters"),
+                            "has_custom_parameters": bool(custom_params),
                         },
                     )
+
+                    # Check for required stream_sid
+                    if not stream_sid:
+                        logger.error("[TWILIO_WS] Missing streamSid in start event")
+                        await websocket.close(code=1008, reason="Missing streamSid")
+                        return
+
+                    # Check for required recipient_id
+                    if not recipient_id:
+                        logger.error(
+                            "[TWILIO_WS] Missing recipient_id in custom parameters"
+                        )
+                        await websocket.close(code=1008, reason="Missing recipient_id")
+                        return
+
+                    # Initialize realtime session
+                    async with AsyncSessionLocal() as db_session:
+                        try:
+                            realtime_session = (
+                                await realtime_service.create_realtime_session(
+                                    db_session, recipient_id
+                                )
+                            )
+                        except ValueError as e:
+                            logger.error(f"[TWILIO_WS] Project lookup failed: {e}")
+                            await websocket.close(code=1008, reason="Project not found")
+                            return
+                        except Exception as e:
+                            logger.error(
+                                "[TWILIO_WS] Failed to create realtime session",
+                                extra={"error": str(e), "error_type": type(e).__name__},
+                                exc_info=True,
+                            )
+                            await websocket.close(
+                                code=1011, reason="Service unavailable"
+                            )
+                            return
+
+                    # Type narrowing: at this point stream_sid is guaranteed to be str
+                    assert stream_sid is not None
+
+                    # Background task to stream OpenAI responses back to Twilio
+                    # Bind current values to avoid closure issues (B023)
+                    async def stream_openai_to_twilio(
+                        session: RealtimeSession = realtime_session,
+                        sid: str = stream_sid,
+                    ):
+                        try:
+                            async for audio_chunk in session.receive_audio_stream():
+                                # Send audio back to Twilio using media message format
+                                media_message = {
+                                    "event": "media",
+                                    "streamSid": sid,
+                                    "media": {"payload": audio_chunk},
+                                }
+                                await websocket.send_text(json.dumps(media_message))
+                        except Exception as e:
+                            logger.error(
+                                "[TWILIO_WS] Error streaming from OpenAI",
+                                extra={"error": str(e), "error_type": type(e).__name__},
+                                exc_info=True,
+                            )
+
+                    # Start background task
+                    background_task = asyncio.create_task(stream_openai_to_twilio())
 
                 elif event_type == "media":
                     # Audio data packet
                     media_packet_count += 1
                     media_data = message.get("media", {})
+                    payload = media_data.get("payload", "")
+
+                    # Forward to OpenAI
+                    if realtime_session:
+                        try:
+                            await realtime_session.send_audio_chunk(payload)
+                        except Exception as e:
+                            logger.error(
+                                "[TWILIO_WS] Error sending audio to OpenAI",
+                                extra={"error": str(e), "error_type": type(e).__name__},
+                            )
 
                     # Log periodically (every 100 packets) to avoid log spam
                     if media_packet_count % 100 == 0:
-                        payload = media_data.get("payload", "")
                         logger.debug(
                             "[TWILIO_WS] Received media packets",
                             extra={
@@ -124,6 +207,12 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                             "total_media_packets": media_packet_count,
                         },
                     )
+
+                    # Cleanup realtime session
+                    if realtime_session:
+                        await realtime_session.close()
+                    if background_task:
+                        background_task.cancel()
 
                     # Clean disconnect
                     break
@@ -188,6 +277,12 @@ async def handle_twilio_media_stream(websocket: WebSocket):
         )
 
     finally:
+        # Cleanup realtime session if still active
+        if "realtime_session" in locals() and realtime_session:
+            await realtime_session.close()
+        if "background_task" in locals() and background_task:
+            background_task.cancel()
+
         # Ensure WebSocket is closed
         try:
             await websocket.close()

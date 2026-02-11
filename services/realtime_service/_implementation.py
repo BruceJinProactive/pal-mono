@@ -1,0 +1,285 @@
+"""
+OpenAI Realtime Voice service implementation.
+
+Provides RealtimeSession class for managing OpenAI Realtime API connections
+and factory function for creating sessions with proper configuration.
+"""
+
+import os
+import uuid
+from typing import AsyncIterator
+
+from openai import AsyncOpenAI
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.repositories.project_repository import ProjectRepositoryAsync
+from db.tables.types import Channel
+from services.agent_service._raw_config import RawConfig
+from utils.log import logger
+
+
+class RealtimeSession:
+    """
+    Manages OpenAI Realtime API connection for voice conversations.
+
+    Handles bidirectional audio streaming between Twilio and OpenAI's
+    Realtime API using WebSocket connections managed by AsyncOpenAI SDK.
+    """
+
+    def __init__(self, api_key: str, system_prompt: str):
+        """
+        Initialize RealtimeSession.
+
+        Args:
+            api_key: OpenAI API key for authentication
+            system_prompt: System instructions for the AI assistant
+        """
+        self.api_key = api_key
+        self.system_prompt = system_prompt
+        self.client: AsyncOpenAI | None = None
+        self.connection = None
+
+    async def connect(self) -> None:
+        """
+        Establish connection to OpenAI Realtime API and configure session.
+
+        Configures audio format (g711_ulaw 8kHz) for Twilio compatibility
+        and sets up server-side Voice Activity Detection (VAD).
+
+        Raises:
+            Exception: If connection fails or API key is invalid
+        """
+        try:
+            # Create AsyncOpenAI client
+            self.client = AsyncOpenAI(api_key=self.api_key)
+
+            # Connect to Realtime API
+            self.connection = await self.client.beta.realtime.connect(
+                model="gpt-realtime-2025-08-28"
+            ).enter()
+
+            # Configure session
+            await self.connection.session.update(
+                session={
+                    "modalities": ["text", "audio"],
+                    "instructions": self.system_prompt,
+                    "voice": "alloy",
+                    "input_audio_format": "g711_ulaw",
+                    "output_audio_format": "g711_ulaw",
+                    "turn_detection": {"type": "server_vad"},
+                }
+            )
+
+            logger.info(
+                "[REALTIME] Successfully connected to OpenAI Realtime API",
+                extra={"model": "gpt-realtime-2025-08-28"},
+            )
+
+        except Exception as e:
+            logger.error(
+                "[REALTIME] Failed to connect to OpenAI Realtime API",
+                extra={"error": str(e), "error_type": type(e).__name__},
+                exc_info=True,
+            )
+
+            # Clean up partial resources before re-raising
+            # Close connection if it was established
+            if self.connection is not None:
+                try:
+                    await self.connection.close()
+                except Exception as close_error:
+                    logger.error(
+                        "[REALTIME] Error closing connection during cleanup",
+                        extra={"error": str(close_error)},
+                    )
+
+            # Close AsyncOpenAI client if it was created
+            if self.client is not None:
+                try:
+                    await self.client.close()
+                except Exception as close_error:
+                    logger.error(
+                        "[REALTIME] Error closing client during cleanup",
+                        extra={"error": str(close_error)},
+                    )
+
+            # Reset to None after cleanup
+            self.connection = None
+            self.client = None
+
+            # Re-raise original exception
+            raise
+
+    async def send_audio_chunk(self, base64_audio: str) -> None:
+        """
+        Send audio chunk to OpenAI for processing.
+
+        Args:
+            base64_audio: Base64-encoded audio data in g711_ulaw format
+
+        Raises:
+            RuntimeError: If connection is not established
+            Exception: If sending audio fails
+        """
+        if not self.connection:
+            raise RuntimeError("Connection not established. Call connect() first.")
+
+        try:
+            await self.connection.input_audio_buffer.append(audio=base64_audio)
+        except Exception as e:
+            logger.error(
+                "[REALTIME] Error sending audio to OpenAI",
+                extra={"error": str(e), "error_type": type(e).__name__},
+            )
+            raise
+
+    async def receive_audio_stream(self) -> AsyncIterator[str]:
+        """
+        Async generator yielding audio chunks from OpenAI.
+
+        Listens for response.audio.delta events and yields base64-encoded
+        audio chunks for playback through Twilio.
+
+        Yields:
+            str: Base64-encoded audio data in g711_ulaw format
+
+        Raises:
+            RuntimeError: If connection is not established
+        """
+        if not self.connection:
+            raise RuntimeError("Connection not established. Call connect() first.")
+
+        try:
+            async for event in self.connection:
+                if event.type == "response.audio.delta":
+                    # Yield audio chunk for playback
+                    yield event.delta
+                elif event.type == "response.audio.done":
+                    # Audio response complete
+                    logger.debug("[REALTIME] Audio response completed")
+                elif event.type == "error":
+                    # Handle API errors
+                    logger.error(
+                        "[REALTIME] OpenAI API error",
+                        extra={
+                            "error": (
+                                event.error if hasattr(event, "error") else str(event)
+                            )
+                        },
+                    )
+                # Other events (transcripts, VAD, etc.) are logged but not yielded
+        except Exception as e:
+            logger.error(
+                "[REALTIME] Error receiving audio from OpenAI",
+                extra={"error": str(e), "error_type": type(e).__name__},
+                exc_info=True,
+            )
+            raise
+
+    async def close(self) -> None:
+        """
+        Close connection to OpenAI Realtime API.
+
+        Should be called when call ends or on error to clean up resources.
+        """
+        # Close connection if it exists
+        if self.connection:
+            try:
+                await self.connection.close()
+                logger.info("[REALTIME] Closed OpenAI Realtime API connection")
+            except Exception as e:
+                logger.error(
+                    "[REALTIME] Error closing connection",
+                    extra={"error": str(e)},
+                )
+
+        # Close client if it exists
+        if self.client:
+            try:
+                await self.client.close()
+            except Exception as e:
+                logger.error(
+                    "[REALTIME] Error closing client",
+                    extra={"error": str(e)},
+                )
+
+        # Reset to None
+        self.connection = None
+        self.client = None
+
+
+async def create_realtime_session(
+    session: AsyncSession, recipient_id: str
+) -> RealtimeSession:
+    """
+    Create and connect RealtimeSession for voice conversations.
+
+    Looks up project by voice channel identifier, retrieves agent configuration,
+    and establishes OpenAI Realtime API connection.
+
+    Args:
+        session: Database session for lookups
+        recipient_id: Phone number or identifier (e.g., "+15551234567")
+
+    Returns:
+        RealtimeSession: Connected session ready for audio streaming
+
+    Raises:
+        ValueError: If project not found for recipient_id
+        Exception: If connection to OpenAI fails
+    """
+    # Build channel identifier (e.g., "voice:+15551234567")
+    channel_identifier = f"voice:{recipient_id}"
+
+    # Look up project by channel identifier
+    project_repo = ProjectRepositoryAsync(session)
+    project = await project_repo.get_project_by_channel_identifier(channel_identifier)
+
+    if not project:
+        raise ValueError(
+            f"Project not found for channel identifier: {channel_identifier}"
+        )
+
+    # Get agent from project relationship
+    agent = project.agent
+    if not agent:
+        raise ValueError(f"Agent not found for project: {project.name}")
+
+    # Build agent configuration using existing pattern
+    raw_config = RawConfig(
+        agent=agent,
+        project=project,
+        account=project.account,
+        user_id=uuid.uuid4(),  # No user context for voice calls
+        conversation_id=uuid.uuid4(),  # Generate new conversation ID
+        channel=Channel.VOICE,
+        integration=None,
+        project_integrations=[],
+        faqs=[],
+    )
+
+    # Build agent prompt using the same method as other channels
+    # This includes brand info, store info, and feature flag checks
+    system_prompt = await raw_config._build_agent_prompt(Channel.VOICE, session)
+
+    if not system_prompt:
+        raise ValueError(f"Agent prompt is empty for agent: {agent.id}")
+
+    # Get OpenAI API key from environment
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable not set")
+
+    # Create and connect session
+    realtime_session = RealtimeSession(api_key=api_key, system_prompt=system_prompt)
+    await realtime_session.connect()
+
+    logger.info(
+        "[REALTIME] Created realtime session",
+        extra={
+            "project_name": project.name,
+            "agent_id": str(agent.id),
+        },
+    )
+
+    return realtime_session
