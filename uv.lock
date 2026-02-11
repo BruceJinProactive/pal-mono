@@ -2581,7 +2581,7 @@ wheels = [
 [[package]]
 name = "pal-agents"
 version = "0.2.51"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.51#501339a566b73c8fe8850f6149534622de5c603f" }
+source = { git = "ssh://git@github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.51#501339a566b73c8fe8850f6149534622de5c603f" }
 dependencies = [
     { name = "agenticmem" },
     { name = "datadog" },
@@ -2700,7 +2700,7 @@ requires-dist = [
     { name = "mem0ai", specifier = "==1.0.3" },
     { name = "notion-client", specifier = "==2.2.1" },
     { name = "openai", specifier = "==2.20.0" },
-    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.51" },
+    { name = "pal-agents", git = "ssh://git@github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.51" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
     { name = "polyline", specifier = "==2.0.2" },
@@ -2730,7 +2730,7 @@ provides-extras = ["dev"]
 [[package]]
 name = "pal-tools"
 version = "0.1.11"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-tools.git?rev=v0.1.11#171f6776493cf6492eecfdfb2ddf9dbe1175990f" }
+source = { git = "ssh://git@github.com/Proactive-AI-Lab/pal-tools.git?rev=v0.1.11#171f6776493cf6492eecfdfb2ddf9dbe1175990f" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
