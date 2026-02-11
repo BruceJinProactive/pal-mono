@@ -188,6 +188,7 @@ def compare_checkpoint_images(
     if response.usage:
         logger.info(
             f"[Checkpoint LLM] OpenAI token usage - "
+            f"Model: {_constants.OPENAI_MODEL}, "
             f"Prompt: {response.usage.prompt_tokens}, "
             f"Completion: {response.usage.completion_tokens}, "
             f"Total: {response.usage.total_tokens}"

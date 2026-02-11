@@ -28,6 +28,7 @@ from services.monitoring_service._business_hours import (
     parse_captured_at,
 )
 from services.monitoring_service._providers import create_monitoring_llm_provider
+from services.monitoring_service._time_window import should_skip_monitoring
 from utils.log import logger
 
 # AWS Configuration
@@ -416,6 +417,48 @@ async def create_monitoring_run_with_analysis(
                         "analysis_result": skipped_result,
                         "skipped": True,
                     }
+
+    # Check time window if configured
+    time_window_config = rules.get("monitoring_time_window")
+    if time_window_config:
+        should_skip, skip_reason = await should_skip_monitoring(
+            session=session,
+            project_id=config.project_id,
+            time_window_config=time_window_config,
+        )
+
+        if should_skip:
+            logger.info(
+                f"Skipping monitoring run - {skip_reason}",
+                extra={
+                    "config_id": str(monitoring_config_id),
+                    "reason": skip_reason,
+                },
+            )
+
+            # Create run record with skipped status
+            skipped_result = {
+                "result": "skipped",
+                "reason": "outside_time_window",
+                "details": skip_reason,
+            }
+
+            skipped_run = MonitoringRun(
+                monitoring_config_id=monitoring_config_id,
+                trigger_metadata=trigger_metadata,
+                started_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
+                evaluation_result=skipped_result,
+                error_message=None,
+            )
+
+            created_run = await run_repo.create(skipped_run)
+
+            return created_run, {
+                "prompt_sent": {},
+                "analysis_result": skipped_result,
+                "skipped": True,
+            }
 
     # Record start time
     started_at = datetime.utcnow()

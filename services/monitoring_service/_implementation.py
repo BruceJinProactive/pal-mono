@@ -280,6 +280,12 @@ async def create_config(
     # Prepare rules dict
     rules_dict = request.rules.model_dump()
 
+    # Clean up monitoring_time_window: remove if None or disabled
+    if "monitoring_time_window" in rules_dict:
+        mtw = rules_dict["monitoring_time_window"]
+        if mtw is None or not mtw.get("enabled", False):
+            del rules_dict["monitoring_time_window"]
+
     # If structured_output fields are provided, build the schema
     if request.rules.structured_output:
         structured_output_fields = [
@@ -577,8 +583,8 @@ async def update_config(
             updates.get("rules", config.rules if config.rules else {})
         )
 
-        # Convert MonitoringTimeWindow to dict, excluding None values
-        time_window_dict = request.monitoring_time_window.model_dump(exclude_none=True)
+        # Convert MonitoringTimeWindow to dict
+        time_window_dict = request.monitoring_time_window.model_dump()
 
         # If time_window_dict only has enabled=False, remove from rules
         if not time_window_dict.get("enabled", False):

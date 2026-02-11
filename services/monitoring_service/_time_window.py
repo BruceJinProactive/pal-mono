@@ -113,7 +113,12 @@ async def should_skip_monitoring(
     # If times are not configured, don't skip (shouldn't happen if validation passed)
     if not start_time_str or not end_time_str:
         logger.warning(
-            f"Time window enabled but times not configured for project {project_id}"
+            f"[TimeWindow] FAIL-OPEN: Time window enabled but times not configured for project {project_id}. "
+            "Allowing monitoring to proceed.",
+            extra={
+                "fail_open": True,
+                "time_window_config": time_window_config,
+            },
         )
         return False, None
 
@@ -128,7 +133,12 @@ async def should_skip_monitoring(
 
         if not project:
             logger.warning(
-                f"Project {project_id} not found, skipping time window check"
+                f"[TimeWindow] FAIL-OPEN: Project {project_id} not found, skipping time window check. "
+                "Allowing monitoring to proceed.",
+                extra={
+                    "fail_open": True,
+                    "time_window_config": time_window_config,
+                },
             )
             return False, None
 
@@ -139,8 +149,12 @@ async def should_skip_monitoring(
             tz = ZoneInfo(timezone_str)
         except Exception as e:
             logger.warning(
-                f"Invalid timezone '{timezone_str}' for project {project_id}: {e}. "
-                "Skipping time-window enforcement."
+                f"[TimeWindow] FAIL-OPEN: Invalid timezone '{timezone_str}' for project {project_id}: {e}. "
+                "Allowing monitoring to proceed.",
+                extra={
+                    "fail_open": True,
+                    "time_window_config": time_window_config,
+                },
             )
             return False, None
 
@@ -170,12 +184,24 @@ async def should_skip_monitoring(
             return True, reason
 
     except ValueError as e:
-        logger.error(f"Error parsing time window config for project {project_id}: {e}")
+        logger.warning(
+            f"[TimeWindow] FAIL-OPEN: Error parsing time window config for project {project_id}: {e}. "
+            "Allowing monitoring to proceed.",
+            extra={
+                "fail_open": True,
+                "time_window_config": time_window_config,
+            },
+        )
         # On parse error, don't skip (fail open)
         return False, None
     except Exception as e:
         logger.error(
-            f"Unexpected error checking time window for project {project_id}: {e}",
+            f"[TimeWindow] FAIL-OPEN: Unexpected error checking time window for project {project_id}: {e}. "
+            "Allowing monitoring to proceed.",
+            extra={
+                "fail_open": True,
+                "time_window_config": time_window_config,
+            },
             exc_info=True,
         )
         # On unexpected error, don't skip (fail open)
