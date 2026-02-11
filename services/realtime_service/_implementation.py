@@ -55,26 +55,34 @@ class RealtimeSession:
             # Create AsyncOpenAI client
             self.client = AsyncOpenAI(api_key=self.api_key)
 
-            # Connect to Realtime API
-            self.connection = await self.client.beta.realtime.connect(
-                model="gpt-realtime-2025-08-28"
+            # Connect to Realtime API (production endpoint)
+            self.connection = await self.client.realtime.connect(
+                model="gpt-realtime"
             ).enter()
 
-            # Configure session
+            # Configure session with nested audio configuration
             await self.connection.session.update(
                 session={
-                    "modalities": ["text", "audio"],
+                    "type": "realtime",
+                    "audio": {
+                        "input": {
+                            "format": {"type": "audio/pcmu"},
+                            "turn_detection": {"type": "server_vad"},
+                        },
+                        "output": {
+                            "format": {"type": "audio/pcmu"},
+                            "voice": "alloy",
+                        },
+                    },
                     "instructions": self.system_prompt,
-                    "voice": "alloy",
-                    "input_audio_format": "g711_ulaw",
-                    "output_audio_format": "g711_ulaw",
-                    "turn_detection": {"type": "server_vad"},
+                    "output_modalities": ["audio"],
+                    "model": "gpt-realtime",
                 }
             )
 
             logger.info(
                 "[REALTIME] Successfully connected to OpenAI Realtime API",
-                extra={"model": "gpt-realtime-2025-08-28"},
+                extra={"model": "gpt-realtime"},
             )
 
         except Exception as e:
@@ -117,7 +125,7 @@ class RealtimeSession:
         Send audio chunk to OpenAI for processing.
 
         Args:
-            base64_audio: Base64-encoded audio data in g711_ulaw format
+            base64_audio: Base64-encoded audio data in audio/pcmu format
 
         Raises:
             RuntimeError: If connection is not established
@@ -139,11 +147,11 @@ class RealtimeSession:
         """
         Async generator yielding audio chunks from OpenAI.
 
-        Listens for response.audio.delta events and yields base64-encoded
+        Listens for response.output_audio.delta events and yields base64-encoded
         audio chunks for playback through Twilio.
 
         Yields:
-            str: Base64-encoded audio data in g711_ulaw format
+            str: Base64-encoded audio data in audio/pcmu format
 
         Raises:
             RuntimeError: If connection is not established
@@ -153,10 +161,10 @@ class RealtimeSession:
 
         try:
             async for event in self.connection:
-                if event.type == "response.audio.delta":
+                if event.type == "response.output_audio.delta":
                     # Yield audio chunk for playback
                     yield event.delta
-                elif event.type == "response.audio.done":
+                elif event.type == "response.output_audio.done":
                     # Audio response complete
                     logger.debug("[REALTIME] Audio response completed")
                 elif event.type == "error":
