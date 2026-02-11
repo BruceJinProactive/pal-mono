@@ -10,8 +10,7 @@ actions:
     enabled: false
     instruction: |
       ### MiniTable Reservation & Waitlist API
-
-      Base URL: {MINITABLE_BASE_URL}
+      MINITABLE_BASE_URL = https://ai.minitable.net/weapp/ai
       Authentication: Handled automatically (do not include auth headers)
       Merchant ID: {MINITABLE_MERCHANT_ID}
 
