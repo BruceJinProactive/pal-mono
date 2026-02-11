@@ -1077,6 +1077,12 @@ async def handle_subscription_request(message, client):
         )
 
         # Query account and subscription data
+        # Extract all data inside session to avoid lazy loading errors
+        subscription_data = None
+        credit_balance_cents = 0
+        credit_currency = "USD"
+        credit_error = None
+
         async with AsyncSessionLocal() as session:
             account_repo = AccountRepositoryAsync(session)
             account = await account_repo.get_account(account_name)
@@ -1092,11 +1098,25 @@ async def handle_subscription_request(message, client):
             # Get subscription
             subscription = await get_current_subscription_async(session, account)
 
-            # Get credit balance (sync call to Stripe)
-            credit_balance_cents = 0
-            credit_currency = "USD"
-            credit_error = None
+            # Extract all subscription data BEFORE session closes
+            if subscription:
+                # Access the relationship inside the session
+                plan = subscription.subscription_plan
+                subscription_data = {
+                    "status": subscription.status.value,
+                    "start_date": subscription.start_date,
+                    "end_date": subscription.end_date,
+                    "trial_start_date": subscription.trial_start_date,
+                    "payment_method": (
+                        subscription.payment_method.value
+                        if subscription.payment_method
+                        else None
+                    ),
+                    "plan_name": plan.name if plan else None,
+                    "plan_tier": plan.tier.value if plan and plan.tier else None,
+                }
 
+            # Get credit balance (sync call to Stripe)
             try:
                 if account.stripe_customer_id:
                     credit_balance_cents, credit_currency = get_account_credit_balance(
@@ -1108,11 +1128,11 @@ async def handle_subscription_request(message, client):
                 )
                 credit_error = str(e)
 
-        # Format response
+        # Format response (session is now closed, but we have all the data)
         lines = [f"💳 *Subscription Info for `{account_name}`*\n"]
 
         # Subscription status
-        if subscription:
+        if subscription_data:
             status_emoji = {
                 "active": "🟢",
                 "trialing": "🔵",
@@ -1120,40 +1140,39 @@ async def handle_subscription_request(message, client):
                 "unpaid": "🔴",
                 "cancelled": "⚫",
                 "expired": "⚫",
-            }.get(subscription.status.value, "⚪")
+            }.get(subscription_data["status"], "⚪")
 
             lines.append(
-                f"{status_emoji} *Status:* {subscription.status.value.title()}"
+                f"{status_emoji} *Status:* {subscription_data['status'].title()}"
             )
 
             # Plan info
-            if subscription.subscription_plan:
-                plan = subscription.subscription_plan
-                lines.append(f"📋 *Plan:* {plan.name}")
-                if plan.tier:
-                    lines.append(f"🎯 *Tier:* {plan.tier.value.upper()}")
+            if subscription_data["plan_name"]:
+                lines.append(f"📋 *Plan:* {subscription_data['plan_name']}")
+                if subscription_data["plan_tier"]:
+                    lines.append(f"🎯 *Tier:* {subscription_data['plan_tier'].upper()}")
 
             # Dates
-            if subscription.start_date:
+            if subscription_data["start_date"]:
                 lines.append(
-                    f"📅 *Start Date:* {subscription.start_date.strftime('%Y-%m-%d')}"
+                    f"📅 *Start Date:* {subscription_data['start_date'].strftime('%Y-%m-%d')}"
                 )
-            if subscription.end_date:
+            if subscription_data["end_date"]:
                 lines.append(
-                    f"📅 *End Date:* {subscription.end_date.strftime('%Y-%m-%d')}"
+                    f"📅 *End Date:* {subscription_data['end_date'].strftime('%Y-%m-%d')}"
                 )
-            if subscription.trial_start_date:
+            if subscription_data["trial_start_date"]:
                 lines.append(
-                    f"🎁 *Trial Started:* {subscription.trial_start_date.strftime('%Y-%m-%d')}"
+                    f"🎁 *Trial Started:* {subscription_data['trial_start_date'].strftime('%Y-%m-%d')}"
                 )
 
             # Payment method
-            if subscription.payment_method:
+            if subscription_data["payment_method"]:
                 payment_emoji = (
-                    "💳" if subscription.payment_method.value == "autopay" else "📄"
+                    "💳" if subscription_data["payment_method"] == "autopay" else "📄"
                 )
                 lines.append(
-                    f"{payment_emoji} *Payment:* {subscription.payment_method.value.title()}"
+                    f"{payment_emoji} *Payment:* {subscription_data['payment_method'].title()}"
                 )
         else:
             lines.append("⚫ *Status:* No active subscription")
