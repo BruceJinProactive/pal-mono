@@ -10,9 +10,11 @@ import uuid
 from typing import AsyncIterator
 
 from openai import AsyncOpenAI
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from db.repositories.project_repository import ProjectRepositoryAsync
+from db.tables import Project
 from db.tables.types import Channel
 from services.agent_service._raw_config import RawConfig
 from utils.log import logger
@@ -231,17 +233,26 @@ async def create_realtime_session(
     # Build channel identifier (e.g., "voice:+15551234567")
     channel_identifier = f"voice:{recipient_id}"
 
-    # Look up project by channel identifier
-    project_repo = ProjectRepositoryAsync(session)
-    project = await project_repo.get_project_by_channel_identifier(channel_identifier)
+    # Look up project by channel identifier with eager loading of relationships
+    # Using direct query to ensure agent and account are loaded before session closes
+    query = (
+        select(Project)
+        .options(selectinload(Project.account))
+        .options(selectinload(Project.agent))
+        .filter(Project.channel_identifiers.contains([channel_identifier]))
+    )
+    result = await session.execute(query)
+    project = result.scalar_one_or_none()
 
     if not project:
         raise ValueError(
             f"Project not found for channel identifier: {channel_identifier}"
         )
 
-    # Get agent from project relationship
+    # Extract relationships (already loaded via selectinload)
     agent = project.agent
+    account = project.account
+
     if not agent:
         raise ValueError(f"Agent not found for project: {project.name}")
 
@@ -249,7 +260,7 @@ async def create_realtime_session(
     raw_config = RawConfig(
         agent=agent,
         project=project,
-        account=project.account,
+        account=account,
         user_id=uuid.uuid4(),  # No user context for voice calls
         conversation_id=uuid.uuid4(),  # Generate new conversation ID
         channel=Channel.VOICE,
