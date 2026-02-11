@@ -253,13 +253,13 @@ class VAPIProvider:
         if snake_case:
             return {
                 "num_words": 0,
-                "voice_seconds": 0.4,
+                "voice_seconds": 0.3,
                 "backoff_seconds": 0,
             }
         else:
             return {
                 "numWords": 0,
-                "voiceSeconds": 0.4,
+                "voiceSeconds": 0.3,
                 "backoffSeconds": 0,
             }
 
