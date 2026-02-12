@@ -872,7 +872,7 @@ async def _process_partner_added_event(
             )
             session.add(webhook_event)
             await session.commit()
-            logger.info(
+            logger.debug(
                 f"[ToastWebhook._process_partner_added_event] Stored webhook event for restaurant {restaurant_guid}"
             )
     except Exception as e:
