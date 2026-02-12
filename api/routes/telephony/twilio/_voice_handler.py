@@ -3,15 +3,13 @@ VoiceCallHandler: Orchestrates Twilio ↔ OpenAI Realtime bidirectional audio.
 
 Responsibilities:
 - Manage two WebSocket connections (Twilio and OpenAI)
-- Route audio bidirectionally with format conversion (µ-law ↔ PCM)
+- Route audio bidirectionally (no conversion - both use g711_ulaw)
 - Handle Twilio Media Stream protocol events
 - Integrate with message_service for transcript logging (future)
 - Integrate with tool registry for function execution (future)
 """
 
 import asyncio
-import audioop
-import base64
 import json
 from datetime import datetime, timezone
 from typing import Optional
@@ -148,8 +146,8 @@ class VoiceCallHandler:
         """
         Handle Twilio 'media' event (audio from caller).
 
-        Converts audio format and forwards to OpenAI.
-        CRITICAL: Audio conversion from µ-law (Twilio) to PCM (OpenAI).
+        Forwards µ-law audio directly to OpenAI (no conversion needed).
+        Both Twilio and OpenAI support g711_ulaw format natively.
         """
         self.media_packet_count += 1
 
@@ -160,20 +158,9 @@ class VoiceCallHandler:
             return
 
         try:
-            # Convert Twilio audio (µ-law base64) → OpenAI audio (PCM base64)
-            # NOTE: This conversion is CRITICAL for audio quality
-
-            # Decode base64 → µ-law bytes
-            mulaw_bytes = base64.b64decode(payload_mulaw_b64)
-
-            # Convert µ-law → PCM 16-bit (audioop does the heavy lifting)
-            pcm_bytes = audioop.ulaw2lin(mulaw_bytes, 2)  # 2 = 16-bit samples
-
-            # Encode PCM → base64
-            pcm_b64 = base64.b64encode(pcm_bytes).decode("utf-8")
-
-            # Send to OpenAI
-            await self.realtime_session.send_audio_chunk(pcm_b64)
+            # Pass µ-law audio directly to OpenAI (no conversion)
+            # Both Twilio and OpenAI use g711_ulaw format
+            await self.realtime_session.send_audio_chunk(payload_mulaw_b64)
 
             # Log periodically
             if self.media_packet_count % 100 == 0:
@@ -181,8 +168,7 @@ class VoiceCallHandler:
                     "[VOICE_HANDLER] Audio Twilio→OpenAI",
                     extra={
                         "packet_count": self.media_packet_count,
-                        "mulaw_size": len(mulaw_bytes),
-                        "pcm_size": len(pcm_bytes),
+                        "payload_length": len(payload_mulaw_b64),
                     },
                 )
 
@@ -212,36 +198,25 @@ class VoiceCallHandler:
         """
         Background task: Stream audio from OpenAI → Twilio.
 
-        Converts audio format and sends via Twilio Media Stream protocol.
-        CRITICAL: Audio conversion from PCM (OpenAI) to µ-law (Twilio).
+        Forwards µ-law audio directly to Twilio (no conversion needed).
+        Both OpenAI and Twilio use g711_ulaw format natively.
         """
         try:
             logger.debug("[VOICE_HANDLER] Started OpenAI→Twilio streaming")
 
             async for (
-                audio_chunk_pcm_b64
+                audio_chunk_mulaw_b64
             ) in self.realtime_session.receive_audio_stream():
                 self.audio_chunks_sent += 1
 
                 try:
-                    # Convert OpenAI audio (PCM base64) → Twilio audio (µ-law base64)
-                    # NOTE: This conversion is CRITICAL for Twilio compatibility
-
-                    # Decode base64 → PCM bytes
-                    pcm_bytes = base64.b64decode(audio_chunk_pcm_b64)
-
-                    # Convert PCM 16-bit → µ-law (audioop conversion)
-                    mulaw_bytes = audioop.lin2ulaw(pcm_bytes, 2)  # 2 = 16-bit samples
-
-                    # Encode µ-law → base64
-                    mulaw_b64 = base64.b64encode(mulaw_bytes).decode("utf-8")
-
-                    # Send to Twilio using Media Stream protocol
+                    # Pass µ-law audio directly to Twilio (no conversion)
+                    # Both OpenAI and Twilio use g711_ulaw format
                     media_message = {
                         "event": "media",
                         "streamSid": self.stream_sid,
                         "media": {
-                            "payload": mulaw_b64,
+                            "payload": audio_chunk_mulaw_b64,
                         },
                     }
 
@@ -252,9 +227,7 @@ class VoiceCallHandler:
                         logger.debug(
                             "[VOICE_HANDLER] First audio chunk OpenAI→Twilio",
                             extra={
-                                "pcm_size": len(pcm_bytes),
-                                "mulaw_size": len(mulaw_bytes),
-                                "mulaw_b64_len": len(mulaw_b64),
+                                "payload_length": len(audio_chunk_mulaw_b64),
                             },
                         )
 
