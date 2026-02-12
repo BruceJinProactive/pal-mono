@@ -4,12 +4,10 @@ Slack Command Parsing and Routing Module
 This module handles parsing of Slack commands and routing them to appropriate handlers.
 """
 
-import asyncio
 import re
 from datetime import datetime
 
 from db.session import SyncSessionLocal
-from services.subscription_service._stripe_customer import get_credit_balance
 from utils.log import logger
 
 # =============================================================================
@@ -1031,11 +1029,8 @@ async def handle_subscription_request(message, client):
         message: Slack message object
         client: Slack client object
     """
-    from db.repositories.account_repository import AccountRepositoryAsync
-    from db.session import AsyncSessionLocal
-    from services.subscription_service._subscription import (
-        get_current_subscription_async,
-    )
+    from db.repositories.account_repository import AccountRepository
+    from services.subscription_service._subscription import get_current_subscription
 
     from ._access_control import extract_account_from_channel
     from ._reports import get_channel_name
@@ -1077,17 +1072,11 @@ async def handle_subscription_request(message, client):
             mrkdwn=True,
         )
 
-        # Query account and subscription data
-        # Extract all data inside session to avoid lazy loading errors
-        subscription_data = None
-        stripe_customer_id = None
-        credit_balance_cents = 0
-        credit_currency = "USD"
-        credit_error = None
-
-        async with AsyncSessionLocal() as session:
-            account_repo = AccountRepositoryAsync(session)
-            account = await account_repo.get_account(account_name)
+        # Use SYNC session like other commands (avoids greenlet issues)
+        session = SyncSessionLocal()
+        try:
+            account_repo = AccountRepository(session)
+            account = account_repo.get_account(account_name)
 
             if not account:
                 await client.chat_postMessage(
@@ -1097,15 +1086,15 @@ async def handle_subscription_request(message, client):
                 )
                 return
 
-            # Extract stripe_customer_id before session closes
+            # Get subscription (sync version)
+            subscription = get_current_subscription(session, account)
+
+            # Extract account data (simple values only)
             stripe_customer_id = account.stripe_customer_id
 
-            # Get subscription
-            subscription = await get_current_subscription_async(session, account)
-
-            # Extract all subscription data BEFORE session closes
+            # Extract subscription data
+            subscription_data = None
             if subscription:
-                # Access the relationship inside the session
                 plan = subscription.subscription_plan
                 subscription_data = {
                     "status": subscription.status.value,
@@ -1121,18 +1110,29 @@ async def handle_subscription_request(message, client):
                     "plan_tier": plan.tier.value if plan and plan.tier else None,
                 }
 
-        # Get credit balance in a separate thread to avoid async/sync mixing
-        if stripe_customer_id:
+            # Fetch credit balance (sync function - no greenlet issues!)
+            credit_balance_cents = 0
+            credit_currency = "USD"
+            credit_error = None
+
             try:
-                # Run sync Stripe call in thread pool to isolate from async context
-                credit_balance_cents, credit_currency = await asyncio.to_thread(
-                    get_credit_balance, stripe_customer_id
-                )
+                if stripe_customer_id:
+                    # Call Stripe directly with customer ID (no DB object passed)
+                    from services.subscription_service._stripe_customer import (
+                        get_credit_balance,
+                    )
+
+                    credit_balance_cents, credit_currency = get_credit_balance(
+                        stripe_customer_id
+                    )
             except Exception as e:
                 logger.warning(
                     f"[Slackbot] Could not fetch credit balance for {account_name}: {e}"
                 )
                 credit_error = str(e)
+
+        finally:
+            session.close()
 
         # Format response (session is now closed, but we have all the data)
         lines = [f"💳 *Subscription Info for `{account_name}`*\n"]
