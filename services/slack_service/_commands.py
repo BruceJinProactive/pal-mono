@@ -4,10 +4,12 @@ Slack Command Parsing and Routing Module
 This module handles parsing of Slack commands and routing them to appropriate handlers.
 """
 
+import asyncio
 import re
 from datetime import datetime
 
 from db.session import SyncSessionLocal
+from services.subscription_service._stripe_customer import get_credit_balance
 from utils.log import logger
 
 # =============================================================================
@@ -1119,22 +1121,18 @@ async def handle_subscription_request(message, client):
                     "plan_tier": plan.tier.value if plan and plan.tier else None,
                 }
 
-        # Get credit balance OUTSIDE async session (sync call to Stripe)
-        try:
-            if stripe_customer_id:
-                # Call Stripe API directly with customer ID
-                from services.subscription_service._stripe_customer import (
-                    get_credit_balance,
+        # Get credit balance in a separate thread to avoid async/sync mixing
+        if stripe_customer_id:
+            try:
+                # Run sync Stripe call in thread pool to isolate from async context
+                credit_balance_cents, credit_currency = await asyncio.to_thread(
+                    get_credit_balance, stripe_customer_id
                 )
-
-                credit_balance_cents, credit_currency = get_credit_balance(
-                    stripe_customer_id
+            except Exception as e:
+                logger.warning(
+                    f"[Slackbot] Could not fetch credit balance for {account_name}: {e}"
                 )
-        except Exception as e:
-            logger.warning(
-                f"[Slackbot] Could not fetch credit balance for {account_name}: {e}"
-            )
-            credit_error = str(e)
+                credit_error = str(e)
 
         # Format response (session is now closed, but we have all the data)
         lines = [f"💳 *Subscription Info for `{account_name}`*\n"]
