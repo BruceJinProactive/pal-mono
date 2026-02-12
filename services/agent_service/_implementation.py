@@ -106,9 +106,9 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
 
 
 # Valid model sizes for pal-agents
-ModelSize = Literal["xs", "s", "m", "xm", "l", "xl"]
+ModelSize = Literal["xs", "s", "m", "l", "xl"]
 DEFAULT_MODEL_SIZE: ModelSize = "xs"
-VALID_MODEL_SIZES: set[ModelSize] = {"xs", "s", "m", "xm", "l", "xl"}
+VALID_MODEL_SIZES: set[ModelSize] = {"xs", "s", "m", "l", "xl"}
 
 
 def _build_generic_api_spec_from_raw_config(raw_config: dict) -> GenericAPISpec:

@@ -5,6 +5,7 @@ import uuid
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
+from ddtrace.llmobs import LLMObs
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
@@ -30,7 +31,7 @@ from api.schemas.chat.message import (
 )
 from db.tables.types import Channel
 from services import agent_service, project_service, user_service
-from utils.dd import safe_enable_llmobs, send_dd_histogram_metrics, trace_async_block
+from utils.dd import is_testing_mode, send_dd_histogram_metrics, trace_async_block
 from utils.log import logger
 from utils.request_context import RequestContext
 
@@ -67,8 +68,12 @@ async def get_chat_response_async(
 ) -> list[Message]:
     logger.info(f"get_chat_response_async received message: {message}")
 
-    # Initialize LLM observability safely (non-fatal when integration patching fails).
-    safe_enable_llmobs(ml_app="pal", agentless_enabled=True)
+    # Initialize LLMObs for Datadog LLM Observability
+    if is_testing_mode():
+        # Explicitly disable LLMObs for testing requests to prevent data collection
+        LLMObs.disable()
+    else:
+        LLMObs.enable(ml_app="pal", agentless_enabled=True)
 
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
@@ -360,8 +365,12 @@ async def get_chat_response_stream(
 ) -> AsyncIterator[ChatCompletionChunk]:
     logger.info(f"get_chat_response_stream received message: {message}")
 
-    # Initialize LLM observability safely (non-fatal when integration patching fails).
-    safe_enable_llmobs(ml_app="pal", agentless_enabled=True)
+    # Initialize LLMObs for Datadog LLM Observability
+    if is_testing_mode():
+        # Explicitly disable LLMObs for testing requests to prevent data collection
+        LLMObs.disable()
+    else:
+        LLMObs.enable(ml_app="pal", agentless_enabled=True)
 
     async with trace_async_block("Message Service Stream Processing"):
         message_repo = db.MessageRepositoryAsync(session)
