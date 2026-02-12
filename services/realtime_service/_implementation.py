@@ -2,12 +2,13 @@
 OpenAI Realtime Voice service implementation.
 
 Provides RealtimeSession class for managing OpenAI Realtime API connections
-and factory function for creating sessions with proper configuration.
+with callback support and factory function for creating sessions.
 """
 
+import json
 import os
 import uuid
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable, Optional
 
 from openai import AsyncOpenAI
 from sqlalchemy import select
@@ -19,6 +20,8 @@ from db.tables.types import Channel
 from services.agent_service._raw_config import RawConfig
 from utils.log import logger
 
+from ._config import RealtimeConfig
+
 
 class RealtimeSession:
     """
@@ -26,27 +29,47 @@ class RealtimeSession:
 
     Handles bidirectional audio streaming between Twilio and OpenAI's
     Realtime API using WebSocket connections managed by AsyncOpenAI SDK.
+    Supports callback-based event handling for extensibility.
     """
 
-    def __init__(self, api_key: str, system_prompt: str):
+    def __init__(
+        self,
+        api_key: str,
+        config: RealtimeConfig,
+        # Callbacks (all optional)
+        on_audio_delta: Optional[Callable[[str], None]] = None,
+        on_audio_transcript: Optional[Callable[[dict], None]] = None,
+        on_function_call: Optional[Callable[[str, dict], dict]] = None,
+        on_error: Optional[Callable[[dict], None]] = None,
+    ):
         """
         Initialize RealtimeSession.
 
         Args:
             api_key: OpenAI API key for authentication
-            system_prompt: System instructions for the AI assistant
+            config: RealtimeConfig with session configuration
+            on_audio_delta: Callback for audio chunks (base64 string)
+            on_audio_transcript: Callback for transcript events (dict)
+            on_function_call: Callback for function calls (name, args) -> result
+            on_error: Callback for error events (dict)
         """
         self.api_key = api_key
-        self.system_prompt = system_prompt
+        self.config = config
         self.client: AsyncOpenAI | None = None
         self.connection = None
+
+        # Store callbacks
+        self._on_audio_delta = on_audio_delta
+        self._on_audio_transcript = on_audio_transcript
+        self._on_function_call = on_function_call
+        self._on_error = on_error
 
     async def connect(self) -> None:
         """
         Establish connection to OpenAI Realtime API and configure session.
 
-        Configures audio format (g711_ulaw 8kHz) for Twilio compatibility
-        and sets up server-side Voice Activity Detection (VAD).
+        Uses RealtimeConfig to generate session configuration with proper
+        audio format (audio/pcmu for Twilio compatibility) and VAD settings.
 
         Raises:
             Exception: If connection fails or API key is invalid
@@ -62,35 +85,33 @@ class RealtimeSession:
             ).enter()
             logger.debug("[REALTIME] Connection established successfully")
 
-            # Configure session with nested audio configuration
-            session_config = {
-                "type": "realtime",
-                "audio": {
-                    "input": {
-                        "format": {"type": "audio/pcmu"},
-                        "turn_detection": {"type": "server_vad"},
-                    },
-                    "output": {
-                        "format": {"type": "audio/pcmu"},
-                        "voice": "alloy",
-                    },
-                },
-                "instructions": self.system_prompt,
-                "output_modalities": ["audio"],
-            }
+            # Use config to generate session configuration
+            session_config = self.config.to_session_config()
+
             logger.debug(
                 "[REALTIME] Sending session configuration",
                 extra={
-                    "audio_format": "audio/pcmu",
-                    "voice": "alloy",
-                    "instructions_length": len(self.system_prompt),
+                    "audio_input_format": self.config.input_audio_format,
+                    "audio_output_format": self.config.output_audio_format,
+                    "voice": self.config.voice_id,
+                    "has_tools": len(self.config.tools) > 0,
                 },
             )
             await self.connection.session.update(session=session_config)  # type: ignore[arg-type]
 
             logger.debug(
                 "[REALTIME] Successfully connected and configured OpenAI Realtime API",
-                extra={"model": "gpt-realtime"},
+                extra={
+                    "model": "gpt-realtime",
+                    "has_callbacks": any(
+                        [
+                            self._on_audio_delta,
+                            self._on_audio_transcript,
+                            self._on_function_call,
+                            self._on_error,
+                        ]
+                    ),
+                },
             )
 
         except Exception as e:
@@ -101,7 +122,6 @@ class RealtimeSession:
             )
 
             # Clean up partial resources before re-raising
-            # Close connection if it was established
             if self.connection is not None:
                 try:
                     await self.connection.close()
@@ -111,7 +131,6 @@ class RealtimeSession:
                         extra={"error": str(close_error)},
                     )
 
-            # Close AsyncOpenAI client if it was created
             if self.client is not None:
                 try:
                     await self.client.close()
@@ -133,7 +152,7 @@ class RealtimeSession:
         Send audio chunk to OpenAI for processing.
 
         Args:
-            base64_audio: Base64-encoded audio data in g711_ulaw format
+            base64_audio: Base64-encoded audio data in configured format
 
         Raises:
             RuntimeError: If connection is not established
@@ -157,13 +176,14 @@ class RealtimeSession:
 
     async def receive_audio_stream(self) -> AsyncIterator[str]:
         """
-        Async generator yielding audio chunks from OpenAI.
+        Async generator yielding audio chunks and invoking callbacks.
 
-        Listens for response.output_audio.delta events and yields base64-encoded
-        audio chunks for playback through Twilio.
+        Listens for all event types from OpenAI Realtime API, dispatches
+        to appropriate callbacks, and yields audio chunks for backward
+        compatibility with async generator consumers.
 
         Yields:
-            str: Base64-encoded audio data in g711_ulaw format
+            str: Base64-encoded audio data in configured format
 
         Raises:
             RuntimeError: If connection is not established
@@ -174,48 +194,186 @@ class RealtimeSession:
         try:
             logger.debug("[REALTIME] Starting to listen for OpenAI events")
             async for event in self.connection:
-                # Log all events for debugging
+                event_type = event.type
+
                 logger.debug(
-                    "[REALTIME] Received event from OpenAI",
+                    "[REALTIME] Event received",
                     extra={
-                        "event_type": event.type,
+                        "event_type": event_type,
                         "event_id": getattr(event, "event_id", None),
                     },
                 )
 
-                if event.type == "response.output_audio.delta":
-                    # Yield audio chunk for playback
+                # Audio output delta
+                if event_type == "response.output_audio.delta":
+                    # Safely access delta attribute
+                    audio_chunk = getattr(event, "delta", None)
+                    if not audio_chunk:
+                        logger.warning(
+                            "[REALTIME] Audio delta event missing delta attribute"
+                        )
+                        continue
+
+                    # Invoke callback if registered
+                    if self._on_audio_delta:
+                        try:
+                            self._on_audio_delta(audio_chunk)
+                        except Exception as e:
+                            logger.error(
+                                "[REALTIME] Error in audio delta callback",
+                                extra={"error": str(e)},
+                            )
+
+                    # Yield for async generator consumers
                     logger.debug(
                         "[REALTIME] Yielding audio delta",
                         extra={
-                            "delta_length": len(event.delta),
-                            "delta_preview": event.delta[:50] if event.delta else "",
-                            "has_delta": bool(event.delta),
+                            "delta_length": len(audio_chunk),
+                            "has_delta": bool(audio_chunk),
                         },
                     )
-                    yield event.delta
-                elif event.type == "response.output_audio.done":
-                    # Audio response complete
-                    logger.debug("[REALTIME] Audio response completed")
-                elif event.type == "error":
-                    # Handle API errors
-                    logger.error(
-                        "[REALTIME] OpenAI API error",
-                        extra={
-                            "error": (
-                                event.error if hasattr(event, "error") else str(event)
+                    yield audio_chunk
+
+                # Transcript events
+                elif (
+                    event_type
+                    == "conversation.item.input_audio_transcription.completed"
+                ):
+                    if self._on_audio_transcript:
+                        try:
+                            transcript_data = {
+                                "role": "user",
+                                "transcript": getattr(event, "transcript", ""),
+                                "item_id": getattr(event, "item_id", ""),
+                            }
+                            self._on_audio_transcript(transcript_data)
+                        except Exception as e:
+                            logger.error(
+                                "[REALTIME] Error in transcript callback",
+                                extra={"error": str(e)},
                             )
-                        },
-                    )
+
+                # Function call events
+                elif event_type == "response.function_call_arguments.done":
+                    # Extract call_id first (needed for both success and error response)
+                    func_name = getattr(event, "name", "")
+                    call_id = getattr(event, "call_id", "")
+                    output_json = None
+                    func_args = {}  # Default to empty dict
+
+                    # Parse arguments from JSON string to Python object
+                    func_args_raw = getattr(event, "arguments", "{}")
+                    try:
+                        func_args = json.loads(func_args_raw)
+                    except (json.JSONDecodeError, ValueError) as parse_error:
+                        # Arguments are malformed JSON
+                        logger.error(
+                            "[REALTIME] Failed to parse function call arguments",
+                            extra={
+                                "error": str(parse_error),
+                                "function": func_name,
+                                "arguments_raw": func_args_raw[:200],
+                            },
+                        )
+                        error_response = {
+                            "error": f"Invalid JSON in arguments: {str(parse_error)}",
+                            "type": "JSONDecodeError",
+                            "function": func_name,
+                        }
+                        output_json = json.dumps(error_response)
+
+                    # Only proceed if arguments parsed successfully
+                    if output_json is None and self._on_function_call:
+                        try:
+                            # Execute function callback with parsed arguments
+                            result = self._on_function_call(func_name, func_args)
+
+                            # Serialize result to valid JSON
+                            if isinstance(result, str):
+                                try:
+                                    # Test if string is already valid JSON
+                                    json.loads(result)
+                                    output_json = result  # Already valid JSON
+                                except (json.JSONDecodeError, ValueError):
+                                    # Plain string, needs JSON encoding
+                                    output_json = json.dumps(result)
+                            else:
+                                # Dict, list, or other types - serialize to JSON
+                                output_json = json.dumps(result)
+
+                        except Exception as e:
+                            # On error, create error response
+                            logger.error(
+                                "[REALTIME] Error in function call callback",
+                                extra={"error": str(e), "function": func_name},
+                            )
+                            error_response = {
+                                "error": str(e),
+                                "type": type(e).__name__,
+                                "function": func_name,
+                            }
+                            output_json = json.dumps(error_response)
+
+                    else:
+                        # No callback registered, return error
+                        logger.warning(
+                            "[REALTIME] No function call handler registered",
+                            extra={"function": func_name},
+                        )
+                        error_response = {
+                            "error": "No function call handler registered",
+                            "type": "NotImplementedError",
+                            "function": func_name,
+                        }
+                        output_json = json.dumps(error_response)
+
+                    # Always send function_call_output to OpenAI (success or error)
+                    try:
+                        await self.connection.conversation.item.create(
+                            item={
+                                "type": "function_call_output",
+                                "call_id": call_id,
+                                "output": output_json,
+                            }
+                        )
+                    except Exception as send_error:
+                        logger.error(
+                            "[REALTIME] Failed to send function call output",
+                            extra={"error": str(send_error), "call_id": call_id},
+                        )
+
+                # Audio response complete
+                elif event_type == "response.output_audio.done":
+                    logger.debug("[REALTIME] Audio response completed")
+
+                # Error events
+                elif event_type == "error":
+                    error_data = {
+                        "type": event.type,
+                        "error": getattr(event, "error", str(event)),
+                    }
+
+                    if self._on_error:
+                        try:
+                            self._on_error(error_data)
+                        except Exception as e:
+                            logger.error(
+                                "[REALTIME] Error in error callback",
+                                extra={"error": str(e)},
+                            )
+
+                    logger.error("[REALTIME] API error", extra=error_data)
+
+                # Other events (log for debugging)
                 else:
-                    # Log other events for visibility
                     logger.debug(
-                        f"[REALTIME] Other event: {event.type}",
+                        f"[REALTIME] Other event: {event_type}",
                         extra={"event_data": str(event)[:200]},
                     )
+
         except Exception as e:
             logger.error(
-                "[REALTIME] Error receiving audio from OpenAI",
+                "[REALTIME] Error in event stream",
                 extra={"error": str(e), "error_type": type(e).__name__},
                 exc_info=True,
             )
@@ -254,30 +412,39 @@ class RealtimeSession:
 
 
 async def create_realtime_session(
-    session: AsyncSession, recipient_id: str
+    session: AsyncSession,
+    recipient_id: str,
+    # Optional callbacks
+    on_audio_delta: Optional[Callable[[str], None]] = None,
+    on_audio_transcript: Optional[Callable[[dict], None]] = None,
+    on_function_call: Optional[Callable[[str, dict], dict]] = None,
+    on_error: Optional[Callable[[dict], None]] = None,
 ) -> RealtimeSession:
     """
     Create and connect RealtimeSession for voice conversations.
 
     Looks up project by voice channel identifier, retrieves agent configuration,
-    and establishes OpenAI Realtime API connection.
+    establishes OpenAI Realtime API connection, and optionally registers callbacks.
 
     Args:
         session: Database session for lookups
         recipient_id: Phone number or identifier (e.g., "+15551234567")
+        on_audio_delta: Optional callback for audio chunks
+        on_audio_transcript: Optional callback for transcript events
+        on_function_call: Optional callback for function calls
+        on_error: Optional callback for error events
 
     Returns:
         RealtimeSession: Connected session ready for audio streaming
 
     Raises:
-        ValueError: If project not found for recipient_id
+        ValueError: If project not found for recipient_id or configuration invalid
         Exception: If connection to OpenAI fails
     """
     # Build channel identifier (e.g., "voice:+15551234567")
     channel_identifier = f"voice:{recipient_id}"
 
     # Look up project by channel identifier with eager loading of relationships
-    # Using direct query to ensure agent and account are loaded before session closes
     query = (
         select(Project)
         .options(selectinload(Project.account))
@@ -313,19 +480,34 @@ async def create_realtime_session(
     )
 
     # Build agent prompt using the same method as other channels
-    # This includes brand info, store info, and feature flag checks
     system_prompt = await raw_config._build_agent_prompt(Channel.VOICE, session)
 
     if not system_prompt:
         raise ValueError(f"Agent prompt is empty for agent: {agent.id}")
+
+    # Build RealtimeConfig from agent settings
+    config = RealtimeConfig(
+        system_prompt=system_prompt,
+        voice_id="alloy",  # TODO: Get from voice_config
+        temperature=0.7,  # TODO: Get from agent settings
+        tools=[],  # TODO: Get from agent's enabled tools
+    )
 
     # Get OpenAI API key from environment
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable not set")
 
-    # Create and connect session
-    realtime_session = RealtimeSession(api_key=api_key, system_prompt=system_prompt)
+    # Create session with callbacks
+    realtime_session = RealtimeSession(
+        api_key=api_key,
+        config=config,
+        on_audio_delta=on_audio_delta,
+        on_audio_transcript=on_audio_transcript,
+        on_function_call=on_function_call,
+        on_error=on_error,
+    )
+
     await realtime_session.connect()
 
     logger.info(
@@ -333,6 +515,9 @@ async def create_realtime_session(
         extra={
             "project_name": project.name,
             "agent_id": str(agent.id),
+            "has_callbacks": bool(
+                on_audio_delta or on_audio_transcript or on_function_call or on_error
+            ),
         },
     )
 
