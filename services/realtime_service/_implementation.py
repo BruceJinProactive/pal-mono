@@ -55,34 +55,32 @@ class RealtimeSession:
             # Create AsyncOpenAI client
             self.client = AsyncOpenAI(api_key=self.api_key)
 
-            # Connect to Realtime API (production endpoint)
+            # Connect to Realtime API using async context manager
             logger.debug("[REALTIME] Attempting to connect to OpenAI Realtime API")
             self.connection = await self.client.realtime.connect(
                 model="gpt-realtime"
-            ).enter()
+            ).__aenter__()
             logger.debug("[REALTIME] Connection established successfully")
 
-            # Configure session with nested audio configuration
+            # Configure session with flat audio configuration (SDK v2.20.0 format)
             session_config = {
-                "type": "realtime",
-                "audio": {
-                    "input": {
-                        "format": {"type": "audio/pcmu"},
-                        "turn_detection": {"type": "server_vad"},
-                    },
-                    "output": {
-                        "format": {"type": "audio/pcmu"},
-                        "voice": "alloy",
-                    },
-                },
+                "modalities": ["audio", "text"],
+                "voice": "alloy",
                 "instructions": self.system_prompt,
-                "output_modalities": ["audio"],
-                "model": "gpt-realtime",
+                "input_audio_format": "g711_ulaw",
+                "output_audio_format": "g711_ulaw",
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.5,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 500,
+                },
             }
             logger.debug(
                 "[REALTIME] Sending session configuration",
                 extra={
-                    "audio_format": "audio/pcmu",
+                    "input_audio_format": "g711_ulaw",
+                    "output_audio_format": "g711_ulaw",
                     "voice": "alloy",
                     "instructions_length": len(self.system_prompt),
                 },
@@ -134,7 +132,7 @@ class RealtimeSession:
         Send audio chunk to OpenAI for processing.
 
         Args:
-            base64_audio: Base64-encoded audio data in audio/pcmu format
+            base64_audio: Base64-encoded audio data in g711_ulaw format
 
         Raises:
             RuntimeError: If connection is not established
@@ -164,7 +162,7 @@ class RealtimeSession:
         audio chunks for playback through Twilio.
 
         Yields:
-            str: Base64-encoded audio data in audio/pcmu format
+            str: Base64-encoded audio data in g711_ulaw format
 
         Raises:
             RuntimeError: If connection is not established
