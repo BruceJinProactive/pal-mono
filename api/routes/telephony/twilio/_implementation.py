@@ -144,6 +144,10 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                         sid: str = stream_sid,
                     ):
                         chunk_count = 0
+                        logger.debug(
+                            "[TWILIO_WS] Background task started: streaming OpenAI → Twilio",
+                            extra={"stream_sid": sid},
+                        )
                         try:
                             async for audio_chunk in session.receive_audio_stream():
                                 chunk_count += 1
@@ -159,7 +163,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                                 # Log periodically (every 50 chunks) to avoid log spam
                                 if chunk_count % 50 == 0:
                                     logger.debug(
-                                        "[OPENAI→TWILIO] Sent audio chunk to Twilio",
+                                        "[TWILIO_WS] Sent audio chunk to Twilio",
                                         extra={
                                             "stream_sid": sid,
                                             "chunk_count": chunk_count,
@@ -172,9 +176,21 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                                 extra={"error": str(e), "error_type": type(e).__name__},
                                 exc_info=True,
                             )
+                        finally:
+                            logger.debug(
+                                "[TWILIO_WS] Background task completed: streaming OpenAI → Twilio",
+                                extra={
+                                    "stream_sid": sid,
+                                    "total_chunks_sent": chunk_count,
+                                },
+                            )
 
                     # Start background task
                     background_task = asyncio.create_task(stream_openai_to_twilio())
+                    logger.debug(
+                        "[TWILIO_WS] Background task created for OpenAI → Twilio streaming",
+                        extra={"stream_sid": stream_sid},
+                    )
 
                 elif event_type == "media":
                     # Audio data packet
@@ -190,7 +206,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                             # Log periodically (every 100 packets) to avoid log spam
                             if media_packet_count % 100 == 0:
                                 logger.debug(
-                                    "[TWILIO→OPENAI] Forwarded audio chunk to OpenAI",
+                                    "[TWILIO_WS] Forwarded audio chunk to OpenAI",
                                     extra={
                                         "stream_sid": message.get("streamSid"),
                                         "packet_count": media_packet_count,

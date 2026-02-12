@@ -56,32 +56,41 @@ class RealtimeSession:
             self.client = AsyncOpenAI(api_key=self.api_key)
 
             # Connect to Realtime API (production endpoint)
+            logger.debug("[REALTIME] Attempting to connect to OpenAI Realtime API")
             self.connection = await self.client.realtime.connect(
                 model="gpt-realtime"
             ).enter()
+            logger.debug("[REALTIME] Connection established successfully")
 
             # Configure session with nested audio configuration
-            await self.connection.session.update(
-                session={
-                    "type": "realtime",
-                    "audio": {
-                        "input": {
-                            "format": {"type": "audio/pcmu"},
-                            "turn_detection": {"type": "server_vad"},
-                        },
-                        "output": {
-                            "format": {"type": "audio/pcmu"},
-                            "voice": "alloy",
-                        },
+            session_config = {
+                "type": "realtime",
+                "audio": {
+                    "input": {
+                        "format": {"type": "audio/pcmu"},
+                        "turn_detection": {"type": "server_vad"},
                     },
-                    "instructions": self.system_prompt,
-                    "output_modalities": ["audio"],
-                    "model": "gpt-realtime",
-                }
+                    "output": {
+                        "format": {"type": "audio/pcmu"},
+                        "voice": "alloy",
+                    },
+                },
+                "instructions": self.system_prompt,
+                "output_modalities": ["audio"],
+                "model": "gpt-realtime",
+            }
+            logger.debug(
+                "[REALTIME] Sending session configuration",
+                extra={
+                    "audio_format": "audio/pcmu",
+                    "voice": "alloy",
+                    "instructions_length": len(self.system_prompt),
+                },
             )
+            await self.connection.session.update(session=session_config)  # type: ignore[arg-type]
 
-            logger.info(
-                "[REALTIME] Successfully connected to OpenAI Realtime API",
+            logger.debug(
+                "[REALTIME] Successfully connected and configured OpenAI Realtime API",
                 extra={"model": "gpt-realtime"},
             )
 
@@ -136,6 +145,10 @@ class RealtimeSession:
 
         try:
             await self.connection.input_audio_buffer.append(audio=base64_audio)
+            logger.debug(
+                "[REALTIME] Sent audio chunk to OpenAI input buffer",
+                extra={"payload_length": len(base64_audio)},
+            )
         except Exception as e:
             logger.error(
                 "[REALTIME] Error sending audio to OpenAI",
@@ -160,9 +173,23 @@ class RealtimeSession:
             raise RuntimeError("Connection not established. Call connect() first.")
 
         try:
+            logger.debug("[REALTIME] Starting to listen for OpenAI events")
             async for event in self.connection:
+                # Log all events for debugging
+                logger.debug(
+                    "[REALTIME] Received event from OpenAI",
+                    extra={
+                        "event_type": event.type,
+                        "event_id": getattr(event, "event_id", None),
+                    },
+                )
+
                 if event.type == "response.output_audio.delta":
                     # Yield audio chunk for playback
+                    logger.debug(
+                        "[REALTIME] Yielding audio delta",
+                        extra={"delta_length": len(event.delta)},
+                    )
                     yield event.delta
                 elif event.type == "response.output_audio.done":
                     # Audio response complete
@@ -177,7 +204,12 @@ class RealtimeSession:
                             )
                         },
                     )
-                # Other events (transcripts, VAD, etc.) are logged but not yielded
+                else:
+                    # Log other events for visibility
+                    logger.debug(
+                        f"[REALTIME] Other event: {event.type}",
+                        extra={"event_data": str(event)[:200]},
+                    )
         except Exception as e:
             logger.error(
                 "[REALTIME] Error receiving audio from OpenAI",
