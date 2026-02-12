@@ -188,7 +188,11 @@ class RealtimeSession:
                     # Yield audio chunk for playback
                     logger.debug(
                         "[REALTIME] Yielding audio delta",
-                        extra={"delta_length": len(event.delta)},
+                        extra={
+                            "delta_length": len(event.delta),
+                            "delta_preview": event.delta[:50] if event.delta else "",
+                            "has_delta": bool(event.delta),
+                        },
                     )
                     yield event.delta
                 elif event.type == "response.output_audio.done":

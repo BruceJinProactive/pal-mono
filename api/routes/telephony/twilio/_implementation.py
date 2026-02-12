@@ -85,17 +85,27 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                     custom_params = start_data.get("customParameters", {})
                     recipient_id = custom_params.get("to_number")
 
+                    tracks = start_data.get("tracks")
+                    media_format = start_data.get("mediaFormat")
+
                     logger.debug(
                         "[TWILIO_WS] Twilio media stream started",
                         extra={
                             "stream_sid": stream_sid,
                             "call_sid": call_sid,
                             "account_sid": account_sid,
-                            "tracks": start_data.get("tracks"),
-                            "media_format": start_data.get("mediaFormat"),
+                            "tracks": tracks,
+                            "media_format": media_format,
                             "custom_parameters": start_data.get("customParameters"),
                         },
                     )
+
+                    # Check if outbound track is enabled
+                    if tracks and "outbound" not in tracks:
+                        logger.warning(
+                            "[TWILIO_WS] Outbound track not enabled - audio won't be sent to caller",
+                            extra={"tracks": tracks, "stream_sid": stream_sid},
+                        )
 
                     # Check for required stream_sid
                     if not stream_sid:
@@ -152,12 +162,42 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                             async for audio_chunk in session.receive_audio_stream():
                                 chunk_count += 1
 
+                                # Log first chunk for debugging
+                                if chunk_count == 1:
+                                    logger.debug(
+                                        "[TWILIO_WS] First audio chunk received from OpenAI",
+                                        extra={
+                                            "chunk_length": len(audio_chunk),
+                                            "chunk_preview": (
+                                                audio_chunk[:50] if audio_chunk else ""
+                                            ),
+                                            "stream_sid": sid,
+                                        },
+                                    )
+
                                 # Send audio back to Twilio using media message format
                                 media_message = {
                                     "event": "media",
                                     "streamSid": sid,
                                     "media": {"payload": audio_chunk},
                                 }
+
+                                # Log first message structure for debugging
+                                if chunk_count == 1:
+                                    logger.debug(
+                                        "[TWILIO_WS] First media message structure",
+                                        extra={
+                                            "message_keys": list(media_message.keys()),
+                                            "media_keys": list(
+                                                media_message["media"].keys()
+                                            ),
+                                            "payload_type": type(audio_chunk).__name__,
+                                            "payload_is_string": isinstance(
+                                                audio_chunk, str
+                                            ),
+                                        },
+                                    )
+
                                 await websocket.send_text(json.dumps(media_message))
 
                                 # Log periodically (every 50 chunks) to avoid log spam
