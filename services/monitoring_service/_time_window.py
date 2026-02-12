@@ -2,7 +2,7 @@
 
 Provides time window checking logic for monitoring runs.
 Determines whether monitoring should be skipped based on configured time windows
-and the project's timezone.
+and the store's timezone.
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ async def should_skip_monitoring(
 
     Args:
         session: Async database session
-        project_id: Project UUID to get timezone from
+        project_id: Project UUID to get store timezone from
         time_window_config: Time window configuration dict with keys:
             - enabled: bool
             - start_time: str (HH:MM format)
@@ -97,7 +97,7 @@ async def should_skip_monitoring(
         Returns (False, None) if:
         - time_window_config is None or empty
         - enabled is False
-        - Project timezone is invalid (falls back to allowing monitoring)
+        - Store timezone is invalid (falls back to allowing monitoring)
     """
     # If no time window config or not enabled, don't skip
     if not time_window_config:
@@ -127,7 +127,7 @@ async def should_skip_monitoring(
         start_time = parse_time(start_time_str)
         end_time = parse_time(end_time_str)
 
-        # Get project timezone
+        # Get store timezone
         project_repo = ProjectRepositoryAsync(session)
         project = await project_repo.get_project(project_id)
 
@@ -158,7 +158,7 @@ async def should_skip_monitoring(
             )
             return False, None
 
-        # Get current time in project timezone
+        # Get current time in store timezone
         now_utc = datetime.now(timezone.utc)
         now_local = now_utc.astimezone(tz)
         current_time = now_local.time()
@@ -168,7 +168,7 @@ async def should_skip_monitoring(
             return False, None
         else:
             reason = (
-                f"Outside monitoring time window ({start_time_str}-{end_time_str} {timezone_str}). "
+                f"Outside monitoring time window ({start_time_str}-{end_time_str} store timezone: {timezone_str}). "
                 f"Current time: {current_time.strftime('%H:%M')} {timezone_str}"
             )
             logger.info(

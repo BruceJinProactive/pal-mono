@@ -21,7 +21,7 @@ class MonitoringTimeWindow(BaseModel):
     """Configuration for monitoring time window.
 
     When enabled, monitoring runs will only execute during the specified time window.
-    Times are in HH:MM 24-hour format and interpreted in the project's timezone.
+    Times are in HH:MM 24-hour format and interpreted in the store's timezone.
 
     Supports overnight windows (e.g., 22:00-02:00 for late-night venues).
     """
