@@ -55,32 +55,33 @@ class RealtimeSession:
             # Create AsyncOpenAI client
             self.client = AsyncOpenAI(api_key=self.api_key)
 
-            # Connect to Realtime API using async context manager
+            # Connect to Realtime API (production endpoint)
             logger.debug("[REALTIME] Attempting to connect to OpenAI Realtime API")
             self.connection = await self.client.realtime.connect(
                 model="gpt-realtime"
-            ).__aenter__()
+            ).enter()
             logger.debug("[REALTIME] Connection established successfully")
 
-            # Configure session with flat audio configuration (SDK v2.20.0 format)
+            # Configure session with nested audio configuration
             session_config = {
-                "modalities": ["audio", "text"],
-                "voice": "alloy",
-                "instructions": self.system_prompt,
-                "input_audio_format": "g711_ulaw",
-                "output_audio_format": "g711_ulaw",
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.5,
-                    "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500,
+                "type": "realtime",
+                "audio": {
+                    "input": {
+                        "format": {"type": "audio/pcmu"},
+                        "turn_detection": {"type": "server_vad"},
+                    },
+                    "output": {
+                        "format": {"type": "audio/pcmu"},
+                        "voice": "alloy",
+                    },
                 },
+                "instructions": self.system_prompt,
+                "output_modalities": ["audio"],
             }
             logger.debug(
                 "[REALTIME] Sending session configuration",
                 extra={
-                    "input_audio_format": "g711_ulaw",
-                    "output_audio_format": "g711_ulaw",
+                    "audio_format": "audio/pcmu",
                     "voice": "alloy",
                     "instructions_length": len(self.system_prompt),
                 },
