@@ -1032,7 +1032,6 @@ async def handle_subscription_request(message, client):
     from db.repositories.account_repository import AccountRepositoryAsync
     from db.session import AsyncSessionLocal
     from services.subscription_service._subscription import (
-        get_account_credit_balance,
         get_current_subscription_async,
     )
 
@@ -1079,6 +1078,7 @@ async def handle_subscription_request(message, client):
         # Query account and subscription data
         # Extract all data inside session to avoid lazy loading errors
         subscription_data = None
+        stripe_customer_id = None
         credit_balance_cents = 0
         credit_currency = "USD"
         credit_error = None
@@ -1094,6 +1094,9 @@ async def handle_subscription_request(message, client):
                     mrkdwn=True,
                 )
                 return
+
+            # Extract stripe_customer_id before session closes
+            stripe_customer_id = account.stripe_customer_id
 
             # Get subscription
             subscription = await get_current_subscription_async(session, account)
@@ -1116,17 +1119,22 @@ async def handle_subscription_request(message, client):
                     "plan_tier": plan.tier.value if plan and plan.tier else None,
                 }
 
-            # Get credit balance (sync call to Stripe)
-            try:
-                if account.stripe_customer_id:
-                    credit_balance_cents, credit_currency = get_account_credit_balance(
-                        account
-                    )
-            except Exception as e:
-                logger.warning(
-                    f"[Slackbot] Could not fetch credit balance for {account_name}: {e}"
+        # Get credit balance OUTSIDE async session (sync call to Stripe)
+        try:
+            if stripe_customer_id:
+                # Call Stripe API directly with customer ID
+                from services.subscription_service._stripe_customer import (
+                    get_credit_balance,
                 )
-                credit_error = str(e)
+
+                credit_balance_cents, credit_currency = get_credit_balance(
+                    stripe_customer_id
+                )
+        except Exception as e:
+            logger.warning(
+                f"[Slackbot] Could not fetch credit balance for {account_name}: {e}"
+            )
+            credit_error = str(e)
 
         # Format response (session is now closed, but we have all the data)
         lines = [f"💳 *Subscription Info for `{account_name}`*\n"]

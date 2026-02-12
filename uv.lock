@@ -2538,6 +2538,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b5/a0/cf4297aa51bbc21e83ef0ac018947fa06aea8f2364aad7c96cbf148590e6/openai-2.20.0-py3-none-any.whl", hash = "sha256:38d989c4b1075cd1f76abc68364059d822327cf1a932531d429795f4fc18be99", size = 1098479, upload-time = "2026-02-10T19:02:52.157Z" },
 ]
 
+[package.optional-dependencies]
+realtime = [
+    { name = "websockets" },
+]
+
 [[package]]
 name = "openai-agents"
 version = "0.8.3"
@@ -2631,7 +2636,7 @@ dependencies = [
     { name = "llama-index-vector-stores-pinecone" },
     { name = "mem0ai" },
     { name = "notion-client" },
-    { name = "openai" },
+    { name = "openai", extra = ["realtime"] },
     { name = "pal-agents" },
     { name = "pgvector" },
     { name = "pinecone" },
@@ -2699,7 +2704,7 @@ requires-dist = [
     { name = "llama-index-vector-stores-pinecone", specifier = "==0.7.1" },
     { name = "mem0ai", specifier = "==1.0.3" },
     { name = "notion-client", specifier = "==2.2.1" },
-    { name = "openai", specifier = "==2.20.0" },
+    { name = "openai", extras = ["realtime"], specifier = "==2.20.0" },
     { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.51" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
