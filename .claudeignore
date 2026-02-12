@@ -5,3 +5,7 @@
 !.claude/
 !.claude/docs/
 !.claude/docs/architecture.md
+
+# Allow skills submodule
+!.claude/skills/
+!.claude/skills/**
