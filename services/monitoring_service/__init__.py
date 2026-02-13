@@ -25,7 +25,12 @@ from ._implementation import (
     update_config,
     upload_reference_images,
 )
-from ._llm import create_monitoring_run_with_analysis, generate_monitoring_llm_prompt
+from ._llm import (
+    create_monitoring_run_with_analysis,
+    create_monitoring_video_run_with_analysis,
+    generate_monitoring_llm_prompt,
+    generate_monitoring_video_llm_prompt,
+)
 from ._time_window import is_within_time_window, parse_time, should_skip_monitoring
 
 __all__ = [
@@ -45,7 +50,9 @@ __all__ = [
     "upload_reference_images",
     "cleanup_reference_images",
     "generate_monitoring_llm_prompt",
+    "generate_monitoring_video_llm_prompt",
     "create_monitoring_run_with_analysis",
+    "create_monitoring_video_run_with_analysis",
     "parse_time",
     "is_within_time_window",
     "should_skip_monitoring",

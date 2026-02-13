@@ -147,6 +147,33 @@ class MonitoringLLMProviderBase(ABC):
         """
         pass
 
+    @abstractmethod
+    def analyze_video_frames(
+        self,
+        system_instruction: str,
+        analysis_task: str,
+        reference_images: list[dict[str, Any]],
+        video_frames: list[dict[str, Any]],
+        response_format: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Analyze video frames extracted at regular intervals against reference images.
+
+        Args:
+            system_instruction: System-level instruction for the LLM
+            analysis_task: Specific task description
+            reference_images: List of reference images with descriptions and base64 data
+            video_frames: List of dicts with 'base64_data' and 'timestamp_label' keys
+            response_format: Optional JSON schema for structured output
+
+        Returns:
+            dict: Analysis result containing "result" and "details" keys
+
+        Raises:
+            Exception: If LLM call fails
+        """
+        pass
+
 
 class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
     """Azure OpenAI provider for monitoring LLM analysis."""
@@ -317,6 +344,122 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             )
             raise
 
+    def analyze_video_frames(
+        self,
+        system_instruction: str,
+        analysis_task: str,
+        reference_images: list[dict[str, Any]],
+        video_frames: list[dict[str, Any]],
+        response_format: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Analyze video frames using Azure OpenAI Vision API.
+
+        Args:
+            system_instruction: System-level instruction
+            analysis_task: Specific task description
+            reference_images: List of dicts with 'description' and 'base64_data' keys
+            video_frames: List of dicts with 'base64_data' and 'timestamp_label' keys
+            response_format: Optional JSON schema for structured output
+
+        Returns:
+            dict: Analysis result from Azure OpenAI
+
+        Raises:
+            Exception: If Azure OpenAI API call fails
+        """
+        # Build message content
+        message_content: list[dict[str, Any]] = [
+            {"type": "text", "text": system_instruction},
+            {"type": "text", "text": analysis_task},
+        ]
+
+        # Add reference images
+        if reference_images:
+            message_content.append({"type": "text", "text": "Reference Images:"})
+            for idx, ref_img in enumerate(reference_images, 1):
+                message_content.append(
+                    {
+                        "type": "text",
+                        "text": f"Reference {idx}: {ref_img['description']}",
+                    }
+                )
+                message_content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{ref_img['base64_data']}",
+                            "detail": "high",
+                        },
+                    }
+                )
+
+        # Add video frames with timestamp labels
+        message_content.append(
+            {"type": "text", "text": "Video Frames (captured at regular intervals):"}
+        )
+        for frame in video_frames:
+            message_content.append(
+                {
+                    "type": "text",
+                    "text": f"Frame at {frame['timestamp_label']}:",
+                }
+            )
+            message_content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{frame['base64_data']}",
+                        "detail": "high",
+                    },
+                }
+            )
+
+        # Determine response format
+        openai_response_format = (
+            response_format if response_format else {"type": "json_object"}
+        )
+
+        logger.info(
+            f"[Monitoring LLM] Using Azure OpenAI (video) - Model: {self.config.model}, "
+            f"Deployment: {self.deployment_name}, Frames: {len(video_frames)}, "
+            f"Max Tokens: {self.config.max_tokens}"
+        )
+
+        response = self.client.chat.completions.create(
+            model=self.deployment_name,
+            messages=[{"role": "user", "content": message_content}],  # type: ignore[arg-type]
+            response_format=openai_response_format,  # type: ignore[arg-type]
+            max_tokens=self.config.max_tokens,
+        )
+
+        # Log token usage
+        if response.usage:
+            logger.info(
+                f"[Monitoring LLM] Azure OpenAI (video) token usage - "
+                f"Model: {self.config.model}, "
+                f"Prompt: {response.usage.prompt_tokens}, "
+                f"Completion: {response.usage.completion_tokens}, "
+                f"Total: {response.usage.total_tokens}"
+            )
+
+        # Parse and return response
+        try:
+            content = response.choices[0].message.content or "{}"
+            result = json.loads(content)
+            logger.info(
+                f"[Monitoring LLM] Azure OpenAI video analysis completed - Result: {result.get('result', 'unknown')}"
+            )
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"[Monitoring LLM] Failed to parse Azure OpenAI video response as JSON: {e}"
+            )
+            logger.error(
+                f"[Monitoring LLM] Raw response content: {response.choices[0].message.content}"
+            )
+            raise
+
 
 class GoogleMonitoringProvider(MonitoringLLMProviderBase):
     """Google Gemini provider for monitoring LLM analysis."""
@@ -481,6 +624,136 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
         except json.JSONDecodeError as e:
             logger.error(
                 f"[Monitoring LLM] Failed to parse Gemini response as JSON: {e}"
+            )
+            logger.error(f"[Monitoring LLM] Raw response text: {response.text}")
+            raise
+
+    def analyze_video_frames(
+        self,
+        system_instruction: str,
+        analysis_task: str,
+        reference_images: list[dict[str, Any]],
+        video_frames: list[dict[str, Any]],
+        response_format: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Analyze video frames using Google Gemini Vision API.
+
+        Args:
+            system_instruction: System-level instruction
+            analysis_task: Specific task description
+            reference_images: List of dicts with 'description' and 'base64_data' keys
+            video_frames: List of dicts with 'base64_data' and 'timestamp_label' keys
+            response_format: Optional JSON schema for structured output
+
+        Returns:
+            dict: Analysis result from Gemini
+
+        Raises:
+            Exception: If Gemini API call fails
+        """
+        # Build content parts for multimodal input
+        content_parts: list[str | Part] = [system_instruction + "\n\n" + analysis_task]
+
+        # Add reference images with descriptions
+        if reference_images:
+            content_parts.append("\n**Reference Images (Expected State):**")
+            for idx, ref_img in enumerate(reference_images, 1):
+                content_parts.append(f"\nReference {idx}: {ref_img['description']}")
+                image_bytes = base64.b64decode(ref_img["base64_data"])
+                content_parts.append(
+                    Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+                )
+
+        # Add video frames with timestamp labels
+        content_parts.append(
+            "\n**Video Frames (captured at regular intervals):**\nPlease analyze these frames from the monitoring camera and evaluate based on the analysis task."
+        )
+        for frame in video_frames:
+            content_parts.append(f"\nFrame at {frame['timestamp_label']}:")
+            frame_bytes = base64.b64decode(frame["base64_data"])
+            content_parts.append(
+                Part.from_bytes(data=frame_bytes, mime_type="image/jpeg")
+            )
+
+        logger.info(
+            f"[Monitoring LLM] Using Google Gemini (video) - Model: {self.config.model}, "
+            f"Frames: {len(video_frames)}, Max Tokens: {self.config.max_tokens}"
+        )
+
+        # Configure generation with JSON schema support
+        generation_config_params = {
+            "max_output_tokens": self.config.max_tokens,
+            "temperature": 0.0,
+            "response_mime_type": "application/json",
+        }
+
+        if response_format:
+            if isinstance(response_format, dict) and "type" in response_format:
+                if response_format.get("type") == "json_schema":
+                    schema = response_format.get("json_schema", {}).get("schema")
+                    if schema:
+                        gemini_schema = copy.deepcopy(schema)
+                        gemini_schema = _strip_additional_properties(gemini_schema)
+                        generation_config_params["response_schema"] = gemini_schema
+                        logger.info(
+                            "[Monitoring LLM] Using structured output with native Gemini JSON schema (video)"
+                        )
+                    else:
+                        content_parts.append(
+                            '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
+                        )
+                        logger.warning(
+                            "[Monitoring LLM] json_schema type specified but no schema found, falling back to prompt instructions (video)"
+                        )
+                else:
+                    content_parts.append(
+                        '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
+                    )
+                    logger.info(
+                        "[Monitoring LLM] Using JSON object mode with prompt instructions (video)"
+                    )
+            else:
+                cleaned_schema = copy.deepcopy(response_format)
+                cleaned_schema = _strip_additional_properties(cleaned_schema)
+                generation_config_params["response_schema"] = cleaned_schema
+                logger.info(
+                    "[Monitoring LLM] Using structured output with direct schema (video)"
+                )
+        else:
+            content_parts.append(
+                '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
+            )
+            logger.info("[Monitoring LLM] Using default JSON response format (video)")
+
+        generation_config = GenerateContentConfig(**generation_config_params)
+
+        response = self.client.models.generate_content(
+            model=self.config.model,
+            contents=content_parts,  # type: ignore[arg-type]
+            config=generation_config,
+        )
+
+        # Log token usage
+        if response.usage_metadata:
+            logger.info(
+                f"[Monitoring LLM] Gemini (video) token usage - "
+                f"Model: {self.config.model}, "
+                f"Prompt: {response.usage_metadata.prompt_token_count}, "
+                f"Completion: {response.usage_metadata.candidates_token_count}, "
+                f"Total: {response.usage_metadata.total_token_count}"
+            )
+
+        # Parse and return response
+        try:
+            result = json.loads(response.text or "{}")
+            logger.info(
+                f"[Monitoring LLM] Gemini video analysis completed - Result: {result.get('result', 'unknown')}"
+            )
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"[Monitoring LLM] Failed to parse Gemini video response as JSON: {e}"
             )
             logger.error(f"[Monitoring LLM] Raw response text: {response.text}")
             raise

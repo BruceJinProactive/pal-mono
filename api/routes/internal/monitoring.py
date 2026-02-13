@@ -82,6 +82,17 @@ class CreateMonitoringRunRequest(BaseModel):
     )
 
 
+class CreateVideoMonitoringRunRequest(BaseModel):
+    """Request to create a video monitoring run (called by Video Processor Lambda)."""
+
+    monitoring_config_id: UUID = Field(..., description="Monitoring config UUID")
+    trigger_metadata: dict = Field(
+        ...,
+        description="Metadata about what triggered this run (SQS message, user, etc.)",
+    )
+    video_url: str = Field(..., description="S3 key of video file to analyze")
+
+
 class CreateMonitoringRunResponse(BaseModel):
     """Response after creating a monitoring run."""
 
@@ -589,4 +600,193 @@ async def create_monitoring_run(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to run LLM analysis: {str(e)}",
+        ) from e
+
+
+@monitoring_router.post("/video-runs", status_code=status.HTTP_200_OK)
+async def create_video_monitoring_run(
+    request: CreateVideoMonitoringRunRequest,
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CreateMonitoringRunResponse:
+    """
+    Run AI analysis on video frames and save the monitoring run to database.
+
+    Downloads the video from S3, extracts frames at 10-second intervals,
+    and sends them to the configured VLM for analysis against reference images.
+
+    Returns the created monitoring run with prompt and analysis results.
+    If the monitoring config has a time window configured and the current time
+    is outside that window, the run will be skipped and result will be "skipped".
+
+    Called by Video Processor Lambda.
+
+    Args:
+        request: Video monitoring run creation request
+        session: Async database session
+
+    Returns:
+        Created monitoring run with prompt sent and analysis result
+
+    Raises:
+        400: No frames could be extracted from video
+        404: Monitoring config not found
+        500: Video processing, LLM analysis, or database error
+    """
+    try:
+        # Validate monitoring config exists
+        config_repo = MonitoringConfigRepositoryAsync(session)
+        config = await config_repo.get_by_id(request.monitoring_config_id)
+
+        if not config:
+            logger.warning(
+                f"[Internal API] Monitoring config not found: {request.monitoring_config_id}",
+                extra={"monitoring_config_id": str(request.monitoring_config_id)},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Monitoring config {request.monitoring_config_id} not found",
+            )
+
+        # Check time window before running LLM analysis
+        time_window_config = None
+        if config.rules:
+            time_window_config = config.rules.get("monitoring_time_window")
+
+        should_skip, skip_reason = await monitoring_service.should_skip_monitoring(
+            session=session,
+            project_id=config.project_id,
+            time_window_config=time_window_config,
+        )
+
+        # Log time window check decision
+        if time_window_config and time_window_config.get("enabled"):
+            logger.info(
+                f"[TimeWindow] Route handler check (video): should_skip={should_skip}, reason={skip_reason}",
+                extra={
+                    "enforcement_point": "route_handler",
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "should_skip": should_skip,
+                    "skip_reason": skip_reason,
+                    "time_window_config": time_window_config,
+                },
+            )
+        else:
+            logger.debug(
+                "[TimeWindow] Route handler (video): time window not configured or not enabled",
+                extra={
+                    "enforcement_point": "route_handler",
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "time_window_config": time_window_config,
+                },
+            )
+
+        if should_skip:
+            # Create a skipped run record
+            run_repo = MonitoringRunRepositoryAsync(session)
+            skipped_run = MonitoringRun(
+                monitoring_config_id=request.monitoring_config_id,
+                trigger_metadata={
+                    **request.trigger_metadata,
+                    "skipped": True,
+                    "skip_reason": skip_reason,
+                },
+                started_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
+                evaluation_result={"result": "skipped", "reason": skip_reason},
+            )
+            created_run = await run_repo.create(skipped_run)
+
+            logger.info(
+                f"[Internal API] Video monitoring run skipped for config {request.monitoring_config_id}",
+                extra={
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "run_id": str(created_run.id),
+                    "skip_reason": skip_reason,
+                },
+            )
+
+            return CreateMonitoringRunResponse(
+                run_id=created_run.id,
+                monitoring_config_id=request.monitoring_config_id,
+                prompt_sent={},
+                analysis_result={"result": "skipped", "reason": skip_reason},
+                started_at=created_run.started_at,
+                completed_at=created_run.completed_at,
+                error_message=None,
+                skipped=True,
+            )
+
+        # Run LLM video analysis and create monitoring run
+        logger.info(
+            f"[Internal API] Running video LLM analysis for config {request.monitoring_config_id}",
+            extra={
+                "monitoring_config_id": str(request.monitoring_config_id),
+                "video_url": request.video_url,
+            },
+        )
+
+        monitoring_run, analysis_details = (
+            await monitoring_service.create_monitoring_video_run_with_analysis(
+                session=session,
+                monitoring_config_id=request.monitoring_config_id,
+                video_url=request.video_url,
+                trigger_metadata=request.trigger_metadata,
+            )
+        )
+
+        analysis_result = analysis_details.get("analysis_result", {})
+        result_status = analysis_result.get("result")
+        was_skipped = analysis_details.get("skipped", False)
+
+        # Log result
+        if was_skipped:
+            logger.info(
+                f"[Internal API] Video monitoring run skipped for config {request.monitoring_config_id}",
+                extra={
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "run_id": str(monitoring_run.id),
+                    "reason": analysis_result.get("reason"),
+                },
+            )
+        elif result_status == "error":
+            logger.warning(
+                f"[Internal API] Video LLM analysis returned error for config {request.monitoring_config_id}",
+                extra={
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "run_id": str(monitoring_run.id),
+                    "error_message": monitoring_run.error_message,
+                },
+            )
+        else:
+            logger.info(
+                f"[Internal API] Video LLM analysis completed for config {request.monitoring_config_id}",
+                extra={
+                    "monitoring_config_id": str(request.monitoring_config_id),
+                    "run_id": str(monitoring_run.id),
+                    "result": result_status,
+                },
+            )
+
+        return CreateMonitoringRunResponse(
+            run_id=monitoring_run.id,
+            monitoring_config_id=request.monitoring_config_id,
+            prompt_sent=analysis_details.get("prompt_sent", {}),
+            analysis_result=analysis_result,
+            started_at=monitoring_run.started_at,
+            completed_at=monitoring_run.completed_at,
+            error_message=monitoring_run.error_message,
+            skipped=was_skipped,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"[Internal API] Error running video LLM analysis for config {request.monitoring_config_id}",
+            exc_info=True,
+            extra={"monitoring_config_id": str(request.monitoring_config_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to run video LLM analysis: {str(e)}",
         ) from e

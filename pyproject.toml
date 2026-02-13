@@ -14,6 +14,7 @@ dependencies = [
   "alembic==1.13.2", # Database migration tool for SQLAlchemy
   "anthropic==0.71.0", # Official Anthropic API client for Claude models
   "asyncpg==0.30.0", # High-performance async PostgreSQL driver
+  "av>=13.0.0", # PyAV - Python bindings for FFmpeg for video frame extraction
   "beautifulsoup4==4.12.3", # HTML/XML parsing and web scraping library
   "boto3==1.40.61", # Amazon Web Services SDK for Python
   "cryptography==44.0.2", # Modern cryptographic recipes and primitives
@@ -45,6 +46,7 @@ dependencies = [
   "polyline==2.0.2", # Google polyline encoding/decoding for GPS coordinates
   "postmarker>=1.0.0",
   "psycopg[binary]==3.2.1", # Modern PostgreSQL adapter with binary wheels
+  "pytest-asyncio==0.24.0", # Async test support for pytest
   "pytest-cov==6.0.0", # Code coverage reporting for pytest
   "pytest-mock==3.14.0", # Mocking and patching utilities for pytest
   "pytest==8.3.2", # Python testing framework with fixtures and plugins
