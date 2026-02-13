@@ -63,6 +63,7 @@ class RealtimeConfig(BaseModel):
             dict: Session configuration for OpenAI Realtime API
         """
         config = {
+            "type": "realtime",  # Required field
             "modalities": ["audio"],
             "instructions": self.system_prompt,
             "voice": self.voice_id,
