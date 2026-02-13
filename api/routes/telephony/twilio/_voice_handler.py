@@ -163,10 +163,11 @@ class VoiceCallHandler:
             await self.realtime_session.send_audio_chunk(payload_mulaw_b64)
 
             # Log periodically
-            if self.media_packet_count % 100 == 0:
+            if self.media_packet_count % 20 == 0:
                 logger.debug(
                     "[VOICE_HANDLER] Audio Twilio→OpenAI",
                     extra={
+                        "stream_sid": self.stream_sid,
                         "packet_count": self.media_packet_count,
                         "payload_length": len(payload_mulaw_b64),
                     },
@@ -228,14 +229,18 @@ class VoiceCallHandler:
                             "[VOICE_HANDLER] First audio chunk OpenAI→Twilio",
                             extra={
                                 "payload_length": len(audio_chunk_mulaw_b64),
+                                "stream_sid": self.stream_sid,
                             },
                         )
 
                     # Log periodically
-                    if self.audio_chunks_sent % 50 == 0:
+                    if self.audio_chunks_sent % 10 == 0:
                         logger.debug(
                             "[VOICE_HANDLER] Audio OpenAI→Twilio",
-                            extra={"chunks_sent": self.audio_chunks_sent},
+                            extra={
+                                "stream_sid": self.stream_sid,
+                                "chunks_sent": self.audio_chunks_sent,
+                            },
                         )
 
                 except Exception as e:

@@ -5,7 +5,6 @@ Provides RealtimeSession class for managing OpenAI Realtime API connections
 with callback support and factory function for creating sessions.
 """
 
-import json
 import os
 import uuid
 from typing import AsyncIterator, Callable, Optional
@@ -63,6 +62,9 @@ class RealtimeSession:
         self._on_audio_transcript = on_audio_transcript
         self._on_function_call = on_function_call
         self._on_error = on_error
+
+        # Counters for logging
+        self.audio_chunks_sent_to_openai = 0
 
     async def connect(self) -> None:
         """
@@ -161,11 +163,22 @@ class RealtimeSession:
             raise RuntimeError("Connection not established. Call connect() first.")
 
         try:
+            self.audio_chunks_sent_to_openai += 1
             await self.connection.input_audio_buffer.append(audio=base64_audio)
-            logger.debug(
-                "[REALTIME] Sent audio chunk to OpenAI input buffer",
-                extra={"payload_length": len(base64_audio)},
-            )
+
+            if self.audio_chunks_sent_to_openai == 1:
+                logger.debug(
+                    "[REALTIME] First audio chunk sent to OpenAI",
+                    extra={"payload_length": len(base64_audio)},
+                )
+            elif self.audio_chunks_sent_to_openai % 20 == 0:
+                logger.debug(
+                    "[REALTIME] Audio chunks sent to OpenAI",
+                    extra={
+                        "chunks_sent": self.audio_chunks_sent_to_openai,
+                        "payload_length": len(base64_audio),
+                    },
+                )
         except Exception as e:
             logger.error(
                 "[REALTIME] Error sending audio to OpenAI",
@@ -238,12 +251,24 @@ class RealtimeSession:
                     event_type
                     == "conversation.item.input_audio_transcription.completed"
                 ):
+                    transcript_text = getattr(event, "transcript", "")
+                    item_id = getattr(event, "item_id", "")
+
+                    # Always log user transcripts for debugging
+                    logger.info(
+                        "[REALTIME] User transcript",
+                        extra={
+                            "transcript": transcript_text,
+                            "item_id": item_id,
+                        },
+                    )
+
                     if self._on_audio_transcript:
                         try:
                             transcript_data = {
                                 "role": "user",
-                                "transcript": getattr(event, "transcript", ""),
-                                "item_id": getattr(event, "item_id", ""),
+                                "transcript": transcript_text,
+                                "item_id": item_id,
                             }
                             self._on_audio_transcript(transcript_data)
                         except Exception as e:
@@ -252,98 +277,17 @@ class RealtimeSession:
                                 extra={"error": str(e)},
                             )
 
-                # Function call events
-                elif event_type == "response.function_call_arguments.done":
-                    # Extract call_id first (needed for both success and error response)
-                    func_name = getattr(event, "name", "")
-                    call_id = getattr(event, "call_id", "")
-                    output_json = None
-                    func_args = {}  # Default to empty dict
-
-                    # Parse arguments from JSON string to Python object
-                    func_args_raw = getattr(event, "arguments", "{}")
-                    try:
-                        func_args = json.loads(func_args_raw)
-                    except (json.JSONDecodeError, ValueError) as parse_error:
-                        # Arguments are malformed JSON
-                        logger.error(
-                            "[REALTIME] Failed to parse function call arguments",
-                            extra={
-                                "error": str(parse_error),
-                                "function": func_name,
-                                "arguments_raw": func_args_raw[:200],
-                            },
-                        )
-                        error_response = {
-                            "error": f"Invalid JSON in arguments: {str(parse_error)}",
-                            "type": "JSONDecodeError",
-                            "function": func_name,
-                        }
-                        output_json = json.dumps(error_response)
-
-                    # Only proceed if arguments parsed successfully
-                    if output_json is None and self._on_function_call:
-                        try:
-                            # Execute function callback with parsed arguments
-                            result = self._on_function_call(func_name, func_args)
-
-                            # Serialize result to valid JSON
-                            if isinstance(result, str):
-                                try:
-                                    # Test if string is already valid JSON
-                                    json.loads(result)
-                                    output_json = result  # Already valid JSON
-                                except (json.JSONDecodeError, ValueError):
-                                    # Plain string, needs JSON encoding
-                                    output_json = json.dumps(result)
-                            else:
-                                # Dict, list, or other types - serialize to JSON
-                                output_json = json.dumps(result)
-
-                        except Exception as e:
-                            # On error, create error response
-                            logger.error(
-                                "[REALTIME] Error in function call callback",
-                                extra={"error": str(e), "function": func_name},
-                            )
-                            error_response = {
-                                "error": str(e),
-                                "type": type(e).__name__,
-                                "function": func_name,
-                            }
-                            output_json = json.dumps(error_response)
-
-                    else:
-                        # No callback registered, return error
-                        logger.warning(
-                            "[REALTIME] No function call handler registered",
-                            extra={"function": func_name},
-                        )
-                        error_response = {
-                            "error": "No function call handler registered",
-                            "type": "NotImplementedError",
-                            "function": func_name,
-                        }
-                        output_json = json.dumps(error_response)
-
-                    # Always send function_call_output to OpenAI (success or error)
-                    try:
-                        await self.connection.conversation.item.create(
-                            item={
-                                "type": "function_call_output",
-                                "call_id": call_id,
-                                "output": output_json,
-                            }
-                        )
-                    except Exception as send_error:
-                        logger.error(
-                            "[REALTIME] Failed to send function call output",
-                            extra={"error": str(send_error), "call_id": call_id},
-                        )
-
                 # Audio response complete
                 elif event_type == "response.output_audio.done":
                     logger.debug("[REALTIME] Audio response completed")
+
+                # Assistant transcript completed
+                elif event_type == "response.audio_transcript.done":
+                    transcript = getattr(event, "transcript", "")
+                    logger.info(
+                        "[REALTIME] Assistant transcript",
+                        extra={"transcript": transcript},
+                    )
 
                 # Error events
                 elif event_type == "error":
@@ -481,6 +425,7 @@ async def create_realtime_session(
     # Build agent prompt using the same method as other channels
     system_prompt = await raw_config._build_agent_prompt(Channel.VOICE, session)
 
+    logger.debug(f"[REALTIME] fetched system prompt: {system_prompt}")
     if not system_prompt:
         raise ValueError(f"Agent prompt is empty for agent: {agent.id}")
 

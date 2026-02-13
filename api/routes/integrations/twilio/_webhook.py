@@ -285,7 +285,7 @@ async def handle_voice_webhook(request: Request) -> Response:
         twiml_xml = generate_stream_twiml(
             websocket_url=websocket_url,
             parameters=stream_parameters if stream_parameters else None,
-            message="Please wait while we connect your call.",
+            message="Hi, this is Palona AI agent. How can I help you today?",
         )
 
         logger.debug(

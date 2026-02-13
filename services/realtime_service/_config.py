@@ -56,6 +56,7 @@ class RealtimeConfig(BaseModel):
                 "input": {
                     "format": {"type": self.input_audio_format},
                     "turn_detection": {"type": self.turn_detection_type},
+                    "transcription": {"model": "whisper-1"},  # Enable transcription
                 },
                 "output": {
                     "format": {"type": self.output_audio_format},
@@ -63,7 +64,7 @@ class RealtimeConfig(BaseModel):
                 },
             },
             "instructions": self.system_prompt,
-            "output_modalities": ["audio"],  # Use output_modalities, not modalities
+            "output_modalities": ["audio"],
         }
 
         return config
