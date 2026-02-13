@@ -126,19 +126,20 @@ def generate_stream_twiml(
             )
 
     # Build TwiML with escaped WebSocket URL
-    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Start>
-        <Stream url="{escaped_websocket_url}">{param_elements}</Stream>
-    </Start>"""
+    # NOTE: <Say> must come BEFORE <Connect> to initialize Twilio's audio path
+    twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>"""
 
     if message:
         # Escape message for XML
         escaped_message = _escape_xml(message)
-        twiml += f"<Say>{escaped_message}</Say>"
+        twiml += f"""
+    <Say>{escaped_message}</Say>"""
 
-    twiml += """
-    <Pause length="60"/>
+    twiml += f"""
+    <Connect>
+        <Stream url="{escaped_websocket_url}">{param_elements}</Stream>
+    </Connect>
 </Response>"""
 
     return twiml
