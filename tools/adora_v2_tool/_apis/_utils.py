@@ -104,6 +104,13 @@ async def connect_adora_order_hub(
 
         url = get_endpoint_url(store_id, api_function, request_token=False)
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
+            logger.debug(
+                "[AdoraV2Tool._apis._utils] Request payload: %s %s | params=%s | body=%s",
+                http_method.value,
+                url,
+                query_params,
+                payload,
+            )
             response = await client.request(
                 method=http_method.value,
                 url=url,
