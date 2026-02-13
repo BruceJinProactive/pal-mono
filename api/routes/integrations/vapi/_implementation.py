@@ -23,7 +23,7 @@ from api.schemas.chat.message import (
     Type,
 )
 from db.repositories.conversation_repository import ConversationUpdate
-from db.tables.types import Channel
+from db.tables.types import Channel, SpeechRate
 from services import (
     message_service,
     project_service,
@@ -1494,6 +1494,46 @@ async def handle_create_vapi_assistant(
         raise
 
 
+# Helper class for creating voice configurations
+class _VoiceConfigForVAPI:
+    """Simple class implementing VoiceConfigProtocol for VAPI voice creation."""
+
+    def __init__(
+        self,
+        voice_id: str,
+        voice_model: str,
+        speech_rate: SpeechRate,
+    ):
+        self.language = "english"  # Default, not used by _create_voice
+        self.voice_id = voice_id
+        self.voice_model = voice_model
+        self.speech_rate = speech_rate
+        self.replacements: dict = {}
+        self.first_message = ""  # Not used by _create_voice
+        self.transfer_message = ""  # Not used by _create_voice
+        self.background_sound = ""  # Not used by _create_voice
+        self.raw_config: dict = {}  # Not used by _create_voice
+        self.transcriber: dict | None = None  # Not used by _create_voice
+
+
+def _create_voice_from_request(create_request) -> dict:
+    """Centralized helper to create voice configuration from request.
+
+    Args:
+        create_request: Request containing voice configuration (voiceId, model, speech_rate)
+
+    Returns:
+        dict: VAPI voice configuration with proper speed/generation settings
+    """
+    voice_config = _VoiceConfigForVAPI(
+        voice_id=create_request.voice.voiceId,
+        voice_model=create_request.voice.model,
+        speech_rate=create_request.voice.speech_rate,
+    )
+    vapi_provider = VAPIProvider()
+    return vapi_provider._create_voice(voice_config)
+
+
 # Language configuration for supported languages
 LANGUAGE_CONFIG: dict[str, dict[str, str]] = {
     "English": {
@@ -1559,6 +1599,9 @@ def _build_single_assistant(
         else create_request.systemPrompt
     )
 
+    # Create voice configuration using voice service
+    voice = _create_voice_from_request(create_request)
+
     # Base assistant configuration
     assistant_data: dict[str, Any] = {
         "name": create_request.name,
@@ -1568,12 +1611,7 @@ def _build_single_assistant(
             "temperature": 0.3,
             "messages": [{"role": "system", "content": system_content}],
         },
-        "voice": {
-            "provider": create_request.voice.provider,
-            "model": create_request.voice.model,
-            "voiceId": create_request.voice.voiceId,
-            "speed": create_request.voice.speed,
-        },
+        "voice": voice,
         "metadata": {
             "source": "admin-console",
             "type": "single_assistant",
@@ -1715,6 +1753,9 @@ DO NOT attempt to help with their actual request."""
             "receivePartialTranscripts": True,
         }
 
+    # Create voice configuration using voice service
+    voice = _create_voice_from_request(create_request)
+
     triage_config = {
         "name": triage_name,
         "transcriber": transcriber_config,
@@ -1724,12 +1765,7 @@ DO NOT attempt to help with their actual request."""
             "temperature": 0.3,
             "messages": [{"role": "system", "content": system_prompt}],
         },
-        "voice": {
-            "provider": create_request.voice.provider,
-            "model": create_request.voice.model,
-            "voiceId": create_request.voice.voiceId,
-            "speed": create_request.voice.speed,
-        },
+        "voice": voice,
         "first_message": create_request.firstMessage or default_greeting,
         "metadata": {
             "source": "admin-console",
@@ -1787,6 +1823,9 @@ def _build_group_assistant(
         else create_request.systemPrompt
     )
 
+    # Create voice configuration using voice service
+    voice = _create_voice_from_request(create_request)
+
     assistant_data: dict[str, Any] = {
         "name": assistant_name,
         "model": {
@@ -1795,12 +1834,7 @@ def _build_group_assistant(
             "temperature": 0.3,
             "messages": [{"role": "system", "content": system_content}],
         },
-        "voice": {
-            "provider": create_request.voice.provider,
-            "model": create_request.voice.model,
-            "voiceId": create_request.voice.voiceId,
-            "speed": create_request.voice.speed,
-        },
+        "voice": voice,
         "first_message": first_message,
         "metadata": {
             "source": "admin-console",

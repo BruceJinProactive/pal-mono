@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import db
 from api.routes.endpoints import endpoints
 from api.schemas.error.error import ErrorResponse
+from db.tables.types import SpeechRate
 
 from ._implementation import api_vapi_server, handle_create_vapi_assistant
 
@@ -13,10 +14,16 @@ from ._implementation import api_vapi_server, handle_create_vapi_assistant
 class VoiceConfig(BaseModel):
     """Voice configuration for VAPI assistant."""
 
+    model_config = {"populate_by_name": True}
+
     provider: str = Field(..., description="Voice provider (e.g., 'cartesia')")
     model: str = Field(..., description="Voice model (e.g., 'sonic-2')")
     voiceId: str = Field(..., description="Voice ID for speech synthesis")
-    speed: float = Field(1.0, description="Speech speed (0.6-1.5 for sonic-3)")
+    speech_rate: SpeechRate = Field(
+        SpeechRate.normal,
+        alias="speechRate",
+        description="Speech rate enum (slowest, slower, normal, faster, fastest)",
+    )
 
 
 class CreateVapiAssistantRequest(BaseModel):
