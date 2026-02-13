@@ -117,11 +117,12 @@ class RoutineExecutionRepositoryAsync:
             List of RoutineExecution objects
         """
         try:
-            # Join with Routine to filter by project_id
+            # Join with Routine to filter by project_id and active status
             stmt = (
                 select(RoutineExecution)
                 .join(Routine, RoutineExecution.routine_id == Routine.id)
                 .where(Routine.project_id == project_id)
+                .where(Routine.is_active.is_(True))
             )
 
             if status is not None:
