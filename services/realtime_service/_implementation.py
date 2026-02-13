@@ -94,7 +94,6 @@ class RealtimeSession:
                     "audio_input_format": self.config.input_audio_format,
                     "audio_output_format": self.config.output_audio_format,
                     "voice": self.config.voice_id,
-                    "has_tools": len(self.config.tools) > 0,
                 },
             )
             await self.connection.session.update(session=session_config)  # type: ignore[arg-type]
@@ -489,8 +488,6 @@ async def create_realtime_session(
     config = RealtimeConfig(
         system_prompt=system_prompt,
         voice_id="alloy",  # TODO: Get from voice_config
-        temperature=0.7,  # TODO: Get from agent settings
-        tools=[],  # TODO: Get from agent's enabled tools
     )
 
     # Get OpenAI API key from environment

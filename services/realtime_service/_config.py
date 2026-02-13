@@ -12,24 +12,18 @@ class RealtimeConfig(BaseModel):
 
     # Audio format (OpenAI 2.x uses nested audio.input/output structure)
     input_audio_format: str = Field(
-        default="g711_ulaw",
-        description="Input audio format (g711_ulaw, g711_alaw, or pcm16)",
+        default="audio/pcmu",
+        description="Input audio format (audio/pcmu, audio/pcma, or audio/pcm)",
     )
     output_audio_format: str = Field(
-        default="g711_ulaw",
-        description="Output audio format (g711_ulaw, g711_alaw, or pcm16)",
+        default="audio/pcmu",
+        description="Output audio format (audio/pcmu, audio/pcma, or audio/pcm)",
     )
 
     # Voice settings
     voice_id: str = Field(
         default="alloy",
         description="OpenAI voice ID (alloy, echo, fable, onyx, nova, shimmer)",
-    )
-    temperature: float = Field(
-        default=0.8,
-        ge=0.6,
-        le=1.2,
-        description="Model temperature (NOTE: Not used in session.update - reserved for future per-response config)",
     )
 
     # System configuration
@@ -41,12 +35,6 @@ class RealtimeConfig(BaseModel):
     turn_detection_type: str = Field(
         default="server_vad",
         description="Turn detection type (server_vad or none)",
-    )
-
-    # Tool definitions (OpenAI function format)
-    tools: list[dict] = Field(
-        default_factory=list,
-        description="List of tool/function definitions",
     )
 
     def to_session_config(self) -> dict:
@@ -66,20 +54,16 @@ class RealtimeConfig(BaseModel):
             "type": "realtime",  # Required field
             "audio": {  # Nested audio configuration
                 "input": {
-                    "format": self.input_audio_format,
+                    "format": {"type": self.input_audio_format},
                     "turn_detection": {"type": self.turn_detection_type},
                 },
                 "output": {
-                    "format": self.output_audio_format,
+                    "format": {"type": self.output_audio_format},
                     "voice": self.voice_id,
                 },
             },
             "instructions": self.system_prompt,
             "output_modalities": ["audio"],  # Use output_modalities, not modalities
         }
-
-        # Only include tools if any are defined
-        if self.tools:
-            config["tools"] = self.tools
 
         return config
