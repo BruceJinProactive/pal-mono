@@ -16,6 +16,7 @@ class VoiceConfig(BaseModel):
     provider: str = Field(..., description="Voice provider (e.g., 'cartesia')")
     model: str = Field(..., description="Voice model (e.g., 'sonic-2')")
     voiceId: str = Field(..., description="Voice ID for speech synthesis")
+    speed: float = Field(1.0, description="Speech speed (0.6-1.5 for sonic-3)")
 
 
 class CreateVapiAssistantRequest(BaseModel):

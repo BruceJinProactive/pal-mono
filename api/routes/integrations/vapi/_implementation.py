@@ -1572,6 +1572,7 @@ def _build_single_assistant(
             "provider": create_request.voice.provider,
             "model": create_request.voice.model,
             "voiceId": create_request.voice.voiceId,
+            "speed": create_request.voice.speed,
         },
         "metadata": {
             "source": "admin-console",
@@ -1727,6 +1728,7 @@ DO NOT attempt to help with their actual request."""
             "provider": create_request.voice.provider,
             "model": create_request.voice.model,
             "voiceId": create_request.voice.voiceId,
+            "speed": create_request.voice.speed,
         },
         "first_message": create_request.firstMessage or default_greeting,
         "metadata": {
@@ -1797,6 +1799,7 @@ def _build_group_assistant(
             "provider": create_request.voice.provider,
             "model": create_request.voice.model,
             "voiceId": create_request.voice.voiceId,
+            "speed": create_request.voice.speed,
         },
         "first_message": first_message,
         "metadata": {
