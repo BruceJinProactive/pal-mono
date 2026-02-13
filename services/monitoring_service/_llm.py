@@ -36,13 +36,6 @@ from utils.log import logger
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_ASSET_BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME")
 
-# Validate required configuration at module import
-if not AWS_ASSET_BUCKET_NAME:
-    raise ValueError(
-        "AWS_ASSET_BUCKET_NAME environment variable is required for monitoring service. "
-        "Please set AWS_ASSET_BUCKET_NAME in your environment configuration."
-    )
-
 
 async def generate_monitoring_llm_prompt(
     session: AsyncSession,
@@ -360,7 +353,7 @@ async def create_monitoring_run_with_analysis(
     if trigger_metadata is None:
         trigger_metadata = {
             "trigger_source": "internal_api",
-            "triggered_at": datetime.utcnow().isoformat(),
+            "triggered_at": datetime.now(timezone.utc).isoformat(),
             "image_url": image_url,
         }
 
@@ -462,7 +455,7 @@ async def create_monitoring_run_with_analysis(
             }
 
     # Record start time
-    started_at = datetime.utcnow()
+    started_at = datetime.now(timezone.utc)
 
     # Run LLM analysis
     try:
@@ -481,7 +474,7 @@ async def create_monitoring_run_with_analysis(
             monitoring_config_id=monitoring_config_id,
             trigger_metadata=trigger_metadata,
             started_at=started_at,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(timezone.utc),
             evaluation_result={},
             error_message="LLM analysis failed",
         )
@@ -489,7 +482,7 @@ async def create_monitoring_run_with_analysis(
         # Note: Caller is responsible for committing/rolling back
         raise
 
-    completed_at = datetime.utcnow()
+    completed_at = datetime.now(timezone.utc)
     analysis_result = analysis_details.get("analysis_result", {})
     result_status = analysis_result.get("result")
 
@@ -813,7 +806,7 @@ async def create_monitoring_video_run_with_analysis(
     if trigger_metadata is None:
         trigger_metadata = {
             "trigger_source": "internal_api",
-            "triggered_at": datetime.utcnow().isoformat(),
+            "triggered_at": datetime.now(timezone.utc).isoformat(),
             "video_url": video_url,
         }
 
@@ -913,7 +906,7 @@ async def create_monitoring_video_run_with_analysis(
             }
 
     # Record start time
-    started_at = datetime.utcnow()
+    started_at = datetime.now(timezone.utc)
 
     # Run LLM video analysis
     try:
@@ -930,14 +923,14 @@ async def create_monitoring_video_run_with_analysis(
             monitoring_config_id=monitoring_config_id,
             trigger_metadata=trigger_metadata,
             started_at=started_at,
-            completed_at=datetime.utcnow(),
+            completed_at=datetime.now(timezone.utc),
             evaluation_result={},
             error_message="LLM video analysis failed",
         )
         await run_repo.create(error_run)
         raise
 
-    completed_at = datetime.utcnow()
+    completed_at = datetime.now(timezone.utc)
     analysis_result = analysis_details.get("analysis_result", {})
     result_status = analysis_result.get("result")
 

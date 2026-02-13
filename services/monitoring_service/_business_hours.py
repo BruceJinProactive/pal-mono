@@ -35,12 +35,20 @@ def _parse_time(time_str: str) -> time:
         time object
     """
     if not time_str or len(time_str) != 4:
+        logger.warning(
+            f"Invalid time format '{time_str}', defaulting to 00:00",
+            extra={"invalid_time": time_str},
+        )
         return time(0, 0)
     try:
         hour = int(time_str[:2])
         minute = int(time_str[2:])
         return time(hour, minute)
     except (ValueError, TypeError):
+        logger.warning(
+            f"Failed to parse time '{time_str}', defaulting to 00:00",
+            extra={"invalid_time": time_str},
+        )
         return time(0, 0)
 
 

@@ -59,6 +59,9 @@ def is_within_time_window(
     Returns:
         True if current_time is within the window, False otherwise
 
+    Note:
+        When start_time == end_time, only that exact time matches (not "all day").
+
     Examples:
         - Normal window (06:00-22:00): 10:00 returns True, 23:00 returns False
         - Overnight window (22:00-02:00): 23:00 returns True, 10:00 returns False
