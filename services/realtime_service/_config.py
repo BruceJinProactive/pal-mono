@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class RealtimeConfig(BaseModel):
     """Configuration for OpenAI Realtime API session (OpenAI 2.x)."""
 
-    # Audio format (OpenAI 2.x uses flat structure)
+    # Audio format (OpenAI 2.x uses nested audio.input/output structure)
     input_audio_format: str = Field(
         default="g711_ulaw",
         description="Input audio format (g711_ulaw, g711_alaw, or pcm16)",
@@ -53,7 +53,7 @@ class RealtimeConfig(BaseModel):
         """
         Generate OpenAI 2.x session configuration.
 
-        Returns flat structure required by session.update() API.
+        Returns nested structure required by session.update() API.
         See: https://platform.openai.com/docs/api-reference/realtime-sessions/update
 
         Note: temperature is NOT supported in session.update() for Realtime API.
@@ -64,12 +64,18 @@ class RealtimeConfig(BaseModel):
         """
         config = {
             "type": "realtime",  # Required field
-            "modalities": ["audio"],
+            "audio": {  # Nested audio configuration
+                "input": {
+                    "format": self.input_audio_format,
+                    "turn_detection": {"type": self.turn_detection_type},
+                },
+                "output": {
+                    "format": self.output_audio_format,
+                    "voice": self.voice_id,
+                },
+            },
             "instructions": self.system_prompt,
-            "voice": self.voice_id,
-            "input_audio_format": self.input_audio_format,
-            "output_audio_format": self.output_audio_format,
-            "turn_detection": {"type": self.turn_detection_type},
+            "output_modalities": ["audio"],  # Use output_modalities, not modalities
         }
 
         # Only include tools if any are defined
