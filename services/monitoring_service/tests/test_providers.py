@@ -160,14 +160,9 @@ class TestCreateMonitoringLLMProvider:
                 "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
             },
         )
-        # Mock the AzureOpenAI client and Pin to avoid real API calls
         mocker.patch(
             "services.monitoring_service._providers.AzureOpenAI",
             return_value=MagicMock(),
-        )
-        mocker.patch(
-            "services.monitoring_service._providers.Pin.get_from",
-            return_value=None,
         )
         mocker.patch(
             "services.monitoring_service._providers._get_deployment_name",
@@ -187,10 +182,6 @@ class TestCreateMonitoringLLMProvider:
         mocker.patch(
             "services.monitoring_service._providers.genai.Client",
             return_value=MagicMock(),
-        )
-        mocker.patch(
-            "services.monitoring_service._providers.Pin.get_from",
-            return_value=None,
         )
 
         config = MonitoringLLMConfig(provider=MonitoringLLMProvider.GOOGLE)
@@ -217,10 +208,6 @@ class TestCreateMonitoringLLMProvider:
         mocker.patch(
             "services.monitoring_service._providers.AzureOpenAI",
             return_value=MagicMock(),
-        )
-        mocker.patch(
-            "services.monitoring_service._providers.Pin.get_from",
-            return_value=None,
         )
         mocker.patch(
             "services.monitoring_service._providers._get_deployment_name",

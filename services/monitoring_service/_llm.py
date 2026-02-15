@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 
 import boto3
+from ddtrace.trace import tracer
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -213,7 +214,7 @@ For invalid/problematic images:
             },
         }
 
-    # Call LLM Vision API using provider abstraction (tracing disabled via Pin.override)
+    # Call LLM Vision API using provider abstraction
     try:
         # Initialize provider with config-specific model settings
         # Config-level settings override environment variables
@@ -256,18 +257,39 @@ For invalid/problematic images:
             f"[Monitoring LLM] Provider initialized - Final config: Provider={provider.config.provider.value}, Model={provider.config.model}"
         )
 
-        # Run blocking LLM call in thread pool (tracing disabled via Pin.override on clients)
+        # Create a wrapper that isolates the LLM call into its own trace.
+        # This breaks trace inheritance from the parent voice-agent request
+        # so monitoring LLM spans appear as a separate root trace in Datadog.
+        def call_llm_with_isolated_trace() -> dict:
+            current_context = tracer.current_trace_context()
+            tracer.context_provider.activate(None)
+
+            try:
+                with tracer.trace(
+                    "monitoring.llm.analyze_image",
+                    service="pal-mono-monitoring",
+                ) as span:
+                    span.set_tag("monitoring.config_id", str(monitoring_config_id))
+                    span.set_tag(
+                        "monitoring.llm_provider", provider.config.provider.value
+                    )
+                    span.set_tag("monitoring.llm_model", provider.config.model)
+                    span.set_tag("monitoring.media_type", "image")
+
+                    return provider.analyze_image(
+                        system_instruction=system_instruction,
+                        analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
+                        reference_images=reference_images_for_provider,
+                        camera_image_base64=camera_image_base64,
+                        response_format=response_format,
+                    )
+            finally:
+                if current_context:
+                    tracer.context_provider.activate(current_context)
+
+        # Run blocking LLM call in thread pool with isolated trace context
         loop = asyncio.get_running_loop()
-        analysis_result = await loop.run_in_executor(
-            None,
-            lambda: provider.analyze_image(
-                system_instruction=system_instruction,
-                analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
-                reference_images=reference_images_for_provider,
-                camera_image_base64=camera_image_base64,
-                response_format=response_format,
-            ),
-        )
+        analysis_result = await loop.run_in_executor(None, call_llm_with_isolated_trace)
 
         logger.info(
             f"Monitoring LLM analysis completed for config {monitoring_config_id}",
@@ -714,17 +736,41 @@ For invalid/problematic frames:
             f"[Monitoring LLM] Provider initialized (video) - Final config: Provider={provider.config.provider.value}, Model={provider.config.model}"
         )
 
-        # Run blocking LLM call in thread pool
+        # Create a wrapper that isolates the LLM call into its own trace.
+        # This breaks trace inheritance from the parent voice-agent request
+        # so monitoring LLM spans appear as a separate root trace in Datadog.
+        def call_video_llm_with_isolated_trace() -> dict:
+            current_context = tracer.current_trace_context()
+            tracer.context_provider.activate(None)
+
+            try:
+                with tracer.trace(
+                    "monitoring.llm.analyze_video_frames",
+                    service="pal-mono-monitoring",
+                ) as span:
+                    span.set_tag("monitoring.config_id", str(monitoring_config_id))
+                    span.set_tag(
+                        "monitoring.llm_provider", provider.config.provider.value
+                    )
+                    span.set_tag("monitoring.llm_model", provider.config.model)
+                    span.set_tag("monitoring.media_type", "video")
+                    span.set_tag("monitoring.video_frames_count", len(video_frames))
+
+                    return provider.analyze_video_frames(
+                        system_instruction=system_instruction,
+                        analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
+                        reference_images=reference_images_for_provider,
+                        video_frames=video_frames,
+                        response_format=response_format,
+                    )
+            finally:
+                if current_context:
+                    tracer.context_provider.activate(current_context)
+
+        # Run blocking LLM call in thread pool with isolated trace context
         loop = asyncio.get_running_loop()
         analysis_result = await loop.run_in_executor(
-            None,
-            lambda: provider.analyze_video_frames(
-                system_instruction=system_instruction,
-                analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
-                reference_images=reference_images_for_provider,
-                video_frames=video_frames,
-                response_format=response_format,
-            ),
+            None, call_video_llm_with_isolated_trace
         )
 
         logger.info(

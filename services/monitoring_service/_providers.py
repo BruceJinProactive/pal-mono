@@ -14,7 +14,6 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
-from ddtrace._trace.pin import Pin  # type: ignore[reportPrivateUsage]
 from google import genai
 from google.genai.types import GenerateContentConfig, Part
 from openai import AzureOpenAI
@@ -201,12 +200,6 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
         self.client = AzureOpenAI(
             api_key=api_key, azure_endpoint=endpoint, api_version=api_version
         )
-
-        # Disable Datadog tracing for this client (LLMObs.enable() auto-patches OpenAI)
-        # This prevents monitoring LLM calls from appearing in voice agent traces
-        pin = Pin.get_from(self.client)
-        if pin:
-            pin.remove_from(self.client)
 
         # Get Azure deployment name for the model
         self.deployment_name = self._get_model_deployment(config.model)
@@ -482,12 +475,6 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
             raise ValueError(f"Failed to retrieve Google API key: {str(e)}") from e
 
         self.client = genai.Client(api_key=api_key)
-
-        # Disable Datadog tracing for this client (LLMObs.enable() auto-patches libraries)
-        # This prevents monitoring LLM calls from appearing in voice agent traces
-        pin = Pin.get_from(self.client)
-        if pin:
-            pin.remove_from(self.client)
 
     def analyze_image(
         self,

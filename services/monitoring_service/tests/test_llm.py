@@ -1,8 +1,9 @@
 """Tests for monitoring LLM analysis orchestration."""
 
+import base64
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from fastapi import HTTPException
@@ -542,3 +543,349 @@ class TestCreateMonitoringVideoRunWithAnalysis:
         # Verify error run was created
         error_run_arg = mock_run_repo.return_value.create.call_args[0][0]
         assert error_run_arg.error_message == "LLM video analysis failed"
+
+
+def _build_image_analysis_mocks(mocker, config_id):
+    """Set up common mocks for generate_monitoring_llm_prompt tests."""
+    mock_config = MagicMock()
+    mock_config.rules = {
+        "prompt": "Check the display",
+        "reference_images": [],
+        "model": {"provider": "azure", "model": "gpt-4o"},
+    }
+
+    mock_config_repo = mocker.patch(
+        "services.monitoring_service._llm.MonitoringConfigRepositoryAsync"
+    )
+    mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+
+    # Mock S3 — camera image fetch
+    mock_s3 = MagicMock()
+    mock_body = MagicMock()
+    mock_body.read.return_value = b"fake-image-bytes"
+    mock_s3.get_object.return_value = {"Body": mock_body}
+    mocker.patch("services.monitoring_service._llm.boto3.client", return_value=mock_s3)
+
+    # Mock provider creation
+    mock_provider = MagicMock()
+    mock_provider.config.provider.value = "azure"
+    mock_provider.config.model = "gpt-4o"
+    mock_provider.analyze_image.return_value = {
+        "result": "pass",
+        "details": "All clear",
+    }
+    mocker.patch(
+        "services.monitoring_service._llm.create_monitoring_llm_provider",
+        return_value=mock_provider,
+    )
+
+    return mock_provider
+
+
+def _build_video_analysis_mocks(mocker, config_id):
+    """Set up common mocks for generate_monitoring_video_llm_prompt tests."""
+    mock_config = MagicMock()
+    mock_config.rules = {
+        "prompt": "Check the display",
+        "reference_images": [],
+        "model": {"provider": "azure", "model": "gpt-4o"},
+    }
+
+    mock_config_repo = mocker.patch(
+        "services.monitoring_service._llm.MonitoringConfigRepositoryAsync"
+    )
+    mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+
+    # Mock S3
+    mock_s3 = MagicMock()
+    mocker.patch("services.monitoring_service._llm.boto3.client", return_value=mock_s3)
+
+    # Mock video frame extraction
+    mocker.patch(
+        "services.monitoring_service._llm.extract_video_frames",
+        return_value=[
+            {
+                "base64_data": base64.b64encode(b"frame1").decode(),
+                "timestamp_label": "0:00",
+            },
+            {
+                "base64_data": base64.b64encode(b"frame2").decode(),
+                "timestamp_label": "0:05",
+            },
+        ],
+    )
+
+    # Mock provider creation
+    mock_provider = MagicMock()
+    mock_provider.config.provider.value = "azure"
+    mock_provider.config.model = "gpt-4o"
+    mock_provider.analyze_video_frames.return_value = {
+        "result": "pass",
+        "details": "All clear",
+    }
+    mocker.patch(
+        "services.monitoring_service._llm.create_monitoring_llm_provider",
+        return_value=mock_provider,
+    )
+
+    return mock_provider
+
+
+class TestImageAnalysisTraceIsolation:
+    """Tests for trace isolation in generate_monitoring_llm_prompt."""
+
+    @pytest.mark.asyncio
+    async def test_clears_context_before_llm_call(self, mocker):
+        """Should clear inherited trace context before calling the LLM provider."""
+        from services.monitoring_service._llm import generate_monitoring_llm_prompt
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_image_analysis_mocks(mocker, config_id)
+
+        # Track tracer calls
+        fake_parent_context = MagicMock(name="parent-context")
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = fake_parent_context
+
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
+
+        # Verify context was cleared (activated with None)
+        activate_calls = mock_tracer.context_provider.activate.call_args_list
+        assert activate_calls[0] == call(None), "Should clear context before LLM call"
+
+    @pytest.mark.asyncio
+    async def test_creates_span_with_correct_operation_and_service(self, mocker):
+        """Should create a monitoring span with expected operation name and service."""
+        from services.monitoring_service._llm import generate_monitoring_llm_prompt
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_image_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
+
+        mock_tracer.trace.assert_called_once_with(
+            "monitoring.llm.analyze_image",
+            service="pal-mono-monitoring",
+        )
+
+    @pytest.mark.asyncio
+    async def test_sets_expected_monitoring_tags(self, mocker):
+        """Should set config_id, provider, model, and media_type tags on span."""
+        from services.monitoring_service._llm import generate_monitoring_llm_prompt
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_image_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
+
+        mock_span.set_tag.assert_any_call("monitoring.config_id", str(config_id))
+        mock_span.set_tag.assert_any_call("monitoring.llm_provider", "azure")
+        mock_span.set_tag.assert_any_call("monitoring.llm_model", "gpt-4o")
+        mock_span.set_tag.assert_any_call("monitoring.media_type", "image")
+
+    @pytest.mark.asyncio
+    async def test_restores_context_after_success(self, mocker):
+        """Should restore original trace context after successful LLM call."""
+        from services.monitoring_service._llm import generate_monitoring_llm_prompt
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_image_analysis_mocks(mocker, config_id)
+
+        fake_parent_context = MagicMock(name="parent-context")
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = fake_parent_context
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
+
+        # Last activate call should restore the parent context
+        activate_calls = mock_tracer.context_provider.activate.call_args_list
+        assert activate_calls[-1] == call(
+            fake_parent_context
+        ), "Should restore original context after LLM call"
+
+    @pytest.mark.asyncio
+    async def test_restores_context_on_provider_exception(self, mocker):
+        """Should restore original trace context even when provider raises."""
+        from services.monitoring_service._llm import generate_monitoring_llm_prompt
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_provider = _build_image_analysis_mocks(mocker, config_id)
+        mock_provider.analyze_image.side_effect = RuntimeError("LLM exploded")
+
+        fake_parent_context = MagicMock(name="parent-context")
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = fake_parent_context
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        with pytest.raises(HTTPException):
+            await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
+
+        # Context should still be restored even on error
+        activate_calls = mock_tracer.context_provider.activate.call_args_list
+        assert activate_calls[-1] == call(
+            fake_parent_context
+        ), "Should restore context even when provider raises"
+
+
+class TestVideoAnalysisTraceIsolation:
+    """Tests for trace isolation in generate_monitoring_video_llm_prompt."""
+
+    @pytest.mark.asyncio
+    async def test_clears_context_before_llm_call(self, mocker):
+        """Should clear inherited trace context before calling the LLM provider."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_video_analysis_mocks(mocker, config_id)
+
+        fake_parent_context = MagicMock(name="parent-context")
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = fake_parent_context
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
+
+        activate_calls = mock_tracer.context_provider.activate.call_args_list
+        assert activate_calls[0] == call(None), "Should clear context before LLM call"
+
+    @pytest.mark.asyncio
+    async def test_creates_span_with_correct_operation_and_service(self, mocker):
+        """Should create a monitoring span with expected operation name and service."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_video_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
+
+        mock_tracer.trace.assert_called_once_with(
+            "monitoring.llm.analyze_video_frames",
+            service="pal-mono-monitoring",
+        )
+
+    @pytest.mark.asyncio
+    async def test_sets_expected_monitoring_tags_including_frames_count(self, mocker):
+        """Should set config_id, provider, model, media_type, and frames_count tags."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_video_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
+
+        mock_span.set_tag.assert_any_call("monitoring.config_id", str(config_id))
+        mock_span.set_tag.assert_any_call("monitoring.llm_provider", "azure")
+        mock_span.set_tag.assert_any_call("monitoring.llm_model", "gpt-4o")
+        mock_span.set_tag.assert_any_call("monitoring.media_type", "video")
+        mock_span.set_tag.assert_any_call("monitoring.video_frames_count", 2)
+
+    @pytest.mark.asyncio
+    async def test_restores_context_after_success(self, mocker):
+        """Should restore original trace context after successful LLM call."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_video_analysis_mocks(mocker, config_id)
+
+        fake_parent_context = MagicMock(name="parent-context")
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = fake_parent_context
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
+
+        activate_calls = mock_tracer.context_provider.activate.call_args_list
+        assert activate_calls[-1] == call(
+            fake_parent_context
+        ), "Should restore original context after LLM call"
+
+    @pytest.mark.asyncio
+    async def test_restores_context_on_provider_exception(self, mocker):
+        """Should restore original trace context even when provider raises."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_provider = _build_video_analysis_mocks(mocker, config_id)
+        mock_provider.analyze_video_frames.side_effect = RuntimeError("LLM exploded")
+
+        fake_parent_context = MagicMock(name="parent-context")
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = fake_parent_context
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        with pytest.raises(HTTPException):
+            await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
+
+        activate_calls = mock_tracer.context_provider.activate.call_args_list
+        assert activate_calls[-1] == call(
+            fake_parent_context
+        ), "Should restore context even when provider raises"
