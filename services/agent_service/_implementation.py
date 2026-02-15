@@ -5,6 +5,7 @@ from typing import Any, Dict, Literal, Optional, cast
 
 from pal_agents import Spec
 from pal_agents.spec import (
+    AdoraSpec,
     GenericAPISpec,
     KnowledgeSpec,
     MemorySpec,
@@ -145,10 +146,48 @@ def _build_generic_api_spec_from_raw_config(raw_config: dict) -> GenericAPISpec:
     )
 
 
+def _build_adora_spec_from_raw_config(raw_config: dict) -> AdoraSpec:
+    """Build AdoraSpec from project raw_config.
+
+    Extracts adora configuration from the project's raw_config and constructs
+    an AdoraSpec for the pal-agents framework.
+
+    Args:
+        raw_config: The project's raw_config dictionary.
+
+    Returns:
+        AdoraSpec: Configuration for the adora provider.
+            Returns disabled spec if adora is not enabled.
+    """
+    adora_config = raw_config.get("adora", {})
+
+    if not adora_config.get("enabled"):
+        return AdoraSpec()
+
+    adora_spec_kwargs: dict[str, Any] = {"enabled": True}
+    for field in [
+        "menu_data",
+        "base_url",
+        "auth",
+        "allowed_paths",
+        "timeout",
+        "inject",
+        "store_id",
+        "customer_email",
+        "tool_name",
+        "debug",
+    ]:
+        if field in adora_config:
+            adora_spec_kwargs[field] = adora_config[field]
+
+    return AdoraSpec(**adora_spec_kwargs)
+
+
 def _agent_config_to_spec(
     agent_config: AgentConfig,
     model_size: ModelSize | None = None,
     generic_api_spec: GenericAPISpec | None = None,
+    adora_spec: AdoraSpec | None = None,
 ) -> Spec:
     """Convert pal-mono AgentConfig to pal-agents Spec.
 
@@ -159,6 +198,7 @@ def _agent_config_to_spec(
         agent_config: The fully-built pal-mono agent configuration.
         model_size: Model size from project raw_config (defaults to DEFAULT_MODEL_SIZE).
         generic_api_spec: Optional GenericAPISpec for external API calling.
+        adora_spec: Optional AdoraSpec for deterministic adora ordering.
 
     Returns:
         Spec: pal-agents specification ready for Agent instantiation.
@@ -207,6 +247,7 @@ def _agent_config_to_spec(
         tools=tool_specs,
         model=ModelSpec(size=effective_model_size),
         generic_api=generic_api_spec or GenericAPISpec(),
+        adora=adora_spec or AdoraSpec(),
     )
 
 
@@ -266,11 +307,18 @@ async def construct_agent_spec(
     effective_raw_config = raw_config or {}
 
     generic_api_spec = _build_generic_api_spec_from_raw_config(effective_raw_config)
+    adora_spec = _build_adora_spec_from_raw_config(effective_raw_config)
 
     if generic_api_spec.enabled:
         logger.debug(
             f"GenericAPI enabled: base_url={generic_api_spec.base_url}, "
             f"allowed_paths={generic_api_spec.allowed_paths}"
+        )
+    if adora_spec.enabled:
+        logger.debug(
+            f"Adora enabled: base_url={adora_spec.base_url}, "
+            f"tool_name={adora_spec.tool_name}, "
+            f"has_menu_data={adora_spec.menu_data is not None}"
         )
 
     # Extract model size from raw_config (defaults to DEFAULT_MODEL_SIZE if not specified)
@@ -283,7 +331,10 @@ async def construct_agent_spec(
 
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
     return _agent_config_to_spec(
-        agent_config, model_size=model_size, generic_api_spec=generic_api_spec
+        agent_config,
+        model_size=model_size,
+        generic_api_spec=generic_api_spec,
+        adora_spec=adora_spec,
     )
 
 
