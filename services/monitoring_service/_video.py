@@ -48,12 +48,15 @@ def _extract_frames_sync(
     try:
         stream = container.streams.video[0]
 
-        # Get video duration and FPS
-        duration_seconds = (
-            float(stream.duration * stream.time_base)
-            if stream.duration and stream.time_base
-            else 0.0
-        )
+        # Try stream-level duration first, fall back to container-level duration.
+        # Some video formats (e.g., certain MP4, WebM) don't set duration on the
+        # stream, only on the container (in microseconds / AV_TIME_BASE).
+        if stream.duration and stream.time_base:
+            duration_seconds = float(stream.duration * stream.time_base)
+        elif container.duration:
+            duration_seconds = container.duration / 1_000_000.0
+        else:
+            duration_seconds = 0.0
         fps = float(stream.average_rate) if stream.average_rate else 30.0
 
         logger.info(

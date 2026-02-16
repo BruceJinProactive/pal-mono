@@ -169,6 +169,7 @@ class TestExtractFramesSync:
 
         mock_container = MagicMock()
         mock_container.streams.video = [mock_stream]
+        mock_container.duration = None
         mock_container.decode.return_value = iter([mock_frame])
 
         mocker.patch(
@@ -177,6 +178,67 @@ class TestExtractFramesSync:
         )
 
         frames = _extract_frames_sync("/fake/video.mp4")
+        assert len(frames) == 1
+        assert frames[0]["timestamp_seconds"] == 0.0
+
+    def test_falls_back_to_container_duration(self, mocker):
+        """Should use container.duration when stream.duration is None."""
+        mock_pil_image = MagicMock()
+        mock_pil_image.save = MagicMock(
+            side_effect=lambda buf, **kwargs: buf.write(b"fake-jpeg-data")
+        )
+        mock_frame = MagicMock()
+        mock_frame.to_image.return_value = mock_pil_image
+
+        mock_stream = MagicMock()
+        mock_stream.duration = None
+        mock_stream.time_base = 1
+        mock_stream.average_rate = 30
+
+        mock_container = MagicMock()
+        mock_container.streams.video = [mock_stream]
+        # 60 seconds in microseconds
+        mock_container.duration = 60_000_000
+        mock_container.decode.side_effect = lambda **kwargs: iter([mock_frame])
+
+        mocker.patch(
+            "services.monitoring_service._video.av.open",
+            return_value=mock_container,
+        )
+
+        frames = _extract_frames_sync("/fake/video.mp4", frame_interval_seconds=10)
+
+        # 60s video at 10s intervals: frames at 0, 10, 20, 30, 40, 50
+        assert len(frames) == 6
+        assert frames[0]["timestamp_seconds"] == 0.0
+        assert frames[1]["timestamp_seconds"] == 10.0
+        assert frames[5]["timestamp_seconds"] == 50.0
+
+    def test_zero_duration_when_both_unavailable(self, mocker):
+        """Should extract only 1 frame when both stream and container duration are None."""
+        mock_pil_image = MagicMock()
+        mock_pil_image.save = MagicMock(
+            side_effect=lambda buf, **kwargs: buf.write(b"fake-jpeg-data")
+        )
+        mock_frame = MagicMock()
+        mock_frame.to_image.return_value = mock_pil_image
+
+        mock_stream = MagicMock()
+        mock_stream.duration = None
+        mock_stream.time_base = 1
+        mock_stream.average_rate = 30
+
+        mock_container = MagicMock()
+        mock_container.streams.video = [mock_stream]
+        mock_container.duration = None
+        mock_container.decode.return_value = iter([mock_frame])
+
+        mocker.patch(
+            "services.monitoring_service._video.av.open",
+            return_value=mock_container,
+        )
+
+        frames = _extract_frames_sync("/fake/video.mp4", frame_interval_seconds=10)
         assert len(frames) == 1
         assert frames[0]["timestamp_seconds"] == 0.0
 
