@@ -1,0 +1,62 @@
+name: Validate Dependency-Only PR
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    branches:
+      - "main"
+
+jobs:
+  validate-dependency-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for mixed dependency and non-dependency changes
+        run: |
+          # Get list of changed files compared to main
+          git fetch origin main
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No files changed"
+            exit 0
+          fi
+
+          # Dependency files: pyproject.toml and uv.lock
+          DEP_FILES=$(echo "$CHANGED_FILES" | grep -E "^(pyproject\.toml|uv\.lock)$" || true)
+          DEP_COUNT=$(echo "$DEP_FILES" | grep -c . || echo 0)
+
+          # Non-dependency files (excluding this workflow file)
+          NON_DEP_FILES=$(echo "$CHANGED_FILES" | grep -vE "^(pyproject\.toml|uv\.lock)$|^\.github/workflows/validate-dependency-pr\.yml$" || true)
+          NON_DEP_COUNT=$(echo "$NON_DEP_FILES" | grep -c . || echo 0)
+
+          echo "=== Changed Files Summary ==="
+          echo "Dependency files changed: $DEP_COUNT"
+          echo "Non-dependency files changed: $NON_DEP_COUNT"
+
+          if [ "$DEP_COUNT" -gt 0 ] && [ "$NON_DEP_COUNT" -gt 0 ]; then
+            echo ""
+            echo "ERROR: This PR contains both dependency changes and other changes."
+            echo ""
+            echo "Dependency changes (pyproject.toml, uv.lock) must be in a separate PR."
+            echo ""
+            echo "=== Dependency Files ==="
+            echo "$DEP_FILES"
+            echo ""
+            echo "=== Other Files ==="
+            echo "$NON_DEP_FILES"
+            echo ""
+            echo "Please split this PR into:"
+            echo "  1. A PR with only dependency changes (pyproject.toml and/or uv.lock)"
+            echo "  2. A PR with the other changes"
+            exit 1
+          fi
+
+          echo ""
+          echo "PR scope validation passed"
