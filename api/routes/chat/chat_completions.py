@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import uuid
@@ -493,6 +494,10 @@ async def chat_completions_agno(
                         )
                     except Exception as sms_err:
                         logger.error(f"Error sending URLs via SMS: {sms_err}")
+
+            except asyncio.CancelledError:
+                logger.debug("[ChatCompletions] Stream cancelled (client disconnect)")
+                raise
 
             except Exception as e:
                 logger.error(f"Error in streaming response: {str(e)}")

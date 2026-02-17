@@ -364,6 +364,10 @@ class AgnoAgent:
                             },
                         )
 
+            except asyncio.CancelledError:
+                logger.debug("[AgnoAgent] Stream cancelled (client disconnect)")
+                raise
+
             except Exception as e:
                 logger.error(f"Error streaming output: {e}")
                 error_output = Output(content="Error streaming output")
