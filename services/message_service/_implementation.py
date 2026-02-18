@@ -906,6 +906,10 @@ async def get_chat_response_stream(
                         )
                     )
 
+        except asyncio.CancelledError:
+            logger.debug("[MessageService] Stream cancelled (client disconnect)")
+            raise
+
         except Exception as e:
             # Log error and return a single error chunk
             logger.exception(f"Error in get_chat_response_stream: {e}")

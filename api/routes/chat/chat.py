@@ -110,6 +110,9 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
 
                         # Send completion signal
                         yield "data: [DONE]\n\n"
+                except asyncio.CancelledError:
+                    logger.debug("[Chat] Stream cancelled (client disconnect)")
+                    raise
                 except Exception as e:
                     logger.error(f"Error in generate(): {str(e)}")
                     yield "data: [ERROR] An error occurred while streaming the response.\n\n"
@@ -136,33 +139,42 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                     logger.info(f"Sending filler message: {filler_message}")
 
                 async with AsyncSessionLocal() as new_session:
+                    # Start the filler message task only if the message channel is VOICE
+                    if request.message.channel == Channel.VOICE:
+                        filler_message_task = asyncio.create_task(send_filler_message())
+                    else:
+                        filler_message_task = None
+
                     try:
-                        # Start the filler message task only if the message channel is VOICE
-                        if request.message.channel == Channel.VOICE:
-                            filler_message_task = asyncio.create_task(
-                                send_filler_message()
-                            )
-                        else:
-                            filler_message_task = None
                         # Get the actual response
                         response_messages = await get_chat_response_async(
                             session=new_session,
                             message=request.message,
                             request_context=request_context,
                         )
-                        # Cancel the filler message task if it hasn't triggered yet
-                        if filler_message_task:
-                            filler_message_task.cancel()
 
                         result = send_messages(response_messages)
                         logger.info(
                             f"Chat API, schedule to send messages: {response_messages}, result: {result}"
                         )
                         await new_session.commit()
+                    except asyncio.CancelledError:
+                        logger.debug(
+                            "[Chat] generate_and_send cancelled (client disconnect)"
+                        )
+                        raise
                     except Exception as e:
                         await new_session.rollback()
                         logger.error(f"Database error in generate_and_send: {str(e)}")
                         raise
+                    finally:
+                        # Cancel filler message task on all exit paths
+                        if filler_message_task and not filler_message_task.done():
+                            filler_message_task.cancel()
+                            try:
+                                await filler_message_task
+                            except asyncio.CancelledError:
+                                pass
 
             asyncio.create_task(generate_and_send())
 
