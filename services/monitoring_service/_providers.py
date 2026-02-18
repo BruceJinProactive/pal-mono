@@ -14,8 +14,11 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
-from google import genai
-from google.genai.types import GenerateContentConfig, Part
+from google import genai  # type: ignore[attr-defined]
+from google.genai.types import (  # type: ignore[import-untyped]
+    GenerateContentConfig,
+    Part,
+)
 from openai import AzureOpenAI
 
 from agent.model._config import ModelOptions
