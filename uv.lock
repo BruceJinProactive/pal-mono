@@ -2621,8 +2621,8 @@ wheels = [
 
 [[package]]
 name = "pal-agents"
-version = "0.2.58"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.58#8aed983fd53c92d97bc3d7c5b5280727db79dfe6" }
+version = "0.2.59"
+source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.59#0e94853aaa6a50fcc2e44928757e3af28732772e" }
 dependencies = [
     { name = "agenticmem" },
     { name = "datadog" },
@@ -2744,7 +2744,7 @@ requires-dist = [
     { name = "mem0ai", specifier = "==1.0.3" },
     { name = "notion-client", specifier = "==2.2.1" },
     { name = "openai", extras = ["realtime"], specifier = "==2.20.0" },
-    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.58" },
+    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.59" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
     { name = "polyline", specifier = "==2.0.2" },
