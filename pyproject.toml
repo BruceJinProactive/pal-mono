@@ -32,6 +32,12 @@ dependencies = [
   "instructor==1.14.5", # Structured outputs from LLMs using Pydantic models
   "jinja2==3.1.6", # Modern template engine for Python
   "lingua-language-detector==2.1.1", # Fast and accurate language detection library
+  "livekit-agents>=1.0.0", # LiveKit Agents framework for building AI voice agents
+  "livekit-api>=1.0.0", # LiveKit server API client for room and participant management
+  "livekit-plugins-cartesia>=1.0.0", # Cartesia TTS plugin for LiveKit Agents
+  "livekit-plugins-deepgram>=1.0.0", # Deepgram STT plugin for LiveKit Agents
+  "livekit-plugins-silero>=1.0.0", # Silero VAD plugin for LiveKit Agents
+  "livekit>=1.0.0", # LiveKit real-time communication SDK
   "llama-index-core==0.14.14", # Llma index core module
   "llama-index-embeddings-cohere==0.6.1", # Cohere embeddings integration for LlamaIndex
   "llama-index-llms-gemini==0.6.1", # Google Gemini LLM integration for LlamaIndex
