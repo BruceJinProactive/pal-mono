@@ -172,7 +172,7 @@ Start with **Option A** for faster time-to-production. Migrate to **Option B** l
 - `voice_model` ("sonic-2"/"sonic-3") maps directly to Cartesia
 - `transcriber` dict maps directly to Deepgram
 - Speech rate mappings carry over
-- DB migration: add `provider` column or reinterpret existing fields
+- Voice provider determined at runtime via LiveKit SIP API (no DB column needed initially)
 
 > 2A and 2B in parallel. 2C independent.
 
@@ -256,13 +256,18 @@ See also: [Call Transfer Analysis](./livekit-call-transfer-analysis.md)
 
 #### 6B. Number provisioning automation
 - New numbers: configure LiveKit dispatch rules instead of importing into Vapi
-- Released numbers: remove LiveKit dispatch rules
+- Released numbers: query `ListSIPDispatchRule` by phone number to find the dispatch rule ID, then delete it
 - Replace Vapi SDK calls with LiveKit SIP API calls
 
 #### 6C. Per-number routing during migration
-- `voice_provider` field on phone number record (`"vapi"` | `"livekit"`)
-- Per-number routing — enables canary migration (test individual numbers on LiveKit while others stay on Vapi)
-- Provisioning branches by provider: Vapi SDK import vs. Twilio SIP trunk assignment + LiveKit dispatch rule
+- Determine voice provider per number by querying LiveKit SIP API at runtime:
+  - Call `ListSIPDispatchRule` and match by phone number (dispatch rules are named `inbound-{number}`)
+  - If a matching dispatch rule exists → number is routed to LiveKit
+  - If no dispatch rule found → number is routed to Vapi (default)
+- No local `phone_number_configs` database table needed initially — LiveKit is the source of truth for its own dispatch rules
+- Per-number routing enables canary migration (test individual numbers on LiveKit while others stay on Vapi)
+- Provisioning branches by provider: Vapi SDK import vs. Twilio SIP trunk assignment + LiveKit dispatch rule creation
+- **Future optimization:** If API lookups become a latency bottleneck (e.g., high call volume or frequent admin page loads), consider adding a local `phone_number_configs` table as a cache of LiveKit provisioning state
 
 ---
 

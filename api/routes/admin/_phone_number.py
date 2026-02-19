@@ -52,6 +52,7 @@ async def reserve_phone_number(
             phone_number=request.phone_number,  # None for new numbers
             country_code=request.country_code,
             toll_free=request.toll_free,
+            voice_provider=request.voice_provider,
         )
     except ValueError as err:
         # Determine appropriate HTTP status based on the error
@@ -251,6 +252,7 @@ async def list_phone_numbers(
                 account_names=data["account_names"],
                 usage_type=data["usage_type"],  # Already a UsageType enum
                 number_type=data["number_type"],  # Already a NumberType enum
+                voice_provider=data.get("voice_provider"),
             )
             phone_numbers.append(phone_number_info)
 

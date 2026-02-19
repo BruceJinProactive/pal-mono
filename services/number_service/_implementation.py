@@ -11,10 +11,10 @@ from vapi import Vapi
 from vapi.types.create_twilio_phone_number_dto import CreateTwilioPhoneNumberDto
 from vapi.types.custom_llm_model import CustomLlmModel
 
-# Repository import for project operations (no circular dependency risk)
 from db.repositories.project_repository import ProjectRepository
 from utils.log import logger
 
+from ._livekit_sip import LiveKitSIPClient
 from ._utils import (
     AssistantConfig,
     NumberChannel,
@@ -96,6 +96,8 @@ class NumberService:
             self.vapi_client = Vapi(token=vapi_token)
             self.vapi_token = vapi_token  # Store for reuse in HTTP API calls
             self.twilio_client = Client(twilio_account_sid, twilio_auth_token)
+            self._livekit_client = LiveKitSIPClient()
+            self._twilio_sip_trunk_sid = os.environ.get("TWILIO_SIP_TRUNK_SID")
         except Exception as e:
             raise RuntimeError(f"Failed to initialize NumberService: {e}") from e
 
@@ -233,6 +235,104 @@ class NumberService:
         )
         return assistant.id
 
+    def _setup_number_for_livekit(
+        self,
+        phone_number: str,
+    ) -> None:
+        """Configure a Twilio number for LiveKit SIP routing.
+
+        Steps:
+        1. Validate LiveKit is configured
+        2. Update Twilio number to use SIP trunk
+        3. Create LiveKit dispatch rule
+
+        No local DB storage — LiveKit API is the source of truth.
+        Rolls back on failure at each step.
+        """
+        if not self._livekit_client.is_configured():
+            raise ValueError(
+                "LiveKit is not configured. Set LIVEKIT_URL, LIVEKIT_API_KEY, "
+                "LIVEKIT_API_SECRET, and LIVEKIT_INBOUND_TRUNK_ID env vars."
+            )
+        if not self._twilio_sip_trunk_sid:
+            raise ValueError(
+                "TWILIO_SIP_TRUNK_SID env var is required for LiveKit provisioning."
+            )
+
+        # Step 1: Update Twilio number to use SIP trunk
+        number_details = self.get_number_details(phone_number)
+        if not number_details:
+            raise ValueError(f"Phone number {phone_number} not found in Twilio")
+
+        try:
+            number_details.update(trunk_sid=self._twilio_sip_trunk_sid)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to assign Twilio SIP trunk to {phone_number}: {e}"
+            ) from e
+
+        # Step 2: Create LiveKit dispatch rule
+        try:
+            result = self._livekit_client.create_dispatch_rule(phone_number)
+        except Exception as e:
+            # Rollback: revert Twilio trunk assignment
+            try:
+                number_details.update(trunk_sid="")
+            except Exception:
+                logger.warning(f"Failed to rollback Twilio trunk for {phone_number}")
+            raise ValueError(
+                f"Failed to create LiveKit dispatch rule for {phone_number}: {e}"
+            ) from e
+
+        logger.info(
+            f"Phone number {phone_number} provisioned for LiveKit",
+            extra={
+                "phone_number": phone_number,
+                "dispatch_rule_id": result.dispatch_rule_id,
+                "trunk_id": result.trunk_id,
+            },
+        )
+
+    def _release_number_from_livekit(
+        self,
+        phone_number: str,
+    ) -> None:
+        """Release a phone number from LiveKit SIP routing.
+
+        Uses LiveKit API to find and delete the dispatch rule (no local DB lookup).
+
+        Steps:
+        1. Find and delete LiveKit dispatch rule via API
+        2. Revert Twilio SIP trunk config
+        """
+        # Step 1: Delete LiveKit dispatch rule via API lookup
+        try:
+            self._livekit_client.delete_dispatch_rule_by_number(phone_number)
+        except Exception as e:
+            logger.warning(
+                f"Failed to delete LiveKit dispatch rule for {phone_number}: {e}"
+            )
+
+        # Step 2: Revert Twilio SIP trunk config
+        try:
+            number_details = self.get_number_details(phone_number)
+            if number_details:
+                number_details.update(trunk_sid="")
+        except Exception as e:
+            logger.warning(f"Failed to revert Twilio trunk for {phone_number}: {e}")
+
+        logger.info(
+            f"Phone number {phone_number} released from LiveKit",
+            extra={"phone_number": phone_number},
+        )
+
+    def _is_number_on_livekit(self, phone_number: str) -> bool:
+        """Check if a phone number is routed through LiveKit.
+
+        Queries the LiveKit SIP API to check for a matching dispatch rule.
+        """
+        return self._livekit_client.has_dispatch_rule(phone_number)
+
     def setup_number(
         self,
         country_code: str,
@@ -242,6 +342,7 @@ class NumberService:
         purchase_number: bool = False,
         area_code: Optional[str] = None,
         contains: Optional[str] = None,
+        voice_provider: str = "vapi",
     ) -> NumberResponse:
         """Set up a phone number with optional Vapi assistant integration.
 
@@ -313,21 +414,29 @@ class NumberService:
                 country_code=country_code,
                 toll_free=toll_free,
             )
-        # Import number to Vapi
-        try:
-            self.vapi_client.phone_numbers.create(
-                request=CreateTwilioPhoneNumberDto(
-                    number=phone_number,
-                    twilio_account_sid=self.twilio_client.username,  # type: ignore
-                    twilio_auth_token=self.twilio_client.password,
-                    name=self._get_friendly_name(merchant_name, for_twilio=True),
-                ),
-            )
-        except Exception as e:
-            self._delete_number_from_twilio(
-                phone_number
-            )  # release the purchased number if the vapi call fails
-            raise ValueError(f"Failed to import number to Vapi: {e}") from e
+        # Route number to voice provider
+        if voice_provider == "livekit":
+            try:
+                self._setup_number_for_livekit(phone_number)
+            except Exception as e:
+                self._delete_number_from_twilio(phone_number)
+                raise ValueError(f"Failed to provision number for LiveKit: {e}") from e
+        else:
+            # Import number to Vapi (default)
+            try:
+                self.vapi_client.phone_numbers.create(
+                    request=CreateTwilioPhoneNumberDto(
+                        number=phone_number,
+                        twilio_account_sid=self.twilio_client.username,  # type: ignore
+                        twilio_auth_token=self.twilio_client.password,
+                        name=self._get_friendly_name(merchant_name, for_twilio=True),
+                    ),
+                )
+            except Exception as e:
+                self._delete_number_from_twilio(
+                    phone_number
+                )  # release the purchased number if the vapi call fails
+                raise ValueError(f"Failed to import number to Vapi: {e}") from e
 
         return number_response
 
@@ -535,7 +644,11 @@ class NumberService:
         return numbers[0]
 
     def reserve_existing_number(
-        self, phone_number: str, merchant_name: str, session
+        self,
+        phone_number: str,
+        merchant_name: str,
+        session,
+        voice_provider: str = "vapi",
     ) -> bool:
         """Reserve an existing phone number for a project.
 
@@ -558,10 +671,13 @@ class NumberService:
         if not number_details:
             raise ValueError(f"Phone number {phone_number} not found in Twilio account")
 
-        # Check if the number is available for assignment by verifying:
-        # 1. Number is already in Vapi
-        # 2. Number is not associated with any project
-        if not self._is_number_in_vapi(phone_number):
+        # Check if the number is available for assignment
+        if voice_provider == "livekit":
+            if not self._is_number_on_livekit(phone_number):
+                raise ValueError(
+                    f"Phone number {phone_number} is not provisioned for LiveKit"
+                )
+        elif not self._is_number_in_vapi(phone_number):
             raise ValueError(
                 f"Phone number {phone_number} is not registered in Vapi and is not available for assignment"
             )
@@ -600,6 +716,7 @@ class NumberService:
         country_code: str = "US",
         toll_free: bool = True,
         auto_commit: bool = True,
+        voice_provider: str = "vapi",
     ) -> str:
         """Assign a phone number to a project with complete channel setup.
 
@@ -615,6 +732,7 @@ class NumberService:
             phone_number: Optional existing phone number to reserve (if None, purchases new)
             country_code: Country code for new numbers (default: "US")
             toll_free: Whether new numbers should be toll-free (default: True)
+            voice_provider: Voice routing provider ('vapi' or 'livekit')
 
         Returns:
             str: The phone number that was assigned to the project
@@ -631,6 +749,7 @@ class NumberService:
                     phone_number=phone_number,
                     merchant_name=project_name,
                     session=session,
+                    voice_provider=voice_provider,
                 )
                 if not success:
                     raise ValueError(
@@ -646,6 +765,7 @@ class NumberService:
                     toll_free=toll_free,
                     merchant_name=project_name,
                     purchase_number=True,
+                    voice_provider=voice_provider,
                 )
                 assigned_phone_number = number_response.number
 
@@ -970,11 +1090,12 @@ class NumberService:
             raise ValueError(f"Failed to delete number from Twilio: {e}") from e
 
     def delete_number(self, number: str):
-        """Completely delete a phone number from both Vapi and Twilio.
+        """Completely delete a phone number from Vapi/LiveKit and Twilio.
 
         This method ensures complete deletion by:
-        1. Removing the number from Vapi integration
-        2. Deleting the number from Twilio (not just marking as released)
+        1. Checking if number is on LiveKit (via API) or Vapi
+        2. Removing the number from the appropriate voice provider
+        3. Deleting the number from Twilio (not just marking as released)
 
         Args:
             number: The phone number to delete
@@ -982,7 +1103,10 @@ class NumberService:
         Raises:
             ValueError: If deletion from either service fails
         """
-        self._release_number_from_vapi(number)
+        if self._is_number_on_livekit(number):
+            self._release_number_from_livekit(number)
+        else:
+            self._release_number_from_vapi(number)
         self._delete_number_from_twilio(number)
 
     def activate_number(self, number: str):
@@ -1021,8 +1145,8 @@ class NumberService:
         """Release a phone number with specified handling options.
 
         This method provides enhanced control over how phone numbers are handled after release:
-        - 'return_to_pool': Keeps in both Vapi and Twilio but sets friendly name to AVAILABLE for reuse
-        - 'delete_permanently': Completely removes from both Vapi and Twilio
+        - 'return_to_pool': Keeps in Twilio but releases from voice provider, sets friendly name to AVAILABLE
+        - 'delete_permanently': Completely removes from both voice provider and Twilio
 
         Args:
             phone_number: The phone number to release
@@ -1035,6 +1159,9 @@ class NumberService:
         release_type_value = getattr(release_type, "value", release_type)
 
         if release_type_value == "return_to_pool":
+            # For LiveKit numbers, clean up dispatch rule before returning to pool
+            if self._is_number_on_livekit(phone_number):
+                self._release_number_from_livekit(phone_number)
             self._set_number_available(phone_number)
 
         elif release_type_value == "delete_permanently":
@@ -1409,6 +1536,11 @@ class NumberService:
                 [project.account.name for project in projects] if projects else None
             )
 
+            # Determine voice provider via LiveKit API
+            voice_provider = (
+                "livekit" if self._is_number_on_livekit(phone_number) else "vapi"
+            )
+
             # Build processed phone number data
             phone_number_data = {
                 "phone_number": phone_number,
@@ -1421,6 +1553,7 @@ class NumberService:
                 "account_names": account_names,
                 "usage_type": usage_type,
                 "number_type": number_type,
+                "voice_provider": voice_provider,
             }
             phone_numbers_data.append(phone_number_data)
 

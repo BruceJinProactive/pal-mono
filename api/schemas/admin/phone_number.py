@@ -27,6 +27,10 @@ class ReserveProjectNumberRequest(BaseModel):
         None,
         description="Optional existing phone number to reserve instead of creating new one",
     )
+    voice_provider: str = Field(
+        "vapi",
+        description="Voice routing provider: 'vapi' (default) or 'livekit'",
+    )
 
 
 class ReleaseProjectNumberRequest(BaseModel):
@@ -66,6 +70,10 @@ class PhoneNumberInfo(BaseModel):
     number_type: Optional[NumberType] = Field(
         None,
         description="Type of phone number: 'toll-free' or 'other'",
+    )
+    voice_provider: Optional[str] = Field(
+        None,
+        description="Voice routing provider: 'vapi' or 'livekit'",
     )
 
 
