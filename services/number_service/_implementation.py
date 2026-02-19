@@ -14,7 +14,6 @@ from vapi.types.custom_llm_model import CustomLlmModel
 from db.repositories.project_repository import ProjectRepository
 from utils.log import logger
 
-from ._livekit_sip import LiveKitSIPClient
 from ._utils import (
     AssistantConfig,
     NumberChannel,
@@ -96,7 +95,6 @@ class NumberService:
             self.vapi_client = Vapi(token=vapi_token)
             self.vapi_token = vapi_token  # Store for reuse in HTTP API calls
             self.twilio_client = Client(twilio_account_sid, twilio_auth_token)
-            self._livekit_client = LiveKitSIPClient()
             self._twilio_sip_trunk_sid = os.environ.get("TWILIO_SIP_TRUNK_SID")
         except Exception as e:
             raise RuntimeError(f"Failed to initialize NumberService: {e}") from e
@@ -241,25 +239,15 @@ class NumberService:
     ) -> None:
         """Configure a Twilio number for LiveKit SIP routing.
 
-        Steps:
-        1. Validate LiveKit is configured
-        2. Update Twilio number to use SIP trunk
-        3. Create LiveKit dispatch rule
-
-        No local DB storage — LiveKit API is the source of truth.
-        Rolls back on failure at each step.
+        Sets the trunk_sid on the Twilio number so inbound calls are
+        forwarded via SIP to LiveKit. A shared callee dispatch rule on
+        LiveKit handles per-number routing automatically.
         """
-        if not self._livekit_client.is_configured():
-            raise ValueError(
-                "LiveKit is not configured. Set LIVEKIT_URL, LIVEKIT_API_KEY, "
-                "LIVEKIT_API_SECRET, and LIVEKIT_INBOUND_TRUNK_ID env vars."
-            )
         if not self._twilio_sip_trunk_sid:
             raise ValueError(
                 "TWILIO_SIP_TRUNK_SID env var is required for LiveKit provisioning."
             )
 
-        # Step 1: Update Twilio number to use SIP trunk
         number_details = self.get_number_details(phone_number)
         if not number_details:
             raise ValueError(f"Phone number {phone_number} not found in Twilio")
@@ -271,67 +259,39 @@ class NumberService:
                 f"Failed to assign Twilio SIP trunk to {phone_number}: {e}"
             ) from e
 
-        # Step 2: Create LiveKit dispatch rule
-        try:
-            result = self._livekit_client.create_dispatch_rule(phone_number)
-        except Exception as e:
-            # Rollback: revert Twilio trunk assignment
-            try:
-                number_details.update(trunk_sid="")
-            except Exception:
-                logger.warning(f"Failed to rollback Twilio trunk for {phone_number}")
-            raise ValueError(
-                f"Failed to create LiveKit dispatch rule for {phone_number}: {e}"
-            ) from e
-
         logger.info(
-            f"Phone number {phone_number} provisioned for LiveKit",
-            extra={
-                "phone_number": phone_number,
-                "dispatch_rule_id": result.dispatch_rule_id,
-                "trunk_id": result.trunk_id,
-            },
+            f"Phone number {phone_number} assigned to SIP trunk for LiveKit",
+            extra={"phone_number": phone_number},
         )
 
     def _release_number_from_livekit(
         self,
         phone_number: str,
     ) -> None:
-        """Release a phone number from LiveKit SIP routing.
+        """Remove LiveKit SIP routing from a Twilio number.
 
-        Uses LiveKit API to find and delete the dispatch rule (no local DB lookup).
-
-        Steps:
-        1. Find and delete LiveKit dispatch rule via API
-        2. Revert Twilio SIP trunk config
+        Clears the trunk_sid so Twilio stops forwarding calls via SIP.
         """
-        # Step 1: Delete LiveKit dispatch rule via API lookup
-        try:
-            self._livekit_client.delete_dispatch_rule_by_number(phone_number)
-        except Exception as e:
-            logger.warning(
-                f"Failed to delete LiveKit dispatch rule for {phone_number}: {e}"
-            )
-
-        # Step 2: Revert Twilio SIP trunk config
         try:
             number_details = self.get_number_details(phone_number)
             if number_details:
                 number_details.update(trunk_sid="")
+            logger.info(
+                f"Phone number {phone_number} released from LiveKit SIP trunk",
+                extra={"phone_number": phone_number},
+            )
         except Exception as e:
-            logger.warning(f"Failed to revert Twilio trunk for {phone_number}: {e}")
-
-        logger.info(
-            f"Phone number {phone_number} released from LiveKit",
-            extra={"phone_number": phone_number},
-        )
+            logger.warning(f"Failed to clear Twilio trunk for {phone_number}: {e}")
 
     def _is_number_on_livekit(self, phone_number: str) -> bool:
         """Check if a phone number is routed through LiveKit.
 
-        Queries the LiveKit SIP API to check for a matching dispatch rule.
+        Returns True if the Twilio number has a SIP trunk assigned.
         """
-        return self._livekit_client.has_dispatch_rule(phone_number)
+        number_details = self.get_number_details(phone_number)
+        if not number_details:
+            return False
+        return bool(getattr(number_details, "trunk_sid", None))
 
     def setup_number(
         self,
@@ -1536,9 +1496,9 @@ class NumberService:
                 [project.account.name for project in projects] if projects else None
             )
 
-            # Determine voice provider via LiveKit API
+            # Determine voice provider from trunk_sid (already fetched)
             voice_provider = (
-                "livekit" if self._is_number_on_livekit(phone_number) else "vapi"
+                "livekit" if getattr(twilio_number, "trunk_sid", None) else "vapi"
             )
 
             # Build processed phone number data

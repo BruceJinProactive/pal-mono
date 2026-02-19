@@ -121,8 +121,9 @@ Start with **Option A** for faster time-to-production. Migrate to **Option B** l
 
 #### 0B. SIP trunk provisioning
 - Keep phone numbers in Twilio
-- Configure Twilio SIP trunk to route calls to LiveKit server
-- Create LiveKit inbound trunk + dispatch rules (phone numbers → rooms → agent)
+- Configure Twilio SIP trunk with origination URI pointing to LiveKit's SIP endpoint
+- Create one LiveKit inbound trunk (shared across all numbers)
+- Create one shared **callee dispatch rule** — routes calls to rooms named by the dialed number automatically (no per-number dispatch rules needed)
 - Test: raw call comes in, LiveKit room created, agent process receives `JobContext`
 - **Note:** SIP REFER cold transfers work over SIP-over-TLS. For Twilio trunks, enable "Enable PSTN Transfer" and use TLS via port 5061 / `SIP_TRANSPORT_TLS`.
 
@@ -251,23 +252,24 @@ See also: [Call Transfer Analysis](./livekit-call-transfer-analysis.md)
 ### Phase 6: Phone Number Management (depends on 0B)
 
 #### 6A. SIP trunk routing for existing numbers
-- For each number to migrate: update Twilio SIP trunk to point to LiveKit
-- Create matching LiveKit inbound trunk rule + dispatch rule
+- For each number to migrate: set `trunk_sid` on the Twilio number to point it at the SIP trunk connected to LiveKit
+- The shared callee dispatch rule on LiveKit handles per-number routing automatically — no per-number LiveKit configuration needed
+- To revert: clear `trunk_sid` on the Twilio number (calls resume going to Vapi webhook)
 
 #### 6B. Number provisioning automation
-- New numbers: configure LiveKit dispatch rules instead of importing into Vapi
-- Released numbers: query `ListSIPDispatchRule` by phone number to find the dispatch rule ID, then delete it
-- Replace Vapi SDK calls with LiveKit SIP API calls
+- New LiveKit numbers: purchase on Twilio → set `trunk_sid` (done — no LiveKit API calls needed)
+- New Vapi numbers: purchase on Twilio → import to Vapi (unchanged)
+- Released LiveKit numbers: clear `trunk_sid` on Twilio number
+- Released Vapi numbers: remove from Vapi (unchanged)
+- No LiveKit SIP API calls needed in the number provisioning flow
 
 #### 6C. Per-number routing during migration
-- Determine voice provider per number by querying LiveKit SIP API at runtime:
-  - Call `ListSIPDispatchRule` and match by phone number (dispatch rules are named `inbound-{number}`)
-  - If a matching dispatch rule exists → number is routed to LiveKit
-  - If no dispatch rule found → number is routed to Vapi (default)
-- No local `phone_number_configs` database table needed initially — LiveKit is the source of truth for its own dispatch rules
-- Per-number routing enables canary migration (test individual numbers on LiveKit while others stay on Vapi)
-- Provisioning branches by provider: Vapi SDK import vs. Twilio SIP trunk assignment + LiveKit dispatch rule creation
-- **Future optimization:** If API lookups become a latency bottleneck (e.g., high call volume or frequent admin page loads), consider adding a local `phone_number_configs` table as a cache of LiveKit provisioning state
+- Determine voice provider by checking the Twilio number's `trunk_sid`:
+  - If `trunk_sid` is set → number is routed to LiveKit via SIP
+  - If `trunk_sid` is empty → number is routed to Vapi via webhook (default)
+- No LiveKit API lookups needed — Twilio is the source of truth for routing
+- Per-number routing enables canary migration (set `trunk_sid` on individual numbers to test LiveKit while others stay on Vapi)
+- Rollback is instant: clear `trunk_sid` to revert a number to Vapi
 
 ---
 

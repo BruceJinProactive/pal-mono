@@ -1,10 +1,10 @@
 # pyright: reportAttributeAccessIssue=false
 """Business-driven tests for NumberService LiveKit provisioning.
 
-These tests verify the dual-stack provisioning behavior:
-- Vapi path (default): purchase → import to Vapi
-- LiveKit path: purchase → SIP trunk → dispatch rule (no local DB)
-- Release paths for both providers using LiveKit API lookups
+These tests verify the dual-stack provisioning behavior using trunk_sid:
+- Vapi path (default): purchase → import to Vapi (voice webhook)
+- LiveKit path: purchase → set trunk_sid on Twilio number (SIP routing)
+- Release paths: clear trunk_sid for LiveKit, delete from Vapi for Vapi
 - Backward compatibility (no voice_provider param defaults to Vapi)
 """
 
@@ -13,16 +13,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from services.number_service._livekit_sip import LiveKitProvisionResult
-
 
 class TestSetupNumberVapiPath:
     """Verify that Vapi provisioning (default path) is unchanged."""
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
-    def test_setup_number_defaults_to_vapi(self, mock_twilio_cls, mock_vapi_cls, _):
+    def test_setup_number_defaults_to_vapi(self, mock_twilio_cls, mock_vapi_cls):
         """Calling setup_number without voice_provider imports to Vapi."""
         from services.number_service._implementation import NumberService
 
@@ -36,11 +33,9 @@ class TestSetupNumberVapiPath:
         ):
             service = NumberService()
 
-        # Set string values for Twilio credentials (Vapi SDK validates types)
         service.twilio_client.username = "ACtest"
         service.twilio_client.password = "token"
 
-        # Mock Twilio purchase
         mock_twilio_number = MagicMock()
         mock_twilio_number.phone_number = "+15551234567"
         mock_twilio_number.sid = "PN123"
@@ -59,14 +54,12 @@ class TestSetupNumberVapiPath:
         )
 
         assert result.number == "+15551234567"
-        # Vapi import should have been called
         service.vapi_client.phone_numbers.create.assert_called_once()
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
     def test_setup_number_explicit_vapi_imports_to_vapi(
-        self, mock_twilio_cls, mock_vapi_cls, _
+        self, mock_twilio_cls, mock_vapi_cls
     ):
         """Explicitly passing voice_provider='vapi' imports to Vapi."""
         from services.number_service._implementation import NumberService
@@ -81,7 +74,6 @@ class TestSetupNumberVapiPath:
         ):
             service = NumberService()
 
-        # Set string values for Twilio credentials (Vapi SDK validates types)
         service.twilio_client.username = "ACtest"
         service.twilio_client.password = "token"
 
@@ -108,15 +100,12 @@ class TestSetupNumberVapiPath:
 
 
 class TestSetupNumberLiveKitPath:
-    """Verify that LiveKit provisioning creates dispatch rules instead of Vapi import."""
+    """Verify that LiveKit provisioning sets trunk_sid on the Twilio number."""
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
-    def test_setup_number_livekit_creates_dispatch_rule(
-        self, mock_twilio_cls, mock_vapi_cls, mock_lk_cls
-    ):
-        """LiveKit path: purchases number, sets SIP trunk, creates dispatch rule."""
+    def test_setup_number_livekit_sets_trunk_sid(self, mock_twilio_cls, mock_vapi_cls):
+        """LiveKit path: purchases number, sets trunk_sid for SIP routing."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -129,12 +118,6 @@ class TestSetupNumberLiveKitPath:
             },
         ):
             service = NumberService()
-
-        # Mock LiveKit client as configured
-        service._livekit_client.is_configured.return_value = True
-        service._livekit_client.create_dispatch_rule.return_value = (
-            LiveKitProvisionResult(trunk_id="trunk-abc", dispatch_rule_id="DR-123")
-        )
 
         # Mock Twilio purchase
         mock_twilio_number = MagicMock()
@@ -147,12 +130,11 @@ class TestSetupNumberLiveKitPath:
             mock_twilio_number
         )
 
-        # Mock Twilio number details (for trunk update)
+        # Mock get_number_details (used by _setup_number_for_livekit)
         mock_number_details = MagicMock()
         service.twilio_client.incoming_phone_numbers.list.return_value = [
             mock_number_details
         ]
-        mock_number_details.phone_number = "+15551234567"
 
         result = service.setup_number(
             country_code="US",
@@ -165,18 +147,15 @@ class TestSetupNumberLiveKitPath:
         assert result.number == "+15551234567"
         # Vapi should NOT have been called
         service.vapi_client.phone_numbers.create.assert_not_called()
-        # LiveKit dispatch rule should have been created
-        service._livekit_client.create_dispatch_rule.assert_called_once_with(
-            "+15551234567"
-        )
+        # trunk_sid should have been set on the Twilio number
+        mock_number_details.update.assert_called_once_with(trunk_sid="TK-sip-trunk")
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
-    def test_setup_number_livekit_not_configured_raises(
-        self, mock_twilio_cls, mock_vapi_cls, _
+    def test_setup_number_livekit_no_trunk_sid_raises(
+        self, mock_twilio_cls, mock_vapi_cls
     ):
-        """LiveKit path when LiveKit is not configured raises ValueError."""
+        """LiveKit path without TWILIO_SIP_TRUNK_SID raises ValueError."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -185,12 +164,10 @@ class TestSetupNumberLiveKitPath:
                 "TWILIO_ACCOUNT_SID": "ACtest",
                 "TWILIO_AUTH_TOKEN": "token",
                 "VAPI_API_KEY": "vapi_key",
-                "TWILIO_SIP_TRUNK_SID": "TK-trunk",
+                # No TWILIO_SIP_TRUNK_SID
             },
         ):
             service = NumberService()
-
-        service._livekit_client.is_configured.return_value = False
 
         mock_twilio_number = MagicMock()
         mock_twilio_number.phone_number = "+15551234567"
@@ -202,7 +179,7 @@ class TestSetupNumberLiveKitPath:
             mock_twilio_number
         )
 
-        with pytest.raises(ValueError, match="LiveKit is not configured"):
+        with pytest.raises(ValueError, match="TWILIO_SIP_TRUNK_SID"):
             service.setup_number(
                 country_code="US",
                 toll_free=True,
@@ -215,13 +192,12 @@ class TestSetupNumberLiveKitPath:
 class TestSetupNumberLiveKitRollback:
     """Verify that LiveKit provisioning rollback works on failure."""
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
-    def test_livekit_dispatch_rule_failure_rolls_back_trunk(
-        self, mock_twilio_cls, mock_vapi_cls, mock_lk_cls
+    def test_livekit_trunk_sid_failure_deletes_number(
+        self, mock_twilio_cls, mock_vapi_cls
     ):
-        """If dispatch rule creation fails, Twilio trunk config is reverted."""
+        """If trunk_sid update fails, the purchased number is deleted."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -235,17 +211,7 @@ class TestSetupNumberLiveKitRollback:
         ):
             service = NumberService()
 
-        service._livekit_client.is_configured.return_value = True
-        service._livekit_client.create_dispatch_rule.side_effect = ValueError(
-            "API error"
-        )
-
-        mock_number_details = MagicMock()
-        mock_number_details.phone_number = "+15551234567"
-        service.twilio_client.incoming_phone_numbers.list.return_value = [
-            mock_number_details
-        ]
-
+        # Mock Twilio purchase
         mock_twilio_number = MagicMock()
         mock_twilio_number.phone_number = "+15551234567"
         mock_twilio_number.sid = "PN123"
@@ -256,6 +222,13 @@ class TestSetupNumberLiveKitRollback:
             mock_twilio_number
         )
 
+        # Mock get_number_details to simulate trunk_sid update failure
+        mock_number_details = MagicMock()
+        mock_number_details.update.side_effect = Exception("Twilio API error")
+        service.twilio_client.incoming_phone_numbers.list.return_value = [
+            mock_number_details
+        ]
+
         with pytest.raises(ValueError, match="Failed to provision number for LiveKit"):
             service.setup_number(
                 country_code="US",
@@ -265,20 +238,16 @@ class TestSetupNumberLiveKitRollback:
                 voice_provider="livekit",
             )
 
-        # Twilio trunk should have been reverted
-        mock_number_details.update.assert_any_call(trunk_sid="")
-
 
 class TestDeleteNumberDualStack:
-    """Verify delete_number routes to correct provider via LiveKit API lookup."""
+    """Verify delete_number routes to correct provider via trunk_sid check."""
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
-    def test_delete_livekit_number_cleans_up_dispatch_rule(
-        self, mock_twilio_cls, mock_vapi_cls, mock_lk_cls
+    def test_delete_livekit_number_clears_trunk_sid(
+        self, mock_twilio_cls, mock_vapi_cls
     ):
-        """Deleting a LiveKit number finds and removes dispatch rule via API."""
+        """Deleting a LiveKit number clears trunk_sid then deletes from Twilio."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -291,34 +260,27 @@ class TestDeleteNumberDualStack:
         ):
             service = NumberService()
 
-        # Mock: LiveKit API says this number has a dispatch rule
-        service._livekit_client.has_dispatch_rule.return_value = True
-        service._livekit_client.find_dispatch_rule_by_number.return_value = (
-            "DR-to-delete"
-        )
-
-        # Mock: Twilio number details for trunk revert
+        # Mock: Twilio number has trunk_sid set (LiveKit number)
         mock_number_details = MagicMock()
+        mock_number_details.trunk_sid = "TK-sip-trunk"
+        mock_number_details.phone_number = "+15551234567"
         service.twilio_client.incoming_phone_numbers.list.return_value = [
             mock_number_details
         ]
 
         service.delete_number("+15551234567")
 
-        # Dispatch rule should have been deleted via API lookup
-        service._livekit_client.delete_dispatch_rule_by_number.assert_called_once_with(
-            "+15551234567"
-        )
-        # Twilio number should have been deleted
-        service.twilio_client.incoming_phone_numbers.list.assert_called()
+        # trunk_sid should have been cleared
+        mock_number_details.update.assert_any_call(trunk_sid="")
+        # Vapi should NOT have been called to delete
+        service.vapi_client.phone_numbers.list.assert_not_called()
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
     def test_delete_vapi_number_releases_from_vapi(
-        self, mock_twilio_cls, mock_vapi_cls, mock_lk_cls
+        self, mock_twilio_cls, mock_vapi_cls
     ):
-        """Deleting a Vapi number (no LiveKit dispatch rule) uses Vapi path."""
+        """Deleting a Vapi number (no trunk_sid) uses Vapi path."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -331,17 +293,19 @@ class TestDeleteNumberDualStack:
         ):
             service = NumberService()
 
-        # Mock: LiveKit API says no dispatch rule for this number
-        service._livekit_client.has_dispatch_rule.return_value = False
+        # Mock: Twilio number has no trunk_sid (Vapi number)
+        mock_number_details = MagicMock()
+        mock_number_details.trunk_sid = None
+        mock_number_details.phone_number = "+15551234567"
+        service.twilio_client.incoming_phone_numbers.list.return_value = [
+            mock_number_details
+        ]
 
-        # Mock Vapi phone numbers list
+        # Mock Vapi phone numbers list for _release_number_from_vapi
         mock_vapi_number = MagicMock()
         mock_vapi_number.number = "+15551234567"
         mock_vapi_number.id = "vapi-id-123"
         service.vapi_client.phone_numbers.list.return_value = [mock_vapi_number]
-
-        # Mock Twilio
-        service.twilio_client.incoming_phone_numbers.list.return_value = []
 
         service.delete_number("+15551234567")
 
@@ -349,20 +313,17 @@ class TestDeleteNumberDualStack:
         service.vapi_client.phone_numbers.delete.assert_called_once_with(
             id="vapi-id-123"
         )
-        # LiveKit release should NOT have been called
-        service._livekit_client.delete_dispatch_rule_by_number.assert_not_called()
 
 
 class TestReleaseNumberWithOptionsDualStack:
-    """Verify release_number_with_options handles both providers via API lookup."""
+    """Verify release_number_with_options handles both providers via trunk_sid."""
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
-    def test_return_to_pool_livekit_cleans_up_and_sets_available(
-        self, mock_twilio_cls, mock_vapi_cls, mock_lk_cls
+    def test_return_to_pool_livekit_clears_trunk_and_sets_available(
+        self, mock_twilio_cls, mock_vapi_cls
     ):
-        """Returning a LiveKit number to pool cleans up dispatch rule AND sets available."""
+        """Returning a LiveKit number to pool clears trunk_sid AND sets available."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -375,31 +336,25 @@ class TestReleaseNumberWithOptionsDualStack:
         ):
             service = NumberService()
 
-        # Mock: LiveKit API says this number has a dispatch rule
-        service._livekit_client.has_dispatch_rule.return_value = True
-        service._livekit_client.find_dispatch_rule_by_number.return_value = "DR-pool"
-
+        # Mock: Twilio number has trunk_sid set (LiveKit number)
         mock_number_details = MagicMock()
+        mock_number_details.trunk_sid = "TK-sip-trunk"
         service.twilio_client.incoming_phone_numbers.list.return_value = [
             mock_number_details
         ]
 
+        # Mock Vapi for _update_vapi_phone_number_name (called by _set_number_available)
+        service.vapi_client.phone_numbers.list.return_value = []
+
         service.release_number_with_options("+15551234567", "return_to_pool")
 
-        # Dispatch rule cleaned up via API
-        service._livekit_client.delete_dispatch_rule_by_number.assert_called_once_with(
-            "+15551234567"
-        )
-        # Friendly name set to AVAILABLE
-        mock_number_details.update.assert_called()
+        # trunk_sid should have been cleared
+        mock_number_details.update.assert_any_call(trunk_sid="")
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
-    def test_return_to_pool_vapi_sets_available(
-        self, mock_twilio_cls, mock_vapi_cls, _
-    ):
-        """Returning a Vapi number to pool just sets available."""
+    def test_return_to_pool_vapi_sets_available(self, mock_twilio_cls, mock_vapi_cls):
+        """Returning a Vapi number to pool just sets available (no trunk cleanup)."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -412,31 +367,33 @@ class TestReleaseNumberWithOptionsDualStack:
         ):
             service = NumberService()
 
-        # Mock: LiveKit API says no dispatch rule
-        service._livekit_client.has_dispatch_rule.return_value = False
-
+        # Mock: Twilio number has no trunk_sid (Vapi number)
         mock_number_details = MagicMock()
+        mock_number_details.trunk_sid = None
         service.twilio_client.incoming_phone_numbers.list.return_value = [
             mock_number_details
         ]
 
+        # Mock Vapi for _update_vapi_phone_number_name
+        service.vapi_client.phone_numbers.list.return_value = []
+
         service.release_number_with_options("+15551234567", "return_to_pool")
 
-        mock_number_details.update.assert_called()
-        # LiveKit should not be involved
-        service._livekit_client.delete_dispatch_rule_by_number.assert_not_called()
+        # Should have set friendly name (via _set_number_available) but NOT cleared trunk_sid
+        calls = mock_number_details.update.call_args_list
+        trunk_calls = [c for c in calls if "trunk_sid" in (c.kwargs or {})]
+        assert len(trunk_calls) == 0
 
 
 class TestReserveExistingNumberDualStack:
     """Verify reserve_existing_number validates against the correct provider."""
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
-    def test_reserve_livekit_number_checks_dispatch_rule(
-        self, mock_twilio_cls, mock_vapi_cls, mock_lk_cls
+    def test_reserve_livekit_number_checks_trunk_sid(
+        self, mock_twilio_cls, mock_vapi_cls
     ):
-        """Reserving a LiveKit number checks for dispatch rule via API."""
+        """Reserving a LiveKit number checks for trunk_sid on Twilio number."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -449,17 +406,17 @@ class TestReserveExistingNumberDualStack:
         ):
             service = NumberService()
 
-        # Twilio says number exists
+        # Mock: Twilio number has trunk_sid set
         mock_number_details = MagicMock()
         mock_number_details.sid = "PN123"
+        mock_number_details.trunk_sid = "TK-sip-trunk"
         service.twilio_client.incoming_phone_numbers.list.return_value = [
             mock_number_details
         ]
 
-        # LiveKit API says dispatch rule exists
-        service._livekit_client.has_dispatch_rule.return_value = True
+        # Mock Vapi for _update_vapi_phone_number_name
+        service.vapi_client.phone_numbers.list.return_value = []
 
-        # Not associated with any project
         mock_session = MagicMock()
         with patch(
             "services.number_service._implementation.ProjectRepository"
@@ -468,26 +425,18 @@ class TestReserveExistingNumberDualStack:
                 []
             )
 
-            # Mock Vapi for _update_vapi_phone_number_name
-            service.vapi_client.phone_numbers.list.return_value = []
-
             result = service.reserve_existing_number(
                 "+15551234567", "TestBiz", mock_session, voice_provider="livekit"
             )
 
         assert result is True
-        # Should have checked LiveKit API
-        service._livekit_client.has_dispatch_rule.assert_called_once_with(
-            "+15551234567"
-        )
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
-    def test_reserve_livekit_number_without_dispatch_rule_raises(
-        self, mock_twilio_cls, mock_vapi_cls, mock_lk_cls
+    def test_reserve_livekit_number_without_trunk_sid_raises(
+        self, mock_twilio_cls, mock_vapi_cls
     ):
-        """Reserving a number for LiveKit that has no dispatch rule raises ValueError."""
+        """Reserving a number for LiveKit that has no trunk_sid raises ValueError."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -500,13 +449,12 @@ class TestReserveExistingNumberDualStack:
         ):
             service = NumberService()
 
+        # Mock: Twilio number has no trunk_sid
         mock_number_details = MagicMock()
+        mock_number_details.trunk_sid = None
         service.twilio_client.incoming_phone_numbers.list.return_value = [
             mock_number_details
         ]
-
-        # LiveKit API says no dispatch rule
-        service._livekit_client.has_dispatch_rule.return_value = False
 
         mock_session = MagicMock()
 
@@ -519,11 +467,10 @@ class TestReserveExistingNumberDualStack:
 class TestAssignPhoneNumberToProjectDualStack:
     """Verify assign_phone_number_to_project passes voice_provider through."""
 
-    @patch("services.number_service._implementation.LiveKitSIPClient")
     @patch("services.number_service._implementation.Vapi")
     @patch("services.number_service._implementation.Client")
     def test_assign_passes_voice_provider_to_setup(
-        self, mock_twilio_cls, mock_vapi_cls, mock_lk_cls
+        self, mock_twilio_cls, mock_vapi_cls
     ):
         """voice_provider='livekit' is passed through to setup_number."""
         from services.number_service._implementation import NumberService
@@ -540,11 +487,7 @@ class TestAssignPhoneNumberToProjectDualStack:
         ):
             service = NumberService()
 
-        service._livekit_client.is_configured.return_value = True
-        service._livekit_client.create_dispatch_rule.return_value = (
-            LiveKitProvisionResult(trunk_id="trunk", dispatch_rule_id="DR-assign")
-        )
-
+        # Mock Twilio purchase
         mock_twilio_number = MagicMock()
         mock_twilio_number.phone_number = "+15559990000"
         mock_twilio_number.sid = "PN-assign"
@@ -555,6 +498,7 @@ class TestAssignPhoneNumberToProjectDualStack:
             mock_twilio_number
         )
 
+        # Mock get_number_details for _setup_number_for_livekit
         mock_number_details = MagicMock()
         mock_number_details.phone_number = "+15559990000"
         service.twilio_client.incoming_phone_numbers.list.return_value = [
@@ -583,5 +527,5 @@ class TestAssignPhoneNumberToProjectDualStack:
         assert result == "+15559990000"
         # Vapi should NOT have been called
         service.vapi_client.phone_numbers.create.assert_not_called()
-        # LiveKit dispatch rule should have been created
-        service._livekit_client.create_dispatch_rule.assert_called_once()
+        # trunk_sid should have been set
+        mock_number_details.update.assert_called_once_with(trunk_sid="TK-trunk")

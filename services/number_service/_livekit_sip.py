@@ -230,7 +230,7 @@ class LiveKitSIPClient:
             phone_number: E.164 phone number
 
         Raises:
-            ValueError: If the API call fails or no rule found
+            ValueError: If the API call fails
         """
         rule_id = self.find_dispatch_rule_by_number(phone_number)
         if not rule_id:
