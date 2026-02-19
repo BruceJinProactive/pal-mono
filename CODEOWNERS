@@ -5,18 +5,18 @@
 # Components evolve independently. Only important cross-module changes require human review.
 
 # Root and first level structural changes
-/* kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
-/*/* kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/*/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
 
 # DB schema
-/db/tables/** kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
-/db/migrations/** kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/db/tables/** jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/db/migrations/** jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
 
 # Agent interfaces
-/agent/* kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/agent/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
 
 # CLAUDE.md files
-**/CLAUDE.md kelvin@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+**/CLAUDE.md jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
 
 # Allow automatic version bump
 /pyproject.toml @coderabbitai
