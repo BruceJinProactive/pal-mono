@@ -213,9 +213,6 @@ async def send_resolution_notice(
     if not submission_date:
         submission_date = "recently"
 
-    if not feedback_content:
-        feedback_content = "Thank you for your valuable feedback."
-
     if not action_url:
         action_url = "https://console.palona.ai"
 
@@ -288,9 +285,6 @@ async def send_feedback_backlog(
     # Use defaults for missing data
     if not submission_date:
         submission_date = "recently"
-
-    if not feedback_text:
-        feedback_text = "Thank you for your valuable feedback."
 
     if not conversation_url:
         conversation_url = "https://console.palona.ai"
