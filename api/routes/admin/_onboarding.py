@@ -802,7 +802,7 @@ def signin_google_user(request: SigninGoogleUserRequest) -> SigninGoogleUserResp
     try:
         response = admin_service.signin_google_user(google_credential=request.token)
 
-        print("response", response)
+        logger.debug("Google signin response received")
 
         if response:
             return SigninGoogleUserResponse(

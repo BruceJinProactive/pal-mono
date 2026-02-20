@@ -1,4 +1,3 @@
-import logging
 import uuid
 from uuid import UUID
 
@@ -18,10 +17,9 @@ from services import account_service, project_service
 from services.auth_service import check_permission
 from services.auth_types import UserRole
 from services.voice_service import VoiceService
+from utils.log import logger
 
 from ._utils import UserContext, not_found_error
-
-logger = logging.getLogger(__name__)
 
 
 def _check_project_access(

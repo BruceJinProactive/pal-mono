@@ -194,14 +194,6 @@ class AgnoAgent:
                         f"account_name:{self.config.metadata.account_name}",
                     ],
                 )
-                logger.debug(
-                    f"[AgnoAgent] waiting_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
-                    extra={
-                        "agent_id": self.config.metadata.agent_id,
-                        "account_name": self.config.metadata.account_name,
-                    },
-                )
-
                 # Output chat filler words if configured
                 filler_words = self.filler_manager.get_chat_filler_for_input(
                     input.content
@@ -217,7 +209,6 @@ class AgnoAgent:
                     yield filler_output
 
                 chunk_index = 0
-                last_output_time = time.time()
                 filler_timeout = 10.0  # Send additional filler words every 10 seconds
                 received_first_content = (
                     False  # Track if we've received any real content
@@ -240,16 +231,6 @@ class AgnoAgent:
 
                         if not done:
                             # Timeout occurred, send filler word but keep task running
-                            current_time = time.time()
-                            time_since_last_output = current_time - last_output_time
-
-                            logger.debug(
-                                f"[AgnoAgent] No response for {time_since_last_output:.1f}s, sending additional filler word",
-                                extra={
-                                    "agent_id": self.config.metadata.agent_id,
-                                    "account_name": self.config.metadata.account_name,
-                                },
-                            )
 
                             # Get another filler word
                             additional_filler = (
@@ -266,7 +247,6 @@ class AgnoAgent:
                                 )
                                 output_content += filler_output.content
                                 yield filler_output
-                                last_output_time = current_time
 
                             # Continue waiting for the same task (don't cancel it)
                             continue
@@ -284,14 +264,6 @@ class AgnoAgent:
                         # Skip chunks without valid content
                         content = getattr(chunk, "content", None)
                         if not content:
-                            logger.debug(
-                                "[AgnoAgent] skipping chunk with empty/None content",
-                                extra={
-                                    "agent_id": self.config.metadata.agent_id,
-                                    "account_name": self.config.metadata.account_name,
-                                    "chunk": chunk,
-                                },
-                            )
                             continue
 
                         # Mark that we've received first content - no more filler words needed
@@ -308,14 +280,6 @@ class AgnoAgent:
                                     f"account_name:{self.config.metadata.account_name}",
                                 ],
                             )
-                            logger.debug(
-                                f"[AgnoAgent] received_first_chunk {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
-                                extra={
-                                    "agent_id": self.config.metadata.agent_id,
-                                    "account_name": self.config.metadata.account_name,
-                                    "chunk": chunk,
-                                },
-                            )
 
                         chunk_output = Output(
                             content=content,
@@ -327,14 +291,6 @@ class AgnoAgent:
 
                     elif isinstance(chunk, ToolCallStartedEvent):
                         # Output filler words when tool execution starts
-                        logger.debug(
-                            "[AgnoAgent] received tool call started event",
-                            extra={
-                                "agent_id": self.config.metadata.agent_id,
-                                "account_name": self.config.metadata.account_name,
-                            },
-                        )
-
                         tool_name = (
                             chunk.tool.tool_name
                             if chunk.tool and chunk.tool.tool_name
@@ -354,16 +310,6 @@ class AgnoAgent:
                             )
                             output_content += tool_filler_output.content
                             yield tool_filler_output
-                    else:
-                        logger.debug(
-                            f"[AgnoAgent] received non ResponseContent type chunk: {type(chunk)}",
-                            extra={
-                                "agent_id": self.config.metadata.agent_id,
-                                "account_name": self.config.metadata.account_name,
-                                "chunk": chunk,
-                            },
-                        )
-
             except asyncio.CancelledError:
                 logger.debug("[AgnoAgent] Stream cancelled (client disconnect)")
                 raise
@@ -403,11 +349,8 @@ class AgnoAgent:
                 enhanced_mem_content = f"MEMORY: The following contains important information about your user. Use this context to personalize your responses, remember their preferences, and provide relevant assistance based on their history and needs:\n\n{mem_content}"
                 mem_message = Message(role="user", content=enhanced_mem_content)
                 messages.append(mem_message)
-                logger.debug(f"[PalMemory]: Find user info from memory: {mem_content}")
             else:
                 logger.debug("[PalMemory]: No memory content found")
-        else:
-            logger.debug("[PalMemory]: Memory is disabled, skipping memory fetch")
 
         send_dd_histogram_metrics(
             "framework_agent.query_history_messages_time_spent",

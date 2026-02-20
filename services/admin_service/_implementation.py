@@ -886,7 +886,7 @@ def onboard_new_account(
     except Exception as e:
         # Rollback the transaction if any error occurs
         session.rollback()
-        logger.warn(f"Error creating resources for onboarding: {e}")
+        logger.warning(f"Error creating resources for onboarding: {e}")
         raise ValueError(f"Failed to onboarding account. {e}")
 
     # Optionally create stripe customer

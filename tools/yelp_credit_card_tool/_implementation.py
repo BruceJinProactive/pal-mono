@@ -1,6 +1,5 @@
 import re
 import threading
-import traceback
 from typing import Optional
 
 from agno.tools.toolkit import Toolkit
@@ -184,8 +183,10 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
             return str(response)
 
         except Exception as e:
-            logger.debug(
-                f"[YelpCreditCardTool]: get_waitlist_status - Error: {str(e)}, {traceback.format_exc()}"
+            logger.warning(
+                "[YelpCreditCardTool]: get_waitlist_status - Error: %s",
+                e,
+                exc_info=True,
             )
             if self._is_401_error(e):
                 logger.debug(
@@ -296,8 +297,10 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
             return str(response)
 
         except Exception as e:
-            logger.debug(
-                f"[YelpCreditCardTool]: join_waitlist_queue - Error: {str(e)}, {traceback.format_exc()}"
+            logger.warning(
+                "[YelpCreditCardTool]: join_waitlist_queue - Error: %s",
+                e,
+                exc_info=True,
             )
             if self._is_401_error(e):
                 logger.debug(
@@ -365,8 +368,10 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
             return str(response)
 
         except Exception as e:
-            logger.debug(
-                f"[YelpCreditCardTool]: check_availability - Error: {str(e)}, {traceback.format_exc()}"
+            logger.warning(
+                "[YelpCreditCardTool]: check_availability - Error: %s",
+                e,
+                exc_info=True,
             )
             if self._is_401_error(e):
                 logger.debug(
@@ -446,8 +451,10 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
             return str(response)
 
         except Exception as e:
-            logger.debug(
-                f"[YelpCreditCardTool]: make_reservation - Error: {str(e)}, {traceback.format_exc()}"
+            logger.warning(
+                "[YelpCreditCardTool]: make_reservation - Error: %s",
+                e,
+                exc_info=True,
             )
             if self._is_401_error(e):
                 logger.debug(

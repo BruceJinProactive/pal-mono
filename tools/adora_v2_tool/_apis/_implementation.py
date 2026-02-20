@@ -168,13 +168,11 @@ async def api_validate_address(
     """
     try:
         payload = validate_address_request.model_dump(by_alias=True, exclude_none=True)
-        logger.debug(f"[AdoraV2Tool._apis] validate address payload: {payload}")
         response = await connect_adora_order_hub(
             HttpMethod.POST, bearer_token, ApiFunction.VALIDATE_ADDRESS, payload=payload
         )
 
         body = response.get("body", {})
-        logger.debug(f"[AdoraV2Tool._apis] api_validate_address response: {response}")
 
         if response["status"] == 200:
             # Handle stringified JSON response
@@ -281,12 +279,9 @@ async def api_validate_order(
             payload=payload,
         )
 
-        logger.debug(f"[AdoraV2Tool._apis] api_validate_order response: {response}")
-
         body = response.get("body", {})
 
         if response["status"] == 200:
-            logger.debug("[AdoraV2Tool._apis] Order validated successfully")
             validated_response = ValidateOrderResponse(**body)
             return validated_response
 
@@ -327,7 +322,6 @@ async def api_process_order(
 
         body = response.get("body", {})
 
-        logger.debug(f"[AdoraV2Tool.api_process_order] response: {response}")
         if response["status"] == 200 and isinstance(body, dict):
             return ProcessOrderResponse(**body)
 

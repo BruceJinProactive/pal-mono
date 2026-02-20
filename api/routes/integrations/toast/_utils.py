@@ -65,15 +65,6 @@ def _find_projects_by_restaurant_guid(
             logger.warning(
                 f"[ToastWebhook._find_projects_by_restaurant_guid] Multiple Toast projects found with store_identifier: {restaurant_guid}"
             )
-        else:
-            logger.debug(
-                f"[ToastWebhook._find_projects_by_restaurant_guid] Found {len(toast_projects)} Toast projects for restaurant_guid: {restaurant_guid}"
-            )
-
-        for project in toast_projects:
-            logger.debug(
-                f"[ToastWebhook._find_projects_by_restaurant_guid] Found Toast project {project.name} (ID: {project.id}) for restaurant_guid: {restaurant_guid}"
-            )
 
         return toast_projects
 
@@ -132,23 +123,13 @@ def _update_stock_section(
 
     if stock_message is not None:
         # Adding or updating item
-        logger.debug(
-            f"[_update_stock_section] Adding/updating item '{item_name}' (guid: {item_guid}) in out-of-stock section"
-        )
-
         if re.search(item_pattern, section, re.MULTILINE):
             # Item exists, update it
-            logger.debug(
-                f"[_update_stock_section] Item '{item_name}' already exists, updating it"
-            )
             new_section = re.sub(
                 item_pattern, f"{stock_message}\n", section, flags=re.MULTILINE
             )
         else:
             # Item doesn't exist, add it
-            logger.debug(
-                f"[_update_stock_section] Item '{item_name}' does not exist, adding it"
-            )
             new_section = f"\n{stock_message}" + section
 
         # Ensure end marker is present
@@ -164,22 +145,12 @@ def _update_stock_section(
 
     else:
         # Removing item
-        logger.debug(
-            f"[_update_stock_section] Attempting to remove item '{item_name}' (guid: {item_guid}) from out-of-stock section"
-        )
-        logger.debug(f"[_update_stock_section] Pattern: {item_pattern}")
-        logger.debug(f"[_update_stock_section] Section content:\n{section}")
-
         new_section = re.sub(item_pattern, "", section, flags=re.MULTILINE)
 
         if new_section == section:
             logger.warning(
                 f"[_update_stock_section] Pattern did not match any item in section for '{item_name}' (guid: {item_guid}). "
                 f"Item may have different name in database or was manually edited."
-            )
-        else:
-            logger.debug(
-                f"[_update_stock_section] Successfully removed item '{item_name}' from out-of-stock section"
             )
 
         # If section is now empty, remove entire section
@@ -241,9 +212,6 @@ def _get_item_name_from_toast_api(item_guid: str, restaurant_guid: str) -> str:
             # Strip trailing punctuation (., !, ?) to handle Toast API inconsistencies
             # Toast sometimes returns "Item Name." and sometimes "Item Name"
             item_name = item_name.rstrip(".!?")
-            logger.debug(
-                f"[ToastWebhook._get_item_name_from_toast_api] Found item name from Toast API: '{item_name}' (raw: '{raw_item_name}') for itemGuid: {item_guid}"
-            )
             return item_name
         else:
             logger.warning(
@@ -362,7 +330,6 @@ def _update_stock_in_project_product_info(
             )
 
             current_content = locked.product_info or ""
-            out_of_stock_before = _extract_out_of_stock_section(current_content)
 
             # Update stock section based on status
             if status == ToastStockItemStatus.OUT_OF_STOCK:
@@ -372,37 +339,16 @@ def _update_stock_in_project_product_info(
                 )
             else:
                 # Item is back in stock - remove from out of stock list
-                logger.debug(
-                    f"[ToastWebhook._update_stock_in_project_product_info] Removing '{item_name}' (guid: {item_guid}) from out-of-stock list in project '{project.name}'"
-                )
                 new_content = _update_stock_section(
                     current_content, item_name, item_guid, None
                 )
 
             # Check if content changed and update database
             content_changed = new_content != current_content
-            logger.debug(
-                f"[ToastWebhook._update_stock_in_project_product_info] Content changed for project '{project.name}': {content_changed}"
-            )
 
             if content_changed:
                 locked.product_info = new_content
                 session.add(locked)
-                logger.debug(
-                    f"[ToastWebhook._update_stock_in_project_product_info] Updated stock status in project '{project.name}' product_info for item {item_name}"
-                )
-
-                # Log BEFORE/AFTER for out-of-stock section changes
-                out_of_stock_after = _extract_out_of_stock_section(new_content)
-                if out_of_stock_before or out_of_stock_after:
-                    logger.debug(
-                        f"[ToastWebhook._update_stock_in_project_product_info] OUT-OF-STOCK section for project '{project.name}':\n"
-                        f"{'='*80}\n"
-                        f"BEFORE:\n{out_of_stock_before or '[No OUT-OF-STOCK section]'}\n"
-                        f"{'='*80}\n"
-                        f"AFTER:\n{out_of_stock_after or '[No OUT-OF-STOCK section]'}\n"
-                        f"{'='*80}"
-                    )
             else:
                 logger.warning(
                     f"[ToastWebhook._update_stock_in_project_product_info] Content unchanged for project '{project.name}' - item '{item_name}' (guid: {item_guid}) was not found or already removed"
@@ -410,9 +356,6 @@ def _update_stock_in_project_product_info(
 
         # Commit all changes
         session.commit()
-        logger.debug(
-            f"[ToastWebhook._update_stock_in_project_product_info] Successfully updated stock information for {item_name} in {len(projects)} projects"
-        )
 
     except Exception as e:
         session.rollback()
@@ -433,18 +376,10 @@ async def update_menu_content(webhook_request: ToastWebhookRequest) -> None:
         webhook_request: The webhook request containing the menu content
     """
     try:
-        menu_details = ToastWebhookMenuDetails(**webhook_request.details)
+        ToastWebhookMenuDetails(**webhook_request.details)
     except ValidationError as e:
         logger.error("[ToastWebhook.update_menu_content] Invalid menu details: %s", e)
         return
-
-    restaurant_guid = menu_details.restaurantGuid
-    published_date = menu_details.publishedDate
-
-    logger.debug(
-        f"[ToastWebhook.update_menu_content] Restaurant {restaurant_guid} updated menu content at {published_date}. "
-        "Updating menu content in database."
-    )
 
 
 def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> None:
@@ -464,13 +399,6 @@ def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> Non
     restaurant_guid = stock_item_details.restaurantGuid
     item_guid = stock_item_details.itemGuid
     status = stock_item_details.status
-    quantity = stock_item_details.quantity
-
-    logger.debug(
-        f"[ToastWebhook._process_stock_item_status_sync] Restaurant {restaurant_guid} updated stock item {item_guid} status to {status} with quantity {quantity}."
-        if quantity
-        else f"[ToastWebhook._process_stock_item_status_sync] Restaurant {restaurant_guid} updated stock item {item_guid} status to {status}."
-    )
 
     with SyncSessionLocal() as session:
         try:
@@ -478,10 +406,6 @@ def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> Non
             projects = _find_projects_by_restaurant_guid(restaurant_guid, session)
 
             if not projects:
-                logger.debug(
-                    "[ToastWebhook._process_stock_item_status_sync] No projects configured, skipping",
-                    extra={"restaurant_guid": restaurant_guid},
-                )
                 return
 
             # Get item name from Toast Config API
@@ -494,19 +418,9 @@ def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> Non
                     f"[ToastWebhook._process_stock_item_status_sync] Error retrieving item name from Toast API, using fallback: {e}"
                 )
 
-            logger.debug(
-                f"[ToastWebhook._process_stock_item_status_sync] Updating stock status for item '{item_name}' to {status.value} in {len(projects)} projects"
-            )
-
             # Update the stock item status in project product_info fields
             _update_stock_in_project_product_info(
                 projects, item_name, item_guid, status, session
-            )
-
-            # Log completion
-            logger.debug(
-                f"[ToastWebhook._process_stock_item_status_sync] Successfully processed stock update for restaurant {restaurant_guid}, "
-                f"item '{item_name}' ({item_guid}), status: {status.value} across {len(projects)} projects"
             )
 
         except Exception as e:
@@ -749,14 +663,7 @@ def _store_ordering_schedule_in_db(
                 locked.store_hours = formatted_schedule
                 session.add(locked)
 
-                logger.debug(
-                    f"[ToastWebhook._store_ordering_schedule_in_db] Updated ordering schedule for project '{project.name}'"
-                )
-
             session.commit()
-            logger.debug(
-                f"[ToastWebhook._store_ordering_schedule_in_db] Successfully updated ordering schedule for {len(projects)} projects"
-            )
 
         except Exception as e:
             session.rollback()
@@ -787,18 +694,10 @@ async def update_ordering_schedule(webhook_request: ToastWebhookRequest) -> None
     restaurant_guid = ordering_schedule_details.restaurantGuid
     ordering_schedule = ordering_schedule_details.orderingSchedule
 
-    logger.debug(
-        f"[ToastWebhook.update_ordering_schedule] Restaurant {restaurant_guid} updating ordering schedule"
-    )
-
     # Format the schedule into human-readable text
     formatted_schedule = _format_ordering_schedule(
         ordering_schedule.servicePeriods,
         ordering_schedule.overrides,
-    )
-
-    logger.debug(
-        f"[ToastWebhook.update_ordering_schedule] Formatted schedule:\n{formatted_schedule}"
     )
 
     # Store in database (run in threadpool to avoid blocking)
@@ -821,22 +720,6 @@ async def _process_partner_added_event(
     restaurant_guid = partner_details.restaurantGuid
     restaurant_name = partner_details.restaurantName
     location_name = partner_details.locationName or "N/A"
-
-    logger.debug(
-        f"[ToastWebhook._process_partner_added_event] Integration added to restaurant: "
-        f"{restaurant_name} ({location_name}) - GUID: {restaurant_guid}"
-    )
-
-    # Log important details
-    if partner_details.managementGroupGuid:
-        logger.debug(
-            f"[ToastWebhook._process_partner_added_event] Restaurant belongs to management group: {partner_details.managementGroupGuid}"
-        )
-
-    if partner_details.externalGroupRef or partner_details.externalRestaurantRef:
-        logger.debug(
-            f"[ToastWebhook._process_partner_added_event] External references - Group: {partner_details.externalGroupRef}, Restaurant: {partner_details.externalRestaurantRef}"
-        )
 
     # Insert webhook data into database
     try:
@@ -872,9 +755,6 @@ async def _process_partner_added_event(
             )
             session.add(webhook_event)
             await session.commit()
-            logger.debug(
-                f"[ToastWebhook._process_partner_added_event] Stored webhook event for restaurant {restaurant_guid}"
-            )
     except Exception as e:
         logger.error(
             f"[ToastWebhook._process_partner_added_event] Failed to store webhook event: {e}",
@@ -952,11 +832,7 @@ async def _process_partner_added_event(
             text_fallback=f"Toast Integration Activated for {restaurant_name}",
         )
 
-        if result["status"] == "success":
-            logger.debug(
-                f"[ToastWebhook._process_partner_added_event] Slack notification sent for {restaurant_name}"
-            )
-        else:
+        if result["status"] != "success":
             logger.warning(
                 f"[ToastWebhook._process_partner_added_event] Failed to send Slack notification: {result.get('message')}"
             )
@@ -979,15 +855,6 @@ def _process_partner_removed_event(partner_details: ToastWebhookPartnerDetails) 
     Args:
         partner_details: The partner event details
     """
-    restaurant_guid = partner_details.restaurantGuid
-    restaurant_name = partner_details.restaurantName
-    location_name = partner_details.locationName or "N/A"
-
-    logger.debug(
-        f"[ToastWebhook._process_partner_removed_event] Integration removed from restaurant: "
-        f"{restaurant_name} ({location_name}) - GUID: {restaurant_guid}"
-    )
-
     # Add business logic here in the future, such as:
     # - Removing/deactivating project integrations in the database
     # - Cleaning up associated data
@@ -1002,20 +869,6 @@ def _process_partner_updated_event(partner_details: ToastWebhookPartnerDetails) 
     Args:
         partner_details: The partner event details
     """
-    restaurant_guid = partner_details.restaurantGuid
-    restaurant_name = partner_details.restaurantName
-    location_name = partner_details.locationName or "N/A"
-
-    logger.debug(
-        f"[ToastWebhook._process_partner_updated_event] Integration settings updated for restaurant: "
-        f"{restaurant_name} ({location_name}) - GUID: {restaurant_guid}"
-    )
-
-    # Log what might have changed
-    logger.debug(
-        f"[ToastWebhook._process_partner_updated_event] Current external references - Group: {partner_details.externalGroupRef}, Restaurant: {partner_details.externalRestaurantRef}"
-    )
-
     # Add business logic here in the future, such as:
     # - Updating project integration settings in the database
     # - Validating external reference changes
@@ -1047,11 +900,6 @@ async def process_partner_event(webhook_request: ToastWebhookRequest) -> None:
         )
         return
 
-    logger.debug(
-        f"[ToastWebhook.process_partner_event] Processing partner event: {event_type} "
-        f"for restaurant {partner_details.restaurantName} (GUID: {partner_details.restaurantGuid})"
-    )
-
     # Process the event based on type
     try:
         match event_type:
@@ -1061,11 +909,6 @@ async def process_partner_event(webhook_request: ToastWebhookRequest) -> None:
                 _process_partner_removed_event(partner_details)
             case ToastPartnerEventType.PARTNER_UPDATED:
                 _process_partner_updated_event(partner_details)
-
-        logger.debug(
-            f"[ToastWebhook.process_partner_event] Successfully processed partner event: {event_type} "
-            f"for restaurant GUID: {partner_details.restaurantGuid}"
-        )
 
     except Exception as e:
         logger.error(

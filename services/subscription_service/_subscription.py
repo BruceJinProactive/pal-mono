@@ -518,7 +518,7 @@ def add_project_to_subscription(
                 base_price_id,
             )
     else:
-        logger.info(
+        logger.debug(
             "Subscription plan has no monthly fee, skipping base price creation"
         )
 
@@ -1127,32 +1127,14 @@ def create_stripe_checkout_url(
         raise RuntimeError("No valid price IDs found for checkout session")
 
     # Count different price types for logging
-    monthly_prices = [p for p in price_details if p["price_type"] == "monthly_plan"]
+    monthly_prices = [p for p in price_details if p["price_type"] == "monthly_fee"]
     usage_prices = [p for p in price_details if "usage" in p["price_type"]]
 
-    # Log detailed price information for debugging
-    logger.info(
-        "Checkout session price breakdown",
-        extra={
-            "account_id": str(account_id),
-            "subscription_id": str(subscription.external_id),
-            "price_details": price_details,
-            "total_line_items": len(line_items),
-            "monthly_plan_items": len(monthly_prices),
-            "usage_items": len(usage_prices),
-            "projects_count": len(project_subscriptions),
-        },
-    )
-
-    logger.info(
-        f"Creating checkout session: {len(monthly_prices)} monthly plan + {len(usage_prices)} usage items from {len(project_subscriptions)} projects",
-        extra={
-            "account_id": str(account_id),
-            "subscription_id": str(subscription.external_id),
-            "line_items_count": len(line_items),
-            "structure": "existing price IDs",
-            "price_ids": [p["price_id"] for p in price_details if "price_id" in p],
-        },
+    logger.debug(
+        "Creating checkout session: %s monthly plan + %s usage items from %s projects",
+        len(monthly_prices),
+        len(usage_prices),
+        len(project_subscriptions),
     )
 
     account = account_service.get_account_by_id(session, account_id)
@@ -1452,8 +1434,10 @@ def remove_project_subscription(
     )
     if not project_subscription:
         # Return gracefully if already removed (idempotent operation)
-        logger.info(
-            f"Project subscription already removed or does not exist for project {project_id} and subscription {subscription_id}"
+        logger.debug(
+            "Project subscription already removed or does not exist for project %s and subscription %s",
+            project_id,
+            subscription_id,
         )
         return
 

@@ -1,4 +1,3 @@
-import traceback
 import uuid
 from datetime import datetime
 from functools import cached_property
@@ -398,10 +397,11 @@ class YelpTool(Toolkit):
             return formatted_response
 
         except Exception as e:
-            logger.debug(
-                f"[YelpTool.get_restaurant_openings] Error getting openings: {e}"
+            logger.warning(
+                "[YelpTool.get_restaurant_openings] Error getting openings: %s",
+                e,
+                exc_info=True,
             )
-            logger.debug(traceback.format_exc())
             return "Failed to get restaurant openings. Please try again."
 
     @tool
@@ -579,8 +579,7 @@ class YelpTool(Toolkit):
             return f"Reservation confirmed! Here is the reservation details: {reservation_response}"
 
         except Exception as e:
-            logger.debug(f"[YelpTool.make_reservation] Error: {e}")
-            logger.debug(traceback.format_exc())
+            logger.warning("[YelpTool.make_reservation] Error: %s", e, exc_info=True)
             return "Failed to make reservation. Please try again."
 
     @tool
@@ -642,8 +641,7 @@ class YelpTool(Toolkit):
             return formatted_response
 
         except Exception as e:
-            logger.debug(f"[YelpTool.get_waitlist_status] Error: {str(e).lower()}")
-            logger.debug(traceback.format_exc())
+            logger.warning("[YelpTool.get_waitlist_status] Error: %s", e, exc_info=True)
             return "Failed to get waitlist status. Please try again."
 
     @tool
@@ -703,8 +701,7 @@ class YelpTool(Toolkit):
             return formatted_response
 
         except Exception as e:
-            logger.debug(f"[YelpTool.get_waitlist_info] Error: {str(e).lower()}")
-            logger.debug(traceback.format_exc())
+            logger.warning("[YelpTool.get_waitlist_info] Error: %s", e, exc_info=True)
             return "Failed to get waitlist configuration. Please try again."
 
     @tool
@@ -825,8 +822,9 @@ class YelpTool(Toolkit):
             return formatted_response
 
         except Exception as e:
-            logger.debug(f"[YelpTool.create_waitlist_on_my_way_visit] Error: {str(e)}")
-            logger.debug(traceback.format_exc())
+            logger.warning(
+                "[YelpTool.create_waitlist_on_my_way_visit] Error: %s", e, exc_info=True
+            )
 
             return f"Failed to create waitlist on-my-way visit. {str(e)}"
 
@@ -987,8 +985,7 @@ class YelpTool(Toolkit):
             return formatted_response
 
         except Exception as e:
-            logger.debug(f"[YelpTool.join_waitlist_queue] Error: {str(e)}")
-            logger.debug(traceback.format_exc())
+            logger.warning("[YelpTool.join_waitlist_queue] Error: %s", e, exc_info=True)
 
             # Handle specific error cases with user-friendly messages
             error_str = str(e).lower()
@@ -1106,8 +1103,9 @@ class YelpTool(Toolkit):
             return formatted_response
 
         except Exception as e:
-            logger.debug(f"[YelpTool.get_openings_open_api] Error: {e}")
-            logger.debug(traceback.format_exc())
+            logger.warning(
+                "[YelpTool.get_openings_open_api] Error: %s", e, exc_info=True
+            )
             return "Failed to get restaurant openings. Please try again."
 
     @tool
@@ -1238,8 +1236,9 @@ class YelpTool(Toolkit):
                 return f"We cannot find the exact time you requested for {openings_query.covers} people on {openings_query.date}.\nCurrent found times:\n{formatted_times}\n\nPlease let me know which time you'd prefer and I'll help you make the reservation."
 
         except Exception as e:
-            logger.debug(f"[YelpTool.make_reservation_open_api] Error: {e}")
-            logger.debug(traceback.format_exc())
+            logger.warning(
+                "[YelpTool.make_reservation_open_api] Error: %s", e, exc_info=True
+            )
             return "Failed to make reservation. Please try again."
 
     @tool
@@ -1343,7 +1342,6 @@ class YelpTool(Toolkit):
             return formatted_response
 
         except Exception as e:
-            logger.debug(f"[YelpTool.cancel_visit] Error: {str(e)}")
-            logger.debug(traceback.format_exc())
+            logger.warning("[YelpTool.cancel_visit] Error: %s", e, exc_info=True)
 
             return f"Failed to cancel the visit. {str(e)}"

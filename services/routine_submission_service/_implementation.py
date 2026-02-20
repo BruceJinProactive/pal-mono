@@ -364,7 +364,6 @@ async def add_response(
     execution_repo = RoutineExecutionRepositoryAsync(session)
 
     # Get submission
-    logger.debug(f"[add_response] Fetching submission: {submission_id}")
     submission = await submission_repo.get_submission_by_id(submission_id)
 
     if not submission:
@@ -374,11 +373,6 @@ async def add_response(
             detail=f"Submission {submission_id} not found",
             headers={"Content-Type": "application/json"},
         )
-
-    logger.debug(
-        f"[add_response] Submission found - status={submission.status}, "
-        f"execution_id={submission.execution_id}"
-    )
 
     # Check submission is in draft status
     if submission.status != SubmissionStatus.draft:
@@ -393,7 +387,6 @@ async def add_response(
         )
 
     # Get the routine item
-    logger.debug(f"[add_response] Fetching routine item: {routine_item_id}")
     item = await routine_repo.get_routine_item_by_id(routine_item_id)
 
     if not item:
@@ -404,13 +397,7 @@ async def add_response(
             headers={"Content-Type": "application/json"},
         )
 
-    logger.debug(
-        f"[add_response] Routine item found - name={item.name}, "
-        f"routine_id={item.routine_id}, has_ai_rules={item.ai_rules is not None}"
-    )
-
     # Get execution to get routine for asset path
-    logger.debug(f"[add_response] Fetching execution: {submission.execution_id}")
     execution = await execution_repo.get_execution_by_id(submission.execution_id)
 
     if not execution:
@@ -421,17 +408,9 @@ async def add_response(
             headers={"Content-Type": "application/json"},
         )
 
-    logger.debug(f"[add_response] Execution found - routine_id={execution.routine_id}")
-
     # Upload image if provided
     image_url = None
     if file:
-        logger.info(
-            f"[add_response] File upload requested - "
-            f"filename={file.filename}, content_type={file.content_type}"
-        )
-
-        logger.debug(f"[add_response] Fetching routine: {execution.routine_id}")
         routine = await routine_repo.get_routine_by_id(execution.routine_id)
 
         if not routine:
@@ -442,19 +421,14 @@ async def add_response(
                 headers={"Content-Type": "application/json"},
             )
 
-        logger.debug("[add_response] Reading file content")
         content = await file.read()
         filename = file.filename or "response.jpg"
-
-        logger.debug(f"[add_response] File size: {len(content)} bytes")
 
         # Path: routines/{project_id}/{routine_id}/responses/{execution_id}/{item_id}_{filename}
         asset_path = (
             f"routines/{routine.project_id}/{routine.id}/responses/"
             f"{execution.id}/{routine_item_id}_{filename}"
         )
-
-        logger.info(f"[add_response] Uploading to S3 - path={asset_path}")
 
         from api.schemas.asset.asset import WriteAssetRequest
 
@@ -472,7 +446,6 @@ async def add_response(
 
             # Store the S3 key instead of presigned URL
             image_url = response_asset.url
-            logger.info(f"[add_response] S3 upload successful - s3_key={image_url}")
         except Exception as e:
             logger.error(
                 f"[add_response] S3 upload failed - "
@@ -481,11 +454,6 @@ async def add_response(
             raise
 
     # Create or update the response
-    logger.debug(
-        f"[add_response] Upserting item response - "
-        f"submission_id={submission_id}, routine_item_id={routine_item_id}"
-    )
-
     try:
         response = await submission_repo.upsert_item_response(
             submission_id=submission_id,
@@ -493,9 +461,6 @@ async def add_response(
             image_url=image_url,  # Now stores S3 key, not presigned URL
             notes=notes,
             status=ItemResponseStatus.pending,
-        )
-        logger.debug(
-            f"[add_response] Item response upserted - response_id={response.id}"
         )
     except Exception as e:
         logger.error(
@@ -506,10 +471,6 @@ async def add_response(
 
     # Trigger AI processing if image and AI rules are present
     if image_url and item.ai_rules:
-        logger.info(
-            f"[add_response] Triggering AI processing - "
-            f"response_id={response.id}, ai_rules={item.ai_rules}"
-        )
         try:
             from services.routine_submission_service._llm import (
                 process_response_with_ai,
@@ -519,7 +480,6 @@ async def add_response(
                 session=session,
                 response_id=response.id,
             )
-            logger.debug("[add_response] AI processing completed")
         except Exception as e:
             logger.error(
                 f"[add_response] AI processing failed - "
@@ -528,10 +488,6 @@ async def add_response(
             # Don't raise - AI processing failure shouldn't block response creation
 
     # Access SQLAlchemy model attributes BEFORE commit to avoid lazy-loading issues
-    logger.debug(
-        "[add_response] Capturing response data BEFORE commit "
-        "(prevents greenlet errors from lazy-loading)"
-    )
     try:
         response_data = {
             "id": response.id,
@@ -546,7 +502,6 @@ async def add_response(
             "created_at": response.created_at,
             "updated_at": response.updated_at,
         }
-        logger.debug("[add_response] Response data captured successfully")
     except Exception as e:
         logger.error(
             f"[add_response] GREENLET ERROR: Failed to access SQLAlchemy attributes - "

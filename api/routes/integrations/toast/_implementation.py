@@ -62,8 +62,6 @@ async def get_checkout_session(token: str) -> JSONResponse:
     Returns:
         JSONResponse with decrypted payload
     """
-    logger.debug("[Toast] get_checkout_session: Received token request")
-
     try:
         # Decrypt without TTL validation (Fernet will still check signature)
         decrypted = _get_payment_iframe_fernet().decrypt(token.encode("utf-8"))
@@ -97,15 +95,6 @@ async def get_checkout_session(token: str) -> JSONResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Token expired",
         )
-
-    logger.debug(
-        "[Toast] get_checkout_session: Token validated successfully",
-        extra={
-            "store_id": payload.get("storeId"),
-            "order_external_id": payload.get("orderExternalId"),
-            "order_items_count": len(payload.get("orderItems", [])),
-        },
-    )
 
     return JSONResponse(status_code=status.HTTP_200_OK, content=payload)
 
@@ -185,17 +174,6 @@ async def api_toast_webhook(request: Request) -> JSONResponse:
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": f"Invalid request body: {str(e)}"},
         )
-
-    # Log the incoming request for debugging
-    logger.debug(
-        "[ToastWebhook.api_toast_webhook] Toast webhook request received",
-        extra={
-            "timestamp": webhook_request.timestamp,
-            "event_category": webhook_request.eventCategory,
-            "event_type": webhook_request.eventType,
-            "guid": webhook_request.guid,
-        },
-    )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
@@ -301,12 +279,6 @@ def _update_project_dining_options(
             if not match_metadata.get("isDiningOptions", False):
                 continue
 
-            logger.debug(
-                "[ToastAPIIntegration._update_project_dining_options] Dining options found in KB for store %s with metadata %s",
-                integration.business_id,
-                match_metadata,
-            )
-
             kb_dining_options = match_metadata.get("text")
             if not kb_dining_options:
                 logger.warning(
@@ -318,23 +290,10 @@ def _update_project_dining_options(
 
             # Compare and update if different
             if not _are_dining_options_same(dining_options_raw, kb_dining_options):
-                logger.debug(
-                    "[ToastAPIIntegration._update_project_dining_options] Updating dining options for store %s",
-                    integration.business_id,
-                )
                 _refresh_dining_options_in_kb(index_name, namespace, dining_options_raw)
-            else:
-                logger.debug(
-                    "[ToastAPIIntegration._update_project_dining_options] Dining options match for store %s",
-                    integration.business_id,
-                )
             return
 
         # No dining options found, create new ones
-        logger.debug(
-            "[ToastAPIIntegration._update_project_dining_options] No dining options found; creating for store %s",
-            integration.business_id,
-        )
         _refresh_dining_options_in_kb(index_name, namespace, dining_options_raw)
 
 
@@ -391,12 +350,6 @@ async def checkout_complete(request: Request) -> JSONResponse:
         tip_amount_cents = body.get("tipAmountCents", 0)  # Tip amount in cents
         test_mode = body.get("testMode", False)
 
-        logger.debug(
-            f"[ToastAPIIntegration.checkout_complete] Processing checkout request for store {store_id}, "
-            f"order {order_external_id}, payment {payment_external_reference_id}, "
-            f"chargedAmountCents {charged_amount_cents}, tipAmountCents {tip_amount_cents}, testMode {test_mode}"
-        )
-
         if not (store_id and order_external_id and payment_external_reference_id):
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -414,9 +367,6 @@ async def checkout_complete(request: Request) -> JSONResponse:
             toast_bearer_token = get_toast_access_token_from_aws()
 
         # 1. Fetch order details from Toast API using order_external_id
-        logger.debug(
-            f"[ToastAPIIntegration.checkout_complete] getting order with external_id: {order_external_id}"
-        )
         try:
             order = get_existing_order(
                 toast_bearer_token,
@@ -444,10 +394,6 @@ async def checkout_complete(request: Request) -> JSONResponse:
                     "error": f"Order with ID {order_external_id} not found, cannot add payment to order. Contact the store owner to verify the order exists."
                 },
             )
-        logger.debug(
-            f"[checkout_complete] Retrieved order {order.guid} with {len(order.checks)} check(s)"
-        )
-
         if not order.checks or len(order.checks) == 0:
             logger.error(
                 f"[ToastAPIIntegration.checkout_complete] order {order_external_id} has no checks"
@@ -471,22 +417,9 @@ async def checkout_complete(request: Request) -> JSONResponse:
 
         # 2. Get the first check's payment list
         first_check = order.checks[0]
-        logger.debug(f"[ToastAPIIntegration.checkout_complete] first check guid: {first_check.guid}")  # type: ignore
-        logger.debug(
-            f"[ToastAPIIntegration.checkout_complete] first check has payments attr: {hasattr(first_check, 'payments')}"
-        )
-        if hasattr(first_check, "payments"):
-            logger.debug(
-                f"[ToastAPIIntegration.checkout_complete] first check payments: {first_check.payments}"
-            )
-            logger.debug(
-                f"[ToastAPIIntegration.checkout_complete] first check payments length: {len(first_check.payments) if first_check.payments else 0}"
-            )
 
         # 3. Construct a new payment object with required fields
         # Use the proper ToastPayment class to ensure correct format
-        logger.debug(f"[ToastAPIIntegration.checkout_complete] first check amount: {first_check.amount}")  # type: ignore
-        logger.debug(f"[ToastAPIIntegration.checkout_complete] first check totalAmount: {first_check.totalAmount}")  # type: ignore
 
         # Verify charged amount matches expected amount (order total + tip)
         # All amounts are in cents to avoid rounding errors
@@ -506,11 +439,6 @@ async def checkout_complete(request: Request) -> JSONResponse:
                     f"derived_order_amount_cents: {order_amount_cents})"
                 )
                 amount_mismatch = True
-            else:
-                logger.debug(
-                    f"[ToastAPIIntegration.checkout_complete] Amount verified: {charged_amount_cents} cents "
-                    f"(order: {order_amount_cents}, tip: {tip_amount_cents})"
-                )
         else:
             # Fallback if charged_amount_cents not provided
             order_amount_cents = order_total_cents
@@ -533,14 +461,6 @@ async def checkout_complete(request: Request) -> JSONResponse:
             type="CREDIT",
             externalId="TPC-PALONA:" + payment_external_reference_id,
         )
-        logger.debug(
-            f"[ToastAPIIntegration.checkout_complete] constructed payment object: {payment.model_dump(exclude_none=True)}"
-        )
-
-        logger.debug(
-            f"[ToastAPIIntegration.checkout_complete] posting payment to order {order.guid}, check {first_check.guid}"  # type: ignore
-        )
-
         # 4. Post payment to the check using the proper function
         post_payment_to_order(
             bearer_token=toast_bearer_token,
@@ -552,10 +472,6 @@ async def checkout_complete(request: Request) -> JSONResponse:
                 "ws-sandbox-api.eng.toasttab.com" if test_mode else None
             ),
         )
-        logger.debug(
-            f"[ToastAPIIntegration.checkout_complete] Successfully posted payment with externalId {payment_external_reference_id} to order {order.guid}"  # type: ignore
-        )
-
         # 5. Update order status from pending to paid in the database
         order_updated = update_order_by_order_id(
             store_id=store_id,
@@ -563,11 +479,7 @@ async def checkout_complete(request: Request) -> JSONResponse:
             new_status="paid",
             order_id=order_external_id,  # Use external ID as order ID
         )
-        if order_updated:
-            logger.debug(
-                f"[ToastAPIIntegration.checkout_complete] Updated order {order.guid} status to paid"  # type: ignore
-            )
-        else:
+        if not order_updated:
             logger.warning(
                 f"[ToastAPIIntegration.checkout_complete] Failed to update order {order.guid} status to paid - order may not exist in database"  # type: ignore
             )
@@ -628,11 +540,6 @@ async def update_tip(request: Request) -> JSONResponse:
         tip_amount = body.get("tipAmount", 0)
         test_mode = body.get("testMode", False)
 
-        logger.debug(
-            f"[ToastAPIIntegration.update_tip] Updating tip for store {store_id}, "
-            f"payment intent {payment_intent_id}, base {base_amount}, tip {tip_amount}"
-        )
-
         if not (store_id and payment_intent_id and base_amount is not None):
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -667,10 +574,6 @@ async def update_tip(request: Request) -> JSONResponse:
             payments_api_endpoint=(
                 "payments-sandbox.toasttab.com" if test_mode else None
             ),
-        )
-
-        logger.debug(
-            f"[ToastAPIIntegration.update_tip] Successfully updated payment intent {payment_intent_id}"
         )
 
         return JSONResponse(

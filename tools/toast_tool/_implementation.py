@@ -2,7 +2,6 @@ import asyncio
 import json
 import textwrap
 import time
-import traceback
 import urllib.parse
 import uuid
 from datetime import datetime
@@ -788,8 +787,7 @@ class ToastTool(Toolkit):
             return self._begin_hosted_checkout_flow(order, price)  # type: ignore
 
         except Exception as e:
-            logger.error(f"[ToastTool._checkout_order_hosted] Error: {e}")
-            logger.error(traceback.format_exc())
+            logger.exception("[ToastTool._checkout_order_hosted] Error: %s", e)
             return "Error processing checkout. Please try again."
 
     @tool
@@ -834,8 +832,7 @@ class ToastTool(Toolkit):
                 )
                 return self._checkout_order_traditional()  # type: ignore
         except Exception as e:
-            logger.error(f"[ToastTool.checkout_order] Error in checkout: {e}")
-            logger.error(traceback.format_exc())
+            logger.exception("[ToastTool.checkout_order] Error in checkout: %s", e)
             return "Failed to process checkout. Please try again."
 
     # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
@@ -888,10 +885,9 @@ class ToastTool(Toolkit):
                 return result  # type: ignore
 
         except Exception as e:
-            logger.error(
-                f"[ToastTool._checkout_order_traditional] Error in submit order: {e}"
+            logger.exception(
+                "[ToastTool._checkout_order_traditional] Error in submit order: %s", e
             )
-            logger.error(traceback.format_exc())
             return "Please try again."
 
     @retrieval
@@ -1860,11 +1856,10 @@ class ToastTool(Toolkit):
             shortened_url = shorten_url(iframe_url)
             return shortened_url
 
-        except Exception as e:
-            logger.error(
-                f"[ToastTool._generate_iframe_payment_link] Error generating iframe payment link: {e}"
+        except Exception:
+            logger.exception(
+                "[ToastTool._generate_iframe_payment_link] Error generating iframe payment link"
             )
-            traceback.print_exc()
             return "Failed to generate payment link. Please try again."
 
     def _extract_order_items(self, order: Order | OrderInput) -> list[dict[str, Any]]:

@@ -170,14 +170,9 @@ def validate_stripe_coupon(coupon_id: str) -> bool:
         if coupon.max_redemptions and coupon.times_redeemed >= coupon.max_redemptions:
             raise ValueError(f"Coupon '{coupon_id}' has reached maximum redemptions")
 
-        logger.info(
-            f"Validated Stripe coupon: {coupon_id}",
-            extra={
-                "coupon_id": coupon_id,
-                "duration": coupon.duration,
-                "percent_off": coupon.percent_off,
-                "amount_off": coupon.amount_off,
-            },
+        logger.debug(
+            "Validated Stripe coupon: %s",
+            coupon_id,
         )
         return True
 
@@ -379,17 +374,13 @@ def create_checkout_session(
         start_timestamp = int(start_date.timestamp())
         subscription_data_params["trial_end"] = start_timestamp
 
-        logger.info(
-            f"Setting subscription start date and trial end to {start_date.isoformat()}",
+        logger.debug(
+            "Setting subscription start date and trial end to %s",
+            start_date.isoformat(),
             extra={
                 "account_id": str(account_id),
                 "start_timestamp": start_timestamp,
             },
-        )
-    else:
-        logger.info(
-            "Creating subscription with immediate start and no trial",
-            extra={"account_id": str(account_id)},
         )
 
     try:
@@ -448,7 +439,6 @@ def create_checkout_session(
             session_params["customer_email"] = customer_email
             # For new customers, Stripe will auto-create the customer
             # The subscription metadata will be inherited by the customer
-        logger.info(f"Stripe checkout parameter: {session_params}")
         return stripe.checkout.Session.create(**session_params)
     except stripe.InvalidRequestError as e:
         error_msg = str(e)
@@ -984,10 +974,6 @@ def update_subscription(
         if trial_end_date:
             if trial_end_date > datetime.now(UTC):
                 update_params["trial_end"] = int(trial_end_date.timestamp())
-                logger.info(
-                    f"Updating subscription trial end to {trial_end_date.isoformat()}",
-                    extra={"subscription_id": subscription_id},
-                )
             else:
                 logger.warning(
                     "Trial end date is in the past, skipping trial update",
@@ -996,13 +982,6 @@ def update_subscription(
         # Update payment method if provided
         if payment_method:
             update_params["default_payment_method"] = payment_method
-            logger.info(
-                "Updating subscription payment method",
-                extra={
-                    "subscription_id": subscription_id,
-                    "payment_method": payment_method,
-                },
-            )
 
         # Update price/monthly fee if provided
         if new_price_id:
@@ -1021,15 +1000,6 @@ def update_subscription(
                     price=new_price_id,
                     proration_behavior="create_prorations",
                 )
-                logger.info(
-                    "Updated subscription item price",
-                    extra={
-                        "subscription_id": subscription_id,
-                        "new_price_id": new_price_id,
-                        "item_id": subscription_item.id,
-                    },
-                )
-
         # Apply subscription-level updates if any
         if update_params:
             updated_subscription = stripe.Subscription.modify(
@@ -1287,9 +1257,6 @@ async def sync_subscription_from_stripe(
                 trial_start, tz=timezone.utc
             )
             updated = True
-            logger.info(
-                f"Synced account subscription {stripe_subscription_id} trial_start_date"
-            )
 
         # Update end date if canceled
         timestamp = canceled_at or cancel_at
@@ -1298,9 +1265,6 @@ async def sync_subscription_from_stripe(
                 timestamp, tz=timezone.utc
             )
             updated = True
-            logger.info(
-                f"Synced account subscription {stripe_subscription_id} end_date"
-            )
 
         if updated:
             await async_session.flush()
@@ -1355,27 +1319,18 @@ async def sync_subscription_from_stripe(
             ):
                 project_subscription.base_price_id = price_id
                 updated = True
-                logger.info(
-                    f"Synced project subscription {stripe_subscription_id} base_price_id: {price_id}"
-                )
             elif (
                 "call" in nickname_lower
                 and project_subscription.call_price_id != price_id
             ):
                 project_subscription.call_price_id = price_id
                 updated = True
-                logger.info(
-                    f"Synced project subscription {stripe_subscription_id} call_price_id: {price_id}"
-                )
             elif (
                 "order" in nickname_lower
                 and project_subscription.order_price_id != price_id
             ):
                 project_subscription.order_price_id = price_id
                 updated = True
-                logger.info(
-                    f"Synced project subscription {stripe_subscription_id} order_price_id: {price_id}"
-                )
 
     # Update trial dates
     if trial_start and not project_subscription.trial_start_date:
@@ -1383,9 +1338,6 @@ async def sync_subscription_from_stripe(
             trial_start, tz=timezone.utc
         )
         updated = True
-        logger.info(
-            f"Synced project subscription {stripe_subscription_id} trial_start_date"
-        )
 
     # Update start date if not set
     if current_period_end and not project_subscription.start_date:
@@ -1398,9 +1350,6 @@ async def sync_subscription_from_stripe(
                 start_timestamp, tz=timezone.utc
             )
             updated = True
-            logger.info(
-                f"Synced project subscription {stripe_subscription_id} start_date"
-            )
 
     # Update end date if canceled
     timestamp = canceled_at or cancel_at
@@ -1409,7 +1358,6 @@ async def sync_subscription_from_stripe(
             timestamp, tz=timezone.utc
         )
         updated = True
-        logger.info(f"Synced project subscription {stripe_subscription_id} end_date")
 
     if updated:
         await async_session.flush()
@@ -1492,8 +1440,11 @@ async def sync_account_subscriptions(
                         "new_status": new_status.value,
                     }
                 )
-                logger.info(
-                    f"Synced subscription {stripe_sub_id}: {old_status} -> {new_status.value}"
+                logger.debug(
+                    "Synced subscription %s: %s -> %s",
+                    stripe_sub_id,
+                    old_status,
+                    new_status.value,
                 )
             else:
                 details.append(

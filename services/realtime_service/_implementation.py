@@ -81,39 +81,13 @@ class RealtimeSession:
             self.client = AsyncOpenAI(api_key=self.api_key)
 
             # Connect to Realtime API (production endpoint)
-            logger.debug("[REALTIME] Attempting to connect to OpenAI Realtime API")
             self.connection = await self.client.realtime.connect(
                 model="gpt-realtime"
             ).enter()
-            logger.debug("[REALTIME] Connection established successfully")
 
             # Use config to generate session configuration
             session_config = self.config.to_session_config()
-
-            logger.debug(
-                "[REALTIME] Sending session configuration",
-                extra={
-                    "audio_input_format": self.config.input_audio_format,
-                    "audio_output_format": self.config.output_audio_format,
-                    "voice": self.config.voice_id,
-                },
-            )
             await self.connection.session.update(session=session_config)  # type: ignore[arg-type]
-
-            logger.debug(
-                "[REALTIME] Successfully connected and configured OpenAI Realtime API",
-                extra={
-                    "model": "gpt-realtime",
-                    "has_callbacks": any(
-                        [
-                            self._on_audio_delta,
-                            self._on_audio_transcript,
-                            self._on_function_call,
-                            self._on_error,
-                        ]
-                    ),
-                },
-            )
 
         except Exception as e:
             logger.error(
@@ -165,20 +139,6 @@ class RealtimeSession:
         try:
             self.audio_chunks_sent_to_openai += 1
             await self.connection.input_audio_buffer.append(audio=base64_audio)
-
-            if self.audio_chunks_sent_to_openai == 1:
-                logger.debug(
-                    "[REALTIME] First audio chunk sent to OpenAI",
-                    extra={"payload_length": len(base64_audio)},
-                )
-            elif self.audio_chunks_sent_to_openai % 20 == 0:
-                logger.debug(
-                    "[REALTIME] Audio chunks sent to OpenAI",
-                    extra={
-                        "chunks_sent": self.audio_chunks_sent_to_openai,
-                        "payload_length": len(base64_audio),
-                    },
-                )
         except Exception as e:
             logger.error(
                 "[REALTIME] Error sending audio to OpenAI",
@@ -204,17 +164,8 @@ class RealtimeSession:
             raise RuntimeError("Connection not established. Call connect() first.")
 
         try:
-            logger.debug("[REALTIME] Starting to listen for OpenAI events")
             async for event in self.connection:
                 event_type = event.type
-
-                logger.debug(
-                    "[REALTIME] Event received",
-                    extra={
-                        "event_type": event_type,
-                        "event_id": getattr(event, "event_id", None),
-                    },
-                )
 
                 # Audio output delta
                 if event_type == "response.output_audio.delta":
@@ -237,13 +188,6 @@ class RealtimeSession:
                             )
 
                     # Yield for async generator consumers
-                    logger.debug(
-                        "[REALTIME] Yielding audio delta",
-                        extra={
-                            "delta_length": len(audio_chunk),
-                            "has_delta": bool(audio_chunk),
-                        },
-                    )
                     yield audio_chunk
 
                 # Transcript events
@@ -277,10 +221,6 @@ class RealtimeSession:
                                 extra={"error": str(e)},
                             )
 
-                # Audio response complete
-                elif event_type == "response.output_audio.done":
-                    logger.debug("[REALTIME] Audio response completed")
-
                 # Assistant transcript completed
                 elif event_type == "response.audio_transcript.done":
                     transcript = getattr(event, "transcript", "")
@@ -306,13 +246,6 @@ class RealtimeSession:
                             )
 
                     logger.error("[REALTIME] API error", extra=error_data)
-
-                # Other events (log for debugging)
-                else:
-                    logger.debug(
-                        f"[REALTIME] Other event: {event_type}",
-                        extra={"event_data": str(event)[:200]},
-                    )
 
         except Exception as e:
             logger.error(
@@ -425,7 +358,6 @@ async def create_realtime_session(
     # Build agent prompt using the same method as other channels
     system_prompt = await raw_config._build_agent_prompt(Channel.VOICE, session)
 
-    logger.debug(f"[REALTIME] fetched system prompt: {system_prompt}")
     if not system_prompt:
         raise ValueError(f"Agent prompt is empty for agent: {agent.id}")
 

@@ -1,6 +1,5 @@
 import re
 import threading
-import traceback
 from typing import Optional
 
 from agno.tools.toolkit import Toolkit
@@ -194,8 +193,10 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
             return str(response)
 
         except Exception as e:
-            logger.debug(
-                f"[YelpNoCreditCardTool]: check_availability - Error: {str(e)}, {traceback.format_exc()}"
+            logger.warning(
+                "[YelpNoCreditCardTool]: check_availability - Error: %s",
+                e,
+                exc_info=True,
             )
             if self._is_401_error(e):
                 logger.debug(
@@ -315,8 +316,10 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
                     return f"Unable to place a hold for {time} on {date} due to {error_msg}"
 
         except Exception as e:
-            logger.debug(
-                f"[YelpNoCreditCardTool]: make_reservation - Error: {e}, {traceback.format_exc()}"
+            logger.warning(
+                "[YelpNoCreditCardTool]: make_reservation - Error: %s",
+                e,
+                exc_info=True,
             )
             if self._is_401_error(e):
                 logger.debug(
@@ -383,8 +386,10 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
             return str(response)
 
         except Exception as e:
-            logger.debug(
-                f"[YelpNoCreditCardTool]: get_waitlist_status - Error: {str(e)}, {traceback.format_exc()}"
+            logger.warning(
+                "[YelpNoCreditCardTool]: get_waitlist_status - Error: %s",
+                e,
+                exc_info=True,
             )
             if self._is_401_error(e):
                 logger.debug(
@@ -495,8 +500,10 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
             return str(response)
 
         except Exception as e:
-            logger.debug(
-                f"[YelpNoCreditCardTool]: join_waitlist_queue - Error: {str(e)}, {traceback.format_exc()}"
+            logger.warning(
+                "[YelpNoCreditCardTool]: join_waitlist_queue - Error: %s",
+                e,
+                exc_info=True,
             )
             if self._is_401_error(e):
                 logger.debug(

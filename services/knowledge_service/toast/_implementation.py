@@ -84,27 +84,10 @@ class ToastMenuProcessor:
             dict: Processing results with menu data and indexing information
         """
         try:
-            logger.debug(
-                "[toast._implementation.process_and_index_menu] Starting Toast menu processing..."
-            )
-
             # Step 1: Parse menu JSON using migrated logic
             individual_items, system_prompt_menu, infinite_loop_items = parse_menu(
                 menu_json, selected_menus
             )
-
-            logger.debug(
-                "[toast._implementation.process_and_index_menu] Successfully parsed menu"
-            )
-            logger.debug(
-                "[toast._implementation.process_and_index_menu] Menu contains %s items",
-                len(individual_items),
-            )
-            if infinite_loop_items:
-                logger.debug(
-                    "[toast._implementation.process_and_index_menu] Found %s items with infinite loops (excluded from indexing)",
-                    len(infinite_loop_items),
-                )
 
             # Step 2: Save debug files if requested (like dummy_menu.py)
             if save_debug_files:
@@ -121,16 +104,6 @@ class ToastMenuProcessor:
                 pinecone_index_name=pinecone_index_name,
                 pinecone_namespace=pinecone_namespace,
                 debug=self.debug,
-            )
-
-            logger.debug(
-                "[toast._implementation.process_and_index_menu] Processing complete. Total items: %s",
-                len(individual_items),
-            )
-            logger.debug(
-                "[toast._implementation.process_and_index_menu] Indexed %s documents to namespace: %s",
-                document_count,
-                pinecone_namespace,
             )
 
             return {
@@ -205,21 +178,10 @@ class ToastMenuProcessor:
             ) as f:
                 f.write(dining_options_json)
 
-            logger.debug(
-                "[toast._implementation._save_debug_files] Saved dining options to: %s",
-                dining_options_dirname,
-            )
-
         # Save infinite loop items to separate directory
         if infinite_loop_items:
             infinite_loop_dirname = os.path.join(dirname, "infinite_loops")
             os.makedirs(infinite_loop_dirname, exist_ok=True)
-
-            logger.debug(
-                "[toast._implementation._save_debug_files] Saving %s infinite loop items to: %s",
-                len(infinite_loop_items),
-                infinite_loop_dirname,
-            )
 
             for menu_item in infinite_loop_items:
                 for filename, information in menu_item.items():
@@ -231,15 +193,6 @@ class ToastMenuProcessor:
                         encoding="utf-8",
                     ) as f:
                         f.write(information)
-        else:
-            logger.debug(
-                "[toast._implementation._save_debug_files] No infinite loop items found"
-            )
-
-        logger.debug(
-            "[toast._implementation._save_debug_files] Debug files saved to: %s",
-            dirname,
-        )
 
     def _should_update_menu(
         self, menu_last_updated: str, metadata: Dict[str, Any]
@@ -256,19 +209,9 @@ class ToastMenuProcessor:
         from_api_menu_last_updated = metadata.get("lastUpdated")
 
         if from_api_menu_last_updated is None:
-            logger.debug(
-                "[toast._implementation._should_update_menu] No previous menu timestamp found. Menu will be updated."
-            )
             return True
         # Only check if the two timestamps is the same, if not, then update
-        should_update = menu_last_updated != from_api_menu_last_updated
-
-        action = "will be updated" if should_update else "is up to date"
-        logger.debug(
-            "[toast._implementation._should_update_menu] Menu %s based on timestamp comparison.",
-            action,
-        )
-        return should_update
+        return menu_last_updated != from_api_menu_last_updated
 
     def _authenticate_with_toast(
         self,
@@ -289,10 +232,6 @@ class ToastMenuProcessor:
         Raises:
             RuntimeError: If authentication fails
         """
-        logger.debug(
-            "[toast._implementation._authenticate_with_toast] Authenticating with Toast API..."
-        )
-
         access_token = get_toast_access_token(
             client_id=client_id,
             client_secret=client_secret,
@@ -302,9 +241,6 @@ class ToastMenuProcessor:
         if not access_token:
             raise RuntimeError("Failed to obtain Toast access token")
 
-        logger.debug(
-            "[toast._implementation._authenticate_with_toast] Successfully authenticated with Toast API"
-        )
         return access_token
 
     def _get_menu_metadata(
@@ -323,20 +259,12 @@ class ToastMenuProcessor:
         Returns:
             dict: Menu metadata
         """
-        logger.debug(
-            "[toast._implementation._get_menu_metadata] Getting menu metadata..."
-        )
-
         metadata = get_menu_metadata(
             bearer_token=bearer_token,
             restaurant_external_id=restaurant_external_id,
             general_api_endpoint=general_api_endpoint,
         )
 
-        logger.debug(
-            "[toast._implementation._get_menu_metadata] Retrieved metadata for restaurant %s",
-            metadata.get("restaurantGuid"),
-        )
         return metadata
 
     def _download_and_process_menu(
@@ -357,30 +285,15 @@ class ToastMenuProcessor:
         Returns:
             tuple: (individual_items, system_prompt_menu, infinite_loop_items)
         """
-        logger.debug(
-            "[toast._implementation._download_and_process_menu] Downloading menu data..."
-        )
-
         menu_json = download_menu(
             bearer_token=bearer_token,
             restaurant_external_id=restaurant_external_id,
             general_api_endpoint=general_api_endpoint,
         )
 
-        logger.debug(
-            "[toast._implementation._download_and_process_menu] Successfully downloaded menu with %s menus",
-            len(menu_json.get("menus", [])),
-        )
-
         # Process menu using the existing logic
         individual_items, system_prompt_menu, infinite_loop_items = parse_menu(
             menu_json, selected_menus
-        )
-
-        logger.debug(
-            "[toast._implementation._download_and_process_menu] Parsed menu: %s items, %s infinite loop items",
-            len(individual_items),
-            len(infinite_loop_items),
         )
 
         return individual_items, system_prompt_menu, infinite_loop_items
@@ -408,10 +321,6 @@ class ToastMenuProcessor:
             debug=self.debug,
         )
 
-        logger.debug(
-            "[toast._implementation._index_menu_to_pinecone] Successfully indexed %s documents to Pinecone",
-            document_count,
-        )
         return document_count
 
     def _get_and_index_dining_options(
@@ -434,10 +343,6 @@ class ToastMenuProcessor:
         Returns:
             tuple: (Number of documents indexed, raw JSON string)
         """
-        logger.debug(
-            "[toast._implementation._get_and_index_dining_options] Getting dining options..."
-        )
-
         # Get raw JSON string from API
         dining_options_json = get_dining_options(
             bearer_token=bearer_token,
@@ -454,9 +359,6 @@ class ToastMenuProcessor:
             debug=self.debug,
         )
 
-        logger.debug(
-            "[toast._implementation._get_and_index_dining_options] Successfully indexed dining options to Pinecone"
-        )
         return document_count, dining_options_json
 
     def process_and_index_menu_from_api(
@@ -499,31 +401,20 @@ class ToastMenuProcessor:
             dict: Processing results with menu data and indexing information
         """
         try:
-            logger.debug(
-                "[toast._implementation.process_and_index_menu_from_api] Starting Toast menu processing from API..."
-            )
-
             # Step 1: Get authentication token
             access_token = self._authenticate_with_toast(
                 client_id, client_secret, token_api_endpoint
             )
-
-            logger.debug("Menu last updated: %s", menu_last_updated)
 
             # Step 2: Get menu metadata
             metadata = self._get_menu_metadata(
                 access_token, restaurant_external_id, general_api_endpoint
             )
 
-            logger.debug("Menu metadata: %s", metadata)
-
             # Step 2.5: Check if menu needs updating
             if menu_last_updated and not self._should_update_menu(
                 menu_last_updated, metadata
             ):
-                logger.debug(
-                    "[toast._implementation.process_and_index_menu_from_api] Skipping indexing — menu is up to date."
-                )
                 return {"message": "Menu is up to date. Skipping indexing."}
 
             # Step 3: Download and process menu data
@@ -553,10 +444,6 @@ class ToastMenuProcessor:
                         pinecone_namespace,
                         general_api_endpoint,
                     )
-                )
-                logger.debug(
-                    "[toast._implementation.process_and_index_menu_from_api] Successfully indexed %s dining options",
-                    dining_options_count,
                 )
             except Exception as e:
                 logger.warning(

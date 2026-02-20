@@ -266,7 +266,7 @@ class AccountRepository:
             )
             if db_account:
                 if hard_delete:
-                    logger.warn(
+                    logger.warning(
                         f"Hard deleting account {account_name} from the database!"
                     )
                     # Delete dependent records in correct order to avoid FK violations

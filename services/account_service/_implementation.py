@@ -123,7 +123,7 @@ def create_account(
         if not lead:
             raise ValueError(f"Lead id {lead_id} not found.")
         if lead.account_id:
-            logger.warn(
+            logger.warning(
                 f"Lead is already linked to the account: {lead.account_id}, it will be unlinked."
             )
 
@@ -192,7 +192,7 @@ def delete_account(
     # Get the account before deleting
     account = account_repository.get_account(account_name)
     if account is None:
-        logger.warn(f"Account {account_name} does not exist, cannot delete.")
+        logger.warning(f"Account {account_name} does not exist, cannot delete.")
         return
 
     with change_log_context(

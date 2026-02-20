@@ -23,6 +23,7 @@ from services import (
 from services.auth_types import UserContext
 from services.prompt_service.prompts import prompt_factory
 from services.prompt_service.schema import PromptParams
+from utils.log import logger
 
 
 def create_prompt(
@@ -196,14 +197,22 @@ def get_system_prompts(
                 if agent and agent.agent_type:
                     agent_type = AgentType(agent.agent_type)
         except Exception:
-            pass
+            logger.warning(
+                "Failed to determine agent type from project %s",
+                resource_id,
+                exc_info=True,
+            )
     elif resource_type == "agent":
         try:
             agent = agent_service.get_agent(session, resource_id)
             if agent and agent.agent_type:
                 agent_type = AgentType(agent.agent_type)
         except Exception:
-            pass
+            logger.warning(
+                "Failed to determine agent type from agent %s",
+                resource_id,
+                exc_info=True,
+            )
 
     plan_tier = None
     try:
@@ -217,7 +226,11 @@ def get_system_prompts(
         ):
             plan_tier = TargetTier(current_subscription.subscription_plan.tier)
     except Exception:
-        pass
+        logger.warning(
+            "Failed to determine subscription tier for account %s",
+            account.id,
+            exc_info=True,
+        )
 
     channel_filter = None
     if channels:

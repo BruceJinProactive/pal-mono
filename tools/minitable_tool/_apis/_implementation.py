@@ -51,7 +51,6 @@ def suggest_availability(
         raise Exception(f"MiniTable API error: {response.status} {response.reason}")
 
     data = response.decoded_body
-    logger.debug(f"[MiniTable] MiniTable API suggest response: {data}")
 
     return data
 
@@ -108,7 +107,6 @@ def create_reservation(
         raise Exception(f"MiniTable API error: {response.status} {response.reason}")
 
     data = response.decoded_body
-    logger.debug(f"[MiniTable] MiniTable API create reservation response: {data}")
 
     # Check for booking failure and add user-friendly message
     booking_failure = None
@@ -184,7 +182,6 @@ def create_waitlist(
         raise Exception(f"MiniTable API error: {response.status} {response.reason}")
 
     data = response.decoded_body
-    logger.debug(f"[MiniTable] MiniTable API create waitlist response: {data}")
 
     return data
 
@@ -223,7 +220,6 @@ def check_waitlist_status(
         raise Exception(f"MiniTable API error: {response.status} {response.reason}")
 
     data = response.decoded_body
-    logger.debug(f"[MiniTable] MiniTable API check waitlist status response: {data}")
 
     return data
 
@@ -264,6 +260,5 @@ def get_user_wait_status(
         raise Exception(f"MiniTable API error: {response.status} {response.reason}")
 
     data = response.decoded_body
-    logger.debug(f"[MiniTable] MiniTable API get user wait status response: {data}")
 
     return data

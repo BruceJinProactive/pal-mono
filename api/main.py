@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+from api.middleware import RequestLoggingMiddleware
 from api.routes.v1_router import v1_router
 from api.settings import api_settings
 from utils.log import configure_global_logger, logger, patch_agno_logger_to_use_root
@@ -41,7 +42,7 @@ def create_app(lifespan=lifespan) -> FastAPI:
     # Add v1 router
     app.include_router(v1_router)
 
-    # Add Middlewares
+    # Add Middlewares (order matters: last added = outermost = runs first)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=api_settings.cors_origin_list or [],
@@ -50,6 +51,7 @@ def create_app(lifespan=lifespan) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RequestLoggingMiddleware)
 
     return app
 

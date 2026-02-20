@@ -2,7 +2,6 @@ import asyncio
 import json
 import re
 import threading
-import traceback
 from datetime import datetime
 from typing import List
 from zoneinfo import ZoneInfo
@@ -626,8 +625,6 @@ class AdoraTool(Toolkit):
             general_api_endpoint=self.general_api_endpoint,
         )
 
-        logger.debug(f"[AdoraTool.checkout_order] Validated order: {validated_order}")
-
         if type(validated_order) is str:
             return f"Failed to validate order due to {validated_order}"
         elif (
@@ -690,17 +687,9 @@ class AdoraTool(Toolkit):
             bearer_token: The Adora API authentication token
         """
         try:
-            logger.debug("Starting _add_loyalty_discounts method")
             if not order.customer or not order.customer.phone_number:
-                logger.debug(
-                    "No customer or phone number found, skipping loyalty discounts"
-                )
                 return
 
-            # Get and parse customer loyalty data directly
-            logger.debug(
-                f"Getting loyalty info for customer: {order.customer.phone_number}"
-            )
             # Get customer loyalty information
             customer_loyalty_info = _apis.get_customer_info(
                 bearer_token,
@@ -712,10 +701,8 @@ class AdoraTool(Toolkit):
             )
 
             if not customer_loyalty_info:
-                logger.debug("No customer loyalty info found")
                 return
 
-            logger.debug("Parsing customer loyalty data")
             # Ensure customer_data is a dictionary
             if isinstance(customer_loyalty_info, str):
                 customer_data = json.loads(customer_loyalty_info)
@@ -727,15 +714,8 @@ class AdoraTool(Toolkit):
 
             # Only proceed if customer is a loyalty member
             is_loyalty_member = customer_data.get("loyaltyMember", False)
-            logger.debug(f"Customer loyalty status: {is_loyalty_member}")
             if not is_loyalty_member:
-                logger.debug(
-                    "Customer is not a loyalty member, skipping loyalty discounts"
-                )
                 return
-
-            logger.debug("Customer is a loyalty member, adding loyalty discounts")
-            logger.debug("Initializing loyalty discounts")
 
             # Initialize loyalty_discounts if not already present
             if not hasattr(order, "loyalty_discounts") or not order.loyalty_discounts:
@@ -746,9 +726,7 @@ class AdoraTool(Toolkit):
             self._add_next_order_credits(order, customer_data)
             self._add_loyalty_offers(order, customer_data)
 
-            logger.debug(
-                f"Finished adding loyalty discounts: {order.loyalty_discounts}"
-            )
+            logger.debug("Added %s loyalty discounts", len(order.loyalty_discounts))
         except Exception as e:
             logger.error(f"Error adding loyalty discounts: {e}")
             # Continue without loyalty discounts if there's an error
@@ -764,19 +742,14 @@ class AdoraTool(Toolkit):
         if not hasattr(order, "loyalty_discounts") or order.loyalty_discounts is None:
             order.loyalty_discounts = []
 
-        logger.debug("Checking for customer rewards")
         customer_rewards = customer_data.get("customerRewards", [])
         if customer_rewards:
-            logger.debug(f"Found customer rewards: {len(customer_rewards)}")
             for reward in customer_rewards:
                 if (
                     isinstance(reward, dict)
                     and "rewardId" in reward
                     and "couponId" in reward
                 ):
-                    logger.debug(
-                        f"Adding reward: {reward['rewardId']}, coupon: {reward['couponId']}"
-                    )
                     order.loyalty_discounts.append(
                         LoyaltyReward(
                             coupon_id=reward["couponId"],
@@ -795,18 +768,14 @@ class AdoraTool(Toolkit):
         if not hasattr(order, "loyalty_discounts") or order.loyalty_discounts is None:
             order.loyalty_discounts = []
 
-        logger.debug("Checking for customer next order credits")
         customer_credits = customer_data.get("customerNextOrderCredits", [])
         if customer_credits:
-            logger.debug(f"Found customer next order credits: {len(customer_credits)}")
             for credit in customer_credits:
                 if isinstance(credit, dict):
                     # Check for both CreditId and credit_id field variations
-                    logger.debug(f"Credit: {credit}")
                     credit_id = None
                     if "CreditId" in credit:
                         credit_id = credit["CreditId"]
-                        logger.debug(f"Adding credit with CreditId: {credit_id}")
 
                     if credit_id:
                         order.loyalty_discounts.append(
@@ -835,7 +804,6 @@ class AdoraTool(Toolkit):
         if not hasattr(order, "loyalty_discounts") or order.loyalty_discounts is None:
             order.loyalty_discounts = []
 
-        logger.debug("Checking for customer offers")
         customer_offers = customer_data.get("customerOffers", {})
         if customer_offers:
             self._add_offer_codes(order, customer_offers)
@@ -854,24 +822,18 @@ class AdoraTool(Toolkit):
 
         codes_list = customer_offers.get("codes", [])
         if codes_list:
-            logger.debug(f"Found offer codes: {len(codes_list)}")
             for code in codes_list:
                 if (
                     isinstance(code, dict)
                     and "couponId" in code
                     and "couponCode" in code
                 ):
-                    logger.debug(
-                        f"Adding offer code: coupon ID {code['couponId']}, code {code['couponCode']}"
-                    )
                     order.loyalty_discounts.append(
                         LoyaltyOffer(
                             coupon_id=code["couponId"],
                             coupon_code=code["couponCode"],
                         )
                     )
-        else:
-            logger.debug("No offer codes found")
 
     def _add_offer_coupons(self, order: Order, customer_offers: dict) -> None:
         """
@@ -888,12 +850,9 @@ class AdoraTool(Toolkit):
         codes_list = customer_offers.get("codes", [])
 
         if coupons_list:
-            logger.debug(f"Found coupons: {len(coupons_list)}")
             for coupon in coupons_list:
                 if isinstance(coupon, dict) and "couponId" in coupon:
                     coupon_id = coupon["couponId"]
-                    coupon_name = coupon.get("name", "Unnamed coupon")
-                    logger.debug(f"Adding coupon: ID {coupon_id}, name {coupon_name}")
 
                     # For coupons without codes, we need to use the coupon_id but can leave coupon_code empty
                     # Look for matching code in codes_list first
@@ -914,8 +873,6 @@ class AdoraTool(Toolkit):
                             or "",  # Use matching code or empty string
                         )
                     )
-        else:
-            logger.debug("No coupons found")
 
     @tool
     def checkout_order(self) -> str:
@@ -976,7 +933,6 @@ class AdoraTool(Toolkit):
                     return "Failed to extract structured data. Please try again."
 
             if not order.order_type:
-                logger.debug("No order type specified.")
                 return "Sorry, do you want that for Takeout or Delivery?"
 
             try:
@@ -989,9 +945,6 @@ class AdoraTool(Toolkit):
             # Validate the address if the order is for delivery
             if order.order_type == AdoraOrderType.DELIVERY:
                 if not order.delivery_address:
-                    logger.debug(
-                        "[AdoraTool.checkout_order] Delivery order constructed has no address"
-                    )
                     return "Could you provide your address?"
                 validate_order_success, validate_order_message = self._validate_address(
                     order.delivery_address  # type: ignore
@@ -1003,18 +956,12 @@ class AdoraTool(Toolkit):
             # If promise_date_time is set, validate its format and turn into UTC format
             if order.promise_date_time:
                 try:
-                    # Save original for logging
-                    original_dt_str = order.promise_date_time
-
                     # Parse the datetime string
                     parsed_dt = datetime.strptime(
                         order.promise_date_time, "%Y-%m-%dT%H:%M:%S"
                     )
 
                     # Use tool_metadata timezone or fallback to America/Los_Angeles
-                    logger.debug(
-                        f"[AdoraTool.checkout_order] Using timezone: {self.tool_metadata.timezone}"
-                    )
                     tz_str = self.tool_metadata.timezone or "America/Los_Angeles"
                     local_tz = ZoneInfo(tz_str)
 
@@ -1025,9 +972,6 @@ class AdoraTool(Toolkit):
                     # Update order with UTC time
                     order.promise_date_time = utc_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
-                    logger.debug(
-                        f"[AdoraTool.checkout_order] Converted promise_date_time {original_dt_str} from {tz_str} to UTC: {order.promise_date_time}"
-                    )
                 except ValueError as e:
                     logger.error(
                         f"[AdoraTool.checkout_order] Invalid promise_date_time format: {e}"
@@ -1042,11 +986,6 @@ class AdoraTool(Toolkit):
             # Initialize coupon_ids list if it doesn't exist
             if not order.coupon_ids:
                 order.coupon_ids = []
-
-            # Log extracted coupon IDs from conversation
-            logger.debug(
-                f"[AdoraTool.checkout_order] Extracted coupon IDs from conversation: {order.coupon_ids}"
-            )
 
             # Validate coupon codes mentioned by the user
             # NOTE: for now, include only the last single valid coupon code even if there are multiple coupon codes mentioned in the chat history, later we may want to include multiple coupon codes
@@ -1067,33 +1006,13 @@ class AdoraTool(Toolkit):
                     )
                     if result and result.get("isValid", False) and "couponId" in result:
                         order.coupon_ids.append(result["couponId"])
-                        logger.debug(
-                            f"[AdoraTool.checkout_order] Added coupon ID {result['couponId']} from validated code: {code}"
-                        )
-                    else:
-                        logger.debug(
-                            f"[AdoraTool.checkout_order] Invalid coupon code: {code} with result: {result}"
-                        )
 
             # Add default coupon ID if configured
             if self.default_coupon_id is not None:
                 if isinstance(self.default_coupon_id, list):
                     order.coupon_ids.extend(self.default_coupon_id)
-                    logger.debug(
-                        f"[AdoraTool.checkout_order] Added default coupon IDs: {self.default_coupon_id}"
-                    )
                 else:
                     order.coupon_ids.append(self.default_coupon_id)
-                    logger.debug(
-                        f"[AdoraTool.checkout_order] Added default coupon ID: {self.default_coupon_id}"
-                    )
-            # Log final list of coupon IDs to be applied
-            if order.coupon_ids:
-                logger.debug(
-                    f"[AdoraTool.checkout_order] Final coupon IDs to be applied: {order.coupon_ids}"
-                )
-            else:
-                logger.debug("[AdoraTool.checkout_order] No coupon IDs to apply")
 
             # Use _get_adora_bearer_token to ensure LLMObs tracking
             bearer_token = self._get_adora_bearer_token()
@@ -1109,15 +1028,12 @@ class AdoraTool(Toolkit):
 
             ### Validate and check fields ###
             if not order.customer:
-                logger.debug("Customer info is missing.")
                 return "We'll need your first name and phone number to place the order."
             elif not order.customer.first_name:
-                logger.debug("Customer first name is missing.")
                 return "We'll need your first name."
             elif not order.customer.last_name:
                 return "We'll need your last name."
             elif not order.customer.phone_number:
-                logger.debug("Customer phone number is missing.")
                 return "We'll need your phone number."
 
             # Set email to default if empty or if it is not valid
@@ -1137,12 +1053,10 @@ class AdoraTool(Toolkit):
             if self.loyalty_enabled:
                 self._add_loyalty_discounts(order, bearer_token)
 
-            logger.debug(f"Extracted structured order: {order}")
             return self._fulfill_order(order, bearer_token)
 
         except Exception as e:
-            logger.error(f"Error in extracting structured data: {e}")
-            logger.error(traceback.format_exc())
+            logger.exception("Error in extracting structured data: %s", e)
             return "Please try again."
 
     @tool

@@ -247,14 +247,7 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
 
             # Check if token expires within the threshold
             if integration.expires_at > expiration_threshold:
-                logger.debug(
-                    f"[Square OAuth] Integration {integration.id} expires at {integration.expires_at}, not within threshold"
-                )
                 continue
-
-            logger.info(
-                f"[Square OAuth] Integration {integration.id} expires at {integration.expires_at}, refreshing token"
-            )
 
             # Get account for this integration
             account = account_repository.get_account_by_id(integration.account_id)
@@ -271,9 +264,6 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
             # Use the refresh_square_token function
             result = refresh_square_token(account.name, integration.id, session)
             if result["success"]:
-                logger.info(
-                    f"[Square OAuth] Successfully refreshed token for integration {integration.id}"
-                )
                 total_refreshed += 1
             else:
                 logger.error(

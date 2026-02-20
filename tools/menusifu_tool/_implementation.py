@@ -422,44 +422,23 @@ class MenuSifuTool(Toolkit):
             f"  - Payment Method: {extracted_order.payment_method} (value: {extracted_order.payment_method.value})"
         )
 
-        for i, item in enumerate(extracted_order.items, 1):
-            logger.debug(f"  - Item {i}: {item.item_name} (ID: {item.item_id})")
-            logger.debug(
-                f"    * Price: ${item.price}, Display: {item.display_price}, Qty: {item.quantity}"
-            )
-            logger.debug(f"    * Type: {item.item_type}, Category: {item.category_id}")
-            if item.modifiers:
-                logger.debug(f"    * Modifiers: {len(item.modifiers)} items")
-                for mod in item.modifiers:
-                    logger.debug(
-                        f"      - {mod.name}: ${mod.price} (qty: {mod.quantity})"
-                    )
-
         # Use extracted order items directly
         processed_items = extracted_order.items
         logger.debug(
-            f"[MenuSifuTool] Using {len(processed_items)} items directly from extracted order"
+            "[MenuSifuTool] Extracted %d items from order", len(processed_items)
         )
 
         # Check for mandatory combo sections for COMBO_SALE_ITEM types
         for i, item in enumerate(processed_items):
             if item.item_type == "COMBO_SALE_ITEM":
-                logger.debug(
-                    f"[MenuSifuTool] Checking mandatory combo sections for item {i+1}: {item.item_name}"
-                )
-
-                # Get the current combo sections
                 current_sections = getattr(item, "combo_sections", []) or []
                 if not current_sections:
                     logger.warning(
-                        f"[MenuSifuTool] Item {i+1} has no combo sections - this WILL cause API errors for combo items with mandatory selections"
+                        "[MenuSifuTool] Item %d (%s) has no combo sections - this WILL cause API errors for combo items with mandatory selections",
+                        i + 1,
+                        item.item_name,
                     )
                 else:
-                    logger.debug(
-                        f"[MenuSifuTool] Item {i+1} has {len(current_sections)} combo sections"
-                    )
-
-                    # Validate each section has selected_items
                     for section_idx, section in enumerate(current_sections):
                         section_name = getattr(
                             section, "section_name", f"Section {section_idx+1}"
@@ -467,15 +446,12 @@ class MenuSifuTool(Toolkit):
                         selected_items = getattr(section, "selected_items", []) or []
                         if not selected_items:
                             logger.warning(
-                                f"[MenuSifuTool] Item {i+1} ({item.item_name}) - Section {section_idx+1} ({section_name}) has no selected_items - this may cause API errors"
+                                "[MenuSifuTool] Item %d (%s) - Section %d (%s) has no selected_items - this may cause API errors",
+                                i + 1,
+                                item.item_name,
+                                section_idx + 1,
+                                section_name,
                             )
-                        else:
-                            logger.debug(
-                                f"[MenuSifuTool] Item {i+1} - Section {section_idx+1} ({section_name}) has {len(selected_items)} selected items"
-                            )
-
-        # Log extracted items details
-        logger.debug(f"[MenuSifuTool] Extracted Items Details:{processed_items}")
 
         return processed_items
 
@@ -506,19 +482,10 @@ class MenuSifuTool(Toolkit):
             # Convert order_items to OrderSelectedItem instances
             selected_items = []
             failed_items = []  # Track items that failed conversion
-            logger.debug("[MenuSifuTool] Converting items to OrderSelectedItem format")
             for i, item in enumerate(order_items, 1):
                 try:
-                    logger.debug(
-                        f"[MenuSifuTool] Processing item {i}: {item.item_name}"
-                    )
-                    logger.debug(f"[MenuSifuTool] Raw item data: {item}")
-
                     # Convert Pydantic object to dict for processing
                     try:
-                        logger.debug(
-                            f"[MenuSifuTool] Converting Pydantic item to dict for item {i}"
-                        )
                         item_dict = {
                             "id": item.item_id,
                             "name": item.item_name,
@@ -533,30 +500,21 @@ class MenuSifuTool(Toolkit):
                             "detailPriceInfo": getattr(item, "detail_price_info", None),
                         }
                         safe_fields = safe_convert_item_fields(item_dict)
-                        logger.debug(
-                            f"[MenuSifuTool] safe_convert_item_fields succeeded for item {i}"
-                        )
-                    except Exception as e:
+                    except Exception:
                         item_name = item.item_name
                         logger.exception(
-                            f"[MenuSifuTool] safe_convert_item_fields failed for item {i} ({item_name}): {e}"
+                            "[MenuSifuTool] safe_convert_item_fields failed for item %d (%s)",
+                            i,
+                            item_name,
                         )
                         failed_items.append(
                             f"Item {i} ({item_name}): field conversion failed"
                         )
                         continue  # Skip this item and process remaining items
 
-                    # Log safe field conversion results
-                    logger.debug(f"[MenuSifuTool] Safe field conversion for item {i}:")
-                    logger.debug(f"  - Raw item: {item}")
-                    logger.debug(f"  - Safe fields: {safe_fields}")
-
                     # Convert price (Decimal) to displayPrice (int cents) - proper rounding from dollars to cents
                     try:
                         price_decimal = safe_fields["price"]
-                        logger.debug(
-                            f"[MenuSifuTool] Price decimal: {price_decimal} (type: {type(price_decimal)})"
-                        )
                         # Convert dollars to integer cents with HALF_UP rounding
                         # Note: Decimal('0') is falsy — don't use truthiness here.
                         if price_decimal is None:
@@ -566,13 +524,12 @@ class MenuSifuTool(Toolkit):
                                 Decimal("0.01"), rounding=ROUND_HALF_UP
                             )
                             display_price_int = int(price_normalized * 100)
-                        logger.debug(
-                            f"[MenuSifuTool] Price conversion: {price_decimal} dollars -> {display_price_int} cents"
-                        )
-                    except Exception as e:
+                    except Exception:
                         item_name = item.item_name
                         logger.exception(
-                            f"[MenuSifuTool] Price conversion failed for item {i} ({item_name}): {e}"
+                            "[MenuSifuTool] Price conversion failed for item %d (%s)",
+                            i,
+                            item_name,
                         )
                         failed_items.append(
                             f"Item {i} ({item_name}): price conversion failed"
@@ -581,44 +538,6 @@ class MenuSifuTool(Toolkit):
 
                     # Map fields from order_items to OrderSelectedItem format
                     try:
-                        logger.debug(
-                            f"[MenuSifuTool] Creating OrderSelectedItem for item {i}"
-                        )
-                        logger.debug("[MenuSifuTool] OrderSelectedItem parameters:")
-                        logger.debug(
-                            f"  - categoryId: {safe_fields['categoryId']} (type: {type(safe_fields['categoryId'])})"
-                        )
-                        logger.debug(
-                            f"  - displayPrice: {display_price_int} (type: {type(display_price_int)})"
-                        )
-                        logger.debug(
-                            f"  - id: {safe_fields['id']} (type: {type(safe_fields['id'])})"
-                        )
-                        logger.debug(
-                            f"  - itemType: {safe_fields['itemType']} (type: {type(safe_fields['itemType'])})"
-                        )
-                        logger.debug(
-                            f"  - name: {safe_fields['name']} (type: {type(safe_fields['name'])})"
-                        )
-                        logger.debug(
-                            f"  - price: {safe_fields['price']} (type: {type(safe_fields['price'])})"
-                        )
-                        logger.debug(
-                            f"  - quantity: {safe_fields['quantity']} (type: {type(safe_fields['quantity'])})"
-                        )
-                        logger.debug(
-                            f"  - saleItemId: {safe_fields['saleItemId']} (type: {type(safe_fields['saleItemId'])})"
-                        )
-                        logger.debug(
-                            f"  - detailPriceId: {safe_fields.get('detailPriceId')} (type: {type(safe_fields.get('detailPriceId'))})"
-                        )
-                        logger.debug(
-                            f"  - sizeId: {safe_fields.get('sizeId')} (type: {type(safe_fields.get('sizeId'))})"
-                        )
-                        logger.debug(
-                            f"  - detailPriceInfo: {safe_fields.get('detailPriceInfo')} (type: {type(safe_fields.get('detailPriceInfo'))})"
-                        )
-
                         selected_item = OrderSelectedItem(
                             categoryId=safe_fields["categoryId"],
                             displayPrice=display_price_int,  # Same as price but as int
@@ -635,37 +554,31 @@ class MenuSifuTool(Toolkit):
                             sizeId=safe_fields.get("sizeId"),
                             detailPriceInfo=safe_fields.get("detailPriceInfo"),
                         )
-                        logger.debug(
-                            f"[MenuSifuTool] OrderSelectedItem created successfully for item {i}"
-                        )
 
-                    except Exception as e:
+                    except Exception:
                         item_name = item.item_name
                         logger.exception(
-                            f"[MenuSifuTool] OrderSelectedItem construction failed for item {i} ({item_name}): {e}"
-                        )
-                        logger.debug(
-                            f"[MenuSifuTool] Failed with safe_fields: {safe_fields}"
+                            "[MenuSifuTool] OrderSelectedItem construction failed for item %d (%s)",
+                            i,
+                            item_name,
                         )
                         failed_items.append(
                             f"Item {i} ({item_name}): OrderSelectedItem construction failed"
                         )
                         continue  # Skip this item and process remaining items
 
-                    # Log final OrderSelectedItem details in one line
-                    logger.debug(
-                        f"[MenuSifuTool] Created OrderSelectedItem {i}: {selected_item.name} (ID: {selected_item.id}, Price: ${selected_item.price}, Display: {selected_item.display_price}, Qty: {selected_item.quantity}, Category: {selected_item.category_id}, Type: {selected_item.item_type}, Options: {len(selected_item.options or [])})"
-                    )
-
                     selected_items.append(selected_item)
-                    logger.debug(
-                        f"[MenuSifuTool] Successfully appended item {i} to selected_items list"
-                    )
 
-                except Exception as e:
-                    item_name = item.get("name", "Unknown item")
+                except Exception:
+                    item_name = (
+                        getattr(item, "item_name", None)
+                        or getattr(item, "name", None)
+                        or "Unknown item"
+                    )
                     logger.exception(
-                        f"[MenuSifuTool] Unexpected error in item conversion loop for item {i} ({item_name}): {e}"
+                        "[MenuSifuTool] Unexpected error in item conversion loop for item %d (%s)",
+                        i,
+                        item_name,
                     )
                     failed_items.append(f"Item {i} ({item_name}): unexpected error")
                     continue  # Skip this item and process remaining items
@@ -1259,50 +1172,32 @@ class MenuSifuTool(Toolkit):
             str: Order confirmation with details and order ID, or error message if order cannot be processed.
         """
         try:
-            logger.debug("[MenuSifuTool] Starting order checkout process")
-
-            # Note: Parameters are placeholder documentation only.
-            # Customer name, phone, and items are extracted from chat.
-            # Email is fixed to test@palona.com, order type is always pickup, and payment method is always cash.
-
             # Check if we have query messages tool
             if not self.query_messages_tool:
                 error_msg = (
                     "Chat history access not available. Please provide tool metadata."
                 )
-                logger.debug(f"[MenuSifuTool] {error_msg}")
                 return error_msg
 
             # Step 1: Extract order from chat
-            logger.debug("[MenuSifuTool] Step 1: Extracting order from chat history")
             extracted_order = self._extract_order_from_chat()
 
             # Step 2: Process extracted order
-            logger.debug("[MenuSifuTool] Step 2: Processing extracted order")
             processed_items = self._process_extracted_order(extracted_order)
             if isinstance(processed_items, str):
-                logger.debug(f"[MenuSifuTool] Step 2: Error message: {processed_items}")
                 return processed_items  # Error message
 
             # Step 3: Calculate order total
-            logger.debug("[MenuSifuTool] Step 3: Calculating order total")
             calc_result = self._calculate_order_total(processed_items)
             if isinstance(calc_result, str):
-                logger.debug(f"[MenuSifuTool] Step 3: Error message: {calc_result}")
                 return calc_result  # Error message
 
             # Step 4: Generate order
-            logger.debug("[MenuSifuTool] Step 4: Generating order")
             order_result = self._generate_order(
                 calc_result, extracted_order, processed_items
             )
             if isinstance(order_result, str):
-                logger.debug(f"[MenuSifuTool] Step 4: Error message: {order_result}")
                 return order_result  # Error message
-
-            # Step 5: Return order response directly
-            logger.debug("[MenuSifuTool] Step 5: Returning order response")
-            logger.debug("[MenuSifuTool] Order checkout completed successfully")
 
             return str(order_result)
 

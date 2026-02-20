@@ -1,7 +1,9 @@
 import logging
 import os
+from contextvars import ContextVar
 
 from agno.utils.log import LOGGER_NAME
+from ddtrace import tracer  # pyright: ignore[reportPrivateImportUsage]
 from pythonjsonlogger import jsonlogger
 
 # Exclude watchdog DEBUG and INFO logs
@@ -9,6 +11,9 @@ logging.getLogger("watchdog").setLevel(logging.WARNING)
 
 # Exclude httpx DEBUG and INFO logs
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# Context variable for request correlation ID
+request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
 
 
 class DatadogJsonFormatter(jsonlogger.JsonFormatter):
@@ -22,6 +27,17 @@ class DatadogJsonFormatter(jsonlogger.JsonFormatter):
             log_record["env"] = os.getenv("DD_ENV") or os.getenv("RUNTIME_ENV", "dev")
         if "service" not in log_record:
             log_record["service"] = os.getenv("DD_SERVICE") or "pal-mono"
+
+        # Inject Datadog trace correlation IDs for log-trace linking
+        span = tracer.current_span()
+        if span:
+            log_record["dd.trace_id"] = str(span.trace_id)
+            log_record["dd.span_id"] = str(span.span_id)
+
+        # Inject request correlation ID if available
+        rid = request_id_ctx.get()
+        if rid:
+            log_record["request_id"] = rid
 
 
 def configure_global_logger():

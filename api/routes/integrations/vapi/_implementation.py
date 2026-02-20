@@ -875,10 +875,6 @@ def handle_tool_calls(message_data):
             tool_call_id = tool_call.get("id")
             tool_function = tool_call.get("function")
             tool_name = tool_function.get("name")
-            tool_args = tool_function.get("arguments", {})
-            logger.debug(
-                f"Tool call received: {tool_name} with args: {json.dumps(tool_args)}"
-            )
             results.append(
                 {
                     "name": tool_name,

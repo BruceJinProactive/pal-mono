@@ -53,31 +53,17 @@ async def create_monitoring_config(
     Raises:
         HTTPException: If creation fails.
     """
-    logger.info(
-        f"[create monitoring config] Creating monitoring config for project {project_id}, "
-        f"name: {request.name}, reference_images: {len(reference_images)}"
-    )
     uploaded_file_paths: list[str] = []
 
     try:
-        logger.debug(
-            "[create monitoring config] Step 1: Creating base monitoring config in database"
-        )
         config = await monitoring_service.create_config(
             session=session,
             project_id=project_id,
             request=request,
         )
-        logger.info(
-            f"[create monitoring config] Step 1 complete: Base config created with ID {config.id}"
-        )
 
         # Upload reference images if provided
         if reference_images:
-            logger.debug(
-                f"[create monitoring config] Step 2: Uploading {len(reference_images)} "
-                "reference images to S3"
-            )
             # Store config_id before S3 upload to avoid MissingGreenlet error
             # asyncio.to_thread() in upload function can't access SQLAlchemy objects
             config_id = config.id
@@ -88,51 +74,28 @@ async def create_monitoring_config(
                 project_id=project_id,
                 config_id=config_id,
             )
-            logger.info(
-                f"[create monitoring config] Step 2 complete: {len(uploaded_images)} images uploaded"
-            )
 
             # Track uploaded file paths for potential rollback
             uploaded_file_paths = [img["url"] for img in uploaded_images]
 
-            logger.debug(
-                "[create monitoring config] Step 3: Refreshing config after S3 upload"
-            )
             # Refresh config to re-establish async session context after asyncio.to_thread()
             await session.refresh(config)
-            logger.debug("[create monitoring config] Step 3 complete: Config refreshed")
 
-            logger.debug(
-                "[create monitoring config] Step 4: Updating config with reference image metadata"
-            )
             # Update config with structured reference images
             config.rules["reference_images"] = uploaded_images
             # Mark the JSONB field as modified so SQLAlchemy tracks the change
             attributes.flag_modified(config, "rules")
-            logger.debug(
-                "[create monitoring config] Step 4 complete: Config rules updated"
-            )
 
-        logger.debug(
-            "[create monitoring config] Step 5: Committing transaction to database"
-        )
         await session.commit()
-        logger.info("[create monitoring config] Step 5 complete: Transaction committed")
 
-        logger.debug(
-            "[create monitoring config] Step 6: Refreshing config after commit"
-        )
         # Refresh to reload attributes after commit and avoid greenlet_spawn error
         await session.refresh(config)
-        logger.debug(
-            "[create monitoring config] Step 6 complete: Config refreshed after commit"
-        )
 
-        logger.debug("[create monitoring config] Step 7: Building response")
         response = await monitoring_service.build_config_response(config)
         logger.info(
-            f"[create monitoring config] Successfully created monitoring config {config.id} "
-            f"for project {project_id}"
+            "[create monitoring config] Created config %s for project %s",
+            config.id,
+            project_id,
         )
         return response
 
@@ -144,9 +107,6 @@ async def create_monitoring_config(
         await session.rollback()
         # Clean up any uploaded S3 files
         if uploaded_file_paths:
-            logger.info(
-                f"[create monitoring config] Cleaning up {len(uploaded_file_paths)} uploaded images"
-            )
             await monitoring_service.cleanup_reference_images(uploaded_file_paths)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -161,9 +121,6 @@ async def create_monitoring_config(
         await session.rollback()
         # Clean up any uploaded S3 files
         if uploaded_file_paths:
-            logger.info(
-                f"[create monitoring config] Cleaning up {len(uploaded_file_paths)} uploaded images"
-            )
             await monitoring_service.cleanup_reference_images(uploaded_file_paths)
         raise
     except Exception as e:
@@ -175,9 +132,6 @@ async def create_monitoring_config(
         await session.rollback()
         # Clean up any uploaded S3 files
         if uploaded_file_paths:
-            logger.info(
-                f"[create monitoring config] Cleaning up {len(uploaded_file_paths)} uploaded images"
-            )
             await monitoring_service.cleanup_reference_images(uploaded_file_paths)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -326,16 +280,11 @@ async def update_monitoring_config(
     Raises:
         HTTPException: If update fails or config not found.
     """
-    logger.info(
-        f"[update monitoring config] Updating config {config_id} for project {project_id}"
-    )
-
     # Track uploaded files for potential rollback
     uploaded_file_paths: list[str] = []
     images_to_delete: list[str] = []
 
     try:
-        logger.debug("[update monitoring config] Step 1: Calling service layer")
         config, images_to_delete = await monitoring_service.update_config(
             session=session,
             project_id=project_id,
@@ -354,11 +303,6 @@ async def update_monitoring_config(
                 headers={"Content-Type": "application/json"},
             )
 
-        logger.info(
-            f"[update monitoring config] Step 1 complete: Config updated, "
-            f"{len(images_to_delete)} images marked for deletion"
-        )
-
         # Track newly uploaded images for potential rollback
         if add_images and config.rules:
             current_images = config.rules.get("reference_images", [])
@@ -371,43 +315,23 @@ async def update_monitoring_config(
                     if isinstance(img, dict) and "url" in img
                 ]
 
-        logger.debug(
-            "[update monitoring config] Step 2: Refreshing config after S3 operations"
-        )
         # Refresh config to re-establish async session context after asyncio.to_thread()
         await session.refresh(config)
-        logger.debug("[update monitoring config] Step 2 complete: Config refreshed")
 
-        logger.debug(
-            "[update monitoring config] Step 3: Committing transaction to database"
-        )
         await session.commit()
-        logger.info("[update monitoring config] Step 3 complete: Transaction committed")
 
         # Clean up old images from S3 AFTER successful database commit
         if images_to_delete:
-            logger.info(
-                f"[update monitoring config] Step 4: Cleaning up {len(images_to_delete)} "
-                "old images from S3"
-            )
             await monitoring_service.cleanup_reference_images(images_to_delete)
-            logger.info(
-                "[update monitoring config] Step 4 complete: Old images cleaned up"
-            )
 
-        logger.debug(
-            "[update monitoring config] Step 5: Refreshing config after commit"
-        )
         # Refresh to reload attributes after commit and avoid greenlet_spawn error
         await session.refresh(config)
-        logger.debug(
-            "[update monitoring config] Step 5 complete: Config refreshed after commit"
-        )
 
-        logger.debug("[update monitoring config] Step 6: Building response")
         response = await monitoring_service.build_config_response(config)
         logger.info(
-            f"[update monitoring config] Successfully updated monitoring config {config_id}"
+            "[update monitoring config] Updated config %s for project %s",
+            config_id,
+            project_id,
         )
         return response
 
@@ -418,10 +342,6 @@ async def update_monitoring_config(
         await session.rollback()
         # Clean up any newly uploaded S3 files
         if uploaded_file_paths:
-            logger.info(
-                f"[update monitoring config] Cleaning up {len(uploaded_file_paths)} "
-                "newly uploaded images after rollback"
-            )
             await monitoring_service.cleanup_reference_images(uploaded_file_paths)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -436,10 +356,6 @@ async def update_monitoring_config(
         await session.rollback()
         # Clean up any newly uploaded S3 files
         if uploaded_file_paths:
-            logger.info(
-                f"[update monitoring config] Cleaning up {len(uploaded_file_paths)} "
-                "newly uploaded images after rollback"
-            )
             await monitoring_service.cleanup_reference_images(uploaded_file_paths)
         raise
     except Exception as e:
@@ -450,10 +366,6 @@ async def update_monitoring_config(
         await session.rollback()
         # Clean up any newly uploaded S3 files
         if uploaded_file_paths:
-            logger.info(
-                f"[update monitoring config] Cleaning up {len(uploaded_file_paths)} "
-                "newly uploaded images after rollback"
-            )
             await monitoring_service.cleanup_reference_images(uploaded_file_paths)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

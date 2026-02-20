@@ -362,7 +362,11 @@ async def chat_completions_agno(
     session: AsyncSession = Depends(db.get_db_async),
 ):
     # Log the request
-    logger.debug(f"Agno chat completions request: {json.dumps(request.model_dump())}")
+    logger.debug(
+        "Agno chat completions request received for model=%s, stream=%s",
+        model,
+        request.stream,
+    )
 
     # Guardrail: Ensure streaming mode is always used
     if not request.stream:

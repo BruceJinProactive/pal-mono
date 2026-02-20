@@ -1014,7 +1014,9 @@ class NumberService:
                 phone_number=number
             )
             if not numbers:
-                logger.warn("Phone number does not exist in twilio, skipping deletion.")
+                logger.warning(
+                    "Phone number does not exist in twilio, skipping deletion."
+                )
                 return
             for n in numbers:
                 if n.phone_number == number:
@@ -1040,7 +1042,9 @@ class NumberService:
                 phone_number=number
             )
             if not numbers:
-                logger.warn("Phone number does not exist in twilio, skipping deletion.")
+                logger.warning(
+                    "Phone number does not exist in twilio, skipping deletion."
+                )
                 return
             for n in numbers:
                 if n.phone_number == number:

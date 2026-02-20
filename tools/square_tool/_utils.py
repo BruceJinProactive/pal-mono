@@ -670,8 +670,6 @@ def create_square_order_with_modifiers(
             )
 
             line_items.append(line_item)
-            logger.debug(f"[SquareTool] Created line item for {item_dict['item_name']}")
-            logger.debug(f"[SquareTool] Line item details: {line_item.model_dump()}")
 
         if not line_items:
             logger.error("[SquareTool] No valid line items created")
@@ -711,9 +709,6 @@ def create_square_order_with_modifiers(
                 state=FulfillmentState.PROPOSED,
                 delivery_details=delivery_details,
             )
-            logger.debug(
-                f"[SquareTool] Created DELIVERY fulfillment with schedule_type={schedule_type}"
-            )
         else:
             # Create pickup details (default)
             pickup_details = FulfillmentPickupDetails(
@@ -732,12 +727,7 @@ def create_square_order_with_modifiers(
                 state=FulfillmentState.PROPOSED,
                 pickup_details=pickup_details,
             )
-            logger.debug(
-                f"[SquareTool] Created PICKUP fulfillment with schedule_type={schedule_type}"
-            )
-
         fulfillments = [fulfillment]
-        logger.debug(f"[SquareTool] Created fulfillment for customer: {customer_name}")
 
         # Create order
         order = Order(
@@ -751,11 +741,6 @@ def create_square_order_with_modifiers(
             metadata={"palona_testing": "Order created via Palona AI automated system"},
         )
 
-        # Log the full order object before sending to API
-        logger.debug(
-            f"[SquareTool] Full order object before API call: {order.model_dump()}"
-        )
-
         # Generate unique idempotency key
         idempotency_key = str(uuid.uuid4())
 
@@ -765,17 +750,8 @@ def create_square_order_with_modifiers(
             use_production=use_production,
         )
 
-        # Log the full CreateOrderInput object
-        logger.debug(
-            f"[SquareTool] CreateOrderInput object: {create_order_input.model_dump()}"
-        )
-
         # Create the order
-        logger.debug("[SquareTool] Sending order to Square API...")
         order_response = create_order(access_token, create_order_input)
-
-        # Log the raw response
-        logger.debug(f"[SquareTool] Raw order response: {order_response}")
 
         if order_response.errors:
             logger.error(f"[SquareTool] Order creation failed: {order_response.errors}")
@@ -786,10 +762,7 @@ def create_square_order_with_modifiers(
             return None
 
         logger.debug(
-            f"[SquareTool] Order created successfully: {order_response.order.id}"
-        )
-        logger.debug(
-            f"[SquareTool] Complete order response: {order_response.order.model_dump()}"
+            "[SquareTool] Order created successfully: %s", order_response.order.id
         )
         return order_response.order
 

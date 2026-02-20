@@ -9,6 +9,8 @@ from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from utils.log import logger
+
 if TYPE_CHECKING:
     from .classes import (
         Address,
@@ -2521,11 +2523,12 @@ def simple_filter_menu_items(menu_dict: Dict[str, Any]) -> Dict[str, Any]:
     filtered_menu["groups"] = filtered_groups
 
     # Add filtering summary
-    print("📊 Simple Filtering Results:")
-    print(f"   Total items processed: {total_items}")
-    print(f"   Items kept: {total_items - filtered_items}")
-    print(f"   Out-of-stock items filtered: {filtered_items}")
-    print("   ✅ Hidden items KEPT (as requested)")
+    logger.debug(
+        "Simple filtering results: total=%d, kept=%d, filtered=%d, hidden items kept",
+        total_items,
+        total_items - filtered_items,
+        filtered_items,
+    )
 
     return filtered_menu
 

@@ -700,7 +700,6 @@ def get_payment(
             payload=None,
             general_api_endpoint=general_api_endpoint,
         )
-        logger.debug(f"[ToastAPI.get_payment] Response: {response}")
     except Exception as e:
         raise Exception(
             f"[ToastAPI.get_payment] Error while calling Toast API: {str(e)}"

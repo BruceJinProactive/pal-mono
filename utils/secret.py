@@ -1,9 +1,12 @@
 import json
+import logging
 import os
 
 import aioboto3
 from boto3.session import Session
 from botocore.exceptions import ClientError
+
+logger = logging.getLogger("pal-mono")
 
 AWS_REGION = os.getenv("AWS_REGION", "")
 AWS_CLIENT_SECRET_NAME = os.getenv("AWS_CLIENT_SECRET_NAME", "")
@@ -49,6 +52,10 @@ def get_server_secret_with_fallback(secret_key: str) -> str:
         # Attempt to retrieve the secret from AWS Secrets Manager
         secret_value = get_server_secret(secret_key)
     except Exception:
+        logger.warning(
+            "AWS Secrets Manager lookup failed for server secret %s, falling back to env var",
+            secret_key,
+        )
         # Fallback to environment variable
         secret_value = os.getenv(secret_key, "")
 
@@ -80,6 +87,10 @@ def get_client_secret_with_fallback(secret_key: str) -> str:
         # Attempt to retrieve the secret from AWS Secrets Manager
         secret_value = get_client_secret(secret_key)
     except Exception:
+        logger.warning(
+            "AWS Secrets Manager lookup failed for client secret %s, falling back to env var",
+            secret_key,
+        )
         # Fallback to environment variable
         secret_value = os.getenv(secret_key, "")
 
@@ -347,6 +358,10 @@ async def async_get_server_secret_with_fallback(secret_key: str) -> str:
         # Attempt to retrieve the secret from AWS Secrets Manager
         secret_value = await async_get_server_secret(secret_key)
     except Exception:
+        logger.warning(
+            "AWS Secrets Manager async lookup failed for server secret %s, falling back to env var",
+            secret_key,
+        )
         # Fallback to environment variable
         secret_value = os.getenv(secret_key, "")
 
@@ -375,6 +390,10 @@ async def async_get_client_secret_with_fallback(secret_key: str) -> str:
         # Attempt to retrieve the secret from AWS Secrets Manager
         secret_value = await async_get_client_secret(secret_key)
     except Exception:
+        logger.warning(
+            "AWS Secrets Manager async lookup failed for client secret %s, falling back to env var",
+            secret_key,
+        )
         # Fallback to environment variable
         secret_value = os.getenv(secret_key, "")
 

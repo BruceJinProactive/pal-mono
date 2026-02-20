@@ -84,7 +84,6 @@ def search_availability(
 
     # Parse response body - ensure it's a dictionary
     data = response.decoded_body
-    logger.info(f"OpenTable API response: {data}")
     if isinstance(data, str):
         try:
             data = json.loads(data)
@@ -97,7 +96,6 @@ def search_availability(
 
     # Extract relevant data from the new response structure
     availability_data = data.get("data", {}).get("availability", [])
-    logger.info(f"Availability data: {availability_data}")
     times_available = []
     no_availability_reasons = []
 
@@ -108,7 +106,6 @@ def search_availability(
 
         # Process availability days
         availability_days = availability_entry.get("availabilityDays", [])
-        logger.info(f"Availability days: {availability_days}")
 
         for day in availability_days:
             if not isinstance(day, dict):
@@ -118,11 +115,9 @@ def search_availability(
             no_times_reasons = day.get("noTimesReasons", [])
             if no_times_reasons:
                 no_availability_reasons.extend(no_times_reasons)
-                logger.info(f"No times reasons: {no_times_reasons}")
 
             # Process time slots
             slots = day.get("slots", [])
-            logger.info(f"Slots: {slots}")
 
             for slot in slots:
                 if isinstance(slot, dict) and slot.get("isAvailable", False):
@@ -136,12 +131,8 @@ def search_availability(
                     # Format the time as a string
                     time_string = actual_time.strftime("%Y-%m-%dT%H:%M:%S")
                     times_available.append(time_string)
-                    logger.info(
-                        f"Available slot at {time_string} (offset: {time_offset} minutes)"
-                    )
 
-    logger.info(f"Times available: {times_available}")
-    logger.info(f"No availability reasons: {no_availability_reasons}")
+    logger.debug("Found %s available time slots", len(times_available))
 
     # Construct and return the AvailabilitySearchResponse
     return AvailabilitySearchResponse(
