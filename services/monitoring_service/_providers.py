@@ -317,6 +317,7 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
         if response.usage:
             logger.info(
                 f"[Monitoring LLM] Azure OpenAI token usage - "
+                f"Media: image, "
                 f"Model: {self.config.model}, "
                 f"Prompt: {response.usage.prompt_tokens}, "
                 f"Completion: {response.usage.completion_tokens}, "
@@ -432,7 +433,8 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
         # Log token usage
         if response.usage:
             logger.info(
-                f"[Monitoring LLM] Azure OpenAI (video) token usage - "
+                f"[Monitoring LLM] Azure OpenAI token usage - "
+                f"Media: video, "
                 f"Model: {self.config.model}, "
                 f"Prompt: {response.usage.prompt_tokens}, "
                 f"Completion: {response.usage.completion_tokens}, "
@@ -598,6 +600,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
         if response.usage_metadata:
             logger.info(
                 f"[Monitoring LLM] Gemini token usage - "
+                f"Media: image, "
                 f"Model: {self.config.model}, "
                 f"Prompt: {response.usage_metadata.prompt_token_count}, "
                 f"Completion: {response.usage_metadata.candidates_token_count}, "
@@ -727,7 +730,8 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
         # Log token usage
         if response.usage_metadata:
             logger.info(
-                f"[Monitoring LLM] Gemini (video) token usage - "
+                f"[Monitoring LLM] Gemini token usage - "
+                f"Media: video, "
                 f"Model: {self.config.model}, "
                 f"Prompt: {response.usage_metadata.prompt_token_count}, "
                 f"Completion: {response.usage_metadata.candidates_token_count}, "
