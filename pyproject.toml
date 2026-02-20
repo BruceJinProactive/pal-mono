@@ -84,6 +84,15 @@ dev = [
 line-length = 88
 extend-exclude = "(?x)(^|/)build/"
 
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 0
+
+[tool.coverage.run]
+source = ["agent", "api", "db", "events", "services", "tools", "utils"]
+omit = ["*/conftest.py", "*/migrations/*", "*/tests/*"]
+
 [tool.importlinter]
 root_packages = ["agent", "api", "db", "services", "tools", "utils"]
 
@@ -106,6 +115,14 @@ skip_glob = ["build/**"]
 [tool.pyright]
 exclude = ["**/__pycache__", ".git", ".venv*", "aienv*", "build", "db/migrations/versions/", "workspace/"]
 typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
 
 [tool.ruff]
 extend-include = ["*.ipynb"]
