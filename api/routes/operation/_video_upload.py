@@ -156,17 +156,6 @@ async def upload_camera_video(
     try:
         s3_client = boto3.client("s3", region_name=AWS_REGION)
 
-        logger.info(
-            f"Uploading video to S3: {s3_key}",
-            extra={
-                "camera_id": camera_id,
-                "video_filename": filename,
-                "extension": ext,
-                "content_type": content_type,
-                "file_size": file_size,
-            },
-        )
-
         # Use upload_fileobj for streaming upload (doesn't load entire file into memory)
         # Wrap in run_in_threadpool to avoid blocking the event loop
         await run_in_threadpool(
