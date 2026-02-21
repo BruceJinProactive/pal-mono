@@ -37,7 +37,10 @@ jobs:
 
     steps:
       - name: Checkout code
+        id: checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -79,6 +82,11 @@ jobs:
           AWS_ADMIN_CONSOLE_APP_CLIENT_ID: test
         run: |
           pytest --cov --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --junitxml=junit.xml -q
+
+      - name: Incremental coverage check
+        if: always() && steps.checkout.outcome == 'success'
+        run: |
+          diff-cover coverage.xml --compare-branch=origin/main --diff-range-notation=.. --fail-under=80
 
       - name: Pytest coverage comment
         uses: MishaKav/pytest-coverage-comment@main
