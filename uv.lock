@@ -2031,6 +2031,9 @@ wheels = [
 codecs = [
     { name = "numpy" },
 ]
+images = [
+    { name = "pillow" },
+]
 
 [[package]]
 name = "livekit-api"
@@ -2093,6 +2096,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/61/d6/63df35cb0c892d920f9128f4aa1da414e97406e936d7c04a92c8cba3c7fc/livekit_plugins_deepgram-1.4.2.tar.gz", hash = "sha256:ca6c370137b78144dbefe4ca9950744ced6dbdc9dfbe7ce4e3f404e65c75d821", size = 16608, upload-time = "2026-02-17T01:26:57.938Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cc/0b/d9fda9229977bf4f67e5874849bf24f946bf4d146b9f6205d15dc2b30d7f/livekit_plugins_deepgram-1.4.2-py3-none-any.whl", hash = "sha256:fa8dd45bc1496f1058602e313e6d8004825142cdd9dd115508679144cca414cf", size = 21853, upload-time = "2026-02-17T01:26:57.093Z" },
+]
+
+[[package]]
+name = "livekit-plugins-openai"
+version = "1.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "livekit-agents", extra = ["codecs", "images"] },
+    { name = "openai", extra = ["realtime"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f1/06/881d11f07eb61619b1cf7fb84fc20c8365169cb09a557e3d4c4ae00f8cdc/livekit_plugins_openai-1.4.2.tar.gz", hash = "sha256:f298388dcf69c38cf5bd105ee0e808e5b555d07b9e515e9d18276450f81518eb", size = 49013, upload-time = "2026-02-17T01:27:29.864Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/92/4d2e70713ed1a7a20de3768cbeb2ae77931e6c5fc3d555b42f6bdd913b38/livekit_plugins_openai-1.4.2-py3-none-any.whl", hash = "sha256:fbdb9d5eff41dcb725210e10d331a8866fd62db4db5e2b8f203ae9dcb68557ce", size = 56942, upload-time = "2026-02-17T01:27:28.872Z" },
 ]
 
 [[package]]
@@ -3003,6 +3019,7 @@ dependencies = [
     { name = "livekit-api" },
     { name = "livekit-plugins-cartesia" },
     { name = "livekit-plugins-deepgram" },
+    { name = "livekit-plugins-openai" },
     { name = "livekit-plugins-silero" },
     { name = "llama-index-core" },
     { name = "llama-index-embeddings-cohere" },
@@ -3080,6 +3097,7 @@ requires-dist = [
     { name = "livekit-api", specifier = ">=1.0.0" },
     { name = "livekit-plugins-cartesia", specifier = ">=1.0.0" },
     { name = "livekit-plugins-deepgram", specifier = ">=1.0.0" },
+    { name = "livekit-plugins-openai", specifier = ">=1.0.0" },
     { name = "livekit-plugins-silero", specifier = ">=1.0.0" },
     { name = "llama-index-core", specifier = "==0.14.14" },
     { name = "llama-index-embeddings-cohere", specifier = "==0.6.1" },

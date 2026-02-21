@@ -37,6 +37,7 @@ dependencies = [
   "livekit-api>=1.0.0", # LiveKit server API client for room and participant management
   "livekit-plugins-cartesia>=1.0.0", # Cartesia TTS plugin for LiveKit Agents
   "livekit-plugins-deepgram>=1.0.0", # Deepgram STT plugin for LiveKit Agents
+  "livekit-plugins-openai>=1.0.0", # OpenAI LLM plugin for LiveKit Agents (custom-llm proxy)
   "livekit-plugins-silero>=1.0.0", # Silero VAD plugin for LiveKit Agents
   "livekit>=1.0.0", # LiveKit real-time communication SDK
   "llama-index-core==0.14.14", # Llma index core module
