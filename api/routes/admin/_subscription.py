@@ -208,7 +208,6 @@ def create_account_subscription(
     if not account:
         raise not_found_error(f"Account {account_name} does not exist")
 
-    logger.info("Creating account subscription data")
     projects = retrieve_projects(session, account.id, request.project_ids)
 
     subscription_params = request.to_subscription_params()

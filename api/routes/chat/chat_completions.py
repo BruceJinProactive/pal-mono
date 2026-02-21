@@ -48,7 +48,6 @@ async def chat_completions(
     request: ChatCompletionRequest, session: AsyncSession = Depends(db.get_db_async)
 ):
     request_context = RequestContext()
-    logger.info(f"Requested model: {request.model}")
     model = request.model
     return await chat_completions_agno(request, model, request_context, session)
 
@@ -66,9 +65,6 @@ def _extract_content_from_request(request: ChatCompletionRequest) -> str:
             content = request.messages[-1].get("content", "")
         else:
             content = user_messages[-1]
-        logger.debug(
-            f"chat_completions_agno request has messages {user_messages}, and message:{request.message}"
-        )
     elif request.message:
         content = request.message
     else:
@@ -361,13 +357,6 @@ async def chat_completions_agno(
     request_context: RequestContext,
     session: AsyncSession = Depends(db.get_db_async),
 ):
-    # Log the request
-    logger.debug(
-        "Agno chat completions request received for model=%s, stream=%s",
-        model,
-        request.stream,
-    )
-
     # Guardrail: Ensure streaming mode is always used
     if not request.stream:
         logger.error("Non-streaming mode is not supported. Streaming mode is required.")
@@ -401,8 +390,6 @@ async def chat_completions_agno(
 
         async def generate_stream():
             try:
-                # Log stream start
-                logger.info(f"Starting streaming response for model={model}")
                 send_dd_histogram_metrics(
                     "chat_completions.start_streaming", request_context.request_time
                 )

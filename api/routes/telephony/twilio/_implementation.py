@@ -20,18 +20,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
     Args:
         websocket: WebSocket connection from Twilio
     """
-    # Log connection info
-    logger.debug(
-        "[TWILIO_WS] Connection received",
-        extra={
-            "client_host": websocket.client.host if websocket.client else None,
-            "has_signature": websocket.headers.get("x-twilio-signature") is not None,
-        },
-    )
-
     # Accept connection
     await websocket.accept()
-    logger.debug("[TWILIO_WS] Connection accepted")
 
     # Wait for 'start' event to get recipient_id
     # (VoiceCallHandler will handle subsequent events)
@@ -45,7 +35,6 @@ async def handle_twilio_media_stream(websocket: WebSocket):
 
         # Wait for 'start' event if first message was 'connected'
         if first_event.get("event") == "connected":
-            logger.debug("[TWILIO_WS] Received 'connected' event, waiting for 'start'")
             start_message = await websocket.receive_text()
             start_event = json.loads(start_message)
         else:
@@ -117,14 +106,9 @@ async def handle_twilio_media_stream(websocket: WebSocket):
         # Cleanup: If handler was created, it handles cleanup in its own finally block
         # If handler was NOT created but realtime_session was, we need to clean up here
         if handler is None and realtime_session is not None:
-            logger.debug(
-                "[TWILIO_WS] Handler not created, cleaning up resources manually"
-            )
-
             # Close realtime session
             try:
                 await realtime_session.close()
-                logger.debug("[TWILIO_WS] Closed realtime session")
             except Exception as cleanup_error:
                 logger.error(
                     "[TWILIO_WS] Error closing realtime session during cleanup",
@@ -134,11 +118,8 @@ async def handle_twilio_media_stream(websocket: WebSocket):
             # Close WebSocket
             try:
                 await websocket.close()
-                logger.debug("[TWILIO_WS] Closed WebSocket")
             except Exception as cleanup_error:
                 logger.error(
                     "[TWILIO_WS] Error closing WebSocket during cleanup",
                     extra={"error": str(cleanup_error)},
                 )
-
-        logger.debug("[TWILIO_WS] Connection closed")

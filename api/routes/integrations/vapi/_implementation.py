@@ -927,12 +927,6 @@ def handle_transcript_update(message_data):
         dict: Response for VAPI
     """
     try:
-        transcript = message_data.get("transcript", {})
-        call_data = message_data.get("call", {})
-        call_id = call_data.get("id")
-
-        logger.debug(f"Transcript update for call {call_id}: {transcript}")
-
         # Just acknowledge transcript updates
         return {"status": "acknowledged"}
     except Exception as e:

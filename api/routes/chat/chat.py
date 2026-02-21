@@ -105,7 +105,6 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                                     )
                                     continue
                                 content = str(chunk)
-                                logger.debug(f"Sending chunk: {content}")
                                 yield f"data: {content}\n\n"
 
                         # Send completion signal

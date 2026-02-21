@@ -111,13 +111,7 @@ class VoiceCallHandler:
 
     async def _handle_connected(self, message: dict) -> None:
         """Handle Twilio 'connected' event."""
-        logger.debug(
-            "[VOICE_HANDLER] Twilio connected",
-            extra={
-                "protocol": message.get("protocol"),
-                "version": message.get("version"),
-            },
-        )
+        return
 
     async def _handle_start(self, message: dict) -> None:
         """
@@ -162,17 +156,6 @@ class VoiceCallHandler:
             # Both Twilio and OpenAI use g711_ulaw format
             await self.realtime_session.send_audio_chunk(payload_mulaw_b64)
 
-            # Log periodically
-            if self.media_packet_count % 20 == 0:
-                logger.debug(
-                    "[VOICE_HANDLER] Audio Twilio→OpenAI",
-                    extra={
-                        "stream_sid": self.stream_sid,
-                        "packet_count": self.media_packet_count,
-                        "payload_length": len(payload_mulaw_b64),
-                    },
-                )
-
         except Exception as e:
             logger.error(
                 "[VOICE_HANDLER] Error processing audio",
@@ -203,8 +186,6 @@ class VoiceCallHandler:
         Both OpenAI and Twilio use g711_ulaw format natively.
         """
         try:
-            logger.debug("[VOICE_HANDLER] Started OpenAI→Twilio streaming")
-
             async for (
                 audio_chunk_mulaw_b64
             ) in self.realtime_session.receive_audio_stream():
@@ -223,26 +204,6 @@ class VoiceCallHandler:
 
                     await self.twilio_ws.send_text(json.dumps(media_message))
 
-                    # Log first chunk for debugging
-                    if self.audio_chunks_sent == 1:
-                        logger.debug(
-                            "[VOICE_HANDLER] First audio chunk OpenAI→Twilio",
-                            extra={
-                                "payload_length": len(audio_chunk_mulaw_b64),
-                                "stream_sid": self.stream_sid,
-                            },
-                        )
-
-                    # Log periodically
-                    if self.audio_chunks_sent % 10 == 0:
-                        logger.debug(
-                            "[VOICE_HANDLER] Audio OpenAI→Twilio",
-                            extra={
-                                "stream_sid": self.stream_sid,
-                                "chunks_sent": self.audio_chunks_sent,
-                            },
-                        )
-
                 except Exception as e:
                     logger.error(
                         "[VOICE_HANDLER] Error converting/sending audio",
@@ -258,10 +219,7 @@ class VoiceCallHandler:
             )
 
         finally:
-            logger.debug(
-                "[VOICE_HANDLER] Stopped OpenAI→Twilio streaming",
-                extra={"total_chunks": self.audio_chunks_sent},
-            )
+            pass
 
     async def _cleanup(self) -> None:
         """Clean up resources."""
@@ -283,4 +241,4 @@ class VoiceCallHandler:
         except Exception:
             pass
 
-        logger.debug("[VOICE_HANDLER] Cleanup complete")
+        return

@@ -33,7 +33,6 @@ def write_asset(file: WriteAssetRequest) -> AssetResponse:
         )
         # Return the S3 key instead of presigned URL
         # The API layer will convert to presigned URL when needed
-        logger.info("Asset file uploaded successfully.")
         return AssetResponse(url=file.name)
     except (ClientError, ParamValidationError) as e:
         logger.error(f"S3 write operation failed: {e}")

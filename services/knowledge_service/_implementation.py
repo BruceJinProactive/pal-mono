@@ -129,17 +129,6 @@ def upload_knowledge_file(
                 node.metadata.update(dedup_metadata)
             upsert_data.append((str(uuid.uuid4()), embedding, node.metadata))
 
-        logger.debug(
-            "Uploading file to Pinecone.",
-            extra={
-                "index": index_name,
-                "namespace": namespace,
-                "file_name": file_name,
-                "size": len(content),
-                "num_nodes": len(nodes),
-            },
-        )
-
         # Upsert vectors into Pinecone
         index.upsert(vectors=upsert_data, namespace=namespace)
 
@@ -160,15 +149,6 @@ def delete_knowledge_file(
         match["id"] for match in data if match["metadata"].get("file_name") == file_name
     ]
 
-    logger.debug(
-        "About to delete vector data for file",
-        extra={
-            "index": index_name,
-            "namespace": namespace,
-            "file_name": file_name,
-            "ids": ids_to_delete,
-        },
-    )
     if ids_to_delete:
         index.delete(ids=ids_to_delete, namespace=namespace)
     return ids_to_delete
@@ -185,14 +165,6 @@ def delete_knowledge_file_by_metadata(
     if not isinstance(metadata, dict) or not metadata:
         raise ValueError("metadata filter must be a non-empty dict")
     index = _get_index(index_name)
-    logger.debug(
-        f"Deleting knowledge file by metadata {metadata}",
-        extra={
-            "index": index_name,
-            "namespace": namespace,
-            "metadata": metadata,
-        },
-    )
     index.delete(filter=metadata, namespace=namespace)
 
 
@@ -216,24 +188,8 @@ def delete_namespace(
     try:
         index = _get_index(index_name)
 
-        logger.debug(
-            "About to delete entire namespace",
-            extra={
-                "index": index_name,
-                "namespace": namespace,
-            },
-        )
-
         # Delete all vectors in the namespace
         index.delete(delete_all=True, namespace=namespace)
-
-        logger.debug(
-            "Successfully deleted namespace",
-            extra={
-                "index": index_name,
-                "namespace": namespace,
-            },
-        )
 
         return {
             "namespace": namespace,
@@ -289,27 +245,8 @@ def query_vector_database(
         Exception: If there is an error accessing the Pinecone index or querying the vectors.
     """
     try:
-        logger.debug(
-            "About to query vector database",
-            extra={
-                "index": index_name,
-                "namespace": namespace,
-                "query": query[:100] + "..." if len(query) > 100 else query,
-                "top_k": top_k,
-            },
-        )
-
         retriever = _get_retriever(index_name, namespace, top_k)
         matches = retriever.retrieve(query)
-
-        logger.debug(
-            "Successfully queried vector database",
-            extra={
-                "index": index_name,
-                "namespace": namespace,
-                "num_results": len(matches),
-            },
-        )
 
         # Convert to basic Python types for JSON serialization
         try:
@@ -385,8 +322,6 @@ def update_agent_kb(
         "token_api_endpoint": token_api_endpoint,
         "general_api_endpoint": general_api_endpoint,
     }
-
-    logger.debug("update_agent_kb called", extra=debug_info)
 
     try:
         if pos_provider == IntegrationProvider.adora:

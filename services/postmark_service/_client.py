@@ -41,7 +41,6 @@ def get_postmark_client() -> PostmarkClient:
                     raise ValueError("Postmark API token not configured")
 
                 _client_instance = PostmarkClient(server_token=api_token)
-                logger.debug("[Postmark] Client instance created successfully")
             except Exception as e:
                 logger.error(f"[Postmark] Failed to create client: {e}")
                 raise
@@ -79,4 +78,3 @@ def reset_client() -> None:
     global _client_instance
     with _client_lock:
         _client_instance = None
-    logger.debug("[Postmark] Client instance reset")

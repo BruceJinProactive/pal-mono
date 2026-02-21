@@ -470,6 +470,7 @@ class RawConfig:
                 )
                 # Default to v1 if feature check fails
                 use_v2 = False
+
         logger.info(
             f"[prompt_v2] Final decision for agent {self.agent.id}: use_v2={use_v2}, channel={channel}"
         )

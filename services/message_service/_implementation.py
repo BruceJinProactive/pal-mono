@@ -66,8 +66,6 @@ def get_filler_message(message: Message) -> Message:
 async def get_chat_response_async(
     session: AsyncSession, message: Message, request_context: RequestContext
 ) -> list[Message]:
-    logger.info(f"get_chat_response_async received message: {message}")
-
     # Initialize LLMObs for Datadog LLM Observability
     if is_testing_mode():
         # Explicitly disable LLMObs for testing requests to prevent data collection
@@ -358,8 +356,6 @@ async def get_chat_response_stream(
     request_context: RequestContext,
     call_id: str | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
-    logger.info(f"get_chat_response_stream received message: {message}")
-
     # Initialize LLMObs for Datadog LLM Observability
     if is_testing_mode():
         # Explicitly disable LLMObs for testing requests to prevent data collection
@@ -393,10 +389,6 @@ async def get_chat_response_stream(
 
             # Capture user_id early while object is attached to session (for memory ingestion)
             ingestion_user_id = user.id
-
-            logger.debug(
-                f"Persist streaming inbound message: {message.to_dict()} from user: {user.id}"
-            )
 
             # For VOICE channel with call_id, use voice-specific message creation
             # to reuse the conversation created during handle_assistant_request
@@ -871,9 +863,6 @@ async def get_chat_response_stream(
                     metadata=output_message_metadata,
                 )
 
-                logger.debug(
-                    f"Persist streaming outbound message: {response_message.to_dict()} to user: {user.id}"
-                )
                 # Use add_message_to_conversation with the known conversation_id
                 # instead of create_message which does a lookup that can find
                 # the wrong conversation when multiple active conversations exist
@@ -922,7 +911,6 @@ async def get_chat_response_stream(
 
 
 def get_chat_response(_session: Session, message: Message) -> Message:
-    logger.info(message)
     response = "Synch mode chat has been deprecated."
     response_message = Message(
         author_type=AuthorType.AGENT,

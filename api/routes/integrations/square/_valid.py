@@ -71,7 +71,6 @@ def validate_oauth_request(request: Request, is_callback=False):
         # Decrypt the state to get the account name
         try:
             account_name = decrypt_account_name(state)
-            logger.debug(f"[Square OAuth] Decrypted account name: {account_name}")
             return account_name
         except ValueError as e:
             logger.error(f"[Square OAuth] Failed to decrypt state: {e}")
@@ -131,22 +130,6 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
                 signature_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256
             ).digest()
         ).decode("utf-8")
-
-        # Debug logging for computed signature
-        logger.debug(
-            "[Square Webhook Debug] Computed signature details",
-            extra={
-                "computed_signature_b64": computed_signature,
-                "computed_signature_hex": hmac.new(
-                    signature_key.encode("utf-8"),
-                    message.encode("utf-8"),
-                    hashlib.sha256,
-                )
-                .digest()
-                .hex(),
-                "signatures_match": computed_signature == signature,
-            },
-        )
 
         # Secure comparison to prevent timing attacks
         is_valid = hmac.compare_digest(signature, computed_signature)

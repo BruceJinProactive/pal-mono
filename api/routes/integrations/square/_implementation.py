@@ -56,7 +56,6 @@ async def install(request: Request):
 
     # Encrypt the account name for the state parameter
     encrypted_state = encrypt_account_name(account_name)
-    logger.debug(f"[Square OAuth] Encrypted state: {encrypted_state}")
 
     client_id = get_square_client_id()
     scopes = " ".join(SQUARE_SCOPES)
@@ -155,7 +154,6 @@ async def callback(request: Request):
             parsed_expires_at = datetime.fromisoformat(
                 expires_at.replace("Z", "+00:00")
             )
-        logger.debug(f"[Square OAuth] parsed_expires_at: {parsed_expires_at}")
         integration_params = CreateIntegrationParams(
             provider=IntegrationProvider.square,
             integration_type=IntegrationType.pos,
@@ -291,7 +289,6 @@ def check_and_refresh_expiring_square_tokens(session, days_threshold: int = 7) -
         "errors": errors,
     }
 
-    logger.debug(f"[Square OAuth] Token refresh summary: {result}")
     return result
 
 

@@ -10,8 +10,6 @@ from utils.log import logger
 
 async def upload_asset(asset: UploadFile, path: str, metadata: dict) -> AssetResponse:
     try:
-        logger.info(f"Received asset to upload: {asset.filename} and path")
-
         if not asset.filename:
             raise ValueError("File name is required to upload asset.")
 
@@ -49,8 +47,6 @@ async def upload_asset(asset: UploadFile, path: str, metadata: dict) -> AssetRes
 
 async def get_asset_by_name(name: str) -> AssetResponse:
     try:
-        logger.info(f"Get asset `{name}` from s3 bucket")
-
         if not name:
             raise ValueError("File name is required to get asset.")
 

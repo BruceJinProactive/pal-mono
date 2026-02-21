@@ -1,4 +1,3 @@
-import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -13,9 +12,6 @@ from utils.log import configure_global_logger, logger, patch_agno_logger_to_use_
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Runs on startup
-    loop = asyncio.get_event_loop()
-    logger.info(f"Using event loop: {loop.__class__.__name__}")
-
     yield
 
     # Runs on shutdown

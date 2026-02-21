@@ -735,13 +735,8 @@ class MenuSifuTool(Toolkit):
             customer_first_name = customer_info.firstName
             customer_last_name = customer_info.lastName
 
-            # Log order processing without exposing PII at info level
             logger.debug(
                 "[MenuSifuTool] Processing order for customer - validation passed"
-            )
-            # Log PII details only at debug level for troubleshooting
-            logger.debug(
-                f"[MenuSifuTool] Customer details: {customer_first_name} {customer_last_name or ''} ({customer_email})"
             )
 
             # Handle phone information from structured Phone object (required)

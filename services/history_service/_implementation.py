@@ -136,25 +136,13 @@ def revert_change_log(
     Raises:
         ValueError: If the change log is not found or cannot be reverted
     """
-    logger.debug(
-        f"[history_service._implementation.revert_change_log] Starting revert for change_log_id={change_log_id}"
-    )
-
     change_log_repo = ChangeLogRepository(session)
     change_log = change_log_repo.get_change_log(change_log_id)
 
     if not change_log:
-        logger.debug(
-            f"[history_service._implementation.revert_change_log] Change log {change_log_id} not found"
-        )
         raise ValueError(
             f"[history_service._implementation.revert_change_log] Change log {change_log_id} not found"
         )
-
-    logger.debug(
-        f"[history_service._implementation.revert_change_log] Found change log with resource_type={change_log.resource_type}, "
-        f"resource_id={change_log.resource_id}, action={change_log.action}"
-    )
 
     if change_log.action == ChangeAction.Create:
         raise ValueError(
@@ -194,16 +182,9 @@ def revert_change_log(
     )
 
     if not field_changes:
-        logger.debug(
-            f"[history_service._implementation.revert_change_log] No field changes detected for {resource_type}"
-        )
         raise ValueError(
             "[history_service._implementation.revert_change_log] No changes to revert"
         )
-
-    logger.debug(
-        f"[history_service._implementation.revert_change_log] Creating revert change log entry with {len(field_changes)} field changes"
-    )
 
     revert_change_log_entry = change_log_repo.create_change_log(
         account_id=change_log.account_id,
@@ -221,11 +202,6 @@ def revert_change_log(
 
     session.commit()
 
-    logger.debug(
-        f"[history_service._implementation.revert_change_log] Successfully reverted change_log_id={change_log_id}, "
-        f"new_change_log_id={revert_change_log_entry.id}"
-    )
-
     return revert_change_log_entry
 
 
@@ -238,10 +214,6 @@ def _revert_account(
 
     Uses repository directly to avoid automatic change log creation from service layer.
     """
-    logger.debug(
-        f"[history_service._implementation._revert_account] Reverting account {resource_id}"
-    )
-
     account_repository = db.AccountRepository(session, auto_commit=False)
     account = account_repository.get_account_by_id(uuid.UUID(resource_id))
     if not account:
@@ -252,10 +224,6 @@ def _revert_account(
     old_record = _copy_record(account)
     update_params = _build_update_params(fields)
 
-    logger.debug(
-        f"[history_service._implementation._revert_account] Applying {len(update_params)} field updates to account {account.name}"
-    )
-
     if update_params:
         updated_account = account_repository.update_account(
             account.name, expected_version=None, **update_params
@@ -263,9 +231,6 @@ def _revert_account(
         if updated_account:
             account = updated_account
 
-    logger.debug(
-        f"[history_service._implementation._revert_account] Successfully reverted account {resource_id}"
-    )
     return old_record, account
 
 
@@ -278,10 +243,6 @@ def _revert_agent(
 
     Uses repository directly to avoid automatic change log creation from service layer.
     """
-    logger.debug(
-        f"[history_service._implementation._revert_agent] Reverting agent {resource_id}"
-    )
-
     agent_repository = db.AgentRepository(session, auto_commit=False)
     agent = agent_repository.get_agent(uuid.UUID(resource_id))
     if not agent:
@@ -292,10 +253,6 @@ def _revert_agent(
     old_record = _copy_record(agent)
     update_params = _build_update_params(fields)
 
-    logger.debug(
-        f"[history_service._implementation._revert_agent] Applying {len(update_params)} field updates to agent {resource_id}"
-    )
-
     if update_params:
         updated_agent = agent_repository.update_agent(
             uuid.UUID(resource_id), expected_version=None, **update_params
@@ -303,9 +260,6 @@ def _revert_agent(
         if updated_agent:
             agent = updated_agent
 
-    logger.debug(
-        f"[history_service._implementation._revert_agent] Successfully reverted agent {resource_id}"
-    )
     return old_record, agent
 
 
@@ -318,10 +272,6 @@ def _revert_project(
 
     Uses repository directly to avoid automatic change log creation from service layer.
     """
-    logger.debug(
-        f"[history_service._implementation._revert_project] Reverting project {resource_id}"
-    )
-
     project_repository = db.ProjectRepository(session, auto_commit=False)
     project = project_repository.get_project(uuid.UUID(resource_id))
     if not project:
@@ -332,10 +282,6 @@ def _revert_project(
     old_record = _copy_record(project)
     update_params = _build_update_params(fields)
 
-    logger.debug(
-        f"[history_service._implementation._revert_project] Applying {len(update_params)} field updates to project {resource_id}"
-    )
-
     if update_params:
         updated_project = project_repository.update_project(
             uuid.UUID(resource_id), expected_version=None, **update_params
@@ -343,9 +289,6 @@ def _revert_project(
         if updated_project:
             project = updated_project
 
-    logger.debug(
-        f"[history_service._implementation._revert_project] Successfully reverted project {resource_id}"
-    )
     return old_record, project
 
 
@@ -355,10 +298,6 @@ def _revert_prompt(
     fields: list[ChangeField],
 ) -> tuple[Any, db.Prompt]:
     """Revert prompt changes by applying old values."""
-    logger.debug(
-        f"[history_service._implementation._revert_prompt] Reverting prompt {resource_id}"
-    )
-
     prompt_repository = PromptRepository(session, auto_commit=False)
     prompt = prompt_repository.get_prompt_by_id(uuid.UUID(resource_id))
     if not prompt:
@@ -369,10 +308,6 @@ def _revert_prompt(
     old_record = _copy_record(prompt)
     update_params = _build_update_params(fields)
 
-    logger.debug(
-        f"[history_service._implementation._revert_prompt] Applying {len(update_params)} field updates to prompt {resource_id}"
-    )
-
     if update_params:
         updated_prompt = prompt_repository.update_prompt(
             uuid.UUID(resource_id), **update_params
@@ -380,9 +315,6 @@ def _revert_prompt(
         if updated_prompt:
             prompt = updated_prompt
 
-    logger.debug(
-        f"[history_service._implementation._revert_prompt] Successfully reverted prompt {resource_id}"
-    )
     return old_record, prompt
 
 

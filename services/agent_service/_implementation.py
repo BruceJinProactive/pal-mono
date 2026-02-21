@@ -97,11 +97,6 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
                     config=identifier.args,
                 )
             )
-            logger.debug(f"Added pal-tools tool: {tool_name}")
-        else:
-            logger.debug(
-                f"Skipping tool '{tool_name}' - not available in pal-tools registry"
-            )
 
     return tool_specs
 
@@ -220,14 +215,8 @@ def _agent_config_to_spec(
         scope_to_account=True,  # Always scope for multi-tenant isolation
     )
 
-    if memory_spec.enabled:
-        logger.debug("Memory enabled with account scoping")
-
     # ========== Build ToolSpecs ==========
     tool_specs = _build_tool_specs(agent_config.tool)
-
-    if tool_specs:
-        logger.debug(f"Tools enabled: {[t.tool_name for t in tool_specs]}")
 
     # ========== Build ModelSpec ==========
     # Use model_size from raw_config, or default
@@ -295,25 +284,11 @@ async def construct_agent_spec(
         receiver_identifier=receiver_identifier,
     )
 
-    logger.debug("Built AgentConfig, converting to pal-agents Spec")
-
     # Use provided raw_config or default to empty dict
     effective_raw_config = raw_config or {}
 
     generic_api_spec = _build_generic_api_spec_from_raw_config(effective_raw_config)
     adora_spec = _build_adora_spec_from_raw_config(effective_raw_config)
-
-    if generic_api_spec.enabled:
-        logger.debug(
-            f"GenericAPI enabled: base_url={generic_api_spec.base_url}, "
-            f"allowed_paths={generic_api_spec.allowed_paths}"
-        )
-    if adora_spec.enabled:
-        logger.debug(
-            f"Adora enabled: base_url={adora_spec.base_url}, "
-            f"tool_name={adora_spec.tool_name}, "
-            f"has_menu_data={adora_spec.menu_data is not None}"
-        )
 
     # Extract model size from raw_config (defaults to DEFAULT_MODEL_SIZE if not specified)
     model_size_raw = effective_raw_config.get("model")

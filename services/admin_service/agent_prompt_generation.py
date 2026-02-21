@@ -200,8 +200,6 @@ Format as a clean, organized summary that an AI agent can reference when helping
         summary = content.strip() if isinstance(content, str) else ""
 
         # Log the summarization results
-        logger.debug(f"LLM menu summary: {len(summary)} characters")
-
         return summary
 
     except Exception as e:
@@ -497,28 +495,13 @@ async def generate_agent_prompts(
         f"🚀 Starting generation for: {restaurant_name} with agent '{agent_name if agent_name else 'unnamed'}' ({agent_type}) and keywords: {keywords}"
     )
 
-    if specific_instructions:
-        logger.debug(
-            f"Specific instructions provided: {len(specific_instructions)} characters"
-        )
-
-    # Handle menu content
-    if menu_content:
-        logger.debug(f"Menu provided: {len(menu_content)} characters")
-    else:
-        logger.debug("No menu provided - using general approach")
-
     # Scrape additional URLs for context (in parallel for better performance)
     additional_context = ""
     if additional_urls and any(url.strip() for url in additional_urls):
         valid_urls = [url.strip() for url in additional_urls if url.strip()]
-        logger.debug(f"Scraping {len(valid_urls)} additional URLs for context")
         additional_context = scrape_multiple_urls_parallel(valid_urls)
 
     try:
-        logger.debug(
-            f"Sending request to LLM for agent '{agent_name if agent_name else 'unnamed'}' ({agent_type})..."
-        )
 
         prompt = await build_prompt(
             restaurant_name=restaurant_name,

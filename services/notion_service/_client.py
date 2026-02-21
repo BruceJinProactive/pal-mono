@@ -39,7 +39,6 @@ def get_notion_client() -> AsyncClient:
                 raise ValueError("Notion API key not configured") from e
 
             _client_instance = AsyncClient(auth=api_key)
-            logger.debug("[Notion] Client instance created")
 
         return _client_instance
 
@@ -53,4 +52,3 @@ def reset_client() -> None:
     global _client_instance
     with _client_lock:
         _client_instance = None
-    logger.debug("[Notion] Client instance reset")

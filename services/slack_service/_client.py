@@ -88,7 +88,6 @@ def reset_client() -> None:
     global _client_instance
     with _client_lock:
         _client_instance = None
-    logger.debug("[Slack] Client instance reset")
 
 
 async def get_slack_user_id(name: str, slack_client: AsyncWebClient) -> Optional[str]:

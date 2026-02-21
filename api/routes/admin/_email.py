@@ -20,16 +20,6 @@ async def send_email(
     """
     Send a single email using a Postmark template.
     """
-
-    logger.debug(
-        "Attempting to send email with template",
-        extra={
-            "to_email": request.to_email,
-            "template_id": request.template_id,
-            "user_email": context.email,
-        },
-    )
-
     try:
         response = email_service.send_email_with_template(
             to_email=request.to_email,
@@ -50,15 +40,6 @@ async def send_email(
             detail=f"Failed to send email: {err}",
         )
 
-    logger.debug(
-        "Successfully sent email with template",
-        extra={
-            "to_email": request.to_email,
-            "template_id": request.template_id,
-            "message_id": response.get("MessageID"),
-        },
-    )
-
     return response
 
 
@@ -70,15 +51,6 @@ async def send_batch_emails(
     """
     Send multiple emails using Postmark templates in a single API call.
     """
-
-    logger.debug(
-        "Attempting to send batch emails with templates",
-        extra={
-            "email_count": len(request.emails),
-            "user_email": context.email,
-        },
-    )
-
     try:
         # Convert the request models to dictionaries for the service
         emails_data = []
@@ -106,14 +78,6 @@ async def send_batch_emails(
             detail=f"Failed to send batch emails: {err}",
         )
 
-    logger.debug(
-        "Successfully sent batch emails with templates",
-        extra={
-            "email_count": len(request.emails),
-            "batch_id": response.get("batch_id"),
-        },
-    )
-
     return response
 
 
@@ -125,15 +89,6 @@ async def get_template_info(
     """
     Get information about a Postmark template.
     """
-
-    logger.debug(
-        "Attempting to get template info",
-        extra={
-            "template_id": request.template_id,
-            "user_email": context.email,
-        },
-    )
-
     try:
         response = email_service.get_template_info(request.template_id)
     except Exception as err:
@@ -142,14 +97,6 @@ async def get_template_info(
             status_code=500,
             detail=f"Failed to get template info: {err}",
         )
-
-    logger.debug(
-        "Successfully retrieved template info",
-        extra={
-            "template_id": request.template_id,
-            "template_name": response.get("Name"),
-        },
-    )
 
     return response
 
@@ -162,16 +109,6 @@ async def list_templates(
     """
     List available Postmark templates.
     """
-
-    logger.debug(
-        "Attempting to list templates",
-        extra={
-            "count": request.count,
-            "offset": request.offset,
-            "user_email": context.email,
-        },
-    )
-
     try:
         response = email_service.list_templates(
             count=request.count,
@@ -183,14 +120,5 @@ async def list_templates(
             status_code=500,
             detail=f"Failed to list templates: {err}",
         )
-
-    logger.debug(
-        "Successfully listed templates",
-        extra={
-            "count": request.count,
-            "offset": request.offset,
-            "total_count": response.get("TotalCount"),
-        },
-    )
 
     return response

@@ -23,14 +23,12 @@ def _get_cached_memories(user_id: str) -> str | None:
         del _cache[user_id]  # Expired
         return None
 
-    logger.debug(f"Cache hit for user {user_id}")
     return memories
 
 
 def _set_cached_memories(user_id: str, memories: str) -> None:
     """Cache memories with current timestamp."""
     _cache[user_id] = (memories, time.time())
-    logger.debug(f"Cached memories for user {user_id}")
 
 
 @task(name="Memory Update")

@@ -371,8 +371,6 @@ async def build_menu_from_url(
         ValueError: If there's an error building the menu
     """
     try:
-        logger.info(f"Starting menu building for URL: {url}")
-
         builder = MenuBuilder()
         proxy_type = "stealth" if use_stealth_proxy else "auto"
 

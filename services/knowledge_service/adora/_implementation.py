@@ -85,8 +85,6 @@ class AdoraMenuProcessor:
             dict: Processing results with menu data and indexing information
         """
         try:
-            logger.debug("Starting Adora menu processing...")
-
             # Step 1: Get authentication token
             if not self.token:
                 self.token = get_bearer_token(
