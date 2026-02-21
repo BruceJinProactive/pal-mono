@@ -115,6 +115,10 @@ class PurchaseNumberRequest(BaseModel):
         "Examples: '555' to find numbers containing '555', '6666' for numbers containing '6666'. "
         "Can be combined with area_code for more specific searches.",
     )
+    voice_provider: str = Field(
+        "vapi",
+        description="Voice routing provider: 'vapi' (default) or 'livekit'",
+    )
 
 
 class PurchaseNumberResponse(BaseModel):

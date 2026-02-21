@@ -4,7 +4,11 @@
 Verifies backward compatibility and correct defaults for dual-stack provisioning.
 """
 
-from api.schemas.admin.phone_number import PhoneNumberInfo, ReserveProjectNumberRequest
+from api.schemas.admin.phone_number import (
+    PhoneNumberInfo,
+    PurchaseNumberRequest,
+    ReserveProjectNumberRequest,
+)
 from services.number_service._utils import NumberChannel
 
 
@@ -25,6 +29,28 @@ class TestReserveProjectNumberRequestDefaults:
             voice_provider="livekit",
         )
         assert request.voice_provider == "livekit"
+
+
+class TestPurchaseNumberRequestDefaults:
+    """Verify PurchaseNumberRequest voice_provider backward compatibility."""
+
+    def test_voice_provider_defaults_to_vapi(self):
+        """Not passing voice_provider defaults to 'vapi' for backward compatibility."""
+        request = PurchaseNumberRequest()
+        assert request.voice_provider == "vapi"
+
+    def test_voice_provider_can_be_set_to_livekit(self):
+        """Explicitly setting voice_provider to 'livekit' is accepted."""
+        request = PurchaseNumberRequest(voice_provider="livekit")
+        assert request.voice_provider == "livekit"
+
+    def test_other_defaults_unchanged(self):
+        """Adding voice_provider does not affect existing field defaults."""
+        request = PurchaseNumberRequest()
+        assert request.country_code == "US"
+        assert request.toll_free is False
+        assert request.area_code is None
+        assert request.contains is None
 
 
 class TestPhoneNumberInfoVoiceProvider:

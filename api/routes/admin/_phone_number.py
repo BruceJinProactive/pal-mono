@@ -302,6 +302,7 @@ async def purchase_number(
             purchase_number=True,  # Force purchase new number
             area_code=request.area_code,
             contains=request.contains,
+            voice_provider=request.voice_provider,
         )
 
         logger.info(
