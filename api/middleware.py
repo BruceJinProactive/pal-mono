@@ -5,6 +5,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
+from utils.dd import statsd
 from utils.log import logger, request_id_ctx
 
 
@@ -34,12 +35,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             raise
         finally:
             duration_ms = (time.monotonic() - start) * 1000
-            logger.info(
-                "%s %s %d %.1fms",
-                request.method,
-                request.url.path,
-                status_code,
-                duration_ms,
-                extra={"request_id": rid, "duration_ms": round(duration_ms, 1)},
-            )
+            tags = [
+                f"method:{request.method}",
+                f"path:{request.url.path}",
+                f"status_code:{status_code}",
+            ]
+            statsd.histogram("http.request.duration", duration_ms, tags=tags)
+            statsd.increment("http.request.count", tags=tags)
             request_id_ctx.reset(token)
