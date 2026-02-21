@@ -78,7 +78,7 @@ jobs:
           AWS_ADMIN_CONSOLE_USER_POOL_ID: test
           AWS_ADMIN_CONSOLE_APP_CLIENT_ID: test
         run: |
-          pytest --cov --cov-report=term-missing --cov-report=xml:coverage.xml --junitxml=junit.xml -q
+          pytest --cov --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --junitxml=junit.xml -q
 
       - name: Pytest coverage comment
         uses: MishaKav/pytest-coverage-comment@main
@@ -88,3 +88,5 @@ jobs:
           report-only-changed-files: true
           xml-skip-covered: true
           remove-links-to-files: true
+          remove-links-to-lines: true
+          hide-report: true
