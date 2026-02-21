@@ -41,7 +41,6 @@ async def update_memory(
     session_id: str | None = None,
 ) -> None:
     client = AsyncMemoryClient()
-    logger.debug(f"Updating memory for user {user_id} with content: {content}")
     await client.add(
         messages=[
             {
@@ -81,7 +80,6 @@ async def get_all_memories(user_id: str) -> str:
     import asyncio
 
     asyncio.create_task(_fetch_and_cache_memories(user_id))
-    logger.debug(f"Cache miss for user {user_id} - started background fetch")
     LLMObs.annotate(
         tags={
             "cache_hit": False,

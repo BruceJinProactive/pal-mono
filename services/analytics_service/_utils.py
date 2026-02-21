@@ -257,9 +257,6 @@ def create_metrics_processor(metrics_config: dict):
     def metrics_processor(row: tuple) -> dict:
         result = {}
 
-        # Debug logging to understand row structure
-        logger.debug(f"Processing row (length {len(row)}): {row}")
-
         for metric_name, config in metrics_config.items():
             if config["source"] == "row_index":
                 value = row[config["index"]]

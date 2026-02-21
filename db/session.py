@@ -62,7 +62,6 @@ async def get_db_async():
     """
     Async dependency to get an asynchronous database session.
     """
-    logger.debug("Get db_async")
     async with AsyncSessionLocal() as db:
         try:
             yield db

@@ -97,11 +97,9 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
     Returns:
         bool: True if webhook signature is valid, False otherwise
     """
-    logger.debug("[Square Webhook] validate_square_webhook_request called")
     try:
         # Check if this is a development or test request that should bypass verification
         is_test = is_test_request(request)
-        logger.debug(f"[Square Webhook] is_test_request returned: {is_test}")
         if is_test:
             return True
 
@@ -117,10 +115,8 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
         # Get Square webhook signature key and URL from secrets manager
         try:
             signature_key, webhook_url = get_square_webhook_credentials()
-            logger.debug("[Square Webhook] Successfully retrieved webhook credentials")
         except ValueError as e:
             logger.error(f"[Square Webhook] {e}")
-            logger.debug("[Square Webhook] Returning False due to ValueError")
             return False  # Reject requests without signature key in production
 
         # Decode the request body
@@ -128,21 +124,6 @@ def validate_square_webhook_request(request: Request, body: bytes) -> bool:
 
         # Construct the message using fixed webhook URL from configuration
         message = webhook_url + raw_body
-
-        # Debug logging for signature verification
-        logger.debug(
-            "[Square Webhook] Signature verification details",
-            extra={
-                "webhook_url": webhook_url,
-                "payload_length": len(raw_body),
-                "payload_preview": (
-                    raw_body[:200] + "..." if len(raw_body) > 200 else raw_body
-                ),
-                "message_length": len(message),
-                "signature_key_length": len(signature_key),
-                "received_signature": signature,
-            },
-        )
 
         # Compute HMAC-SHA256 signature using fixed webhook URL
         computed_signature = base64.b64encode(

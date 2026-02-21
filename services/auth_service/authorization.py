@@ -232,7 +232,6 @@ def check_permission(
     """
     # Admin bypass - admins have all permissions
     if user_role == "Admin":
-        logger.debug(f"Permission granted: User {user_id} is Admin (bypass)")
         return True
 
     try:
@@ -262,10 +261,6 @@ def check_permission(
 
             # Check permission (wildcard * means all permissions)
             if "*" in permissions or permission_name in permissions:
-                logger.debug(
-                    f"Permission granted: User {user_id} has {permission_name} "
-                    f"via roles {roles} on {resource_id}"
-                )
                 return True
 
         # If no permission found on this resource, try hierarchical checking
@@ -274,9 +269,6 @@ def check_permission(
             if parent:
                 parent_type, parent_id = parent
                 parent_resource_id = f"{parent_type}/{parent_id}"
-                logger.debug(
-                    f"Checking parent resource {parent_resource_id} for permission {permission_name}"
-                )
                 return check_permission(
                     user_id=user_id,
                     resource_id=parent_resource_id,

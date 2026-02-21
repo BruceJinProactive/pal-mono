@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import time
 import uuid
 from typing import AsyncIterator, Optional
 
@@ -153,13 +152,6 @@ class AgnoAgent:
             output_content = ""
             message, messages = await self._build_model_inputs(input)
 
-            logger.debug(
-                f"[AgnoAgent] start getting called at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
-                extra={
-                    "agent_id": self.config.metadata.agent_id,
-                    "account_name": self.config.metadata.account_name,
-                },
-            )
             send_dd_histogram_metrics(
                 "framework_agent.start_streaming",
                 input.request_context.request_time,
@@ -174,14 +166,6 @@ class AgnoAgent:
                 message,
                 messages=messages,
                 stream=input.stream,
-            )
-
-            logger.debug(
-                f"[AgnoAgent] called with {len(messages) if messages else 'None'} messages, streaming={input.stream}, return_type:{type(result)} at {(time.time() - input.request_context.request_time.timestamp()) * 1000:.1f}ms",
-                extra={
-                    "agent_id": self.config.metadata.agent_id,
-                    "account_name": self.config.metadata.account_name,
-                },
             )
 
             try:
@@ -349,9 +333,6 @@ class AgnoAgent:
                 enhanced_mem_content = f"MEMORY: The following contains important information about your user. Use this context to personalize your responses, remember their preferences, and provide relevant assistance based on their history and needs:\n\n{mem_content}"
                 mem_message = Message(role="user", content=enhanced_mem_content)
                 messages.append(mem_message)
-            else:
-                logger.debug("[PalMemory]: No memory content found")
-
         send_dd_histogram_metrics(
             "framework_agent.query_history_messages_time_spent",
             current_time,

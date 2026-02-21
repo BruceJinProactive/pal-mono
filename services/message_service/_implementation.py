@@ -230,7 +230,6 @@ async def get_chat_response_async(
                 escalated=pal_output.escalated,
                 closing_conversation=pal_output.closing_conversation,
             )
-            logger.debug(f"pal-agents Output: {output}")
         else:
             # EXISTING FLOW: Use current agent system
 
@@ -246,7 +245,6 @@ async def get_chat_response_async(
                 receiver_identifier=message.recipient_identifier,
             )
 
-            logger.debug(f"Agent config: {config}")
             agent = Agent(config=config)
 
             # Get Input with conversation history
@@ -255,11 +253,8 @@ async def get_chat_response_async(
                 stream=False,
                 request_context=request_context,
             )
-            logger.debug(f"Input: {input}")
-
             # Get Output
             output: Output = await agent.arun(input)  # type: ignore # Temporarily disable specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
-            logger.debug(f"Output: {output}")
 
         # ================ Step 3: Get response messages ================
         # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
@@ -728,14 +723,11 @@ async def get_chat_response_stream(
 
                 agent = Agent(config=config)
 
-                logger.debug(f"Agent config stream mode: {config}")
-
                 input = await _utils.get_agent_input_from_message(
                     message=message,
                     stream=True,
                     request_context=request_context,
                 )
-                logger.debug(f"Input stream mode: {input}")
                 send_dd_histogram_metrics(
                     "message_service.start_streaming",
                     request_context.request_time,

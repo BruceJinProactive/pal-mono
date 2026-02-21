@@ -420,15 +420,6 @@ async def api_vapi_server(request: Request, session: AsyncSession) -> JSONRespon
                 content={"error": "Invalid request format"},
             )
 
-        # Log the incoming request for debugging
-        logger.debug(
-            "VAPI request received",
-            extra={
-                "message_type": body.get("message", {}).get("type"),
-                # drop / hash phone numbers & transcripts
-            },
-        )
-
         # Extract information from VAPI request structure
         message_data = body.get("message", {})
         message_type = message_data.get("type")
@@ -733,14 +724,6 @@ async def handle_status_update(message_data, session: AsyncSession):
                 extra={"call_data": call_data, "status": status},
             )
 
-        logger.debug(
-            f"Call {call_id} status updated to: {status}",
-            extra={
-                "call_id": call_id,
-                "status": status,
-            },
-        )
-
         # Extract control URL from monitor data if available
         # Use `or {}` because .get() returns None if key exists with None value
         monitor_data = call_data.get("monitor") or {}
@@ -749,14 +732,6 @@ async def handle_status_update(message_data, session: AsyncSession):
         # Store control URL using call_id to find the conversation
         # The conversation is created with call_id during handle_assistant_request
         if control_url and call_id:
-            logger.debug(
-                "[handle_status_update] Storing monitor control URL",
-                extra={
-                    "call_id": call_id,
-                    "status": status,
-                    "has_control_url": bool(control_url),
-                },
-            )
             conversation_repo = db.ConversationRepositoryAsync(session)
             conversation = await conversation_repo.get_conversation_by_call_id(call_id)
 
@@ -766,14 +741,6 @@ async def handle_status_update(message_data, session: AsyncSession):
                     update_data=ConversationUpdate(
                         vapi_control_url=control_url,
                     ),
-                )
-                logger.debug(
-                    "[handle_status_update] Stored control URL for conversation",
-                    extra={
-                        "call_id": call_id,
-                        "conversation_id": str(conversation.id),
-                        "status": status,
-                    },
                 )
             else:
                 logger.error(

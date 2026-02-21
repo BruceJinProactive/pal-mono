@@ -214,12 +214,6 @@ def _agent_config_to_spec(
     # ========== Build KnowledgeSpec ==========
     knowledge_spec = _build_knowledge_spec(agent_config.knowledge)
 
-    if knowledge_spec.enabled:
-        logger.debug(
-            f"Knowledge enabled: index={knowledge_spec.index_name}, "
-            f"namespace={knowledge_spec.namespace}"
-        )
-
     # ========== Build MemorySpec ==========
     memory_spec = MemorySpec(
         enabled=agent_config.memory.enabled,
@@ -415,7 +409,6 @@ async def construct_agent_config(
     )
 
     # Convert blueprint to agent config
-    logger.debug("Loading agent config...")
     return await raw_config.build(session=db_session)
 
 

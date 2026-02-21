@@ -61,8 +61,6 @@ async def get_user_async(
         user = await user_repo.get_user_by_channel_identifier(
             account_id=project.account_id, channel_identifier=channel_identifier
         )
-        logger.debug(f"Looking for user with channel_identifier: {channel_identifier}")
-
         if not user:
             # SMS opt-in needed for new SMS user
             if message.channel == Channel.SMS:
@@ -73,9 +71,6 @@ async def get_user_async(
                 Channel.VOICE if message.channel == Channel.SMS else Channel.SMS
             )
             other_channel_identifier = f"{other_channel.value}:{sender_identifier}"
-            logger.debug(
-                f"Looking for user with other_channel_identifier: {other_channel_identifier}"
-            )
             user = await user_repo.get_user_by_channel_identifier(
                 account_id=project.account_id,
                 channel_identifier=other_channel_identifier,

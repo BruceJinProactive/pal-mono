@@ -478,15 +478,6 @@ async def create_monitoring_run(
                     "time_window_config": time_window_config,
                 },
             )
-        else:
-            logger.debug(
-                "[TimeWindow] Route handler: time window not configured or not enabled",
-                extra={
-                    "enforcement_point": "route_handler",
-                    "monitoring_config_id": str(request.monitoring_config_id),
-                    "time_window_config": time_window_config,
-                },
-            )
 
         if should_skip:
             # Create a skipped run record
@@ -667,15 +658,6 @@ async def create_video_monitoring_run(
                     "monitoring_config_id": str(request.monitoring_config_id),
                     "should_skip": should_skip,
                     "skip_reason": skip_reason,
-                    "time_window_config": time_window_config,
-                },
-            )
-        else:
-            logger.debug(
-                "[TimeWindow] Route handler (video): time window not configured or not enabled",
-                extra={
-                    "enforcement_point": "route_handler",
-                    "monitoring_config_id": str(request.monitoring_config_id),
                     "time_window_config": time_window_config,
                 },
             )
