@@ -19,6 +19,8 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 # File watcher and HTTP client
 logging.getLogger("watchdog").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+# Multipart form parser internals: header field/value parsing callbacks
+logging.getLogger("python_multipart.multipart").setLevel(logging.WARNING)
 
 # Context variable for request correlation ID
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
