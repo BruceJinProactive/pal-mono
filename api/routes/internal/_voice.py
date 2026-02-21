@@ -1,0 +1,241 @@
+"""Implementation for LiveKit voice call initialization endpoint."""
+
+import uuid
+from datetime import datetime, timezone
+
+import pytz
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import db
+from api.schemas.chat.message import (
+    AuthorType,
+    Extras,
+    Message,
+    Metadata,
+    TextObject,
+    Type,
+)
+from api.schemas.internal.voice_init import VoiceInitRequest, VoiceInitResponse
+from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
+from db.tables.types import Channel, SpeechRate
+from services import project_service, subscription_service, user_service
+from utils.log import logger
+
+# Numeric speed mapping matching CARTESIA_SONIC3_SPEED_MAPPING from
+# services/voice_service/providers/vapi/_implementation.py
+_SPEECH_RATE_TO_FLOAT: dict[SpeechRate, float] = {
+    SpeechRate.slowest: 0.6,
+    SpeechRate.slower: 0.8,
+    SpeechRate.normal: 1.0,
+    SpeechRate.faster: 1.25,
+    SpeechRate.fastest: 1.5,
+}
+
+# Default STT configuration per language
+_STT_CONFIGS: dict[str, dict[str, str]] = {
+    "english": {"model": "nova-3", "language": "en-US"},
+    "spanish": {"model": "nova-2", "language": "es"},
+    "chinese": {"model": "nova-2", "language": "zh-CN"},
+}
+
+# Time-based greetings per language
+_TIMEZONE_GREETINGS: dict[str, dict[str, str]] = {
+    "english": {
+        "morning": "Good morning!",
+        "afternoon": "Good afternoon!",
+        "evening": "Good evening!",
+    },
+    "spanish": {
+        "morning": "Buenos d\u00edas!",
+        "afternoon": "Buenas tardes!",
+        "evening": "Buenas noches!",
+    },
+    "chinese": {
+        "morning": "\u65e9\u4e0a\u597d\uff01",
+        "afternoon": "\u4e0b\u5348\u597d\uff01",
+        "evening": "\u665a\u4e0a\u597d\uff01",
+    },
+}
+
+
+def _resolve_greeting(first_message: str, timezone_str: str, language: str) -> str:
+    """Resolve ``{{greet}}`` placeholder in *first_message* to a time-based greeting.
+
+    If the placeholder is absent the message is returned unchanged.  If the
+    language or timezone are not supported the placeholder is silently removed.
+    """
+    if "{{greet}}" not in first_message:
+        return first_message
+
+    lang = language.lower()
+    greetings = _TIMEZONE_GREETINGS.get(lang)
+    if not greetings:
+        logger.warning(
+            f"[_resolve_greeting] Language {language} not supported for time-based greeting"
+        )
+        return first_message.replace("{{greet}}", "").strip()
+
+    try:
+        tz = pytz.timezone(timezone_str)
+        current_hour = datetime.now(tz).hour
+    except pytz.exceptions.UnknownTimeZoneError:
+        logger.warning(f"[_resolve_greeting] Invalid timezone: {timezone_str}")
+        return first_message.replace("{{greet}}", "").strip()
+
+    if current_hour < 12:
+        greeting = greetings["morning"]
+    elif current_hour < 18:
+        greeting = greetings["afternoon"]
+    else:
+        greeting = greetings["evening"]
+
+    return first_message.replace("{{greet}}", greeting + " ")
+
+
+async def init_voice_call(
+    request: VoiceInitRequest,
+    session: AsyncSession,
+) -> VoiceInitResponse:
+    """Initialize a voice call for the LiveKit agent worker.
+
+    Replicates the essential setup from ``handle_assistant_request`` in the Vapi
+    integration (project lookup, user resolution, conversation creation,
+    subscription check, voice config retrieval) but returns structured JSON
+    instead of a Vapi assistant payload.
+    """
+    caller_number = request.caller_number
+    dialed_number = request.dialed_number
+    call_id = request.call_id
+
+    # --- Step 1: Build Message object for service layer ---
+    message = Message(
+        id=str(uuid.uuid4()),
+        author_type=AuthorType.SYSTEM,
+        sender_identifier=caller_number,
+        recipient_identifier=dialed_number,
+        channel=Channel.VOICE,
+        broker=None,
+        type=Type.TEXT,
+        text=TextObject(body="[Call initiated]"),
+        context="",
+        extras=Extras(),
+        metadata=Metadata(),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    # --- Step 2: Resolve project by phone number ---
+    project = await project_service.get_project_async(session, message)
+    if not project:
+        logger.error(
+            "[init_voice_call] Project not found",
+            extra={
+                "caller_number": caller_number,
+                "dialed_number": dialed_number,
+                "call_id": call_id,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found for dialed number",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # --- Step 3: Get or create user ---
+    user, _ = await user_service.get_user_async(session, project, message)
+    if not user:
+        user = await user_service.create_user_async(session, project, message)
+        await session.refresh(user, attribute_names=["id"])
+        await session.refresh(project, attribute_names=["id"])
+
+    await session.refresh(project, attribute_names=["id", "account"])
+
+    # --- Step 4: Check subscription enforcement ---
+    if await subscription_service.should_block_calls_async(session, project.account):
+        logger.info(
+            "LiveKit call blocked due to subscription enforcement",
+            extra={
+                "account_id": str(project.account.id),
+                "call_id": call_id,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Voice calls are not available without an active subscription",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # --- Step 5: Create voice message / conversation ---
+    message_repo = db.MessageRepositoryAsync(session)
+    await message_repo.create_voice_message(
+        user_id=user.id,
+        project_id=project.id,
+        message_body=message.to_dict(),
+        call_id=call_id,
+    )
+    await session.refresh(user, attribute_names=["id"])
+    await session.refresh(project, attribute_names=["id"])
+
+    # --- Step 6: Build caller_info ---
+    caller_info = {
+        "sender_identifier": caller_number,
+        "recipient_identifier": dialed_number,
+        "call_id": call_id,
+        "timezone": project.timezone,
+        "transfer_phone_number": project.transfer_phone_number,
+        "transfer_message": project.transfer_message,
+    }
+
+    # --- Step 7: Fetch voice configs ---
+    voice_repo = VoiceConfigRepositoryAsync(session)
+    voice_configs = await voice_repo.get_voice_configs_by_project(project.id)
+    if not voice_configs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No voice configuration found for project {project.id}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Pick the first non-triage config (language assistant)
+    non_triage = [vc for vc in voice_configs if vc.language.lower() != "triage"]
+    if not non_triage:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No language voice configuration found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    vc = non_triage[0]
+
+    # --- Step 8: Resolve greeting ---
+    caller_timezone = project.timezone or "America/Los_Angeles"
+    first_message = _resolve_greeting(
+        vc.first_message or "Hi, how can I help you today?",
+        caller_timezone.strip(),
+        vc.language,
+    )
+
+    # --- Step 9: Map speech rate to float ---
+    speech_rate = _SPEECH_RATE_TO_FLOAT.get(vc.speech_rate, 1.0)
+
+    # --- Step 10: Determine STT config ---
+    lang_lower = vc.language.lower()
+    if vc.transcriber:
+        stt_model = vc.transcriber.get("model", "nova-3")
+        stt_language = vc.transcriber.get("language", "en-US")
+    else:
+        stt_cfg = _STT_CONFIGS.get(lang_lower, _STT_CONFIGS["english"])
+        stt_model = stt_cfg["model"]
+        stt_language = stt_cfg["language"]
+
+    return VoiceInitResponse(
+        caller_info=caller_info,
+        voice_id=vc.voice_id,
+        voice_model=vc.voice_model or "sonic-3",
+        speech_rate=speech_rate,
+        first_message=first_message,
+        language=vc.language,
+        stt_model=stt_model,
+        stt_language=stt_language,
+        background_sound=vc.background_sound or None,
+    )

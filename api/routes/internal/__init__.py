@@ -16,6 +16,7 @@ from .events import events_router
 from .monitoring import monitoring_router
 from .projects import projects_router
 from .routines import routines_router
+from .voice import voice_router
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -30,6 +31,7 @@ internal_router.include_router(events_router)
 internal_router.include_router(monitoring_router)
 internal_router.include_router(projects_router)
 internal_router.include_router(routines_router)
+internal_router.include_router(voice_router)
 
 
 @internal_router.post("/start-knowledge-update-process")

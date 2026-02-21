@@ -1,0 +1,442 @@
+"""Tests for the LiveKit voice init endpoint (api/routes/internal/_voice.py)."""
+
+import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from fastapi import HTTPException
+
+from api.routes.internal._voice import _STT_CONFIGS, _resolve_greeting, init_voice_call
+from api.schemas.internal.voice_init import VoiceInitRequest, VoiceInitResponse
+from db.tables.types import SpeechRate
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_request(**overrides) -> VoiceInitRequest:
+    defaults = {
+        "caller_number": "+15551234567",
+        "dialed_number": "+15559876543",
+        "call_id": "call-abc-123",
+    }
+    defaults.update(overrides)
+    return VoiceInitRequest(**defaults)
+
+
+def _make_project(**overrides) -> MagicMock:
+    project = MagicMock()
+    project.id = overrides.get("id", uuid.uuid4())
+    project.timezone = overrides.get("timezone", "America/New_York")
+    project.transfer_phone_number = overrides.get(
+        "transfer_phone_number", "+15550001111"
+    )
+    project.transfer_message = overrides.get("transfer_message", "Transferring you now")
+    project.account = MagicMock()
+    project.account.id = uuid.uuid4()
+    return project
+
+
+def _make_voice_config(**overrides) -> MagicMock:
+    vc = MagicMock()
+    vc.language = overrides.get("language", "english")
+    vc.voice_id = overrides.get("voice_id", "voice-abc")
+    vc.voice_model = overrides.get("voice_model", "sonic-2")
+    vc.speech_rate = overrides.get("speech_rate", SpeechRate.normal)
+    vc.first_message = overrides.get("first_message", "Hello, how can I help?")
+    vc.transcriber = overrides.get("transcriber", None)
+    vc.background_sound = overrides.get("background_sound", "office")
+    return vc
+
+
+def _make_user() -> MagicMock:
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    return user
+
+
+def _patch_deps(
+    project: MagicMock | None,
+    user: MagicMock,
+    *,
+    block_calls: bool = False,
+    user_exists: bool = True,
+) -> tuple:
+    """Return a tuple of patch context managers for all ``init_voice_call`` deps."""
+    return (
+        patch(
+            "api.routes.internal._voice.project_service.get_project_async",
+            new_callable=AsyncMock,
+            return_value=project,
+        ),
+        patch(
+            "api.routes.internal._voice.user_service.get_user_async",
+            new_callable=AsyncMock,
+            return_value=(user if user_exists else None, None),
+        ),
+        patch(
+            "api.routes.internal._voice.user_service.create_user_async",
+            new_callable=AsyncMock,
+            return_value=user,
+        ),
+        patch(
+            "api.routes.internal._voice.subscription_service.should_block_calls_async",
+            new_callable=AsyncMock,
+            return_value=block_calls,
+        ),
+        patch("api.routes.internal._voice.db.MessageRepositoryAsync"),
+        patch("api.routes.internal._voice.VoiceConfigRepositoryAsync"),
+    )
+
+
+async def _run(
+    request: VoiceInitRequest,
+    project: MagicMock,
+    user: MagicMock,
+    voice_configs: list[MagicMock],
+    *,
+    block_calls: bool = False,
+    user_exists: bool = True,
+) -> VoiceInitResponse:
+    """Run ``init_voice_call`` with all deps patched and return the response."""
+    session = AsyncMock()
+    p = _patch_deps(
+        project,
+        user,
+        block_calls=block_calls,
+        user_exists=user_exists,
+    )
+    with p[0], p[1], p[2], p[3], p[4] as msg_cls, p[5] as vc_cls:
+        msg_cls.return_value = AsyncMock()
+        vc_repo = AsyncMock()
+        vc_repo.get_voice_configs_by_project.return_value = voice_configs
+        vc_cls.return_value = vc_repo
+        return await init_voice_call(request, session)
+
+
+async def _run_expecting_error(
+    request: VoiceInitRequest,
+    project: MagicMock | None,
+    user: MagicMock,
+    voice_configs: list[MagicMock],
+    *,
+    block_calls: bool = False,
+) -> HTTPException:
+    """Run ``init_voice_call`` and return the raised HTTPException."""
+    session = AsyncMock()
+    p = _patch_deps(project, user, block_calls=block_calls)
+    with p[0], p[1], p[2], p[3], p[4] as msg_cls, p[5] as vc_cls:
+        msg_cls.return_value = AsyncMock()
+        vc_repo = AsyncMock()
+        vc_repo.get_voice_configs_by_project.return_value = voice_configs
+        vc_cls.return_value = vc_repo
+        with pytest.raises(HTTPException) as exc_info:
+            await init_voice_call(request, session)
+        return exc_info.value
+
+
+# ---------------------------------------------------------------------------
+# _resolve_greeting unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestResolveGreeting:
+    """Tests for the _resolve_greeting helper."""
+
+    def test_no_placeholder_returns_unchanged(self) -> None:
+        assert _resolve_greeting("Hello!", "America/New_York", "english") == "Hello!"
+
+    def test_greet_placeholder_replaced_english(self) -> None:
+        result = _resolve_greeting("{{greet}} Welcome!", "America/New_York", "english")
+        assert "{{greet}}" not in result
+        assert "Welcome!" in result
+        assert any(
+            g in result for g in ("Good morning!", "Good afternoon!", "Good evening!")
+        )
+
+    def test_greet_placeholder_replaced_spanish(self) -> None:
+        result = _resolve_greeting(
+            "{{greet}} Bienvenido!", "America/New_York", "spanish"
+        )
+        assert "{{greet}}" not in result
+        assert "Bienvenido!" in result
+
+    def test_unsupported_language_strips_placeholder(self) -> None:
+        result = _resolve_greeting("{{greet}} Hello!", "America/New_York", "klingon")
+        assert "{{greet}}" not in result
+        assert "Hello!" in result
+
+    def test_invalid_timezone_strips_placeholder(self) -> None:
+        result = _resolve_greeting("{{greet}} Hello!", "Invalid/Timezone", "english")
+        assert "{{greet}}" not in result
+        assert "Hello!" in result
+
+
+# ---------------------------------------------------------------------------
+# init_voice_call tests — error branches
+# ---------------------------------------------------------------------------
+
+
+class TestInitVoiceCallProjectNotFound:
+    """Project lookup returns None -> 404."""
+
+    @pytest.mark.asyncio
+    async def test_returns_404(self) -> None:
+        exc = await _run_expecting_error(
+            _make_request(),
+            project=None,
+            user=_make_user(),
+            voice_configs=[],
+        )
+        assert exc.status_code == 404
+        assert "Project not found" in exc.detail
+
+
+class TestInitVoiceCallSubscriptionBlocked:
+    """Subscription enforcement blocks the call -> 403."""
+
+    @pytest.mark.asyncio
+    async def test_returns_403(self) -> None:
+        exc = await _run_expecting_error(
+            _make_request(),
+            project=_make_project(),
+            user=_make_user(),
+            voice_configs=[],
+            block_calls=True,
+        )
+        assert exc.status_code == 403
+        assert "subscription" in exc.detail.lower()
+
+
+class TestInitVoiceCallNoVoiceConfigs:
+    """No voice configs for project -> 404."""
+
+    @pytest.mark.asyncio
+    async def test_returns_404_empty_list(self) -> None:
+        exc = await _run_expecting_error(
+            _make_request(),
+            project=_make_project(),
+            user=_make_user(),
+            voice_configs=[],
+        )
+        assert exc.status_code == 404
+        assert "No voice configuration found" in exc.detail
+
+    @pytest.mark.asyncio
+    async def test_returns_404_only_triage(self) -> None:
+        triage_vc = _make_voice_config(language="triage")
+        exc = await _run_expecting_error(
+            _make_request(),
+            project=_make_project(),
+            user=_make_user(),
+            voice_configs=[triage_vc],
+        )
+        assert exc.status_code == 404
+        assert "No language voice configuration" in exc.detail
+
+
+# ---------------------------------------------------------------------------
+# init_voice_call tests — success paths
+# ---------------------------------------------------------------------------
+
+
+class TestInitVoiceCallSuccess:
+    """Happy-path: returns VoiceInitResponse with correct fields."""
+
+    @pytest.mark.asyncio
+    async def test_response_fields(self) -> None:
+        vc = _make_voice_config(
+            first_message="Hello, how can I help?",
+            voice_id="voice-xyz",
+            voice_model="sonic-3",
+            speech_rate=SpeechRate.faster,
+            background_sound="cafe",
+        )
+        result = await _run(
+            _make_request(),
+            _make_project(timezone="America/New_York"),
+            _make_user(),
+            [vc],
+        )
+        assert isinstance(result, VoiceInitResponse)
+        assert result.voice_id == "voice-xyz"
+        assert result.voice_model == "sonic-3"
+        assert result.speech_rate == 1.25
+        assert result.language == "english"
+        assert result.background_sound == "cafe"
+        assert result.first_message == "Hello, how can I help?"
+
+    @pytest.mark.asyncio
+    async def test_greet_placeholder_resolved(self) -> None:
+        vc = _make_voice_config(
+            first_message="{{greet}} Welcome to the restaurant!",
+            language="english",
+        )
+        result = await _run(
+            _make_request(),
+            _make_project(timezone="America/New_York"),
+            _make_user(),
+            [vc],
+        )
+        assert "{{greet}}" not in result.first_message
+        assert "Welcome to the restaurant!" in result.first_message
+
+    @pytest.mark.asyncio
+    async def test_caller_info_populated(self) -> None:
+        project = _make_project(
+            timezone="US/Pacific",
+            transfer_phone_number="+15559999999",
+            transfer_message="Please hold",
+        )
+        vc = _make_voice_config()
+        result = await _run(
+            _make_request(
+                caller_number="+15551111111",
+                dialed_number="+15552222222",
+                call_id="call-999",
+            ),
+            project,
+            _make_user(),
+            [vc],
+        )
+        assert result.caller_info["sender_identifier"] == "+15551111111"
+        assert result.caller_info["recipient_identifier"] == "+15552222222"
+        assert result.caller_info["call_id"] == "call-999"
+        assert result.caller_info["timezone"] == "US/Pacific"
+        assert result.caller_info["transfer_phone_number"] == "+15559999999"
+        assert result.caller_info["transfer_message"] == "Please hold"
+
+    @pytest.mark.asyncio
+    async def test_null_first_message_uses_default(self) -> None:
+        vc = _make_voice_config(first_message=None)
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.first_message == "Hi, how can I help you today?"
+
+    @pytest.mark.asyncio
+    async def test_null_voice_model_defaults_to_sonic3(self) -> None:
+        vc = _make_voice_config(voice_model=None)
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.voice_model == "sonic-3"
+
+    @pytest.mark.asyncio
+    async def test_null_background_sound(self) -> None:
+        vc = _make_voice_config(background_sound=None)
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.background_sound is None
+
+    @pytest.mark.asyncio
+    async def test_skips_triage_picks_language_config(self) -> None:
+        triage = _make_voice_config(language="triage", voice_id="triage-voice")
+        english = _make_voice_config(language="english", voice_id="english-voice")
+        result = await _run(
+            _make_request(), _make_project(), _make_user(), [triage, english]
+        )
+        assert result.voice_id == "english-voice"
+        assert result.language == "english"
+
+    @pytest.mark.asyncio
+    async def test_user_creation_path(self) -> None:
+        """When get_user_async returns None, create_user_async is called."""
+        session = AsyncMock()
+        project = _make_project()
+        user = _make_user()
+        vc = _make_voice_config()
+        p = _patch_deps(project, user, user_exists=False)
+        with (
+            p[0],
+            p[1] as mock_get_user,
+            p[2] as mock_create_user,
+            p[3],
+            p[4] as msg_cls,
+            p[5] as vc_cls,
+        ):
+            msg_cls.return_value = AsyncMock()
+            vc_repo = AsyncMock()
+            vc_repo.get_voice_configs_by_project.return_value = [vc]
+            vc_cls.return_value = vc_repo
+
+            result = await init_voice_call(_make_request(), session)
+
+        mock_get_user.assert_awaited_once()
+        mock_create_user.assert_awaited_once()
+        assert isinstance(result, VoiceInitResponse)
+
+
+# ---------------------------------------------------------------------------
+# STT selection tests
+# ---------------------------------------------------------------------------
+
+
+class TestInitVoiceCallSTTSelection:
+    """STT model and language: transcriber present vs _STT_CONFIGS fallback."""
+
+    @pytest.mark.asyncio
+    async def test_stt_from_transcriber(self) -> None:
+        vc = _make_voice_config(
+            transcriber={"model": "whisper-large", "language": "fr-FR"},
+        )
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.stt_model == "whisper-large"
+        assert result.stt_language == "fr-FR"
+
+    @pytest.mark.asyncio
+    async def test_stt_fallback_spanish(self) -> None:
+        vc = _make_voice_config(transcriber=None, language="spanish")
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.stt_model == "nova-2"
+        assert result.stt_language == "es"
+
+    @pytest.mark.asyncio
+    async def test_stt_fallback_chinese(self) -> None:
+        vc = _make_voice_config(transcriber=None, language="chinese")
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.stt_model == "nova-2"
+        assert result.stt_language == "zh-CN"
+
+    @pytest.mark.asyncio
+    async def test_stt_fallback_english(self) -> None:
+        vc = _make_voice_config(transcriber=None, language="english")
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.stt_model == "nova-3"
+        assert result.stt_language == "en-US"
+
+    @pytest.mark.asyncio
+    async def test_stt_unknown_language_defaults_to_english(self) -> None:
+        vc = _make_voice_config(transcriber=None, language="french")
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.stt_model == _STT_CONFIGS["english"]["model"]
+        assert result.stt_language == _STT_CONFIGS["english"]["language"]
+
+    @pytest.mark.asyncio
+    async def test_transcriber_partial_keys_use_defaults(self) -> None:
+        """Transcriber dict present but missing keys falls back to defaults."""
+        vc = _make_voice_config(transcriber={})
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.stt_model == "nova-3"
+        assert result.stt_language == "en-US"
+
+
+# ---------------------------------------------------------------------------
+# Speech rate mapping tests
+# ---------------------------------------------------------------------------
+
+
+class TestSpeechRateMapping:
+    """Verify all SpeechRate enum values map to correct floats."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "rate,expected",
+        [
+            (SpeechRate.slowest, 0.6),
+            (SpeechRate.slower, 0.8),
+            (SpeechRate.normal, 1.0),
+            (SpeechRate.faster, 1.25),
+            (SpeechRate.fastest, 1.5),
+        ],
+    )
+    async def test_speech_rate(self, rate: SpeechRate, expected: float) -> None:
+        vc = _make_voice_config(speech_rate=rate)
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.speech_rate == expected
