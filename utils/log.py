@@ -6,10 +6,18 @@ from agno.utils.log import LOGGER_NAME
 from ddtrace import tracer  # pyright: ignore[reportPrivateImportUsage]
 from pythonjsonlogger import jsonlogger
 
-# Exclude watchdog DEBUG and INFO logs
+# Exclude noisy library logs (these produce ~2.2M logs/4h at INFO level)
+# AWS SDK internals: event handlers, auth signing, endpoint resolution, retry logic
+logging.getLogger("botocore").setLevel(logging.WARNING)
+logging.getLogger("boto3").setLevel(logging.WARNING)
+# S3 transfer internals: IOWriteTask, multipart upload progress
+logging.getLogger("s3transfer").setLevel(logging.WARNING)
+# Datadog tracing internals: span finishing, trace completion, sampler init
+logging.getLogger("ddtrace").setLevel(logging.WARNING)
+# HTTP connection pool noise: acquire/release
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+# File watcher and HTTP client
 logging.getLogger("watchdog").setLevel(logging.WARNING)
-
-# Exclude httpx DEBUG and INFO logs
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Context variable for request correlation ID
