@@ -44,6 +44,7 @@ class SignalFeed(Base):
     last_capture_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    last_capture_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     capture_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
