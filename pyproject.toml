@@ -53,6 +53,7 @@ dependencies = [
   "postmarker>=1.0.0",
   "psycopg[binary]==3.2.1", # Modern PostgreSQL adapter with binary wheels
   "pytest-asyncio==0.24.0", # Async test support for pytest
+  "diff-cover==9.2.4", # Incremental test coverage enforcement on changed lines
   "pytest-cov==6.0.0", # Code coverage reporting for pytest
   "pytest-mock==3.14.0", # Mocking and patching utilities for pytest
   "pytest==8.3.2", # Python testing framework with fixtures and plugins
