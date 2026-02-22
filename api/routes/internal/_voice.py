@@ -182,27 +182,38 @@ async def init_voice_call(
         call_id=call_id,
     )
     await session.refresh(user, attribute_names=["id"])
-    await session.refresh(project, attribute_names=["id"])
+    await session.refresh(
+        project,
+        attribute_names=["id", "timezone", "transfer_phone_number", "transfer_message"],
+    )
+
+    logger.info("[init_voice_call] Step 5 done: conversation created", extra=_log_extra)
 
     logger.info("[init_voice_call] Step 5 done: conversation created", extra=_log_extra)
 
     # --- Step 6: Build caller_info ---
+    # Capture project attributes into locals so later DB queries can't expire them.
+    project_timezone = project.timezone
+    project_transfer_phone = project.transfer_phone_number
+    project_transfer_msg = project.transfer_message
+    project_id = project.id
+
     caller_info = {
         "sender_identifier": caller_number,
         "recipient_identifier": dialed_number,
         "call_id": call_id,
-        "timezone": project.timezone,
-        "transfer_phone_number": project.transfer_phone_number,
-        "transfer_message": project.transfer_message,
+        "timezone": project_timezone,
+        "transfer_phone_number": project_transfer_phone,
+        "transfer_message": project_transfer_msg,
     }
 
     # --- Step 7: Fetch voice configs ---
     voice_repo = VoiceConfigRepositoryAsync(session)
-    voice_configs = await voice_repo.get_voice_configs_by_project(project.id)
+    voice_configs = await voice_repo.get_voice_configs_by_project(project_id)
     if not voice_configs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No voice configuration found for project {project.id}",
+            detail=f"No voice configuration found for project {project_id}",
             headers={"Content-Type": "application/json"},
         )
 
@@ -224,7 +235,7 @@ async def init_voice_call(
     )
 
     # --- Step 8: Resolve greeting ---
-    caller_timezone = project.timezone or "America/Los_Angeles"
+    caller_timezone = project_timezone or "America/Los_Angeles"
     first_message = _resolve_greeting(
         vc.first_message or "Hi, how can I help you today?",
         caller_timezone.strip(),
