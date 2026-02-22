@@ -104,9 +104,18 @@ async def init_voice_call(
     subscription check, voice config retrieval) but returns structured JSON
     instead of a Vapi assistant payload.
     """
+    # TODO: Remove per-step debug logging after LiveKit voice init is stable in production
     caller_number = request.caller_number
     dialed_number = request.dialed_number
     call_id = request.call_id
+
+    _log_extra = {
+        "caller_number": caller_number,
+        "dialed_number": dialed_number,
+        "call_id": call_id,
+    }
+
+    logger.info("[init_voice_call] Started", extra=_log_extra)
 
     # --- Step 1: Build Message object for service layer ---
     message = Message(
@@ -127,19 +136,16 @@ async def init_voice_call(
     # --- Step 2: Resolve project by phone number ---
     project = await project_service.get_project_async(session, message)
     if not project:
-        logger.error(
-            "[init_voice_call] Project not found",
-            extra={
-                "caller_number": caller_number,
-                "dialed_number": dialed_number,
-                "call_id": call_id,
-            },
-        )
+        logger.error("[init_voice_call] Project not found", extra=_log_extra)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found for dialed number",
             headers={"Content-Type": "application/json"},
         )
+
+    logger.info(
+        "[init_voice_call] Step 2 done: project=%s", project.id, extra=_log_extra
+    )
 
     # --- Step 3: Get or create user ---
     user, _ = await user_service.get_user_async(session, project, message)
@@ -149,6 +155,8 @@ async def init_voice_call(
         await session.refresh(project, attribute_names=["id"])
 
     await session.refresh(project, attribute_names=["id", "account"])
+
+    logger.info("[init_voice_call] Step 3 done: user=%s", user.id, extra=_log_extra)
 
     # --- Step 4: Check subscription enforcement ---
     if await subscription_service.should_block_calls_async(session, project.account):
@@ -175,6 +183,8 @@ async def init_voice_call(
     )
     await session.refresh(user, attribute_names=["id"])
     await session.refresh(project, attribute_names=["id"])
+
+    logger.info("[init_voice_call] Step 5 done: conversation created", extra=_log_extra)
 
     # --- Step 6: Build caller_info ---
     caller_info = {
@@ -207,6 +217,12 @@ async def init_voice_call(
 
     vc = non_triage[0]
 
+    logger.info(
+        "[init_voice_call] Step 7 done: voice_config language=%s",
+        vc.language,
+        extra=_log_extra,
+    )
+
     # --- Step 8: Resolve greeting ---
     caller_timezone = project.timezone or "America/Los_Angeles"
     first_message = _resolve_greeting(
@@ -227,6 +243,8 @@ async def init_voice_call(
         stt_cfg = _STT_CONFIGS.get(lang_lower, _STT_CONFIGS["english"])
         stt_model = stt_cfg["model"]
         stt_language = stt_cfg["language"]
+
+    logger.info("[init_voice_call] Completed successfully", extra=_log_extra)
 
     return VoiceInitResponse(
         caller_info=caller_info,
