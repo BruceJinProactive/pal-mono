@@ -54,6 +54,9 @@ class Project(Base):
     transfer_phone_number: Mapped[str | None] = mapped_column(String, nullable=True)
     reservation_link: Mapped[str | None] = mapped_column(String, nullable=True)
     ordering_link: Mapped[str | None] = mapped_column(String, nullable=True)
+    call_forwarding_setup_completed: Mapped[bool] = mapped_column(
+        nullable=False, server_default=text("false")
+    )
 
     # Stripe subscription info
     stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True)
