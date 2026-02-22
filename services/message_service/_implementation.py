@@ -365,6 +365,7 @@ async def get_chat_response_stream(
 
     async with trace_async_block("Message Service Stream Processing"):
         message_repo = db.MessageRepositoryAsync(session)
+        stream_id = f"chatcmpl-{uuid.uuid4().hex}"
 
         try:
             # ==== Step 1: Get project, user, and save request message ====
@@ -605,7 +606,7 @@ async def get_chat_response_stream(
                         ],
                     )
                     filler_chunk = ChatCompletionChunk(
-                        id=f"chatcmpl-{uuid.uuid4().hex}",
+                        id=stream_id,
                         object="chat.completion.chunk",
                         created=int(
                             datetime.datetime.now(datetime.timezone.utc).timestamp()
@@ -652,7 +653,7 @@ async def get_chat_response_stream(
                                 continue
 
                             completion_chunk = ChatCompletionChunk(
-                                id=f"chatcmpl-{uuid.uuid4().hex}",
+                                id=stream_id,
                                 object="chat.completion.chunk",
                                 created=int(
                                     datetime.datetime.now(
@@ -662,7 +663,7 @@ async def get_chat_response_stream(
                                 model=message.recipient_identifier,
                                 choices=[
                                     ChunkChoice(
-                                        index=index,
+                                        index=0,
                                         delta=ChoiceDelta(
                                             role="assistant", content=chunk.content
                                         ),
@@ -813,9 +814,8 @@ async def get_chat_response_stream(
                                     )
 
                                 # Create and yield chunk
-                                chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
                                 completion_chunk = ChatCompletionChunk(
-                                    id=chunk_id,
+                                    id=stream_id,
                                     object="chat.completion.chunk",
                                     created=int(
                                         datetime.datetime.now(
@@ -825,7 +825,7 @@ async def get_chat_response_stream(
                                     model=message.recipient_identifier,
                                     choices=[
                                         ChunkChoice(
-                                            index=index,
+                                            index=0,
                                             delta=ChoiceDelta(
                                                 role="assistant", content=content
                                             ),
@@ -895,7 +895,7 @@ async def get_chat_response_stream(
             # Log error and return a single error chunk
             logger.exception(f"Error in get_chat_response_stream: {e}")
             error_message = ChatCompletionChunk(
-                id=f"chatcmpl-{uuid.uuid4().hex}",
+                id=stream_id,
                 object="chat.completion.chunk",
                 created=int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
                 model=message.recipient_identifier if message else "unknown",
