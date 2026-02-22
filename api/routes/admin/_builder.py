@@ -173,6 +173,7 @@ def build_project(project: db.Project) -> Project:
         reservation_link=project.reservation_link,
         ordering_link=project.ordering_link,
         google_place_id=project.google_place_id,
+        call_forwarding_setup_completed=project.call_forwarding_setup_completed,
         created_at=int(project.created_at.timestamp()),
         updated_at=int(project.updated_at.timestamp() if project.updated_at else 0),
     )

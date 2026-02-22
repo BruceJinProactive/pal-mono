@@ -27,6 +27,7 @@ class Project(BaseModel):
     reservation_link: str | None = None
     ordering_link: str | None = None
     google_place_id: str | None = None
+    call_forwarding_setup_completed: bool = False
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
 
@@ -62,6 +63,7 @@ class UpdateProjectRequest(BaseModel):
     reservation_link: str | None = None
     ordering_link: str | None = None
     google_place_id: str | None = None
+    call_forwarding_setup_completed: bool | None = None
     expected_version: int | None = None
 
     def to_project_params(self):
@@ -80,6 +82,7 @@ class UpdateProjectRequest(BaseModel):
             reservation_link=self.reservation_link,
             ordering_link=self.ordering_link,
             google_place_id=self.google_place_id,
+            call_forwarding_setup_completed=self.call_forwarding_setup_completed,
         )
 
 
@@ -189,6 +192,7 @@ class ProjectUpdateData(BaseModel):
     reservation_link: str | None = None
     ordering_link: str | None = None
     google_place_id: str | None = None
+    call_forwarding_setup_completed: bool | None = None
     expected_version: int | None = None
 
     def to_project_params(self):
@@ -207,6 +211,7 @@ class ProjectUpdateData(BaseModel):
             reservation_link=self.reservation_link,
             ordering_link=self.ordering_link,
             google_place_id=self.google_place_id,
+            call_forwarding_setup_completed=self.call_forwarding_setup_completed,
         )
 
 

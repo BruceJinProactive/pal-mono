@@ -20,3 +20,4 @@ class ProjectParams:
     reservation_link: str | None = None
     ordering_link: str | None = None
     google_place_id: str | None = None
+    call_forwarding_setup_completed: bool | None = None

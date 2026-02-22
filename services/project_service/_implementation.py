@@ -55,6 +55,9 @@ def _create_project_data_snapshot(project):
         "transfer_phone_number": getattr(project, "transfer_phone_number", None),
         "reservation_link": getattr(project, "reservation_link", None),
         "ordering_link": getattr(project, "ordering_link", None),
+        "call_forwarding_setup_completed": getattr(
+            project, "call_forwarding_setup_completed", False
+        ),
         "created_at": project.created_at,
         "updated_at": project.updated_at,
         "account_id": project.account_id,
