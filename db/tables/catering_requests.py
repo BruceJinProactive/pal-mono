@@ -20,10 +20,17 @@ class FulfillmentType(str, Enum):
 
 
 class RequestStatus(str, Enum):
-    PENDING = "PENDING"
+    INQUIRY = "INQUIRY"
+    QUOTE_SENT = "QUOTE_SENT"
     CONFIRMED = "CONFIRMED"
-    COMPLETED = "COMPLETED"
+    IN_PREP = "IN_PREP"
+    READY = "READY"
+    FULFILLED = "FULFILLED"
     CANCELLED = "CANCELLED"
+    ISSUE = "ISSUE"
+    # Backward-compatible aliases for in-flight code paths.
+    PENDING = INQUIRY
+    COMPLETED = FULFILLED
 
 
 class CateringRequest(Base):
@@ -47,7 +54,7 @@ class CateringRequest(Base):
     contact_phone_number: Mapped[str] = mapped_column(String, nullable=False)
     party_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[RequestStatus] = mapped_column(
-        SQLEnum(RequestStatus), nullable=False, server_default="PENDING"
+        SQLEnum(RequestStatus), nullable=False, server_default="INQUIRY"
     )
 
     # Idempotency key for preventing duplicate requests
