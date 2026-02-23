@@ -244,6 +244,8 @@ async def construct_agent_spec(
     sender_identifier: str | None = None,
     receiver_identifier: str | None = None,
     raw_config: dict | None = None,
+    room_name: str | None = None,
+    participant_identity: str | None = None,
 ) -> Spec:
     """Build a pal_agents.Spec from database configuration.
 
@@ -282,6 +284,8 @@ async def construct_agent_spec(
         channel=channel,
         sender_identifier=sender_identifier,
         receiver_identifier=receiver_identifier,
+        room_name=room_name,
+        participant_identity=participant_identity,
     )
 
     # Use provided raw_config or default to empty dict
@@ -316,6 +320,8 @@ async def construct_agent_config(
     channel: Channel,
     sender_identifier: str | None = None,
     receiver_identifier: str | None = None,
+    room_name: str | None = None,
+    participant_identity: str | None = None,
 ) -> AgentConfig:
     """
     Builds an Agent Config based on the Raw Config.
@@ -381,6 +387,8 @@ async def construct_agent_config(
         receiver_identifier=receiver_identifier,
         project_integrations=project_integrations,
         faqs=faqs,
+        room_name=room_name,
+        participant_identity=participant_identity,
     )
 
     # Convert blueprint to agent config

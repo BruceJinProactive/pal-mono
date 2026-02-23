@@ -1,8 +1,10 @@
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Tuple, TypedDict
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from livekit import api as livekit_api
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.exc import TimeoutError as DBTimeoutError
@@ -49,6 +51,8 @@ class RawConfig:
         receiver_identifier: str | None = None,
         project_integrations: Sequence[db.ProjectIntegration] | None = None,
         faqs: Sequence[db.FAQ] | None = None,
+        room_name: str | None = None,
+        participant_identity: str | None = None,
     ):
         self.agent = agent
         self.project = project
@@ -61,6 +65,8 @@ class RawConfig:
         self.receiver_identifier = receiver_identifier
         self.project_integrations = list(project_integrations or [])
         self.faqs = list(faqs or [])
+        self.room_name = room_name
+        self.participant_identity = participant_identity
 
     async def build(self, session: Optional[AsyncSession] = None) -> AgentConfig:
         try:
@@ -402,6 +408,19 @@ class RawConfig:
                     ),
                 )
 
+        # Auto-swap vapi_tool → livekit_transfer_tool for LiveKit calls
+        if (
+            self.room_name
+            and self.participant_identity
+            and "vapi_tool" in merged_tools
+            and "livekit_transfer_tool" not in merged_tools
+        ):
+            vapi_entry = merged_tools.pop("vapi_tool")
+            tool_order[:] = [
+                "livekit_transfer_tool" if t == "vapi_tool" else t for t in tool_order
+            ]
+            merged_tools["livekit_transfer_tool"] = vapi_entry
+
         final_identifiers: List[ToolIdentifier] = []
 
         for tool_name in tool_order:
@@ -420,6 +439,17 @@ class RawConfig:
                         **tool_args.get("transfer_destinations", {}),
                         **explicit_destinations,
                     }
+                # Inject LiveKit runtime context for SIP REFER
+                if self.room_name and self.participant_identity:
+                    tool_args["room_name"] = self.room_name
+                    tool_args["participant_identity"] = self.participant_identity
+                    lk_url = os.environ.get("LIVEKIT_URL", "")
+                    lk_key = os.environ.get("LIVEKIT_API_KEY", "")
+                    lk_secret = os.environ.get("LIVEKIT_API_SECRET", "")
+                    if lk_url and lk_key and lk_secret:
+                        tool_args["lk_api"] = livekit_api.LiveKitAPI(
+                            url=lk_url, api_key=lk_key, api_secret=lk_secret
+                        )
 
             final_identifiers.append(
                 ToolIdentifier(

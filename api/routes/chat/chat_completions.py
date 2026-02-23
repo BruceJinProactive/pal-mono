@@ -73,8 +73,10 @@ def _extract_content_from_request(request: ChatCompletionRequest) -> str:
     return content
 
 
-def _parse_caller_info(model: str) -> tuple[str, str, str | None]:
-    """Parse model string to extract sender, recipient, and call_id."""
+def _parse_caller_info(
+    model: str,
+) -> tuple[str, str, str | None, str | None, str | None]:
+    """Parse model string to extract sender, recipient, call_id, room_name, and participant_identity."""
     try:
         # Parse model as JSON, it could be a string representation of JSON
         caller_info = json.loads(model) if isinstance(model, str) else model
@@ -98,7 +100,17 @@ def _parse_caller_info(model: str) -> tuple[str, str, str | None]:
         # Extract call_id for voice calls
         call_id = caller_info.get("call_id")
 
-        return sender_identifier, recipient_identifier, call_id
+        # Extract LiveKit context for LiveKit voice calls
+        room_name = caller_info.get("room_name")
+        participant_identity = caller_info.get("participant_identity")
+
+        return (
+            sender_identifier,
+            recipient_identifier,
+            call_id,
+            room_name,
+            participant_identity,
+        )
     except (json.JSONDecodeError, TypeError, ValueError) as e:
         # Handle case where model isn't valid JSON
         raise Exception(f"Error parsing model as JSON: {e}.")
@@ -373,7 +385,13 @@ async def chat_completions_agno(
         content = _extract_content_from_request(request)
 
         # Parse caller info from model
-        sender_identifier, recipient_identifier, call_id = _parse_caller_info(model)
+        (
+            sender_identifier,
+            recipient_identifier,
+            call_id,
+            room_name,
+            participant_identity,
+        ) = _parse_caller_info(model)
 
         # Create a Message object
         message = Message(
@@ -399,6 +417,8 @@ async def chat_completions_agno(
                     message=message,
                     request_context=request_context,
                     call_id=call_id,
+                    room_name=room_name,
+                    participant_identity=participant_identity,
                 )
 
                 collected_content = []
