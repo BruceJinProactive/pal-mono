@@ -178,6 +178,7 @@ class MenuUploaderResponse(BaseModel):
     status: str = Field(..., description="Processing status (e.g., 'accepted')")
     message: str = Field(..., description="Status message for the user")
     project_id: str = Field(..., description="UUID of the project being updated")
+    job_id: str = Field(..., description="UUID of the background processing job")
 
 
 class SigninGoogleUserRequest(BaseModel):
@@ -195,3 +196,19 @@ class SigninGoogleUserResponse(BaseModel):
     next_step: str = Field(..., description="Next step for the user after sign-in")
     tokens: Optional[dict] = None
     session: Optional[dict] = None
+
+
+class MenuProcessingStatusResponse(BaseModel):
+    """Response model for menu processing job status"""
+
+    job_id: str = Field(..., description="UUID of the background processing job")
+    project_id: str = Field(..., description="UUID of the project being updated")
+    status: str = Field(
+        ..., description="Job status: 'pending', 'processing', 'completed', 'failed'"
+    )
+    completed: bool = Field(..., description="Whether the job is completed")
+    progress_percent: int = Field(..., description="Progress percentage (0-100)")
+    data: dict = Field(default_factory=dict, description="Job result data")
+    error: Optional[str] = Field(None, description="Error message if job failed")
+    created_at: str = Field(..., description="Job creation timestamp (ISO format)")
+    updated_at: str = Field(..., description="Job last update timestamp (ISO format)")

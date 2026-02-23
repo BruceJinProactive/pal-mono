@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from typing import Any
 
 from fastapi import HTTPException, Response, status
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from api.schemas.admin.onboarding import (
     BuildMenuResponse,
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
+    MenuProcessingStatusResponse,
     MenuUploaderResponse,
     OnboardingRequest,
     OnboardingResponse,
@@ -33,6 +35,10 @@ from services import (
 from services.admin_service import ProjectSetup
 from services.admin_service.schema import CognitoUser
 from services.agent_service import AgentParams
+from services.menu_service.menu_processing_service import (
+    JobStatus,
+    MenuProcessingService,
+)
 from services.number_service import NumberService
 from services.number_service._utils import NumberChannel
 from services.project_service import ProjectParams
@@ -197,25 +203,72 @@ async def build_menu_api(
 
 
 async def process_menu_upload_background(
-    upload_files,
+    materialized_files: list[dict[str, Any]],
     context: UserContext,
     project_id: uuid.UUID,
+    job_id: uuid.UUID,
 ) -> None:
     """
     Background task to process menu upload and update project.
     Creates its own database session to avoid using the closed request-scoped session.
+    Tracks progress through MenuProcessingService.
+
+    Args:
+        materialized_files: List of dicts with keys: content_bytes, filename, content_type
+        context: User context
+        project_id: Project UUID
+        job_id: Job UUID for tracking
     """
+    from io import BytesIO
+
+    from fastapi import UploadFile
+
     # Create a new session for this background task
     session = SyncSessionLocal()
     try:
         logger.info(
-            f"[Background] Starting menu upload processing for project {project_id}"
+            f"[Background] Starting menu upload processing for project {project_id}, job {job_id}"
         )
 
-        # Process the menu files
-        result = await admin_service.build_menu_from_upload(upload_files)
+        # Update job status to processing (10% progress)
+        MenuProcessingService.update_job(
+            job_id=job_id,
+            status=JobStatus.PROCESSING,
+            progress_percent=10,
+        )
 
-        # Update the project with the menu
+        # Reconstruct UploadFile objects from materialized data
+        upload_files = []
+        for mat_file in materialized_files:
+            file_obj = BytesIO(mat_file["content_bytes"])
+            # Create UploadFile and manually set content_type via headers
+            # Note: We're using type ignore because UploadFile accepts Headers but works with dict
+            upload_file = UploadFile(
+                filename=mat_file["filename"],
+                file=file_obj,
+                headers={"content-type": mat_file["content_type"]},  # type: ignore
+            )
+            upload_files.append(upload_file)
+
+        # Handle single vs multiple files
+        files_to_process = upload_files[0] if len(upload_files) == 1 else upload_files
+
+        # Process the menu files (this is the heavy lifting - 10-70%)
+        logger.info(
+            f"[Background] Extracting menu from uploaded files for job {job_id}"
+        )
+        result = await admin_service.build_menu_from_upload(files_to_process)
+
+        # Update progress after extraction (70%)
+        MenuProcessingService.update_job(
+            job_id=job_id,
+            progress_percent=70,
+        )
+
+        # Update the project with the menu (70-100%)
+        logger.info(
+            f"[Background] Saving menu to project {project_id} for job {job_id}"
+        )
         project_params = ProjectParams()
         project_params.product_info = result
         logger.debug("Project result: %s", result)
@@ -224,25 +277,55 @@ async def process_menu_upload_background(
         # Commit the transaction
         session.commit()
 
+        # Mark job as completed
+        MenuProcessingService.update_job(
+            job_id=job_id,
+            status=JobStatus.COMPLETED,
+            progress_percent=100,
+            completed=True,
+            data={"menu": result},
+        )
+
         logger.info(
-            f"[Background] Successfully processed and updated menu for project {project_id}"
+            f"[Background] Successfully processed and updated menu for project {project_id}, job {job_id}"
         )
 
     except ValueError as err:
         session.rollback()
+        error_message = f"Failed to extract menu: {str(err)}"
         logger.error(
-            f"[Background] Client error processing menu for project {project_id}: {err}"
+            f"[Background] Client error processing menu for project {project_id}, job {job_id}: {err}"
+        )
+        MenuProcessingService.update_job(
+            job_id=job_id,
+            status=JobStatus.FAILED,
+            completed=True,
+            error=error_message,
         )
     except RuntimeError as err:
         session.rollback()
+        error_message = f"Menu processing service error: {str(err)}"
         logger.error(
-            f"[Background] Service error processing menu for project {project_id}: {err}"
+            f"[Background] Service error processing menu for project {project_id}, job {job_id}: {err}"
+        )
+        MenuProcessingService.update_job(
+            job_id=job_id,
+            status=JobStatus.FAILED,
+            completed=True,
+            error=error_message,
         )
     except Exception as err:
         session.rollback()
+        error_message = "An unexpected error occurred during menu processing"
         logger.exception(
-            f"[Background] Unexpected error processing menu for project {project_id}",
+            f"[Background] Unexpected error processing menu for project {project_id}, job {job_id}",
             extra={"error": str(err)},
+        )
+        MenuProcessingService.update_job(
+            job_id=job_id,
+            status=JobStatus.FAILED,
+            completed=True,
+            error=error_message,
         )
     finally:
         # Always close the session to avoid connection leaks
@@ -257,8 +340,8 @@ async def upload_menu_api(
     """
     Start async menu upload processing and return immediately.
 
-    Returns a response indicating that processing has started.
-    The menu will be updated in the background.
+    Returns a response indicating that processing has started, including a job_id
+    for tracking progress via the status endpoint.
     """
     try:
         # Validate files before starting background task
@@ -283,19 +366,38 @@ async def upload_menu_api(
                     headers={"Content-Type": "application/json"},
                 )
 
+        # Materialize files before passing to background task
+        # (UploadFile objects are request-scoped and close after response)
+        materialized_files = []
+        for file in files_list:
+            content_bytes = await file.read()
+            materialized_files.append(
+                {
+                    "content_bytes": content_bytes,
+                    "filename": file.filename,
+                    "content_type": file.content_type,
+                }
+            )
+
+        # Create job to track processing
+        job = MenuProcessingService.create_job(project_id=project_id)
+
         logger.info(
-            f"Starting background menu upload for project {project_id} with {len(files_list)} file(s)"
+            f"Starting background menu upload for project {project_id} with {len(files_list)} file(s), job {job.job_id}"
         )
 
-        # Start background task
+        # Start background task with materialized files
         asyncio.create_task(
-            process_menu_upload_background(upload_files, context, project_id)
+            process_menu_upload_background(
+                materialized_files, context, project_id, job.job_id
+            )
         )
 
         return MenuUploaderResponse(
             status="accepted",
-            message="The menu starts to update. Processing in background and will be available shortly.",
+            message="The menu starts to update. Processing in background...",
             project_id=str(project_id),
+            job_id=str(job.job_id),
         )
 
     except HTTPException:
@@ -825,6 +927,68 @@ def signin_google_user(request: SigninGoogleUserRequest) -> SigninGoogleUserResp
         )
 
 
+def _verify_project_access(
+    context: UserContext,
+    session: Session,
+    project,
+    project_id: uuid.UUID,
+) -> None:
+    """
+    Verify user has access to a project.
+
+    Args:
+        context: User context
+        session: Database session
+        project: Project object
+        project_id: Project UUID
+
+    Raises:
+        HTTPException: 403 if access denied
+    """
+    from db.repositories.resource_role_assignment_repository import (
+        ResourceRoleAssignmentRepository,
+        ResourceType,
+    )
+
+    # Admin users have access to all projects
+    if context.role and context.role.value == "Admin":
+        return
+
+    try:
+        user_id = uuid.UUID(context.username)
+    except ValueError:
+        # Invalid username format and not admin
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+            headers={"Content-Type": "application/json"},
+        )
+
+    role_repo = ResourceRoleAssignmentRepository(session, auto_commit=False)
+
+    # Check account-level access
+    account_roles = role_repo.get_roles_for_resource(
+        user_id=user_id,
+        resource_type=ResourceType.ACCOUNT,
+        resource_id=project.account_id,
+    )
+
+    # Check project-level access
+    project_roles = role_repo.get_roles_for_resource(
+        user_id=user_id,
+        resource_type=ResourceType.PROJECT,
+        resource_id=project_id,
+    )
+
+    # Deny if no access
+    if not (account_roles or project_roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this project",
+            headers={"Content-Type": "application/json"},
+        )
+
+
 def is_google_user(request: str) -> bool:
     """
     Test if the user is a Google user.
@@ -834,3 +998,45 @@ def is_google_user(request: str) -> bool:
         bool: True if the user is a Google user, False otherwise
     """
     return admin_service.is_google_user(request)
+
+
+async def get_menu_processing_status(
+    job_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> MenuProcessingStatusResponse:
+    """
+    Get the status of a menu processing job.
+
+    Args:
+        job_id: UUID of the job to check
+        context: User context for authorization
+        session: Database session for project access check
+
+    Returns:
+        Job status with progress information
+
+    Raises:
+        HTTPException: 404 if job not found or expired, 403 if unauthorized
+    """
+    job = MenuProcessingService.get_job(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Verify user has access to the project
+    project = project_service.get_project(session, job.project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Verify user has access to the project
+    _verify_project_access(context, session, project, job.project_id)
+
+    return MenuProcessingStatusResponse(**job.to_dict())

@@ -112,6 +112,7 @@ from api.schemas.admin.onboarding import (
     BuildMenuResponse,
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
+    MenuProcessingStatusResponse,
     MenuUploaderResponse,
     OnboardingRequest,
     OnboardingResponse,
@@ -2767,6 +2768,36 @@ async def upload_menu_api(
     upload_files = files[0] if len(files) == 1 else files
 
     return await _onboarding.upload_menu_api(upload_files, context, project_id)
+
+
+@admin_router.get("/menu-processing/{job_id}/status", status_code=status.HTTP_200_OK)
+async def get_menu_processing_status_api(
+    job_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> MenuProcessingStatusResponse:
+    """
+    Get the status of a menu processing job.
+
+    Poll this endpoint to track the progress of menu upload processing.
+    The job_id is returned by the upload_menu endpoint.
+
+    Returns:
+        - job_id: UUID of the job
+        - project_id: UUID of the project
+        - status: "pending", "processing", "completed", or "failed"
+        - completed: Boolean indicating if processing is done
+        - progress_percent: Integer 0-100 indicating progress
+        - data: Result data (only present when completed)
+        - error: Error message (only present when failed)
+        - created_at: Timestamp when job was created
+        - updated_at: Timestamp when job was last updated
+
+    Raises:
+        404: If job not found or expired (jobs expire after 10 minutes)
+        403: If user does not have access to the project
+    """
+    return await _onboarding.get_menu_processing_status(job_id, context, session)
 
 
 @admin_router.post("/onboarding/scrape_brand_from_url", status_code=status.HTTP_200_OK)
