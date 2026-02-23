@@ -410,6 +410,16 @@ class RawConfig:
 
             if tool_name == "vapi_tool":
                 tool_args = await self._populate_vapi_tool_args(tool_args, session)
+            elif tool_name == "livekit_transfer_tool":
+                explicit_destinations = tool_args.get("transfer_destinations")
+                tool_args = await self._populate_vapi_tool_args(tool_args, session)
+                if explicit_destinations:
+                    # Merge: explicit destinations (e.g. SIP URIs from raw_config)
+                    # override contact-derived phone numbers for the same role.
+                    tool_args["transfer_destinations"] = {
+                        **tool_args.get("transfer_destinations", {}),
+                        **explicit_destinations,
+                    }
 
             final_identifiers.append(
                 ToolIdentifier(
@@ -420,7 +430,7 @@ class RawConfig:
             )
 
         # Filter out voice-only tools for non-voice channels
-        VOICE_ONLY_TOOLS = {"vapi_tool"}
+        VOICE_ONLY_TOOLS = {"vapi_tool", "livekit_transfer_tool"}
         if self.channel != Channel.VOICE:
             final_identifiers = [
                 t for t in final_identifiers if t.tool_name not in VOICE_ONLY_TOOLS
