@@ -490,6 +490,44 @@ class TestConstructorDefaults:
         tool = _make_tool()
         assert tool.show_agent_caller_id is False
 
+    def test_destination_number_creates_general_destination(self) -> None:
+        """destination_number shorthand populates transfer_destinations."""
+        meta = _make_metadata()
+        tool = LiveKitTransferTool(
+            tool_metadata=meta,
+            destination_number="+16468761234",
+            lk_api=_make_lk_api(),
+            room_name="room-1",
+            participant_identity="sip-caller",
+        )
+        assert tool.transfer_destinations == {"general": "+16468761234"}
+
+    def test_transfer_destinations_takes_precedence_over_destination_number(
+        self,
+    ) -> None:
+        """Explicit transfer_destinations wins over destination_number."""
+        meta = _make_metadata()
+        tool = LiveKitTransferTool(
+            tool_metadata=meta,
+            transfer_destinations={"complaint": "+15550001111"},
+            destination_number="+16468761234",
+            lk_api=_make_lk_api(),
+            room_name="room-1",
+            participant_identity="sip-caller",
+        )
+        assert tool.transfer_destinations == {"complaint": "+15550001111"}
+
+    def test_neither_destinations_nor_number_gives_empty_dict(self) -> None:
+        """No destinations and no destination_number → empty dict."""
+        meta = _make_metadata()
+        tool = LiveKitTransferTool(
+            tool_metadata=meta,
+            lk_api=_make_lk_api(),
+            room_name="room-1",
+            participant_identity="sip-caller",
+        )
+        assert tool.transfer_destinations == {}
+
     def test_ignores_unknown_kwargs(self) -> None:
         """Unknown kwargs from raw_config are accepted and ignored."""
         meta = _make_metadata()

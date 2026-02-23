@@ -19,7 +19,8 @@ class LiveKitTransferTool(Toolkit):
     def __init__(
         self,
         tool_metadata: ToolMetadata,
-        transfer_destinations: dict[str, str],
+        transfer_destinations: dict[str, str] | None = None,
+        destination_number: str | None = None,
         transfer_message: str | None = None,
         show_agent_caller_id: bool = False,
         lk_api: livekit_api.LiveKitAPI | None = None,
@@ -29,7 +30,13 @@ class LiveKitTransferTool(Toolkit):
     ):
         super().__init__(name="livekit_transfer_tool")
         self.tool_metadata = tool_metadata
-        self.transfer_destinations = transfer_destinations
+        # Support flat destination_number as a shorthand for transfer_destinations
+        if transfer_destinations is not None:
+            self.transfer_destinations = transfer_destinations
+        elif destination_number:
+            self.transfer_destinations = {"general": destination_number}
+        else:
+            self.transfer_destinations = {}
         self.transfer_message = (
             transfer_message
             or "I'll transfer you to our team. Just hang tight for a moment."

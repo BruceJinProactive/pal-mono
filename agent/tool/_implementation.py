@@ -32,7 +32,17 @@ def get_tools(
     tools = []
     for identifier in tool_config.identifiers:
         try:
-            tools.append(tool_registry.get_tool(identifier, tool_config.metadata))
+            tool = tool_registry.get_tool(identifier, tool_config.metadata)
+            if tool is None:
+                logger.warning(
+                    f"[get_tools] Tool '{identifier.tool_name}' not found in registry, skipping"
+                )
+            else:
+                arg_keys = list((identifier.args or {}).keys())
+                logger.debug(
+                    f"[get_tools] Loaded tool '{identifier.tool_name}' with args: {arg_keys}"
+                )
+                tools.append(tool)
         except Exception:
             logger.exception(f"Tool {identifier} failed to load.")
 
