@@ -36,5 +36,6 @@ from .subscription_repository import (
     ProjectSubscriptionRepository,
     SubscriptionPlanRepository,
 )
+from .tos_acceptance_repository import TosAcceptanceRepository
 from .user_invitation_repository import UserInvitationRepository
 from .user_repository import UserRepository, UserRepositoryAsync

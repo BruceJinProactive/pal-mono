@@ -22,6 +22,7 @@ from api.routes.admin._utils import SortOrder
 from api.routes.endpoints import endpoints
 from api.routes.integrations.square import _implementation
 from api.schemas.admin.account import (
+    AcceptTermsRequest,
     AcceptTermsResponse,
     Account,
     AccountStatisticsResponse,
@@ -632,6 +633,7 @@ async def complete_terms_signing_endpoint(
 @admin_router.put("/accounts/{account_name}/accept_terms")
 async def accept_account_terms(
     account_name: str,
+    request: AcceptTermsRequest,
     context: UserContext = Depends(
         require_account_permission("account.write", authenticate_user)
     ),
@@ -640,7 +642,7 @@ async def accept_account_terms(
     """
     Accept terms and conditions for the specified account.
     """
-    return await _account.accept_account_terms(account_name, context, session)
+    return await _account.accept_account_terms(account_name, request, context, session)
 
 
 """

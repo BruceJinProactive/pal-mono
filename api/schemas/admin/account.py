@@ -154,6 +154,14 @@ class TermsStatusResponse(BaseModel):
     display_name: str | None = None
 
 
+class AcceptTermsRequest(BaseModel):
+    """Accept Terms Request"""
+
+    tos_version: str = Field(
+        ..., min_length=1, max_length=50, description="Version of the Terms of Service"
+    )
+
+
 class AcceptTermsResponse(BaseModel):
     """Accept Terms Response"""
 

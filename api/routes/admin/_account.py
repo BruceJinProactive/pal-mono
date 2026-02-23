@@ -1,11 +1,14 @@
 import math
 import os
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, Response, status
+from sqlalchemy import exc as sqlalchemy_exc
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.account import (
+    AcceptTermsRequest,
     AcceptTermsResponse,
     Account,
     AccountStatisticsResponse,
@@ -19,7 +22,7 @@ from api.schemas.admin.account import (
     UpdateNotificationPreferencesRequest,
 )
 from api.schemas.admin.agent import AgentSummary
-from db import AccountRepository, ConversationStatus
+from db import AccountRepository, ConversationStatus, TosAcceptanceRepository
 from db.tables.accounts import AccountStatus
 from db.tables.types import SubscriptionStatus
 from services import (
@@ -31,6 +34,7 @@ from services import (
 )
 from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUserSession
+from services.auth_service.authorization import get_user_role_on_account
 from utils.log import logger
 
 from ._builder import build_account, build_account_summary, build_agent_summary
@@ -374,9 +378,50 @@ async def complete_terms_signing(
 
 async def accept_account_terms(
     account_name: str,
+    request: AcceptTermsRequest,
     context: UserContext,
     session: Session,
 ) -> AcceptTermsResponse:
+    # Server-side validation (frontend validation is UX only)
+    normalized_email = (context.email or "").strip().lower()
+    if normalized_email.endswith("@proactiveailab.com"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Users with @proactiveailab.com emails are not allowed to accept Terms of Service.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        user_id = uuid.UUID(context.username)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication context (missing user id).",
+            headers={"Content-Type": "application/json"},
+        ) from e
+
+    # Only allow account Owner role to accept (not Manager/Viewer)
+    role = get_user_role_on_account(
+        user_id=user_id, account_id=account.id, session=session
+    )
+    if role != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only account Owners can accept Terms of Service.",
+            headers={"Content-Type": "application/json"},
+        )
+
+    accepted_at = datetime.now(UTC)
+
+    # Update account flag (existing behavior)
     account_params = AccountParams(terms_accepted=True)
     try:
         account_service.update_account(session, context, account_name, account_params)
@@ -386,6 +431,73 @@ async def accept_account_terms(
             detail=str(err),
             headers={"Content-Type": "application/json"},
         )
+
+    # Create TOS acceptance record (idempotent)
+    tos_repo = TosAcceptanceRepository(session)
+
+    # Check if this TOS version has already been accepted
+    existing_acceptance = tos_repo.get_tos_acceptance_by_version(
+        account_id=account.id, tos_version=request.tos_version
+    )
+
+    if not existing_acceptance:
+        # Only create if not already accepted
+        try:
+            tos_repo.create_tos_acceptance(
+                account_id=account.id,
+                display_name=account.display_name or account.name,
+                tos_version=request.tos_version,
+                user_id=user_id,
+                user_email=normalized_email,
+                accepted_at=accepted_at,
+            )
+        except sqlalchemy_exc.IntegrityError as err:
+            # Race condition: another request already created this record
+            # Roll back and re-check to confirm the record exists
+            session.rollback()
+            existing_acceptance = tos_repo.get_tos_acceptance_by_version(
+                account_id=account.id, tos_version=request.tos_version
+            )
+            if not existing_acceptance:
+                # Still doesn't exist - this is an unexpected integrity error
+                logger.error(
+                    f"IntegrityError for TOS acceptance but record not found for account {account_name}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to record TOS acceptance. Please try again.",
+                    headers={"Content-Type": "application/json"},
+                ) from err
+            # Record exists, treat as idempotent success
+            # Re-apply account update since rollback undid it
+            try:
+                account_service.update_account(
+                    session, context, account_name, account_params
+                )
+            except ValueError as update_err:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(update_err),
+                    headers={"Content-Type": "application/json"},
+                ) from update_err
+            logger.info(
+                f"TOS acceptance already exists for account {account_name}, treating as idempotent success"
+            )
+        except Exception as e:
+            # Roll back the entire transaction including the account update
+            session.rollback()
+            logger.error(
+                f"Failed to record TOS acceptance for account {account_name}: {e}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to record TOS acceptance. Please try again.",
+                headers={"Content-Type": "application/json"},
+            ) from e
+
+    # Explicitly commit the transaction (both account update and TOS acceptance)
+    session.commit()
+
     return AcceptTermsResponse(accepted=True)
 
 
