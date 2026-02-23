@@ -250,14 +250,50 @@ async def process_menu_upload_background(
             )
             upload_files.append(upload_file)
 
+        # Update progress after file preparation (20%)
+        MenuProcessingService.update_job(
+            job_id=job_id,
+            progress_percent=20,
+        )
+
         # Handle single vs multiple files
         files_to_process = upload_files[0] if len(upload_files) == 1 else upload_files
 
-        # Process the menu files (this is the heavy lifting - 10-70%)
+        # Process the menu files (this is the heavy lifting - 20-70%)
         logger.info(
             f"[Background] Extracting menu from uploaded files for job {job_id}"
         )
-        result = await admin_service.build_menu_from_upload(files_to_process)
+
+        # Update progress before starting extraction (30%)
+        MenuProcessingService.update_job(
+            job_id=job_id,
+            progress_percent=30,
+        )
+
+        # Start a heartbeat task to show progress during OpenAI processing
+        heartbeat_active = True
+
+        async def progress_heartbeat():
+            """Slowly increment progress from 30% to 65% during OpenAI processing"""
+            current_progress = 30
+            while heartbeat_active and current_progress < 65:
+                await asyncio.sleep(3)  # Update every 3 seconds
+                if heartbeat_active:
+                    current_progress += 5
+                    MenuProcessingService.update_job(
+                        job_id=job_id,
+                        progress_percent=min(current_progress, 65),
+                    )
+
+        # Start heartbeat task
+        heartbeat_task = asyncio.create_task(progress_heartbeat())
+
+        try:
+            result = await admin_service.build_menu_from_upload(files_to_process)
+        finally:
+            # Stop heartbeat
+            heartbeat_active = False
+            await heartbeat_task
 
         # Update progress after extraction (70%)
         MenuProcessingService.update_job(
@@ -273,6 +309,12 @@ async def process_menu_upload_background(
         project_params.product_info = result
         logger.debug("Project result: %s", result)
         project_service.update_project(session, context, project_id, project_params)
+
+        # Update progress after project update (90%)
+        MenuProcessingService.update_job(
+            job_id=job_id,
+            progress_percent=90,
+        )
 
         # Commit the transaction
         session.commit()

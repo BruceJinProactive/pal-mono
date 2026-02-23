@@ -473,6 +473,78 @@ class TestProcessMenuUploadBackground:
         assert final_job.error is not None
         assert "unexpected error" in final_job.error.lower()
 
+    @pytest.mark.asyncio
+    async def test_heartbeat_progress_updates(self, mock_context):
+        """Test that heartbeat updates progress during processing."""
+        import asyncio
+
+        project_id = uuid.uuid4()
+        job = MenuProcessingService.create_job(project_id)
+
+        materialized_files = [
+            {
+                "content_bytes": b"fake image content",
+                "filename": "menu.jpg",
+                "content_type": "image/jpeg",
+            }
+        ]
+
+        # Track progress updates
+        progress_updates = []
+
+        original_update_job = MenuProcessingService.update_job
+
+        def track_progress(**kwargs):
+            if "progress_percent" in kwargs:
+                progress_updates.append(kwargs["progress_percent"])
+            return original_update_job(**kwargs)
+
+        # Store original sleep to use in mock
+        original_sleep = asyncio.sleep
+
+        async def fast_sleep(duration):
+            """Mock sleep that yields control but returns immediately."""
+            await original_sleep(0)
+
+        with patch("api.routes.admin._onboarding.SyncSessionLocal") as mock_session_cls:
+            mock_session = MagicMock()
+            mock_session_cls.return_value = mock_session
+
+            with patch("api.routes.admin._onboarding.logger"):
+                with patch(
+                    "api.routes.admin._onboarding.MenuProcessingService.update_job",
+                    side_effect=track_progress,
+                ):
+                    with patch(
+                        "api.routes.admin._onboarding.asyncio.sleep",
+                        side_effect=fast_sleep,
+                    ):
+                        # Make build_menu_from_upload take time to allow heartbeat to run
+                        async def slow_build(_):
+                            # Allow heartbeat to run multiple times by yielding control
+                            for _ in range(10):
+                                await original_sleep(0)
+                            return {"menu": "test menu"}
+
+                        with patch(
+                            "api.routes.admin._onboarding.admin_service.build_menu_from_upload",
+                            side_effect=slow_build,
+                        ):
+                            with patch(
+                                "api.routes.admin._onboarding.project_service.update_project"
+                            ):
+                                await process_menu_upload_background(
+                                    materialized_files,
+                                    mock_context,
+                                    project_id,
+                                    job.job_id,
+                                )
+
+        # Verify heartbeat updated progress (should have values between 30 and 65)
+        # Filter to only heartbeat updates (between 30 and 65)
+        heartbeat_updates = [p for p in progress_updates if 30 < p < 65]
+        assert len(heartbeat_updates) > 0, "Heartbeat should have made progress updates"
+
 
 class TestMenuProcessingStatusRoute:
     """Test route-level GET /menu-processing/{job_id}/status endpoint."""
