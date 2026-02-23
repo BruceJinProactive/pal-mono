@@ -13,7 +13,7 @@ from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import update_memory
-from utils.dd import send_dd_histogram_metrics, traced
+from utils.dd import is_testing_mode, send_dd_histogram_metrics, traced
 
 
 class Agent:
@@ -35,11 +35,12 @@ class Agent:
 
         self._metadata = config.metadata
 
-        # Set up Datadog LLM Observability
-        LLMObs.enable(
-            ml_app="pal",
-            agentless_enabled=True,
-        )
+        # Set up Datadog LLM Observability (skip for testing requests)
+        if not is_testing_mode():
+            LLMObs.enable(
+                ml_app="pal",
+                agentless_enabled=True,
+            )
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
