@@ -1,0 +1,47 @@
+name: Validate Notion Task in PR
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+    branches:
+      - "main"
+
+jobs:
+  validate-notion-task:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for Notion task ID in PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          # Skip validation for bot-authored PRs
+          BOTS="coderabbitai dependabot[bot] renovate[bot] github-actions[bot]"
+          for BOT in $BOTS; do
+            if [ "$PR_AUTHOR" = "$BOT" ]; then
+              echo "Skipping Notion task validation for bot PR (author: $PR_AUTHOR)"
+              exit 0
+            fi
+          done
+
+          # Check for task ID in PR title (e.g., [PAL-1234])
+          TITLE_MATCH=$(echo "$PR_TITLE" | grep -oE "\[PAL-[0-9]+\]" || true)
+
+          if [ -n "$TITLE_MATCH" ]; then
+            echo "Found Notion task ID in PR title: $TITLE_MATCH"
+            echo ""
+            echo "Notion task validation passed"
+            exit 0
+          fi
+
+          echo "ERROR: No Notion task ID found in PR title."
+          echo ""
+          echo "Every PR must include a Notion task ID in the title using this format:"
+          echo ""
+          echo "  [PAL-1234] Your PR title here"
+          echo ""
+          echo "This ensures all changes are tracked and linked to planned work in Notion."
+          exit 1
