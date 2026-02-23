@@ -1212,27 +1212,55 @@ async def handle_session_closure(message_data, session: AsyncSession):
             )
 
         conversation_repo = db.ConversationRepositoryAsync(session)
-        conversations = (
-            await conversation_repo.get_open_conversations_by_user_and_project(
-                user.id, project.id
-            )
+
+        # Find conversation by call_id regardless of status
+        first_conversation = await conversation_repo.get_conversation_by_call_id(
+            call_id
         )
 
-        first_conversation = None
-        if not conversations:
-            logger.warning(f"No matching active conversation found for call {call_id}")
+        if not first_conversation:
+            logger.warning(
+                f"No conversation found for call {call_id}",
+                extra={
+                    "call_id": call_id,
+                    "user_id": str(user.id),
+                    "project_id": str(project.id),
+                    "customer_number": customer_number[-4:] if customer_number else "",
+                    "phone_number": phone_number[-4:] if phone_number else "",
+                },
+            )
         else:
-            if len(conversations) > 1:
-                logger.warning(
-                    f"There are {len(conversations)} open conversations exist for user: {user.id}"
-                )
-            for conversation in conversations:
-                conversation.status = db.ConversationStatus.CLOSING
+            # Determine if we should save analytics based on conversation status
+            should_save_analytics = False
 
-            # Save phone call data to the first conversation, in most of the cases, there is only one conversation,
-            # We do not need to create a duplicated call with different conversations
-            first_conversation = conversations[0]
-            if call_id:
+            if first_conversation.status in [
+                db.ConversationStatus.ACTIVE,
+                db.ConversationStatus.INACTIVE,
+            ]:
+                # Active/Inactive conversation: mark as closing and save analytics
+                first_conversation.status = db.ConversationStatus.CLOSING
+                should_save_analytics = True
+                logger.debug(
+                    f"Conversation {first_conversation.id} status changed from {first_conversation.status.value} to CLOSING"
+                )
+            elif first_conversation.status in [
+                db.ConversationStatus.CLOSING,
+                db.ConversationStatus.CLOSED,
+            ]:
+                # Closed/Closing conversation: only save if ended_reason is empty
+                # (meaning analytics weren't saved before, e.g., forwarded call)
+                if not first_conversation.ended_reason:
+                    should_save_analytics = True
+                    logger.info(
+                        f"Conversation {first_conversation.id} is {first_conversation.status.value} but missing analytics, will save now"
+                    )
+                else:
+                    logger.info(
+                        f"Conversation {first_conversation.id} already has analytics (ended_reason={first_conversation.ended_reason}), skipping duplicate save"
+                    )
+
+            # Save analytics if needed
+            if should_save_analytics and call_id:
                 try:
                     phone_call = await message_service.create_phone_call_record(
                         session=session,
