@@ -5,6 +5,7 @@ These endpoints are called by the Monitoring Image Processor Lambda to:
 2. Create monitoring run records with AI analysis results
 """
 
+import asyncio
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -23,6 +24,7 @@ from db.repositories import (
 from db.repositories.monitoring_config_repository import MonitoringConfigRepositoryAsync
 from db.tables import MonitoringConfig, MonitoringRun
 from services import monitoring_service
+from services.asset_service import _utils as asset_utils
 from utils.log import logger
 
 monitoring_router = APIRouter(prefix="/monitoring", tags=["internal-monitoring"])
@@ -31,6 +33,35 @@ monitoring_router = APIRouter(prefix="/monitoring", tags=["internal-monitoring"]
 #   - Lambda: Monitoring Image Processor
 # Consider using AWS Signature V4 verification or VPC-only access controls
 # to prevent unauthorized external access to these internal endpoints
+
+
+async def _generate_presigned_url_safe(s3_key: str) -> str | None:
+    """
+    Generate presigned URL for an S3 key in a thread-safe manner.
+
+    Runs synchronous boto3 operations in a thread pool to avoid greenlet issues
+    with async SQLAlchemy sessions.
+
+    Args:
+        s3_key: S3 object key (path within bucket)
+
+    Returns:
+        Presigned URL string, or None if generation fails
+    """
+    try:
+
+        def _generate():
+            s3_client = asset_utils.init_s3(asset_utils.AWS_REGION)
+            return asset_utils.generate_presigned_url(
+                s3_client,
+                asset_utils.AWS_ASSET_BUCKET_NAME,
+                s3_key,
+            )
+
+        return await asyncio.to_thread(_generate)
+    except Exception as e:
+        logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
+        return None
 
 
 # ============================================================================
@@ -137,6 +168,9 @@ class RecordCaptureResponse(BaseModel):
     feed_id: UUID | None = Field(None, description="UUID of the signal feed (if found)")
     captured_at: datetime
     success: bool
+    last_capture_url: str | None = Field(
+        None, description="Presigned URL of the captured image (expires in 24 hours)"
+    )
 
 
 # ============================================================================
@@ -224,6 +258,12 @@ async def record_capture(
             await feed_repo.update_last_capture(
                 feed.id, captured_at, request.capture_url
             )
+
+            # Generate presigned URL if S3 key exists
+            presigned_url = None
+            if request.capture_url:
+                presigned_url = await _generate_presigned_url_safe(request.capture_url)
+
             logger.info(
                 f"[CameraCapture] Updated signal feed {feed.id} last_capture_at",
                 extra={
@@ -239,6 +279,7 @@ async def record_capture(
                 feed_id=feed.id,
                 captured_at=captured_at,
                 success=True,
+                last_capture_url=presigned_url,
             )
         else:
             logger.warning(
@@ -250,6 +291,7 @@ async def record_capture(
                 feed_id=None,
                 captured_at=captured_at,
                 success=False,
+                last_capture_url=None,
             )
 
     except Exception as e:
