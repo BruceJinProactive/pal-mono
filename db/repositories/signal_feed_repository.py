@@ -89,13 +89,15 @@ class SignalFeedRepositoryAsync:
         self,
         feed_id: uuid.UUID,
         captured_at: datetime,
+        capture_url: str | None = None,
     ) -> SignalFeed | None:
         """
-        Update the last capture timestamp and increment capture count.
+        Update the last capture timestamp, URL, and increment capture count.
 
         Args:
             feed_id: UUID of the signal feed.
             captured_at: Timestamp of the capture.
+            capture_url: Optional URL of the captured image.
 
         Returns:
             Updated SignalFeed if found, None otherwise.
@@ -106,6 +108,7 @@ class SignalFeedRepositoryAsync:
                 return None
 
             feed.last_capture_at = captured_at
+            feed.last_capture_url = capture_url
             feed.capture_count = feed.capture_count + 1
 
             await self.session.flush()

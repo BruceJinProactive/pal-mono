@@ -124,6 +124,10 @@ class RecordCaptureRequest(BaseModel):
         None,
         description="Timestamp of the capture. Auto-set to current time if not provided.",
     )
+    capture_url: str | None = Field(
+        None,
+        description="URL of the captured image",
+    )
 
 
 class RecordCaptureResponse(BaseModel):
@@ -217,13 +221,16 @@ async def record_capture(
         feed = await feed_repo.get_by_source_id(request.signal_source_id)
 
         if feed:
-            await feed_repo.update_last_capture(feed.id, captured_at)
+            await feed_repo.update_last_capture(
+                feed.id, captured_at, request.capture_url
+            )
             logger.info(
                 f"[CameraCapture] Updated signal feed {feed.id} last_capture_at",
                 extra={
                     "feed_id": str(feed.id),
                     "signal_source_id": str(request.signal_source_id),
                     "last_capture_at": captured_at.isoformat(),
+                    "last_capture_url": request.capture_url,
                     "event_type": "camera_capture_success",
                 },
             )

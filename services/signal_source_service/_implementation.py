@@ -291,6 +291,7 @@ async def delete_source(
 def build_source_response(
     source: SignalSource,
     last_capture_at=None,
+    last_capture_url=None,
 ) -> SignalSourceResponse:
     """
     Build a SignalSourceResponse from a SignalSource model.
@@ -298,6 +299,7 @@ def build_source_response(
     Args:
         source: SignalSource database model.
         last_capture_at: Optional last capture timestamp from feed.
+        last_capture_url: Optional presigned URL of last captured image.
 
     Returns:
         SignalSourceResponse for API response.
@@ -313,6 +315,7 @@ def build_source_response(
         config=source.config,
         description=source.description,
         last_capture_at=last_capture_at,
+        last_capture_url=last_capture_url,
         created_at=source.created_at,
         updated_at=source.updated_at,
     )

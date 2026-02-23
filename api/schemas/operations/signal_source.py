@@ -126,6 +126,9 @@ class SignalSourceResponse(BaseModel):
     last_capture_at: datetime | None = Field(
         None, description="Last capture time from associated feed"
     )
+    last_capture_url: str | None = Field(
+        None, description="Presigned URL of last captured image (expires in 24 hours)"
+    )
     created_at: datetime
     updated_at: datetime | None
 
