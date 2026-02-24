@@ -122,7 +122,7 @@ def create_catering_request(
                 contact_phone_number=contact_phone_number,
                 party_size=party_size,
                 contact_id=None,
-                status=RequestStatus.PENDING,
+                status=RequestStatus.INQUIRY,
                 idempotency_key=idempotency_key,
             )
 
