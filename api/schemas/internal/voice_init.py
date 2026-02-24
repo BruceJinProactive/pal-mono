@@ -39,3 +39,7 @@ class VoiceInitResponse(BaseModel):
     background_sound: str | None = Field(
         default=None, description="Background ambient sound"
     )
+    replacements: dict[str, str] = Field(
+        default_factory=dict,
+        description="Word-to-pronunciation replacement map for TTS preprocessing",
+    )

@@ -371,6 +371,7 @@ class TestLiveKitContextInjection:
         )
 
         async def mock_populate_with_formatted_contact(tool_args, session=None):
+            _ = session  # noqa: ARG001 – signature must match _populate_vapi_tool_args
             updated = tool_args.copy()
             updated.pop("transfer_destinations", None)
             # Simulate contacts table storing a human-formatted phone number.
@@ -408,6 +409,7 @@ class TestLiveKitContextInjection:
         )
 
         async def mock_populate(tool_args, session=None):
+            _ = session  # noqa: ARG001 – signature must match _populate_vapi_tool_args
             updated = tool_args.copy()
             updated.pop("transfer_destinations", None)
             updated["transfer_destinations"] = {"general": "(646) 876-1234"}

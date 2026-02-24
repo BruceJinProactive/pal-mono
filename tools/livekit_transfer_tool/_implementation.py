@@ -45,7 +45,7 @@ def _normalize_phone_to_e164(phone: str) -> str:
     ].strip()
 
     # Keep only leading '+' and digits; remove spaces, parentheses, dashes, dots.
-    cleaned = re.sub(r"[^\d+]", "", raw)
+    cleaned = re.sub(r"[^0-9+]", "", raw)
     if not cleaned:
         raise ValueError("phone number has no digits")
 
@@ -70,7 +70,7 @@ def _normalize_phone_to_e164(phone: str) -> str:
             raise ValueError("phone number must be E.164 or a 10/11-digit US number")
 
     # E.164 max is 15 digits; require at least 8 to avoid obvious bad inputs.
-    if not digits.isdigit() or not (8 <= len(digits) <= 15):
+    if not re.fullmatch(r"[0-9]+", digits) or not (8 <= len(digits) <= 15):
         raise ValueError("phone number is not a valid E.164 length")
     if digits.startswith("0"):
         raise ValueError("E.164 country code cannot start with 0")

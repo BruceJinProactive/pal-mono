@@ -267,4 +267,5 @@ async def init_voice_call(
         stt_model=stt_model,
         stt_language=stt_language,
         background_sound=vc.background_sound or None,
+        replacements=vc.replacements or {},
     )

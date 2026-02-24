@@ -47,6 +47,7 @@ def _make_voice_config(**overrides) -> MagicMock:
     vc.first_message = overrides.get("first_message", "Hello, how can I help?")
     vc.transcriber = overrides.get("transcriber", None)
     vc.background_sound = overrides.get("background_sound", "office")
+    vc.replacements = overrides.get("replacements", {})
     return vc
 
 
@@ -324,6 +325,25 @@ class TestInitVoiceCallSuccess:
         vc = _make_voice_config(background_sound=None)
         result = await _run(_make_request(), _make_project(), _make_user(), [vc])
         assert result.background_sound is None
+
+    @pytest.mark.asyncio
+    async def test_replacements_empty_by_default(self) -> None:
+        vc = _make_voice_config()
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.replacements == {}
+
+    @pytest.mark.asyncio
+    async def test_replacements_passed_through(self) -> None:
+        replacements = {"Nguyen": "Win", "Palona": "Pah-LOW-nah"}
+        vc = _make_voice_config(replacements=replacements)
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.replacements == replacements
+
+    @pytest.mark.asyncio
+    async def test_replacements_none_defaults_to_empty(self) -> None:
+        vc = _make_voice_config(replacements=None)
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.replacements == {}
 
     @pytest.mark.asyncio
     async def test_skips_triage_picks_language_config(self) -> None:
