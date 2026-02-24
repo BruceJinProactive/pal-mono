@@ -8,7 +8,11 @@ import pytest
 from livekit import api as livekit_api
 
 from agent.tool import ToolMetadata
-from tools.livekit_transfer_tool._implementation import LiveKitTransferTool, _mask_phone
+from tools.livekit_transfer_tool._implementation import (
+    LiveKitTransferTool,
+    _mask_phone,
+    _normalize_phone_to_e164,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -94,6 +98,42 @@ class TestMaskPhone:
 
 
 # ---------------------------------------------------------------------------
+# Unit tests: _normalize_phone_to_e164
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizePhoneToE164:
+    def test_keeps_e164(self) -> None:
+        assert _normalize_phone_to_e164("+16468761234") == "+16468761234"
+
+    def test_formats_us_10_digit(self) -> None:
+        assert _normalize_phone_to_e164("(646) 876-1234") == "+16468761234"
+
+    def test_formats_us_11_digit_leading_1(self) -> None:
+        assert _normalize_phone_to_e164("1 (646) 876-1234") == "+16468761234"
+
+    def test_formats_tel_uri(self) -> None:
+        assert _normalize_phone_to_e164("tel:(646) 876-1234") == "+16468761234"
+
+    def test_converts_00_prefix_to_plus(self) -> None:
+        assert _normalize_phone_to_e164("00442079460056") == "+442079460056"
+
+    def test_strips_extension_suffix(self) -> None:
+        assert _normalize_phone_to_e164("+1 (646) 876-1234 ext 99") == "+16468761234"
+
+    def test_strips_extension_attached_to_digits(self) -> None:
+        assert _normalize_phone_to_e164("+16468761234ext123") == "+16468761234"
+
+    def test_rejects_invalid_text(self) -> None:
+        with pytest.raises(ValueError):
+            _normalize_phone_to_e164("call me maybe")
+
+    def test_rejects_short_number(self) -> None:
+        with pytest.raises(ValueError):
+            _normalize_phone_to_e164("12345")
+
+
+# ---------------------------------------------------------------------------
 # Unit tests: _get_destination_for_purpose
 # ---------------------------------------------------------------------------
 
@@ -127,6 +167,14 @@ class TestBuildTransferTo:
     def test_phone_number_gets_tel_prefix(self) -> None:
         tool = _make_tool()
         assert tool._build_transfer_to("+15559876543") == "tel:+15559876543"
+
+    def test_formatted_phone_number_is_normalized(self) -> None:
+        tool = _make_tool()
+        assert tool._build_transfer_to("(646) 876-1234") == "tel:+16468761234"
+
+    def test_tel_uri_phone_number_is_normalized(self) -> None:
+        tool = _make_tool()
+        assert tool._build_transfer_to("tel:(646) 876-1234") == "tel:+16468761234"
 
     def test_sip_uri_passed_through(self) -> None:
         tool = _make_tool()
@@ -219,6 +267,17 @@ class TestCallTransferSuccess:
         request = tool.lk_api.sip.transfer_sip_participant.call_args[0][0]
         assert request.play_dialtone is True
 
+    @pytest.mark.asyncio
+    async def test_formatted_phone_transfer_is_normalized(self) -> None:
+        """Formatted destination is normalized to E.164 before transfer."""
+        tool = _make_tool(destinations={"general": "(646) 876-1234"})
+
+        result = await tool.call_transfer()
+
+        assert result == "Call has been transferred"
+        request = tool.lk_api.sip.transfer_sip_participant.call_args[0][0]
+        assert request.transfer_to == "tel:+16468761234"
+
 
 # ---------------------------------------------------------------------------
 # Integration tests: call_transfer — caller ID headers
@@ -300,6 +359,15 @@ class TestCallTransferValidation:
         result = await tool.call_transfer(purpose="complaint")
 
         assert "No transfer destination configured" in result
+        tool.lk_api.sip.transfer_sip_participant.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_invalid_phone_destination_rejected_before_livekit(self) -> None:
+        """Invalid non-SIP destination fails before hitting LiveKit."""
+        tool = _make_tool(destinations={"general": "not-a-phone-number"})
+        result = await tool.call_transfer()
+
+        assert "Invalid transfer destination format" in result
         tool.lk_api.sip.transfer_sip_participant.assert_not_awaited()
 
     @pytest.mark.asyncio

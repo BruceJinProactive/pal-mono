@@ -358,6 +358,80 @@ class TestLiveKitContextInjection:
         assert destinations["catering"] == "sip:catering@sip.provider.com"
         assert destinations["general"] == "+15559876543"
 
+    @pytest.mark.asyncio
+    async def test_destination_number_shorthand_preserved_on_livekit_auto_swap(
+        self,
+    ) -> None:
+        """Raw-config destination_number should override contact-derived general target."""
+        rc = _make_raw_config(
+            "vapi_tool",
+            tool_args={"destination_number": "+16468761234"},
+            room_name="room-abc",
+            participant_identity="participant-xyz",
+        )
+
+        async def mock_populate_with_formatted_contact(tool_args, session=None):
+            updated = tool_args.copy()
+            updated.pop("transfer_destinations", None)
+            # Simulate contacts table storing a human-formatted phone number.
+            updated["transfer_destinations"] = {"general": "(646) 876-1234"}
+            return updated
+
+        with patch.object(
+            rc,
+            "_populate_vapi_tool_args",
+            side_effect=mock_populate_with_formatted_contact,
+        ):
+            with patch.object(rc, "_get_project_tools_override", return_value={}):
+                with patch.object(
+                    rc, "_get_project_integration_tools", return_value=[]
+                ):
+                    tool_config = await rc._get_agent_tools(session=None)
+
+        tool = tool_config.identifiers[0]
+        assert tool.tool_name == "livekit_transfer_tool"
+        assert tool.args["transfer_destinations"]["general"] == "+16468761234"
+
+    @pytest.mark.asyncio
+    async def test_explicit_general_destination_takes_precedence_over_shorthand(
+        self,
+    ) -> None:
+        """Explicit transfer_destinations 'general' wins over destination_number."""
+        rc = _make_raw_config(
+            "vapi_tool",
+            tool_args={
+                "transfer_destinations": {"general": "sip:reception@pbx.example.com"},
+                "destination_number": "+16468761234",
+            },
+            room_name="room-abc",
+            participant_identity="participant-xyz",
+        )
+
+        async def mock_populate(tool_args, session=None):
+            updated = tool_args.copy()
+            updated.pop("transfer_destinations", None)
+            updated["transfer_destinations"] = {"general": "(646) 876-1234"}
+            return updated
+
+        with patch.object(
+            rc,
+            "_populate_vapi_tool_args",
+            side_effect=mock_populate,
+        ):
+            with patch.object(rc, "_get_project_tools_override", return_value={}):
+                with patch.object(
+                    rc, "_get_project_integration_tools", return_value=[]
+                ):
+                    tool_config = await rc._get_agent_tools(session=None)
+
+        tool = tool_config.identifiers[0]
+        assert tool.tool_name == "livekit_transfer_tool"
+        # Explicit SIP URI for "general" should win over destination_number shorthand
+        assert (
+            tool.args["transfer_destinations"]["general"]
+            == "sip:reception@pbx.example.com"
+        )
+
 
 # ---------------------------------------------------------------------------
 # No-regression tests

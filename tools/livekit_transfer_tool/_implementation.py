@@ -1,3 +1,5 @@
+import re
+
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
 from livekit import api as livekit_api
@@ -13,6 +15,67 @@ def _mask_phone(phone: str | None) -> str:
     if len(phone) <= 4:
         return "****"
     return f"***{phone[-4:]}"
+
+
+def _normalize_phone_to_e164(phone: str) -> str:
+    """
+    Normalize common phone number formats to E.164.
+
+    Assumptions:
+    - 10-digit numbers are NANP and default to +1.
+    - 11-digit numbers starting with 1 are NANP and become +1XXXXXXXXXX.
+    - Numbers already beginning with '+' are treated as international and validated.
+    - Numbers beginning with '00' are converted to '+' international format.
+    """
+    raw = phone.strip()
+    if not raw:
+        raise ValueError("empty phone number")
+
+    if raw.lower().startswith("tel:"):
+        raw = raw[4:].strip()
+
+    # Drop URI params (e.g. tel:+14155550100;ext=123)
+    raw = raw.split(";", 1)[0].strip()
+
+    # Remove common extension suffixes before stripping punctuation.
+    # Use lookbehind (?<=\d) so "ext"/"x" directly after digits is matched;
+    # lone "x" requires a following space or digit to avoid false positives.
+    raw = re.split(r"(?i)(?<=\d)\s*(?:ext(?:ension)?|x(?=[\s\d]))", raw, maxsplit=1)[
+        0
+    ].strip()
+
+    # Keep only leading '+' and digits; remove spaces, parentheses, dashes, dots.
+    cleaned = re.sub(r"[^\d+]", "", raw)
+    if not cleaned:
+        raise ValueError("phone number has no digits")
+
+    # '+' is only valid once at the beginning.
+    if cleaned.count("+") > 1 or ("+" in cleaned and not cleaned.startswith("+")):
+        raise ValueError("invalid '+' placement in phone number")
+
+    if cleaned.startswith("00"):
+        cleaned = f"+{cleaned[2:]}"
+
+    if cleaned.startswith("+"):
+        digits = cleaned[1:]
+    else:
+        digits = cleaned
+        if len(digits) == 10:
+            cleaned = f"+1{digits}"
+            digits = cleaned[1:]
+        elif len(digits) == 11 and digits.startswith("1"):
+            cleaned = f"+{digits}"
+            digits = cleaned[1:]
+        else:
+            raise ValueError("phone number must be E.164 or a 10/11-digit US number")
+
+    # E.164 max is 15 digits; require at least 8 to avoid obvious bad inputs.
+    if not digits.isdigit() or not (8 <= len(digits) <= 15):
+        raise ValueError("phone number is not a valid E.164 length")
+    if digits.startswith("0"):
+        raise ValueError("E.164 country code cannot start with 0")
+
+    return f"+{digits}"
 
 
 class LiveKitTransferTool(Toolkit):
@@ -100,11 +163,12 @@ class LiveKitTransferTool(Toolkit):
         Returns:
             Formatted transfer_to string for the LiveKit API.
         """
+        destination = destination.strip()
         if destination.lower().startswith("sip:"):
             return destination
 
-        # Phone number — wrap in tel: URI
-        return f"tel:{destination}"
+        normalized = _normalize_phone_to_e164(destination)
+        return f"tel:{normalized}"
 
     @tool
     async def call_transfer(self, purpose: str = "general") -> str:
@@ -185,8 +249,26 @@ class LiveKitTransferTool(Toolkit):
             )
             return error_msg
 
-        # Build the transfer_to URI
-        transfer_to = self._build_transfer_to(destination)
+        try:
+            # Build the transfer_to URI
+            transfer_to = self._build_transfer_to(destination)
+        except ValueError as e:
+            error_msg = (
+                "Invalid transfer destination format. "
+                "Use E.164 (e.g. +14155550100) or a SIP URI."
+            )
+            logger.error(
+                f"[LiveKitTransferTool.call_transfer] {error_msg}",
+                extra={
+                    **log_extra,
+                    "room_name": self.room_name,
+                    "participant_identity": self.participant_identity,
+                    "destination": _mask_phone(destination),
+                    "destination_error": str(e),
+                    "purpose": purpose,
+                },
+            )
+            return error_msg
 
         # Build transfer request with optional SIP headers for caller ID
         headers: dict[str, str] = {}

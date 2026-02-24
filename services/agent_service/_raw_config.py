@@ -431,6 +431,7 @@ class RawConfig:
                 tool_args = await self._populate_vapi_tool_args(tool_args, session)
             elif tool_name == "livekit_transfer_tool":
                 explicit_destinations = tool_args.get("transfer_destinations")
+                explicit_destination_number = tool_args.get("destination_number")
                 tool_args = await self._populate_vapi_tool_args(tool_args, session)
                 if explicit_destinations:
                     # Merge: explicit destinations (e.g. SIP URIs from raw_config)
@@ -438,6 +439,18 @@ class RawConfig:
                     tool_args["transfer_destinations"] = {
                         **tool_args.get("transfer_destinations", {}),
                         **explicit_destinations,
+                    }
+                if explicit_destination_number and not (
+                    explicit_destinations and "general" in explicit_destinations
+                ):
+                    # Preserve raw_config shorthand when vapi_tool is auto-swapped to
+                    # livekit_transfer_tool. _populate_vapi_tool_args() rebuilds
+                    # transfer_destinations from contacts and would otherwise override
+                    # destination_number with a potentially formatted number.
+                    # Skip when explicit transfer_destinations already defines "general".
+                    tool_args["transfer_destinations"] = {
+                        **tool_args.get("transfer_destinations", {}),
+                        "general": explicit_destination_number,
                     }
                 # Inject LiveKit runtime context for SIP REFER
                 if self.room_name and self.participant_identity:
