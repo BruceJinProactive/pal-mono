@@ -152,6 +152,9 @@ class TermsStatusResponse(BaseModel):
     name: str
     terms_accepted: bool
     display_name: str | None = None
+    current_tos_version: str = Field(
+        ..., description="Current TOS version that must be accepted"
+    )
 
 
 class AcceptTermsRequest(BaseModel):
@@ -166,6 +169,7 @@ class AcceptTermsResponse(BaseModel):
     """Accept Terms Response"""
 
     accepted: bool
+    tos_version: str = Field(..., description="Version of TOS that was accepted")
 
 
 class NotificationPreferences(BaseModel):

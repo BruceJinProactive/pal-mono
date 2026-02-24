@@ -235,11 +235,16 @@ def get_account_terms_status(
             detail=f"Account {account_name} not found",
             headers={"Content-Type": "application/json"},
         )
+
+    # Get current TOS version from environment (default to v1.0 if not set)
+    current_tos_version = os.environ.get("CURRENT_TOS_VERSION", "v1.0")
+
     return TermsStatusResponse(
         id=account.id,
         name=account.name,
         terms_accepted=account.terms_accepted,
         display_name=account.display_name,
+        current_tos_version=current_tos_version,
     )
 
 
@@ -498,7 +503,7 @@ async def accept_account_terms(
     # Explicitly commit the transaction (both account update and TOS acceptance)
     session.commit()
 
-    return AcceptTermsResponse(accepted=True)
+    return AcceptTermsResponse(accepted=True, tos_version=request.tos_version)
 
 
 def _set_user_session(

@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import exc as sqlalchemy_exc
 
-from api.routes.admin._account import accept_account_terms
+from api.routes.admin._account import accept_account_terms, get_account_terms_status
 from api.schemas.admin.account import AcceptTermsRequest
 from db.tables.accounts import Account
 
@@ -335,3 +335,82 @@ class TestAcceptAccountTerms:
 
             assert exc_info.value.status_code == 400
             assert "Update failed" in exc_info.value.detail
+
+
+class TestGetAccountTermsStatus:
+    """Tests for get_account_terms_status function."""
+
+    @pytest.fixture
+    def mock_context(self):
+        """Create a mock user context."""
+        context = MagicMock()
+        return context
+
+    @pytest.fixture
+    def mock_account(self):
+        """Create a mock account."""
+        account = MagicMock(spec=Account)
+        account.id = uuid.uuid4()
+        account.name = "test-account"
+        account.display_name = "Test Account"
+        account.terms_accepted = False
+        return account
+
+    def test_get_terms_status_success(self, mock_context, mock_account):
+        """Should return terms status with current version from environment."""
+        mock_session = MagicMock()
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch.dict("os.environ", {"CURRENT_TOS_VERSION": "v2.0"}),
+        ):
+            mock_account_service.get_account.return_value = mock_account
+
+            # Execute
+            result = get_account_terms_status(
+                "test-account", mock_context, mock_session
+            )
+
+            # Assert
+            assert result.id == mock_account.id
+            assert result.name == mock_account.name
+            assert result.display_name == mock_account.display_name
+            assert result.terms_accepted is False
+            assert result.current_tos_version == "v2.0"
+
+    def test_get_terms_status_default_version(self, mock_context, mock_account):
+        """Should use default version v1.0 when env var not set."""
+        mock_session = MagicMock()
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch.dict("os.environ", {}, clear=False),
+        ):
+            # Remove CURRENT_TOS_VERSION if it exists
+            import os
+
+            os.environ.pop("CURRENT_TOS_VERSION", None)
+
+            mock_account_service.get_account.return_value = mock_account
+
+            # Execute
+            result = get_account_terms_status(
+                "test-account", mock_context, mock_session
+            )
+
+            # Assert
+            assert result.current_tos_version == "v1.0"
+
+    def test_get_terms_status_account_not_found(self, mock_context):
+        """Should raise 404 when account not found."""
+        mock_session = MagicMock()
+
+        with patch("api.routes.admin._account.account_service") as mock_account_service:
+            mock_account_service.get_account.return_value = None
+
+            # Execute and assert
+            with pytest.raises(HTTPException) as exc_info:
+                get_account_terms_status("nonexistent", mock_context, mock_session)
+
+            assert exc_info.value.status_code == 404
+            assert "not found" in exc_info.value.detail
