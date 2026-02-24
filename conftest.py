@@ -1,7 +1,7 @@
 """Root conftest for pytest.
 
 Sets required environment variables before any package imports trigger
-db.settings validation (services/__init__.py → db → DbSettings).
+db.settings validation (monitoring_service/_implementation.py → db → DbSettings).
 """
 
 import os
