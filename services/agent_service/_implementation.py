@@ -163,6 +163,7 @@ def _build_adora_spec_from_raw_config(raw_config: dict) -> AdoraSpec:
     adora_spec_kwargs: dict[str, Any] = {"enabled": True}
     for field in [
         "menu_data",
+        "coupon_data",
         "base_url",
         "auth",
         "allowed_paths",
