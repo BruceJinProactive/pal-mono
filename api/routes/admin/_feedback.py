@@ -14,6 +14,7 @@ from api.schemas.admin.feedback import (
     ListFeedbacksResponse,
     UpdateFeedbackRequest,
 )
+from db.repositories.account_user_repository import AccountUserRepository
 from services import (
     account_service,
     feedback_service,
@@ -167,7 +168,18 @@ async def create_feedback(
     # Save to SQL database
     feedback = _to_db_feedback(feedback_create)
     feedback.author_identifier = context.email
-    feedback.author_name = context.display_name or None
+
+    # Fetch user's name from account_users table for this specific account
+    user_id = UUID(context.username)
+    account_user_repo = AccountUserRepository(session, auto_commit=False)
+    account_user = account_user_repo.get_by_user_and_account(user_id, account.id)
+
+    # Use name from account_users table, fall back to display_name from JWT, then email
+    feedback.author_name = (
+        (account_user.name if account_user and account_user.name else None)
+        or context.display_name
+        or context.email
+    )
     feedback.message_id = feedback_create.message_id
     persisted_feedback = feedback_service.create_feedback(session, feedback)
 
@@ -203,7 +215,7 @@ async def create_feedback(
     try:
         notion_ticket_url = await notion_service.create_feedback_ticket(
             client_name=account.name,
-            user_name=context.display_name or context.email,
+            user_name=persisted_feedback.author_name or context.email,
             feedback_text=persisted_feedback.note,
             conversation_link=conversation_link,
             conversation_id=str(conversation.id),
@@ -250,7 +262,7 @@ async def create_feedback(
         slack_result = await slack_service.send_feedback_notification(
             client_name=account.name,
             user_email=context.email,
-            user_name=context.display_name,
+            user_name=persisted_feedback.author_name or context.email,
             tags=persisted_feedback.tags,
             feedback_text=persisted_feedback.note,
             conversation_id=str(conversation.id),
