@@ -408,19 +408,6 @@ class RawConfig:
                     ),
                 )
 
-        # Auto-swap vapi_tool → livekit_transfer_tool for LiveKit calls
-        if (
-            self.room_name
-            and self.participant_identity
-            and "vapi_tool" in merged_tools
-            and "livekit_transfer_tool" not in merged_tools
-        ):
-            vapi_entry = merged_tools.pop("vapi_tool")
-            tool_order[:] = [
-                "livekit_transfer_tool" if t == "vapi_tool" else t for t in tool_order
-            ]
-            merged_tools["livekit_transfer_tool"] = vapi_entry
-
         final_identifiers: List[ToolIdentifier] = []
 
         for tool_name in tool_order:
@@ -443,10 +430,10 @@ class RawConfig:
                 if explicit_destination_number and not (
                     explicit_destinations and "general" in explicit_destinations
                 ):
-                    # Preserve raw_config shorthand when vapi_tool is auto-swapped to
-                    # livekit_transfer_tool. _populate_vapi_tool_args() rebuilds
-                    # transfer_destinations from contacts and would otherwise override
-                    # destination_number with a potentially formatted number.
+                    # Preserve raw_config destination_number shorthand.
+                    # _populate_vapi_tool_args() rebuilds transfer_destinations from
+                    # contacts and would otherwise override destination_number with a
+                    # potentially formatted number.
                     # Skip when explicit transfer_destinations already defines "general".
                     tool_args["transfer_destinations"] = {
                         **tool_args.get("transfer_destinations", {}),
