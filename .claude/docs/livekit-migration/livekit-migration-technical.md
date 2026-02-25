@@ -17,10 +17,48 @@
 | **Call metrics** | Vapi includes latency breakdown in `end-of-call-report` | Self-instrumented pipeline (STT, LLM, TTS latencies). |
 | **Webhooks** | `assistant-request`, `status-update`, `end-of-call-report`, `function-call`, `tool-calls` | Infrastructure-only: `room_started`, `room_finished`, `participant_joined`, `participant_left`. |
 | **Phone numbers** | Import Twilio numbers into Vapi via SDK | Keep numbers in Twilio. SIP trunk routes to LiveKit. |
-| **Multi-language** | Squads with triage assistant for language detection | Not needed — Sonic-3 accent localization + Deepgram nova-3 multilingual handles natively. |
+| **Multi-language** | Squads with triage assistant for language detection | Gladia (STT) + Sonic-3 (Cartesia TTS) for multilingual support. Deepgram is single-language only. |
 | **Telephony** | Built-in (Twilio under the hood) | Bring your own SIP trunk (Twilio, Telnyx, etc.) |
 | **STT** | Configured declaratively in assistant JSON (Deepgram) | Configured in agent code: `stt="deepgram/nova-3"` |
 | **TTS** | Configured declaratively in assistant JSON (Cartesia) | Configured in agent code: `tts="cartesia/sonic-3:<voice_id>"` |
+
+---
+
+## Voice Provider Reference
+
+### Speech-to-Text (STT)
+
+| Provider | Use Case | Notes |
+|----------|----------|-------|
+| **Deepgram** | Primary STT provider | Configured for single-language mode only in this codebase (not using Deepgram's multilingual mode) |
+| **Gladia** | Multilingual STT provider | Required for multilingual support (paired with Sonic-3 TTS). Deepgram does not support multilingual. |
+
+**Important:** Gemini models (e.g., `gemini-2.5-flash`) are NOT valid STT providers. These were used for internal testing only and should never be configured in production voice configs.
+
+#### Codebase STT Defaults
+
+These are the default configurations in `api/routes/internal/_voice.py`:
+
+| Language | Model | Language Code |
+|----------|-------|---------------|
+| English | `nova-3` | `en-US` |
+| Spanish | `nova-2` | `es` |
+| Chinese | `nova-2` | `zh-CN` |
+
+### Text-to-Speech (TTS)
+
+| Provider | Use Case | Notes |
+|----------|----------|-------|
+| **Cartesia** | Primary and only TTS provider | Supports `sonic-2` and `sonic-3` voice models |
+
+#### Cartesia Voice Models
+
+| Model | Features |
+|-------|----------|
+| `sonic-2` | Standard voice synthesis |
+| `sonic-3` | Enhanced quality, supports speed and emotion controls (requires API version `2024-11-13`) |
+
+---
 
 ### Key Implication
 
@@ -232,7 +270,7 @@ See also: [Call Transfer Analysis](./livekit-call-transfer-analysis.md)
 
 ### ~~Phase 5: Multi-Language~~ (DROPPED)
 
-> Not needed. Sonic-3 with accent localization + Deepgram nova-3 multilingual handles language adaptation at the model level. The Vapi triage squad is deleted as part of cleanup. No separate language detection or mid-call switching required.
+> Not needed as separate phase. For multilingual support, use Gladia (STT) + Sonic-3 (Cartesia TTS). Deepgram is single-language only. The Vapi triage squad is deleted as part of cleanup.
 
 ---
 
