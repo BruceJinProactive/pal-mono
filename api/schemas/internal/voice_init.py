@@ -51,7 +51,7 @@ class VoiceEndCallRequest(BaseModel):
     call_id: str = Field(..., description="SIP call identifier")
     caller_number: str = Field(..., description="Customer phone number")
     dialed_number: str = Field(..., description="Business phone number")
-    duration_seconds: int = Field(..., description="Call duration in seconds")
+    duration_seconds: float = Field(..., description="Call duration in seconds")
     conversation: list[dict[str, Any]] = Field(
         ..., description="Call conversation history"
     )

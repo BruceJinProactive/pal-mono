@@ -295,6 +295,7 @@ async def end_voice_call(
     dialed_number = request.dialed_number
     duration_seconds = request.duration_seconds
     close_reason = request.close_reason
+    conversation_history = request.conversation
 
     _log_extra = {
         "call_id": call_id,
@@ -302,6 +303,7 @@ async def end_voice_call(
         "dialed_number": dialed_number,
         "duration_seconds": duration_seconds,
         "close_reason": close_reason,
+        "conversation_messages": conversation_history,
     }
 
     logger.info("[end_voice_call] Received end-call request", extra=_log_extra)
