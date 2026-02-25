@@ -356,3 +356,134 @@ async def test_get_chat_response_stream_generates_chatcmpl_stream_id_and_reuses_
     assert stream_id.startswith("chatcmpl-")
     assert re.fullmatch(r"chatcmpl-[0-9a-f]{32}", stream_id)
     assert all(chunk.choices[0].index == 0 for chunk in chunks)
+
+
+@pytest.mark.asyncio
+async def test_get_chat_response_stream_passes_context_fields_to_runtime_context(
+    monkeypatch,
+):
+    """Verify channel, room_name, and participant_identity are forwarded to RuntimeContext."""
+    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    entered_blocks: list[str] = []
+    message_repo = _FakeMessageRepo()
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
+        entered_blocks.append(name)
+        yield None
+
+    user = SimpleNamespace(id=uuid.uuid4())
+    project = SimpleNamespace(
+        id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        raw_config={"use_pal_agents": True},
+        agent_id=uuid.uuid4(),
+        account=SimpleNamespace(name="test-account"),
+        agent=SimpleNamespace(filler_words=None),
+        timezone="America/Los_Angeles",
+        name="test-project",
+    )
+
+    async def _fake_get_project_async(session, message):
+        return project
+
+    async def _fake_get_user_async(session, project, message):
+        return user, False
+
+    async def _fake_construct_agent_spec(**kwargs):
+        return SimpleNamespace()
+
+    # Capture the PalInput passed to pal_agent.run() so we can inspect runtime_context
+    captured_inputs: list = []
+
+    class _CapturingPalAgent:
+        def __init__(self, spec=None):
+            self.spec = spec
+
+        async def run(self, pal_input, stream=False):
+            captured_inputs.append(pal_input)
+
+            async def _stream():
+                yield SimpleNamespace(content="hello")
+                yield SimpleNamespace(content=" world")
+
+            return _stream()
+
+    monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
+    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
+    monkeypatch.setattr(
+        _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.project_service, "get_project_async", _fake_get_project_async
+    )
+    monkeypatch.setattr(
+        _implementation.user_service, "get_user_async", _fake_get_user_async
+    )
+    monkeypatch.setattr(
+        _implementation.agent_service,
+        "construct_agent_spec",
+        _fake_construct_agent_spec,
+    )
+    monkeypatch.setattr(_implementation, "PalAgent", _CapturingPalAgent)
+    monkeypatch.setattr(
+        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
+    )
+
+    # Patch FillerWordsManager to avoid random filler injection affecting chunk count
+    class _NoopFillerWordsManager:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_chat_filler_for_input(self, current_message):
+            return ""
+
+    monkeypatch.setattr(_implementation, "FillerWordsManager", _NoopFillerWordsManager)
+
+    async def _fake_query_history_messages(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(
+        _implementation, "query_history_messages", _fake_query_history_messages
+    )
+
+    session = AsyncMock()
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.VOICE,
+        text=TextObject(body="Hello there"),
+        metadata=Metadata(testing=True),
+    )
+
+    room_name = "room-abc-123"
+    participant_identity = "participant-xyz-456"
+
+    chunks = [
+        chunk
+        async for chunk in _implementation.get_chat_response_stream(
+            session=session,
+            message=message,
+            request_context=RequestContext(),
+            call_id=None,
+            room_name=room_name,
+            participant_identity=participant_identity,
+        )
+    ]
+
+    # Verify chunks were produced (2 content chunks + 1 finish chunk)
+    assert len(chunks) >= 2
+
+    # Verify RuntimeContext received the correct fields
+    assert len(captured_inputs) == 1
+    rc = captured_inputs[0].runtime_context
+    assert rc.channel == "voice"
+    assert rc.room_name == room_name
+    assert rc.participant_identity == participant_identity

@@ -514,6 +514,8 @@ async def get_chat_response_stream(
                     # Voice-specific fields (extra="allow" permits these)
                     call_id=call_id,  # type: ignore[call-arg]
                     vapi_control_url=vapi_control_url,  # type: ignore[call-arg]
+                    room_name=room_name,  # type: ignore[call-arg]
+                    participant_identity=participant_identity,  # type: ignore[call-arg]
                 )
 
                 # Fetch and format conversation history (same as non-streaming)
