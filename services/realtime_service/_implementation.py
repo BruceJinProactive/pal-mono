@@ -7,7 +7,7 @@ with callback support and factory function for creating sessions.
 
 import os
 import uuid
-from typing import AsyncIterator, Callable, Optional
+from typing import AsyncIterator
 
 from openai import AsyncOpenAI
 from sqlalchemy import select
@@ -35,11 +35,6 @@ class RealtimeSession:
         self,
         api_key: str,
         config: RealtimeConfig,
-        # Callbacks (all optional)
-        on_audio_delta: Optional[Callable[[str], None]] = None,
-        on_audio_transcript: Optional[Callable[[dict], None]] = None,
-        on_function_call: Optional[Callable[[str, dict], dict]] = None,
-        on_error: Optional[Callable[[dict], None]] = None,
     ):
         """
         Initialize RealtimeSession.
@@ -47,24 +42,15 @@ class RealtimeSession:
         Args:
             api_key: OpenAI API key for authentication
             config: RealtimeConfig with session configuration
-            on_audio_delta: Callback for audio chunks (base64 string)
-            on_audio_transcript: Callback for transcript events (dict)
-            on_function_call: Callback for function calls (name, args) -> result
-            on_error: Callback for error events (dict)
         """
         self.api_key = api_key
         self.config = config
         self.client: AsyncOpenAI | None = None
         self.connection = None
 
-        # Store callbacks
-        self._on_audio_delta = on_audio_delta
-        self._on_audio_transcript = on_audio_transcript
-        self._on_function_call = on_function_call
-        self._on_error = on_error
-
         # Counters for logging
         self.audio_chunks_sent_to_openai = 0
+        self.audio_chunks_received = 0
 
     async def connect(self) -> None:
         """
@@ -80,14 +66,18 @@ class RealtimeSession:
             # Create AsyncOpenAI client
             self.client = AsyncOpenAI(api_key=self.api_key)
 
+            model = os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-1.5")
             # Connect to Realtime API (production endpoint)
-            self.connection = await self.client.realtime.connect(
-                model="gpt-realtime"
-            ).enter()
+            self.connection = await self.client.realtime.connect(model=model).enter()
 
             # Use config to generate session configuration
             session_config = self.config.to_session_config()
             await self.connection.session.update(session=session_config)  # type: ignore[arg-type]
+
+            logger.debug(
+                "[REALTIME] Successfully connected and configured OpenAI Realtime API",
+                extra={"model": model},
+            )
 
         except Exception as e:
             logger.error(
@@ -139,6 +129,15 @@ class RealtimeSession:
         try:
             self.audio_chunks_sent_to_openai += 1
             await self.connection.input_audio_buffer.append(audio=base64_audio)
+
+            if self.audio_chunks_sent_to_openai % 100 == 0:
+                logger.debug(
+                    "[REALTIME] Audio chunks sent to OpenAI",
+                    extra={
+                        "chunks_sent": self.audio_chunks_sent_to_openai,
+                        "payload_length": len(base64_audio),
+                    },
+                )
         except Exception as e:
             logger.error(
                 "[REALTIME] Error sending audio to OpenAI",
@@ -177,17 +176,18 @@ class RealtimeSession:
                         )
                         continue
 
-                    # Invoke callback if registered
-                    if self._on_audio_delta:
-                        try:
-                            self._on_audio_delta(audio_chunk)
-                        except Exception as e:
-                            logger.error(
-                                "[REALTIME] Error in audio delta callback",
-                                extra={"error": str(e)},
-                            )
+                    # Increment counter and log periodically
+                    self.audio_chunks_received += 1
+                    if self.audio_chunks_received % 100 == 0:
+                        logger.debug(
+                            "[REALTIME] Audio chunks received from OpenAI",
+                            extra={
+                                "chunks_received": self.audio_chunks_received,
+                                "delta_length": len(audio_chunk),
+                            },
+                        )
 
-                    # Yield for async generator consumers
+                    # Yield audio chunk for consumers
                     yield audio_chunk
 
                 # Transcript events
@@ -198,7 +198,7 @@ class RealtimeSession:
                     transcript_text = getattr(event, "transcript", "")
                     item_id = getattr(event, "item_id", "")
 
-                    # Always log user transcripts for debugging
+                    # Log user transcripts
                     logger.info(
                         "[REALTIME] User transcript",
                         extra={
@@ -207,19 +207,9 @@ class RealtimeSession:
                         },
                     )
 
-                    if self._on_audio_transcript:
-                        try:
-                            transcript_data = {
-                                "role": "user",
-                                "transcript": transcript_text,
-                                "item_id": item_id,
-                            }
-                            self._on_audio_transcript(transcript_data)
-                        except Exception as e:
-                            logger.error(
-                                "[REALTIME] Error in transcript callback",
-                                extra={"error": str(e)},
-                            )
+                # Audio response complete
+                elif event_type == "response.output_audio.done":
+                    logger.debug("[REALTIME] Audio response completed")
 
                 # Assistant transcript completed
                 elif event_type == "response.audio_transcript.done":
@@ -235,16 +225,6 @@ class RealtimeSession:
                         "type": event.type,
                         "error": getattr(event, "error", str(event)),
                     }
-
-                    if self._on_error:
-                        try:
-                            self._on_error(error_data)
-                        except Exception as e:
-                            logger.error(
-                                "[REALTIME] Error in error callback",
-                                extra={"error": str(e)},
-                            )
-
                     logger.error("[REALTIME] API error", extra=error_data)
 
         except Exception as e:
@@ -290,25 +270,16 @@ class RealtimeSession:
 async def create_realtime_session(
     session: AsyncSession,
     recipient_id: str,
-    # Optional callbacks
-    on_audio_delta: Optional[Callable[[str], None]] = None,
-    on_audio_transcript: Optional[Callable[[dict], None]] = None,
-    on_function_call: Optional[Callable[[str, dict], dict]] = None,
-    on_error: Optional[Callable[[dict], None]] = None,
 ) -> RealtimeSession:
     """
     Create and connect RealtimeSession for voice conversations.
 
     Looks up project by voice channel identifier, retrieves agent configuration,
-    establishes OpenAI Realtime API connection, and optionally registers callbacks.
+    and establishes OpenAI Realtime API connection.
 
     Args:
         session: Database session for lookups
         recipient_id: Phone number or identifier (e.g., "+15551234567")
-        on_audio_delta: Optional callback for audio chunks
-        on_audio_transcript: Optional callback for transcript events
-        on_function_call: Optional callback for function calls
-        on_error: Optional callback for error events
 
     Returns:
         RealtimeSession: Connected session ready for audio streaming
@@ -372,14 +343,10 @@ async def create_realtime_session(
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable not set")
 
-    # Create session with callbacks
+    # Create session
     realtime_session = RealtimeSession(
         api_key=api_key,
         config=config,
-        on_audio_delta=on_audio_delta,
-        on_audio_transcript=on_audio_transcript,
-        on_function_call=on_function_call,
-        on_error=on_error,
     )
 
     await realtime_session.connect()
@@ -389,9 +356,6 @@ async def create_realtime_session(
         extra={
             "project_name": project.name,
             "agent_id": str(agent.id),
-            "has_callbacks": bool(
-                on_audio_delta or on_audio_transcript or on_function_call or on_error
-            ),
         },
     )
 

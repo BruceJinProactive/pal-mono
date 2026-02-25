@@ -98,7 +98,6 @@ def validate_twilio_signature(
 def generate_stream_twiml(
     websocket_url: str,
     parameters: dict[str, str] | None = None,
-    message: str | None = None,
 ) -> str:
     """
     Generate TwiML XML for WebSocket streaming.
@@ -106,7 +105,6 @@ def generate_stream_twiml(
     Args:
         websocket_url: WebSocket endpoint URL (wss://...)
         parameters: Optional parameters to pass to WebSocket
-        message: Optional message to speak to caller
 
     Returns:
         TwiML XML string
@@ -126,17 +124,8 @@ def generate_stream_twiml(
             )
 
     # Build TwiML with escaped WebSocket URL
-    # NOTE: <Say> must come BEFORE <Connect> to initialize Twilio's audio path
-    twiml = """<?xml version="1.0" encoding="UTF-8"?>
-<Response>"""
-
-    if message:
-        # Escape message for XML
-        escaped_message = _escape_xml(message)
-        twiml += f"""
-    <Say>{escaped_message}</Say>"""
-
-    twiml += f"""
+    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
     <Connect>
         <Stream url="{escaped_websocket_url}">{param_elements}</Stream>
     </Connect>
@@ -286,7 +275,6 @@ async def handle_voice_webhook(request: Request) -> Response:
         twiml_xml = generate_stream_twiml(
             websocket_url=websocket_url,
             parameters=stream_parameters if stream_parameters else None,
-            message="Hi, this is Palona AI agent. How can I help you today?",
         )
 
         logger.debug(
