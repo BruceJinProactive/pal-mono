@@ -479,6 +479,13 @@ class RawConfig:
                 t for t in final_identifiers if t.tool_name not in VOICE_ONLY_TOOLS
             ]
 
+        logger.debug(
+            "[_get_agent_tools] Resolved %d tool(s) for agent %s: %s",
+            len(final_identifiers),
+            self.agent.id,
+            [t.tool_name for t in final_identifiers],
+        )
+
         return ToolConfig(identifiers=final_identifiers, metadata=metadata)
 
     def _get_agent_model_config(self) -> ModelConfig:

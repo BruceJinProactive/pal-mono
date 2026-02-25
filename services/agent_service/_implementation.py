@@ -88,6 +88,7 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
     }
 
     tool_specs = []
+    skipped = []
     for identifier in tool_config.identifiers:
         tool_name = identifier.tool_name
 
@@ -98,6 +99,16 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
                     config=identifier.args,
                 )
             )
+        else:
+            skipped.append(tool_name)
+
+    logger.debug(
+        "[_build_tool_specs] Built %d pal-agents tool spec(s): %s | skipped %d: %s",
+        len(tool_specs),
+        [ts.tool_name for ts in tool_specs],
+        len(skipped),
+        skipped,
+    )
 
     return tool_specs
 
