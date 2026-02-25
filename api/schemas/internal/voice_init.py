@@ -43,3 +43,16 @@ class VoiceInitResponse(BaseModel):
         default_factory=dict,
         description="Word-to-pronunciation replacement map for TTS preprocessing",
     )
+
+
+class VoiceEndCallRequest(BaseModel):
+    """Request to end a LiveKit voice call."""
+
+    call_id: str = Field(..., description="SIP call identifier")
+    caller_number: str = Field(..., description="Customer phone number")
+    dialed_number: str = Field(..., description="Business phone number")
+    duration_seconds: int = Field(..., description="Call duration in seconds")
+    conversation: list[dict[str, Any]] = Field(
+        ..., description="Call conversation history"
+    )
+    close_reason: str = Field(..., description="Reason for call ending")

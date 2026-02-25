@@ -16,7 +16,11 @@ from api.schemas.chat.message import (
     TextObject,
     Type,
 )
-from api.schemas.internal.voice_init import VoiceInitRequest, VoiceInitResponse
+from api.schemas.internal.voice_init import (
+    VoiceEndCallRequest,
+    VoiceInitRequest,
+    VoiceInitResponse,
+)
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.types import Channel, SpeechRate
 from services import project_service, subscription_service, user_service
@@ -269,3 +273,61 @@ async def init_voice_call(
         background_sound=vc.background_sound or None,
         replacements=vc.replacements or {},
     )
+
+
+async def end_voice_call(
+    request: VoiceEndCallRequest,
+    session: AsyncSession,
+) -> dict:
+    """End a voice call from the LiveKit agent worker.
+
+    Logs call details and finds the conversation_id associated with the call_id.
+
+    Args:
+        request: VoiceEndCallRequest containing call details
+        session: Database session
+
+    Returns:
+        dict: Status response with conversation_id if found
+    """
+    call_id = request.call_id
+    caller_number = request.caller_number
+    dialed_number = request.dialed_number
+    duration_seconds = request.duration_seconds
+    close_reason = request.close_reason
+
+    _log_extra = {
+        "call_id": call_id,
+        "caller_number": caller_number,
+        "dialed_number": dialed_number,
+        "duration_seconds": duration_seconds,
+        "close_reason": close_reason,
+    }
+
+    logger.info("[end_voice_call] Received end-call request", extra=_log_extra)
+
+    # Find conversation by call_id
+    conversation_repo = db.ConversationRepositoryAsync(session)
+    conversation = await conversation_repo.get_conversation_by_call_id(call_id)
+
+    if not conversation:
+        logger.warning(
+            f"[end_voice_call] No conversation found for call_id: {call_id}",
+            extra=_log_extra,
+        )
+        return {
+            "status": "error",
+            "message": f"No conversation found for call_id: {call_id}",
+        }
+
+    conversation_id = str(conversation.id)
+
+    logger.info(
+        f"[end_voice_call] Found conversation_id: {conversation_id}",
+        extra={**_log_extra, "conversation_id": conversation_id},
+    )
+
+    return {
+        "status": "success",
+        "conversation_id": conversation_id,
+    }

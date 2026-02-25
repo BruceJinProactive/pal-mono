@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
-from api.schemas.internal.voice_init import VoiceInitRequest, VoiceInitResponse
+from api.schemas.internal.voice_init import (
+    VoiceEndCallRequest,
+    VoiceInitRequest,
+    VoiceInitResponse,
+)
 
 from . import _voice
 
@@ -26,3 +30,19 @@ async def init_voice_call(
     agent session (STT, TTS, LLM proxy settings).
     """
     return await _voice.init_voice_call(request, session)
+
+
+@voice_router.post(
+    "/end-call",
+    status_code=status.HTTP_200_OK,
+)
+async def end_voice_call(
+    request: VoiceEndCallRequest,
+    session: AsyncSession = Depends(db.get_db_async),
+) -> dict:
+    """End a voice call from the LiveKit agent worker.
+
+    Called by the LiveKit agent when a SIP call ends. Logs call details
+    and finds the conversation_id associated with the call.
+    """
+    return await _voice.end_voice_call(request, session)
