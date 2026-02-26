@@ -440,6 +440,12 @@ class RawConfig:
                         "general": explicit_destination_number,
                     }
                 # Inject LiveKit runtime context for SIP REFER
+                logger.debug(
+                    "[_get_agent_tools] LiveKit transfer tool context: "
+                    "room_name=%s, participant_identity=%s",
+                    self.room_name,
+                    self.participant_identity,
+                )
                 if self.room_name and self.participant_identity:
                     tool_args["room_name"] = self.room_name
                     tool_args["participant_identity"] = self.participant_identity
@@ -450,6 +456,23 @@ class RawConfig:
                         tool_args["lk_api"] = livekit_api.LiveKitAPI(
                             url=lk_url, api_key=lk_key, api_secret=lk_secret
                         )
+                    else:
+                        logger.warning(
+                            "[_get_agent_tools] LiveKit env vars missing — "
+                            "lk_api will not be injected. "
+                            "LIVEKIT_URL=%s, LIVEKIT_API_KEY=%s, LIVEKIT_API_SECRET=%s",
+                            "set" if lk_url else "MISSING",
+                            "set" if lk_key else "MISSING",
+                            "set" if lk_secret else "MISSING",
+                        )
+                elif self.channel == Channel.VOICE:
+                    logger.warning(
+                        "[_get_agent_tools] LiveKit room context missing — "
+                        "skipping lk_api injection. "
+                        "room_name=%s, participant_identity=%s",
+                        self.room_name,
+                        self.participant_identity,
+                    )
 
             final_identifiers.append(
                 ToolIdentifier(
