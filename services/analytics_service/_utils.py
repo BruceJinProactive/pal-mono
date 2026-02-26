@@ -523,3 +523,175 @@ def _calculate_aggregated_metric(metric_name: str, data: list) -> dict:
         result["total_paid_total"] = round(paid_total, 2)
 
     return result
+
+
+# =============================================================================
+# LLM CALL ANALYTICS EXTRACTION
+# =============================================================================
+
+
+def _format_conversation(conversation_history: list[dict]) -> str:
+    """
+    Format conversation history into a readable text format for LLM analysis.
+
+    Args:
+        conversation_history: List of message dicts with 'role' and 'content'
+
+    Returns:
+        Formatted conversation string
+    """
+    formatted_lines = []
+    for msg in conversation_history:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        formatted_lines.append(f"{role.upper()}: {content}")
+
+    return "\n".join(formatted_lines)
+
+
+async def extract_call_analytics(conversation_history: list[dict]) -> dict:
+    """
+    Extract analytics from conversation using LLM.
+
+    Args:
+        conversation_history: List of message dicts in format [{"role": "user/assistant", "content": "..."}]
+
+    Returns:
+        dict: {
+            "ended_reason": CallEndedReason,
+            "call_purpose": list[CallPurpose],
+            "user_satisfaction": UserSatisfaction,
+            "language": CallLanguage
+        }
+    """
+    import json
+
+    from agent.model import ModelOptions, call_llm_default
+    from db.tables.types import (
+        CallEndedReason,
+        CallLanguage,
+        CallPurpose,
+        UserSatisfaction,
+    )
+
+    # Build system prompt with all enum options
+    system_prompt = """Analyze this call conversation and extract the following information:
+
+1. ended_reason: Choose ONE from:
+   - customer_ended: Customer hung up or ended the call normally
+   - assistant_forwarded: AI assistant transferred to human staff
+   - misdialed: Wrong number or accidental call
+   - silence_timeout: Call ended due to silence/no response
+   - max_duration_exceeded: Call reached maximum allowed duration
+   - other: Any other reason
+
+2. call_purpose: Choose ALL that apply (can be multiple) from:
+   - store_info: Hours, location/directions, parking, policies
+   - menu_info: Menu questions (items, ingredients, pricing)
+   - ordering: User placed an order
+   - reservation: Making new reservations
+   - waitlist: Waitlist inquiries
+   - takeout_issue: Missing pickup items, wrong location
+   - third_party_order: DoorDash/other app order updates
+   - delivery: Delivery orders, availability, zones, fees, or issues
+   - customer_service: Non-urgent management / general service
+   - complaint_service: Dine-in or service complaints
+   - complaint_food_safety: Food safety / food poisoning issues
+   - dietary_specific: Allergy/dietary restriction beyond website info
+   - lost_and_found: Lost items at the restaurant
+   - reservation_change: Unsupported reservation changes
+   - other: Any other call purpose
+
+3. user_satisfaction: Choose ONE from:
+   - positive: Customer satisfied, polite close, needs resolved
+   - neutral: Mixed signals, partially resolved, or indifferent
+   - negative: Dissatisfied, frustrated, or issue not resolved
+
+4. language: Choose ONE from:
+   - english: English conversation
+   - french: French conversation
+   - spanish: Spanish conversation
+   - chinese: Chinese conversation
+
+Return ONLY a valid JSON object with these exact keys: ended_reason, call_purpose, user_satisfaction, language.
+The call_purpose value must be an array of strings. All other values must be strings.
+
+Example format:
+{
+  "ended_reason": "customer_ended",
+  "call_purpose": ["menu_info", "ordering"],
+  "user_satisfaction": "positive",
+  "language": "english"
+}"""
+
+    # Format conversation for LLM
+    conversation_text = _format_conversation(conversation_history)
+
+    logger.info("Starting LLM call analytics extraction")
+    logger.debug(f"Conversation history length: {len(conversation_history)} messages")
+
+    content: str | None = None
+    result: dict | None = None
+
+    try:
+        # Call Azure OpenAI with JSON response format
+        response = await call_llm_default(
+            model_option=ModelOptions.GPT_4O,
+            params={
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": conversation_text},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": 0,
+            },
+        )
+
+        # Parse JSON response
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("LLM returned empty response")
+
+        result = json.loads(content)
+        logger.debug(f"LLM raw response: {result}")
+
+        # Validate result is a dict
+        if not isinstance(result, dict):
+            raise ValueError("LLM response is not a valid JSON object")
+
+        # Convert strings to enums
+        analytics = {
+            "ended_reason": CallEndedReason(result["ended_reason"]),
+            "call_purpose": [CallPurpose(p) for p in result["call_purpose"]],
+            "user_satisfaction": UserSatisfaction(result["user_satisfaction"]),
+            "language": CallLanguage(result["language"]),
+        }
+
+        # Log the extracted analytics
+        logger.info("[Live Kit Analytics] Call analytics extraction successful")
+        logger.info(
+            f"[Live Kit Analytics]  Ended reason: {analytics['ended_reason'].value}"
+        )
+        logger.info(
+            f"[Live Kit Analytics]  Call purposes: {[p.value for p in analytics['call_purpose']]}"
+        )
+        logger.info(
+            f"[Live Kit Analytics]  User satisfaction: {analytics['user_satisfaction'].value}"
+        )
+        logger.info(f"[Live Kit Analytics]  Language: {analytics['language'].value}")
+
+        return analytics
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse LLM response as JSON: {e}")
+        if content:
+            logger.error(f"Raw response content: {content}")
+        raise
+    except (KeyError, ValueError) as e:
+        logger.error(f"Invalid LLM response format or enum value: {e}")
+        if result:
+            logger.error(f"Parsed result: {result}")
+        raise
+    except Exception:
+        logger.exception("Unexpected error during call analytics extraction")
+        raise

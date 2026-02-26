@@ -329,6 +329,30 @@ async def end_voice_call(
         extra={**_log_extra, "conversation_id": conversation_id},
     )
 
+    # Extract call analytics using LLM
+    if conversation_history:
+        try:
+            from services.analytics_service._utils import extract_call_analytics
+
+            analytics = await extract_call_analytics(conversation_history)
+            logger.info(
+                f"[end_voice_call] Analytics extracted for conversation_id: {conversation_id}",
+                extra={
+                    "conversation_id": conversation_id,
+                    "analytics": {
+                        "ended_reason": analytics["ended_reason"].value,
+                        "call_purpose": [p.value for p in analytics["call_purpose"]],
+                        "user_satisfaction": analytics["user_satisfaction"].value,
+                        "language": analytics["language"].value,
+                    },
+                },
+            )
+        except Exception as e:
+            logger.error(
+                f"[end_voice_call] Failed to extract analytics: {e}",
+                extra={"conversation_id": conversation_id, "error": str(e)},
+            )
+
     return {
         "status": "success",
         "conversation_id": conversation_id,
