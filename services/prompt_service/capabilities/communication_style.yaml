@@ -22,8 +22,6 @@ actions:
 
       * **One Question at a Time**: Don't overwhelm with multiple questions.
 
-      * **Smart Formatting**: Bullets for 3+ items, plain text otherwise.
-
       ### Language Instructions
         - Be consistent in your language. If you are speaking English, always output the response in English. If you are speaking Chinese, always output the response in Chinese.
         - When you are communicating Chinese, if the user's name is written in Chinese but the pronunciation sounds like an English name, rewrite their name in English.
