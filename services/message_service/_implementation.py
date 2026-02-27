@@ -170,7 +170,7 @@ async def get_chat_response_async(
             # Fetch conversation history
             history_messages = await query_history_messages(
                 request_message.conversation_id,
-                limit=20,
+                limit=100,
             )
 
             # Format history for context
@@ -521,7 +521,7 @@ async def get_chat_response_stream(
                 # Fetch and format conversation history (same as non-streaming)
                 history_messages = await query_history_messages(
                     request_message.conversation_id,
-                    limit=20,
+                    limit=100,
                 )
 
                 current_message = message.text.body if message.text else ""

@@ -10,7 +10,7 @@ from utils.dd import safe_annotate
 
 @task(name="Query History Messages")
 async def query_history_messages(
-    conversation_id: uuid.UUID, limit: int = 20
+    conversation_id: uuid.UUID, limit: int = 100
 ) -> list[Message]:
     async with AsyncSessionLocal() as db:
         message_repo = MessageRepositoryAsync(db)
