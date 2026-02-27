@@ -1038,8 +1038,7 @@ class TestChatCompletionsIntegration:
                         async for chunk in response.body_iterator:
                             chunks.append(chunk)
 
-                        # Wait a bit for background task to complete
-                        await asyncio.sleep(0.1)
+                        # No need to wait - SMS sending happens before [DONE] is sent
 
                         # Verify SMS was sent with URL
                         mock_send.assert_called_once()

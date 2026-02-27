@@ -522,19 +522,17 @@ async def chat_completions_agno(
                     logger.info(
                         f"Completed streaming response after {chunk_count} chunks."
                     )
-                    yield "data: [DONE]\n\n"
 
                     # Send URLs via SMS if any are found in the collected content
-                    # Use fire-and-forget to avoid CancelledError when client disconnects
                     # Note: _send_urls_via_sms creates its own DB session for persistence
-                    asyncio.create_task(
-                        _send_urls_via_sms(
-                            collected_content,
-                            sender_identifier,
-                            recipient_identifier,
-                            call_id=call_id,
-                        )
+                    await _send_urls_via_sms(
+                        collected_content,
+                        sender_identifier,
+                        recipient_identifier,
+                        call_id=call_id,
                     )
+
+                    yield "data: [DONE]\n\n"
 
             except asyncio.CancelledError:
                 logger.debug("[ChatCompletions] Stream cancelled (client disconnect)")
