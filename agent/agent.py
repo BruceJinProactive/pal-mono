@@ -13,7 +13,7 @@ from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
 from agent.memory import update_memory
-from utils.dd import is_testing_mode, send_dd_histogram_metrics, traced
+from utils.dd import is_testing_mode, safe_annotate, send_dd_histogram_metrics, traced
 
 
 class Agent:
@@ -65,7 +65,7 @@ class Agent:
     @workflow(name="Pal Agent Processing")
     async def _arun_with_workflow(self, input: Input) -> Output:
         """Internal method for non-streaming responses with workflow tracing"""
-        LLMObs.annotate(
+        safe_annotate(
             tags={
                 "account_name": self._metadata.account_name,
                 "user_id": self._metadata.user_id,
@@ -97,7 +97,7 @@ class Agent:
 
         if isinstance(output, _AsyncIterator):
             # This should never happen in non-streaming mode
-            LLMObs.annotate(
+            safe_annotate(
                 tags={"error": "Non-streaming result received in non-streaming mode"}
             )
             raise TypeError(
@@ -116,7 +116,7 @@ class Agent:
             # Apply workflow decorator to a generator function to trace the entire stream lifecycle
             @workflow(name="Pal Agent Processing")
             async def process_stream() -> AsyncIterator[Output]:
-                LLMObs.annotate(
+                safe_annotate(
                     input_data=input,
                     tags={
                         "account_name": self._metadata.account_name,
@@ -141,7 +141,7 @@ class Agent:
                     )
                     output_stream = await self._agent.arun(input)  # type: ignore
                     if not isinstance(output_stream, _AsyncIterator):
-                        LLMObs.annotate(
+                        safe_annotate(
                             tags={
                                 "error": "Non-streaming result received in streaming mode"
                             }
@@ -165,7 +165,7 @@ class Agent:
                     async for chunk in output_stream:
                         chunk_count += 1
                         if chunk_count == 1:
-                            LLMObs.annotate(tags={"first_chunk_received": True})
+                            safe_annotate(tags={"first_chunk_received": True})
                             send_dd_histogram_metrics(
                                 "agent.received_first_chunk",
                                 input.request_context.request_time,
@@ -178,7 +178,7 @@ class Agent:
                         output_content += chunk.content
                         yield chunk
 
-                    LLMObs.annotate(
+                    safe_annotate(
                         output_data=output_content, tags={"total_chunks": chunk_count}
                     )
 

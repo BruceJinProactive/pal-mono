@@ -6,7 +6,6 @@ from typing import AsyncIterator, Optional
 import agno.agent.agent
 from agno.models.message import Message
 from agno.run.response import RunResponseContentEvent, ToolCallStartedEvent
-from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import agent
 from pydantic import BaseModel, Field
 
@@ -17,7 +16,7 @@ from agent.memory._implementation import get_all_memories
 from agent.model import ModelOptions, build_agno_model
 from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
-from utils.dd import send_dd_histogram_metrics, trace_block
+from utils.dd import safe_annotate, send_dd_histogram_metrics, trace_block
 from utils.log import logger
 
 
@@ -142,7 +141,7 @@ class AgnoAgent:
     def _create_traced_stream_iterator(self, input: Input) -> AsyncIterator[Output]:
         @agent(name="AgnoAgent")
         async def stream_wrapper() -> AsyncIterator[Output]:
-            LLMObs.annotate(
+            safe_annotate(
                 input_data=input,
                 tags={
                     "streaming": True,
@@ -304,7 +303,7 @@ class AgnoAgent:
                 output_content += error_output.content
                 yield error_output
 
-            LLMObs.annotate(output_data=output_content)
+            safe_annotate(output_data=output_content)
 
         return stream_wrapper()
 

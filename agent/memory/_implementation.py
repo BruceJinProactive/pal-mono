@@ -2,10 +2,10 @@ import time
 from collections.abc import Mapping
 from typing import Dict, Tuple
 
-from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import task
 from mem0 import AsyncMemoryClient
 
+from utils.dd import safe_annotate
 from utils.log import logger
 
 # Simple cache: user_id -> (memories_string, timestamp)
@@ -31,7 +31,6 @@ def _set_cached_memories(user_id: str, memories: str) -> None:
     _cache[user_id] = (memories, time.time())
 
 
-@task(name="Memory Update")
 async def update_memory(
     user_id: str,
     content: str,
@@ -67,7 +66,7 @@ async def get_all_memories(user_id: str) -> str:
     # Check cache first
     cached_memories = _get_cached_memories(user_id)
     if cached_memories is not None:
-        LLMObs.annotate(
+        safe_annotate(
             tags={
                 "cache_hit": True,
             }
@@ -78,7 +77,7 @@ async def get_all_memories(user_id: str) -> str:
     import asyncio
 
     asyncio.create_task(_fetch_and_cache_memories(user_id))
-    LLMObs.annotate(
+    safe_annotate(
         tags={
             "cache_hit": False,
         }
@@ -86,7 +85,6 @@ async def get_all_memories(user_id: str) -> str:
     return ""
 
 
-@task(name="Fetch and Cache Memories")
 async def _fetch_and_cache_memories(user_id: str) -> None:
     """Background task to fetch and cache memories without blocking."""
     try:

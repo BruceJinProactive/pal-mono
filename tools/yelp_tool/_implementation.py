@@ -5,7 +5,6 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import retrieval, tool
 
 from agent.tool import ToolMetadata
@@ -68,6 +67,7 @@ from tools.yelp_tool.classes import (
     WaitlistOnMyWayQuery,
     YelpAccessToken,
 )
+from utils.dd import safe_annotate
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -307,7 +307,7 @@ class YelpTool(Toolkit):
         if not chat_history:
             logger.warning("[YelpTool._get_chat_history] Empty chat history returned")
 
-        LLMObs.annotate(output_data=chat_history)
+        safe_annotate(output_data=chat_history)
         return chat_history
 
     @tool

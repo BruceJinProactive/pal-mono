@@ -38,6 +38,7 @@ from tools.adora_v2_tool.classes import (
 from tools.utils.ordering._llm import async_llm_call
 from tools.utils.ordering._query_engine import create_query_engine
 from tools.utils.ordering._utils import get_relevant_docs_v2, is_valid_email
+from utils.dd import safe_annotate
 from utils.log import logger
 
 
@@ -315,7 +316,7 @@ class AdoraV2Tool(Toolkit):
                 return f"Order item group {idx + 1} contains invalid items. All items must be non-empty strings."
 
         # Annotate input data for Datadog tracing
-        LLMObs.annotate(
+        safe_annotate(
             input_data={
                 "order_type": order_type.value,
                 "payment_type": payment_type.value,
@@ -341,7 +342,7 @@ class AdoraV2Tool(Toolkit):
         if coupon_code:
             with LLMObs.task(name="fulfill_order.validate_coupon"):
                 # Annotate input
-                LLMObs.annotate(
+                safe_annotate(
                     metadata={
                         "coupon_code": coupon_code,
                     }
@@ -353,7 +354,7 @@ class AdoraV2Tool(Toolkit):
 
                 # Annotate output
                 if coupon_result:
-                    LLMObs.annotate(
+                    safe_annotate(
                         metadata={
                             "is_valid": coupon_result.is_valid,
                             "coupon_id": coupon_result.coupon_id,
@@ -361,7 +362,7 @@ class AdoraV2Tool(Toolkit):
                         }
                     )
                 else:
-                    LLMObs.annotate(
+                    safe_annotate(
                         metadata={
                             "is_valid": False,
                             "error": "API call failed",
@@ -406,7 +407,7 @@ class AdoraV2Tool(Toolkit):
             )
 
             # Annotate input before LLM call
-            LLMObs.annotate(
+            safe_annotate(
                 metadata={
                     "llm_input_system_prompt": system_prompt,
                     "llm_input_prompt": formatted_prompt,
@@ -428,7 +429,7 @@ class AdoraV2Tool(Toolkit):
                 llm_output_data = (
                     str(order_request_base) if order_request_base else "None"
                 )
-            LLMObs.annotate(
+            safe_annotate(
                 metadata={
                     "llm_output": llm_output_data,
                     "output_type": str(type(order_request_base)),
@@ -478,7 +479,7 @@ class AdoraV2Tool(Toolkit):
             order_request.customer.email = "orderingagent@palona.ai"
 
         # Annotate complete order request for tracing (before delivery address validation)
-        LLMObs.annotate(
+        safe_annotate(
             metadata={
                 "complete_order_request_pre_validation": order_request.model_dump(),
             }
@@ -491,7 +492,7 @@ class AdoraV2Tool(Toolkit):
 
             with LLMObs.task(name="fulfill_order.validate_delivery_address"):
                 # Annotate input before API call
-                LLMObs.annotate(
+                safe_annotate(
                     metadata={
                         "input_address": delivery_address.model_dump(),
                     }
@@ -501,7 +502,7 @@ class AdoraV2Tool(Toolkit):
                 address_data = validate_address_result[1]
 
                 # Annotate output after API call
-                LLMObs.annotate(
+                safe_annotate(
                     metadata={
                         "validation_success": address_data is not None,
                         "validated_lat_lng": (
@@ -538,7 +539,7 @@ class AdoraV2Tool(Toolkit):
         # Step 1: Validate the order
         with LLMObs.task(name="fulfill_order.validate_order"):
             # Annotate input before API call with complete order information
-            LLMObs.annotate(
+            safe_annotate(
                 input_data=order_request.model_dump(),
                 metadata={
                     "api_input": order_request.model_dump(),
@@ -585,7 +586,7 @@ class AdoraV2Tool(Toolkit):
                 total = getattr(validate_result, "total", None)
                 delivery_charge = getattr(validate_result, "delivery_charge", None)
 
-            LLMObs.annotate(
+            safe_annotate(
                 metadata={
                     "api_response": api_response_data,
                     "validation_success": validation_success,
@@ -606,7 +607,7 @@ class AdoraV2Tool(Toolkit):
             )
 
             # Annotate input before API call with complete order information
-            LLMObs.annotate(
+            safe_annotate(
                 input_data=process_order_request.model_dump(),
                 metadata={
                     "api_input": process_order_request.model_dump(),
@@ -651,7 +652,7 @@ class AdoraV2Tool(Toolkit):
                 api_response_data = process_result.model_dump()
             else:
                 api_response_data = str(process_result)
-            LLMObs.annotate(
+            safe_annotate(
                 metadata={
                     "api_response": api_response_data,
                 }
@@ -677,7 +678,7 @@ class AdoraV2Tool(Toolkit):
             confirmation += f"\nPayment URL: {payment_url}"
 
         # Annotate final output for Datadog tracing with complete order information
-        LLMObs.annotate(
+        safe_annotate(
             output_data=confirmation,
             metadata={
                 "order_id": process_result.order_id,

@@ -4,11 +4,11 @@ from agno.agent.agent import Agent
 from agno.models.groq.groq import Groq
 from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import TextBlock, ToolUseBlock
-from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm
 from pydantic import BaseModel
 
 from tools.utils.ordering.classes import OrderConstructionModel
+from utils.dd import safe_annotate
 from utils.log import logger
 from utils.secret import (
     async_get_server_secret_with_fallback,
@@ -117,7 +117,7 @@ def _call_anthropic_client(
         )
         return None
 
-    LLMObs.annotate(
+    safe_annotate(
         input_data=prompt,
         output_data=str(response),
         metadata={"system_prompt": system_prompt, "model": model_name},
@@ -202,7 +202,7 @@ Rules:
         )
         return None
 
-    LLMObs.annotate(
+    safe_annotate(
         input_data=prompt,
         output_data=str(response),
         metadata={"system_prompt": system_prompt},
@@ -291,7 +291,7 @@ async def _async_call_anthropic_client(
         )
         return None
 
-    LLMObs.annotate(
+    safe_annotate(
         input_data=prompt,
         output_data=str(response),
         metadata={"system_prompt": system_prompt, "model": model_name},
@@ -389,7 +389,7 @@ of the response.
         )
         return None
 
-    LLMObs.annotate(
+    safe_annotate(
         input_data=prompt,
         output_data=str(response_content),
         metadata={"system_prompt": system_prompt},

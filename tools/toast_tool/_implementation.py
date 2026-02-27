@@ -70,6 +70,7 @@ from tools.utils.ordering._utils import (
 )
 from tools.utils.ordering.classes import OrderConstructionModel
 from tools.utils.url_shortener import shorten_url
+from utils.dd import safe_annotate
 from utils.log import logger
 
 # Agent identification suffix for customer names
@@ -912,7 +913,7 @@ class ToastTool(Toolkit):
                 f"[ToastTool._get_chat_history] Possible issue with chat history: {chat_history}"
             )
 
-        LLMObs.annotate(output_data=chat_history)
+        safe_annotate(output_data=chat_history)
 
         return chat_history
 
@@ -1026,7 +1027,7 @@ class ToastTool(Toolkit):
                 "Dining options file not found in the menu knowledge base."
             )
 
-        LLMObs.annotate(input_data=chat_history, output_data=output_data)
+        safe_annotate(input_data=chat_history, output_data=output_data)
         return context
 
     @staticmethod

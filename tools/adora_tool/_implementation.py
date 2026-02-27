@@ -29,6 +29,7 @@ from tools.adora_tool.classes import (
     SubQueries,
 )
 from tools.utils.ordering.classes import OrderConstructionModel
+from utils.dd import safe_annotate
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -461,7 +462,7 @@ class AdoraTool(Toolkit):
                     output_data.append({"id": node.id_, "text": node.text})
                     doc_id += 1
 
-        LLMObs.annotate(input_data=chat_history, output_data=output_data)
+        safe_annotate(input_data=chat_history, output_data=output_data)
         return context
 
     def _format_phone_for_db(self, raw_phone: str | None) -> str:
@@ -604,7 +605,7 @@ class AdoraTool(Toolkit):
         if order.promise_date_time is None:
             exclude_fields.add("promise_date_time")
         payload = order.model_dump_json(by_alias=True, exclude=exclude_fields)
-        LLMObs.annotate(input_data=order, metadata={"payload": payload})
+        safe_annotate(input_data=order, metadata={"payload": payload})
 
         # Guaranteed phone number since we validated it in the order
         json_payload = json.loads(payload)
@@ -667,7 +668,7 @@ class AdoraTool(Toolkit):
                 f"{text_payment_url}"
             )
 
-            LLMObs.annotate(output_data=output)
+            safe_annotate(output_data=output)
             return output
         else:
             logger.error(

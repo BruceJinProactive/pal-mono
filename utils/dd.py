@@ -8,6 +8,9 @@ from typing import Any, Dict, Optional
 
 from datadog import DogStatsd  # pyright: ignore[reportPrivateImportUsage]
 from ddtrace import tracer  # pyright: ignore[reportPrivateImportUsage]
+from ddtrace.llmobs import LLMObs
+
+from utils.log import logger
 
 # Context variable to track testing mode for current request
 # When True, all Datadog logging/tracing is disabled for the request
@@ -22,6 +25,27 @@ def set_testing_mode(testing: bool) -> None:
 def is_testing_mode() -> bool:
     """Check if current request is in testing mode."""
     return _testing_mode.get()
+
+
+def safe_annotate(**kwargs: Any) -> None:
+    """Safely call LLMObs.annotate, suppressing errors when no active span exists.
+
+    Some code paths run in detached threads or background async tasks where the
+    parent LLMObs span context is not available. In those cases LLMObs.annotate()
+    raises an error. This wrapper catches that specific case and logs a debug
+    message instead of propagating the exception.
+
+    All keyword arguments are forwarded directly to LLMObs.annotate().
+    """
+    if is_testing_mode():
+        return
+    try:
+        LLMObs.annotate(**kwargs)
+    except Exception as e:
+        if "No span provided and no active LLMObs-generated span found" in str(e):
+            logger.debug("LLMObs.annotate() skipped: no active span in current context")
+        else:
+            raise
 
 
 def traced(name, tags=None):

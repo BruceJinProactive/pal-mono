@@ -2,11 +2,11 @@ import uuid
 from typing import Dict
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import tool
 
 from db.repositories.message_repository import MessageRepository
 from db.session import get_db
+from utils.dd import safe_annotate
 from utils.log import logger
 
 from ... import _config
@@ -30,7 +30,7 @@ class QueryMessagesTool(Toolkit):
         """
 
         try:
-            LLMObs.annotate(metadata=self.metadata.model_dump())
+            safe_annotate(metadata=self.metadata.model_dump())
 
             chat_history = ""
 
@@ -73,7 +73,7 @@ class QueryMessagesTool(Toolkit):
                                     f"**[Assistant]**\n{assistant_content}\n\n"
                                 )
 
-                LLMObs.annotate(output_data=chat_history)
+                safe_annotate(output_data=chat_history)
 
                 return chat_history
 

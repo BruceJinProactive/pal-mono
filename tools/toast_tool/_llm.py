@@ -2,9 +2,10 @@ from typing import TypeVar, overload
 
 from agno.agent.agent import Agent
 from agno.models.groq.groq import Groq
-from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import llm
 from pydantic import BaseModel
+
+from utils.dd import safe_annotate
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -64,7 +65,7 @@ of the response. Do not include newline characters in the returned JSON object.
 
     response = agent.run(prompt).content
 
-    LLMObs.annotate(
+    safe_annotate(
         input_data=prompt,
         output_data=str(response),
         metadata={"system_prompt": system_prompt},

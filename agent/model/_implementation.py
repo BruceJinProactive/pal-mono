@@ -2,12 +2,11 @@ import os
 from typing import Any, AsyncIterator, Mapping
 
 from agno.models.azure.openai_chat import AzureOpenAI
-from ddtrace.llmobs import LLMObs
 from ddtrace.llmobs.decorators import task
 from openai import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
-from utils.dd import traced
+from utils.dd import safe_annotate, traced
 from utils.log import logger
 
 from ._config import ModelOptions
@@ -59,7 +58,7 @@ async def call_llm_default(
     sanitized_params = {key: value for key, value in params.items() if key != "stream"}
     sanitized_params["model"] = deployment_name
 
-    LLMObs.annotate(
+    safe_annotate(
         input_data=sanitized_params,
         tags={
             "model": deployment_name,
@@ -100,7 +99,7 @@ async def call_llm_stream(
     sanitized_params = {key: value for key, value in params.items() if key != "stream"}
     sanitized_params["model"] = deployment_name
 
-    LLMObs.annotate(
+    safe_annotate(
         tags={
             "model": deployment_name,
             "streaming": True,
