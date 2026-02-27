@@ -754,7 +754,9 @@ For invalid/problematic frames:
                     )
                     span.set_tag("monitoring.llm_model", provider.config.model)
                     span.set_tag("monitoring.media_type", "video")
-                    span.set_tag("monitoring.video_frames_count", len(video_frames))
+                    span.set_tag(
+                        "monitoring.video_frames_count", str(len(video_frames))
+                    )
 
                     return provider.analyze_video_frames(
                         system_instruction=system_instruction,
