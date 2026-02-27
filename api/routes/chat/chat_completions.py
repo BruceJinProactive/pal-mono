@@ -236,8 +236,8 @@ async def _send_urls_via_sms(
     # Filter out invalid URLs (false positives)
     urls = [url for url in potential_urls if not is_invalid_url(url)]
 
+    logger.debug(f"Found URLs {urls} in response: {full_content}")
     if urls:
-        logger.debug(f"Found URLs in response: {urls}")
 
         # Check for multiple URLs and log error if found
         if len(urls) > 1:

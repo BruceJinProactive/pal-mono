@@ -834,7 +834,7 @@ class TestVideoAnalysisTraceIsolation:
         mock_span.set_tag.assert_any_call("monitoring.llm_provider", "azure")
         mock_span.set_tag.assert_any_call("monitoring.llm_model", "gpt-4o")
         mock_span.set_tag.assert_any_call("monitoring.media_type", "video")
-        mock_span.set_tag.assert_any_call("monitoring.video_frames_count", 2)
+        mock_span.set_tag.assert_any_call("monitoring.video_frames_count", "2")
 
     @pytest.mark.asyncio
     async def test_restores_context_after_success(self, mocker):
