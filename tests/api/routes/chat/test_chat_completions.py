@@ -640,6 +640,15 @@ class TestSendUrlsViaSms:
             ]
         )
 
+        # Mock AsyncSessionLocal to return our mock session
+        mock_session_context = AsyncMock()
+        mock_session_context.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_context.__aexit__ = AsyncMock(return_value=None)
+
+        # Mock asyncio.to_thread to avoid actual threading in tests
+        async def mock_to_thread(func, *args):
+            return func(*args)
+
         with patch(
             "api.routes.chat.chat_completions.call_llm_default",
             return_value=mock_response,
@@ -649,28 +658,38 @@ class TestSendUrlsViaSms:
                 return_value={"status": "scheduled"},
             ):
                 with patch(
-                    "api.routes.chat.chat_completions.db.ConversationRepositoryAsync",
-                    return_value=mock_conv_repo,
+                    "api.routes.chat.chat_completions.asyncio.to_thread",
+                    side_effect=mock_to_thread,
                 ):
                     with patch(
-                        "api.routes.chat.chat_completions.db.MessageRepositoryAsync",
-                        return_value=mock_message_repo,
+                        "api.routes.chat.chat_completions.db.ConversationRepositoryAsync",
+                        return_value=mock_conv_repo,
                     ):
-                        await _send_urls_via_sms(
-                            collected_content=["https://example.com/order"],
-                            sender_identifier="+15551234567",
-                            recipient_identifier="+15557654321",
-                            session=mock_session,
-                            call_id="call-123",
-                        )
+                        with patch(
+                            "api.routes.chat.chat_completions.db.MessageRepositoryAsync",
+                            return_value=mock_message_repo,
+                        ):
+                            with patch(
+                                "db.session.AsyncSessionLocal",
+                                return_value=mock_session_context,
+                            ):
+                                await _send_urls_via_sms(
+                                    collected_content=["https://example.com/order"],
+                                    sender_identifier="+15551234567",
+                                    recipient_identifier="+15557654321",
+                                    call_id="call-123",
+                                )
 
-                        # Verify conversation looked up
-                        mock_conv_repo.get_conversation_by_call_id.assert_called_once_with(
-                            "call-123"
-                        )
+                                # Verify conversation looked up
+                                mock_conv_repo.get_conversation_by_call_id.assert_called_once_with(
+                                    "call-123"
+                                )
 
-                        # Verify message persisted
-                        mock_message_repo.add_message_to_conversation.assert_called_once()
+                                # Verify message persisted
+                                mock_message_repo.add_message_to_conversation.assert_called_once()
+
+                                # Verify session was committed
+                                mock_session.commit.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -990,6 +1009,10 @@ class TestChatCompletionsIntegration:
             ]
         )
 
+        # Mock asyncio.to_thread to avoid actual threading in tests
+        async def mock_to_thread(func, *args):
+            return func(*args)
+
         with patch(
             "api.routes.chat.chat_completions.get_chat_response_stream",
             return_value=mock_stream(),
@@ -999,19 +1022,26 @@ class TestChatCompletionsIntegration:
                 return_value=mock_llm_response,
             ):
                 with patch(
-                    "api.routes.chat.chat_completions.send_message",
-                    return_value={"status": "sent"},
-                ) as mock_send:
-                    response = await chat_completions_agno(
-                        request, request.model, request_context, session
-                    )
+                    "api.routes.chat.chat_completions.asyncio.to_thread",
+                    side_effect=mock_to_thread,
+                ):
+                    with patch(
+                        "api.routes.chat.chat_completions.send_message",
+                        return_value={"status": "sent"},
+                    ) as mock_send:
+                        response = await chat_completions_agno(
+                            request, request.model, request_context, session
+                        )
 
-                    # Consume the stream to trigger URL extraction
-                    chunks = []
-                    async for chunk in response.body_iterator:
-                        chunks.append(chunk)
+                        # Consume the stream to trigger URL extraction
+                        chunks = []
+                        async for chunk in response.body_iterator:
+                            chunks.append(chunk)
 
-                    # Verify SMS was sent with URL
-                    mock_send.assert_called_once()
-                    sms_message = mock_send.call_args[0][0]
-                    assert "https://example.com/order/123" in sms_message.text.body
+                        # Wait a bit for background task to complete
+                        await asyncio.sleep(0.1)
+
+                        # Verify SMS was sent with URL
+                        mock_send.assert_called_once()
+                        sms_message = mock_send.call_args[0][0]
+                        assert "https://example.com/order/123" in sms_message.text.body

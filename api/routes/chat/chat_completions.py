@@ -208,48 +208,50 @@ async def _send_urls_via_sms(
     collected_content: List[str],
     sender_identifier: str,
     recipient_identifier: str,
-    session: Optional[AsyncSession] = None,
     call_id: Optional[str] = None,
 ) -> None:
     """
     Extract URLs from collected content and send them via SMS if found.
     Uses OpenAI to generate a short summary that includes the URLs.
 
+    Creates its own database session for persistence to avoid using request-scoped sessions
+    in background tasks.
+
     Args:
         collected_content: List of content strings to search for URLs
         sender_identifier: The sender identifier for the relay message
         recipient_identifier: The recipient identifier for the relay message
-        session: Database session for persisting the message
         call_id: Call ID for looking up the conversation (for voice calls)
     """
-    if not sender_identifier or not recipient_identifier:
-        logger.error("Invalid sender or recipient identifier provided")
-        return
+    try:
+        if not sender_identifier or not recipient_identifier:
+            logger.error("Invalid sender or recipient identifier provided")
+            return
 
-    # Check for URLs in the collected content
-    full_content = "".join(collected_content)
+        # Check for URLs in the collected content
+        full_content = "".join(collected_content)
 
-    # Use URLExtract to find URLs
-    extractor = URLExtract()
-    potential_urls: List[str] = extractor.find_urls(full_content)  # type: ignore
+        # Use URLExtract to find URLs
+        extractor = URLExtract()
+        potential_urls: List[str] = extractor.find_urls(full_content)  # type: ignore
 
-    # Filter out invalid URLs (false positives)
-    urls = [url for url in potential_urls if not is_invalid_url(url)]
+        # Filter out invalid URLs (false positives)
+        urls = [url for url in potential_urls if not is_invalid_url(url)]
 
-    logger.debug(f"Found URLs {urls} in response: {full_content}")
-    if urls:
+        if urls:
+            logger.debug(f"Found URLs in response: {urls}")
 
-        # Check for multiple URLs and log error if found
-        if len(urls) > 1:
-            logger.warning(
-                f"Multiple URLs found in content: {urls}. Only using the first URL: {urls[0]}"
-            )
+            # Check for multiple URLs and log error if found
+            if len(urls) > 1:
+                logger.warning(
+                    f"Multiple URLs found in content: {urls}. Only using the first URL: {urls[0]}"
+                )
 
-        first_url = urls[0]
+            first_url = urls[0]
 
-        try:
-            # Create a prompt for summarization
-            prompt = f"""
+            try:
+                # Create a prompt for summarization
+                prompt = f"""
 Please create a short, SMS-friendly summary of the following content. DO NOT write out or paraphrase the full URL. Instead, insert the EXACT placeholder [INSERT_URL_HERE] where we will insert the link manually ourselves.
 
 Content:
@@ -272,95 +274,123 @@ Instructions:
 - Use line breaks for clarity
 - REMEMBER: Use the EXACT placeholder [INSERT_URL_HERE] - no variations!
 """
-            chat_complete_params = {
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1,  # Lower temperature for more consistent placeholder usage
-                "max_tokens": 100,
-            }
-            response = await call_llm_default(
-                model_option=ModelOptions.GPT_4O, params=chat_complete_params
-            )
-
-            if (
-                not response.choices
-                or not response.choices[0]
-                or not response.choices[0].message
-            ):
-                raise RuntimeError(
-                    f"No response from LLM: {response.model_dump_json()}"
+                chat_complete_params = {
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,  # Lower temperature for more consistent placeholder usage
+                    "max_tokens": 100,
+                }
+                response = await call_llm_default(
+                    model_option=ModelOptions.GPT_4O, params=chat_complete_params
                 )
-            summary_content = response.choices[0].message.content
-            logger.debug(
-                f"Generated SMS summary: {summary_content} from original content {full_content}"
-            )
 
-        except Exception as e:
-            logger.error(f"Error generating SMS summary with OpenAI: {str(e)}")
-            # Fall back to original content if OpenAI fails
-            summary_content = full_content
-
-        if not summary_content:
-            logger.error(
-                f"The summarized content is empty from original content {full_content}"
-            )
-        else:
-            # Replace placeholder if found, otherwise append payment link
-            if "[INSERT_URL_HERE]" in summary_content:
-                summary_content = summary_content.replace("[INSERT_URL_HERE]", first_url)  # type: ignore
-            else:
-                summary_content = summary_content + f"\n{first_url}"  # type: ignore
-
-            logger.debug(f"Post processed SMS summary to {summary_content}")
-
-            # Create a Message object and send it via relay service
-            relay_message = Message(
-                author_type=AuthorType.AGENT,
-                sender_identifier=recipient_identifier,
-                recipient_identifier=sender_identifier,
-                channel=Channel.SMS,
-                broker=Broker.TWILIO,
-                text=TextObject(body=summary_content),
-                metadata=Metadata(testing=False),
-            )
-            send_result = send_message(relay_message)
-            logger.debug(f"Relay service result: {send_result}")
-
-            # Persist the outbound SMS message to the conversation
-            if send_result.get("status") == "scheduled" and session and call_id:
-                try:
-                    # Look up conversation by call_id
-                    conv_repo = db.ConversationRepositoryAsync(session)
-                    conversation = await conv_repo.get_conversation_by_call_id(call_id)
-
-                    if conversation:
-                        # Store conversation_id before commit to avoid MissingGreenlet error
-                        # After commit(), SQLAlchemy expires objects; accessing conversation.id
-                        # would trigger a lazy load which fails in async context
-                        conversation_id = conversation.id
-
-                        message_repo = db.MessageRepositoryAsync(session)
-                        await message_repo.add_message_to_conversation(
-                            conversation_id=conversation_id,
-                            message_body=relay_message.to_dict(),
-                        )
-                        logger.debug(
-                            "Persisted outbound payment link SMS",
-                            extra={
-                                "call_id": call_id,
-                                "conversation_id": str(conversation_id),
-                            },
-                        )
-                    else:
-                        logger.warning(
-                            f"No conversation found for call_id {call_id}, "
-                            "skipping message persistence"
-                        )
-                except Exception as persist_err:
-                    # Fail silently - SMS delivery takes priority over persistence
-                    logger.error(
-                        f"Failed to persist payment link SMS: {persist_err}",
-                        extra={"call_id": call_id},
+                if (
+                    not response.choices
+                    or not response.choices[0]
+                    or not response.choices[0].message
+                ):
+                    raise RuntimeError(
+                        f"No response from LLM: {response.model_dump_json()}"
                     )
+                summary_content = response.choices[0].message.content
+                logger.debug(
+                    f"Generated SMS summary: {summary_content} from original content {full_content}"
+                )
+
+            except Exception as e:
+                logger.error(f"Error generating SMS summary with OpenAI: {str(e)}")
+                # Fall back to original content if OpenAI fails
+                summary_content = full_content
+
+            if not summary_content:
+                logger.error(
+                    f"The summarized content is empty from original content {full_content}"
+                )
+            else:
+                # Replace placeholder if found, otherwise append payment link
+                if "[INSERT_URL_HERE]" in summary_content:
+                    summary_content = summary_content.replace("[INSERT_URL_HERE]", first_url)  # type: ignore
+                else:
+                    summary_content = summary_content + f"\n{first_url}"  # type: ignore
+
+                logger.debug(f"Post processed SMS summary to {summary_content}")
+
+                # Create a Message object and send it via relay service
+                relay_message = Message(
+                    author_type=AuthorType.AGENT,
+                    sender_identifier=recipient_identifier,
+                    recipient_identifier=sender_identifier,
+                    channel=Channel.SMS,
+                    broker=Broker.TWILIO,
+                    text=TextObject(body=summary_content),
+                    metadata=Metadata(testing=False),
+                )
+                # Run send_message in thread pool to avoid blocking event loop
+                # (boto3 stepfunctions.start_execution is blocking I/O)
+                send_result = await asyncio.to_thread(send_message, relay_message)
+                logger.debug(f"Relay service result: {send_result}")
+
+                # Persist the outbound SMS message to the conversation
+                # Create own session since this runs in a background task
+                if send_result.get("status") == "scheduled" and call_id:
+                    try:
+                        # Create a new async session for background task
+                        from db.session import AsyncSessionLocal
+
+                        async with AsyncSessionLocal() as bg_session:
+                            # Look up conversation by call_id
+                            conv_repo = db.ConversationRepositoryAsync(bg_session)
+                            conversation = await conv_repo.get_conversation_by_call_id(
+                                call_id
+                            )
+
+                            if conversation:
+                                # Store conversation_id before commit to avoid MissingGreenlet error
+                                # After commit(), SQLAlchemy expires objects; accessing conversation.id
+                                # would trigger a lazy load which fails in async context
+                                conversation_id = conversation.id
+
+                                message_repo = db.MessageRepositoryAsync(bg_session)
+                                await message_repo.add_message_to_conversation(
+                                    conversation_id=conversation_id,
+                                    message_body=relay_message.to_dict(),
+                                )
+                                await bg_session.commit()
+                                logger.debug(
+                                    "Persisted outbound payment link SMS",
+                                    extra={
+                                        "call_id": call_id,
+                                        "conversation_id": str(conversation_id),
+                                    },
+                                )
+                            else:
+                                logger.warning(
+                                    f"No conversation found for call_id {call_id}, "
+                                    "skipping message persistence"
+                                )
+                    except Exception as persist_err:
+                        # Fail silently - SMS delivery takes priority over persistence
+                        logger.error(
+                            f"Failed to persist payment link SMS: {persist_err}",
+                            extra={"call_id": call_id},
+                        )
+    except asyncio.CancelledError:
+        # Task was cancelled, log and exit gracefully
+        logger.debug(
+            "SMS sending task cancelled (likely due to client disconnect)",
+            extra={
+                "sender_identifier": sender_identifier,
+                "recipient_identifier": recipient_identifier,
+            },
+        )
+    except Exception as e:
+        # Catch all other errors to prevent background task from crashing
+        logger.error(
+            f"Unexpected error in _send_urls_via_sms: {e}",
+            extra={
+                "sender_identifier": sender_identifier,
+                "recipient_identifier": recipient_identifier,
+            },
+        )
 
 
 async def chat_completions_agno(
@@ -495,16 +525,16 @@ async def chat_completions_agno(
                     yield "data: [DONE]\n\n"
 
                     # Send URLs via SMS if any are found in the collected content
-                    try:
-                        await _send_urls_via_sms(
+                    # Use fire-and-forget to avoid CancelledError when client disconnects
+                    # Note: _send_urls_via_sms creates its own DB session for persistence
+                    asyncio.create_task(
+                        _send_urls_via_sms(
                             collected_content,
                             sender_identifier,
                             recipient_identifier,
-                            session=session,
                             call_id=call_id,
                         )
-                    except Exception as sms_err:
-                        logger.error(f"Error sending URLs via SMS: {sms_err}")
+                    )
 
             except asyncio.CancelledError:
                 logger.debug("[ChatCompletions] Stream cancelled (client disconnect)")
