@@ -644,7 +644,25 @@ async def get_chat_response_stream(
                     )
 
                     try:
-                        async for chunk in await pal_agent.run(pal_input, stream=True):
+                        pal_stream = await pal_agent.run(pal_input, stream=True)
+                        if pal_stream is None:
+                            # Gracefully stop streaming when upstream cancellation/teardown
+                            # results in a missing iterator from pal-agents.
+                            logger.warn(
+                                "[MessageService] pal-agents stream unavailable, ending stream",
+                                extra={
+                                    "agent_id": str(agent_id),
+                                    "conversation_id": str(request_conversation_id),
+                                },
+                            )
+                            return
+                        if not hasattr(pal_stream, "__aiter__"):
+                            raise TypeError(
+                                "Expected async iterator from pal_agent.run(stream=True), "
+                                f"got {type(pal_stream).__name__}"
+                            )
+
+                        async for chunk in pal_stream:
                             if index == 0:
                                 send_dd_histogram_metrics(
                                     "message_service.received_first_chunk",
@@ -680,6 +698,9 @@ async def get_chat_response_stream(
                             yield completion_chunk
                             collected_content.append(chunk.content)
                             index += 1
+                    except asyncio.CancelledError:
+                        logger.debug("[MessageService] pal-agents stream cancelled")
+                        return
                     except RuntimeError as stream_error:
                         # ddtrace's async generator wrapper can convert normal
                         # StopAsyncIteration completion into a RuntimeError.
@@ -897,7 +918,7 @@ async def get_chat_response_stream(
 
         except asyncio.CancelledError:
             logger.debug("[MessageService] Stream cancelled (client disconnect)")
-            raise
+            return
 
         except Exception as e:
             # Log error and return a single error chunk

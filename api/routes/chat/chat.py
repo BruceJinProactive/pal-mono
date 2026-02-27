@@ -111,7 +111,7 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                         yield "data: [DONE]\n\n"
                 except asyncio.CancelledError:
                     logger.debug("[Chat] Stream cancelled (client disconnect)")
-                    raise
+                    return
                 except Exception as e:
                     logger.error(f"Error in generate(): {str(e)}")
                     yield "data: [ERROR] An error occurred while streaming the response.\n\n"

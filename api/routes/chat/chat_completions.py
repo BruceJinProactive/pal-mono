@@ -508,7 +508,7 @@ async def chat_completions_agno(
 
             except asyncio.CancelledError:
                 logger.debug("[ChatCompletions] Stream cancelled (client disconnect)")
-                raise
+                return
 
             except Exception as e:
                 logger.error(f"Error in streaming response: {str(e)}")

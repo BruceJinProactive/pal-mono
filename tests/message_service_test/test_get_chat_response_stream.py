@@ -1,3 +1,4 @@
+import asyncio
 import re
 import sys
 import uuid
@@ -487,3 +488,360 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
     assert rc.channel == "voice"
     assert rc.room_name == room_name
     assert rc.participant_identity == participant_identity
+
+
+@pytest.mark.asyncio
+async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
+    monkeypatch,
+):
+    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    message_repo = _FakeMessageRepo()
+    user = SimpleNamespace(id=uuid.uuid4())
+    project = SimpleNamespace(
+        id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        raw_config={"use_pal_agents": True},
+        agent_id=uuid.uuid4(),
+        account=SimpleNamespace(name="test-account"),
+        agent=SimpleNamespace(filler_words=None),
+        timezone="America/Los_Angeles",
+        name="test-project",
+    )
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
+        yield None
+
+    async def _fake_get_project_async(session, message):
+        return project
+
+    async def _fake_get_user_async(session, project, message):
+        return user, False
+
+    async def _fake_construct_agent_spec(**kwargs):
+        return SimpleNamespace()
+
+    class _NoneStreamPalAgent:
+        def __init__(self, spec=None):
+            self.spec = spec
+
+        async def run(self, pal_input, stream=False):
+            return None
+
+    class _NoopFillerWordsManager:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_chat_filler_for_input(self, current_message):
+            return ""
+
+    async def _fake_query_history_messages(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
+    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
+    monkeypatch.setattr(
+        _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.project_service, "get_project_async", _fake_get_project_async
+    )
+    monkeypatch.setattr(
+        _implementation.user_service, "get_user_async", _fake_get_user_async
+    )
+    monkeypatch.setattr(
+        _implementation.agent_service,
+        "construct_agent_spec",
+        _fake_construct_agent_spec,
+    )
+    monkeypatch.setattr(_implementation, "PalAgent", _NoneStreamPalAgent)
+    monkeypatch.setattr(_implementation, "FillerWordsManager", _NoopFillerWordsManager)
+    monkeypatch.setattr(
+        _implementation, "query_history_messages", _fake_query_history_messages
+    )
+    monkeypatch.setattr(
+        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
+    )
+
+    session = AsyncMock()
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.VOICE,
+        text=TextObject(body="Hello there"),
+        metadata=Metadata(testing=True),
+    )
+
+    chunks = [
+        chunk
+        async for chunk in _implementation.get_chat_response_stream(
+            session=session,
+            message=message,
+            request_context=RequestContext(),
+        )
+    ]
+
+    assert chunks == []
+
+
+@pytest.mark.asyncio
+async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error_chunk(
+    monkeypatch,
+):
+    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    message_repo = _FakeMessageRepo()
+    user = SimpleNamespace(id=uuid.uuid4())
+    project = SimpleNamespace(
+        id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        raw_config={"use_pal_agents": True},
+        agent_id=uuid.uuid4(),
+        account=SimpleNamespace(name="test-account"),
+        agent=SimpleNamespace(filler_words=None),
+        timezone="America/Los_Angeles",
+        name="test-project",
+    )
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
+        yield None
+
+    async def _fake_get_project_async(session, message):
+        return project
+
+    async def _fake_get_user_async(session, project, message):
+        return user, False
+
+    async def _fake_construct_agent_spec(**kwargs):
+        return SimpleNamespace()
+
+    class _InvalidStreamPalAgent:
+        def __init__(self, spec=None):
+            self.spec = spec
+
+        async def run(self, pal_input, stream=False):
+            return object()
+
+    class _NoopFillerWordsManager:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_chat_filler_for_input(self, current_message):
+            return ""
+
+    async def _fake_query_history_messages(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
+    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
+    monkeypatch.setattr(
+        _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.project_service, "get_project_async", _fake_get_project_async
+    )
+    monkeypatch.setattr(
+        _implementation.user_service, "get_user_async", _fake_get_user_async
+    )
+    monkeypatch.setattr(
+        _implementation.agent_service,
+        "construct_agent_spec",
+        _fake_construct_agent_spec,
+    )
+    monkeypatch.setattr(_implementation, "PalAgent", _InvalidStreamPalAgent)
+    monkeypatch.setattr(_implementation, "FillerWordsManager", _NoopFillerWordsManager)
+    monkeypatch.setattr(
+        _implementation, "query_history_messages", _fake_query_history_messages
+    )
+    monkeypatch.setattr(
+        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
+    )
+
+    session = AsyncMock()
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.VOICE,
+        text=TextObject(body="Hello there"),
+        metadata=Metadata(testing=True),
+    )
+
+    chunks = [
+        chunk
+        async for chunk in _implementation.get_chat_response_stream(
+            session=session,
+            message=message,
+            request_context=RequestContext(),
+        )
+    ]
+
+    assert len(chunks) == 1
+    assert chunks[0].choices[0].finish_reason == "stop"
+
+
+@pytest.mark.asyncio
+async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_cleanly(
+    monkeypatch,
+):
+    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    message_repo = _FakeMessageRepo()
+    user = SimpleNamespace(id=uuid.uuid4())
+    project = SimpleNamespace(
+        id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        raw_config={"use_pal_agents": True},
+        agent_id=uuid.uuid4(),
+        account=SimpleNamespace(name="test-account"),
+        agent=SimpleNamespace(filler_words=None),
+        timezone="America/Los_Angeles",
+        name="test-project",
+    )
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
+        yield None
+
+    async def _fake_get_project_async(session, message):
+        return project
+
+    async def _fake_get_user_async(session, project, message):
+        return user, False
+
+    async def _fake_construct_agent_spec(**kwargs):
+        return SimpleNamespace()
+
+    class _CancelledPalAgent:
+        def __init__(self, spec=None):
+            self.spec = spec
+
+        async def run(self, pal_input, stream=False):
+            async def _stream():
+                if False:
+                    yield None
+                raise asyncio.CancelledError()
+
+            return _stream()
+
+    class _NoopFillerWordsManager:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_chat_filler_for_input(self, current_message):
+            return ""
+
+    async def _fake_query_history_messages(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
+    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
+    monkeypatch.setattr(
+        _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.project_service, "get_project_async", _fake_get_project_async
+    )
+    monkeypatch.setattr(
+        _implementation.user_service, "get_user_async", _fake_get_user_async
+    )
+    monkeypatch.setattr(
+        _implementation.agent_service,
+        "construct_agent_spec",
+        _fake_construct_agent_spec,
+    )
+    monkeypatch.setattr(_implementation, "PalAgent", _CancelledPalAgent)
+    monkeypatch.setattr(_implementation, "FillerWordsManager", _NoopFillerWordsManager)
+    monkeypatch.setattr(
+        _implementation, "query_history_messages", _fake_query_history_messages
+    )
+    monkeypatch.setattr(
+        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
+    )
+
+    session = AsyncMock()
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.VOICE,
+        text=TextObject(body="Hello there"),
+        metadata=Metadata(testing=True),
+    )
+
+    chunks = [
+        chunk
+        async for chunk in _implementation.get_chat_response_stream(
+            session=session,
+            message=message,
+            request_context=RequestContext(),
+        )
+    ]
+
+    assert chunks == []
+
+
+@pytest.mark.asyncio
+async def test_get_chat_response_stream_outer_cancelled_error_returns_cleanly(
+    monkeypatch,
+):
+    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
+        yield None
+
+    async def _cancelled_get_project_async(session, message):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
+    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
+    monkeypatch.setattr(
+        _implementation.project_service,
+        "get_project_async",
+        _cancelled_get_project_async,
+    )
+
+    session = AsyncMock()
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.VOICE,
+        text=TextObject(body="Hello there"),
+        metadata=Metadata(testing=True),
+    )
+
+    chunks = [
+        chunk
+        async for chunk in _implementation.get_chat_response_stream(
+            session=session,
+            message=message,
+            request_context=RequestContext(),
+        )
+    ]
+
+    assert chunks == []
