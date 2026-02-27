@@ -15,6 +15,7 @@ from api.schemas.operations.routine import (
     DiscoveryResponse,
     GenerateExecutionsRequest,
     GenerateExecutionsResponse,
+    RegenerateExecutionsResponse,
 )
 from db.tables.types import ExecutionStatus
 from services import routine_execution_service
@@ -191,5 +192,60 @@ async def delete_future_executions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete executions: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        ) from e
+
+
+@routines_router.post(
+    "/schedules/{schedule_id}/regenerate",
+    response_model=RegenerateExecutionsResponse,
+)
+async def regenerate_executions(
+    schedule_id: uuid.UUID,
+    session: AsyncSession = Depends(db.get_db_async),
+) -> RegenerateExecutionsResponse:
+    """
+    Regenerate executions for a schedule after a time update.
+
+    Atomically updates today's pending executions in place (preserving IDs),
+    deletes future pending executions, and generates new ones from tomorrow.
+
+    Called by Lambda function after routine.ScheduleUpdated event.
+
+    Args:
+        schedule_id: UUID of the schedule
+        session: Async database session
+
+    Returns:
+        RegenerateExecutionsResponse with updated/deleted/created counts
+    """
+    try:
+        return await routine_execution_service.regenerate_executions(
+            schedule_id, session
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        await session.rollback()
+        logger.error(
+            "[RoutineScheduler] Database error regenerating executions",
+            exc_info=True,
+            extra={"schedule_id": str(schedule_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to regenerate executions: {str(e)}",
+            headers={"Content-Type": "application/json"},
+        ) from e
+    except Exception as e:
+        await session.rollback()
+        logger.error(
+            "[RoutineScheduler] Error regenerating executions",
+            exc_info=True,
+            extra={"schedule_id": str(schedule_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to regenerate executions: {str(e)}",
             headers={"Content-Type": "application/json"},
         ) from e

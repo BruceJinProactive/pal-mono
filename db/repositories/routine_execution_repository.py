@@ -289,6 +289,8 @@ class RoutineExecutionRepositoryAsync:
         execution_id: uuid.UUID,
         status: ExecutionStatus | None = None,
         assigned_user_id: uuid.UUID | None = None,
+        scheduled_start: datetime | None = None,
+        scheduled_end: datetime | None = None,
     ) -> RoutineExecution | None:
         """
         Update an execution.
@@ -297,6 +299,8 @@ class RoutineExecutionRepositoryAsync:
             execution_id: UUID of the execution
             status: Optional new status
             assigned_user_id: Optional new assigned user
+            scheduled_start: Optional new scheduled start time
+            scheduled_end: Optional new scheduled end time
 
         Returns:
             Updated RoutineExecution object if found, None otherwise
@@ -310,6 +314,10 @@ class RoutineExecutionRepositoryAsync:
                 execution.status = status
             if assigned_user_id is not None:
                 execution.assigned_user_id = assigned_user_id
+            if scheduled_start is not None:
+                execution.scheduled_start = scheduled_start
+            if scheduled_end is not None:
+                execution.scheduled_end = scheduled_end
 
             await self.session.flush()
             await self.session.refresh(execution)
@@ -318,6 +326,39 @@ class RoutineExecutionRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error updating execution: {e}")
             return None
+
+    async def find_todays_pending_executions(
+        self,
+        schedule_id: uuid.UUID,
+        today_start_utc: datetime,
+        today_end_utc: datetime,
+    ) -> list[RoutineExecution]:
+        """
+        Find today's pending executions for a schedule.
+
+        Args:
+            schedule_id: UUID of the schedule
+            today_start_utc: Start of today in UTC
+            today_end_utc: End of today (exclusive) in UTC
+
+        Returns:
+            List of pending RoutineExecution objects for today
+        """
+        try:
+            stmt = select(RoutineExecution).where(
+                and_(
+                    RoutineExecution.schedule_id == schedule_id,
+                    RoutineExecution.status == ExecutionStatus.pending,
+                    RoutineExecution.scheduled_start >= today_start_utc,
+                    RoutineExecution.scheduled_start < today_end_utc,
+                )
+            )
+            result = await self.session.execute(stmt)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error finding today's pending executions: {e}")
+            return []
 
     async def list_pending_executions_past_deadline(
         self,
@@ -454,6 +495,39 @@ class RoutineExecutionRepositoryAsync:
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(f"Error finding executions for deletion: {e}")
+            return []
+
+    async def find_pending_executions_from(
+        self,
+        schedule_id: uuid.UUID,
+        from_utc: datetime,
+    ) -> list[RoutineExecution]:
+        """
+        Find pending executions with scheduled_start >= from_utc.
+
+        Used to find all future pending executions from a specific cutoff
+        (inclusive), e.g. for regeneration after a schedule update.
+
+        Args:
+            schedule_id: UUID of the schedule
+            from_utc: UTC cutoff datetime (inclusive)
+
+        Returns:
+            List of pending RoutineExecution objects from the cutoff onwards
+        """
+        try:
+            stmt = select(RoutineExecution).where(
+                and_(
+                    RoutineExecution.schedule_id == schedule_id,
+                    RoutineExecution.status == ExecutionStatus.pending,
+                    RoutineExecution.scheduled_start >= from_utc,
+                )
+            )
+            result = await self.session.execute(stmt)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error finding pending executions from date: {e}")
             return []
 
     async def get_last_execution_date(

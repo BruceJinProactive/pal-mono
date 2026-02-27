@@ -18,6 +18,7 @@ from api.schemas.operations.routine import (
     GenerateExecutionsRequest,
     GenerateExecutionsResponse,
     ListExecutionsResponse,
+    RegenerateExecutionsResponse,
 )
 from db.tables.types import ExecutionStatus
 from services.auth_types import UserContext
@@ -32,6 +33,7 @@ __all__ = [
     "discover_routines_needing_executions",
     "generate_executions",
     "delete_future_executions",
+    "regenerate_executions",
 ]
 
 
@@ -202,3 +204,25 @@ async def delete_future_executions(
     return await _implementation.delete_future_executions(
         schedule_id, status_filter, future_only, session
     )
+
+
+async def regenerate_executions(
+    schedule_id: uuid.UUID,
+    session: AsyncSession,
+) -> RegenerateExecutionsResponse:
+    """
+    Regenerate executions for a schedule after a schedule time update.
+
+    Atomically updates today's pending executions in place, deletes future
+    pending executions, and generates new ones from tomorrow.
+
+    Called by Lambda function after routine.ScheduleUpdated event.
+
+    Args:
+        schedule_id: UUID of the schedule
+        session: Async database session
+
+    Returns:
+        RegenerateExecutionsResponse with updated/deleted/created counts
+    """
+    return await _implementation.regenerate_executions(schedule_id, session)

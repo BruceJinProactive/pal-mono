@@ -7,8 +7,9 @@ Authorization is handled in the API layer.
 
 import asyncio
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,7 @@ from api.schemas.operations.routine import (
     GenerateExecutionsRequest,
     GenerateExecutionsResponse,
     ListExecutionsResponse,
+    RegenerateExecutionsResponse,
     RoutineDetailResponse,
     SubmissionDetailResponse,
 )
@@ -741,4 +743,177 @@ async def delete_future_executions(
         schedule_id=schedule_id,
         executions_deleted=len(deleted_ids),
         execution_ids=deleted_ids,
+    )
+
+
+async def regenerate_executions(
+    schedule_id: uuid.UUID,
+    session: AsyncSession,
+) -> RegenerateExecutionsResponse:
+    """
+    Regenerate executions for a schedule after a schedule time update.
+
+    Atomically performs three steps in one transaction:
+    1. Updates today's pending executions in place with new times
+    2. Deletes future (tomorrow+) pending executions
+    3. Generates new future executions from tomorrow
+
+    This prevents duplicate executions that occur when delete+generate
+    are called separately and today's execution falls through the cracks.
+
+    Args:
+        schedule_id: UUID of the schedule
+        session: Async database session
+
+    Returns:
+        RegenerateExecutionsResponse with updated/deleted/created counts
+
+    Raises:
+        HTTPException: If schedule not found (404)
+    """
+    from services.routine_service import _schedule_calculator
+
+    logger.info(
+        f"[RoutineScheduler] Regenerating executions for schedule {schedule_id}",
+        extra={"schedule_id": str(schedule_id)},
+    )
+
+    # 1. Fetch schedule
+    schedule_repo = RoutineScheduleRepositoryAsync(session)
+    schedule = await schedule_repo.get_schedule_by_id(schedule_id)
+
+    if not schedule:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Schedule {schedule_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        tz = ZoneInfo(schedule.timezone)
+    except (KeyError, Exception):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Schedule {schedule_id} has invalid timezone: {schedule.timezone}",
+            headers={"Content-Type": "application/json"},
+        )
+    execution_repo = RoutineExecutionRepositoryAsync(session)
+
+    # 2. Update today's pending executions in place
+    now_in_tz = datetime.now(tz)
+    today_in_tz = now_in_tz.date()
+    tomorrow_in_tz = today_in_tz + timedelta(days=1)
+
+    # Compute day boundaries in schedule timezone, then convert to UTC
+    # This matches the pattern in list_executions_by_project
+    today_start = datetime.combine(today_in_tz, time.min, tzinfo=tz)
+    today_start_utc = today_start.astimezone(ZoneInfo("UTC"))
+
+    tomorrow_start = datetime.combine(tomorrow_in_tz, time.min, tzinfo=tz)
+    tomorrow_start_utc = tomorrow_start.astimezone(ZoneInfo("UTC"))
+
+    todays_pending = await execution_repo.find_todays_pending_executions(
+        schedule_id=schedule_id,
+        today_start_utc=today_start_utc,
+        today_end_utc=tomorrow_start_utc,
+    )
+
+    # Recalculate today's execution window using the same logic as _create_execution_window
+    new_scheduled_start = datetime.combine(today_in_tz, schedule.start_time, tzinfo=tz)
+    if schedule.end_time < schedule.start_time:
+        new_scheduled_end = datetime.combine(
+            tomorrow_in_tz, schedule.end_time, tzinfo=tz
+        )
+    else:
+        new_scheduled_end = datetime.combine(today_in_tz, schedule.end_time, tzinfo=tz)
+
+    executions_updated = 0
+    for execution in todays_pending:
+        updated = await execution_repo.update_execution(
+            execution_id=execution.id,
+            scheduled_start=new_scheduled_start,
+            scheduled_end=new_scheduled_end,
+        )
+        if updated:
+            executions_updated += 1
+        else:
+            logger.warning(
+                f"[RoutineScheduler] Failed to update execution {execution.id}",
+                extra={
+                    "schedule_id": str(schedule_id),
+                    "execution_id": str(execution.id),
+                },
+            )
+
+    logger.info(
+        f"[RoutineScheduler] Updated {executions_updated} today's executions",
+        extra={
+            "schedule_id": str(schedule_id),
+            "executions_updated": executions_updated,
+        },
+    )
+
+    # 3. Delete future pending executions (tomorrow onwards, inclusive of boundary)
+    # Uses >= to avoid a gap at exactly tomorrow midnight when start_time == 00:00
+    executions_to_delete = await execution_repo.find_pending_executions_from(
+        schedule_id=schedule_id,
+        from_utc=tomorrow_start_utc,
+    )
+
+    executions_deleted = 0
+    for execution in executions_to_delete:
+        await session.delete(execution)
+        executions_deleted += 1
+
+    logger.info(
+        f"[RoutineScheduler] Deleted {executions_deleted} future executions",
+        extra={
+            "schedule_id": str(schedule_id),
+            "executions_deleted": executions_deleted,
+        },
+    )
+
+    # 4. Generate new executions from tomorrow
+    execution_windows = _schedule_calculator.calculate_next_executions(
+        frequency=schedule.frequency.value,
+        start_time=schedule.start_time,
+        end_time=schedule.end_time,
+        timezone=schedule.timezone,
+        days_of_week=schedule.days_of_week,
+        day_of_month=schedule.day_of_month,
+        effective_from=schedule.effective_from,
+        effective_until=schedule.effective_until,
+        count=30,
+        from_date=tomorrow_in_tz,
+    )
+
+    executions_created = 0
+    for scheduled_start, scheduled_end in execution_windows:
+        await execution_repo.create_execution(
+            routine_id=schedule.routine_id,
+            schedule_id=schedule.id,
+            scheduled_start=scheduled_start,
+            scheduled_end=scheduled_end,
+            status=ExecutionStatus.pending,
+        )
+        executions_created += 1
+
+    # 5. Commit once (atomic)
+    await session.commit()
+
+    logger.info(
+        f"[RoutineScheduler] Regeneration complete for schedule {schedule_id}",
+        extra={
+            "schedule_id": str(schedule_id),
+            "executions_updated": executions_updated,
+            "executions_deleted": executions_deleted,
+            "executions_created": executions_created,
+        },
+    )
+
+    return RegenerateExecutionsResponse(
+        schedule_id=schedule_id,
+        executions_updated=executions_updated,
+        executions_deleted=executions_deleted,
+        executions_created=executions_created,
     )

@@ -609,3 +609,14 @@ class DeleteExecutionsResponse(BaseModel):
     execution_ids: list[uuid.UUID] = Field(
         default_factory=list, description="IDs of deleted executions"
     )
+
+
+class RegenerateExecutionsResponse(BaseModel):
+    """Response for regenerating executions after a schedule update."""
+
+    schedule_id: uuid.UUID
+    executions_updated: int = Field(
+        description="Today's pending executions updated in place"
+    )
+    executions_deleted: int = Field(description="Future pending executions deleted")
+    executions_created: int = Field(description="New future executions generated")
