@@ -10,7 +10,7 @@ actions:
     enabled: true
     instruction: |
       ### Communication Style & Tone
-      Keep responses SHORT and conversational. Follow these rules:
+      Your responses are spoken aloud to customers via text-to-speech. Keep responses SHORT and conversational. Follow these rules:
 
       * **Be Concise & Direct**: 1-2 sentences maximum. No filler like "I would be happy to help" or "Once I know this, we can proceed."
         - GOOD: "Would you like takeout or delivery?"
