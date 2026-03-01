@@ -116,8 +116,52 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
 
 # Valid model sizes for pal-agents
 ModelSize = Literal["xs", "s", "m", "l", "xl"]
-DEFAULT_MODEL_SIZE: ModelSize = "xs"
+DEFAULT_MODEL_SIZE: ModelSize = "m"
 VALID_MODEL_SIZES: set[ModelSize] = {"xs", "s", "m", "l", "xl"}
+
+
+def _normalize_model_size(model_size: Any) -> ModelSize | None:
+    """Normalize and validate model size input."""
+    if not isinstance(model_size, str):
+        return None
+
+    normalized = model_size.strip().lower()
+    if normalized in VALID_MODEL_SIZES:
+        return cast(ModelSize, normalized)
+    return None
+
+
+def _parse_model_spec_from_raw_config(raw_config: dict | None) -> ModelSpec:
+    """Parse model size and priority from project raw_config.
+
+    Supported formats:
+    - {"model": "m"}
+    - {"model": {"size": "m", "priority": true}}
+
+    Falls back silently to defaults for missing/invalid values.
+    """
+    model_spec = ModelSpec(size=DEFAULT_MODEL_SIZE)
+    if not isinstance(raw_config, dict):
+        return model_spec
+
+    raw_model = raw_config.get("model")
+
+    if isinstance(raw_model, str):
+        parsed_size = _normalize_model_size(raw_model)
+        if parsed_size is not None:
+            model_spec.size = parsed_size
+        return model_spec
+
+    if isinstance(raw_model, dict):
+        parsed_size = _normalize_model_size(raw_model.get("size"))
+        if parsed_size is not None:
+            model_spec.size = parsed_size
+
+        priority_value = raw_model.get("priority")
+        if isinstance(priority_value, bool):
+            model_spec.priority = priority_value
+
+    return model_spec
 
 
 def _build_generic_api_spec_from_raw_config(raw_config: dict) -> GenericAPISpec:
@@ -194,7 +238,7 @@ def _build_adora_spec_from_raw_config(raw_config: dict) -> AdoraSpec:
 
 def _agent_config_to_spec(
     agent_config: AgentConfig,
-    model_size: ModelSize | None = None,
+    model_spec: ModelSpec | None = None,
     generic_api_spec: GenericAPISpec | None = None,
     adora_spec: AdoraSpec | None = None,
 ) -> Spec:
@@ -205,7 +249,8 @@ def _agent_config_to_spec(
 
     Args:
         agent_config: The fully-built pal-mono agent configuration.
-        model_size: Model size from project raw_config (defaults to DEFAULT_MODEL_SIZE).
+        model_spec: Model settings from project raw_config
+            (defaults to ModelSpec(size=DEFAULT_MODEL_SIZE)).
         generic_api_spec: Optional GenericAPISpec for external API calling.
         adora_spec: Optional AdoraSpec for deterministic adora ordering.
 
@@ -233,8 +278,7 @@ def _agent_config_to_spec(
     tool_specs = _build_tool_specs(agent_config.tool)
 
     # ========== Build ModelSpec ==========
-    # Use model_size from raw_config, or default
-    effective_model_size = model_size or DEFAULT_MODEL_SIZE
+    effective_model_spec = model_spec or ModelSpec(size=DEFAULT_MODEL_SIZE)
 
     # ========== Build FillerWordsSpec ==========
     filler_words_spec = FillerWordsSpec(
@@ -250,7 +294,7 @@ def _agent_config_to_spec(
         knowledge=knowledge_spec,
         memory=memory_spec,
         tools=tool_specs,
-        model=ModelSpec(size=effective_model_size),
+        model=effective_model_spec,
         generic_api=generic_api_spec or GenericAPISpec(),
         adora=adora_spec or AdoraSpec(),
         filler_words=filler_words_spec,
@@ -316,19 +360,12 @@ async def construct_agent_spec(
 
     generic_api_spec = _build_generic_api_spec_from_raw_config(effective_raw_config)
     adora_spec = _build_adora_spec_from_raw_config(effective_raw_config)
-
-    # Extract model size from raw_config (defaults to DEFAULT_MODEL_SIZE if not specified)
-    model_size_raw = effective_raw_config.get("model")
-    model_size: ModelSize | None = None
-    if isinstance(model_size_raw, str):
-        normalized_model_size = model_size_raw.strip().lower()
-        if normalized_model_size in VALID_MODEL_SIZES:
-            model_size = cast(ModelSize, normalized_model_size)
+    model_spec = _parse_model_spec_from_raw_config(effective_raw_config)
 
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
     return _agent_config_to_spec(
         agent_config,
-        model_size=model_size,
+        model_spec=model_spec,
         generic_api_spec=generic_api_spec,
         adora_spec=adora_spec,
     )
