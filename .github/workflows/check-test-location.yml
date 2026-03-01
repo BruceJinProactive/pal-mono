@@ -1,0 +1,37 @@
+name: Check Test File Location
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    branches:
+      - "main"
+  push:
+    branches:
+      - "main"
+
+jobs:
+  check-test-location:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Ensure test files are only in tests/ directory
+        run: |
+          # Find any test_*.py files outside the tests/ directory
+          misplaced=$(find . -name 'test_*.py' -not -path './tests/*' -not -path './.venv/*' | sort)
+
+          if [ -n "$misplaced" ]; then
+            echo "::error::Test files found outside the tests/ directory. All tests must live in the tests/ folder."
+            echo ""
+            echo "Misplaced test files:"
+            echo "$misplaced"
+            echo ""
+            echo "Please move these files into the appropriate subdirectory under tests/."
+            exit 1
+          fi
+
+          echo "All test files are correctly located in the tests/ directory."

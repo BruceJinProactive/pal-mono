@@ -6,11 +6,10 @@ import pytest
 from sqlalchemy.orm import Session
 
 import db
-
-from . import _implementation
-
-get_conversation_messages = _implementation.get_conversation_messages
-_include_conversation_preview = _implementation._include_conversation_preview
+from services.admin_service._implementation import (
+    _include_conversation_preview,
+    get_conversation_messages,
+)
 
 mock_session = MagicMock(spec=Session)
 mock_account_uuid = UUID("12345678-1234-5678-1234-567812345678")
