@@ -3,59 +3,65 @@
 ## Quick Reference
 
 **System Type**: Multi-tenant conversational AI platform for restaurant/food service
-**Primary Language**: Python 3.11
+**Primary Language**: Python >=3.11,<3.14
 **Web Framework**: FastAPI (async)
 **Database**: PostgreSQL + pgvector
-**AI Framework**: Agno (v1.7.6)
+**AI Frameworks**: Agno (v1.7.6) + pal-agents (v0.2.113)
+**Voice Platforms**: VAPI (v1.6.0) + LiveKit (>=1.0.0)
 **Architecture Style**: Monolithic with event-driven components
 **Deployment**: Docker (local), AWS (production)
 
 **Key Metrics**:
-- 29 database tables
-- 25 repository classes
-- 29 business services
-- 21 AI agent tools
-- 8+ API route groups
+- 47 database tables
+- 43 repository classes
+- 45 business services
+- 17 registered AI agent tools (19 tool directories)
+- 9 API route groups
 - 4 environments (dev/lat/stg/prd)
 
 **Entry Points**:
 - API: `/api/main.py` → FastAPI app
 - Agent: `/agent/agent.py` → AI orchestration
 - Database: `/db/tables/` → SQLAlchemy models
+- Events: `/events/` → EventBridge integration
 
 ## System Overview
 
-pal-mono is a multi-tenant conversational AI platform designed for restaurant and food service businesses. It provides AI-powered agents that can handle customer interactions across multiple channels (voice, SMS, web chat) while integrating with POS systems, reservation platforms, and other business tools.
+pal-mono is a multi-tenant conversational AI platform designed for restaurant and food service businesses. It provides AI-powered agents that can handle customer interactions across multiple channels (voice, SMS, web chat) while integrating with POS systems, reservation platforms, and other business tools. The system supports both VAPI (webhook-driven) and LiveKit (agent-worker) voice platforms.
 
 ## High-Level Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Client Layer                             │
-│  (Web Chat, SMS via Twilio, Voice via VAPI, API Clients)       │
+│  (Web Chat, SMS via Twilio, Voice via VAPI/LiveKit, API Clients)│
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      FastAPI Application                         │
-│  - REST API Endpoints (/v1/chat, /v1/admin, /v1/integrations)  │
-│  - Request Validation (Pydantic)                                 │
-│  - CORS & Middleware                                             │
+│  - REST API Endpoints (/v1/admin, /v1/chat, /v1/integrations)  │
+│  - Internal APIs (/v1/internal - monitoring, routines, events) │
+│  - Request Validation (Pydantic)                                │
+│  - CORS & Middleware                                            │
+│  - RBAC Authorization                                           │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Service Layer                              │
-│  - 29 Business Services (account, agent, message, integration)  │
-│  - Business Logic & Orchestration                                │
-│  - Transaction Management                                        │
+│  - 45 Business Services (account, agent, message, integration) │
+│  - Business Logic & Orchestration                               │
+│  - Transaction Management                                       │
+│  - Monitoring, Routines, Notifications                          │
 └─────────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┼───────────────┐
               ▼               ▼               ▼
     ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
     │ Agent System │  │   Database   │  │ External APIs│
-    │              │  │   (Postgres) │  │ & Services   │
+    │ (Agno +      │  │  (Postgres + │  │ & Services   │
+    │  pal-agents) │  │   pgvector)  │  │              │
     └──────────────┘  └──────────────┘  └──────────────┘
 ```
 
@@ -71,11 +77,14 @@ pal-mono is a multi-tenant conversational AI platform designed for restaurant an
 | **Memory** | mem0ai API | Agent | User personalization |
 | **Knowledge** | Pinecone, LlamaIndex | Agent | RAG/document retrieval |
 | **Database** | PostgreSQL | Repositories | Data persistence |
+| **Events** | AWS EventBridge | Services | Async event-driven communication |
+| **Auth** | Cognito, RBAC tables | API Routes | Authentication & authorization |
 
 **Key Data Flow**:
 1. Client → API Routes → Services → Repositories → Database
 2. Client → API Routes → message_service → Agent → LLM/Tools/Memory/Knowledge
 3. Agent → Tools → External APIs (POS, reservations, etc.)
+4. Services → EventBridge → Async handlers (catering, notifications)
 
 ## Core Components
 
@@ -86,21 +95,27 @@ pal-mono is a multi-tenant conversational AI platform designed for restaurant an
 **Structure**:
 - `/api/main.py` - Application factory with lifespan management
 - `/api/routes/` - REST endpoint definitions organized by domain
+- `/api/routes/v1_router.py` - Root router aggregating all domain routers
+- `/api/routes/endpoints.py` - Centralized endpoint path constants
 - `/api/schemas/` - Pydantic models for request/response validation
 
-**Key Routes**:
-- `/v1/chat` - Main conversational interface (streaming and non-streaming)
-- `/v1/admin` - Account, agent, project, and user management
-- `/v1/integrations` - Third-party POS and reservation system integrations
+**Route Groups** (9 routers in `/v1`):
+- `/v1/admin` - Account, agent, project, user, team, billing, capabilities management (29 sub-modules)
+- `/v1/chat` - Main conversational interface (streaming and non-streaming, OpenAI-compatible completions)
+- `/v1/integrations` - Third-party integrations (Adora, OLO, Shopify, Slack, Square, Stripe, Toast, Twilio, VAPI)
 - `/v1/assets` - Asset management (S3-backed)
-- `/v1/operation` - Checklists and checkpoints for quality assurance
+- `/v1/operation` - Checklists, checkpoints, monitoring, routines, signal sources, video upload
 - `/v1/catering` - Catering request handling
+- `/v1/telephony` - Twilio telephony webhooks
+- `/v1/internal` - Internal APIs (monitoring, routines, events, catering, voice/LiveKit)
+- `/v1/health` & `/v1/ping` - Health check endpoints
 
 **Features**:
 - Environment-based CORS configuration
 - Automatic OpenAPI documentation at `/docs`
 - Request validation with Pydantic
 - Async request handling throughout
+- RBAC-based authorization via `require_account_permission` / `require_project_permission`
 
 ### 2. Agent System (`/agent`)
 
@@ -108,7 +123,7 @@ The core AI agent implementation providing conversational capabilities.
 
 **Architecture**:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      Agent (agent.py)                        │
 │  - Orchestrates conversation flow                            │
@@ -117,9 +132,10 @@ The core AI agent implementation providing conversational capabilities.
 └─────────────────────────────────────────────────────────────┘
            │
            ├──► Framework (framework/agno.py)
-           │    - Agent wrapper with streaming support
-           │    - Streaming with filler words
+           │    - Agno agent wrapper with streaming support
+           │    - Streaming with filler words (internal/filler_words_manager.py)
            │    - Datadog LLM observability
+           │    - Additional framework classes (classes.py)
            │
            ├──► Model (model/)
            │    - Multi-provider support (OpenAI, Anthropic, Google, Groq)
@@ -127,17 +143,18 @@ The core AI agent implementation providing conversational capabilities.
            │
            ├──► Memory (memory/)
            │    - mem0ai integration for personalized memory
-           │    - 5-minute TTL cache
+           │    - TTL cache
            │    - Background async updates
            │
            ├──► Knowledge (knowledge/)
            │    - LlamaIndex + Pinecone for RAG
            │    - Cohere embeddings
-           │    - Multi-modal document retrieval
+           │    - Integration-specific knowledge bases
            │
            ├──► Tool (tool/)
-           │    - Dynamic tool loading
-           │    - 21 specialized tools
+           │    - Dynamic tool loading via ToolRegistry
+           │    - 17 registered specialized tools
+           │    - Internal tool utilities
            │
            ├──► Storage (storage/)
            │    - Conversation history retrieval
@@ -150,63 +167,89 @@ The core AI agent implementation providing conversational capabilities.
 - Persona settings (name, role, description, instructions)
 - Model selection and parameters
 - Memory, knowledge, and tool configuration
-- Voice settings (VAPI integration)
+- Voice settings (VAPI and LiveKit integration)
 - Transcription configuration
+
+**Additional Framework**: `pal-agents` (v0.2.113) — a separate agent framework (`PalAgent` with `Spec` and `RuntimeContext`) used alongside Agno, particularly for LiveKit voice agent workers.
 
 ### 3. Service Layer (`/services`)
 
-29 specialized services implementing business logic:
+45 specialized services implementing business logic:
 
-| Service | Category | Purpose | Key Dependencies |
-|---------|----------|---------|------------------|
-| `account_service` | Core | Multi-tenant account management | accounts table |
-| `agent_service` | Core | Agent configuration and lifecycle | agents table |
-| `project_service` | Core | Project management (account + agent) | projects table |
-| `user_service` | Core | User authentication and management | users table |
-| `message_service` | Communication | Message processing (streaming/non-streaming/relay) | messages, agent_service |
-| `voice_service` | Communication | Voice call handling | phonecalls, VAPI |
-| `email_service` | Communication | Email notifications | Email provider |
-| `relay_service` | Communication | External message relay | Message broker |
-| `integration_service` | Integration | Third-party integration management | integration table |
-| `knowledge_service` | Integration | Integration-specific knowledge bases | Pinecone, LlamaIndex |
-| `adora_service` | Integration | Adora POS integration | Adora API |
-| `olo_service` | Integration | OLO ordering integration | OLO API |
-| `square_service` | Integration | Square POS integration | Square API |
-| `toast_service` | Integration | Toast POS integration | Toast API |
-| `opentable_service` | Integration | OpenTable reservations | OpenTable API |
-| `resy_service` | Integration | Resy reservations | Resy API |
-| `yelp_service` | Integration | Yelp reservations | Yelp API |
-| `subscription_service` | Business | Stripe billing management | Stripe, subscriptions table |
-| `catering_service` | Business | Catering workflow | EventBridge, catering_requests |
-| `analytics_service` | Business | Usage analytics | Slack, analytics data |
-| `feedback_service` | Business | User feedback collection | feedback table |
-| `campaign_service` | Business | Marketing campaigns | campaigns table |
-| `faq_service` | Business | FAQ management | faqs table |
-| `prompt_service` | Business | Prompt templates | prompts table |
-| `asset_service` | Business | Asset storage | S3 |
-| `checklist_service` | Operations | Operational checklists | checklists table |
-| `checkpoint_service` | Operations | Quality review checkpoints | checkpoints table |
-| `transaction_service` | Operations | Transaction tracking | orders, reservations |
-| `vision_service` | Operations | Image processing | Computer vision API |
+| Service | Category | Purpose |
+|---------|----------|---------|
+| `account_service` | Core | Multi-tenant account management |
+| `admin_service` | Core | Admin operations and orchestration |
+| `agent_service` | Core | Agent configuration and lifecycle |
+| `auth_service` | Core | Authentication, RBAC, and permission management |
+| `project_service` | Core | Project management (account + agent) |
+| `team_service` | Core | Team management |
+| `user_service` | Core | User authentication and management |
+| `email_service` | Communication | Email notifications |
+| `message_service` | Communication | Message processing (streaming/non-streaming/relay) |
+| `notification_service` | Communication | Multi-channel notification orchestration (email/SMS) |
+| `postmark_service` | Communication | Postmark email delivery |
+| `realtime_service` | Communication | Realtime capabilities (WebSocket) |
+| `relay_service` | Communication | External message relay |
+| `voice_service` | Communication | Voice call handling (VAPI + LiveKit) |
+| `integration_service` | Integration | Third-party integration management |
+| `knowledge_service` | Integration | Integration-specific knowledge bases |
+| `menu_service` | Integration | Menu management |
+| `analytics_service` | Business | Usage analytics |
+| `asset_service` | Business | Asset storage (S3) |
+| `campaign_service` | Business | Marketing campaigns |
+| `capability_service` | Business | Agent capability management |
+| `catering_service` | Business | Catering workflow (EventBridge) |
+| `faq_service` | Business | FAQ management |
+| `features_service` | Business | Feature management |
+| `feedback_service` | Business | User feedback collection |
+| `prompt_service` | Business | Prompt templates |
+| `reservation_service` | Business | Reservation management |
+| `rewardful_service` | Business | Affiliate/referral rewards |
+| `subscription_service` | Business | Stripe billing management |
+| `terms_service` | Business | Terms of service management |
+| `checklist_service` | Operations | Operational checklists |
+| `checkpoint_service` | Operations | Quality review checkpoints |
+| `monitoring_service` | Operations | Monitoring configuration and LLM-powered analysis |
+| `routine_service` | Operations | Routine definitions |
+| `routine_execution_service` | Operations | Routine execution tracking |
+| `routine_schedule_service` | Operations | Routine scheduling |
+| `routine_submission_service` | Operations | Routine submission processing |
+| `signal_source_service` | Operations | Signal source management |
+| `transaction_service` | Operations | Transaction tracking (orders, reservations) |
+| `vision_service` | Operations | Image/video processing |
+| `google_maps_service` | External | Google Maps integration |
+| `history_service` | External | History management |
+| `notion_service` | External | Notion integration |
+| `number_service` | External | Phone number management |
+| `slack_service` | External | Slack notifications |
 
 ### 4. Database Layer (`/db`)
 
 **Technology**: PostgreSQL with pgvector extension
 
 **Components**:
-- `/db/tables/` - SQLAlchemy 2.0 table definitions (29 tables)
-- `/db/repositories/` - Repository pattern for data access (25 repositories)
+- `/db/tables/` - SQLAlchemy 2.0 table definitions (47 tables)
+- `/db/repositories/` - Repository pattern for data access (43 repositories)
 - `/db/migrations/` - Alembic migrations
 
-**Key Tables**:
-- `accounts` - Business accounts with subscription and industry
-- `agents` - AI agent configurations
-- `projects` - Account + agent associations
-- `conversations` & `messages` - Chat history
-- `phonecalls` - Voice call records
-- `orders` & `reservations` - Transaction records
-- `integration` - Third-party integration credentials
-- `checklists` & `checkpoints` - Quality assurance
+**Tables by Domain**:
+
+*Core*: `accounts`, `agents`, `projects`, `users`, `account_user`, `user_invitation`, `contacts`, `project_contacts`
+
+*Agent & AI*: `agent_capabilities`, `capability_actions`, `prompts`, `voice_configs`
+
+*Communication*: `conversations`, `messages`, `phonecalls`
+
+*Transactions*: `orders`, `adora_orders`, `reservations`, `catering_requests`
+
+*Business*: `campaigns`, `credit_grants`, `faqs`, `features`, `feedback`, `integration`, `lead`, `subscriptions`, `affiliates`
+
+*Operations*: `checklists`, `checkpoints`, `checkpoint_runs`, `monitoring_configs`, `monitoring_runs`, `routines`, `routine_items`, `routine_item_responses`, `routine_executions`, `routine_schedules`, `routine_submissions`, `signal_feeds`, `signal_sources`
+
+*Auth & Security*: `permission`, `role_permission`, `resource_role_assignment`, `tos_acceptance`
+
+*System*: `change_log`, `onboarding_webhook_event`
 
 **Connection Management**:
 - Async connection pooling (30 connections, 50 max overflow)
@@ -215,47 +258,62 @@ The core AI agent implementation providing conversational capabilities.
 
 ### 5. Tools System (`/tools`)
 
-21 specialized tools that extend agent capabilities:
+17 registered tools in the ToolRegistry that extend agent capabilities:
 
 | Tool | Category | Purpose | File Path |
 |------|----------|---------|-----------|
 | `toast_tool` | POS | Toast POS operations | `/tools/toast_tool/` |
 | `square_tool` | POS | Square POS operations | `/tools/square_tool/` |
 | `adora_tool` | POS | Adora POS operations | `/tools/adora_tool/` |
+| `adora_v2_tool` | POS | Adora POS v2 operations | `/tools/adora_v2_tool/` |
 | `olo_tool` | POS | OLO ordering | `/tools/olo_tool/` |
 | `menusifu_tool` | POS | MenuSifu POS operations | `/tools/menusifu_tool/` |
 | `opentable_tool` | Reservation | OpenTable bookings | `/tools/opentable_tool/` |
 | `resy_tool` | Reservation | Resy bookings | `/tools/resy_tool/` |
-| `resy_with_reservation_tool` | Reservation | Resy with existing reservation | `/tools/resy_with_reservation_tool/` |
-| `resy_without_reservation_tool` | Reservation | Resy without reservation | `/tools/resy_without_reservation_tool/` |
+| `resy_tool_with_reservation` | Reservation | Resy with existing reservation | `/tools/resy_tool_with_reservation/` |
 | `yelp_tool` | Reservation | Yelp bookings | `/tools/yelp_tool/` |
 | `yelp_credit_card_tool` | Reservation | Yelp with credit card | `/tools/yelp_credit_card_tool/` |
 | `yelp_no_credit_card_tool` | Reservation | Yelp without credit card | `/tools/yelp_no_credit_card_tool/` |
 | `minitable_tool` | Reservation | MiniTable bookings | `/tools/minitable_tool/` |
-| `sms_tool` | Communication | Send SMS via Twilio | `/tools/sms_tool/` |
-| `vapi_tool` | Communication | Voice API integration | `/tools/vapi_tool/` |
+| `store_messaging_tool` | Communication | Store messaging | `/tools/store_messaging_tool/` |
+| `vapi_tool` | Communication | VAPI voice integration | `/tools/vapi_tool/` |
+| `livekit_transfer_tool` | Communication | LiveKit call transfer | `/tools/livekit_transfer_tool/` |
 | `catering_tool` | Business | Catering requests | `/tools/catering_tool/` |
-| `escalation_tool` | Operations | Escalate to human | `/tools/escalation_tools/` |
 
-**Tool Standards** (`/tools/TOOL_STANDARDS.md`):
-- Consistent structure: `__init__.py`, `tool.py`, registry entry
+*Unregistered tool directories* (exist but not in registry):
+- `sms_tool` - Send SMS via Twilio (`/tools/sms_tool/`)
+- `escalation_tools` - Escalate to human (`/tools/escalation_tools/`)
+
+**Tool Standards** (`/tools/CLAUDE.md`):
+- Consistent structure: `__init__.py`, `_implementation.py`, `classes.py`, `_apis/`
+- Inherit from `Toolkit` (agno.tools), init with `super().__init__(name="tool_name")`
+- `@tool` decorator required for all methods (Datadog tracing)
+- `@params_validate()` required only for methods with parameters
 - Input validation with Pydantic
 - Token caching for API credentials
-- Structured error handling
-- Datadog tracing integration
+- Register all tools in `tools/registry.py`
 
-### 6. Utilities (`/utils`)
+### 6. Events System (`/events`)
+
+AWS EventBridge integration for asynchronous event-driven communication.
+
+**Components**:
+- `/events/_eventbridge.py` - EventBridge client and publishing
+- `/events/schema.py` - Event schema definitions
+
+### 7. Utilities (`/utils`)
 
 Shared utilities and helpers:
-- Logging utilities (structured JSON logging)
-- Common helpers
-- Configuration utilities
+- `log.py` - Logging utilities (structured JSON logging)
+- `dd.py` - Datadog utilities
+- `request_context.py` - Request context management
+- `secret.py` - AWS Secrets Manager integration
 
 ## Data Flow
 
 ### Typical Chat Message Flow
 
-```
+```text
 1. Client sends message to /v1/chat
                 ↓
 2. API validates request (Pydantic schema)
@@ -283,7 +341,7 @@ Shared utilities and helpers:
 
 ### Tool Execution Flow
 
-```
+```text
 1. Agent determines tool use needed
                 ↓
 2. Tool registry provides tool instance
@@ -297,49 +355,6 @@ Shared utilities and helpers:
                 ↓
 5. Agent incorporates result into response
 ```
-
-## External Integrations
-
-| Category | Service | Version | Purpose |
-|----------|---------|---------|---------|
-| **AI/ML** | OpenAI | v1.95.1 | GPT models (GPT-4, GPT-4o) |
-| | Anthropic | v0.71.0 | Claude models |
-| | Google GenAI | v1.25.0 | Gemini models |
-| | Groq | v0.15.0 | Fast LLM inference |
-| | mem0ai | v0.1.48 | Personalized memory |
-| | LlamaIndex | v0.14.3 | RAG framework |
-| | Pinecone | v7.3.0 | Vector database |
-| | Cohere | - | Embeddings |
-| | Instructor | v1.9.2 | Structured LLM outputs |
-| **AWS** | Secrets Manager | boto3 v1.37.34 | Credential storage |
-| | S3 | boto3 v1.37.34 | Asset storage |
-| | EventBridge | boto3 v1.37.34 | Event-driven processing |
-| | Bedrock | boto3 v1.37.34 | Content guardrails |
-| **Communication** | Twilio | v9.3.2 | SMS and phone numbers |
-| | VAPI | v1.6.0 | Voice AI platform |
-| | Slack SDK | v3.33.5 | Internal notifications |
-| **Business** | Stripe | v12 | Payment and subscriptions |
-| | Toast | - | POS system |
-| | Square | - | POS system |
-| | Adora | - | POS system |
-| | OLO | - | Online ordering |
-| | MenuSifu | - | POS system |
-| | OpenTable | - | Reservations |
-| | Resy | - | Reservations |
-| | Yelp | - | Reservations |
-| **Observability** | Datadog | v0.52.0 | Metrics, tracing, logging |
-| | ddtrace | v3.11.0 | Distributed tracing |
-| | Datadog LLM Obs | - | AI-specific monitoring |
-| **Database** | PostgreSQL | - | Primary database |
-| | pgvector | v0.3.2 | Vector extension |
-| | SQLAlchemy | v2.0.32 | ORM |
-| | Alembic | v1.13.2 | Migrations |
-| | asyncpg | v0.30.0 | Async driver |
-| **Web** | FastAPI | v0.120.2 | Web framework |
-| | Uvicorn | v0.30.6 | ASGI server |
-| | Pydantic | v2.11.7 | Data validation |
-| | httpx | v0.28.1 | HTTP client |
-
 ## Configuration Management
 
 ### Environment Strategy
@@ -376,18 +391,18 @@ Pydantic Settings for type-safe configuration:
 - Memory updates in background to avoid blocking
 
 ### Event-Driven
-- **AWS EventBridge** - Decoupled event handling (catering)
+- **AWS EventBridge** - Decoupled event handling (catering, notifications, billing)
 - No traditional task queue (no Celery)
 
 ### Caching
-- In-memory caching with TTL (5-minute for memories)
+- In-memory caching with TTL (for memories)
 - Token caching for API integrations
 - Thread-safe cache implementation
 
 ## Deployment Architecture
 
 ### Local Development (Docker)
-```
+```text
 ┌─────────────────────────────────────┐
 │  Host Machine                        │
 │  - Source code                       │
@@ -420,6 +435,7 @@ Pydantic Settings for type-safe configuration:
 - **Dependency Injection** - FastAPI Depends()
 - **Factory Pattern** - Agent and model creation
 - **Strategy Pattern** - Multiple LLM providers
+- **RBAC** - Role-based access control with permissions, roles, and resource assignments
 
 ### Best Practices
 - **Async-First** - Full async/await throughout
@@ -439,11 +455,13 @@ Pydantic Settings for type-safe configuration:
 - CORS configuration by environment
 - Request validation with Pydantic
 - Content guardrails (AWS Bedrock)
+- RBAC authorization (permissions, roles, resource assignments)
 
 ### Data Security
 - Encrypted database connections
 - Secure token storage
 - Audit trail via change_log table
+- Terms of service acceptance tracking
 
 ## Testing Strategy
 
@@ -451,18 +469,29 @@ Pydantic Settings for type-safe configuration:
 - **pytest** (v8.3.2) - Test runner
 - **pytest-cov** (v6.0.0) - Coverage reporting
 - **pytest-mock** (v3.14.0) - Mocking
+- **pytest-asyncio** (v0.24.0) - Async test support
+- **diff-cover** (v9.2.4) - Incremental coverage enforcement
 
 ### Code Quality
-- **black** (v24.8.0) - Code formatting
-- **isort** (v5.13.2) - Import sorting
-- **ruff** (v0.6.2) - Fast linting
-- **pyright** (v1.1.382) - Type checking
+- **black** (~v24.8.0) - Code formatting
+- **isort** (~v5.13.2) - Import sorting
+- **ruff** (~v0.6.2) - Fast linting
+- **pyright** (~v1.1.382) - Type checking
+- **import-linter** (~v2.2) - Architecture boundary enforcement
+- **toml-sort** (~v0.24.2) - pyproject.toml formatting
 
 ### CI/CD
 - Pre-commit hooks for local validation
-- GitHub Actions for automated testing
-- Database migration validation
-- Build and release workflows
+- GitHub Actions workflows:
+  - `precommit.yml` - Pre-commit validation
+  - `check-db-migration.yml` - Database migration validation
+  - `check-test-location.yml` - Test file location enforcement
+  - `create-build.yml` - Build process
+  - `create-release.yml` - Release process
+  - `test-coverage.yml` - Test coverage reporting
+  - `validate-db-schema-pr.yml` - DB schema validation on PRs
+  - `validate-dependency-pr.yml` - Dependency validation on PRs
+  - `validate-notion-link-pr.yml` - Notion link validation on PRs
 
 ## Performance Characteristics
 
@@ -494,14 +523,20 @@ Pydantic Settings for type-safe configuration:
 | API Server | `/api/main.py` | FastAPI app factory |
 | AI Agent | `/agent/agent.py` | Main agent orchestration |
 | Agent Config | `/agent/config.py` | Agent configuration models |
+| Event System | `/events/schema.py` | EventBridge event schemas |
 | **API Layer** | | |
-| Chat Routes | `/api/routes/v1/chat.py` | Chat endpoint handlers |
-| Admin Routes | `/api/routes/v1/admin.py` | Admin CRUD endpoints |
-| Integration Routes | `/api/routes/v1/integrations.py` | Integration endpoints |
+| V1 Router | `/api/routes/v1_router.py` | Root router aggregation |
+| Endpoint Constants | `/api/routes/endpoints.py` | Centralized endpoint paths |
+| Chat Routes | `/api/routes/chat/` | Chat endpoint handlers |
+| Admin Routes | `/api/routes/admin/` | Admin CRUD endpoints (29 sub-modules) |
+| Integration Routes | `/api/routes/integrations/` | Integration endpoints |
+| Operation Routes | `/api/routes/operation/` | Operations endpoints |
+| Internal Routes | `/api/routes/internal/` | Internal APIs |
+| Telephony Routes | `/api/routes/telephony/` | Twilio webhooks |
 | API Schemas | `/api/schemas/` | Pydantic request/response models |
-| API Settings | `/api/settings.py` | API configuration |
 | **Agent Components** | | |
-| Agent Framework | `/agent/framework/agno.py` | Agent framework wrapper |
+| Agent Framework | `/agent/framework/agno.py` | Agno framework wrapper |
+| Filler Words | `/agent/framework/internal/filler_words_manager.py` | Streaming filler words |
 | Model Layer | `/agent/model/` | LLM provider abstraction |
 | Memory System | `/agent/memory/` | mem0ai integration |
 | Knowledge/RAG | `/agent/knowledge/` | LlamaIndex + Pinecone |
@@ -512,23 +547,27 @@ Pydantic Settings for type-safe configuration:
 | Message Service | `/services/message_service/` | Core message processing |
 | Agent Service | `/services/agent_service/` | Agent management |
 | Account Service | `/services/account_service/` | Account management |
+| Auth Service | `/services/auth_service/` | RBAC and permissions |
 | Integration Service | `/services/integration_service/` | Integration management |
+| Monitoring Service | `/services/monitoring_service/` | Monitoring and LLM analysis |
+| Notification Service | `/services/notification_service/` | Multi-channel notifications |
+| Routine Service | `/services/routine_service/` | Routine management |
 | **Database** | | |
-| Tables | `/db/tables/` | SQLAlchemy models (29 tables) |
-| Repositories | `/db/repositories/` | Data access layer (25 repos) |
+| Tables | `/db/tables/` | SQLAlchemy models (47 tables) |
+| Repositories | `/db/repositories/` | Data access layer (43 repos) |
 | Migrations | `/db/migrations/versions/` | Alembic migrations |
 | DB Settings | `/db/settings.py` | Database configuration |
 | Migration Config | `/db/alembic.ini` | Alembic configuration |
 | **Tools** | | |
-| Tool Registry | `/tools/registry.py` | Central tool registration |
-| Tool Standards | `/tools/TOOL_STANDARDS.md` | Tool development guide |
+| Tool Registry | `/tools/registry.py` | Central tool registration (17 tools) |
+| Tool Standards | `/tools/CLAUDE.md` | Tool development guide |
 | Toast Tool | `/tools/toast_tool/` | Toast POS integration |
 | Square Tool | `/tools/square_tool/` | Square POS integration |
 | OpenTable Tool | `/tools/opentable_tool/` | OpenTable integration |
 | Resy Tool | `/tools/resy_tool/` | Resy integration |
+| LiveKit Transfer | `/tools/livekit_transfer_tool/` | LiveKit call transfer |
 | **Configuration** | | |
 | Dependencies | `/pyproject.toml` | Dev tool configuration |
-| Requirements | `/requirements.txt` | Production dependencies |
 | Environment File | `/local.env` | Local environment variables |
 | Docker Compose | `/docker-compose.yml` | Local development setup |
 | **Scripts** | | |
@@ -538,9 +577,13 @@ Pydantic Settings for type-safe configuration:
 | Pre-commit | `/.github/workflows/precommit.yml` | Pre-commit validation |
 | DB Migration Check | `/.github/workflows/check-db-migration.yml` | Migration validation |
 | Build Workflow | `/.github/workflows/create-build.yml` | Build process |
+| Release Workflow | `/.github/workflows/create-release.yml` | Release process |
+| Test Coverage | `/.github/workflows/test-coverage.yml` | Coverage reporting |
 | **Documentation** | | |
 | Project Guide | `/CLAUDE.md` | High-level project instructions |
 | Architecture | `/.claude/docs/architecture.md` | This file |
+| API Routes Guide | `/api/routes/CLAUDE.md` | Route development patterns |
+| Tool Standards | `/tools/CLAUDE.md` | Tool development guide |
 | Logging Guide | `/utils/CLAUDE.md` | Logging guidelines |
 
 ## Future Considerations
@@ -549,6 +592,11 @@ Pydantic Settings for type-safe configuration:
 - Current architecture is monolithic
 - Consider service decomposition for scale
 - Event-driven architecture already in place (EventBridge)
+
+### Voice Platform Migration
+- VAPI (current production) → LiveKit (in progress)
+- pal-agents framework for LiveKit agent workers
+- See `/.claude/docs/livekit-migration/` for detailed migration plans
 
 ### Observability
 - Comprehensive Datadog integration
@@ -559,3 +607,4 @@ Pydantic Settings for type-safe configuration:
 - Tool registry allows easy addition of new tools
 - Multi-provider LLM support
 - Plugin-style service architecture
+- Capability-based prompt system (see `/.claude/docs/prompts/promptv2-design.md`)
