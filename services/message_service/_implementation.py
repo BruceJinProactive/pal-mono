@@ -610,6 +610,11 @@ async def get_chat_response_stream(
 
                             if not chunk.content:
                                 continue
+                            if index == 0:
+                                chunk.content = chunk.content + "\n"
+                                logger.debug(
+                                    f"[MessageService] append chunk to {chunk.content}"
+                                )
 
                             completion_chunk = ChatCompletionChunk(
                                 id=stream_id,
