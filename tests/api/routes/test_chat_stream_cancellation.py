@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from api.schemas.chat.chat import ChatRequest
 from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject
 from db.tables.types import Channel
-from tests.message_service_test.test_get_chat_response_stream import (
+from tests.services.message_service.test_get_chat_response_stream import (
     _install_agent_shims_if_needed,
     _install_ddtrace_llmobs_shim_if_needed,
     _install_knowledge_shim_if_needed,
