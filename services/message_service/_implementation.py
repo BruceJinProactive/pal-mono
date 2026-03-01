@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import random
+import re
 import uuid
 from typing import AsyncIterator
 
@@ -610,6 +611,14 @@ async def get_chat_response_stream(
 
                             if not chunk.content:
                                 continue
+
+                            if index == 0:
+                                chunk.content = re.sub(
+                                    r"(?<!\.)\.(?![\s\.\d])", ". ", chunk.content
+                                )
+                                logger.debug(
+                                    f"[MessageService] add space for first chunk to {chunk.content}."
+                                )
 
                             completion_chunk = ChatCompletionChunk(
                                 id=stream_id,
