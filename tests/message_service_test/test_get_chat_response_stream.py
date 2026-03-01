@@ -163,7 +163,6 @@ def _install_agent_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     agent_mod = ModuleType("agent")
     framework_mod = ModuleType("agent.framework")
     framework_internal_mod = ModuleType("agent.framework.internal")
-    filler_mod = ModuleType("agent.framework.internal.filler_words_manager")
     input_output_mod = ModuleType("agent.input_output")
     storage_mod = ModuleType("agent.storage")
     storage_impl_mod = ModuleType("agent.storage._implementation")
@@ -173,9 +172,6 @@ def _install_agent_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch, "agent.framework.internal", framework_internal_mod
     )
     _ensure_package_module(monkeypatch, "agent.storage", storage_mod)
-    monkeypatch.setitem(
-        sys.modules, "agent.framework.internal.filler_words_manager", filler_mod
-    )
     monkeypatch.setitem(sys.modules, "agent.input_output", input_output_mod)
     monkeypatch.setitem(sys.modules, "agent.storage._implementation", storage_impl_mod)
 
@@ -189,13 +185,6 @@ def _install_agent_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
                     yield None
 
             return _stream()
-
-    class _NoopFillerWordsManager:
-        def __init__(self, *args, **kwargs):
-            return
-
-        def get_chat_filler_for_input(self, current_message):
-            return ""
 
     class _Output:
         def __init__(self, content="", closing_conversation=False):
@@ -211,7 +200,6 @@ def _install_agent_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
         return []
 
     agent_mod.Agent = _NoopAgent  # type: ignore[attr-defined]
-    filler_mod.FillerWordsManager = _NoopFillerWordsManager  # type: ignore[attr-defined]
     input_output_mod.Input = _Input  # type: ignore[attr-defined]
     input_output_mod.Output = _Output  # type: ignore[attr-defined]
     storage_impl_mod.query_history_messages = _query_history_messages  # type: ignore[attr-defined]
@@ -437,16 +425,6 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
         _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
     )
 
-    # Patch FillerWordsManager to avoid random filler injection affecting chunk count
-    class _NoopFillerWordsManager:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def get_chat_filler_for_input(self, current_message):
-            return ""
-
-    monkeypatch.setattr(_implementation, "FillerWordsManager", _NoopFillerWordsManager)
-
     async def _fake_query_history_messages(*args, **kwargs):
         return []
 
@@ -533,13 +511,6 @@ async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
         async def run(self, pal_input, stream=False):
             return None
 
-    class _NoopFillerWordsManager:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def get_chat_filler_for_input(self, current_message):
-            return ""
-
     async def _fake_query_history_messages(*args, **kwargs):
         return []
 
@@ -561,7 +532,6 @@ async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
         _fake_construct_agent_spec,
     )
     monkeypatch.setattr(_implementation, "PalAgent", _NoneStreamPalAgent)
-    monkeypatch.setattr(_implementation, "FillerWordsManager", _NoopFillerWordsManager)
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
@@ -634,13 +604,6 @@ async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error
         async def run(self, pal_input, stream=False):
             return object()
 
-    class _NoopFillerWordsManager:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def get_chat_filler_for_input(self, current_message):
-            return ""
-
     async def _fake_query_history_messages(*args, **kwargs):
         return []
 
@@ -662,7 +625,6 @@ async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error
         _fake_construct_agent_spec,
     )
     monkeypatch.setattr(_implementation, "PalAgent", _InvalidStreamPalAgent)
-    monkeypatch.setattr(_implementation, "FillerWordsManager", _NoopFillerWordsManager)
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
@@ -741,13 +703,6 @@ async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_clea
 
             return _stream()
 
-    class _NoopFillerWordsManager:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def get_chat_filler_for_input(self, current_message):
-            return ""
-
     async def _fake_query_history_messages(*args, **kwargs):
         return []
 
@@ -769,7 +724,6 @@ async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_clea
         _fake_construct_agent_spec,
     )
     monkeypatch.setattr(_implementation, "PalAgent", _CancelledPalAgent)
-    monkeypatch.setattr(_implementation, "FillerWordsManager", _NoopFillerWordsManager)
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )

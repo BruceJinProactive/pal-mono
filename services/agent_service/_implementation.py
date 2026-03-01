@@ -6,6 +6,7 @@ from typing import Any, Dict, Literal, Optional, cast
 from pal_agents import Spec
 from pal_agents.spec import (
     AdoraSpec,
+    FillerWordsSpec,
     GenericAPISpec,
     KnowledgeSpec,
     MemorySpec,
@@ -235,6 +236,14 @@ def _agent_config_to_spec(
     # Use model_size from raw_config, or default
     effective_model_size = model_size or DEFAULT_MODEL_SIZE
 
+    # ========== Build FillerWordsSpec ==========
+    filler_words_spec = FillerWordsSpec(
+        agent_id=agent_config.metadata.agent_id,
+        account_name=agent_config.metadata.account_name,
+        chat_filler_words_percentage=agent_config.feature_config.chat_filler_words_percentage,
+        tool_calling_filler_words_percentage=agent_config.feature_config.tool_calling_filler_words_percentage,
+    )
+
     # ========== Build final Spec ==========
     return Spec(
         prompt=prompt_spec,
@@ -244,6 +253,7 @@ def _agent_config_to_spec(
         model=ModelSpec(size=effective_model_size),
         generic_api=generic_api_spec or GenericAPISpec(),
         adora=adora_spec or AdoraSpec(),
+        filler_words=filler_words_spec,
     )
 
 
