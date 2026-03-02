@@ -45,6 +45,7 @@ dependencies = [
   "llama-index-llms-gemini==0.6.1", # Google Gemini LLM integration for LlamaIndex
   "llama-index-llms-groq==0.4.1", # Groq LLM integration for LlamaIndex
   "llama-index-vector-stores-pinecone==0.7.1", # Pinecone vector database integration for LlamaIndex
+  "mcp>=1.9.0", # Model Context Protocol SDK for building MCP servers
   "mem0ai==1.0.3", # Personalized AI memory layer for context retention
   "notion-client==2.2.1",
   "openai[realtime]==2.20.0", # Official OpenAI API client for GPT models with realtime WebSocket support
