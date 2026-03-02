@@ -13,6 +13,7 @@ Tool-agnostic documentation system for humans and AI agents working on pal-mono.
 | P3 | `docs/state/` | Current system architecture | When working on a specific system |
 | P3 | `docs/plans/` | Active designs and proposals | When implementing planned work |
 | P3 | `docs/records/` | Completed work and decisions | When understanding past decisions |
+| P3 | `docs/decisions/` | Architecture decision records | When questioning why something is designed a certain way |
 
 ## Structure
 
@@ -32,6 +33,10 @@ docs/
 │   ├── notifications.md   ← Stripe webhook setup
 │   └── business-updater/  ← Event-driven business data updater system
 │
+├── decisions/             ← Architecture Decision Records (ADRs)
+│   ├── README.md          ← Index of all decisions
+│   └── {NNN}-{title}.md   ← Individual decisions with context + rationale
+│
 ├── plans/                 ← Future work (active designs)
 │   ├── livekit-migration/ ← Vapi → LiveKit voice migration
 │   ├── billing/           ← Billing architecture design
@@ -43,7 +48,6 @@ docs/
 │
 └── records/               ← Past work (detailed, date-prefixed)
     └── 2025-02-14-monitoring-trace-fix.md
-```
 
 ## Lifecycle Rules
 
@@ -52,6 +56,13 @@ docs/
 - **Never**: Stale — if the code changed, the doc must too
 - **Required**: Each file must contain `> **Last updated:** YYYY-MM-DD` after the title — update this date on every change
 - **Template**: Describes the system as it exists TODAY
+
+### decisions/ — Architecture Decision Records
+- **Created when**: A significant architectural choice is made (technology, pattern, tradeoff)
+- **Naming**: `{NNN}-{kebab-case-title}.md` (numbered for ordering)
+- **Required**: Status, Date, Decision makers, Context, Decision, Consequences, Evidence
+- **Never deleted**: When a decision changes, mark old ADR `Superseded by ADR-{NNN}` and create a new one
+- **Template**: See `docs/decisions/README.md`
 
 ### plans/ — Active Designs
 - **Created when**: Designing a new feature or significant change
@@ -103,7 +114,7 @@ docs/
 
 ### PR Checklist
 Add to your PR template:
-```
+```text
 ## Docs
 - [ ] `state/` updated if architecture/system changed
 - [ ] `records/` entry if significant work completed
@@ -114,7 +125,7 @@ Add to your PR template:
 
 ## Memory Promotion Flow
 
-```
+```text
 Working on code → discover gotcha/pattern
     ↓
 Add to memory/short-term.md (immediately)
@@ -139,6 +150,7 @@ This system is designed to work with ANY AI coding tool (Claude Code, OpenCode, 
 Each tool's instruction file (CLAUDE.md, AGENTS.md, etc.) points here. The docs/ directory has no tool-specific conventions — it's plain markdown readable by anything.
 
 **Agent workflow:**
+
 1. Instruction file auto-loads → "I know the rules and where to look"
 2. Task arrives → read `memory/short-term.md` → "I know what's active and fragile"
 3. Read `memory/long-term.md` → "I know the conventions and gotchas"
