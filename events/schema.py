@@ -4,7 +4,7 @@ Event definitions for AWS EventBridge.
 All events must inherit from BaseEvent and define their structure and DetailType.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, ClassVar, Dict
 from uuid import UUID
@@ -164,3 +164,27 @@ class RoutineScheduleUpdated(BaseEvent):
     account_id: UUID
     requires_regeneration: bool
     updated_at: datetime
+
+
+@dataclass
+class ConversationEvaluationRequested(BaseEvent):
+    """Event published at end of voice conversation to trigger evaluation.
+
+    Consumed by pal-conversation-evaluator via EventBridge → SQS.
+    All data needed for evaluation is included in the payload.
+    """
+
+    detail_type: ClassVar[str] = "ConversationEvaluationRequested"
+
+    conversation_id: UUID
+    call_id: str
+    user_id: UUID
+    account_id: UUID
+    account_name: str
+    project_id: UUID
+    channel: str
+    is_test: bool
+    call_metadata: Dict[str, Any]
+    transcript: list[Dict[str, Any]] = field(default_factory=list)
+    tool_calls: list[Dict[str, Any]] = field(default_factory=list)
+    turn_latencies_ms: list[float] = field(default_factory=list)

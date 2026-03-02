@@ -1,5 +1,6 @@
 """Implementation for LiveKit voice call initialization endpoint."""
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -23,6 +24,7 @@ from api.schemas.internal.voice_init import (
 )
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.types import Channel, SpeechRate
+from events import ConversationEvaluationRequested, publish_event
 from services import project_service, subscription_service, user_service
 from utils.log import logger
 
@@ -330,6 +332,7 @@ async def end_voice_call(
     )
 
     # Extract call analytics using LLM
+    analytics = None
     if conversation_history:
         try:
             from services.analytics_service._utils import extract_call_analytics
@@ -348,12 +351,135 @@ async def end_voice_call(
                 },
             )
         except Exception as e:
+            analytics = None
             logger.error(
                 f"[end_voice_call] Failed to extract analytics: {e}",
                 extra={"conversation_id": conversation_id, "error": str(e)},
             )
 
+    # Publish conversation evaluation event (fire-and-forget)
+    # Pass primitive values — the background task creates its own DB session
+    _task = asyncio.create_task(
+        _publish_livekit_evaluation_event(
+            conversation_id=conversation.id,
+            user_id=conversation.user_id,
+            project_id=conversation.project_id,
+            call_id=call_id,
+            duration_seconds=duration_seconds,
+            close_reason=close_reason,
+            conversation_history=conversation_history,
+            analytics=analytics if conversation_history else None,
+            channel=conversation.channel.value if conversation.channel else "voice",
+            is_test=conversation.is_test or False,
+            customer_converted=conversation.customer_converted,
+        )
+    )
+
     return {
         "status": "success",
         "conversation_id": conversation_id,
     }
+
+
+def _extract_transcript_text(msg: dict) -> str:
+    """Safely extract text from a conversation history message."""
+    content = msg.get("content")
+    if isinstance(content, list) and content and isinstance(content[0], dict):
+        return content[0].get("text", "")
+    return str(content or "")
+
+
+async def _publish_livekit_evaluation_event(
+    conversation_id,
+    user_id,
+    project_id,
+    call_id: str,
+    duration_seconds: float,
+    close_reason: str,
+    conversation_history: list[dict],
+    analytics: dict | None,
+    channel: str,
+    is_test: bool,
+    customer_converted,
+) -> None:
+    """Publish ConversationEvaluationRequested for a LiveKit call. Fire-and-forget.
+
+    Creates its own DB session to avoid using the request-scoped session
+    which may close before this background task completes.
+    """
+    from db.session import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            # Load project and account for identification fields
+            project_repo = db.ProjectRepositoryAsync(session)
+            project = await project_repo.get_project(project_id)
+            if not project:
+                logger.warning(
+                    "[_publish_livekit_evaluation_event] Project not found",
+                    extra={"conversation_id": str(conversation_id)},
+                )
+                return
+
+            await session.refresh(project, attribute_names=["account"])
+            account_name = (project.account.name or "") if project.account else ""
+
+        # Build transcript from conversation history
+        transcript = [
+            {
+                "speaker": "agent" if msg.get("role") == "assistant" else "user",
+                "text": _extract_transcript_text(msg),
+                "start_time": 0.0,  # LiveKit agent doesn't send per-turn timestamps yet
+                "end_time": 0.0,
+            }
+            for msg in conversation_history
+            if msg.get("role") in ("assistant", "user")
+        ]
+
+        event = ConversationEvaluationRequested(
+            conversation_id=conversation_id,
+            call_id=call_id,
+            user_id=user_id,
+            account_id=project.account_id,
+            account_name=account_name,
+            project_id=project.id,
+            channel=channel,
+            is_test=is_test,
+            call_metadata={
+                "duration_seconds": duration_seconds,
+                "ended_reason": (
+                    analytics["ended_reason"].value if analytics else close_reason
+                ),
+                "call_purpose": (
+                    [p.value for p in analytics["call_purpose"]] if analytics else []
+                ),
+                "language": (analytics["language"].value if analytics else "english"),
+                "user_satisfaction": (
+                    analytics["user_satisfaction"].value if analytics else "neutral"
+                ),
+                "customer_converted": (
+                    str(customer_converted) if customer_converted else None
+                ),
+                "room_name": None,
+            },
+            transcript=transcript,
+            tool_calls=[],  # LiveKit tool call extraction not yet available here
+            turn_latencies_ms=[],  # Not available from LiveKit agent HTTP report
+        )
+
+        published = await publish_event(event)
+        if published:
+            logger.info(
+                "[_publish_livekit_evaluation_event] Published ConversationEvaluationRequested",
+                extra={"call_id": call_id, "conversation_id": str(conversation_id)},
+            )
+        else:
+            logger.warning(
+                "[_publish_livekit_evaluation_event] publish_event returned False",
+                extra={"call_id": call_id, "conversation_id": str(conversation_id)},
+            )
+    except Exception as e:
+        logger.warning(
+            f"[_publish_livekit_evaluation_event] Failed to publish event: {e}",
+            extra={"conversation_id": str(conversation_id)},
+        )
