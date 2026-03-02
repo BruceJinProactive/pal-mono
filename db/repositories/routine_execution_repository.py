@@ -190,7 +190,10 @@ class RoutineExecutionRepositoryAsync:
             if routine_id is not None:
                 stmt = stmt.where(RoutineExecution.routine_id == routine_id)
 
-            stmt = stmt.order_by(RoutineExecution.scheduled_start.desc())
+            # Sort ascending so earliest routines appear first (PAL-7682).
+            # list_executions_by_routine / list_executions_by_schedule use desc
+            # for historical/deletion views.
+            stmt = stmt.order_by(RoutineExecution.scheduled_start.asc())
             result = await self.session.execute(stmt)
             return list(result.scalars().all())
         except SQLAlchemyError as e:

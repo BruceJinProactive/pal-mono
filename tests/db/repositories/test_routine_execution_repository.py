@@ -141,3 +141,30 @@ class TestFindPendingExecutionsFrom:
 
         assert result == []
         mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# list_executions_by_project — sort order
+# ---------------------------------------------------------------------------
+
+
+class TestListExecutionsByProjectSortOrder:
+    """Verify list_executions_by_project sorts by scheduled_start ascending."""
+
+    @pytest.mark.asyncio
+    async def test_sorts_ascending_by_scheduled_start(self, repo, mock_session) -> None:
+        fake_exec = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [fake_exec]
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.list_executions_by_project(
+            project_id=uuid.uuid4(),
+        )
+
+        assert result == [fake_exec]
+        # Verify the SQL statement was built with .asc() by inspecting the
+        # compiled statement passed to session.execute
+        executed_stmt = mock_session.execute.call_args[0][0]
+        compiled = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "asc" in compiled.lower()

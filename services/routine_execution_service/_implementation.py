@@ -37,6 +37,8 @@ from events import RoutineExecutionGenerationRequested, publish_event
 from services.auth_types import UserContext
 from utils.log import logger
 
+_UTC = timezone.utc
+
 
 def _build_execution_response(
     execution: RoutineExecution,
@@ -48,11 +50,15 @@ def _build_execution_response(
     submission_completed_count: int,
     routine_detail: RoutineDetailResponse | None = None,
     submission_detail: SubmissionDetailResponse | None = None,
+    now_utc: datetime | None = None,
 ) -> ExecutionDetailResponse:
     """
     Build ExecutionDetailResponse from execution data.
     All SQLAlchemy attributes are accessed immediately to prevent greenlet issues.
     """
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+
     # Extract all execution attributes immediately
     execution_id = execution.id
     execution_routine_id = execution.routine_id
@@ -63,6 +69,13 @@ def _build_execution_response(
     execution_assigned_user_id = execution.assigned_user_id
     execution_created_at = execution.created_at
     execution_updated_at = execution.updated_at
+
+    # Auto-detect missed: pending executions past their scheduled end are missed
+    if (
+        execution_status == ExecutionStatus.pending
+        and execution_scheduled_end < now_utc
+    ):
+        execution_status = ExecutionStatus.missed
 
     return ExecutionDetailResponse(
         id=execution_id,
@@ -211,10 +224,18 @@ async def list_executions(
     routine_repo = RoutineRepositoryAsync(session)
     submission_repo = RoutineSubmissionRepositoryAsync(session)
 
+    now_utc = datetime.now(_UTC)
+
+    # "missed" is computed from DB-status "pending" (never persisted), so query
+    # for pending when the caller asks for missed, then post-filter after remap.
+    db_status = status_filter
+    if status_filter == ExecutionStatus.missed:
+        db_status = ExecutionStatus.pending
+
     # Get executions (repository handles project_id filtering via JOIN)
     executions = await execution_repo.list_executions_by_project(
         project_id=project_id,
-        status=status_filter,
+        status=db_status,
         scheduled_date=date_filter,
         start_date=start_date,
         end_date=end_date,
@@ -331,8 +352,14 @@ async def list_executions(
                 submission_completed_count,
                 routine_detail=None,
                 submission_detail=submission_detail,
+                now_utc=now_utc,
             )
         )
+
+    # Post-filter by requested status after pending→missed remap so that
+    # status_filter=pending excludes missed, and status_filter=missed works.
+    if status_filter in (ExecutionStatus.pending, ExecutionStatus.missed):
+        result = [r for r in result if r.status == status_filter]
 
     return ListExecutionsResponse(executions=result, total=len(result))
 
