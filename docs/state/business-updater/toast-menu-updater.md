@@ -1,5 +1,7 @@
 # Toast Menu Updater - Detailed Implementation
 
+> **Last updated:** 2025-03-01
+
 ## Overview
 
 The Toast Menu Updater automatically syncs restaurant menu data from Toast POS to the knowledge base (Pinecone) for AI agent consumption. This enables agents to answer questions about:

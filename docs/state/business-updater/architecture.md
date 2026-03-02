@@ -1,5 +1,7 @@
 # Business Data Updater Architecture
 
+> **Last updated:** 2025-03-01
+
 ## Overview
 
 This document describes the event-driven architecture for scheduled business data updates in the pal-mono system. The architecture enables automated, scalable, and observable updates for:

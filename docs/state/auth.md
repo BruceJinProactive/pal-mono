@@ -1,5 +1,7 @@
 # Endpoints That Cannot Use Simple Permission Decorators
 
+> **Last updated:** 2025-03-01
+
 ## Overview
 This document catalogs all API endpoints that use internal authorization checks (`_check_*_access` functions) instead of route-level permission decorators. These endpoints have patterns that make simple decorator-based authorization impractical.
 

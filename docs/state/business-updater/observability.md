@@ -1,5 +1,7 @@
 # Observability Strategy - Business Data Updater
 
+> **Last updated:** 2025-03-01
+
 ## Overview
 
 This document explains the observability strategy for the Business Data Updater system, which uses **Datadog Lambda Extension** instead of completion events for monitoring and alerting.

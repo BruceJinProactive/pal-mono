@@ -1,5 +1,7 @@
 # Fix Plan: Isolate Monitoring LLM Traces from Voice Agent Traces
 
+> **Date:** 2025-02-14
+
 ## Problem
 
 Monitoring LLM calls (image/video analysis) are inheriting active voice-agent trace context, so Datadog LLMObs spans appear inside voice trace trees.

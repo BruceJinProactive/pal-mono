@@ -1,5 +1,7 @@
 # Architecture Overview
 
+> **Last updated:** 2025-03-01
+
 ## Quick Reference
 
 **System Type**: Multi-tenant conversational AI platform for restaurant/food service

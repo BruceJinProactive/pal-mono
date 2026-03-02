@@ -1,5 +1,7 @@
 # Billing System & Stripe Integration
 
+> **Last updated:** 2025-03-01
+
 ## Overview
 
 Palona uses a hybrid billing architecture that supports **account-level subscriptions** with **project-level usage tracking**. This allows a single business account (e.g., a restaurant chain) to subscribe once while tracking and billing usage per project (store/location).

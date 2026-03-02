@@ -1,5 +1,7 @@
 # Square Token Refresher - Detailed Implementation
 
+> **Last updated:** 2025-03-01
+
 ## Overview
 
 The Square Token Refresher automatically refreshes OAuth 2.0 access tokens for Square POS integrations before they expire. This ensures uninterrupted service for:

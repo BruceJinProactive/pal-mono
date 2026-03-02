@@ -1,5 +1,7 @@
 # Stripe Webhook Setup Guide
 
+> **Last updated:** 2025-03-01
+
 This document describes how to configure Stripe webhooks for billing notifications in the pal-mono system.
 
 ## Overview

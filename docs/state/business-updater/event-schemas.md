@@ -1,5 +1,7 @@
 # Event Schemas - Business Data Updater
 
+> **Last updated:** 2025-03-01
+
 ## Overview
 
 This document defines all event schemas used in the business data updater system. All events follow the `BaseEvent` pattern defined in `/events/schema.py` and are published to the `pal-main-event-bus` EventBridge bus.
