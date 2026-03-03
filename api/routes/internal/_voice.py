@@ -358,7 +358,6 @@ async def end_voice_call(
     Returns:
         dict: Status response with conversation_id if found
     """
-    from db.repositories.conversation_repository import ConversationUpdate
     from db.repositories.phone_call_repository import PhoneCallRepositoryAsync
     from db.tables.conversations import ConversationStatus
     from services.subscription_service.stripe_usage_billing import send_meter_event
@@ -447,9 +446,8 @@ async def end_voice_call(
         )
         analytics = _get_default_analytics()
 
-    # --- Step 3: Atomically close conversation (single-writer gate) ---
-    # This atomic operation ensures only one process can close the conversation
-    # and prevents duplicate side-effects (phone call records, billing events)
+    # --- Step 3: Close conversation and upsert phone call record in a single transaction ---
+    # This is idempotent - retries or concurrent requests will update the existing phone call record
     try:
         # Convert call_purpose list to comma-separated string for storage
         purpose_str = ",".join([p.value for p in analytics["call_purpose"]])
@@ -480,48 +478,42 @@ async def end_voice_call(
                     extra={"conversation_id": str(conversation_id)},
                 )
 
-        update_data = ConversationUpdate(
-            status=ConversationStatus.CLOSED,
-            purpose=purpose_str,
-            language=analytics["language"].value,
-            ended_reason=analytics["ended_reason"].value,
-            customer_converted=customer_converted_id,
+        # Update conversation attributes directly (no intermediate commit)
+        conversation.status = ConversationStatus.CLOSED
+        conversation.purpose = purpose_str
+        conversation.language = analytics["language"].value
+        conversation.ended_reason = analytics["ended_reason"].value
+        conversation.customer_converted = customer_converted_id
+
+        # --- Step 4: Upsert phone call record (idempotent) ---
+        phone_call_repo = PhoneCallRepositoryAsync(session)
+        phone_call = await phone_call_repo.upsert_phone_call(
+            call_id=call_id,
+            conversation_id=conversation_id,
+            duration=duration_seconds,
+            ended_reason=analytics["ended_reason"],
+            call_purpose=analytics["call_purpose"],
+            user_satisfaction=analytics["user_satisfaction"],
+            language=analytics["language"],
         )
 
-        # Atomic close: returns True only if this process won the race to close
-        successfully_closed = await conversation_repo.atomic_close_conversation(
-            conversation_id, update_data
-        )
-
-        if not successfully_closed:
-            # Another process already closed this conversation
-            logger.warning(
-                "[end_voice_call] Conversation already closed by another process - skipping side-effects",
-                extra={
-                    "call_info": {
-                        "call_id": call_id,
-                        "caller_number": caller_number,
-                        "dialed_number": dialed_number,
-                    },
-                    "conversation_id": str(conversation_id),
-                },
-            )
-            return {
-                "status": "success",
-                "conversation_id": str(conversation_id),
-                "message": "Conversation already closed by another process",
-            }
+        # Commit both updates together atomically
+        await session.commit()
 
         logger.info(
-            f"[end_voice_call] Conversation atomically closed: {conversation_id}",
-            extra={"conversation_id": str(conversation_id)},
+            f"[end_voice_call] Conversation closed and phone call record upserted: {phone_call.id} for call {call_id}",
+            extra={
+                "conversation_id": str(conversation_id),
+                "phone_call_id": str(phone_call.id),
+            },
         )
     except Exception as e:
+        await session.rollback()
         logger.error(
-            f"[end_voice_call] Failed to close conversation: {e}",
+            f"[end_voice_call] Failed to close conversation or create phone call record: {e}",
             extra={"conversation_id": str(conversation_id), "error": str(e)},
         )
-        # Return error - do not proceed with side-effects if close failed
+        # Return error - transaction failed
         return {
             "status": "error",
             "conversation_id": str(conversation_id),
@@ -529,40 +521,7 @@ async def end_voice_call(
         }
 
     # Track failures for comprehensive error reporting
-    phone_call_error: str | None = None
     billing_error: str | None = None
-
-    # --- Step 4: Create phone call record ---
-    # Use a new session since the main session was committed by atomic_close_conversation
-    # and cannot be reliably reused for another transaction in the same async context
-    try:
-        from db.session import AsyncSessionLocal
-
-        async with AsyncSessionLocal() as phone_call_session:
-            phone_call_repo = PhoneCallRepositoryAsync(phone_call_session)
-            phone_call = await phone_call_repo.create_phone_call(
-                call_id=call_id,
-                conversation_id=conversation_id,
-                duration=duration_seconds,
-                ended_reason=analytics["ended_reason"],
-                call_purpose=analytics["call_purpose"],
-                user_satisfaction=analytics["user_satisfaction"],
-                language=analytics["language"],
-            )
-            await phone_call_session.commit()
-            logger.info(
-                f"[end_voice_call] Phone call record created: {phone_call.id}",
-                extra={
-                    "conversation_id": str(conversation_id),
-                    "phone_call_id": str(phone_call.id),
-                },
-            )
-    except Exception as e:
-        phone_call_error = str(e)
-        logger.error(
-            f"[end_voice_call] Failed to create phone call record: {e}",
-            extra={"conversation_id": str(conversation_id), "error": str(e)},
-        )
 
     # --- Step 5: Send Stripe meter event if call should be tracked ---
     # Apply billing skip rules: test numbers, duration < 10s, customer didn't speak
@@ -622,19 +581,12 @@ async def end_voice_call(
         )
 
     # Return appropriate response based on operation results
-    if phone_call_error or billing_error:
-        errors = []
-        if phone_call_error:
-            errors.append(f"Phone call record: {phone_call_error}")
-        if billing_error:
-            errors.append(f"Billing: {billing_error}")
-
+    if billing_error:
         return {
             "status": "partial_failure",
             "conversation_id": str(conversation_id),
-            "message": f"Conversation closed but post-processing failed: {'; '.join(errors)}",
+            "message": f"Conversation closed but billing failed: {billing_error}",
             "errors": {
-                "phone_call_record": phone_call_error,
                 "billing": billing_error,
             },
         }
