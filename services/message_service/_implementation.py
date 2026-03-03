@@ -151,6 +151,7 @@ async def get_chat_response_async(
                 "sms",
                 "voice",
                 "whatsapp",
+                "api",
             ]:
                 customer_phone = message.sender_identifier
 
