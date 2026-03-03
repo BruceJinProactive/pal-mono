@@ -119,28 +119,27 @@ class MessageRepositoryAsync:
                 < CONVERSATION_RESET_SECONDS_SINCE_CREATED
             ):  # Less than 24 hours
                 conversation_id = latest_conversation.id
+
+                # Ensure latest message is under 2 hours old, if not then create a new conversation
+                messages = await self.session.execute(
+                    select(Message.created_at)
+                    .filter(Message.conversation_id == conversation_id)
+                    .order_by(Message.created_at.desc())
+                    .limit(1)
+                )
+                latest_message = messages.scalar_one_or_none()
+                if latest_message:
+                    message_time_difference = current_time - latest_message
+                    if (
+                        message_time_difference.total_seconds()
+                        >= CONVERSATION_RESET_SECONDS_SINCE_LAST_MESSAGE
+                    ):  # 2 hours or more since last message
+                        latest_conversation.status = ConversationStatus.INACTIVE
+                        await self.session.flush()
+                        conversation_id = None
             else:
                 latest_conversation.status = ConversationStatus.EXPIRED
                 await self.session.flush()
-
-            # Ensure latest message is under 2 hours old, if not then create a new conversation
-            messages = await self.session.execute(
-                select(Message.created_at)
-                .filter(Message.conversation_id == conversation_id)
-                .order_by(Message.created_at.desc())
-                .limit(1)
-            )
-            latest_message = messages.scalar_one_or_none()
-            if latest_message:
-                message_time_difference = current_time - latest_message
-                if (
-                    message_time_difference.total_seconds()
-                    < CONVERSATION_RESET_SECONDS_SINCE_LAST_MESSAGE
-                ):  # Less than 2 hours
-                    conversation_id = latest_conversation.id
-                else:
-                    latest_conversation.status = ConversationStatus.INACTIVE
-                    await self.session.flush()
 
         # If the latest conversation is closing, set it to closed
         elif (

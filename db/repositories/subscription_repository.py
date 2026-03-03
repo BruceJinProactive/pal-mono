@@ -91,7 +91,7 @@ class SubscriptionPlanRepository:
                 raise ValueError(f"Subscription plan {plan_id} not found")
 
             for key, value in kwargs.items():
-                if value is not None and hasattr(plan, key):
+                if hasattr(plan, key):
                     setattr(plan, key, value)
 
             if self.auto_commit:

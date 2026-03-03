@@ -14,6 +14,7 @@ from db.tables import (
     Conversation,
     Message,
     Project,
+    ProjectSubscription,
     User,
 )
 from db.tables.accounts import AccountStatus
@@ -236,14 +237,14 @@ class AccountRepository:
             if not db_account:
                 return None
 
-            if expected_version and db_account.updated_at:
-                if expected_version != int(db_account.updated_at.timestamp()):
+            if expected_version is not None and db_account.updated_at:
+                if int(db_account.updated_at.timestamp()) != expected_version:
                     raise ValueError(
                         "Version mismatch: Account has been modified by another process."
                     )
 
             for key, value in kwargs.items():
-                if value is not None and hasattr(db_account, key):
+                if hasattr(db_account, key):
                     setattr(db_account, key, value)
 
             if self.auto_commit:
@@ -308,22 +309,34 @@ class AccountRepository:
                         AccountUser.account_id == account_id
                     ).delete(synchronize_session=False)
 
-                    # 6. Delete projects for this account
+                    # 6. Delete project subscriptions for this account's projects
+                    project_ids = [
+                        p.id
+                        for p in self.session.query(Project.id)
+                        .filter(Project.account_id == account_id)
+                        .all()
+                    ]
+                    if project_ids:
+                        self.session.query(ProjectSubscription).filter(
+                            ProjectSubscription.project_id.in_(project_ids)
+                        ).delete(synchronize_session=False)
+
+                    # 7. Delete projects for this account
                     self.session.query(Project).filter(
                         Project.account_id == account_id
                     ).delete(synchronize_session=False)
 
-                    # 7. Delete agents for this account
+                    # 8. Delete agents for this account
                     self.session.query(Agent).filter(
                         Agent.account_id == account_id
                     ).delete(synchronize_session=False)
 
-                    # 8. Delete account subscriptions
+                    # 9. Delete account subscriptions
                     self.session.query(AccountSubscription).filter(
                         AccountSubscription.account_id == account_id
                     ).delete(synchronize_session=False)
 
-                    # 9. Delete the account
+                    # 10. Delete the account
                     self.session.query(Account).filter(Account.id == account_id).delete(
                         synchronize_session=False
                     )

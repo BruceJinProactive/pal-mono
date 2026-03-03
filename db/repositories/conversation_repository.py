@@ -182,14 +182,14 @@ class ConversationRepository:
             limit (int, optional): Maximum number of records to return. Defaults to 100.
 
         Returns:
-            list[Conversation] | None: A list of conversation objects, or None if an error occurs.
+            list[Conversation]: A list of conversation objects, or empty list if an error occurs.
         """
         try:
             return self.session.query(Conversation).offset(skip).limit(limit).all()
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving conversations: {e}")
-            return None
+            return []
 
     def get_conversations_by_user(self, user_id: uuid.UUID):
         """
@@ -199,7 +199,7 @@ class ConversationRepository:
             user_id (uuid.UUID): The ID of the user whose conversations are being retrieved.
 
         Returns:
-            list[Conversation] | None: A list of conversation objects for the specified user, or None if an error occurs.
+            list[Conversation]: A list of conversation objects for the specified user, or empty list if an error occurs.
 
         Raises:
             ValueError: If 'user_id' is not provided.
@@ -215,7 +215,7 @@ class ConversationRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error retrieving conversations by user: {e}")
-            return None
+            return []
 
     def get_conversations_by_users(
         self,
@@ -532,12 +532,12 @@ class ConversationRepository:
             )
 
             # Add date filtering if provided
-            if start_date:
+            if start_date is not None:
                 query = query.filter(Conversation.created_at >= start_date)
-            if end_date:
+            if end_date is not None:
                 query = query.filter(Conversation.created_at <= end_date)
 
-            if account_id:
+            if account_id is not None:
                 # Single account query
                 query = query.filter(Account.id == account_id)
                 query = query.group_by(Account.id, Account.name)

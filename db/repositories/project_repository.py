@@ -26,6 +26,10 @@ def _format_time(time_str: str) -> str:
     hour = int(time_str[:2])
     minute_int = int(time_str[2:])
 
+    # Handle "2400" as midnight (end of day), used by Google Places API
+    if hour == 24 and minute_int == 0:
+        return "12:00 AM"
+
     # Validate hour/minute ranges
     if hour > 23 or minute_int > 59:
         return time_str
@@ -83,6 +87,16 @@ def _format_special_hours(special_hours: list) -> list[str]:
                 formatted_close = _format_time(close_time)
                 formatted.append(
                     f"{formatted_date}: {formatted_open} – {formatted_close} (Holiday Hours)"
+                )
+            elif open_time:
+                formatted_open = _format_time(open_time)
+                formatted.append(
+                    f"{formatted_date}: Opens {formatted_open} (Holiday Hours)"
+                )
+            elif close_time:
+                formatted_close = _format_time(close_time)
+                formatted.append(
+                    f"{formatted_date}: Closes {formatted_close} (Holiday Hours)"
                 )
 
     return formatted
@@ -227,17 +241,14 @@ class ProjectRepository:
             if not db_project:
                 return None
 
-            if expected_version and db_project.updated_at:
-                if (
-                    expected_version
-                    and int(db_project.updated_at.timestamp()) != expected_version
-                ):
+            if expected_version is not None and db_project.updated_at:
+                if int(db_project.updated_at.timestamp()) != expected_version:
                     raise ValueError(
                         f"Version mismatch: Project {project_id} has been modified since last retrieval."
                     )
 
             for key, value in kwargs.items():
-                if value is not None and hasattr(db_project, key):
+                if hasattr(db_project, key):
                     setattr(db_project, key, value)
 
             if self.auto_commit:
