@@ -70,6 +70,7 @@ class PhoneCallRepositoryAsync:
             self.session.add(phone_call)
             await self.session.flush()
             await self.session.refresh(phone_call)
+            await self.session.commit()
 
             logger.info(
                 f"Phone call record created: {phone_call.id} for call {call_id}"
@@ -77,6 +78,7 @@ class PhoneCallRepositoryAsync:
             return phone_call
 
         except SQLAlchemyError as e:
+            await self.session.rollback()
             logger.error(f"Error creating phone call record: {e}")
             raise
 
@@ -142,6 +144,7 @@ class PhoneCallRepository:
             self.session.add(phone_call)
             self.session.flush()
             self.session.refresh(phone_call)
+            self.session.commit()
 
             logger.info(
                 f"Phone call record created: {phone_call.id} for call {call_id}"
@@ -149,5 +152,6 @@ class PhoneCallRepository:
             return phone_call
 
         except SQLAlchemyError as e:
+            self.session.rollback()
             logger.error(f"Error creating phone call record: {e}")
             raise

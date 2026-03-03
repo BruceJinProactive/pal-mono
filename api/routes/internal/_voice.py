@@ -406,6 +406,14 @@ async def end_voice_call(
         f"[end_voice_call] Found conversation_id: {conversation_id}", extra=_log_extra
     )
 
+    # Store conversation attributes before atomic close to avoid session detachment issues
+    # After atomic_close_conversation() commits, the conversation object becomes detached
+    project_id_for_billing = conversation.project_id
+    user_id_for_event = conversation.user_id
+    channel_for_event = conversation.channel.value if conversation.channel else "voice"
+    is_test_for_event = conversation.is_test or False
+    customer_converted_for_event = conversation.customer_converted
+
     # --- Step 2: Extract call analytics using LLM with retry ---
     analytics = None
     if conversation_history:
@@ -561,9 +569,9 @@ async def end_voice_call(
     if should_track:
         try:
             # Get project and account info for Stripe billing
-            await session.refresh(conversation, attribute_names=["project_id"])
+            # Use stored project_id to avoid refreshing detached conversation object
             project = await project_service.get_project_by_id_async(
-                session, conversation.project_id
+                session, project_id_for_billing
             )
 
             if project and project.account and project.account.stripe_customer_id:
@@ -627,19 +635,20 @@ async def end_voice_call(
 
     # Publish conversation evaluation event (fire-and-forget)
     # Pass primitive values — the background task creates its own DB session
+    # Use stored values to avoid accessing detached conversation object
     _task = asyncio.create_task(
         _publish_livekit_evaluation_event(
-            conversation_id=conversation.id,
-            user_id=conversation.user_id,
-            project_id=conversation.project_id,
+            conversation_id=conversation_id,
+            user_id=user_id_for_event,
+            project_id=project_id_for_billing,
             call_id=call_id,
             duration_seconds=duration_seconds,
             close_reason=close_reason,
             conversation_history=conversation_history,
             analytics=analytics if conversation_history else None,
-            channel=conversation.channel.value if conversation.channel else "voice",
-            is_test=conversation.is_test or False,
-            customer_converted=conversation.customer_converted,
+            channel=channel_for_event,
+            is_test=is_test_for_event,
+            customer_converted=customer_converted_for_event,
         )
     )
 
