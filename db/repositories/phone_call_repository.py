@@ -51,36 +51,27 @@ class PhoneCallRepositoryAsync:
         Raises:
             SQLAlchemyError: If there is an error creating the phone call
         """
-        try:
-            phone_call = PhoneCall(
-                call_id=call_id,
-                conversation_id=conversation_id,
-                duration=duration,
-                turn_latency_avg=turn_latency_avg,
-                model_latency_avg=model_latency_avg,
-                voice_latency_avg=voice_latency_avg,
-                transcriber_latency_avg=transcriber_latency_avg,
-                endpointing_latency_avg=endpointing_latency_avg,
-                ended_reason=ended_reason,
-                call_purpose=call_purpose,
-                user_satisfaction=user_satisfaction,
-                language=language,
-            )
+        phone_call = PhoneCall(
+            call_id=call_id,
+            conversation_id=conversation_id,
+            duration=duration,
+            turn_latency_avg=turn_latency_avg,
+            model_latency_avg=model_latency_avg,
+            voice_latency_avg=voice_latency_avg,
+            transcriber_latency_avg=transcriber_latency_avg,
+            endpointing_latency_avg=endpointing_latency_avg,
+            ended_reason=ended_reason,
+            call_purpose=call_purpose,
+            user_satisfaction=user_satisfaction,
+            language=language,
+        )
 
-            self.session.add(phone_call)
-            await self.session.flush()
-            await self.session.refresh(phone_call)
-            await self.session.commit()
+        self.session.add(phone_call)
+        await self.session.flush()
+        await self.session.refresh(phone_call)
 
-            logger.info(
-                f"Phone call record created: {phone_call.id} for call {call_id}"
-            )
-            return phone_call
-
-        except SQLAlchemyError as e:
-            await self.session.rollback()
-            logger.error(f"Error creating phone call record: {e}")
-            raise
+        logger.info(f"Phone call record created: {phone_call.id} for call {call_id}")
+        return phone_call
 
 
 class PhoneCallRepository:

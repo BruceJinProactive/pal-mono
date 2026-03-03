@@ -544,6 +544,7 @@ async def end_voice_call(
             user_satisfaction=analytics["user_satisfaction"],
             language=analytics["language"],
         )
+        await session.commit()
         logger.info(
             f"[end_voice_call] Phone call record created: {phone_call.id}",
             extra={
@@ -552,6 +553,7 @@ async def end_voice_call(
             },
         )
     except Exception as e:
+        await session.rollback()
         phone_call_error = str(e)
         logger.error(
             f"[end_voice_call] Failed to create phone call record: {e}",
