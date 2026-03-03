@@ -1,4 +1,5 @@
 import copy
+import json
 import uuid
 from dataclasses import asdict
 from typing import Any, Dict, Literal, Optional, cast
@@ -21,13 +22,16 @@ from sqlalchemy.orm import Session
 import db
 from agent import AgentConfig, KnowledgeConfig, LlamaIndexSettings, ToolConfig
 from db.tables.change_log import ChangeResourceType
+from db.tables.integration import Integration
 from db.tables.types import Channel, IntegrationType
 from services import account_service, integration_service
 from services.auth_types import UserContext
 from services.history_service import change_log_context
 from utils.log import logger
+from utils.secret import async_get_client_secret
 
 from . import _raw_config
+from ._pal_agent_tool_registry import PAL_AGENT_TOOL_REGISTRY
 from .schema import AgentParams
 
 
@@ -236,6 +240,105 @@ def _build_adora_spec_from_raw_config(raw_config: dict) -> AdoraSpec:
     return AdoraSpec(**adora_spec_kwargs)
 
 
+async def _resolve_integration_credentials(
+    integration_record: Integration | None,
+) -> tuple[str | None, str | None]:
+    """Resolve integration credentials asynchronously.
+
+    Prefers credentials from secret manager via Integration.secret_key and
+    falls back to Integration.client_id/client_secret columns.
+    """
+    if integration_record is None:
+        return None, None
+
+    client_id: str | None = None
+    client_secret: str | None = None
+
+    if integration_record.secret_key:
+        try:
+            secrets_json = await async_get_client_secret(integration_record.secret_key)
+            credentials = json.loads(secrets_json)
+            client_id = credentials.get("client_id")
+            client_secret = credentials.get("client_secret")
+        except Exception as exc:
+            logger.warning(
+                "Failed to resolve integration credentials from secret manager for integration %s: %s",
+                integration_record.id,
+                exc,
+            )
+
+    # Fallback to DB columns if secret manager values are unavailable
+    if not client_id:
+        client_id = integration_record.client_id
+    if not client_secret:
+        client_secret = integration_record.client_secret
+
+    return client_id, client_secret
+
+
+async def _build_specs_from_project_integrations(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Query ProjectIntegrations and build specs for all registered tools.
+
+    Returns a dict keyed by spec field name, e.g. ``{"adora": AdoraSpec(...)}``.
+    Tools not found in the registry are silently skipped.
+    """
+    registered_names = list(PAL_AGENT_TOOL_REGISTRY.keys())
+    if not registered_names:
+        return {}
+
+    pi_result = await session.execute(
+        select(db.ProjectIntegration)
+        .filter(
+            db.ProjectIntegration.project_id == project_id,
+            db.ProjectIntegration.tool_name.in_(registered_names),
+        )
+        .order_by(db.ProjectIntegration.created_at, db.ProjectIntegration.id)
+    )
+    integrations = list(pi_result.scalars())
+
+    if not integrations:
+        return {}
+
+    specs: dict[str, Any] = {}
+    for pi in integrations:
+        if not pi.tool_name:
+            continue
+        entry = PAL_AGENT_TOOL_REGISTRY[pi.tool_name]
+
+        # First match per spec_field wins; skip duplicates
+        if entry.spec_field in specs:
+            logger.warning(
+                "Duplicate ProjectIntegration for spec_field '%s' (tool_name=%s, "
+                "project_id=%s, pi_id=%s) — skipping in favour of earlier row",
+                entry.spec_field,
+                pi.tool_name,
+                project_id,
+                pi.id,
+            )
+            continue
+
+        # Resolve credentials from linked Integration record
+        int_result = await session.execute(
+            select(Integration).filter(Integration.id == pi.integration_id)
+        )
+        integration_record = int_result.scalar_one_or_none()
+        client_id, client_secret = await _resolve_integration_credentials(
+            integration_record
+        )
+
+        specs[entry.spec_field] = entry.builder(
+            dict(pi.config or {}),
+            pi.store_identifier or "",
+            client_id,
+            client_secret,
+        )
+
+    return specs
+
+
 def _agent_config_to_spec(
     agent_config: AgentConfig,
     model_spec: ModelSpec | None = None,
@@ -359,8 +462,13 @@ async def construct_agent_spec(
     effective_raw_config = raw_config or {}
 
     generic_api_spec = _build_generic_api_spec_from_raw_config(effective_raw_config)
-    adora_spec = _build_adora_spec_from_raw_config(effective_raw_config)
     model_spec = _parse_model_spec_from_raw_config(effective_raw_config)
+
+    # Build specs from ProjectIntegration registry, fall back to raw_config
+    pi_specs = await _build_specs_from_project_integrations(session, project_id)
+    adora_spec = pi_specs.get("adora") or _build_adora_spec_from_raw_config(
+        effective_raw_config
+    )
 
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
     return _agent_config_to_spec(

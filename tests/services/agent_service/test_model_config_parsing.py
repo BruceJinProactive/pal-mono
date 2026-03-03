@@ -90,6 +90,11 @@ async def test_construct_agent_spec_parses_model_config(
         "construct_agent_config",
         mock_construct_agent_config,
     )
+    monkeypatch.setattr(
+        _implementation,
+        "_build_specs_from_project_integrations",
+        AsyncMock(return_value={}),
+    )
 
     spec = await _implementation.construct_agent_spec(
         session=AsyncMock(),

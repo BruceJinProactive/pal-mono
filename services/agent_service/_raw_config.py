@@ -31,6 +31,7 @@ from db.repositories.project_contact_repository import ProjectContactRepositoryA
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, IdentifierType, TargetTier
 from services import features_service
+from services.agent_service._pal_agent_tool_registry import PAL_AGENT_TOOL_REGISTRY
 from services.integration_service.schema import IntegrationDetail
 from services.prompt_service.prompts import prompt_factory
 from services.prompt_service.prompts_v2 import prompt_factory_v2
@@ -191,6 +192,10 @@ class RawConfig:
         for integration in sorted_integrations:
             tool_name = integration.tool_name
             if not tool_name:
+                continue
+
+            # Skip tools managed by the pal-agents tool registry
+            if tool_name in PAL_AGENT_TOOL_REGISTRY:
                 continue
 
             config_payload: Dict[str, Any] = integration.config or {}
