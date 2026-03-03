@@ -105,6 +105,72 @@ class ConversationRepositoryAsync:
             logger.error(f"Error counting conversations by account id: {e}")
             raise
 
+    async def atomic_close_conversation(
+        self, conversation_id: uuid.UUID, update_data: ConversationUpdate
+    ) -> bool:
+        """
+        Atomically close a conversation only if it's not already closed.
+        This prevents race conditions where multiple processes try to close the same conversation.
+
+        Args:
+            conversation_id (uuid.UUID): The ID of the conversation to close.
+            update_data (ConversationUpdate): The fields to update (must include status=CLOSED).
+
+        Returns:
+            bool: True if the conversation was successfully closed by this call,
+                  False if it was already closed or doesn't exist.
+
+        Raises:
+            SQLAlchemyError: If there is an error updating the conversation.
+        """
+        try:
+            # Build update values dict from update_data
+            values = {}
+            if update_data.status is not None:
+                values["status"] = update_data.status
+            if update_data.purpose is not None:
+                values["purpose"] = update_data.purpose
+            if update_data.language is not None:
+                values["language"] = update_data.language
+            if update_data.ended_reason is not None:
+                values["ended_reason"] = update_data.ended_reason
+            if update_data.customer_converted is not None:
+                values["customer_converted"] = update_data.customer_converted
+
+            # Atomic update: only update if status is NOT already CLOSED
+            result = await self.session.execute(
+                update(Conversation)
+                .where(
+                    Conversation.id == conversation_id,
+                    Conversation.status != ConversationStatus.CLOSED,
+                )
+                .values(**values)
+            )
+
+            # Handle is_escalated separately if needed
+            if update_data.is_escalated is not None:
+                await self.session.execute(
+                    update(Message)
+                    .where(Message.conversation_id == conversation_id)
+                    .values(
+                        body=func.jsonb_set(
+                            func.coalesce(Message.body, "{}"),
+                            "{extras,escalated}",
+                            func.to_jsonb(str(update_data.is_escalated).lower()),
+                        )
+                    )
+                )
+
+            await self.session.commit()
+
+            # Return True only if we updated exactly one row (won the race)
+            return result.rowcount == 1
+
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error atomically closing conversation: {e}")
+            raise
+
     async def update_conversation(
         self, conversation_id: uuid.UUID, update_data: ConversationUpdate
     ) -> Conversation | None:

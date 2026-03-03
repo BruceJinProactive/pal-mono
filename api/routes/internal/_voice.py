@@ -27,6 +27,7 @@ from db.tables.types import Channel, SpeechRate
 from events import ConversationEvaluationRequested, publish_event
 from services import project_service, subscription_service, user_service
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
 # Numeric speed mapping matching CARTESIA_SONIC3_SPEED_MAPPING from
 # services/voice_service/providers/vapi/_implementation.py
@@ -63,6 +64,71 @@ _TIMEZONE_GREETINGS: dict[str, dict[str, str]] = {
         "evening": "\u665a\u4e0a\u597d\uff01",
     },
 }
+
+
+def _is_test_phone_number(phone_number: str) -> bool:
+    """
+    Check if a phone number is a Palona test/internal number.
+
+    Reads from AWS Secrets Manager or environment variable TEST_PHONE_NUMBERS
+    which should be a comma-separated list of phone numbers.
+
+    Example: TEST_PHONE_NUMBERS="+18889738742,+18885551234,+12125551212"
+
+    Args:
+        phone_number: Phone number to check
+
+    Returns:
+        bool: True if test number, False otherwise
+    """
+    try:
+        # Get test phone numbers from AWS Secrets Manager with env fallback
+        test_numbers_str = get_server_secret_with_fallback("TEST_PHONE_NUMBERS")
+    except (ValueError, KeyError):
+        # Secret not found, no test numbers configured
+        return False
+
+    if not test_numbers_str:
+        return False
+
+    # Parse comma-separated phone numbers and strip whitespace
+    test_numbers = {num.strip() for num in test_numbers_str.split(",") if num.strip()}
+
+    return phone_number in test_numbers
+
+
+def _should_track_call_usage(
+    caller_number: str,
+    duration_seconds: float,
+    conversation_history: list[dict],
+) -> tuple[bool, str]:
+    """
+    Determine if a call should be tracked for billing based on filtering rules.
+
+    Filtering rules:
+    1. Exclude test phone numbers (Palona internal)
+    2. Exclude calls less than 10 seconds in duration
+    3. Exclude calls where customer didn't speak
+
+    Args:
+        caller_number: Customer phone number
+        duration_seconds: Call duration in seconds
+        conversation_history: List of message dicts with 'role' and 'content'
+
+    Returns:
+        tuple: (should_track: bool, skip_reason: str)
+    """
+    # Rule 1: Check if test phone number
+    if _is_test_phone_number(caller_number):
+        return False, f"test_number:{caller_number}"
+
+    # Rule 2: Check call duration
+    # If call is less than 10 seconds, don't count as usage
+    if duration_seconds < 10:
+        return False, f"call_too_short:{duration_seconds:.2f}s"
+
+    # All checks passed
+    return True, ""
 
 
 def _resolve_greeting(first_message: str, timezone_str: str, language: str) -> str:
@@ -283,7 +349,7 @@ async def end_voice_call(
 ) -> dict:
     """End a voice call from the LiveKit agent worker.
 
-    Logs call details and finds the conversation_id associated with the call_id.
+    Extracts call analytics, updates conversation, creates phone call record, and sends Stripe meter event.
 
     Args:
         request: VoiceEndCallRequest containing call details
@@ -292,6 +358,11 @@ async def end_voice_call(
     Returns:
         dict: Status response with conversation_id if found
     """
+    from db.repositories.conversation_repository import ConversationUpdate
+    from db.repositories.phone_call_repository import PhoneCallRepositoryAsync
+    from db.tables.conversations import ConversationStatus
+    from services.subscription_service.stripe_usage_billing import send_meter_event
+
     call_id = request.call_id
     caller_number = request.caller_number
     dialed_number = request.dialed_number
@@ -305,57 +376,254 @@ async def end_voice_call(
         "dialed_number": dialed_number,
         "duration_seconds": duration_seconds,
         "close_reason": close_reason,
-        "conversation_messages": conversation_history,
     }
 
     logger.info("[end_voice_call] Received end-call request", extra=_log_extra)
 
-    # Find conversation by call_id
+    # --- Step 1: Find conversation by call_id ---
     conversation_repo = db.ConversationRepositoryAsync(session)
     conversation = await conversation_repo.get_conversation_by_call_id(call_id)
 
     if not conversation:
-        logger.warning(
-            f"[end_voice_call] No conversation found for call_id: {call_id}",
-            extra=_log_extra,
+        logger.error(
+            "[end_voice_call] Conversation not found",
+            extra={
+                "call_info": {
+                    "call_id": call_id,
+                    "caller_number": caller_number,
+                    "dialed_number": dialed_number,
+                }
+            },
         )
         return {
             "status": "error",
             "message": f"No conversation found for call_id: {call_id}",
         }
 
-    conversation_id = str(conversation.id)
+    conversation_id = conversation.id
 
     logger.info(
-        f"[end_voice_call] Found conversation_id: {conversation_id}",
-        extra={**_log_extra, "conversation_id": conversation_id},
+        f"[end_voice_call] Found conversation_id: {conversation_id}", extra=_log_extra
     )
 
-    # Extract call analytics using LLM
+    # --- Step 2: Extract call analytics using LLM with retry ---
     analytics = None
     if conversation_history:
         try:
-            from services.analytics_service._utils import extract_call_analytics
-
-            analytics = await extract_call_analytics(conversation_history)
-            logger.info(
-                f"[end_voice_call] Analytics extracted for conversation_id: {conversation_id}",
-                extra={
-                    "conversation_id": conversation_id,
-                    "analytics": {
-                        "ended_reason": analytics["ended_reason"].value,
-                        "call_purpose": [p.value for p in analytics["call_purpose"]],
-                        "user_satisfaction": analytics["user_satisfaction"].value,
-                        "language": analytics["language"].value,
+            analytics = await _call_analytics_with_retry(conversation_history)
+            if analytics:
+                logger.info(
+                    f"[end_voice_call] Analytics extracted for conversation_id: {conversation_id}",
+                    extra={
+                        "conversation_id": str(conversation_id),
+                        "analytics": {
+                            "ended_reason": analytics["ended_reason"].value,
+                            "call_purpose": [
+                                p.value for p in analytics["call_purpose"]
+                            ],
+                            "user_satisfaction": analytics["user_satisfaction"].value,
+                            "language": analytics["language"].value,
+                        },
                     },
+                )
+        except Exception as e:
+            logger.error(
+                f"[end_voice_call] Failed to extract analytics after retries: {e}",
+                extra={"conversation_id": str(conversation_id), "error": str(e)},
+            )
+
+    # Use default analytics if extraction failed
+    if not analytics:
+        logger.warning(
+            f"[end_voice_call] Using default analytics for conversation_id: {conversation_id}"
+        )
+        analytics = _get_default_analytics()
+
+    # --- Step 3: Atomically close conversation (single-writer gate) ---
+    # This atomic operation ensures only one process can close the conversation
+    # and prevents duplicate side-effects (phone call records, billing events)
+    try:
+        # Convert call_purpose list to comma-separated string for storage
+        purpose_str = ",".join([p.value for p in analytics["call_purpose"]])
+
+        # Check if customer converted (paid order exists) and update if not already set
+        customer_converted_id = conversation.customer_converted
+        if not customer_converted_id:
+            # Query for any paid orders for this conversation
+            from sqlalchemy import select
+
+            from db.tables.orders import Order
+
+            result = await session.execute(
+                select(Order)
+                .filter(
+                    Order.conversation_id == conversation_id,
+                    Order.status == "paid",
+                )
+                .order_by(Order.created_at.desc())
+                .limit(1)
+            )
+            paid_order = result.scalar_one_or_none()
+
+            if paid_order:
+                customer_converted_id = paid_order.id
+                logger.info(
+                    f"[end_voice_call] Found paid order for conversation: {customer_converted_id}",
+                    extra={"conversation_id": str(conversation_id)},
+                )
+
+        update_data = ConversationUpdate(
+            status=ConversationStatus.CLOSED,
+            purpose=purpose_str,
+            language=analytics["language"].value,
+            ended_reason=analytics["ended_reason"].value,
+            customer_converted=customer_converted_id,
+        )
+
+        # Atomic close: returns True only if this process won the race to close
+        successfully_closed = await conversation_repo.atomic_close_conversation(
+            conversation_id, update_data
+        )
+
+        if not successfully_closed:
+            # Another process already closed this conversation
+            logger.warning(
+                "[end_voice_call] Conversation already closed by another process - skipping side-effects",
+                extra={
+                    "call_info": {
+                        "call_id": call_id,
+                        "caller_number": caller_number,
+                        "dialed_number": dialed_number,
+                    },
+                    "conversation_id": str(conversation_id),
                 },
             )
-        except Exception as e:
-            analytics = None
-            logger.error(
-                f"[end_voice_call] Failed to extract analytics: {e}",
-                extra={"conversation_id": conversation_id, "error": str(e)},
+            return {
+                "status": "success",
+                "conversation_id": str(conversation_id),
+                "message": "Conversation already closed by another process",
+            }
+
+        logger.info(
+            f"[end_voice_call] Conversation atomically closed: {conversation_id}",
+            extra={"conversation_id": str(conversation_id)},
+        )
+    except Exception as e:
+        logger.error(
+            f"[end_voice_call] Failed to close conversation: {e}",
+            extra={"conversation_id": str(conversation_id), "error": str(e)},
+        )
+        # Return error - do not proceed with side-effects if close failed
+        return {
+            "status": "error",
+            "conversation_id": str(conversation_id),
+            "message": f"Failed to close conversation: {str(e)}",
+        }
+
+    # Track failures for comprehensive error reporting
+    phone_call_error: str | None = None
+    billing_error: str | None = None
+
+    # --- Step 4: Create phone call record ---
+    try:
+        phone_call_repo = PhoneCallRepositoryAsync(session)
+        phone_call = await phone_call_repo.create_phone_call(
+            call_id=call_id,
+            conversation_id=conversation_id,
+            duration=duration_seconds,
+            ended_reason=analytics["ended_reason"],
+            call_purpose=analytics["call_purpose"],
+            user_satisfaction=analytics["user_satisfaction"],
+            language=analytics["language"],
+        )
+        logger.info(
+            f"[end_voice_call] Phone call record created: {phone_call.id}",
+            extra={
+                "conversation_id": str(conversation_id),
+                "phone_call_id": str(phone_call.id),
+            },
+        )
+    except Exception as e:
+        phone_call_error = str(e)
+        logger.error(
+            f"[end_voice_call] Failed to create phone call record: {e}",
+            extra={"conversation_id": str(conversation_id), "error": str(e)},
+        )
+
+    # --- Step 5: Send Stripe meter event if call should be tracked ---
+    # Apply billing skip rules: test numbers, duration < 10s, customer didn't speak
+    should_track, skip_reason = _should_track_call_usage(
+        caller_number=caller_number,
+        duration_seconds=duration_seconds,
+        conversation_history=conversation_history,
+    )
+
+    if should_track:
+        try:
+            # Get project and account info for Stripe billing
+            await session.refresh(conversation, attribute_names=["project_id"])
+            project = await project_service.get_project_by_id_async(
+                session, conversation.project_id
             )
+
+            if project and project.account and project.account.stripe_customer_id:
+                event_name = f"calls_{project.id}"
+                stripe_customer_id = project.account.stripe_customer_id
+
+                # Send meter event (returns True/False, logging is handled internally)
+                send_meter_event(
+                    event_name=event_name,
+                    stripe_customer_id=stripe_customer_id,
+                    value=1,
+                    timestamp=datetime.now(timezone.utc),
+                )
+                logger.info(
+                    f"[end_voice_call] Stripe meter event sent for call_id: {call_id}",
+                    extra={
+                        "conversation_id": str(conversation_id),
+                        "event_name": event_name,
+                    },
+                )
+            else:
+                logger.warning(
+                    "[end_voice_call] Cannot send Stripe meter event - missing project or stripe_customer_id",
+                    extra={"conversation_id": str(conversation_id)},
+                )
+        except Exception as e:
+            billing_error = str(e)
+            logger.error(
+                f"[end_voice_call] Failed to send Stripe meter event: {e}",
+                extra={"conversation_id": str(conversation_id), "error": str(e)},
+            )
+    else:
+        # Log why billing was skipped
+        logger.info(
+            f"[end_voice_call] Skipping call usage tracking for call_id: {call_id}: {skip_reason}",
+            extra={
+                "call_id": call_id,
+                "conversation_id": str(conversation_id),
+                "skip_reason": skip_reason,
+                "caller_last4": caller_number[-4:] if caller_number else "",
+            },
+        )
+
+    # Return appropriate response based on operation results
+    if phone_call_error or billing_error:
+        errors = []
+        if phone_call_error:
+            errors.append(f"Phone call record: {phone_call_error}")
+        if billing_error:
+            errors.append(f"Billing: {billing_error}")
+
+        return {
+            "status": "partial_failure",
+            "conversation_id": str(conversation_id),
+            "message": f"Conversation closed but post-processing failed: {'; '.join(errors)}",
+            "errors": {
+                "phone_call_record": phone_call_error,
+                "billing": billing_error,
+            },
+        }
 
     # Publish conversation evaluation event (fire-and-forget)
     # Pass primitive values — the background task creates its own DB session
@@ -377,7 +645,154 @@ async def end_voice_call(
 
     return {
         "status": "success",
-        "conversation_id": conversation_id,
+        "conversation_id": str(conversation_id),
+    }
+
+
+async def _call_analytics_with_retry(
+    conversation_history: list[dict],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+) -> dict | None:
+    """Retry wrapper with exponential backoff for LLM analytics extraction.
+
+    Args:
+        conversation_history: List of message dicts with 'role' and 'content'
+        max_retries: Maximum number of retry attempts
+        base_delay: Base delay in seconds for exponential backoff
+
+    Returns:
+        dict with normalized enum instances for all analytics fields, or None if all retries failed
+    """
+    import asyncio
+
+    from services.analytics_service._utils import extract_call_analytics
+
+    for attempt in range(max_retries):
+        try:
+            result = await extract_call_analytics(conversation_history)
+
+            # Validate the response
+            if _validate_analytics_response(result):
+                # Normalize to ensure all fields are enum instances
+                normalized_result = _normalize_analytics_to_enums(result)
+                return normalized_result
+            else:
+                logger.warning(
+                    f"[_call_analytics_with_retry] Invalid analytics response on attempt {attempt + 1}/{max_retries}"
+                )
+
+        except Exception as e:
+            logger.warning(
+                f"[_call_analytics_with_retry] Analytics extraction failed on attempt {attempt + 1}/{max_retries}: {e}"
+            )
+
+        # Wait before retry (exponential backoff)
+        if attempt < max_retries - 1:
+            delay = base_delay * (2**attempt)
+            await asyncio.sleep(delay)
+
+    logger.error(
+        f"[_call_analytics_with_retry] All {max_retries} retry attempts failed"
+    )
+    return None
+
+
+def _validate_analytics_response(result: dict) -> bool:
+    """Validate LLM response has required fields and valid enum values.
+
+    Args:
+        result: Analytics dict from LLM extraction
+
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    from db.tables.types import (
+        CallEndedReason,
+        CallLanguage,
+        CallPurpose,
+        UserSatisfaction,
+    )
+
+    try:
+        # Check required keys exist
+        required_keys = [
+            "ended_reason",
+            "call_purpose",
+            "user_satisfaction",
+            "language",
+        ]
+        if not all(key in result for key in required_keys):
+            logger.warning(
+                f"[_validate_analytics_response] Missing required keys. Got: {list(result.keys())}"
+            )
+            return False
+
+        # Validate call_purpose is a list
+        if not isinstance(result["call_purpose"], list):
+            logger.warning(
+                f"[_validate_analytics_response] call_purpose is not a list: {type(result['call_purpose'])}"
+            )
+            return False
+
+        # Validate enum values by trying to construct them
+        _ = CallEndedReason(result["ended_reason"])
+        _ = [CallPurpose(p) for p in result["call_purpose"]]
+        _ = UserSatisfaction(result["user_satisfaction"])
+        _ = CallLanguage(result["language"])
+
+        return True
+
+    except (ValueError, TypeError, KeyError) as e:
+        logger.warning(f"[_validate_analytics_response] Validation failed: {e}")
+        return False
+
+
+def _normalize_analytics_to_enums(result: dict) -> dict:
+    """Normalize analytics dict to ensure all fields are Enum instances.
+
+    Converts any string values to their corresponding enum instances to prevent
+    errors when accessing .value attributes.
+
+    Args:
+        result: Analytics dict that may contain strings or enum instances
+
+    Returns:
+        dict: Normalized analytics with all enum instances
+    """
+    from db.tables.types import (
+        CallEndedReason,
+        CallLanguage,
+        CallPurpose,
+        UserSatisfaction,
+    )
+
+    return {
+        "ended_reason": CallEndedReason(result["ended_reason"]),
+        "call_purpose": [CallPurpose(p) for p in result["call_purpose"]],
+        "user_satisfaction": UserSatisfaction(result["user_satisfaction"]),
+        "language": CallLanguage(result["language"]),
+    }
+
+
+def _get_default_analytics() -> dict:
+    """Return safe default analytics when LLM extraction fails.
+
+    Returns:
+        dict: Default analytics with enum values
+    """
+    from db.tables.types import (
+        CallEndedReason,
+        CallLanguage,
+        CallPurpose,
+        UserSatisfaction,
+    )
+
+    return {
+        "ended_reason": CallEndedReason.other,
+        "call_purpose": [CallPurpose.other],
+        "user_satisfaction": UserSatisfaction.neutral,
+        "language": CallLanguage.english,
     }
 
 
