@@ -533,27 +533,31 @@ async def end_voice_call(
     billing_error: str | None = None
 
     # --- Step 4: Create phone call record ---
+    # Use a new session since the main session was committed by atomic_close_conversation
+    # and cannot be reliably reused for another transaction in the same async context
     try:
-        phone_call_repo = PhoneCallRepositoryAsync(session)
-        phone_call = await phone_call_repo.create_phone_call(
-            call_id=call_id,
-            conversation_id=conversation_id,
-            duration=duration_seconds,
-            ended_reason=analytics["ended_reason"],
-            call_purpose=analytics["call_purpose"],
-            user_satisfaction=analytics["user_satisfaction"],
-            language=analytics["language"],
-        )
-        await session.commit()
-        logger.info(
-            f"[end_voice_call] Phone call record created: {phone_call.id}",
-            extra={
-                "conversation_id": str(conversation_id),
-                "phone_call_id": str(phone_call.id),
-            },
-        )
+        from db.session import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as phone_call_session:
+            phone_call_repo = PhoneCallRepositoryAsync(phone_call_session)
+            phone_call = await phone_call_repo.create_phone_call(
+                call_id=call_id,
+                conversation_id=conversation_id,
+                duration=duration_seconds,
+                ended_reason=analytics["ended_reason"],
+                call_purpose=analytics["call_purpose"],
+                user_satisfaction=analytics["user_satisfaction"],
+                language=analytics["language"],
+            )
+            await phone_call_session.commit()
+            logger.info(
+                f"[end_voice_call] Phone call record created: {phone_call.id}",
+                extra={
+                    "conversation_id": str(conversation_id),
+                    "phone_call_id": str(phone_call.id),
+                },
+            )
     except Exception as e:
-        await session.rollback()
         phone_call_error = str(e)
         logger.error(
             f"[end_voice_call] Failed to create phone call record: {e}",
