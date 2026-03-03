@@ -6,6 +6,19 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-02
+- Add pal agents adora as project integration (@graydonpower-dev, #3602)
+- Add api channel to customer_phone population in non-streaming flow (@ronald-palona, #3601)
+- Updating Filler Words (@jeffrey-weisinger, #3561)
+- Update pal-agents version (@ronald-palona, #3600)
+- Fix routine sorting & missed status detection (@teresatian-cell, #3599)
+- Publish ConversationEvaluationRequested event from LiveKit end-of-call (@aidan-palona, #3598)
+- Add mcp dependency for MCP server support (@xiangkangjw, #3597)
+- Symlink .agents/skills to submodule, add changelog-updater skill (@xiangkangjw, #3595)
+- Docs: reorganize documentation and add comprehensive change log (@xiangkangjw, #3594)
+- Docs: add ADRs and VAPI-to-LiveKit migration decision (@xiangkangjw, #3593)
+- Feat: add read-only MCP server for database exploration (@xiangkangjw, #3591)
+
 ### 2026-03-01
 - Docs: reorganize documentation into tool-agnostic knowledge management system (@xiangkangjw, #3592)
 - Docs: update architecture.md to reflect current codebase state (@xiangkangjw, #3590)
