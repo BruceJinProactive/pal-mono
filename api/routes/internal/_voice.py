@@ -446,8 +446,7 @@ async def end_voice_call(
         )
         analytics = _get_default_analytics()
 
-    # --- Step 3: Close conversation and upsert phone call record in a single transaction ---
-    # This is idempotent - retries or concurrent requests will update the existing phone call record
+    # --- Step 3: Close conversation and create phone call record in a single transaction ---
     try:
         # Convert call_purpose list to comma-separated string for storage
         purpose_str = ",".join([p.value for p in analytics["call_purpose"]])
@@ -485,9 +484,9 @@ async def end_voice_call(
         conversation.ended_reason = analytics["ended_reason"].value
         conversation.customer_converted = customer_converted_id
 
-        # --- Step 4: Upsert phone call record (idempotent) ---
+        # --- Step 4: Create phone call record ---
         phone_call_repo = PhoneCallRepositoryAsync(session)
-        phone_call = await phone_call_repo.upsert_phone_call(
+        phone_call = await phone_call_repo.create_phone_call(
             call_id=call_id,
             conversation_id=conversation_id,
             duration=duration_seconds,
@@ -497,14 +496,17 @@ async def end_voice_call(
             language=analytics["language"],
         )
 
+        # Store phone_call_id before commit to avoid accessing expired object attributes
+        phone_call_id = phone_call.id
+
         # Commit both updates together atomically
         await session.commit()
 
         logger.info(
-            f"[end_voice_call] Conversation closed and phone call record upserted: {phone_call.id} for call {call_id}",
+            f"[end_voice_call] Conversation closed and phone call record created: {phone_call_id} for call {call_id}",
             extra={
                 "conversation_id": str(conversation_id),
-                "phone_call_id": str(phone_call.id),
+                "phone_call_id": str(phone_call_id),
             },
         )
     except Exception as e:
