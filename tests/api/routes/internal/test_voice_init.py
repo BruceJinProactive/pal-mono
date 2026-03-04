@@ -225,16 +225,16 @@ class TestInitVoiceCallNoVoiceConfigs:
         assert "No voice configuration found" in exc.detail
 
     @pytest.mark.asyncio
-    async def test_returns_404_only_triage(self) -> None:
+    async def test_returns_success_with_triage(self) -> None:
+        """Single triage config is accepted."""
         triage_vc = _make_voice_config(language="triage")
-        exc = await _run_expecting_error(
+        result = await _run(
             _make_request(),
             project=_make_project(),
             user=_make_user(),
             voice_configs=[triage_vc],
         )
-        assert exc.status_code == 404
-        assert "No language voice configuration" in exc.detail
+        assert result.language == "triage"
 
 
 # ---------------------------------------------------------------------------
@@ -346,14 +346,15 @@ class TestInitVoiceCallSuccess:
         assert result.replacements == {}
 
     @pytest.mark.asyncio
-    async def test_skips_triage_picks_language_config(self) -> None:
+    async def test_multiple_configs_returns_500(self) -> None:
+        """Multiple voice configs should return 500 error."""
         triage = _make_voice_config(language="triage", voice_id="triage-voice")
         english = _make_voice_config(language="english", voice_id="english-voice")
-        result = await _run(
+        exc = await _run_expecting_error(
             _make_request(), _make_project(), _make_user(), [triage, english]
         )
-        assert result.voice_id == "english-voice"
-        assert result.language == "english"
+        assert exc.status_code == 500
+        assert "Multiple voices" in exc.detail
 
     @pytest.mark.asyncio
     async def test_user_creation_path(self) -> None:
@@ -392,41 +393,56 @@ class TestInitVoiceCallSTTSelection:
     """STT model and language: transcriber present vs _STT_CONFIGS fallback."""
 
     @pytest.mark.asyncio
-    async def test_stt_from_transcriber(self) -> None:
+    async def test_stt_from_transcriber_old_format(self) -> None:
+        """Test old Deepgram format with 'language' (string)."""
         vc = _make_voice_config(
-            transcriber={"model": "whisper-large", "language": "fr-FR"},
+            transcriber={
+                "model": "nova-3",
+                "language": "en-US",
+                "provider": "deepgram",
+            },
+        )
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.stt_model == "nova-3"
+        assert result.stt_languages == ["en-US"]
+
+    @pytest.mark.asyncio
+    async def test_stt_from_transcriber_new_format(self) -> None:
+        """Test new format with 'languages' (array)."""
+        vc = _make_voice_config(
+            transcriber={"model": "whisper-large", "languages": ["fr-FR"]},
         )
         result = await _run(_make_request(), _make_project(), _make_user(), [vc])
         assert result.stt_model == "whisper-large"
-        assert result.stt_language == "fr-FR"
+        assert result.stt_languages == ["fr-FR"]
 
     @pytest.mark.asyncio
     async def test_stt_fallback_spanish(self) -> None:
         vc = _make_voice_config(transcriber=None, language="spanish")
         result = await _run(_make_request(), _make_project(), _make_user(), [vc])
         assert result.stt_model == "nova-2"
-        assert result.stt_language == "es"
+        assert result.stt_languages == ["es"]
 
     @pytest.mark.asyncio
     async def test_stt_fallback_chinese(self) -> None:
         vc = _make_voice_config(transcriber=None, language="chinese")
         result = await _run(_make_request(), _make_project(), _make_user(), [vc])
         assert result.stt_model == "nova-2"
-        assert result.stt_language == "zh-CN"
+        assert result.stt_languages == ["zh-CN"]
 
     @pytest.mark.asyncio
     async def test_stt_fallback_english(self) -> None:
         vc = _make_voice_config(transcriber=None, language="english")
         result = await _run(_make_request(), _make_project(), _make_user(), [vc])
         assert result.stt_model == "nova-3"
-        assert result.stt_language == "en-US"
+        assert result.stt_languages == ["en-US"]
 
     @pytest.mark.asyncio
     async def test_stt_unknown_language_defaults_to_english(self) -> None:
         vc = _make_voice_config(transcriber=None, language="french")
         result = await _run(_make_request(), _make_project(), _make_user(), [vc])
         assert result.stt_model == _STT_CONFIGS["english"]["model"]
-        assert result.stt_language == _STT_CONFIGS["english"]["language"]
+        assert result.stt_languages == [_STT_CONFIGS["english"]["language"]]
 
     @pytest.mark.asyncio
     async def test_transcriber_partial_keys_use_defaults(self) -> None:
@@ -434,7 +450,17 @@ class TestInitVoiceCallSTTSelection:
         vc = _make_voice_config(transcriber={})
         result = await _run(_make_request(), _make_project(), _make_user(), [vc])
         assert result.stt_model == "nova-3"
-        assert result.stt_language == "en-US"
+        assert result.stt_languages == ["en-US"]
+
+    @pytest.mark.asyncio
+    async def test_stt_multiple_languages(self) -> None:
+        """Transcriber with multiple languages returns all mapped codes."""
+        vc = _make_voice_config(
+            transcriber={"model": "nova-3", "languages": ["english", "es"]},
+        )
+        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+        assert result.stt_model == "nova-3"
+        assert result.stt_languages == ["en-US", "es"]
 
 
 # ---------------------------------------------------------------------------

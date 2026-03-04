@@ -261,8 +261,6 @@ async def init_voice_call(
 
     logger.info("[init_voice_call] Step 5 done: conversation created", extra=_log_extra)
 
-    logger.info("[init_voice_call] Step 5 done: conversation created", extra=_log_extra)
-
     # --- Step 6: Build caller_info ---
     # Capture project attributes into locals so later DB queries can't expire them.
     project_timezone = project.timezone
@@ -289,16 +287,14 @@ async def init_voice_call(
             headers={"Content-Type": "application/json"},
         )
 
-    # Pick the first non-triage config (language assistant)
-    non_triage = [vc for vc in voice_configs if vc.language.lower() != "triage"]
-    if not non_triage:
+    if len(voice_configs) != 1:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No language voice configuration found",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Multiple voices are found for project {project_id}",
             headers={"Content-Type": "application/json"},
         )
 
-    vc = non_triage[0]
+    vc = voice_configs[0]
 
     logger.info(
         "[init_voice_call] Step 7 done: voice_config language=%s",
@@ -321,11 +317,32 @@ async def init_voice_call(
     lang_lower = vc.language.lower()
     if vc.transcriber:
         stt_model = vc.transcriber.get("model", "nova-3")
-        stt_language = vc.transcriber.get("language", "en-US")
+        # Handle both formats: "languages" (array) for new providers and "language" (string) for Deepgram
+        languages_array = vc.transcriber.get("languages")
+        language_string = vc.transcriber.get("language")
+
+        if languages_array and isinstance(languages_array, list):
+            # New format: languages is an array, map each to language code
+            stt_languages = []
+            for lang in languages_array:
+                lang_name = lang.lower()
+                # Try to map language name to language code using _STT_CONFIGS
+                stt_cfg = _STT_CONFIGS.get(lang_name)
+                if stt_cfg:
+                    stt_languages.append(stt_cfg["language"])
+                else:
+                    # If not in mapping, assume it's already a language code (e.g., "es")
+                    stt_languages.append(lang)
+        elif language_string:
+            # Old Deepgram format: language is a string
+            stt_languages = [language_string]
+        else:
+            # Fallback to English if no languages specified
+            stt_languages = ["en-US"]
     else:
         stt_cfg = _STT_CONFIGS.get(lang_lower, _STT_CONFIGS["english"])
         stt_model = stt_cfg["model"]
-        stt_language = stt_cfg["language"]
+        stt_languages = [stt_cfg["language"]]
 
     logger.info("[init_voice_call] Completed successfully", extra=_log_extra)
 
@@ -337,7 +354,7 @@ async def init_voice_call(
         first_message=first_message,
         language=vc.language,
         stt_model=stt_model,
-        stt_language=stt_language,
+        stt_languages=stt_languages,
         background_sound=vc.background_sound or None,
         replacements=vc.replacements or {},
     )

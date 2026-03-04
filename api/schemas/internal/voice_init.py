@@ -32,9 +32,9 @@ class VoiceInitResponse(BaseModel):
     )
     first_message: str = Field(..., description="Greeting message ({{greet}} resolved)")
     language: str = Field(..., description="Language (english, spanish, etc.)")
-    stt_model: str = Field(..., description="Deepgram STT model name")
-    stt_language: str = Field(
-        ..., description="Deepgram STT language code (e.g. en-US)"
+    stt_model: str = Field(..., description="STT model name")
+    stt_languages: list[str] = Field(
+        ..., description='STT language codes (e.g. ["en-US", "es"])'
     )
     background_sound: str | None = Field(
         default=None, description="Background ambient sound"
