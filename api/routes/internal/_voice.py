@@ -1,6 +1,7 @@
 """Implementation for LiveKit voice call initialization endpoint."""
 
 import asyncio
+import os
 import uuid
 from datetime import datetime, timezone
 
@@ -106,7 +107,7 @@ def _should_track_call_usage(
     Determine if a call should be tracked for billing based on filtering rules.
 
     Filtering rules:
-    1. Exclude test phone numbers (Palona internal)
+    1. Exclude test phone numbers (Palona internal) - only in production
     2. Exclude calls less than 10 seconds in duration
     3. Exclude calls where customer didn't speak
 
@@ -118,8 +119,9 @@ def _should_track_call_usage(
     Returns:
         tuple: (should_track: bool, skip_reason: str)
     """
-    # Rule 1: Check if test phone number
-    if _is_test_phone_number(caller_number):
+    # Rule 1: Check if test phone number (only in production)
+    runtime_env = os.getenv("RUNTIME_ENV", "dev")
+    if runtime_env == "prd" and _is_test_phone_number(caller_number):
         return False, f"test_number:{caller_number}"
 
     # Rule 2: Check call duration
