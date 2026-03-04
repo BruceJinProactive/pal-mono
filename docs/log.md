@@ -6,6 +6,15 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-03
+- Fix the Async Issue (@BruceJinProactive, #3612)
+- Refactor end_voice_call to simplify transaction handling and create p (@BruceJinProactive, #3611)
+- Refactor end_voice_call to use a new session for phone call record cr (@BruceJinProactive, #3610)
+- Ensure session commit and rollback in end_voice_call and phone call c (@BruceJinProactive, #3609)
+- Fix save functionality by ensuring session commit and rollback in Pho (@BruceJinProactive, #3608)
+- Enhance end_voice_call function to extract call analytics, update con (@BruceJinProactive, #3596)
+- Add repository tests and fix 10 discovered bugs (@xiangkangjw, #3605)
+
 ### 2026-03-02
 - Add pal agents adora as project integration (@graydonpower-dev, #3602)
 - Add api channel to customer_phone population in non-streaming flow (@ronald-palona, #3601)
