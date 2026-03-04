@@ -12,7 +12,6 @@ from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from pal_agents import Agent as PalAgent
 from pal_agents import Input as PalInput
 from pal_agents.input import RuntimeContext
-from pal_agents.providers.memory.ingestion import get_ingestion_service
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -79,9 +78,8 @@ async def get_chat_response_async(
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
 
-        # Store project_id, account_id, and raw_config early while object is attached to session
+        # Store project_id and raw_config early while object is attached to session
         project_id = project.id
-        project_account_id = project.account_id  # Capture early for memory ingestion
         project_raw_config = project.raw_config or {}
 
         # Check if project uses pal-agents framework (from raw_config)
@@ -94,9 +92,6 @@ async def get_chat_response_async(
         if user is None:
             # Create new user record
             user = await user_service.create_user_async(session, project, message)
-
-        # Capture user_id early while object is attached to session (for memory ingestion)
-        ingestion_user_id = user.id
 
         # Save request message to database
         request_message = await message_repo.create_message(
@@ -117,16 +112,12 @@ async def get_chat_response_async(
         if not request_message:
             raise ValueError("Failed to create request message")
 
-        # Capture conversation_id early while object is attached to session (for memory ingestion)
-        request_conversation_id = request_message.conversation_id
-
         # Get agent_id (needed for metadata regardless of which flow)
         agent_id = project.agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
 
         # **************** Step 2: Construct agent, get input, and generate output ****************
-        # Initialize current_message for memory ingestion (defined in pal-agents branch)
         current_message = ""
         if use_pal_agents:
             # NEW FLOW: Use pal-agents
@@ -319,20 +310,6 @@ async def get_chat_response_async(
         await session.refresh(user, attribute_names=["id"])
         await session.refresh(request_message, attribute_names=["conversation_id"])
 
-        # Memory ingestion for pal-agents flow (fire-and-forget)
-        # Only triggers for pal-agents projects; agno agents are unaffected
-        if use_pal_agents:
-            # Use early-captured values to avoid SQLAlchemy lazy load issues
-            asyncio.create_task(
-                get_ingestion_service().ingest_interaction(
-                    account_id=str(project_account_id),
-                    user_id=str(ingestion_user_id),
-                    conversation_id=str(request_conversation_id),
-                    user_message=current_message,
-                    assistant_message=output.content,
-                )
-            )
-
         # Make sure to handle the case after the response messages are created
         # Check if output.closing_conversation is True and mark the conversation as closing
         if output.closing_conversation:
@@ -372,8 +349,7 @@ async def get_chat_response_stream(
         try:
             # ==== Step 1: Get project, user, and save request message ====
             project = await project_service.get_project_async(session, message)
-            # Capture account_id and raw_config early while object is attached to session
-            project_account_id = project.account_id
+            # Capture raw_config early while object is attached to session
             project_raw_config = project.raw_config or {}
 
             # Check if project uses pal-agents framework (from raw_config)
@@ -389,9 +365,6 @@ async def get_chat_response_stream(
             if user is None:
                 user = await user_service.create_user_async(session, project, message)
             await session.refresh(user, attribute_names=["id"])
-
-            # Capture user_id early while object is attached to session (for memory ingestion)
-            ingestion_user_id = user.id
 
             # For VOICE channel with call_id, use voice-specific message creation
             # to reuse the conversation created during handle_assistant_request
@@ -425,7 +398,7 @@ async def get_chat_response_stream(
             if not request_message:
                 raise ValueError("Failed to create request message")
 
-            # Capture conversation_id early while object is attached to session (for memory ingestion)
+            # Capture conversation_id early while object is attached to session
             request_conversation_id = request_message.conversation_id
 
             # Get account info for metadata
@@ -444,7 +417,6 @@ async def get_chat_response_stream(
                 raise ValueError("Agent ID not found")
 
             collected_content: list[str] = []
-            # Initialize current_message for memory ingestion (defined in pal-agents branch)
             current_message = ""
 
             # ========== CHUNK GENERATION (if/else by project config) ==========
@@ -837,20 +809,6 @@ async def get_chat_response_stream(
                 )
 
                 await session.refresh(user, attribute_names=["id"])
-
-                # Memory ingestion for pal-agents flow (fire-and-forget)
-                # Only triggers for pal-agents projects; agno agents are unaffected
-                if use_pal_agents:
-                    # Use early-captured values to avoid SQLAlchemy lazy load issues
-                    asyncio.create_task(
-                        get_ingestion_service().ingest_interaction(
-                            account_id=str(project_account_id),
-                            user_id=str(ingestion_user_id),
-                            conversation_id=str(request_conversation_id),
-                            user_message=current_message,
-                            assistant_message=full_response,
-                        )
-                    )
 
         except asyncio.CancelledError:
             logger.debug("[MessageService] Stream cancelled (client disconnect)")

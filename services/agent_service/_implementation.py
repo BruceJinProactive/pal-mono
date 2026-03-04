@@ -10,7 +10,6 @@ from pal_agents.spec import (
     FillerWordsSpec,
     GenericAPISpec,
     KnowledgeSpec,
-    MemorySpec,
     ModelSpec,
     PromptSpec,
     ToolSpec,
@@ -371,12 +370,6 @@ def _agent_config_to_spec(
     # ========== Build KnowledgeSpec ==========
     knowledge_spec = _build_knowledge_spec(agent_config.knowledge)
 
-    # ========== Build MemorySpec ==========
-    memory_spec = MemorySpec(
-        enabled=agent_config.memory.enabled,
-        scope_to_account=True,  # Always scope for multi-tenant isolation
-    )
-
     # ========== Build ToolSpecs ==========
     tool_specs = _build_tool_specs(agent_config.tool)
 
@@ -395,7 +388,6 @@ def _agent_config_to_spec(
     return Spec(
         prompt=prompt_spec,
         knowledge=knowledge_spec,
-        memory=memory_spec,
         tools=tool_specs,
         model=effective_model_spec,
         generic_api=generic_api_spec or GenericAPISpec(),

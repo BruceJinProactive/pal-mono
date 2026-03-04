@@ -95,15 +95,7 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
 
     if not pal_agents_importable:
         input_mod = ModuleType("pal_agents.input")
-        memory_mod = ModuleType("pal_agents.providers.memory")
-        ingestion_mod = ModuleType("pal_agents.providers.memory.ingestion")
         _ensure_package_module(monkeypatch, "pal_agents.input", input_mod)
-        _ensure_package_module(monkeypatch, "pal_agents.providers.memory", memory_mod)
-        monkeypatch.setitem(
-            sys.modules,
-            "pal_agents.providers.memory.ingestion",
-            ingestion_mod,
-        )
 
         class _NoopPalAgent:
             def __init__(self, spec=None):
@@ -125,16 +117,9 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, **kwargs):
                 self.__dict__.update(kwargs)
 
-        class _NoopIngestionService:
-            async def ingest_interaction(self, **kwargs):
-                return None
-
         pal_agents_pkg.Agent = _NoopPalAgent  # type: ignore[attr-defined]
         pal_agents_pkg.Input = _NoopPalInput  # type: ignore[attr-defined]
         input_mod.RuntimeContext = _NoopRuntimeContext  # type: ignore[attr-defined]
-        ingestion_mod.get_ingestion_service = (  # type: ignore[attr-defined]
-            lambda: _NoopIngestionService()
-        )
 
     knowledge_mod = ModuleType("pal_agents.providers.knowledge")
     monkeypatch.setitem(sys.modules, "pal_agents.providers.knowledge", knowledge_mod)
