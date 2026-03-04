@@ -49,7 +49,7 @@ dependencies = [
   "mem0ai==1.0.3", # Personalized AI memory layer for context retention
   "notion-client==2.2.1",
   "openai[realtime]==2.20.0", # Official OpenAI API client for GPT models with realtime WebSocket support
-  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.115", # Pal-agents AI agent framework (production)
+  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.122", # Pal-agents AI agent framework (production)
   "pgvector==0.3.2", # PostgreSQL extension for vector similarity search
   "pinecone==7.3.0", # Managed vector database for AI applications
   "polyline==2.0.2", # Google polyline encoding/decoding for GPS coordinates
@@ -141,8 +141,3 @@ exclude = [".git", ".venv*", "aienv*", "build"]
 [tool.tomlsort]
 # Disable inline array sorting for importlinter contracts to preserve layer order
 overrides."*.layers".inline_arrays = false
-
-[tool.uv]
-override-dependencies = [
-  "griffe>=1.5.6" # Override agenticmem's pinned griffe to resolve conflict with openai-agents
-]
