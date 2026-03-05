@@ -233,6 +233,13 @@ def get_order_prices(
         `Order` object with the base price, tax amount, and total price of each `check` object. The returned `Order` object will be used to submit the order to the Toast API.
     """
     # Make the API call to the order prices endpoint
+    logger.debug(
+        "[ToastAPI.benchmark] Request payload: %s %s | params=%s | body=%s",
+        HttpMethod.POST.value,
+        "/orders/v2/prices",
+        None,
+        order_data.model_dump(exclude_none=True),
+    )
     try:
         response = connect_toast_order_hub(
             http_method=HttpMethod.POST,
@@ -358,6 +365,13 @@ def submit_order(
     Returns:
         Order object that has been persisted in Toast.
     """
+    logger.debug(
+        "[ToastAPI.benchmark] Request payload: %s %s | params=%s | body=%s",
+        HttpMethod.POST.value,
+        "/orders/v2/orders",
+        None,
+        order.model_dump(exclude_none=True),
+    )
     try:
         response = connect_toast_order_hub(
             http_method=HttpMethod.POST,
