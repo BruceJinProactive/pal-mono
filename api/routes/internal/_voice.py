@@ -565,7 +565,9 @@ async def end_voice_call(
                 stripe_customer_id = project.account.stripe_customer_id
 
                 # Send meter event (returns True/False, logging is handled internally)
-                send_meter_event(
+                # Run in thread pool to avoid SQLAlchemy async/sync context mixing
+                await asyncio.to_thread(
+                    send_meter_event,
                     event_name=event_name,
                     stripe_customer_id=stripe_customer_id,
                     value=1,
@@ -652,8 +654,6 @@ async def _call_analytics_with_retry(
     Returns:
         dict with normalized enum instances for all analytics fields, or None if all retries failed
     """
-    import asyncio
-
     from services.analytics_service._utils import extract_call_analytics
 
     for attempt in range(max_retries):
