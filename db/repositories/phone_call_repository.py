@@ -95,6 +95,89 @@ class PhoneCallRepositoryAsync:
         logger.info(f"Phone call record created: {phone_call_id} for call {call_id}")
         return phone_call
 
+    async def update_phone_call(
+        self,
+        call_id: str,
+        duration: float | None = None,
+        turn_latency_avg: float | None = None,
+        model_latency_avg: float | None = None,
+        voice_latency_avg: float | None = None,
+        transcriber_latency_avg: float | None = None,
+        endpointing_latency_avg: float | None = None,
+        ended_reason: CallEndedReason | None = None,
+        call_purpose: list[CallPurpose] | None = None,
+        user_satisfaction: UserSatisfaction | None = None,
+        language: CallLanguage | None = None,
+    ) -> PhoneCall | None:
+        """
+        Update an existing phone call record by call_id.
+
+        Args:
+            call_id: The call ID to update
+            duration: Call duration in seconds
+            turn_latency_avg: Average turn latency in seconds
+            model_latency_avg: Average model latency in milliseconds
+            voice_latency_avg: Average voice latency in milliseconds
+            transcriber_latency_avg: Average transcriber latency in milliseconds
+            endpointing_latency_avg: Average endpointing latency in milliseconds
+            ended_reason: Reason the call ended
+            call_purpose: List of call purposes identified
+            user_satisfaction: User satisfaction level
+            language: Language used in the call
+
+        Returns:
+            PhoneCall | None: The updated phone call record if found, None otherwise
+
+        Raises:
+            SQLAlchemyError: If there is an error updating the phone call
+        """
+        try:
+            from sqlalchemy import select
+
+            result = await self.session.execute(
+                select(PhoneCall).filter(PhoneCall.call_id == call_id)
+            )
+            phone_call = result.scalar_one_or_none()
+
+            if not phone_call:
+                logger.warning(f"Phone call not found for call_id: {call_id}")
+                return None
+
+            # Update only provided fields
+            if duration is not None:
+                phone_call.duration = duration
+            if turn_latency_avg is not None:
+                phone_call.turn_latency_avg = turn_latency_avg
+            if model_latency_avg is not None:
+                phone_call.model_latency_avg = model_latency_avg
+            if voice_latency_avg is not None:
+                phone_call.voice_latency_avg = voice_latency_avg
+            if transcriber_latency_avg is not None:
+                phone_call.transcriber_latency_avg = transcriber_latency_avg
+            if endpointing_latency_avg is not None:
+                phone_call.endpointing_latency_avg = endpointing_latency_avg
+            if ended_reason is not None:
+                phone_call.ended_reason = ended_reason
+            if call_purpose is not None:
+                phone_call.call_purpose = call_purpose
+            if user_satisfaction is not None:
+                phone_call.user_satisfaction = user_satisfaction
+            if language is not None:
+                phone_call.language = language
+
+            await self.session.flush()
+
+            # Store ID before logging to avoid accessing expired object attributes
+            phone_call_id = phone_call.id
+            logger.info(
+                f"Phone call record updated: {phone_call_id} for call {call_id}"
+            )
+            return phone_call
+
+        except SQLAlchemyError as e:
+            logger.error(f"Error updating phone call record: {e}")
+            return None
+
 
 class PhoneCallRepository:
     def __init__(self, session: Session):

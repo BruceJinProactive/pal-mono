@@ -184,10 +184,14 @@ class MessageRepositoryAsync:
         call_id: str,
     ) -> Message:
         """
-        Create a message for a voice call. Always creates a new conversation.
+        Create a message for a voice call. Always creates a new conversation and phone call record.
 
         Voice calls are distinct sessions - no conversation reuse logic.
         Each call gets its own conversation with a unique call_id.
+        A phone call record is also created for tracking call analytics (unless one already exists).
+
+        The function checks if a phone call record with the same call_id already exists
+        to handle retries and duplicate requests gracefully.
 
         Args:
             user_id: The ID of the user making the call
@@ -199,7 +203,7 @@ class MessageRepositoryAsync:
             Message: The created message
 
         Raises:
-            ValueError: If user not found
+            ValueError: If user not found or if duplicate phone call records detected
         """
         # Get the user from the database
         result = await self.session.execute(select(User).filter(User.id == user_id))
@@ -226,6 +230,28 @@ class MessageRepositoryAsync:
         # After commit(), SQLAlchemy expires objects; accessing new_conversation.id
         # would trigger a lazy load which fails in async context
         conversation_id = new_conversation.id
+
+        # Create phone call record for easier lookup when call ends
+        # Check if phone call already exists to handle retries/duplicates gracefully
+        from db.repositories.phone_call_repository import PhoneCallRepositoryAsync
+
+        phone_call_repo = PhoneCallRepositoryAsync(self.session)
+        existing_phone_call = await phone_call_repo.get_by_call_id(call_id)
+
+        if existing_phone_call:
+            logger.warning(
+                f"Phone call record already exists for call_id: {call_id}",
+                extra={
+                    "call_id": call_id,
+                    "phone_call_id": str(existing_phone_call.id),
+                    "conversation_id": str(conversation_id),
+                },
+            )
+        else:
+            await phone_call_repo.create_phone_call(
+                call_id=call_id,
+                conversation_id=conversation_id,
+            )
 
         # Create the message
         message = Message(conversation_id=conversation_id, body=message_body)

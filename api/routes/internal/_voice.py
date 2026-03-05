@@ -486,12 +486,12 @@ async def end_voice_call(
         conversation.language = analytics["language"].value
         conversation.ended_reason = analytics["ended_reason"].value
         conversation.customer_converted = customer_converted_id
+        conversation.call_id = call_id
 
-        # --- Step 4: Create phone call record ---
+        # --- Step 4: update phone call record ---
         phone_call_repo = PhoneCallRepositoryAsync(session)
-        phone_call = await phone_call_repo.create_phone_call(
+        phone_call = await phone_call_repo.update_phone_call(
             call_id=call_id,
-            conversation_id=conversation_id,
             duration=duration_seconds,
             ended_reason=analytics["ended_reason"],
             call_purpose=analytics["call_purpose"],
@@ -500,22 +500,29 @@ async def end_voice_call(
         )
 
         # Store phone_call_id before commit to avoid accessing expired object attributes
-        phone_call_id = phone_call.id
+        phone_call_id = None
+        if not phone_call:
+            logger.warning(
+                f"[end_voice_call] Phone call record not found for call_id: {call_id}",
+                extra={"conversation_id": str(conversation_id)},
+            )
+        else:
+            phone_call_id = phone_call.id
 
         # Commit both updates together atomically
         await session.commit()
 
         logger.info(
-            f"[end_voice_call] Conversation closed and phone call record created: {phone_call_id} for call {call_id}",
+            f"[end_voice_call] Conversation closed and phone call record updated for call {call_id}",
             extra={
                 "conversation_id": str(conversation_id),
-                "phone_call_id": str(phone_call_id),
+                "phone_call_id": str(phone_call_id) if phone_call_id else None,
             },
         )
     except Exception as e:
         await session.rollback()
         logger.error(
-            f"[end_voice_call] Failed to close conversation or create phone call record: {e}",
+            f"[end_voice_call] Failed to close conversation or update phone call record: {e}",
             extra={"conversation_id": str(conversation_id), "error": str(e)},
         )
         # Return error - transaction failed
