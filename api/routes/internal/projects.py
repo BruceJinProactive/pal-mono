@@ -1,6 +1,5 @@
 """Internal API endpoints for project updates."""
 
-import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -8,8 +7,6 @@ from typing import Any, Dict
 
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pinecone import Pinecone
-from pinecone.exceptions import PineconeException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -18,128 +15,11 @@ import db
 from api.schemas.operations.signal_source import SignalSourceIdResponse
 from db.repositories.project_repository import ProjectRepository
 from db.tables.types import IntegrationProvider, IntegrationType
-from services import knowledge_service, project_service, signal_source_service
+from services import project_service, signal_source_service
+from services.adora_v3_menu_service import build_menu_assets
+from services.knowledge_service.adora._client import download_menu, get_bearer_token
 from utils.log import logger
 from utils.secret import get_client_secret
-
-# Pinecone eventual consistency settings
-NAMESPACE_RETRY_DELAY_SECONDS = 2.0
-NAMESPACE_POPULATE_MAX_ATTEMPTS = 5
-
-
-async def _ensure_namespace_deleted(
-    index_name: str,
-    namespace: str,
-    retry_delay: float = NAMESPACE_RETRY_DELAY_SECONDS,
-) -> None:
-    """
-    Ensure a Pinecone namespace is fully deleted by retrying deletion.
-
-    Waits, then attempts to delete again. If deletion fails because
-    namespace doesn't exist, we know it's gone and can proceed.
-
-    Args:
-        index_name: Name of the Pinecone index
-        namespace: Namespace to delete
-        retry_delay: Seconds to wait before retry
-    """
-    try:
-        pc = Pinecone()
-        index = pc.Index(index_name)
-
-        # Mandatory wait for deletion to propagate
-        await asyncio.sleep(retry_delay)
-
-        # Try to delete again - if it fails with 404, namespace is gone
-        try:
-            index.delete(delete_all=True, namespace=namespace)
-            logger.debug(
-                f"[Adora Menu Updater] Second delete succeeded for namespace '{namespace}' - proceeding with indexing"
-            )
-        except PineconeException as e:
-            # Check if it's a 404 (namespace not found) - this is expected
-            if "(404)" in str(e) or "Not Found" in str(e):
-                logger.debug(
-                    f"[Adora Menu Updater] Namespace '{namespace}' confirmed deleted (404 not found) - proceeding with indexing"
-                )
-            else:
-                # Real error (network, auth, 5xx) - log warning but still proceed
-                logger.warning(
-                    f"[Adora Menu Updater] Unexpected Pinecone error during second delete for namespace '{namespace}': {e} - proceeding with indexing anyway",
-                    extra={"index_name": index_name, "namespace": namespace},
-                )
-
-        # Additional delay before indexing to ensure deletion is fully propagated
-        await asyncio.sleep(retry_delay)
-
-    except PineconeException as e:
-        logger.warning(
-            f"[Adora Menu Updater] Pinecone error ensuring namespace deleted: {e}",
-            extra={"index_name": index_name, "namespace": namespace},
-        )
-        # Proceed anyway
-    except Exception as e:
-        logger.warning(
-            f"[Adora Menu Updater] Unexpected error ensuring namespace deleted: {e}",
-            extra={"index_name": index_name, "namespace": namespace},
-        )
-        # Proceed anyway
-
-
-async def _verify_namespace_populated(
-    index_name: str,
-    namespace: str,
-    retry_delay: float = NAMESPACE_RETRY_DELAY_SECONDS,
-) -> bool:
-    """
-    Verify that a Pinecone namespace has been populated with vectors.
-
-    Args:
-        index_name: Name of the Pinecone index
-        namespace: Namespace to check
-        retry_delay: Seconds to wait before checking
-
-    Returns:
-        bool: True if namespace exists and has vectors, False if not populated
-
-    Raises:
-        PineconeException: For Pinecone infrastructure errors (should be 500)
-        Exception: For unexpected errors (should be 500)
-    """
-    pc = Pinecone()
-    index = pc.Index(index_name)
-
-    # Wait before checking
-    await asyncio.sleep(retry_delay)
-
-    stats = index.describe_index_stats()
-    namespaces = stats.get("namespaces", {})
-
-    if namespace not in namespaces:
-        logger.warning(
-            f"[Adora Menu Updater] Namespace '{namespace}' not found after indexing",
-            extra={"index_name": index_name, "namespace": namespace},
-        )
-        return False
-
-    vector_count = namespaces[namespace].get("vector_count", 0)
-    if vector_count == 0:
-        logger.warning(
-            f"[Adora Menu Updater] Namespace '{namespace}' exists but has 0 vectors",
-            extra={"index_name": index_name, "namespace": namespace},
-        )
-        return False
-
-    logger.info(
-        f"[Adora Menu Updater] Namespace '{namespace}' verified with {vector_count} vectors",
-        extra={
-            "index_name": index_name,
-            "namespace": namespace,
-            "vector_count": vector_count,
-        },
-    )
-    return True
-
 
 projects_router = APIRouter(prefix="/projects")
 
@@ -346,15 +226,16 @@ async def update_project_business_hours(
 
 
 @projects_router.post("/{project_id}/knowledge-update")
-async def update_knowledge(
+def update_knowledge(
     project_id: str,
     session: Session = Depends(db.get_db),
 ):
     """
     Update knowledge base for a specific project.
 
-    Processes knowledge update for a single project with Adora POS integration.
-    Fetches menu data from Adora API and updates the Pinecone knowledge base.
+    Processes menu asset updates for a single project with an Adora V3 project integration.
+    Fetches raw menu data from Adora API, regenerates the English prompt and compiled
+    tool JSON, and writes both back to the database.
     Called by Lambda function consuming knowledge update events.
 
     Args:
@@ -388,16 +269,7 @@ async def update_knowledge(
                 headers={"Content-Type": "application/json"},
             )
 
-        # Get index_name and namespace with priority:
-        # 1. adora_v2_tool from project_integration (config column)
-        # 2. adora_v2_tool from raw_config
-        # 3. adora_tool from raw_config (legacy fallback)
-
-        pinecone_index_name = None
-        pinecone_namespace = None
-        tool_source = None
-
-        # Check project_integration for adora_v2_tool
+        # Find the Adora V3 project integration row.
         project_integration_repository = db.ProjectIntegrationRepository(session)
         project_integrations = (
             project_integration_repository.get_project_integrations_by_project_id(
@@ -405,105 +277,34 @@ async def update_knowledge(
             )
         )
 
+        adora_v3_project_integration = None
         for pi in project_integrations:
-            if pi.tool_name == "adora_v2_tool":
-                pi_config = pi.config or {}
-                pinecone_namespace = pi_config.get("namespace")
-                pinecone_index_name = pi_config.get("index_name")
-                tool_source = "project_integration.adora_v2_tool"
-                logger.debug(
-                    "[Adora Menu Updater] Found adora_v2_tool in project_integration",
-                    extra={
-                        "project_id": project_id,
-                        "namespace": pinecone_namespace,
-                        "index_name": pinecone_index_name,
-                    },
-                )
+            if pi.tool_name == "adora_v3":
+                adora_v3_project_integration = pi
                 break
 
-        # Check raw_config for adora_v2_tool, then adora_tool
-        if not pinecone_namespace or not pinecone_index_name:
-            raw_config = project.raw_config or {}
-            tools_config = raw_config.get("tools", {})
-            identifiers = tools_config.get("identifiers") or []
-
-            # First try adora_v2_tool in raw_config
-            for identifier in identifiers:
-                if (
-                    isinstance(identifier, dict)
-                    and identifier.get("tool_name") == "adora_v2_tool"
-                ):
-                    tool_args = identifier.get("tool_args", {})
-                    pinecone_namespace = pinecone_namespace or tool_args.get(
-                        "namespace"
-                    )
-                    pinecone_index_name = pinecone_index_name or tool_args.get(
-                        "index_name"
-                    )
-                    tool_source = tool_source or "raw_config.adora_v2_tool"
-                    break
-
-            # Fallback to adora_tool in raw_config (legacy)
-            if not pinecone_namespace or not pinecone_index_name:
-                for identifier in identifiers:
-                    if (
-                        isinstance(identifier, dict)
-                        and identifier.get("tool_name") == "adora_tool"
-                    ):
-                        tool_args = identifier.get("tool_args", {})
-                        pinecone_namespace = pinecone_namespace or tool_args.get(
-                            "namespace"
-                        )
-                        pinecone_index_name = pinecone_index_name or tool_args.get(
-                            "index_name"
-                        )
-                        tool_source = tool_source or "raw_config.adora_tool"
-                        break
-
-        logger.debug(
-            f"[Adora Menu Updater] Resolved tool config from {tool_source}",
-            extra={
-                "project_id": project_id,
-                "tool_source": tool_source,
-                "namespace": pinecone_namespace,
-                "index_name": pinecone_index_name,
-            },
-        )
-
-        if not pinecone_index_name:
+        if not adora_v3_project_integration:
             raise ValueError(
-                f"Project {project_id} does not have index_name configured (checked project_integration.adora_v2_tool, raw_config.adora_v2_tool, raw_config.adora_tool)"
+                f"Project {project_id} does not have an adora_v3 project integration"
             )
 
-        if not pinecone_namespace:
-            raise ValueError(
-                f"Project {project_id} does not have namespace configured (checked project_integration.adora_v2_tool, raw_config.adora_v2_tool, raw_config.adora_tool)"
-            )
-
-        # Find the Adora POS integration (reusing project_integrations from above)
-        pos_project_integration = None
+        # Find the linked Adora POS integration.
         pos_integration = None
         integration_repository = db.IntegrationRepository(session)
-        for pi in project_integrations:
-            integration = integration_repository.get_integration_by_id(
-                project.account_id, pi.integration_id
-            )
-            if (
-                integration
-                and integration.integration_type == IntegrationType.pos
-                and integration.provider == IntegrationProvider.adora
-            ):
-                pos_project_integration = pi
-                pos_integration = integration
-                break
-
-        if not pos_project_integration or not pos_integration:
+        pos_integration = integration_repository.get_integration_by_id(
+            project.account_id, adora_v3_project_integration.integration_id
+        )
+        if (
+            not pos_integration
+            or pos_integration.integration_type != IntegrationType.pos
+            or pos_integration.provider != IntegrationProvider.adora
+        ):
             raise ValueError(
-                f"Project {project_id} does not have an Adora POS integration"
+                f"Project {project_id} adora_v3 integration is not linked to an Adora POS integration"
             )
 
         # Get store identifier
-        store_id = pos_project_integration.store_identifier
+        store_id = adora_v3_project_integration.store_identifier
         if not store_id:
             raise ValueError(
                 f"Project {project_id} integration does not have a store_identifier"
@@ -543,108 +344,56 @@ async def update_knowledge(
             raise ValueError("Adora general_api_endpoint missing in integration config")
 
         logger.debug(
-            f"[Adora Menu Updater] Updating menu for project {project_id}",
+            f"[Adora Menu Updater] Updating Adora V3 menu assets for project {project_id}",
             extra={
                 "project_id": project_id,
                 "project_name": project.name,
                 "store_id": store_id,
-                "pinecone_index": pinecone_index_name,
-                "pinecone_namespace": pinecone_namespace,
+                "project_integration_id": str(adora_v3_project_integration.id),
             },
         )
 
-        # Delete existing vectors in namespace before re-indexing
-        # This prevents duplicate vectors since LlamaIndex generates new IDs each run
-        try:
-            delete_result = knowledge_service.delete_namespace(
-                pinecone_index_name, pinecone_namespace
-            )
-            logger.debug(
-                "[Adora Menu Updater] Cleared namespace before re-indexing",
-                extra={
-                    "project_id": project_id,
-                    "pinecone_namespace": pinecone_namespace,
-                    "delete_result": delete_result,
-                },
-            )
-            # Wait for deletion to propagate (Pinecone eventual consistency)
-            await _ensure_namespace_deleted(pinecone_index_name, pinecone_namespace)
-        except Exception as e:
-            # Log but don't fail - namespace might not exist yet or be empty
-            logger.warning(
-                f"[Adora Menu Updater] Could not clear namespace (may be empty): {e}",
-                extra={
-                    "project_id": project_id,
-                    "pinecone_namespace": pinecone_namespace,
-                },
-            )
+        bearer_token = get_bearer_token(
+            client_id=client_id,
+            client_secret=client_secret,
+            token_api_endpoint=token_api_endpoint,
+        )
+        raw_menu = download_menu(
+            store_id=store_id,
+            token=bearer_token,
+            general_api_endpoint=general_api_endpoint,
+        )
+        if not isinstance(raw_menu, dict):
+            raise ValueError("Adora menu response was not a JSON object")
+        raw_menu.setdefault("store_id", store_id)
 
-        # Call knowledge service to update the menu with retry logic
-        result: dict = {}
-        namespace_populated = False
+        menu_assets = build_menu_assets(raw_menu)
 
-        for attempt in range(1, NAMESPACE_POPULATE_MAX_ATTEMPTS + 1):
-            logger.info(
-                f"[Adora Menu Updater] Indexing attempt {attempt}/{NAMESPACE_POPULATE_MAX_ATTEMPTS} for project {project_id}",
-                extra={
-                    "project_id": project_id,
-                    "pinecone_namespace": pinecone_namespace,
-                    "attempt": attempt,
-                },
-            )
-
-            result = knowledge_service.update_agent_kb(
-                pos_provider=IntegrationProvider.adora,
-                store_id=store_id,
-                client_id=client_id,
-                client_secret=client_secret,
-                token_api_endpoint=token_api_endpoint,
-                general_api_endpoint=general_api_endpoint,
-                pinecone_namespace=pinecone_namespace,
-                pinecone_index_name=pinecone_index_name,
-                debug=False,
-                include_category_in_doc_name=False,
-            )
-
-            # Verify namespace was populated (2x delay for populate check)
-            if await _verify_namespace_populated(
-                pinecone_index_name,
-                pinecone_namespace,
-                retry_delay=NAMESPACE_RETRY_DELAY_SECONDS * 2,
-            ):
-                namespace_populated = True
-                break
-
-            # Log retry if more attempts remaining
-            if attempt < NAMESPACE_POPULATE_MAX_ATTEMPTS:
-                logger.warning(
-                    f"[Adora Menu Updater] Indexing attempt {attempt} failed for project {project_id}, retrying...",
-                    extra={
-                        "project_id": project_id,
-                        "pinecone_namespace": pinecone_namespace,
-                        "attempt": attempt,
-                    },
-                )
-
-        if not namespace_populated:
-            raise ValueError(
-                f"Failed to populate namespace '{pinecone_namespace}' after {NAMESPACE_POPULATE_MAX_ATTEMPTS} attempts"
-            )
-
-        # Update project's product_info with the system_prompt_menu
-        system_prompt_menu = result.get("system_prompt_menu", "")
-        product_info_updated = False
+        # Update project's product_info with the English menu prompt.
         project_repo = ProjectRepository(session)
-        if system_prompt_menu:
-            project_repo.update_project(project_uuid, product_info=system_prompt_menu)
-            product_info_updated = True
-            logger.debug(
-                f"[Adora Menu Updater] Updated product_info for project {project_id}",
-                extra={
-                    "project_id": project_id,
-                    "product_info_length": len(system_prompt_menu),
-                },
-            )
+        project_repo.update_project(
+            project_uuid, product_info=menu_assets.english_menu_prompt
+        )
+        logger.debug(
+            f"[Adora Menu Updater] Updated product_info for project {project_id}",
+            extra={
+                "project_id": project_id,
+                "product_info_length": len(menu_assets.english_menu_prompt),
+            },
+        )
+
+        updated_config = dict(adora_v3_project_integration.config or {})
+        updated_config["menu_data"] = menu_assets.menu_data
+        project_integration_repository.update_project_integration(
+            adora_v3_project_integration.id, config=updated_config
+        )
+        logger.debug(
+            "[Adora Menu Updater] Updated adora_v3 project integration config",
+            extra={
+                "project_id": project_id,
+                "project_integration_id": str(adora_v3_project_integration.id),
+            },
+        )
 
         # Update menu_last_updated in project's raw_config
         # Use update_project_config which fetches fresh data to avoid clobbering concurrent changes
@@ -660,13 +409,17 @@ async def update_knowledge(
             },
         )
 
+        compiled_item_count = sum(
+            len(item_entries)
+            for item_entries in menu_assets.menu_data.get("items", {}).values()
+        )
+
         logger.debug(
             f"[Adora Menu Updater] Knowledge update complete for project {project_id}",
             extra={
                 "project_id": project_id,
                 "project_name": project.name,
-                "items_processed": result.get("processed_items", 0),
-                "product_info_updated": product_info_updated,
+                "compiled_items": compiled_item_count,
             },
         )
 
@@ -674,10 +427,9 @@ async def update_knowledge(
             "success": True,
             "project_id": project_id,
             "project_name": project.name,
-            "pinecone_index_name": pinecone_index_name,
-            "pinecone_namespace": pinecone_namespace,
-            "items_processed": result.get("processed_items", 0),
-            "product_info_updated": product_info_updated,
+            "compiled_items": compiled_item_count,
+            "product_info_updated": True,
+            "menu_data_updated": True,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 

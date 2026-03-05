@@ -34,26 +34,6 @@ def _get_safe_mode_project_ids() -> set[str]:
     return project_ids
 
 
-def _has_adora_tool_configured(project: Project) -> bool:
-    """
-    Check if a project has adora_tool configured in raw_config.tools.identifiers.
-
-    Args:
-        project: The project to check
-
-    Returns:
-        bool: True if adora_tool is configured, False otherwise
-    """
-    raw_config = project.raw_config or {}
-    tools_config = raw_config.get("tools", {})
-    identifiers = tools_config.get("identifiers", [])
-
-    return any(
-        isinstance(identifier, dict) and identifier.get("tool_name") == "adora_tool"
-        for identifier in identifiers
-    )
-
-
 async def start_knowledge_update_process(session: Session) -> dict:
     """
     Start knowledge update process for all projects.
@@ -70,7 +50,7 @@ async def start_knowledge_update_process(session: Session) -> dict:
     logger.info("[Adora Menu Updater] Starting discovery process")
 
     try:
-        # Query to find projects with Adora POS integrations
+        # Query to find projects with Adora V3 project integrations.
         # Join ProjectIntegration -> Integration -> Project -> Account
         projects_with_adora_pos = (
             session.query(ProjectIntegration, Integration, Project)
@@ -78,6 +58,7 @@ async def start_knowledge_update_process(session: Session) -> dict:
             .join(Project, ProjectIntegration.project_id == Project.id)
             .options(selectinload(Project.account))
             .filter(
+                ProjectIntegration.tool_name == "adora_v3",
                 Integration.provider == IntegrationProvider.adora,
                 Integration.integration_type == IntegrationType.pos,
             )
@@ -115,13 +96,6 @@ async def start_knowledge_update_process(session: Session) -> dict:
         errors = []
 
         for project_integration, integration, project in projects_with_adora_pos:
-            # Check if project has adora_tool configured
-            if not _has_adora_tool_configured(project):
-                logger.debug(
-                    f"[Adora Menu Updater] Skipping project {project.id}: adora_tool not configured",
-                    extra={"project_id": str(project.id)},
-                )
-                continue
             try:
                 # Get account info for context
                 account = project.account
