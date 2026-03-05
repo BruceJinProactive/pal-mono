@@ -209,6 +209,12 @@ async def update_agent_kb(
         if not project:
             raise not_found_error("Project not found")
 
+        # Validate project name exists
+        if not project.name or not project.name.strip():
+            raise ValueError(
+                "Project name is required but missing. Please update the project with a valid name before updating the menu."
+            )
+
         # Get all project integrations for this project
         project_integration_repository = db.ProjectIntegrationRepository(session)
         project_integrations = (

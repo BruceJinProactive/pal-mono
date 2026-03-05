@@ -248,7 +248,8 @@ class ProjectRepository:
                     )
 
             for key, value in kwargs.items():
-                if hasattr(db_project, key):
+                # Skip None values to avoid accidentally clearing fields
+                if value is not None and hasattr(db_project, key):
                     setattr(db_project, key, value)
 
             if self.auto_commit:

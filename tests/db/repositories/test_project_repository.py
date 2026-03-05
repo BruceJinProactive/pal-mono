@@ -311,6 +311,20 @@ class TestProjectUpdate:
         result = repo.update_project(uuid.uuid4(), display_name="X")
         assert result is None
 
+    def test_update_project_skips_none_values(self, repo, mock_session, sample_project):
+        """None values in kwargs should not overwrite existing fields."""
+        original_display_name = "Original Name"
+        sample_project.display_name = original_display_name
+        mock_session.query.return_value.filter.return_value.first.return_value = (
+            sample_project
+        )
+        # Try to update with None value - should be skipped
+        result = repo.update_project(sample_project.id, display_name=None)
+        assert result == sample_project
+        # Verify the original value wasn't cleared
+        assert sample_project.display_name == original_display_name
+        mock_session.commit.assert_called_once()
+
     def test_update_project_config_partial_update(
         self, repo, mock_session, sample_project
     ):
