@@ -40,13 +40,6 @@ _SPEECH_RATE_TO_FLOAT: dict[SpeechRate, float] = {
     SpeechRate.fastest: 1.5,
 }
 
-# Default STT configuration per language
-_STT_CONFIGS: dict[str, dict[str, str]] = {
-    "english": {"model": "nova-3", "language": "en-US"},
-    "spanish": {"model": "nova-2", "language": "es"},
-    "chinese": {"model": "nova-2", "language": "zh-CN"},
-}
-
 # Time-based greetings per language
 _TIMEZONE_GREETINGS: dict[str, dict[str, str]] = {
     "english": {
@@ -289,18 +282,44 @@ async def init_voice_call(
             headers={"Content-Type": "application/json"},
         )
 
-    if len(voice_configs) != 1:
+    voice_configs = [
+        voice_config
+        for voice_config in voice_configs
+        if voice_config.language != "triage"
+    ]
+
+    if not voice_configs:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Multiple voices are found for project {project_id}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No language voice configuration found",
             headers={"Content-Type": "application/json"},
         )
 
-    vc = voice_configs[0]
+    # Collect all languages from voice configs
+    all_languages = []
+    for voice_config in voice_configs:
+        # Split combined languages like "english+spanish" into separate languages
+        if "+" in voice_config.language:
+            all_languages.extend(voice_config.language.split("+"))
+        else:
+            all_languages.append(voice_config.language)
+
+    # Remove duplicates while preserving order
+    languages = list(dict.fromkeys(all_languages))
+
+    # Select voice config for other fields (prefer English, otherwise use first)
+    if len(voice_configs) == 1:
+        vc = voice_configs[0]
+    else:
+        english_configs = [
+            vc for vc in voice_configs if "english" in vc.language.lower()
+        ]
+        vc = english_configs[0] if english_configs else voice_configs[0]
 
     logger.info(
-        "[init_voice_call] Step 7 done: voice_config language=%s",
-        vc.language,
+        "[init_voice_call] Step 7 done: found %s voice_configs, languages=%s",
+        len(voice_configs),
+        languages,
         extra=_log_extra,
     )
 
@@ -315,50 +334,15 @@ async def init_voice_call(
     # --- Step 9: Map speech rate to float ---
     speech_rate = _SPEECH_RATE_TO_FLOAT.get(vc.speech_rate, 1.0)
 
-    # --- Step 10: Determine STT config ---
-    lang_lower = vc.language.lower()
-    if vc.transcriber:
-        stt_model = vc.transcriber.get("model", "nova-3")
-        # Handle both formats: "languages" (array) for new providers and "language" (string) for Deepgram
-        languages_array = vc.transcriber.get("languages")
-        language_string = vc.transcriber.get("language")
-
-        if languages_array and isinstance(languages_array, list):
-            # New format: languages is an array, map each to language code
-            stt_languages = []
-            for lang in languages_array:
-                lang_name = lang.lower()
-                # Try to map language name to language code using _STT_CONFIGS
-                stt_cfg = _STT_CONFIGS.get(lang_name)
-                if stt_cfg:
-                    stt_languages.append(stt_cfg["language"])
-                else:
-                    # If not in mapping, assume it's already a language code (e.g., "es")
-                    stt_languages.append(lang)
-        elif language_string:
-            # Old Deepgram format: language is a string
-            stt_languages = [language_string]
-        else:
-            # Fallback to English if no languages specified
-            stt_languages = ["en-US"]
-    else:
-        stt_cfg = _STT_CONFIGS.get(lang_lower, _STT_CONFIGS["english"])
-        stt_model = stt_cfg["model"]
-        stt_languages = [stt_cfg["language"]]
-
     logger.info("[init_voice_call] Completed successfully", extra=_log_extra)
 
     return VoiceInitResponse(
         caller_info=caller_info,
         voice_id=vc.voice_id,
-        voice_model=vc.voice_model or "sonic-3",
         speech_rate=speech_rate,
         first_message=first_message,
-        language=vc.language,
-        stt_model=stt_model,
-        stt_languages=stt_languages,
+        languages=languages,
         background_sound=vc.background_sound or None,
-        replacements=vc.replacements or {},
     )
 
 
