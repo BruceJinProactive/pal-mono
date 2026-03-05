@@ -554,42 +554,115 @@ async def end_voice_call(
 
     if should_track:
         try:
-            # Get project and account info for Stripe billing
-            # Use stored project_id to avoid refreshing detached conversation object
-            project = await project_service.get_project_by_id_async(
+            # Load project and account relationship after commit to access stripe_customer_id
+            # This follows the same pattern as Vapi integration (see vapi/_implementation.py:1296)
+            logger.debug(
+                f"[end_voice_call] Loading project for billing: project_id={project_id_for_billing}",
+                extra={
+                    "conversation_id": str(conversation_id),
+                    "project_id": str(project_id_for_billing),
+                },
+            )
+
+            project_for_billing = await project_service.get_project_by_id_async(
                 session, project_id_for_billing
             )
 
-            if project and project.account and project.account.stripe_customer_id:
-                event_name = f"calls_{project.id}"
-                stripe_customer_id = project.account.stripe_customer_id
-
-                # Send meter event (returns True/False, logging is handled internally)
-                # Run in thread pool to avoid SQLAlchemy async/sync context mixing
-                await asyncio.to_thread(
-                    send_meter_event,
-                    event_name=event_name,
-                    stripe_customer_id=stripe_customer_id,
-                    value=1,
-                    timestamp=datetime.now(timezone.utc),
-                )
-                logger.info(
-                    f"[end_voice_call] Stripe meter event sent for call_id: {call_id}",
+            if not project_for_billing:
+                logger.warning(
+                    "[end_voice_call] Project not found for billing",
                     extra={
                         "conversation_id": str(conversation_id),
-                        "event_name": event_name,
+                        "project_id": str(project_id_for_billing),
                     },
                 )
             else:
-                logger.warning(
-                    "[end_voice_call] Cannot send Stripe meter event - missing project or stripe_customer_id",
-                    extra={"conversation_id": str(conversation_id)},
+                logger.debug(
+                    "[end_voice_call] Project loaded, refreshing account relationship",
+                    extra={
+                        "conversation_id": str(conversation_id),
+                        "project_id": str(project_id_for_billing),
+                    },
                 )
+
+                try:
+                    await session.refresh(
+                        project_for_billing, attribute_names=["account"]
+                    )
+                    logger.debug(
+                        "[end_voice_call] Account relationship refreshed successfully",
+                        extra={"conversation_id": str(conversation_id)},
+                    )
+                except Exception as refresh_error:
+                    logger.error(
+                        f"[end_voice_call] Failed to refresh account relationship: {refresh_error}",
+                        extra={
+                            "conversation_id": str(conversation_id),
+                            "project_id": str(project_id_for_billing),
+                            "error": str(refresh_error),
+                        },
+                    )
+                    raise
+
+                if not project_for_billing.account:
+                    logger.warning(
+                        "[end_voice_call] Project has no associated account",
+                        extra={
+                            "conversation_id": str(conversation_id),
+                            "project_id": str(project_id_for_billing),
+                        },
+                    )
+                elif not project_for_billing.account.stripe_customer_id:
+                    logger.warning(
+                        "[end_voice_call] Account has no stripe_customer_id",
+                        extra={
+                            "conversation_id": str(conversation_id),
+                            "project_id": str(project_id_for_billing),
+                            "account_id": str(project_for_billing.account.id),
+                        },
+                    )
+                else:
+                    # All validations passed, send meter event
+                    event_name = f"calls_{project_id_for_billing}"
+                    stripe_customer_id = project_for_billing.account.stripe_customer_id
+
+                    logger.debug(
+                        "[end_voice_call] Sending Stripe meter event",
+                        extra={
+                            "conversation_id": str(conversation_id),
+                            "event_name": event_name,
+                            "stripe_customer_id": stripe_customer_id,
+                        },
+                    )
+
+                    # Send meter event (returns True/False, logging is handled internally)
+                    # Run in thread pool to avoid SQLAlchemy async/sync context mixing
+                    await asyncio.to_thread(
+                        send_meter_event,
+                        event_name=event_name,
+                        stripe_customer_id=stripe_customer_id,
+                        value=1,
+                        timestamp=datetime.now(timezone.utc),
+                    )
+
+                    logger.info(
+                        f"[end_voice_call] Stripe meter event sent successfully for call_id: {call_id}",
+                        extra={
+                            "conversation_id": str(conversation_id),
+                            "event_name": event_name,
+                        },
+                    )
         except Exception as e:
             billing_error = str(e)
             logger.error(
                 f"[end_voice_call] Failed to send Stripe meter event: {e}",
-                extra={"conversation_id": str(conversation_id), "error": str(e)},
+                extra={
+                    "conversation_id": str(conversation_id),
+                    "project_id": str(project_id_for_billing),
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+                exc_info=True,
             )
     else:
         # Log why billing was skipped
