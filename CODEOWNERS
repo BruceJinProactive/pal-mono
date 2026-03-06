@@ -18,6 +18,6 @@
 # CLAUDE.md files
 **/CLAUDE.md jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
 
-# Allow automatic version bump
-/pyproject.toml @coderabbitai
-/uv.lock @coderabbitai
+# Auto-approvable: no code owners required (overrides /* rule)
+/pyproject.toml
+/uv.lock
