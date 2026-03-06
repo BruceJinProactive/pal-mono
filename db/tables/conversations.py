@@ -92,6 +92,9 @@ class Conversation(Base):
     # Conversation ended reason (customer_ended, assistant_forwarded, etc.)
     ended_reason: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
+    # Reason for transferring call to human (from call_transfer tool)
+    transfer_purpose: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
+
     # Order/transaction ID if customer successfully converted (ordered and paid)
     customer_converted: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
