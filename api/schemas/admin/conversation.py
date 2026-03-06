@@ -36,6 +36,7 @@ class Conversation(BaseModel):
     language: str | None = None
     ended_reason: str | None = None
     customer_converted: uuid.UUID | None = None
+    transfer_purpose: str | None = None
 
 
 class ConversationPreview(BaseModel):
@@ -93,6 +94,7 @@ class ConversationDetail(BaseModel):
     language: str | None = None
     ended_reason: str | None = None
     customer_converted: uuid.UUID | None = None
+    transfer_purpose: str | None = None
 
 
 class UpdateConversationRequest(BaseModel):

@@ -551,6 +551,8 @@ async def get_chat_response_stream(
                         ],
                     )
 
+                    transfer_purpose_captured = None
+
                     try:
                         pal_stream = await pal_agent.run(pal_input, stream=True)
                         if pal_stream is None:
@@ -580,6 +582,13 @@ async def get_chat_response_stream(
                                         f"account_name:{account_name}",
                                     ],
                                 )
+
+                            # Capture transfer_purpose if present (before skipping empty content)
+                            if (
+                                hasattr(chunk, "transfer_purpose")
+                                and chunk.transfer_purpose
+                            ):
+                                transfer_purpose_captured = chunk.transfer_purpose
 
                             if not chunk.content:
                                 continue
@@ -634,6 +643,37 @@ async def get_chat_response_stream(
                             )
                         else:
                             raise
+                    finally:
+                        # Persist transfer_purpose to conversation after streaming (best-effort)
+                        if transfer_purpose_captured:
+                            try:
+                                conversation = await db.ConversationRepositoryAsync(
+                                    session
+                                ).get_conversation_by_id(
+                                    conversation_id=request_message.conversation_id
+                                )
+                                if conversation:
+                                    conversation.transfer_purpose = (
+                                        transfer_purpose_captured
+                                    )
+                                    await session.flush()
+                                    logger.info(
+                                        "Captured transfer_purpose during streaming",
+                                        extra={
+                                            "conversation_id": str(
+                                                request_conversation_id
+                                            ),
+                                            "transfer_purpose": transfer_purpose_captured,
+                                        },
+                                    )
+                            except Exception as e:
+                                logger.debug(
+                                    "Failed to persist transfer_purpose",
+                                    extra={
+                                        "conversation_id": str(request_conversation_id),
+                                        "error": str(e),
+                                    },
+                                )
 
             else:
                 # LEGACY PATH - existing agent system

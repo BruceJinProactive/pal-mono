@@ -251,6 +251,7 @@ def build_conversation(
         language=conversation.language,
         ended_reason=conversation.ended_reason,
         customer_converted=conversation.customer_converted,
+        transfer_purpose=conversation.transfer_purpose,
     )
 
 
@@ -270,6 +271,7 @@ def build_conversation_detail(conversation: db.Conversation) -> ConversationDeta
         language=conversation.language,
         ended_reason=conversation.ended_reason,
         customer_converted=conversation.customer_converted,
+        transfer_purpose=conversation.transfer_purpose,
     )
 
 
