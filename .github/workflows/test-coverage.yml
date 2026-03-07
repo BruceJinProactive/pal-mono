@@ -84,11 +84,11 @@ jobs:
           pytest --cov --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --junitxml=junit.xml -q
 
       - name: Incremental coverage check
-        if: always() && steps.checkout.outcome == 'success'
         run: |
           diff-cover coverage.xml --compare-branch=origin/main --diff-range-notation=.. --fail-under=80
 
       - name: Pytest coverage comment
+        if: always() && steps.checkout.outcome == 'success'
         uses: MishaKav/pytest-coverage-comment@main
         with:
           pytest-xml-coverage-path: coverage.xml
