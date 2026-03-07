@@ -154,7 +154,7 @@ class MonitoringLLMProviderBase(ABC):
             response_format: Optional JSON schema for structured output
 
         Returns:
-            dict: Analysis result containing "result" and "details" keys
+            dict with "result" (the parsed LLM JSON) and "token_usage" dict
 
         Raises:
             Exception: If LLM call fails
@@ -181,7 +181,7 @@ class MonitoringLLMProviderBase(ABC):
             response_format: Optional JSON schema for structured output
 
         Returns:
-            dict: Analysis result containing "result" and "details" keys
+            dict with "result" (the parsed LLM JSON) and "token_usage" dict
 
         Raises:
             Exception: If LLM call fails
@@ -336,6 +336,15 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
                 f"Total: {response.usage.total_tokens}"
             )
 
+        # Build token usage dict
+        token_usage = {}
+        if response.usage:
+            token_usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+
         # Parse and return response with defensive error handling
         try:
             content = response.choices[0].message.content or "{}"
@@ -343,7 +352,7 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             logger.info(
                 f"[Monitoring LLM] Azure OpenAI analysis completed - Result: {result.get('result', 'unknown')}"
             )
-            return result
+            return {"result": result, "token_usage": token_usage}
         except json.JSONDecodeError as e:
             logger.error(
                 f"[Monitoring LLM] Failed to parse Azure OpenAI response as JSON: {e}"
@@ -453,6 +462,15 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
                 f"Total: {response.usage.total_tokens}"
             )
 
+        # Build token usage dict
+        token_usage = {}
+        if response.usage:
+            token_usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+
         # Parse and return response
         try:
             content = response.choices[0].message.content or "{}"
@@ -460,7 +478,7 @@ class AzureOpenAIMonitoringProvider(MonitoringLLMProviderBase):
             logger.info(
                 f"[Monitoring LLM] Azure OpenAI video analysis completed - Result: {result.get('result', 'unknown')}"
             )
-            return result
+            return {"result": result, "token_usage": token_usage}
         except json.JSONDecodeError as e:
             logger.error(
                 f"[Monitoring LLM] Failed to parse Azure OpenAI video response as JSON: {e}"
@@ -619,13 +637,22 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                 f"Total: {response.usage_metadata.total_token_count}"
             )
 
+        # Build token usage dict
+        token_usage = {}
+        if response.usage_metadata:
+            token_usage = {
+                "prompt_tokens": response.usage_metadata.prompt_token_count,
+                "completion_tokens": response.usage_metadata.candidates_token_count,
+                "total_tokens": response.usage_metadata.total_token_count,
+            }
+
         # Parse and return response with defensive error handling
         try:
             result = json.loads(response.text or "{}")
             logger.info(
                 f"[Monitoring LLM] Gemini analysis completed - Result: {result.get('result', 'unknown')}"
             )
-            return result
+            return {"result": result, "token_usage": token_usage}
         except json.JSONDecodeError as e:
             logger.error(
                 f"[Monitoring LLM] Failed to parse Gemini response as JSON: {e}"
@@ -750,13 +777,22 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                 f"Total: {response.usage_metadata.total_token_count}"
             )
 
+        # Build token usage dict
+        token_usage = {}
+        if response.usage_metadata:
+            token_usage = {
+                "prompt_tokens": response.usage_metadata.prompt_token_count,
+                "completion_tokens": response.usage_metadata.candidates_token_count,
+                "total_tokens": response.usage_metadata.total_token_count,
+            }
+
         # Parse and return response
         try:
             result = json.loads(response.text or "{}")
             logger.info(
                 f"[Monitoring LLM] Gemini video analysis completed - Result: {result.get('result', 'unknown')}"
             )
-            return result
+            return {"result": result, "token_usage": token_usage}
         except json.JSONDecodeError as e:
             logger.error(
                 f"[Monitoring LLM] Failed to parse Gemini video response as JSON: {e}"
@@ -886,13 +922,22 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                 f"Total: {response.usage_metadata.total_token_count}"
             )
 
+        # Build token usage dict
+        token_usage = {}
+        if response.usage_metadata:
+            token_usage = {
+                "prompt_tokens": response.usage_metadata.prompt_token_count,
+                "completion_tokens": response.usage_metadata.candidates_token_count,
+                "total_tokens": response.usage_metadata.total_token_count,
+            }
+
         # Parse and return response
         try:
             result = json.loads(response.text or "{}")
             logger.info(
                 f"[Monitoring LLM] Gemini native video analysis completed - Result: {result.get('result', 'unknown')}"
             )
-            return result
+            return {"result": result, "token_usage": token_usage}
         except json.JSONDecodeError as e:
             logger.error(
                 f"[Monitoring LLM] Failed to parse Gemini native video response as JSON: {e}"

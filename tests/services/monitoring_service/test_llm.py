@@ -571,8 +571,12 @@ def _build_image_analysis_mocks(mocker, config_id):
     mock_provider.config.provider.value = "azure"
     mock_provider.config.model = "gpt-4o"
     mock_provider.analyze_image.return_value = {
-        "result": "pass",
-        "details": "All clear",
+        "result": {"result": "pass", "details": "All clear"},
+        "token_usage": {
+            "prompt_tokens": 500,
+            "completion_tokens": 50,
+            "total_tokens": 550,
+        },
     }
     mocker.patch(
         "services.monitoring_service._llm.create_monitoring_llm_provider",
@@ -626,8 +630,12 @@ def _build_video_analysis_mocks(mocker, config_id):
     mock_provider.config.provider.value = "azure"
     mock_provider.config.model = "gpt-4o"
     mock_provider.analyze_video_frames.return_value = {
-        "result": "pass",
-        "details": "All clear",
+        "result": {"result": "pass", "details": "All clear"},
+        "token_usage": {
+            "prompt_tokens": 800,
+            "completion_tokens": 60,
+            "total_tokens": 860,
+        },
     }
     mocker.patch(
         "services.monitoring_service._llm.create_monitoring_llm_provider",
@@ -675,8 +683,12 @@ def _build_native_video_analysis_mocks(mocker, config_id):
     mock_provider.config.provider.value = "google"
     mock_provider.config.model = "gemini-2.5-flash"
     mock_provider.analyze_native_video.return_value = {
-        "result": "pass",
-        "details": "All clear from native video",
+        "result": {"result": "pass", "details": "All clear from native video"},
+        "token_usage": {
+            "prompt_tokens": 1200,
+            "completion_tokens": 80,
+            "total_tokens": 1280,
+        },
     }
     mocker.patch(
         "services.monitoring_service._llm.create_monitoring_llm_provider",
@@ -1089,3 +1101,119 @@ class TestNativeVideoAnalysis:
         mock_provider.analyze_video_frames.assert_called_once()
         assert "video_frames_count" in result["prompt_sent"]
         assert "native_video" not in result["prompt_sent"]
+
+
+class TestTokenUsageMetricEmission:
+    """Tests for statsd metric emission of LLM token usage."""
+
+    @pytest.mark.asyncio
+    async def test_image_analysis_emits_token_metric(self, mocker):
+        """Should emit monitoring.llm.total_tokens histogram for image analysis."""
+        from services.monitoring_service._llm import generate_monitoring_llm_prompt
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_image_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
+
+        await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
+
+        mock_statsd.histogram.assert_called_once_with(
+            "monitoring.llm.total_tokens",
+            550,
+            tags=["provider:azure", "model:gpt-4o", "media_type:image"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_video_frames_analysis_emits_token_metric(self, mocker):
+        """Should emit monitoring.llm.total_tokens histogram for video frame analysis."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_video_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
+
+        mock_statsd.histogram.assert_called_once_with(
+            "monitoring.llm.total_tokens",
+            860,
+            tags=["provider:azure", "model:gpt-4o", "media_type:video"],
+        )
+
+    @pytest.mark.asyncio
+    async def test_native_video_analysis_emits_token_metric(self, mocker):
+        """Should emit monitoring.llm.total_tokens histogram for native video analysis."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_native_video_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
+
+        mock_statsd.histogram.assert_called_once_with(
+            "monitoring.llm.total_tokens",
+            1280,
+            tags=[
+                "provider:google",
+                "model:gemini-2.5-flash",
+                "media_type:native_video",
+            ],
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_metric_emitted_when_token_usage_missing(self, mocker):
+        """Should not emit metric when provider returns no token_usage."""
+        from services.monitoring_service._llm import generate_monitoring_llm_prompt
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_provider = _build_image_analysis_mocks(mocker, config_id)
+        mock_provider.analyze_image.return_value = {
+            "result": {"result": "pass", "details": "OK"},
+            "token_usage": {},
+        }
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
+
+        await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
+
+        mock_statsd.histogram.assert_not_called()

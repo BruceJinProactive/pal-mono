@@ -37,6 +37,7 @@ from services.monitoring_service._video import (
     download_video_bytes,
     extract_video_frames,
 )
+from utils.dd import statsd
 from utils.log import logger
 
 # AWS Configuration
@@ -282,13 +283,30 @@ For invalid/problematic images:
                     span.set_tag("monitoring.llm_model", provider.config.model)
                     span.set_tag("monitoring.media_type", "image")
 
-                    return provider.analyze_image(
+                    llm_response = provider.analyze_image(
                         system_instruction=system_instruction,
                         analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
                         reference_images=reference_images_for_provider,
                         camera_image_base64=camera_image_base64,
                         response_format=response_format,
                     )
+
+                    # Emit token usage metric
+                    total_tokens = llm_response.get("token_usage", {}).get(
+                        "total_tokens"
+                    )
+                    if total_tokens is not None:
+                        statsd.histogram(
+                            "monitoring.llm.total_tokens",
+                            total_tokens,
+                            tags=[
+                                f"provider:{provider.config.provider.value}",
+                                f"model:{provider.config.model}",
+                                "media_type:image",
+                            ],
+                        )
+
+                    return llm_response["result"]
             finally:
                 if current_context:
                     tracer.context_provider.activate(current_context)
@@ -772,7 +790,7 @@ For invalid/problematic frames:
                         )
                         span.set_tag("monitoring.video_mime_type", video_mime_type)
 
-                        return provider.analyze_native_video(
+                        llm_response = provider.analyze_native_video(
                             system_instruction=system_instruction,
                             analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
                             reference_images=reference_images_for_provider,
@@ -780,6 +798,23 @@ For invalid/problematic frames:
                             video_mime_type=video_mime_type,
                             response_format=response_format,
                         )
+
+                        # Emit token usage metric
+                        total_tokens = llm_response.get("token_usage", {}).get(
+                            "total_tokens"
+                        )
+                        if total_tokens is not None:
+                            statsd.histogram(
+                                "monitoring.llm.total_tokens",
+                                total_tokens,
+                                tags=[
+                                    f"provider:{provider.config.provider.value}",
+                                    f"model:{provider.config.model}",
+                                    "media_type:native_video",
+                                ],
+                            )
+
+                        return llm_response["result"]
                 finally:
                     if current_context:
                         tracer.context_provider.activate(current_context)
@@ -822,13 +857,30 @@ For invalid/problematic frames:
                             "monitoring.video_frames_count", str(len(video_frames))
                         )
 
-                        return provider.analyze_video_frames(
+                        llm_response = provider.analyze_video_frames(
                             system_instruction=system_instruction,
                             analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
                             reference_images=reference_images_for_provider,
                             video_frames=video_frames,
                             response_format=response_format,
                         )
+
+                        # Emit token usage metric
+                        total_tokens = llm_response.get("token_usage", {}).get(
+                            "total_tokens"
+                        )
+                        if total_tokens is not None:
+                            statsd.histogram(
+                                "monitoring.llm.total_tokens",
+                                total_tokens,
+                                tags=[
+                                    f"provider:{provider.config.provider.value}",
+                                    f"model:{provider.config.model}",
+                                    "media_type:video",
+                                ],
+                            )
+
+                        return llm_response["result"]
                 finally:
                     if current_context:
                         tracer.context_provider.activate(current_context)

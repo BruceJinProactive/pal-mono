@@ -1,5 +1,6 @@
 """Tests for monitoring LLM provider abstraction layer."""
 
+import base64
 from unittest.mock import MagicMock
 
 import pytest
@@ -296,7 +297,7 @@ class TestGoogleMonitoringProviderAnalyzeNativeVideo:
         )
         provider = GoogleMonitoringProvider(config)
 
-        result = provider.analyze_native_video(
+        response = provider.analyze_native_video(
             system_instruction="Test instruction",
             analysis_task="Test task",
             reference_images=[],
@@ -304,7 +305,12 @@ class TestGoogleMonitoringProviderAnalyzeNativeVideo:
             video_mime_type="video/mp4",
         )
 
-        assert result == {"result": "pass", "details": "OK"}
+        assert response["result"] == {"result": "pass", "details": "OK"}
+        assert response["token_usage"] == {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+        }
 
         # Verify Part.from_bytes was called with video bytes and mime type
         mock_part_from_bytes.assert_called_with(
@@ -447,3 +453,204 @@ class TestGoogleMonitoringProviderAnalyzeNativeVideo:
                 reference_images=[],
                 video_bytes=b"video",
             )
+
+
+class TestAzureOpenAIMonitoringProviderAnalyzeImage:
+    """Tests for AzureOpenAIMonitoringProvider.analyze_image with token usage."""
+
+    def test_returns_result_and_token_usage(self, mocker):
+        """Should return parsed JSON result and token_usage from response.usage."""
+        mocker.patch.dict(
+            "os.environ",
+            {
+                "AZURE_OPENAI_API_KEY": "test-key",
+                "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
+            },
+        )
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.AzureOpenAI",
+            return_value=mock_client,
+        )
+        mocker.patch(
+            "services.monitoring_service._providers._get_deployment_name",
+            return_value="gpt-4o-deployment",
+        )
+
+        # Mock response with usage and content
+        mock_response = MagicMock()
+        mock_response.usage.prompt_tokens = 200
+        mock_response.usage.completion_tokens = 80
+        mock_response.usage.total_tokens = 280
+        mock_response.choices[0].message.content = '{"result": "pass", "details": "OK"}'
+        mock_client.chat.completions.create.return_value = mock_response
+
+        config = MonitoringLLMConfig(provider=MonitoringLLMProvider.AZURE)
+        provider = AzureOpenAIMonitoringProvider(config)
+
+        camera_b64 = base64.b64encode(b"camera-image").decode()
+        response = provider.analyze_image(
+            system_instruction="Test instruction",
+            analysis_task="Test task",
+            reference_images=[],
+            camera_image_base64=camera_b64,
+        )
+
+        assert response["result"] == {"result": "pass", "details": "OK"}
+        assert response["token_usage"] == {
+            "prompt_tokens": 200,
+            "completion_tokens": 80,
+            "total_tokens": 280,
+        }
+
+
+class TestAzureOpenAIMonitoringProviderAnalyzeVideoFrames:
+    """Tests for AzureOpenAIMonitoringProvider.analyze_video_frames with token usage."""
+
+    def test_returns_result_and_token_usage(self, mocker):
+        """Should return parsed JSON result and token_usage from response.usage."""
+        mocker.patch.dict(
+            "os.environ",
+            {
+                "AZURE_OPENAI_API_KEY": "test-key",
+                "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
+            },
+        )
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.AzureOpenAI",
+            return_value=mock_client,
+        )
+        mocker.patch(
+            "services.monitoring_service._providers._get_deployment_name",
+            return_value="gpt-4o-deployment",
+        )
+
+        mock_response = MagicMock()
+        mock_response.usage.prompt_tokens = 500
+        mock_response.usage.completion_tokens = 120
+        mock_response.usage.total_tokens = 620
+        mock_response.choices[0].message.content = (
+            '{"result": "fail", "details": "issue"}'
+        )
+        mock_client.chat.completions.create.return_value = mock_response
+
+        config = MonitoringLLMConfig(provider=MonitoringLLMProvider.AZURE)
+        provider = AzureOpenAIMonitoringProvider(config)
+
+        frame_b64 = base64.b64encode(b"frame-data").decode()
+        response = provider.analyze_video_frames(
+            system_instruction="Test instruction",
+            analysis_task="Test task",
+            reference_images=[],
+            video_frames=[
+                {"base64_data": frame_b64, "timestamp_label": "0:00"},
+                {"base64_data": frame_b64, "timestamp_label": "0:05"},
+            ],
+        )
+
+        assert response["result"] == {"result": "fail", "details": "issue"}
+        assert response["token_usage"] == {
+            "prompt_tokens": 500,
+            "completion_tokens": 120,
+            "total_tokens": 620,
+        }
+
+
+class TestGoogleMonitoringProviderAnalyzeImage:
+    """Tests for GoogleMonitoringProvider.analyze_image with token usage."""
+
+    def test_returns_result_and_token_usage(self, mocker):
+        """Should return parsed JSON result and token_usage from usage_metadata."""
+        mocker.patch(
+            "services.monitoring_service._providers.get_server_secret_with_fallback",
+            return_value="test-key",
+        )
+
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.genai.Client",
+            return_value=mock_client,
+        )
+
+        mock_response = MagicMock()
+        mock_response.text = '{"result": "pass", "details": "looks good"}'
+        mock_response.usage_metadata = MagicMock()
+        mock_response.usage_metadata.prompt_token_count = 300
+        mock_response.usage_metadata.candidates_token_count = 90
+        mock_response.usage_metadata.total_token_count = 390
+        mock_client.models.generate_content.return_value = mock_response
+
+        mocker.patch(
+            "services.monitoring_service._providers.Part.from_bytes",
+            return_value=MagicMock(),
+        )
+
+        config = MonitoringLLMConfig(provider=MonitoringLLMProvider.GOOGLE)
+        provider = GoogleMonitoringProvider(config)
+
+        camera_b64 = base64.b64encode(b"camera-image").decode()
+        response = provider.analyze_image(
+            system_instruction="Test instruction",
+            analysis_task="Test task",
+            reference_images=[],
+            camera_image_base64=camera_b64,
+        )
+
+        assert response["result"] == {"result": "pass", "details": "looks good"}
+        assert response["token_usage"] == {
+            "prompt_tokens": 300,
+            "completion_tokens": 90,
+            "total_tokens": 390,
+        }
+
+
+class TestGoogleMonitoringProviderAnalyzeVideoFrames:
+    """Tests for GoogleMonitoringProvider.analyze_video_frames with token usage."""
+
+    def test_returns_result_and_token_usage(self, mocker):
+        """Should return parsed JSON result and token_usage from usage_metadata."""
+        mocker.patch(
+            "services.monitoring_service._providers.get_server_secret_with_fallback",
+            return_value="test-key",
+        )
+
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.genai.Client",
+            return_value=mock_client,
+        )
+
+        mock_response = MagicMock()
+        mock_response.text = '{"result": "pass", "details": "all clear"}'
+        mock_response.usage_metadata = MagicMock()
+        mock_response.usage_metadata.prompt_token_count = 800
+        mock_response.usage_metadata.candidates_token_count = 150
+        mock_response.usage_metadata.total_token_count = 950
+        mock_client.models.generate_content.return_value = mock_response
+
+        mocker.patch(
+            "services.monitoring_service._providers.Part.from_bytes",
+            return_value=MagicMock(),
+        )
+
+        config = MonitoringLLMConfig(provider=MonitoringLLMProvider.GOOGLE)
+        provider = GoogleMonitoringProvider(config)
+
+        frame_b64 = base64.b64encode(b"frame-data").decode()
+        response = provider.analyze_video_frames(
+            system_instruction="Test instruction",
+            analysis_task="Test task",
+            reference_images=[],
+            video_frames=[
+                {"base64_data": frame_b64, "timestamp_label": "0:00"},
+                {"base64_data": frame_b64, "timestamp_label": "0:05"},
+            ],
+        )
+
+        assert response["result"] == {"result": "pass", "details": "all clear"}
+        assert response["token_usage"] == {
+            "prompt_tokens": 800,
+            "completion_tokens": 150,
+            "total_tokens": 950,
+        }
