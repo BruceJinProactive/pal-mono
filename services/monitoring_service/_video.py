@@ -114,6 +114,69 @@ def _extract_frames_sync(
     return frames
 
 
+async def download_video_bytes(video_s3_key: str) -> tuple[bytes, str]:
+    """
+    Download a video from S3 and return the raw bytes.
+
+    Used for native video analysis where the entire video is passed
+    directly to the LLM instead of extracting frames.
+
+    Args:
+        video_s3_key: S3 key of the video file
+
+    Returns:
+        Tuple of (video_bytes, mime_type)
+
+    Raises:
+        HTTPException 500: If video download fails
+    """
+    s3_client = (
+        boto3.client(
+            "s3",
+            region_name=AWS_REGION,
+            aws_access_key_id=os.getenv("LOCAL_AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("LOCAL_AWS_SECRET_ACCESS_KEY"),
+            aws_session_token=os.getenv("LOCAL_AWS_SESSION_TOKEN"),
+        )
+        if os.getenv("LOCAL_AWS_ACCESS_KEY_ID")
+        else boto3.client("s3", region_name=AWS_REGION)
+    )
+
+    try:
+        logger.info(f"[Video Download] Downloading video from S3: {video_s3_key}")
+        response = await asyncio.to_thread(
+            s3_client.get_object, Bucket=AWS_ASSET_BUCKET_NAME, Key=video_s3_key
+        )
+        video_bytes = await asyncio.to_thread(response["Body"].read)
+
+        # Determine MIME type from content type or file extension
+        content_type = response.get("ContentType", "")
+        if content_type and content_type.startswith("video/"):
+            mime_type = content_type
+        else:
+            ext = os.path.splitext(video_s3_key)[1].lower()
+            mime_map = {
+                ".mp4": "video/mp4",
+                ".webm": "video/webm",
+                ".mov": "video/quicktime",
+                ".avi": "video/x-msvideo",
+                ".mkv": "video/x-matroska",
+            }
+            mime_type = mime_map.get(ext, "video/mp4")
+
+        logger.info(
+            f"[Video Download] Downloaded {len(video_bytes)} bytes, MIME: {mime_type}"
+        )
+        return video_bytes, mime_type
+
+    except Exception as e:
+        logger.error(f"[Video Download] Failed to download video: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download video from storage",
+        ) from e
+
+
 async def extract_video_frames(
     video_s3_key: str, frame_interval_seconds: int = 10
 ) -> list[dict]:

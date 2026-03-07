@@ -78,11 +78,6 @@ def _patch_deps(
             new_callable=AsyncMock,
             return_value=user,
         ),
-        patch(
-            "api.routes.internal._voice.subscription_service.should_block_calls_async",
-            new_callable=AsyncMock,
-            return_value=block_calls,
-        ),
         patch("api.routes.internal._voice.db.MessageRepositoryAsync"),
         patch("api.routes.internal._voice.VoiceConfigRepositoryAsync"),
     )
@@ -105,7 +100,7 @@ async def _run(
         block_calls=block_calls,
         user_exists=user_exists,
     )
-    with p[0], p[1], p[2], p[3], p[4] as msg_cls, p[5] as vc_cls:
+    with p[0], p[1], p[2], p[3] as msg_cls, p[4] as vc_cls:
         msg_cls.return_value = AsyncMock()
         vc_repo = AsyncMock()
         vc_repo.get_voice_configs_by_project.return_value = voice_configs
@@ -124,7 +119,7 @@ async def _run_expecting_error(
     """Run ``init_voice_call`` and return the raised HTTPException."""
     session = AsyncMock()
     p = _patch_deps(project, user, block_calls=block_calls)
-    with p[0], p[1], p[2], p[3], p[4] as msg_cls, p[5] as vc_cls:
+    with p[0], p[1], p[2], p[3] as msg_cls, p[4] as vc_cls:
         msg_cls.return_value = AsyncMock()
         vc_repo = AsyncMock()
         vc_repo.get_voice_configs_by_project.return_value = voice_configs
@@ -359,9 +354,8 @@ class TestInitVoiceCallSuccess:
             p[0],
             p[1] as mock_get_user,
             p[2] as mock_create_user,
-            p[3],
-            p[4] as msg_cls,
-            p[5] as vc_cls,
+            p[3] as msg_cls,
+            p[4] as vc_cls,
         ):
             msg_cls.return_value = AsyncMock()
             vc_repo = AsyncMock()

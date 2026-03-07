@@ -5,12 +5,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from services.monitoring_service._providers import (
+    NATIVE_VIDEO_MODELS,
     AzureOpenAIMonitoringProvider,
     GoogleMonitoringProvider,
     MonitoringLLMConfig,
     MonitoringLLMProvider,
     _strip_additional_properties,
     create_monitoring_llm_provider,
+    supports_native_video,
 )
 
 
@@ -218,3 +220,230 @@ class TestCreateMonitoringLLMProvider:
         assert isinstance(provider, AzureOpenAIMonitoringProvider)
         assert provider.config.provider == MonitoringLLMProvider.AZURE
         assert provider.config.model == "gpt-4o"
+
+
+class TestSupportsNativeVideo:
+    """Tests for supports_native_video and NATIVE_VIDEO_MODELS."""
+
+    def test_gemini_2_5_flash_supported(self):
+        """gemini-2.5-flash should support native video."""
+        assert (
+            supports_native_video(MonitoringLLMProvider.GOOGLE, "gemini-2.5-flash")
+            is True
+        )
+
+    def test_gemini_2_5_flash_in_native_video_models(self):
+        """gemini-2.5-flash should be in NATIVE_VIDEO_MODELS set."""
+        assert "gemini-2.5-flash" in NATIVE_VIDEO_MODELS
+
+    def test_gemini_3_flash_preview_not_supported(self):
+        """gemini-3-flash-preview should not support native video."""
+        assert (
+            supports_native_video(
+                MonitoringLLMProvider.GOOGLE, "gemini-3-flash-preview"
+            )
+            is False
+        )
+
+    def test_azure_provider_never_supported(self):
+        """Azure provider should never support native video regardless of model."""
+        assert (
+            supports_native_video(MonitoringLLMProvider.AZURE, "gemini-2.5-flash")
+            is False
+        )
+        assert supports_native_video(MonitoringLLMProvider.AZURE, "gpt-4o") is False
+
+    def test_unknown_model_not_supported(self):
+        """Unknown models should not support native video."""
+        assert (
+            supports_native_video(MonitoringLLMProvider.GOOGLE, "unknown-model")
+            is False
+        )
+
+
+class TestGoogleMonitoringProviderAnalyzeNativeVideo:
+    """Tests for GoogleMonitoringProvider.analyze_native_video."""
+
+    def test_sends_video_bytes_as_single_part(self, mocker):
+        """Should send entire video as a single Part.from_bytes with correct MIME type."""
+        mocker.patch(
+            "services.monitoring_service._providers.get_server_secret_with_fallback",
+            return_value="test-key",
+        )
+
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.genai.Client",
+            return_value=mock_client,
+        )
+
+        # Mock response
+        mock_response = MagicMock()
+        mock_response.text = '{"result": "pass", "details": "OK"}'
+        mock_response.usage_metadata = MagicMock()
+        mock_response.usage_metadata.prompt_token_count = 100
+        mock_response.usage_metadata.candidates_token_count = 50
+        mock_response.usage_metadata.total_token_count = 150
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_part_from_bytes = mocker.patch(
+            "services.monitoring_service._providers.Part.from_bytes",
+            return_value=MagicMock(),
+        )
+
+        config = MonitoringLLMConfig(
+            provider=MonitoringLLMProvider.GOOGLE, model="gemini-2.5-flash"
+        )
+        provider = GoogleMonitoringProvider(config)
+
+        result = provider.analyze_native_video(
+            system_instruction="Test instruction",
+            analysis_task="Test task",
+            reference_images=[],
+            video_bytes=b"fake-video-data",
+            video_mime_type="video/mp4",
+        )
+
+        assert result == {"result": "pass", "details": "OK"}
+
+        # Verify Part.from_bytes was called with video bytes and mime type
+        mock_part_from_bytes.assert_called_with(
+            data=b"fake-video-data", mime_type="video/mp4"
+        )
+
+    def test_includes_reference_images(self, mocker):
+        """Should include reference images alongside the video."""
+        mocker.patch(
+            "services.monitoring_service._providers.get_server_secret_with_fallback",
+            return_value="test-key",
+        )
+
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.genai.Client",
+            return_value=mock_client,
+        )
+
+        mock_response = MagicMock()
+        mock_response.text = '{"result": "pass", "details": "OK"}'
+        mock_response.usage_metadata = None
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_part_from_bytes = mocker.patch(
+            "services.monitoring_service._providers.Part.from_bytes",
+            return_value=MagicMock(),
+        )
+
+        config = MonitoringLLMConfig(
+            provider=MonitoringLLMProvider.GOOGLE, model="gemini-2.5-flash"
+        )
+        provider = GoogleMonitoringProvider(config)
+
+        import base64
+
+        ref_data = base64.b64encode(b"ref-image").decode()
+
+        provider.analyze_native_video(
+            system_instruction="Test",
+            analysis_task="Task",
+            reference_images=[{"description": "Reference", "base64_data": ref_data}],
+            video_bytes=b"video-data",
+        )
+
+        # Should have calls for reference image (jpeg) and video (mp4)
+        calls = mock_part_from_bytes.call_args_list
+        assert len(calls) == 2
+        assert calls[0] == mocker.call(data=b"ref-image", mime_type="image/jpeg")
+        assert calls[1] == mocker.call(data=b"video-data", mime_type="video/mp4")
+
+    def test_uses_structured_output_schema(self, mocker):
+        """Should apply structured output schema when provided."""
+        mocker.patch(
+            "services.monitoring_service._providers.get_server_secret_with_fallback",
+            return_value="test-key",
+        )
+
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.genai.Client",
+            return_value=mock_client,
+        )
+
+        mock_response = MagicMock()
+        mock_response.text = '{"result": "pass"}'
+        mock_response.usage_metadata = None
+        mock_client.models.generate_content.return_value = mock_response
+
+        mocker.patch(
+            "services.monitoring_service._providers.Part.from_bytes",
+            return_value=MagicMock(),
+        )
+
+        config = MonitoringLLMConfig(
+            provider=MonitoringLLMProvider.GOOGLE, model="gemini-2.5-flash"
+        )
+        provider = GoogleMonitoringProvider(config)
+
+        schema = {
+            "type": "object",
+            "properties": {"result": {"type": "string"}},
+            "required": ["result"],
+        }
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {"name": "test", "strict": True, "schema": schema},
+        }
+
+        provider.analyze_native_video(
+            system_instruction="Test",
+            analysis_task="Task",
+            reference_images=[],
+            video_bytes=b"video",
+            response_format=response_format,
+        )
+
+        # Verify generate_content was called with the structured schema in config
+        call_kwargs = mock_client.models.generate_content.call_args
+        gen_config = call_kwargs.kwargs.get("config") or call_kwargs[1].get("config")
+        assert gen_config is not None
+        # GenerateContentConfig should carry the schema (with additionalProperties stripped)
+        assert gen_config.response_schema == schema
+        assert gen_config.response_mime_type == "application/json"
+
+    def test_raises_on_invalid_json_response(self, mocker):
+        """Should raise JSONDecodeError when response is not valid JSON."""
+        mocker.patch(
+            "services.monitoring_service._providers.get_server_secret_with_fallback",
+            return_value="test-key",
+        )
+
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.genai.Client",
+            return_value=mock_client,
+        )
+
+        mock_response = MagicMock()
+        mock_response.text = "not valid json"
+        mock_response.usage_metadata = None
+        mock_client.models.generate_content.return_value = mock_response
+
+        mocker.patch(
+            "services.monitoring_service._providers.Part.from_bytes",
+            return_value=MagicMock(),
+        )
+
+        config = MonitoringLLMConfig(
+            provider=MonitoringLLMProvider.GOOGLE, model="gemini-2.5-flash"
+        )
+        provider = GoogleMonitoringProvider(config)
+
+        import json
+
+        with pytest.raises(json.JSONDecodeError):
+            provider.analyze_native_video(
+                system_instruction="Test",
+                analysis_task="Task",
+                reference_images=[],
+                video_bytes=b"video",
+            )

@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from services.monitoring_service._video import (
     _extract_frames_sync,
+    download_video_bytes,
     extract_video_frames,
 )
 
@@ -444,3 +445,152 @@ class TestExtractVideoFrames:
             await extract_video_frames("test-key.mp4")
 
         mock_unlink.assert_called_once_with("/tmp/test.video")
+
+
+class TestDownloadVideoBytes:
+    """Tests for download_video_bytes — async S3 download returning raw bytes."""
+
+    @pytest.mark.asyncio
+    async def test_successful_download_with_content_type(self, mocker):
+        """Should return video bytes and MIME type from S3 ContentType."""
+        mock_body = MagicMock()
+        mock_body.read.return_value = b"fake-video-bytes"
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {
+            "Body": mock_body,
+            "ContentType": "video/mp4",
+        }
+        mocker.patch(
+            "services.monitoring_service._video.boto3.client",
+            return_value=mock_s3,
+        )
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        mocker.patch(
+            "services.monitoring_service._video.asyncio.to_thread",
+            side_effect=mock_to_thread,
+        )
+        mocker.patch(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "test-bucket",
+        )
+
+        video_bytes, mime_type = await download_video_bytes("path/to/video.mp4")
+        assert video_bytes == b"fake-video-bytes"
+        assert mime_type == "video/mp4"
+
+    @pytest.mark.asyncio
+    async def test_mime_type_from_extension_when_no_content_type(self, mocker):
+        """Should infer MIME type from file extension when ContentType is not video."""
+        mock_body = MagicMock()
+        mock_body.read.return_value = b"fake-video"
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {
+            "Body": mock_body,
+            "ContentType": "application/octet-stream",
+        }
+        mocker.patch(
+            "services.monitoring_service._video.boto3.client",
+            return_value=mock_s3,
+        )
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        mocker.patch(
+            "services.monitoring_service._video.asyncio.to_thread",
+            side_effect=mock_to_thread,
+        )
+        mocker.patch(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "test-bucket",
+        )
+
+        _, mime_type = await download_video_bytes("path/to/video.webm")
+        assert mime_type == "video/webm"
+
+    @pytest.mark.asyncio
+    async def test_defaults_to_mp4_for_unknown_extension(self, mocker):
+        """Should default to video/mp4 for unknown file extensions."""
+        mock_body = MagicMock()
+        mock_body.read.return_value = b"data"
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {
+            "Body": mock_body,
+            "ContentType": "",
+        }
+        mocker.patch(
+            "services.monitoring_service._video.boto3.client",
+            return_value=mock_s3,
+        )
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        mocker.patch(
+            "services.monitoring_service._video.asyncio.to_thread",
+            side_effect=mock_to_thread,
+        )
+        mocker.patch(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "test-bucket",
+        )
+
+        _, mime_type = await download_video_bytes("path/to/video.xyz")
+        assert mime_type == "video/mp4"
+
+    @pytest.mark.asyncio
+    async def test_s3_failure_raises_500(self, mocker):
+        """Should raise HTTPException 500 when S3 download fails."""
+        mocker.patch(
+            "services.monitoring_service._video.boto3.client",
+            return_value=MagicMock(),
+        )
+
+        async def mock_to_thread(func, *args, **kwargs):
+            raise Exception("S3 error")
+
+        mocker.patch(
+            "services.monitoring_service._video.asyncio.to_thread",
+            side_effect=mock_to_thread,
+        )
+        mocker.patch(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "test-bucket",
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await download_video_bytes("path/to/video.mp4")
+        assert exc_info.value.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_mov_extension_returns_quicktime_mime(self, mocker):
+        """Should return video/quicktime for .mov files."""
+        mock_body = MagicMock()
+        mock_body.read.return_value = b"data"
+        mock_s3 = MagicMock()
+        mock_s3.get_object.return_value = {
+            "Body": mock_body,
+            "ContentType": "",
+        }
+        mocker.patch(
+            "services.monitoring_service._video.boto3.client",
+            return_value=mock_s3,
+        )
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        mocker.patch(
+            "services.monitoring_service._video.asyncio.to_thread",
+            side_effect=mock_to_thread,
+        )
+        mocker.patch(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "test-bucket",
+        )
+
+        _, mime_type = await download_video_bytes("path/to/video.mov")
+        assert mime_type == "video/quicktime"

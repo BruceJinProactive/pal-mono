@@ -28,9 +28,15 @@ from services.monitoring_service._business_hours import (
     is_within_business_hours,
     parse_captured_at,
 )
-from services.monitoring_service._providers import create_monitoring_llm_provider
+from services.monitoring_service._providers import (
+    create_monitoring_llm_provider,
+    supports_native_video,
+)
 from services.monitoring_service._time_window import should_skip_monitoring
-from services.monitoring_service._video import extract_video_frames
+from services.monitoring_service._video import (
+    download_video_bytes,
+    extract_video_frames,
+)
 from utils.log import logger
 
 # AWS Configuration
@@ -597,9 +603,6 @@ async def generate_monitoring_video_llm_prompt(
         else boto3.client("s3", region_name=AWS_REGION)
     )
 
-    # Extract frames from video
-    video_frames = await extract_video_frames(video_url)
-
     # Build prompt from rules
     rules = config.rules or {}
     prompt = rules.get("prompt", "")
@@ -703,6 +706,7 @@ For invalid/problematic frames:
     # Call LLM Vision API using provider abstraction
     try:
         from services.monitoring_service._providers import (
+            GoogleMonitoringProvider,
             MonitoringLLMConfig,
             MonitoringLLMProvider,
         )
@@ -736,64 +740,122 @@ For invalid/problematic frames:
             f"[Monitoring LLM] Provider initialized (video) - Final config: Provider={provider.config.provider.value}, Model={provider.config.model}"
         )
 
-        # Create a wrapper that isolates the LLM call into its own trace.
-        # This breaks trace inheritance from the parent voice-agent request
-        # so monitoring LLM spans appear as a separate root trace in Datadog.
-        def call_video_llm_with_isolated_trace() -> dict:
-            current_context = tracer.current_trace_context()
-            tracer.context_provider.activate(None)
-
-            try:
-                with tracer.trace(
-                    "monitoring.llm.analyze_video_frames",
-                    service="pal-mono-monitoring",
-                ) as span:
-                    span.set_tag("monitoring.config_id", str(monitoring_config_id))
-                    span.set_tag(
-                        "monitoring.llm_provider", provider.config.provider.value
-                    )
-                    span.set_tag("monitoring.llm_model", provider.config.model)
-                    span.set_tag("monitoring.media_type", "video")
-                    span.set_tag(
-                        "monitoring.video_frames_count", str(len(video_frames))
-                    )
-
-                    return provider.analyze_video_frames(
-                        system_instruction=system_instruction,
-                        analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
-                        reference_images=reference_images_for_provider,
-                        video_frames=video_frames,
-                        response_format=response_format,
-                    )
-            finally:
-                if current_context:
-                    tracer.context_provider.activate(current_context)
-
-        # Run blocking LLM call in thread pool with isolated trace context
-        loop = asyncio.get_running_loop()
-        analysis_result = await loop.run_in_executor(
-            None, call_video_llm_with_isolated_trace
+        # Check if this model supports native video input
+        use_native_video = supports_native_video(
+            provider.config.provider, provider.config.model
         )
+
+        if use_native_video and isinstance(provider, GoogleMonitoringProvider):
+            # Native video path: download raw bytes and pass entire video to Gemini
+            logger.info(
+                f"[Monitoring LLM] Model {provider.config.model} supports native video, downloading raw video"
+            )
+            video_bytes, video_mime_type = await download_video_bytes(video_url)
+
+            def call_native_video_llm_with_isolated_trace() -> dict:
+                current_context = tracer.current_trace_context()
+                tracer.context_provider.activate(None)
+
+                try:
+                    with tracer.trace(
+                        "monitoring.llm.analyze_native_video",
+                        service="pal-mono-monitoring",
+                    ) as span:
+                        span.set_tag("monitoring.config_id", str(monitoring_config_id))
+                        span.set_tag(
+                            "monitoring.llm_provider", provider.config.provider.value
+                        )
+                        span.set_tag("monitoring.llm_model", provider.config.model)
+                        span.set_tag("monitoring.media_type", "native_video")
+                        span.set_tag(
+                            "monitoring.video_size_bytes", str(len(video_bytes))
+                        )
+                        span.set_tag("monitoring.video_mime_type", video_mime_type)
+
+                        return provider.analyze_native_video(
+                            system_instruction=system_instruction,
+                            analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
+                            reference_images=reference_images_for_provider,
+                            video_bytes=video_bytes,
+                            video_mime_type=video_mime_type,
+                            response_format=response_format,
+                        )
+                finally:
+                    if current_context:
+                        tracer.context_provider.activate(current_context)
+
+            loop = asyncio.get_running_loop()
+            analysis_result = await loop.run_in_executor(
+                None, call_native_video_llm_with_isolated_trace
+            )
+
+            prompt_summary = {
+                "system_instruction": system_instruction,
+                "user_prompt": prompt,
+                "reference_images": [
+                    {"description": ref_img["description"]}
+                    for ref_img in reference_images_base64
+                ],
+                "native_video": True,
+                "video_size_bytes": len(video_bytes),
+            }
+        else:
+            # Frame extraction path: extract frames and send as images
+            video_frames = await extract_video_frames(video_url)
+
+            def call_video_llm_with_isolated_trace() -> dict:
+                current_context = tracer.current_trace_context()
+                tracer.context_provider.activate(None)
+
+                try:
+                    with tracer.trace(
+                        "monitoring.llm.analyze_video_frames",
+                        service="pal-mono-monitoring",
+                    ) as span:
+                        span.set_tag("monitoring.config_id", str(monitoring_config_id))
+                        span.set_tag(
+                            "monitoring.llm_provider", provider.config.provider.value
+                        )
+                        span.set_tag("monitoring.llm_model", provider.config.model)
+                        span.set_tag("monitoring.media_type", "video")
+                        span.set_tag(
+                            "monitoring.video_frames_count", str(len(video_frames))
+                        )
+
+                        return provider.analyze_video_frames(
+                            system_instruction=system_instruction,
+                            analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
+                            reference_images=reference_images_for_provider,
+                            video_frames=video_frames,
+                            response_format=response_format,
+                        )
+                finally:
+                    if current_context:
+                        tracer.context_provider.activate(current_context)
+
+            loop = asyncio.get_running_loop()
+            analysis_result = await loop.run_in_executor(
+                None, call_video_llm_with_isolated_trace
+            )
+
+            prompt_summary = {
+                "system_instruction": system_instruction,
+                "user_prompt": prompt,
+                "reference_images": [
+                    {"description": ref_img["description"]}
+                    for ref_img in reference_images_base64
+                ],
+                "video_frames_count": len(video_frames),
+            }
 
         logger.info(
             f"Monitoring LLM video analysis completed for config {monitoring_config_id}",
             extra={
                 "config_id": str(monitoring_config_id),
                 "result": analysis_result.get("result", "unknown"),
-                "video_frames_count": len(video_frames),
+                "native_video": use_native_video,
             },
         )
-
-        # Build prompt summary (excluding base64 data for readability)
-        prompt_summary = {
-            "system_instruction": system_instruction,
-            "user_prompt": prompt,
-            "reference_images": [
-                {"description": ref_img["description"]}
-                for ref_img in reference_images_base64
-            ],
-            "video_frames_count": len(video_frames),
-        }
 
         return {
             "prompt_sent": prompt_summary,

@@ -70,6 +70,18 @@ def _strip_additional_properties(schema: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+# Models that support native video input (entire video file passed directly).
+# For unlisted models, video is pre-processed into frames before analysis.
+NATIVE_VIDEO_MODELS: set[str] = {
+    "gemini-2.5-flash",
+}
+
+
+def supports_native_video(provider: "MonitoringLLMProvider", model: str) -> bool:
+    """Check if a provider+model combination supports native video input."""
+    return provider == MonitoringLLMProvider.GOOGLE and model in NATIVE_VIDEO_MODELS
+
+
 class MonitoringLLMProvider(str, Enum):
     """Supported LLM providers for monitoring service."""
 
@@ -748,6 +760,142 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
         except json.JSONDecodeError as e:
             logger.error(
                 f"[Monitoring LLM] Failed to parse Gemini video response as JSON: {e}"
+            )
+            logger.error(f"[Monitoring LLM] Raw response text: {response.text}")
+            raise
+
+    def analyze_native_video(
+        self,
+        system_instruction: str,
+        analysis_task: str,
+        reference_images: list[dict[str, Any]],
+        video_bytes: bytes,
+        video_mime_type: str = "video/mp4",
+        response_format: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Analyze a video file natively using Google Gemini API.
+
+        Instead of extracting frames, the entire video is passed directly
+        to Gemini which has native video understanding capabilities.
+
+        Args:
+            system_instruction: System-level instruction
+            analysis_task: Specific task description
+            reference_images: List of dicts with 'description' and 'base64_data' keys
+            video_bytes: Raw video file bytes
+            video_mime_type: MIME type of the video (default: "video/mp4")
+            response_format: Optional JSON schema for structured output
+
+        Returns:
+            dict: Analysis result from Gemini
+
+        Raises:
+            Exception: If Gemini API call fails
+        """
+        # Build content parts for multimodal input
+        content_parts: list[str | Part] = [system_instruction + "\n\n" + analysis_task]
+
+        # Add reference images with descriptions
+        if reference_images:
+            content_parts.append("\n**Reference Images (Expected State):**")
+            for idx, ref_img in enumerate(reference_images, 1):
+                content_parts.append(f"\nReference {idx}: {ref_img['description']}")
+                image_bytes = base64.b64decode(ref_img["base64_data"])
+                content_parts.append(
+                    Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+                )
+
+        # Add entire video as a single part
+        content_parts.append(
+            "\n**Monitoring Video:**\nPlease analyze this video from the monitoring camera and evaluate based on the analysis task."
+        )
+        content_parts.append(
+            Part.from_bytes(data=video_bytes, mime_type=video_mime_type)
+        )
+
+        logger.info(
+            f"[Monitoring LLM] Using Google Gemini (native video) - Model: {self.config.model}, "
+            f"Video size: {len(video_bytes)} bytes, MIME: {video_mime_type}, "
+            f"Max Tokens: {self.config.max_tokens}"
+        )
+
+        # Configure generation with JSON schema support
+        generation_config_params = {
+            "max_output_tokens": self.config.max_tokens,
+            "temperature": 0.0,
+            "response_mime_type": "application/json",
+        }
+
+        if response_format:
+            if isinstance(response_format, dict) and "type" in response_format:
+                if response_format.get("type") == "json_schema":
+                    schema = response_format.get("json_schema", {}).get("schema")
+                    if schema:
+                        gemini_schema = copy.deepcopy(schema)
+                        gemini_schema = _strip_additional_properties(gemini_schema)
+                        generation_config_params["response_schema"] = gemini_schema
+                        logger.info(
+                            "[Monitoring LLM] Using structured output with native Gemini JSON schema (native video)"
+                        )
+                    else:
+                        content_parts.append(
+                            '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
+                        )
+                        logger.warning(
+                            "[Monitoring LLM] json_schema type specified but no schema found, falling back to prompt instructions (native video)"
+                        )
+                else:
+                    content_parts.append(
+                        '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
+                    )
+                    logger.info(
+                        "[Monitoring LLM] Using JSON object mode with prompt instructions (native video)"
+                    )
+            else:
+                cleaned_schema = copy.deepcopy(response_format)
+                cleaned_schema = _strip_additional_properties(cleaned_schema)
+                generation_config_params["response_schema"] = cleaned_schema
+                logger.info(
+                    "[Monitoring LLM] Using structured output with direct schema (native video)"
+                )
+        else:
+            content_parts.append(
+                '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
+            )
+            logger.info(
+                "[Monitoring LLM] Using default JSON response format (native video)"
+            )
+
+        generation_config = GenerateContentConfig(**generation_config_params)
+
+        response = self.client.models.generate_content(
+            model=self.config.model,
+            contents=content_parts,  # type: ignore[arg-type]
+            config=generation_config,
+        )
+
+        # Log token usage
+        if response.usage_metadata:
+            logger.info(
+                f"[Monitoring LLM] Gemini token usage - "
+                f"Media: native_video, "
+                f"Model: {self.config.model}, "
+                f"Prompt: {response.usage_metadata.prompt_token_count}, "
+                f"Completion: {response.usage_metadata.candidates_token_count}, "
+                f"Total: {response.usage_metadata.total_token_count}"
+            )
+
+        # Parse and return response
+        try:
+            result = json.loads(response.text or "{}")
+            logger.info(
+                f"[Monitoring LLM] Gemini native video analysis completed - Result: {result.get('result', 'unknown')}"
+            )
+            return result
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"[Monitoring LLM] Failed to parse Gemini native video response as JSON: {e}"
             )
             logger.error(f"[Monitoring LLM] Raw response text: {response.text}")
             raise

@@ -583,7 +583,7 @@ def _build_image_analysis_mocks(mocker, config_id):
 
 
 def _build_video_analysis_mocks(mocker, config_id):
-    """Set up common mocks for generate_monitoring_video_llm_prompt tests."""
+    """Set up common mocks for generate_monitoring_video_llm_prompt tests (frame extraction path)."""
     mock_config = MagicMock()
     mock_config.rules = {
         "prompt": "Check the display",
@@ -615,6 +615,12 @@ def _build_video_analysis_mocks(mocker, config_id):
         ],
     )
 
+    # Mock supports_native_video to return False (frame extraction path)
+    mocker.patch(
+        "services.monitoring_service._llm.supports_native_video",
+        return_value=False,
+    )
+
     # Mock provider creation
     mock_provider = MagicMock()
     mock_provider.config.provider.value = "azure"
@@ -622,6 +628,55 @@ def _build_video_analysis_mocks(mocker, config_id):
     mock_provider.analyze_video_frames.return_value = {
         "result": "pass",
         "details": "All clear",
+    }
+    mocker.patch(
+        "services.monitoring_service._llm.create_monitoring_llm_provider",
+        return_value=mock_provider,
+    )
+
+    return mock_provider
+
+
+def _build_native_video_analysis_mocks(mocker, config_id):
+    """Set up common mocks for generate_monitoring_video_llm_prompt tests (native video path)."""
+    from services.monitoring_service._providers import GoogleMonitoringProvider
+
+    mock_config = MagicMock()
+    mock_config.rules = {
+        "prompt": "Check the display",
+        "reference_images": [],
+        "model": {"provider": "google", "model": "gemini-2.5-flash"},
+    }
+
+    mock_config_repo = mocker.patch(
+        "services.monitoring_service._llm.MonitoringConfigRepositoryAsync"
+    )
+    mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+
+    # Mock S3
+    mock_s3 = MagicMock()
+    mocker.patch("services.monitoring_service._llm.boto3.client", return_value=mock_s3)
+
+    # Mock supports_native_video to return True
+    mocker.patch(
+        "services.monitoring_service._llm.supports_native_video",
+        return_value=True,
+    )
+
+    # Mock download_video_bytes
+    mocker.patch(
+        "services.monitoring_service._llm.download_video_bytes",
+        return_value=(b"fake-video-bytes", "video/mp4"),
+    )
+
+    # Mock provider creation — must pass isinstance check for GoogleMonitoringProvider
+    mock_provider = MagicMock()
+    mock_provider.__class__ = GoogleMonitoringProvider  # type: ignore[misc]
+    mock_provider.config.provider.value = "google"
+    mock_provider.config.model = "gemini-2.5-flash"
+    mock_provider.analyze_native_video.return_value = {
+        "result": "pass",
+        "details": "All clear from native video",
     }
     mocker.patch(
         "services.monitoring_service._llm.create_monitoring_llm_provider",
@@ -889,3 +944,148 @@ class TestVideoAnalysisTraceIsolation:
         assert activate_calls[-1] == call(
             fake_parent_context
         ), "Should restore context even when provider raises"
+
+
+class TestNativeVideoAnalysis:
+    """Tests for native video path in generate_monitoring_video_llm_prompt."""
+
+    @pytest.mark.asyncio
+    async def test_uses_native_video_when_supported(self, mocker):
+        """Should call analyze_native_video instead of analyze_video_frames for supported models."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_provider = _build_native_video_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = await generate_monitoring_video_llm_prompt(
+            session, config_id, "vid.mp4"
+        )
+
+        # Should call analyze_native_video, not analyze_video_frames
+        mock_provider.analyze_native_video.assert_called_once()
+        mock_provider.analyze_video_frames.assert_not_called()
+        assert result["analysis_result"]["result"] == "pass"
+
+    @pytest.mark.asyncio
+    async def test_native_video_downloads_raw_bytes(self, mocker):
+        """Should call download_video_bytes instead of extract_video_frames."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_native_video_analysis_mocks(mocker, config_id)
+
+        mock_download = mocker.patch(
+            "services.monitoring_service._llm.download_video_bytes",
+            return_value=(b"video-data", "video/mp4"),
+        )
+        mock_extract = mocker.patch(
+            "services.monitoring_service._llm.extract_video_frames",
+        )
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
+
+        mock_download.assert_called_once_with("vid.mp4")
+        mock_extract.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_native_video_prompt_summary_includes_metadata(self, mocker):
+        """Should include native_video flag and video_size_bytes in prompt summary."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_native_video_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = await generate_monitoring_video_llm_prompt(
+            session, config_id, "vid.mp4"
+        )
+
+        prompt = result["prompt_sent"]
+        assert prompt["native_video"] is True
+        assert prompt["video_size_bytes"] == len(b"fake-video-bytes")
+        assert "video_frames_count" not in prompt
+
+    @pytest.mark.asyncio
+    async def test_native_video_trace_tags(self, mocker):
+        """Should set native_video media_type and video_size_bytes tags on span."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        _build_native_video_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
+
+        mock_tracer.trace.assert_called_once_with(
+            "monitoring.llm.analyze_native_video",
+            service="pal-mono-monitoring",
+        )
+        mock_span.set_tag.assert_any_call("monitoring.media_type", "native_video")
+        mock_span.set_tag.assert_any_call(
+            "monitoring.video_size_bytes", str(len(b"fake-video-bytes"))
+        )
+        mock_span.set_tag.assert_any_call("monitoring.video_mime_type", "video/mp4")
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_frames_when_not_supported(self, mocker):
+        """Should use frame extraction when model does not support native video."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_provider = _build_video_analysis_mocks(mocker, config_id)
+
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = await generate_monitoring_video_llm_prompt(
+            session, config_id, "vid.mp4"
+        )
+
+        mock_provider.analyze_video_frames.assert_called_once()
+        assert "video_frames_count" in result["prompt_sent"]
+        assert "native_video" not in result["prompt_sent"]
