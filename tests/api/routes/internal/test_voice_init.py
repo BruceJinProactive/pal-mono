@@ -191,22 +191,6 @@ class TestInitVoiceCallProjectNotFound:
         assert "Project not found" in exc.detail
 
 
-class TestInitVoiceCallSubscriptionBlocked:
-    """Subscription enforcement blocks the call -> 403."""
-
-    @pytest.mark.asyncio
-    async def test_returns_403(self) -> None:
-        exc = await _run_expecting_error(
-            _make_request(),
-            project=_make_project(),
-            user=_make_user(),
-            voice_configs=[],
-            block_calls=True,
-        )
-        assert exc.status_code == 403
-        assert "subscription" in exc.detail.lower()
-
-
 class TestInitVoiceCallNoVoiceConfigs:
     """No voice configs for project -> 404."""
 

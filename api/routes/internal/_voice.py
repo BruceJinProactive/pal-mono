@@ -26,7 +26,7 @@ from api.schemas.internal.voice_init import (
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.types import Channel, SpeechRate
 from events import ConversationEvaluationRequested, publish_event
-from services import project_service, subscription_service, user_service
+from services import project_service, user_service
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
@@ -168,7 +168,7 @@ async def init_voice_call(
 
     Replicates the essential setup from ``handle_assistant_request`` in the Vapi
     integration (project lookup, user resolution, conversation creation,
-    subscription check, voice config retrieval) but returns structured JSON
+    voice config retrieval) but returns structured JSON
     instead of a Vapi assistant payload.
     """
     # TODO: Remove per-step debug logging after LiveKit voice init is stable in production
@@ -225,22 +225,7 @@ async def init_voice_call(
 
     logger.info("[init_voice_call] Step 3 done: user=%s", user.id, extra=_log_extra)
 
-    # --- Step 4: Check subscription enforcement ---
-    if await subscription_service.should_block_calls_async(session, project.account):
-        logger.info(
-            "LiveKit call blocked due to subscription enforcement",
-            extra={
-                "account_id": str(project.account.id),
-                "call_id": call_id,
-            },
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Voice calls are not available without an active subscription",
-            headers={"Content-Type": "application/json"},
-        )
-
-    # --- Step 5: Create voice message / conversation ---
+    # --- Step 4: Create voice message / conversation ---
     message_repo = db.MessageRepositoryAsync(session)
     await message_repo.create_voice_message(
         user_id=user.id,
@@ -254,9 +239,9 @@ async def init_voice_call(
         attribute_names=["id", "timezone", "transfer_phone_number", "transfer_message"],
     )
 
-    logger.info("[init_voice_call] Step 5 done: conversation created", extra=_log_extra)
+    logger.info("[init_voice_call] Step 4 done: conversation created", extra=_log_extra)
 
-    # --- Step 6: Build caller_info ---
+    # --- Step 5: Build caller_info ---
     # Capture project attributes into locals so later DB queries can't expire them.
     project_timezone = project.timezone
     project_transfer_phone = project.transfer_phone_number
@@ -272,7 +257,7 @@ async def init_voice_call(
         "transfer_message": project_transfer_msg,
     }
 
-    # --- Step 7: Fetch voice configs ---
+    # --- Step 6: Fetch voice configs ---
     voice_repo = VoiceConfigRepositoryAsync(session)
     voice_configs = await voice_repo.get_voice_configs_by_project(project_id)
     if not voice_configs:
@@ -317,13 +302,13 @@ async def init_voice_call(
         vc = english_configs[0] if english_configs else voice_configs[0]
 
     logger.info(
-        "[init_voice_call] Step 7 done: found %s voice_configs, languages=%s",
+        "[init_voice_call] Step 6 done: found %s voice_configs, languages=%s",
         len(voice_configs),
         languages,
         extra=_log_extra,
     )
 
-    # --- Step 8: Resolve greeting ---
+    # --- Step 7: Resolve greeting ---
     caller_timezone = project_timezone or "America/Los_Angeles"
     first_message = _resolve_greeting(
         vc.first_message or "Hi, how can I help you today?",
@@ -331,7 +316,7 @@ async def init_voice_call(
         vc.language,
     )
 
-    # --- Step 9: Map speech rate to float ---
+    # --- Step 8: Map speech rate to float ---
     speech_rate = _SPEECH_RATE_TO_FLOAT.get(vc.speech_rate, 1.0)
 
     logger.info("[init_voice_call] Completed successfully", extra=_log_extra)
