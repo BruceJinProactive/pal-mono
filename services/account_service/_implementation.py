@@ -173,9 +173,9 @@ def update_account(
         author=context.email,
         old_record=old_account,
     ) as ctx:
-        # Update the account
+        update_params = {k: v for k, v in asdict(params).items() if v is not None}
         updated_account = account_repository.update_account(
-            account_name, expected_version, **asdict(params)
+            account_name, expected_version, **update_params
         )
         if updated_account is None:
             raise ValueError(f"Failed to update account {account_name}")
