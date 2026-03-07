@@ -23,6 +23,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("agno").setLevel(logging.WARNING)
 # Multipart form parser internals: header field/value parsing callbacks
 logging.getLogger("python_multipart.multipart").setLevel(logging.WARNING)
+# OpenAI SDK internals: logs full HTTP request/response payloads including base64 image data
+logging.getLogger("openai").setLevel(logging.WARNING)
+# HTTP core connection internals: connection lifecycle, data sent/received
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # Context variable for request correlation ID
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
