@@ -72,7 +72,8 @@ async def generate_monitoring_llm_prompt(
                 },
                 "analysis_result": {
                     "result": "pass" or "fail" or "error",
-                    "details": str
+                    "details": str,
+                    "confidence": int (1-100, present for pass/fail results)
                 }
             }
 
@@ -174,7 +175,7 @@ Image validation issues to check for:
 - The image content is completely unrelated to what should be monitored based on the reference images and task description
 - The image quality is too poor to perform any meaningful analysis
 
-Please analyze the images carefully and respond with a JSON object that follows this schema:
+Please analyze the images carefully and respond with a JSON object that follows this schema. If the schema includes a confidence field, provide an integer from 1-100 indicating your confidence in the assessment:
 
 {json.dumps(structured_output, indent=2)}
 
@@ -193,7 +194,8 @@ Please analyze the images carefully and respond with a JSON object in ONE of the
 For valid images:
 {
   "result": "pass" or "fail",
-  "details": "any relevant details about your analysis, why it passes/ failed"
+  "details": "any relevant details about your analysis, why it passes/ failed",
+  "confidence": <integer from 1-100 indicating your confidence in this assessment>
 }
 
 For invalid/problematic images:
@@ -591,7 +593,8 @@ async def generate_monitoring_video_llm_prompt(
                 },
                 "analysis_result": {
                     "result": "pass" or "fail" or "error",
-                    "details": str
+                    "details": str,
+                    "confidence": int (1-100, present for pass/fail results)
                 }
             }
 
@@ -675,7 +678,7 @@ Frame validation issues to check for:
 - The frame content is completely unrelated to what should be monitored based on the reference images and task description
 - The frame quality is too poor to perform any meaningful analysis
 
-Please analyze all the video frames carefully, noting any changes over time, and respond with a JSON object that follows this schema:
+Please analyze all the video frames carefully, noting any changes over time, and respond with a JSON object that follows this schema. If the schema includes a confidence field, provide an integer from 1-100 indicating your confidence in the assessment:
 
 {json.dumps(structured_output, indent=2)}
 
@@ -694,7 +697,8 @@ Please analyze all the video frames carefully, noting any changes over time, and
 For valid frames:
 {
   "result": "pass" or "fail",
-  "details": "any relevant details about your analysis, why it passes/failed"
+  "details": "any relevant details about your analysis, why it passes/failed",
+  "confidence": <integer from 1-100 indicating your confidence in this assessment>
 }
 
 For invalid/problematic frames:
