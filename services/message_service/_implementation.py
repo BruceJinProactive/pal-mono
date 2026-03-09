@@ -600,7 +600,7 @@ async def get_chat_response_stream(
                                         conversation.transfer_purpose = (
                                             transfer_purpose_captured
                                         )
-                                        await session.flush()
+                                        await session.commit()
                                         logger.info(
                                             "Captured transfer_purpose during streaming",
                                             extra={
@@ -611,6 +611,7 @@ async def get_chat_response_stream(
                                             },
                                         )
                                 except Exception as e:
+                                    await session.rollback()
                                     logger.warning(
                                         "Failed to persist transfer_purpose",
                                         extra={
