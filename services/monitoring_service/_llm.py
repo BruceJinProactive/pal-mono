@@ -45,6 +45,34 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_ASSET_BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME")
 
 
+def _add_confidence_to_schema(schema: dict) -> dict:
+    """
+    Add confidence field to structured output schema if not already present.
+
+    Args:
+        schema: JSON schema dictionary
+
+    Returns:
+        Enhanced schema with confidence field
+    """
+    # Deep copy to avoid modifying original
+    import copy
+
+    enhanced = copy.deepcopy(schema)
+
+    # Check if confidence already exists
+    if "properties" in enhanced and "confidence" not in enhanced["properties"]:
+        # Add confidence as optional field (not in required list)
+        enhanced["properties"]["confidence"] = {
+            "type": "integer",
+            "description": "Confidence level from 1-100 indicating certainty in the assessment. Only include for pass/fail results, not for error results.",
+            "minimum": 1,
+            "maximum": 100,
+        }
+
+    return enhanced
+
+
 async def generate_monitoring_llm_prompt(
     session: AsyncSession,
     monitoring_config_id: uuid.UUID,
@@ -165,6 +193,9 @@ async def generate_monitoring_llm_prompt(
     # Build LLM prompt with images - structured as a vision analysis prompt
     # Use custom structured output if provided, otherwise use default
     if structured_output:
+        # Inject confidence field if not already present
+        enhanced_schema = _add_confidence_to_schema(structured_output)
+
         system_instruction = f"""You are a visual monitoring assistant. Your task is to analyze a camera image and compare it against reference images to detect any issues or anomalies.
 
 First, verify that the camera image is valid and relevant to the analysis task. If the image has any of these issues, you should indicate an error in your response according to the schema below.
@@ -177,10 +208,11 @@ Image validation issues to check for:
 
 Please analyze the images carefully and respond with a JSON object that follows this schema. If the schema includes a confidence field, provide an integer from 1-100 indicating your confidence in the assessment:
 
-{json.dumps(structured_output, indent=2)}
+{json.dumps(enhanced_schema, indent=2)}
 
 Ensure your response strictly adheres to this schema structure."""
     else:
+        enhanced_schema = None
         system_instruction = """You are a visual monitoring assistant. Your task is to analyze a camera image and compare it against reference images to detect any issues or anomalies.
 
 First, verify that the camera image is valid and relevant to the analysis task. If the image has any of these issues, return an error:
@@ -212,14 +244,14 @@ For invalid/problematic images:
 
     # Determine response format based on custom structured output
     response_format = None
-    if structured_output:
+    if enhanced_schema:
         # Use structured outputs with custom JSON schema
         response_format = {
             "type": "json_schema",
             "json_schema": {
                 "name": "monitoring_analysis",
                 "strict": True,
-                "schema": structured_output,
+                "schema": enhanced_schema,
             },
         }
 
@@ -668,6 +700,9 @@ async def generate_monitoring_video_llm_prompt(
 
     # Build system instruction adapted for video analysis
     if structured_output:
+        # Inject confidence field if not already present
+        enhanced_schema = _add_confidence_to_schema(structured_output)
+
         system_instruction = f"""You are a visual monitoring assistant. Your task is to analyze video frames captured at regular intervals from a monitoring camera and compare them against reference images to detect any issues or anomalies.
 
 First, verify that the video frames are valid and relevant to the analysis task. If the frames have any of these issues, you should indicate an error in your response according to the schema below.
@@ -680,10 +715,11 @@ Frame validation issues to check for:
 
 Please analyze all the video frames carefully, noting any changes over time, and respond with a JSON object that follows this schema. If the schema includes a confidence field, provide an integer from 1-100 indicating your confidence in the assessment:
 
-{json.dumps(structured_output, indent=2)}
+{json.dumps(enhanced_schema, indent=2)}
 
 Ensure your response strictly adheres to this schema structure."""
     else:
+        enhanced_schema = None
         system_instruction = """You are a visual monitoring assistant. Your task is to analyze video frames captured at regular intervals from a monitoring camera and compare them against reference images to detect any issues or anomalies.
 
 First, verify that the video frames are valid and relevant to the analysis task. If the frames have any of these issues, return an error:
@@ -715,13 +751,13 @@ For invalid/problematic frames:
 
     # Determine response format based on custom structured output
     response_format = None
-    if structured_output:
+    if enhanced_schema:
         response_format = {
             "type": "json_schema",
             "json_schema": {
                 "name": "monitoring_analysis",
                 "strict": True,
-                "schema": structured_output,
+                "schema": enhanced_schema,
             },
         }
 
