@@ -78,9 +78,13 @@ async def get_chat_response_async(
         # find project with matching channel platform, identifier pair
         project = await project_service.get_project_async(session, message)
 
-        # Store project_id and raw_config early while object is attached to session
+        # Store project attributes early while object is attached to session
         project_id = project.id
+        project_name = project.name
         project_raw_config = project.raw_config or {}
+        project_agent_id = project.agent_id
+        project_account_id = project.account_id
+        project_timezone = project.timezone
 
         # Check if project uses pal-agents framework (from raw_config)
         use_pal_agents = project_raw_config.get("use_pal_agents", False)
@@ -113,7 +117,7 @@ async def get_chat_response_async(
             raise ValueError("Failed to create request message")
 
         # Get agent_id (needed for metadata regardless of which flow)
-        agent_id = project.agent_id
+        agent_id = project_agent_id
         if agent_id is None:
             raise ValueError("Agent ID not found")
 
@@ -151,10 +155,10 @@ async def get_chat_response_async(
                 session_id=str(request_message.conversation_id),
                 customer_phone=customer_phone,
                 project_id=str(project_id),
-                account_id=str(project.account_id),
+                account_id=str(project_account_id),
                 account_name=account_name,
                 agent_id=str(agent_id),
-                timezone=project.timezone or "America/Los_Angeles",
+                timezone=project_timezone or "America/Los_Angeles",
                 channel=message.channel.value,
             )
 
@@ -249,7 +253,7 @@ async def get_chat_response_async(
         # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
         output_message_metadata = Metadata(
             account_name=account_name,
-            project_name=project.name,
+            project_name=project_name,
             agent_id=str(agent_id),
             user_id=str(user.id),
             session_id=str(request_message.conversation_id),
@@ -349,8 +353,13 @@ async def get_chat_response_stream(
         try:
             # ==== Step 1: Get project, user, and save request message ====
             project = await project_service.get_project_async(session, message)
-            # Capture raw_config early while object is attached to session
+            # Capture project attributes early while object is attached to session
+            project_id = project.id
+            project_name = project.name
             project_raw_config = project.raw_config or {}
+            project_agent_id = project.agent_id
+            project_account_id = project.account_id
+            project_timezone = project.timezone
 
             # Check if project uses pal-agents framework (from raw_config)
             use_pal_agents = project_raw_config.get("use_pal_agents", False)
@@ -382,7 +391,7 @@ async def get_chat_response_stream(
                         "falling back to text message conversation logic",
                         extra={
                             "user_id": str(user.id),
-                            "project_id": str(project.id),
+                            "project_id": str(project_id),
                             "sender_identifier": message.sender_identifier,
                             "recipient_identifier": message.recipient_identifier,
                         },
@@ -390,7 +399,7 @@ async def get_chat_response_stream(
                 # Existing text message logic with conversation reuse
                 request_message = await message_repo.create_message(
                     user_id=user.id,
-                    project_id=project.id,
+                    project_id=project_id,
                     message_body=message.to_dict(),
                     channel=message.channel.value if message.channel else "unknown",
                 )
@@ -412,7 +421,7 @@ async def get_chat_response_stream(
             )
 
             # ==== Step 2: Set up agent and generate streaming response ====
-            agent_id = project.agent_id
+            agent_id = project_agent_id
             if agent_id is None:
                 raise ValueError("Agent ID not found")
 
@@ -427,7 +436,7 @@ async def get_chat_response_stream(
                     session=session,
                     agent_id=agent_id,
                     user_id=user.id,
-                    project_id=project.id,
+                    project_id=project_id,
                     conversation_id=request_message.conversation_id,
                     channel=message.channel,
                     sender_identifier=message.sender_identifier,
@@ -473,11 +482,11 @@ async def get_chat_response_stream(
                     user_id=str(user.id),
                     session_id=str(request_message.conversation_id),
                     customer_phone=customer_phone,
-                    project_id=str(project.id),
-                    account_id=str(project.account_id),
+                    project_id=str(project_id),
+                    account_id=str(project_account_id),
                     account_name=account_name,
                     agent_id=str(agent_id),
-                    timezone=project.timezone or "America/Los_Angeles",
+                    timezone=project_timezone or "America/Los_Angeles",
                     channel=message.channel.value,
                     # Voice-specific fields (extra="allow" permits these)
                     call_id=call_id,  # type: ignore[call-arg]
@@ -684,7 +693,7 @@ async def get_chat_response_stream(
                     session=session,
                     agent_id=agent_id,
                     user_id=user.id,
-                    project_id=project.id,
+                    project_id=project_id,
                     conversation_id=request_message.conversation_id,
                     channel=message.channel,
                     sender_identifier=message.sender_identifier,
@@ -823,7 +832,7 @@ async def get_chat_response_stream(
             if collected_content:
                 output_message_metadata = Metadata(
                     account_name=account_name,
-                    project_name=project.name,
+                    project_name=project_name,
                     agent_id=str(agent_id),
                     user_id=str(user.id),
                     session_id=str(request_message.conversation_id),
