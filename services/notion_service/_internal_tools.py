@@ -69,7 +69,9 @@ async def find_notion_user_id_by_name(
             except ValueError:
                 return None
 
-        name_lower = name.lower()
+        # Normalize: "jane.doe" -> "jane doe" for matching against
+        # Notion display names like "Jane Doe"
+        name_normalized = name.lower().replace(".", " ").replace("_", " ")
         cursor: Optional[str] = None
         total_checked = 0
         while True:
@@ -79,7 +81,7 @@ async def find_notion_user_id_by_name(
             resp = await client.users.list(**params)
             for user in resp.get("results", []):
                 total_checked += 1
-                if user.get("name", "").lower() == name_lower:
+                if user.get("name", "").lower() == name_normalized:
                     logger.info(
                         "[Notion] Found user matching '%s' -> %s",
                         name,

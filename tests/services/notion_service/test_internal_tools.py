@@ -356,6 +356,16 @@ class TestFindNotionUserIdByName:
         assert result == "user-1"
 
     @pytest.mark.asyncio
+    async def test_matches_slack_dot_name_to_notion_display_name(self) -> None:
+        mock_client = AsyncMock()
+        mock_client.users.list.return_value = {
+            "results": [{"id": "user-1", "name": "Jane Doe"}],
+            "has_more": False,
+        }
+        result = await find_notion_user_id_by_name("jane.doe", client=mock_client)
+        assert result == "user-1"
+
+    @pytest.mark.asyncio
     async def test_returns_none_when_no_match(self) -> None:
         mock_client = AsyncMock()
         mock_client.users.list.return_value = {
