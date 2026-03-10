@@ -8,6 +8,7 @@ Structure:
 - _pages: Generic page operations (create_page, update_page_properties)
 - _properties: Property/block builders (build_title_property, etc.)
 - _feedback: Feedback-specific helpers (create_feedback_ticket, etc.)
+- _internal_tools: Internal tool queries and feedback/request submissions
 - _utils: General utilities (format_notion_page_id, etc.)
 
 Generic Functions:
@@ -20,6 +21,9 @@ Property Builders:
 Domain-Specific Functions:
 - create_feedback_ticket: Convenience wrapper for feedback tickets
 - update_feedback_status: Convenience wrapper for feedback status updates
+- get_internal_tools: Query internal tools directory
+- submit_tool_feedback: Submit feedback for an internal tool
+- submit_tool_request: Submit a new tool request
 """
 
 from ._client import get_notion_client
@@ -31,6 +35,11 @@ from ._feedback import (
     get_feedback_fde,
     get_feedback_tickets_by_client,
     update_feedback_status,
+)
+from ._internal_tools import (
+    get_internal_tools,
+    submit_tool_feedback,
+    submit_tool_request,
 )
 from ._pages import (
     create_page,
@@ -71,6 +80,10 @@ __all__ = [
     "get_all_feedback_tickets",
     "create_client_page",
     "RESOLVED_STATUSES",
+    # Internal tools
+    "get_internal_tools",
+    "submit_tool_feedback",
+    "submit_tool_request",
     # Utilities
     "extract_notion_page_id",
     "format_notion_page_id",

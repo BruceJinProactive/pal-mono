@@ -4,6 +4,7 @@ Slack Interactions Implementation
 Handles Slack interactive components (button clicks, modals, etc.)
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -19,6 +20,32 @@ from services.slack_service import make_feedback_button
 from services.slack_service._client import get_slack_client
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
+
+# Track background tasks so they aren't garbage-collected before completion.
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _schedule_background_task(
+    coro: Any,
+    name: str,
+) -> None:
+    """Schedule an async coroutine as a background task with exception logging."""
+    task = asyncio.create_task(coro, name=name)
+    _background_tasks.add(task)
+
+    def _done(t: asyncio.Task[Any]) -> None:
+        _background_tasks.discard(t)
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logger.exception(
+                "[Slack Interactions] Background task failed: %s",
+                exc,
+                extra={"task_name": t.get_name()},
+            )
+
+    task.add_done_callback(_done)
 
 
 def verify_slack_signature(
@@ -364,6 +391,23 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
 
         # Extract action information
         action_type = payload.get("type")
+
+        # Handle modal form submissions (Mercury interactive workflows)
+        if action_type == "view_submission":
+            callback_id = payload.get("view", {}).get("callback_id", "")
+            if callback_id.startswith("mercury_"):
+                from ._mercury_actions import handle_mercury_view_submission
+
+                _schedule_background_task(
+                    handle_mercury_view_submission(payload),
+                    name=f"mercury_view:{callback_id}",
+                )
+                return {"ok": True}
+            logger.warning(
+                f"[Slack Interactions] Unhandled view_submission: {callback_id}"
+            )
+            return {"ok": True}
+
         if action_type != "block_actions":
             logger.warning(
                 f"[Slack Interactions] Unsupported interaction type: {action_type}"
@@ -377,6 +421,24 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
 
         action = actions[0]
         action_id = action.get("action_id")
+
+        # Handle Mercury help menu button clicks
+        if action_id and action_id.startswith("mercury_"):
+            from ._mercury_actions import (
+                MERCURY_DIRECT_ACTIONS,
+                handle_mercury_block_action,
+            )
+
+            if action_id in MERCURY_DIRECT_ACTIONS:
+                # Direct commands don't open modals — safe to background.
+                _schedule_background_task(
+                    handle_mercury_block_action(payload, action),
+                    name=f"mercury_action:{action_id}",
+                )
+            else:
+                # Modal openers use trigger_id which expires in 3 s — must await.
+                await handle_mercury_block_action(payload, action)
+            return {"ok": True}
         button_value = action.get("value", "")
 
         # Get message and channel info (needed for all actions)

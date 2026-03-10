@@ -937,125 +937,124 @@ def create_conversion_section(unified_accounts: dict) -> dict | None:
 
 def build_help_page() -> dict:
     """
-    Build comprehensive help page with all available Slack bot commands.
+    Build interactive help page with clickable buttons for all Mercury commands.
+
+    Buttons either execute commands directly or open modals for user input.
+    All interactions are handled via the /slack/interactions endpoint.
 
     Returns:
-        dict: Slack blocks structure with command reference and examples
+        dict: Slack blocks structure with interactive command buttons
     """
     blocks = []
 
     # Main header
-    blocks.append(build_header_block("🤖 Mercury - Command Reference"))
+    blocks.append(build_header_block("🤖 Mercury - Your Palona Assistant"))
 
     # Introduction
-    intro_text = (
-        "Hi! I'm Mercury, your junior assistant at Palona AI. Here's what I can help you with:\n\n"
-        "_Remember: @mention me in channels so I see your message!_"
+    blocks.append(
+        build_section_block(
+            "Click any button below to get started — no commands to remember!\n"
+            "_You can also type commands directly (e.g. `daily for romeo`)_"
+        )
     )
-    blocks.append(build_section_block(intro_text))
     blocks.append(build_divider_block())
 
-    # ===== ANALYTICS COMMANDS SECTION =====
-    blocks.append(build_header_block("📊 Getting Reports"))
-
-    # Daily/Weekly/Monthly reports
-    period_commands_text = (
-        "*Ask me for reports anytime:*\n"
-        "• `daily` / `weekly` / `monthly` - Standard timeframes\n"
-        "• `last 6 hours` - Recent activity (up to 7 days)\n"
-        "• `from 2024-01-01 to 2024-01-31` - Any custom date range\n"
-        "• Add `for <account-name>` to focus on one client\n\n"
-        "*For example (in channels):*\n"
-        "`@Mercury daily for romeo` or `@Mercury last 24 hours`\n\n"
-        "*In DMs, just type:*\n"
-        "`daily for romeo`"
+    # ===== REPORTS SECTION =====
+    blocks.append(build_section_block("*📊 Reports*\nAnalytics for your accounts"))
+    blocks.append(
+        build_actions_block(
+            [
+                build_button("Daily", "mercury_daily", "daily"),
+                build_button("Weekly", "mercury_weekly", "weekly"),
+                build_button("Monthly", "mercury_monthly", "monthly"),
+                build_button("Custom Report...", "mercury_custom_report", "custom"),
+                build_button("Last X Hours...", "mercury_last_hours", "last_hours"),
+                build_button("Date Range...", "mercury_date_range", "date_range"),
+            ]
+        )
     )
-    blocks.append(build_section_block(period_commands_text))
     blocks.append(build_divider_block())
 
-    # ===== FEEDBACK COMMANDS SECTION =====
-    blocks.append(build_header_block("💬 Checking Feedback"))
-
-    feedback_commands_text = (
-        "*I'll show you what customers are saying:*\n"
-        "• `feedback` - Overview of clients needing attention\n"
-        "• `feedback <client-name>` - Open issues for this client\n"
-        "• `feedback-status <client-name>` - Complete feedback history\n\n"
-        "*For example (in channels):*\n"
-        "`@Mercury feedback romeo`\n\n"
-        "*In DMs:*\n"
-        "`feedback romeo`"
+    # ===== FEEDBACK SECTION =====
+    blocks.append(
+        build_section_block("*💬 Customer Feedback*\nCheck what customers are saying")
     )
-    blocks.append(build_section_block(feedback_commands_text))
+    blocks.append(
+        build_actions_block(
+            [
+                build_button("All Clients", "mercury_feedback_all", "feedback"),
+                build_button("Look Up Client...", "mercury_feedback_lookup", "lookup"),
+            ]
+        )
+    )
     blocks.append(build_divider_block())
 
-    # ===== CAMERA COMMANDS SECTION =====
-    blocks.append(build_header_block("📷 Camera Statistics"))
-
-    camera_commands_text = (
-        "*Check camera status for each account:*\n"
-        "• `camera` - Show all accounts\n"
-        "• `camera for <account1>,<account2>` - Filter specific accounts\n\n"
-        "*Status indicators:*\n"
-        "• 🟢 `account` 2/5 - Has active cameras (2 of 5 active)\n"
-        "• 🔴 `account` - Has cameras but none active\n"
-        "• ⚫ `account` - No cameras configured\n\n"
-        "*For example:*\n"
-        "`@Mercury camera for romeo,juliet`\n\n"
-        "_Active = captured image within last 5 minutes_"
+    # ===== CAMERA SECTION =====
+    blocks.append(
+        build_section_block(
+            "*📷 Camera Status*\nMonitor camera activity across accounts"
+        )
     )
-    blocks.append(build_section_block(camera_commands_text))
+    blocks.append(
+        build_actions_block(
+            [
+                build_button("All Cameras", "mercury_camera_all", "camera"),
+                build_button("Filter by Account...", "mercury_camera_filter", "filter"),
+            ]
+        )
+    )
     blocks.append(build_divider_block())
 
-    # ===== SUBSCRIPTION COMMANDS SECTION =====
-    blocks.append(build_header_block("💳 Subscription & Credits"))
-
-    subscription_commands_text = (
-        "*Check account subscription and credit balance:*\n"
-        "• `subscription for <account-name>` - Show subscription status and credit balance\n"
-        "• `subscription` - Auto-detects account in client channels\n\n"
-        "*Information provided:*\n"
-        "• Subscription status (active, trialing, past_due, etc.)\n"
-        "• Plan name and tier\n"
-        "• Start/end dates and trial information\n"
-        "• Payment method\n"
-        "• Current credit balance\n\n"
-        "*For example:*\n"
-        "`@Mercury subscription` in #client-romeo (auto-detects romeo)\n"
-        "`@Mercury subscription for juliet` in any channel\n\n"
-        "*In DMs:*\n"
-        "`subscription for romeo`"
+    # ===== SUBSCRIPTION SECTION =====
+    blocks.append(
+        build_section_block(
+            "*💳 Subscription & Credits*\nCheck account subscription and balance"
+        )
     )
-    blocks.append(build_section_block(subscription_commands_text))
+    blocks.append(
+        build_actions_block(
+            [
+                build_button(
+                    "Check Subscription...", "mercury_subscription", "subscription"
+                ),
+            ]
+        )
+    )
     blocks.append(build_divider_block())
 
-    # ===== REPORT METRICS SECTION =====
-    blocks.append(build_header_block("📈 What's in the Reports"))
-
-    metrics_text = (
-        "*Engagement metrics I track:*\n"
-        "Users, Conversations, Calls, Call Duration, Transfer Rate, Resolution Rate\n\n"
-        "*Revenue & conversion data:*\n"
-        "Orders, Paid Orders, Revenue, Conversion Rate, Average Order Value"
+    # ===== INTERNAL TOOLS SECTION =====
+    blocks.append(
+        build_section_block(
+            "*🔧 Internal Tools*\nSubmit feedback or request a new tool"
+        )
     )
-    blocks.append(build_section_block(metrics_text))
-    blocks.append(build_divider_block())
-
-    # ===== TIPS SECTION =====
-    blocks.append(build_header_block("💡 Quick Tips"))
-
-    tips_text = (
-        "• All times I show are in **PST/PDT**\n"
-        "• Client names use hyphens (like `acme-restaurant`)\n"
-        "• **In channels:** Always @mention me (`@Mercury`)\n"
-        "• **In DMs:** Just type commands directly\n"
-        "• You can add specific times with `HH:MM` format"
+    blocks.append(
+        build_actions_block(
+            [
+                build_button(
+                    "Submit Feedback",
+                    "mercury_tool_feedback",
+                    "tool_feedback",
+                    style="primary",
+                ),
+                build_button(
+                    "Request New Tool...",
+                    "mercury_tool_request",
+                    "tool_request",
+                ),
+            ]
+        )
     )
-    blocks.append(build_section_block(tips_text))
 
     # Footer
-    footer_text = "_I'm always here to help! Type `help` anytime. - Mercury_"
-    blocks.append(build_context_block([footer_text]))
+    blocks.append(
+        build_context_block(
+            [
+                "All times in PST/PDT · Client names use hyphens (e.g. `acme-restaurant`) · "
+                "In channels: @mention Mercury · In DMs: type directly"
+            ]
+        )
+    )
 
     return {"blocks": blocks}
 

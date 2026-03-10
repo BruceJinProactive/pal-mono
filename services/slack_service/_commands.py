@@ -231,7 +231,11 @@ async def handle_help_request(message, client):
 
 
 async def handle_report_request(
-    period: str, message, client, custom_dates: tuple[datetime, datetime] | None = None
+    period: str,
+    message,
+    client,
+    custom_dates: tuple[datetime, datetime] | None = None,
+    account_name: str | None = None,
 ):
     """
     Generic handler for all report requests (daily, weekly, monthly, custom).
@@ -246,6 +250,7 @@ async def handle_report_request(
         message: Slack message object
         client: Slack client object
         custom_dates: Optional tuple of (start_date, end_date) for custom ranges
+        account_name: Optional account name; when provided, skips text parsing
     """
     # Import here to avoid circular dependency
     from ._reports import (
@@ -262,8 +267,9 @@ async def handle_report_request(
         # Get human-readable channel name for logging
         channel_name = await get_channel_name(client, slack_channel)
 
-        # Parse account name from message if provided
-        account_name = parse_account_name_from_message(message_text)
+        # Parse account name from message if not already provided
+        if account_name is None:
+            account_name = parse_account_name_from_message(message_text)
 
         logger.info(
             f"[Slackbot] User {user} requested {period} report in channel {channel_name}"
@@ -343,13 +349,21 @@ async def handle_report_request(
             )
 
 
-async def handle_last_hours_request(message, client):
+async def handle_last_hours_request(
+    message,
+    client,
+    *,
+    hours: int | None = None,
+    account_name: str | None = None,
+):
     """
     Handle "last X hours" requests like "last 6 hours" or "last 12 hours for romeo".
 
     Args:
         message: Slack message object
         client: Slack client object
+        hours: Optional hours value; when provided, skips text parsing
+        account_name: Optional account name; when provided, skips text parsing
     """
     # Import here to avoid circular dependency
     from ._reports import (
@@ -361,9 +375,16 @@ async def handle_last_hours_request(message, client):
     try:
         message_text = message.get("text", "")
 
-        # Parse hours and account name from message
-        hours = parse_last_hours(message_text)
-        account_name = parse_account_name_from_message(message_text)
+        # Parse hours and account name from message if not already provided
+        if hours is None:
+            hours = parse_last_hours(message_text)
+        elif hours < 1 or hours > 168:
+            logger.warning(
+                "[Slackbot] Caller-supplied hours=%d out of range 1-168", hours
+            )
+            hours = None
+        if account_name is None:
+            account_name = parse_account_name_from_message(message_text)
 
         if not hours:
             # Send help message if parsing failed
