@@ -9,7 +9,8 @@ from db.tables.accounts import AccountStatus
 from db.tables.types import SubscriptionStatus
 from services.auth_types import UserContext
 
-from . import _implementation
+from . import _implementation, _tos
+from ._tos import CURRENT_TOS_VERSION, TOSStatus
 from .schema import AccountParams
 
 
@@ -192,14 +193,62 @@ def filter_accounts(
     )
 
 
+def check_tos_compliance(
+    session: Session, account_id: uuid.UUID, required_tos_version: str
+) -> bool:
+    """
+    Check if account has accepted the required TOS version.
+
+    Only checks tos_acceptances table - forces re-acceptance for all users.
+    Legacy account.terms_accepted field is ignored.
+
+    Args:
+        session (Session): The database session.
+        account_id (uuid.UUID): The account ID to check.
+        required_tos_version (str): Required TOS version (use CURRENT_TOS_VERSION constant).
+
+    Returns:
+        bool: True if account has accepted the required TOS version.
+    """
+    return _tos.check_tos_compliance(session, account_id, required_tos_version)
+
+
+def get_tos_status(
+    session: Session, account_id: uuid.UUID, required_tos_version: str
+) -> TOSStatus:
+    """
+    Get detailed TOS acceptance status for an account.
+
+    Only checks tos_acceptances table - forces re-acceptance for all users.
+    Legacy account.terms_accepted field is ignored.
+
+    Args:
+        session (Session): The database session.
+        account_id (uuid.UUID): The account ID to check.
+        required_tos_version (str): Required TOS version (use CURRENT_TOS_VERSION constant).
+
+    Returns:
+        TOSStatus: Typed dictionary with:
+            - accepted_tos_version: str | None (version accepted if compliant)
+            - is_compliant: bool (True if accepted the required version)
+            - accepted_at: datetime | None (when accepted, UTC)
+    """
+    return _tos.get_tos_status(session, account_id, required_tos_version)
+
+
 __all__ = [
     "AccountParams",
     "get_account",
     "get_account_async",
+    "get_account_by_id",
     "mget_accounts",
     "filter_accounts_by_name",
     "filter_accounts",
     "create_account",
     "update_account",
     "delete_account",
+    "check_tos_compliance",
+    "get_tos_status",
+    "CURRENT_TOS_VERSION",
+    "TOSStatus",
 ]
