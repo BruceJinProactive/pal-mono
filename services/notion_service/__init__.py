@@ -53,6 +53,7 @@ from ._properties import (
     build_relation_property,
     build_rich_text_property,
     build_select_property,
+    build_status_property,
     build_title_property,
     build_url_property,
 )
@@ -66,6 +67,7 @@ __all__ = [
     "build_title_property",
     "build_rich_text_property",
     "build_select_property",
+    "build_status_property",
     "build_multi_select_property",
     "build_email_property",
     "build_url_property",

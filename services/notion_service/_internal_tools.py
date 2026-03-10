@@ -15,11 +15,11 @@ from utils.secret import get_server_secret_with_fallback
 from ._client import get_notion_client
 from ._pages import create_page
 from ._properties import (
-    build_paragraph_block,
     build_people_property,
     build_relation_property,
     build_rich_text_property,
     build_select_property,
+    build_status_property,
     build_title_property,
 )
 from ._utils import format_notion_page_id
@@ -71,19 +71,30 @@ async def find_notion_user_id_by_name(
 
         name_lower = name.lower()
         cursor: Optional[str] = None
+        total_checked = 0
         while True:
             params: dict[str, Any] = {"page_size": 100}
             if cursor:
                 params["start_cursor"] = cursor
             resp = await client.users.list(**params)
             for user in resp.get("results", []):
+                total_checked += 1
                 if user.get("name", "").lower() == name_lower:
+                    logger.info(
+                        "[Notion] Found user matching '%s' -> %s",
+                        name,
+                        user.get("id"),
+                    )
                     return user["id"]
             if not resp.get("has_more"):
                 break
             cursor = resp.get("next_cursor")
 
-        logger.debug("[Notion] No user found matching name '%s'", name)
+        logger.info(
+            "[Notion] No user found matching name '%s' (checked %d users)",
+            name,
+            total_checked,
+        )
         return None
     except Exception as e:
         logger.warning("[Notion] Failed to look up user by name: %s", e)
@@ -202,6 +213,7 @@ async def submit_tool_feedback(
             "Tool": build_relation_property([formatted_tool_id]),
             "Request type": build_select_property(request_type),
             "Priority": build_select_property(priority),
+            "Status": build_status_property("New"),
         }
 
         # Try to resolve the Slack user name to a Notion user for the Requester field
@@ -209,12 +221,9 @@ async def submit_tool_feedback(
         if notion_user_id:
             properties["Requester"] = build_people_property([notion_user_id])
 
-        children = [build_paragraph_block(feedback_text[:_NOTION_TEXT_LIMIT])]
-
         page_url = await create_page(
             database_id=TOOL_FEEDBACK_DATABASE_ID,
             properties=properties,
-            children=children,
             client=client,
         )
 
@@ -272,6 +281,7 @@ async def submit_tool_request(
         properties: dict[str, Any] = {
             "Request": build_title_property(request_title[:_NOTION_TEXT_LIMIT]),
             "Priority": build_select_property(priority),
+            "Status": build_status_property("New"),
         }
 
         if problem_context.strip():

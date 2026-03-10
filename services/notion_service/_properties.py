@@ -51,6 +51,11 @@ def build_relation_property(page_ids: List[str]) -> Dict[str, Any]:
     return {"relation": [{"id": page_id} for page_id in page_ids]}
 
 
+def build_status_property(status_name: str) -> Dict[str, Any]:
+    """Build a Notion status property."""
+    return {"status": {"name": status_name}}
+
+
 def build_people_property(user_ids: List[str]) -> Dict[str, Any]:
     """Build a Notion people property."""
     return {"people": [{"object": "user", "id": uid} for uid in user_ids]}
