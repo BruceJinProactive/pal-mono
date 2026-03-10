@@ -452,7 +452,7 @@ async def update_config(
     add_descriptions: list[str] | None = None,
     add_image_flags: list[str] | None = None,
     remove_image_ids: list[str] | None = None,
-    update_descriptions: dict[str, str] | None = None,
+    update_image_metadata: dict[str, dict[str, str]] | None = None,
 ) -> tuple[MonitoringConfig | None, list[str]]:
     """
     Update a monitoring configuration with simple operation-based image management.
@@ -472,7 +472,8 @@ async def update_config(
         add_images: New image files to add.
         add_descriptions: Descriptions for new images.
         remove_image_ids: List of image UUIDs to remove.
-        update_descriptions: Dict mapping image_id -> new_description.
+        update_image_metadata: Dict mapping image_id -> metadata update map.
+            Supported keys: "description", "flag".
 
     Returns:
         Tuple of (Updated MonitoringConfig if found, list of S3 URLs to delete).
@@ -648,7 +649,7 @@ async def update_config(
         updates["rules"] = current_rules
 
     # Handle reference image operations
-    needs_image_update = add_images or remove_image_ids or update_descriptions
+    needs_image_update = add_images or remove_image_ids or update_image_metadata
 
     if needs_image_update:
         # Get current reference images, preserving any already-staged rule updates (e.g., prompt)
@@ -679,17 +680,31 @@ async def update_config(
                         f"Image ID {image_id} not found for removal in config {config_id}"
                     )
 
-        # Step 2: Update descriptions (no file upload)
-        if update_descriptions:
-            for image_id, new_desc in update_descriptions.items():
+        # Step 2: Update existing image metadata (no file upload)
+        if update_image_metadata:
+            for image_id, update_fields in update_image_metadata.items():
                 if image_id in image_map:
-                    image_map[image_id]["description"] = new_desc
-                    logger.info(
-                        f"Updated description for reference image {image_id} in config {config_id}"
-                    )
+                    if "description" in update_fields:
+                        image_map[image_id]["description"] = update_fields[
+                            "description"
+                        ]
+                        logger.info(
+                            "Updated description for reference image %s in config %s",
+                            image_id,
+                            config_id,
+                        )
+                    if "flag" in update_fields:
+                        image_map[image_id]["flag"] = update_fields["flag"]
+                        logger.info(
+                            "Updated flag for reference image %s in config %s",
+                            image_id,
+                            config_id,
+                        )
                 else:
                     logger.warning(
-                        f"Image ID {image_id} not found for description update in config {config_id}"
+                        "Image ID %s not found for metadata update in config %s",
+                        image_id,
+                        config_id,
                     )
 
         # Step 3: Add new images

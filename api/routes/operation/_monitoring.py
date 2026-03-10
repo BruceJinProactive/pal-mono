@@ -262,7 +262,7 @@ async def update_monitoring_config(
     add_descriptions: list[str] | None = None,
     add_image_flags: list[str] | None = None,
     remove_image_ids: list[str] | None = None,
-    update_descriptions: dict[str, str] | None = None,
+    update_image_metadata: dict[str, dict[str, str]] | None = None,
 ) -> MonitoringConfigResponse:
     """
     Update a monitoring configuration with simple operation-based image management.
@@ -275,7 +275,8 @@ async def update_monitoring_config(
         add_images: New image files to add.
         add_descriptions: Descriptions for new images.
         remove_image_ids: List of image UUIDs to remove.
-        update_descriptions: Dict mapping image_id -> new_description for updating descriptions only.
+        update_image_metadata: Dict mapping image_id -> metadata updates.
+            Supported keys: "description", "flag".
 
     Returns:
         Updated MonitoringConfigResponse.
@@ -297,7 +298,7 @@ async def update_monitoring_config(
             add_descriptions=add_descriptions or [],
             add_image_flags=add_image_flags or [],
             remove_image_ids=remove_image_ids or [],
-            update_descriptions=update_descriptions or {},
+            update_image_metadata=update_image_metadata or {},
         )
 
         if not config:

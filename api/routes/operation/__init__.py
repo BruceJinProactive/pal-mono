@@ -1320,7 +1320,11 @@ async def create_monitoring_config(
     name: str = Form(...),
     description: str | None = Form(None),
     monitoring_context: str | None = Form(None, alias="context"),
-    prompt: str | None = Form(None),
+    prompt: str | None = Form(
+        None,
+        deprecated=True,
+        description="Deprecated. Use 'context' instead.",
+    ),
     pass_criteria: str | None = Form(None),
     fail_criteria: str | None = Form(None),
     structured_output: str | None = Form(None),
@@ -1577,7 +1581,11 @@ async def update_monitoring_config(
     config_id: uuid.UUID,
     name: str | None = Form(None),
     description: str | None = Form(None),
-    prompt: str | None = Form(None),
+    prompt: str | None = Form(
+        None,
+        deprecated=True,
+        description="Deprecated. Use 'context' instead.",
+    ),
     monitoring_context: str | None = Form(None, alias="context"),
     pass_criteria: str | None = Form(None),
     fail_criteria: str | None = Form(None),
@@ -1590,7 +1598,12 @@ async def update_monitoring_config(
     add_descriptions: list[str] = Form(default=[]),
     add_image_flags: list[str] = Form(default=[]),
     remove_image_ids: list[str] = Form(default=[]),
-    update_descriptions: list[str] = Form(default=[]),
+    update_descriptions: list[str] = Form(
+        default=[],
+        deprecated=True,
+        description="Deprecated. Use 'update_images' instead.",
+    ),
+    update_images: list[str] = Form(default=[]),
     user_context: UserContext = Depends(
         require_project_permission("project.write", authenticate_user)
     ),
@@ -1611,13 +1624,14 @@ async def update_monitoring_config(
     - prompt: Updated AI analysis prompt
     - model: JSON string with LLM model configuration (e.g., '{"provider": "google", "model": "gemini-3-flash-preview"}')
     - enabled: Updated enabled status
-    - skip_outside_business_hours: Skip image processing when captured outside business hours
+    - monitoring_time_window: JSON string for allowed execution time window
 
     Reference Image Operations (send only what you want to change):
     - add_images: New image files to add
     - add_descriptions: Descriptions for new images (must match add_images count)
     - remove_image_ids: List of image UUIDs to remove
     - update_descriptions: JSON array of {"id": "uuid", "description": "new desc"} to update descriptions only
+    - update_images: JSON array of {"id": "uuid", "description"?: "new desc", "flag"?: "pass|fail"} to update existing image metadata
 
     Returns:
     - MonitoringConfigResponse with updated config details and presigned image URLs
@@ -1637,12 +1651,19 @@ async def update_monitoring_config(
        add_images=[file1]
        add_descriptions=["new image"]
        remove_image_ids=["uuid2"]
-       update_descriptions=[{"id": "uuid3", "description": "updated"}]
+       update_images=[{"id": "uuid3", "description": "updated", "flag": "fail"}]
 
     5. Remove all:
        remove_image_ids=[list all current image IDs]
     """
     _ = user_context  # Used by require_project_permission
+
+    # Unit tests may call this function directly (outside FastAPI form parsing).
+    # Normalize unparsed Form defaults to empty lists.
+    if not isinstance(update_descriptions, list):
+        update_descriptions = []
+    if not isinstance(update_images, list):
+        update_images = []
 
     # Validate add operations
     if add_images and len(add_images) != len(add_descriptions):
@@ -1704,17 +1725,21 @@ async def update_monitoring_config(
                 detail="fail_criteria must be a JSON array of strings",
             )
 
-    # Parse update_descriptions JSON
+    # Parse update_descriptions / update_images JSON
     import json
 
-    update_desc_map: dict[str, str] = {}
+    update_image_metadata_map: dict[str, dict[str, str]] = {}
     if update_descriptions:
         malformed_entries: list[dict] = []
         try:
             for idx, update_json in enumerate(update_descriptions):
                 update_obj = json.loads(update_json)
                 # Validate required fields
-                if "id" not in update_obj or "description" not in update_obj:
+                if (
+                    not isinstance(update_obj, dict)
+                    or "id" not in update_obj
+                    or "description" not in update_obj
+                ):
                     logger.warning(
                         f"update_descriptions[{idx}] missing required fields: "
                         f"raw='{update_json}', parsed={update_obj}"
@@ -1732,7 +1757,9 @@ async def update_monitoring_config(
                         }
                     )
                 else:
-                    update_desc_map[update_obj["id"]] = update_obj["description"]
+                    update_image_metadata_map[update_obj["id"]] = {
+                        "description": update_obj["description"]
+                    }
         except json.JSONDecodeError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1746,6 +1773,80 @@ async def update_monitoring_config(
                 detail={
                     "error": "Invalid update_descriptions entries",
                     "message": "One or more entries are missing required fields ('id' and 'description')",
+                    "malformed_entries": malformed_entries,
+                },
+            )
+
+    if update_images:
+        malformed_entries: list[dict] = []
+        try:
+            for idx, update_json in enumerate(update_images):
+                update_obj = json.loads(update_json)
+                if not isinstance(update_obj, dict):
+                    malformed_entries.append(
+                        {
+                            "index": idx,
+                            "raw": update_json,
+                            "parsed": update_obj,
+                            "message": "Entry must be a JSON object",
+                        }
+                    )
+                    continue
+
+                image_id = update_obj.get("id")
+                has_description = "description" in update_obj
+                has_flag = "flag" in update_obj
+
+                if not image_id:
+                    malformed_entries.append(
+                        {
+                            "index": idx,
+                            "raw": update_json,
+                            "parsed": update_obj,
+                            "message": "Missing required field 'id'",
+                        }
+                    )
+                    continue
+
+                if not has_description and not has_flag:
+                    malformed_entries.append(
+                        {
+                            "index": idx,
+                            "raw": update_json,
+                            "parsed": update_obj,
+                            "message": "At least one of 'description' or 'flag' must be provided",
+                        }
+                    )
+                    continue
+
+                if has_flag and update_obj["flag"] not in ("pass", "fail"):
+                    malformed_entries.append(
+                        {
+                            "index": idx,
+                            "raw": update_json,
+                            "parsed": update_obj,
+                            "message": f"Invalid flag '{update_obj['flag']}'. Must be 'pass' or 'fail'",
+                        }
+                    )
+                    continue
+
+                existing_update = update_image_metadata_map.setdefault(image_id, {})
+                if has_description:
+                    existing_update["description"] = update_obj["description"]
+                if has_flag:
+                    existing_update["flag"] = update_obj["flag"]
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid JSON in update_images: {e}",
+            )
+
+        if malformed_entries:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "Invalid update_images entries",
+                    "message": "One or more update_images entries are malformed",
                     "malformed_entries": malformed_entries,
                 },
             )
@@ -1813,7 +1914,7 @@ async def update_monitoring_config(
         add_descriptions=add_descriptions,
         add_image_flags=add_image_flags,
         remove_image_ids=remove_image_ids,
-        update_descriptions=update_desc_map,
+        update_image_metadata=update_image_metadata_map,
     )
 
 

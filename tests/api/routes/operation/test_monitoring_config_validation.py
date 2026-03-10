@@ -445,3 +445,288 @@ class TestUpdateMonitoringConfigValidation:
             )
         assert exc_info.value.status_code == 400
         assert "fail_criteria" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_update_images_parses_and_merges_with_legacy_descriptions(
+        self, mocker
+    ) -> None:
+        """Route should parse update_images and merge with update_descriptions."""
+        from api.routes.operation import update_monitoring_config
+
+        mock_result = MagicMock()
+        mock_update = mocker.patch(
+            "api.routes.operation._monitoring.update_monitoring_config",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        )
+
+        result = await update_monitoring_config(
+            project_id=uuid.uuid4(),
+            config_id=uuid.uuid4(),
+            name=None,
+            description=None,
+            prompt=None,
+            monitoring_context=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+            add_images=[],
+            add_descriptions=[],
+            add_image_flags=[],
+            remove_image_ids=[],
+            update_descriptions=['{"id":"img-1","description":"legacy desc"}'],
+            update_images=['{"id":"img-1","flag":"fail"}'],
+            user_context=MagicMock(),
+            session=AsyncMock(),
+        )
+
+        assert result == mock_result
+        call_kwargs = mock_update.call_args.kwargs
+        assert call_kwargs["update_image_metadata"] == {
+            "img-1": {"description": "legacy desc", "flag": "fail"}
+        }
+
+    @pytest.mark.asyncio
+    async def test_invalid_update_images_flag_raises_400(self) -> None:
+        """Should raise 400 when update_images contains an invalid flag."""
+        from api.routes.operation import update_monitoring_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_monitoring_config(
+                project_id=uuid.uuid4(),
+                config_id=uuid.uuid4(),
+                name=None,
+                description=None,
+                prompt=None,
+                monitoring_context=None,
+                pass_criteria=None,
+                fail_criteria=None,
+                structured_output=None,
+                model=None,
+                enabled=None,
+                monitoring_time_window=None,
+                add_images=[],
+                add_descriptions=[],
+                add_image_flags=[],
+                remove_image_ids=[],
+                update_descriptions=[],
+                update_images=['{"id":"img-1","flag":"bad"}'],
+                user_context=MagicMock(),
+                session=AsyncMock(),
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "update_images" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_update_images_entry_must_be_object_raises_400(self) -> None:
+        """Should raise 400 when update_images entry is not a JSON object."""
+        from api.routes.operation import update_monitoring_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_monitoring_config(
+                project_id=uuid.uuid4(),
+                config_id=uuid.uuid4(),
+                name=None,
+                description=None,
+                prompt=None,
+                monitoring_context=None,
+                pass_criteria=None,
+                fail_criteria=None,
+                structured_output=None,
+                model=None,
+                enabled=None,
+                monitoring_time_window=None,
+                add_images=[],
+                add_descriptions=[],
+                add_image_flags=[],
+                remove_image_ids=[],
+                update_descriptions=[],
+                update_images=['"not-an-object"'],
+                user_context=MagicMock(),
+                session=AsyncMock(),
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "update_images" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_update_images_missing_id_raises_400(self) -> None:
+        """Should raise 400 when update_images entry omits required id."""
+        from api.routes.operation import update_monitoring_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_monitoring_config(
+                project_id=uuid.uuid4(),
+                config_id=uuid.uuid4(),
+                name=None,
+                description=None,
+                prompt=None,
+                monitoring_context=None,
+                pass_criteria=None,
+                fail_criteria=None,
+                structured_output=None,
+                model=None,
+                enabled=None,
+                monitoring_time_window=None,
+                add_images=[],
+                add_descriptions=[],
+                add_image_flags=[],
+                remove_image_ids=[],
+                update_descriptions=[],
+                update_images=['{"description":"new"}'],
+                user_context=MagicMock(),
+                session=AsyncMock(),
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "update_images" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_update_images_requires_description_or_flag_raises_400(self) -> None:
+        """Should raise 400 when update_images has id but no mutable fields."""
+        from api.routes.operation import update_monitoring_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_monitoring_config(
+                project_id=uuid.uuid4(),
+                config_id=uuid.uuid4(),
+                name=None,
+                description=None,
+                prompt=None,
+                monitoring_context=None,
+                pass_criteria=None,
+                fail_criteria=None,
+                structured_output=None,
+                model=None,
+                enabled=None,
+                monitoring_time_window=None,
+                add_images=[],
+                add_descriptions=[],
+                add_image_flags=[],
+                remove_image_ids=[],
+                update_descriptions=[],
+                update_images=['{"id":"img-1"}'],
+                user_context=MagicMock(),
+                session=AsyncMock(),
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "update_images" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_invalid_update_images_json_raises_400(self) -> None:
+        """Should raise 400 when update_images contains invalid JSON."""
+        from api.routes.operation import update_monitoring_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_monitoring_config(
+                project_id=uuid.uuid4(),
+                config_id=uuid.uuid4(),
+                name=None,
+                description=None,
+                prompt=None,
+                monitoring_context=None,
+                pass_criteria=None,
+                fail_criteria=None,
+                structured_output=None,
+                model=None,
+                enabled=None,
+                monitoring_time_window=None,
+                add_images=[],
+                add_descriptions=[],
+                add_image_flags=[],
+                remove_image_ids=[],
+                update_descriptions=[],
+                update_images=["{bad-json"],
+                user_context=MagicMock(),
+                session=AsyncMock(),
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "invalid json in update_images" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_update_images_description_only_reaches_downstream(
+        self, mocker
+    ) -> None:
+        """Description-only update_images entry should be accepted."""
+        from api.routes.operation import update_monitoring_config
+
+        mock_result = MagicMock()
+        mock_update = mocker.patch(
+            "api.routes.operation._monitoring.update_monitoring_config",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        )
+
+        result = await update_monitoring_config(
+            project_id=uuid.uuid4(),
+            config_id=uuid.uuid4(),
+            name=None,
+            description=None,
+            prompt=None,
+            monitoring_context=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+            add_images=[],
+            add_descriptions=[],
+            add_image_flags=[],
+            remove_image_ids=[],
+            update_descriptions=[],
+            update_images=['{"id":"img-1","description":"updated"}'],
+            user_context=MagicMock(),
+            session=AsyncMock(),
+        )
+
+        assert result == mock_result
+        call_kwargs = mock_update.call_args.kwargs
+        assert call_kwargs["update_image_metadata"] == {
+            "img-1": {"description": "updated"}
+        }
+
+    @pytest.mark.asyncio
+    async def test_direct_call_omitting_update_lists_is_normalized(
+        self, mocker
+    ) -> None:
+        """Direct function calls should normalize default Form values to empty lists."""
+        from api.routes.operation import update_monitoring_config
+
+        mock_result = MagicMock()
+        mock_update = mocker.patch(
+            "api.routes.operation._monitoring.update_monitoring_config",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        )
+
+        result = await update_monitoring_config(
+            project_id=uuid.uuid4(),
+            config_id=uuid.uuid4(),
+            name=None,
+            description=None,
+            prompt=None,
+            monitoring_context=None,
+            pass_criteria='["criterion1"]',
+            fail_criteria='["fail1"]',
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+            add_images=[],
+            add_descriptions=[],
+            add_image_flags=[],
+            remove_image_ids=[],
+            user_context=MagicMock(),
+            session=AsyncMock(),
+        )
+
+        assert result == mock_result
+        call_kwargs = mock_update.call_args.kwargs
+        assert call_kwargs["update_image_metadata"] == {}

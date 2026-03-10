@@ -306,6 +306,73 @@ class TestUpdateConfigCriteria:
         assert updated_rules["fail_criteria"] == ["Debris visible", "Spills uncleaned"]
 
 
+class TestUpdateConfigReferenceImageMetadata:
+    """Test updating existing reference image metadata in update_config."""
+
+    @pytest.mark.asyncio
+    async def test_updates_existing_image_flag_and_description(self, mocker) -> None:
+        """Should persist both flag and description updates for existing images."""
+        from services.monitoring_service._implementation import update_config
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        config_id = uuid.uuid4()
+
+        mock_project = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._implementation.ProjectRepositoryAsync"
+        ).return_value.get_project = AsyncMock(return_value=mock_project)
+
+        image_id = str(uuid.uuid4())
+        mock_config = MagicMock()
+        mock_config.project_id = project_id
+        mock_config.name = "Test"
+        mock_config.rules = {
+            "context": "test",
+            "reference_images": [
+                {
+                    "id": image_id,
+                    "url": "s3://test/img.jpg",
+                    "description": "before",
+                    "flag": "pass",
+                }
+            ],
+        }
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+        mock_config_repo.return_value.get_by_name = AsyncMock(return_value=None)
+        mock_config_repo.return_value.update = AsyncMock(return_value=MagicMock())
+
+        request = UpdateMonitoringConfigRequest(
+            name=None,
+            description=None,
+            context=None,
+            prompt=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+        )
+
+        await update_config(
+            session=session,
+            project_id=project_id,
+            config_id=config_id,
+            request=request,
+            update_image_metadata={image_id: {"description": "after", "flag": "fail"}},
+        )
+
+        update_call = mock_config_repo.return_value.update.call_args
+        updated_rules = update_call.kwargs.get("rules") or update_call[1].get("rules")
+        assert updated_rules["reference_images"][0]["description"] == "after"
+        assert updated_rules["reference_images"][0]["flag"] == "fail"
+
+
 class TestUploadReferenceImagesFlagValidation:
     """Test that upload_reference_images validates flag inputs."""
 
