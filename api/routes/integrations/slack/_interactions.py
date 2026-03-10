@@ -14,6 +14,7 @@ from typing import Any, Dict
 from urllib.parse import parse_qs
 
 from fastapi import HTTPException, Request, status
+from fastapi.responses import Response
 
 from services import notion_service, postmark_service
 from services.slack_service import make_feedback_button
@@ -298,7 +299,7 @@ async def _handle_onboarding_discard(
     return {"ok": True}
 
 
-async def handle_interactions(request: Request) -> Dict[str, Any]:
+async def handle_interactions(request: Request) -> Dict[str, Any] | Response:
     """
     Handle Slack interaction payloads (button clicks) - STATELESS.
 
@@ -402,11 +403,13 @@ async def handle_interactions(request: Request) -> Dict[str, Any]:
                     handle_mercury_view_submission(payload),
                     name=f"mercury_view:{callback_id}",
                 )
-                return {"ok": True}
+                # Slack requires an empty 200 response to close the modal.
+                # Returning JSON (e.g. {"ok": True}) causes "trouble connecting" error.
+                return Response(status_code=200)
             logger.warning(
                 f"[Slack Interactions] Unhandled view_submission: {callback_id}"
             )
-            return {"ok": True}
+            return Response(status_code=200)
 
         if action_type != "block_actions":
             logger.warning(

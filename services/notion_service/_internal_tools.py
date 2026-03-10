@@ -16,6 +16,7 @@ from ._client import get_notion_client
 from ._pages import create_page
 from ._properties import (
     build_paragraph_block,
+    build_people_property,
     build_relation_property,
     build_rich_text_property,
     build_select_property,
@@ -46,6 +47,47 @@ TOOL_FEEDBACK_DATABASE_ID = _get_database_id(
 TOOL_REQUESTS_DATABASE_ID = _get_database_id(
     "NOTION_TOOL_REQUESTS_DB_ID", "31b8c0822e4980cbb792fb41ca99bd7f"
 )
+
+
+async def find_notion_user_id_by_name(
+    name: str,
+    client: Optional[AsyncClient] = None,
+) -> Optional[str]:
+    """Look up a Notion workspace user ID by display name (case-insensitive).
+
+    Args:
+        name: Display name to search for (e.g. Slack username)
+        client: Optional Notion client to reuse
+
+    Returns:
+        The Notion user ID if a match is found, None otherwise.
+    """
+    try:
+        if client is None:
+            try:
+                client = get_notion_client()
+            except ValueError:
+                return None
+
+        name_lower = name.lower()
+        cursor: Optional[str] = None
+        while True:
+            params: dict[str, Any] = {"page_size": 100}
+            if cursor:
+                params["start_cursor"] = cursor
+            resp = await client.users.list(**params)
+            for user in resp.get("results", []):
+                if user.get("name", "").lower() == name_lower:
+                    return user["id"]
+            if not resp.get("has_more"):
+                break
+            cursor = resp.get("next_cursor")
+
+        logger.debug("[Notion] No user found matching name '%s'", name)
+        return None
+    except Exception as e:
+        logger.warning("[Notion] Failed to look up user by name: %s", e)
+        return None
 
 
 async def get_internal_tools(
@@ -155,12 +197,17 @@ async def submit_tool_feedback(
         # Format tool page ID with dashes for the Notion API
         formatted_tool_id = format_notion_page_id(tool_page_id)
 
-        properties = {
+        properties: dict[str, Any] = {
             "Feedback": build_title_property(feedback_text[:_NOTION_TEXT_LIMIT]),
             "Tool": build_relation_property([formatted_tool_id]),
             "Request type": build_select_property(request_type),
             "Priority": build_select_property(priority),
         }
+
+        # Try to resolve the Slack user name to a Notion user for the Requester field
+        notion_user_id = await find_notion_user_id_by_name(submitted_by, client=client)
+        if notion_user_id:
+            properties["Requester"] = build_people_property([notion_user_id])
 
         children = [build_paragraph_block(feedback_text[:_NOTION_TEXT_LIMIT])]
 
@@ -235,6 +282,13 @@ async def submit_tool_request(
             properties["Proposed solution"] = build_rich_text_property(
                 proposed_solution[:_NOTION_TEXT_LIMIT]
             )
+
+        if submitted_by:
+            notion_user_id = await find_notion_user_id_by_name(
+                submitted_by, client=client
+            )
+            if notion_user_id:
+                properties["Requester"] = build_people_property([notion_user_id])
 
         page_url = await create_page(
             database_id=TOOL_REQUESTS_DATABASE_ID,

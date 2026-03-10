@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 
 import pytest
 from fastapi import Request
+from fastapi.responses import Response
 
 from api.routes.integrations.slack._interactions import (
     _background_tasks,
@@ -83,7 +84,10 @@ async def test_view_submission_mercury_schedules_handler() -> None:
 
         result = await handle_interactions(request)
 
-        assert result == {"ok": True}
+        # Slack requires empty 200 to close the modal
+        assert isinstance(result, Response)
+        assert result.status_code == 200
+        assert result.body == b""
         # Let the background task run
         await asyncio.sleep(0)
         mock_handler.assert_called_once_with(payload)
@@ -111,7 +115,9 @@ async def test_view_submission_non_mercury_returns_ok() -> None:
         from api.routes.integrations.slack._interactions import handle_interactions
 
         result = await handle_interactions(request)
-        assert result == {"ok": True}
+        assert isinstance(result, Response)
+        assert result.status_code == 200
+        assert result.body == b""
 
 
 @pytest.mark.asyncio
