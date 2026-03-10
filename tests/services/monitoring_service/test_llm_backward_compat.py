@@ -497,3 +497,148 @@ class TestVideoLLMContextBackwardCompat:
         assert "All surfaces clean" in analysis_task_text
         assert "Equipment properly stored" in analysis_task_text
         assert "Visible debris on surfaces" in analysis_task_text
+
+
+class TestNativeVideoLLMCriteria:
+    """Test that native video path includes criteria in the analysis task."""
+
+    @pytest.mark.asyncio
+    async def test_native_video_includes_pass_and_fail_criteria(self, mocker) -> None:
+        """Native video path should include pass and fail criteria in analysis task."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+        from services.monitoring_service._providers import GoogleMonitoringProvider
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        rules = {
+            "context": "Kitchen monitoring",
+            "pass_criteria": ["All surfaces clean"],
+            "fail_criteria": ["Visible debris on surfaces"],
+            "reference_images": [],
+            "model": {"provider": "google", "model": "gemini-2.0-flash"},
+        }
+
+        mock_config = MagicMock()
+        mock_config.rules = rules
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._llm.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+
+        # Mock S3
+        mock_s3 = MagicMock()
+        mock_body = MagicMock()
+        mock_body.read.return_value = b"fake-image-bytes"
+        mock_s3.get_object.return_value = {"Body": mock_body}
+        mocker.patch(
+            "services.monitoring_service._llm.boto3.client", return_value=mock_s3
+        )
+
+        # Enable native video path
+        mocker.patch(
+            "services.monitoring_service._llm.supports_native_video",
+            return_value=True,
+        )
+
+        # Mock download_video_bytes
+        mocker.patch(
+            "services.monitoring_service._llm.download_video_bytes",
+            new_callable=AsyncMock,
+            return_value=(b"fake-video-bytes", "video/mp4"),
+        )
+
+        # Provider must be GoogleMonitoringProvider for native video
+        mock_provider = MagicMock(spec=GoogleMonitoringProvider)
+        mock_config_obj = MagicMock()
+        mock_config_obj.provider.value = "google"
+        mock_config_obj.model = "gemini-2.0-flash"
+        mock_provider.config = mock_config_obj
+        mock_provider.analyze_native_video.return_value = {
+            "result": {"result": "pass", "details": "All clear"},
+            "token_usage": {
+                "prompt_tokens": 500,
+                "completion_tokens": 50,
+                "total_tokens": 550,
+            },
+        }
+        mocker.patch(
+            "services.monitoring_service._llm.create_monitoring_llm_provider",
+            return_value=mock_provider,
+        )
+
+        # Mock tracer
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
+        mock_tracer.current_trace_context.return_value = MagicMock()
+        mock_span = MagicMock()
+        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Mock statsd
+        mocker.patch("services.monitoring_service._llm.statsd")
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "video.mp4")
+
+        call_kwargs = mock_provider.analyze_native_video.call_args
+        analysis_task_text = call_kwargs.kwargs.get("analysis_task") or call_kwargs[
+            1
+        ].get("analysis_task")
+        assert "All surfaces clean" in analysis_task_text
+        assert "Visible debris on surfaces" in analysis_task_text
+        assert "Pass Criteria" in analysis_task_text
+        assert "Fail Criteria" in analysis_task_text
+
+
+class TestVideoLLMReferenceImageFlags:
+    """Test that video reference image flags are included in LLM descriptions."""
+
+    @pytest.mark.asyncio
+    async def test_video_ref_image_flag_label_in_description(self, mocker) -> None:
+        """Video reference images should include flag label in LLM description."""
+        from services.monitoring_service._llm import (
+            generate_monitoring_video_llm_prompt,
+        )
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_provider = _build_video_llm_mocks(
+            mocker,
+            rules={
+                "context": "Kitchen check",
+                "reference_images": [
+                    {
+                        "id": "img1",
+                        "url": "ref/img1.jpg",
+                        "description": "Clean counter",
+                        "flag": "pass",
+                    },
+                    {
+                        "id": "img2",
+                        "url": "ref/img2.jpg",
+                        "description": "Dirty counter",
+                        "flag": "fail",
+                    },
+                ],
+                "model": {"provider": "azure", "model": "gpt-4o"},
+            },
+        )
+
+        # Mock asyncio.to_thread to run synchronously for coverage
+        mocker.patch(
+            "services.monitoring_service._llm.asyncio.to_thread",
+            side_effect=lambda fn, *a, **kw: fn(*a, **kw),
+        )
+
+        await generate_monitoring_video_llm_prompt(session, config_id, "video.mp4")
+
+        call_kwargs = mock_provider.analyze_video_frames.call_args
+        ref_images = call_kwargs.kwargs.get("reference_images") or call_kwargs[1].get(
+            "reference_images"
+        )
+        assert len(ref_images) == 2
+        assert "PASS" in ref_images[0]["description"].upper()
+        assert "FAIL" in ref_images[1]["description"].upper()

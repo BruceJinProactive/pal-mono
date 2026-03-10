@@ -304,3 +304,51 @@ class TestUpdateConfigCriteria:
         update_call = mock_config_repo.return_value.update.call_args
         updated_rules = update_call.kwargs.get("rules") or update_call[1].get("rules")
         assert updated_rules["fail_criteria"] == ["Debris visible", "Spills uncleaned"]
+
+
+class TestUploadReferenceImagesFlagValidation:
+    """Test that upload_reference_images validates flag inputs."""
+
+    @pytest.mark.asyncio
+    async def test_flag_count_mismatch_raises_400(self) -> None:
+        """Should raise 400 when flag count does not match image count."""
+        from fastapi import HTTPException
+
+        from services.monitoring_service._implementation import upload_reference_images
+
+        mock_image1 = MagicMock()
+        mock_image1.filename = "img1.jpg"
+        mock_image2 = MagicMock()
+        mock_image2.filename = "img2.jpg"
+
+        with pytest.raises(HTTPException) as exc_info:
+            await upload_reference_images(
+                images=[mock_image1, mock_image2],
+                descriptions=["Desc 1", "Desc 2"],
+                project_id=uuid.uuid4(),
+                config_id=uuid.uuid4(),
+                flags=["pass"],  # 1 flag, 2 images
+            )
+        assert exc_info.value.status_code == 400
+        assert "flags" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_invalid_flag_value_raises_400(self) -> None:
+        """Should raise 400 when flags contain values other than 'pass' or 'fail'."""
+        from fastapi import HTTPException
+
+        from services.monitoring_service._implementation import upload_reference_images
+
+        mock_image = MagicMock()
+        mock_image.filename = "img.jpg"
+
+        with pytest.raises(HTTPException) as exc_info:
+            await upload_reference_images(
+                images=[mock_image],
+                descriptions=["Desc"],
+                project_id=uuid.uuid4(),
+                config_id=uuid.uuid4(),
+                flags=["invalid"],
+            )
+        assert exc_info.value.status_code == 400
+        assert "invalid" in str(exc_info.value.detail).lower()
