@@ -58,7 +58,7 @@ class MonitoringTimeWindow(BaseModel):
 
 
 class ReferenceImage(BaseModel):
-    """Reference image with description and unique identifier."""
+    """Reference image with description, unique identifier, and pass/fail flag."""
 
     id: str = Field(..., description="Unique UUID identifier for this image")
     url: str = Field(..., description="S3 URL/key of the reference image")
@@ -67,6 +67,10 @@ class ReferenceImage(BaseModel):
         min_length=1,
         max_length=500,
         description="Description of what this reference image represents",
+    )
+    flag: Literal["pass", "fail"] = Field(
+        default="pass",
+        description="Whether this image represents a pass or fail example",
     )
 
 
@@ -159,13 +163,35 @@ class StructuredOutputField(BaseModel):
 
 
 class AIAnalysisRules(BaseModel):
-    """Configuration for AI-based analysis rules."""
+    """Configuration for AI-based analysis rules.
 
-    prompt: str = Field(
-        ..., min_length=1, max_length=2000, description="AI analysis prompt"
+    Supports both legacy 'prompt' field and new 'context' field.
+    During transition, 'prompt' is accepted as an alias for 'context'.
+    """
+
+    context: str | None = Field(
+        None,
+        min_length=1,
+        max_length=2000,
+        description="Scene/context description for the monitoring analysis",
+    )
+    prompt: str | None = Field(
+        None,
+        min_length=1,
+        max_length=2000,
+        description="Legacy AI analysis prompt (use 'context' for new configs)",
+    )
+    pass_criteria: list[str] = Field(
+        default_factory=list,
+        description="List of conditions that indicate a pass result (>= 1 required for new configs)",
+    )
+    fail_criteria: list[str] = Field(
+        default_factory=list,
+        description="List of conditions that indicate a fail result (>= 1 required for new configs)",
     )
     reference_images: list[ReferenceImage] = Field(
-        default_factory=list, description="Reference images with descriptions"
+        default_factory=list,
+        description="Optional reference images with descriptions and pass/fail flags",
     )
     structured_output: list[StructuredOutputField] | None = Field(
         None,
@@ -176,10 +202,46 @@ class AIAnalysisRules(BaseModel):
         description="Optional time window configuration to restrict when monitoring runs execute",
     )
 
+    @model_validator(mode="after")
+    def validate_context_or_prompt(self) -> "AIAnalysisRules":
+        """Ensure at least one of context or prompt is provided."""
+        if not self.context and not self.prompt:
+            raise ValueError("Either 'context' or 'prompt' must be provided")
+        # If only prompt is provided (legacy), use it as context
+        if self.prompt and not self.context:
+            self.context = self.prompt
+        return self
+
+    @field_validator("context", "prompt", mode="before")
+    @classmethod
+    def strip_and_validate_text_fields(cls, v: str | None) -> str | None:
+        """Strip whitespace and reject whitespace-only strings."""
+        if v is None:
+            return v
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Field must contain non-whitespace content")
+        return stripped
+
+    @field_validator("pass_criteria", "fail_criteria")
+    @classmethod
+    def validate_criteria_items(cls, v: list[str]) -> list[str]:
+        """Validate individual criteria items: strip whitespace, check length limits."""
+        stripped = []
+        for item in v:
+            s = item.strip()
+            if len(s) < 1:
+                raise ValueError("Each criterion must be at least 1 character")
+            if len(s) > 500:
+                raise ValueError(
+                    f"Each criterion must be at most 500 characters, got {len(s)}"
+                )
+            stripped.append(s)
+        return stripped
+
 
 # MonitoringRules type alias
 MonitoringRules = AIAnalysisRules
-
 
 # ============================================================================
 # API REQUEST/RESPONSE SCHEMAS
@@ -233,8 +295,25 @@ class UpdateMonitoringConfigRequest(BaseModel):
     description: str | None = Field(
         None, max_length=2000, description="Updated description"
     )
+    context: str | None = Field(
+        None,
+        min_length=1,
+        max_length=2000,
+        description="Updated scene/context description (replaces 'prompt')",
+    )
     prompt: str | None = Field(
-        None, min_length=1, max_length=2000, description="Updated AI analysis prompt"
+        None,
+        min_length=1,
+        max_length=2000,
+        description="Legacy: Updated AI analysis prompt (use 'context' instead)",
+    )
+    pass_criteria: list[str] | None = Field(
+        None,
+        description="Updated list of conditions that indicate a pass result",
+    )
+    fail_criteria: list[str] | None = Field(
+        None,
+        description="Updated list of conditions that indicate a fail result",
     )
     structured_output: list[StructuredOutputField] | None = Field(
         None,
@@ -249,6 +328,35 @@ class UpdateMonitoringConfigRequest(BaseModel):
         None,
         description="Updated time window configuration to restrict when monitoring runs execute",
     )
+
+    @field_validator("context", "prompt", mode="before")
+    @classmethod
+    def strip_and_validate_text_fields(cls, v: str | None) -> str | None:
+        """Strip whitespace and reject whitespace-only strings."""
+        if v is None:
+            return v
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Field must contain non-whitespace content")
+        return stripped
+
+    @field_validator("pass_criteria", "fail_criteria")
+    @classmethod
+    def validate_criteria_items(cls, v: list[str] | None) -> list[str] | None:
+        """Validate individual criteria items: strip whitespace, check length limits."""
+        if v is None:
+            return v
+        stripped = []
+        for item in v:
+            s = item.strip()
+            if len(s) < 1:
+                raise ValueError("Each criterion must be at least 1 character")
+            if len(s) > 500:
+                raise ValueError(
+                    f"Each criterion must be at most 500 characters, got {len(s)}"
+                )
+            stripped.append(s)
+        return stripped
 
 
 class ReplaceReferenceImageMapping(BaseModel):

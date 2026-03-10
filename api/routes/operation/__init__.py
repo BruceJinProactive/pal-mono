@@ -1319,37 +1319,24 @@ async def create_monitoring_config(
     signal_source_id: uuid.UUID = Form(...),
     name: str = Form(...),
     description: str | None = Form(None),
-    prompt: str = Form(...),
+    monitoring_context: str | None = Form(None, alias="context"),
+    prompt: str | None = Form(None),
+    pass_criteria: str | None = Form(None),
+    fail_criteria: str | None = Form(None),
     structured_output: str | None = Form(None),
     model: str | None = Form(None),
     enabled: bool = Form(True),
     monitoring_time_window: str | None = Form(None),
     reference_images: list[UploadFile] = File(default=[]),
     reference_image_descriptions: list[str] = Form(default=[]),
-    context: UserContext = Depends(
+    reference_image_flags: list[str] = Form(default=[]),
+    user_context: UserContext = Depends(
         require_project_permission("project.write", authenticate_user)
     ),
     session: AsyncSession = Depends(db.get_db_async),
 ) -> MonitoringConfigResponse:
     """
     Create a new monitoring configuration with optional reference image uploads.
-
-    Path Parameters:
-    - project_id: UUID of the project
-
-    Request Body (multipart/form-data):
-    - signal_source_id (required): UUID of the signal source
-    - name (required): Name of the monitoring config (unique per project)
-    - description (optional): Description of what is being monitored
-    - prompt (required): AI analysis prompt (1-2000 characters)
-    - model (optional): JSON string with LLM model configuration (e.g., '{"provider": "google", "model": "gemini-3-flash-preview"}')
-    - enabled (optional, default: true): Whether monitoring is active
-    - monitoring_time_window (optional): JSON string with time window config (e.g., '{"enabled": true, "start_time": "06:00", "end_time": "22:00"}')
-    - reference_images (optional): Multiple image files for reference
-    - reference_image_descriptions (optional): Descriptions for each reference image (must match number of images)
-
-    Returns:
-    - MonitoringConfigResponse with the created config details
     """
     import json
 
@@ -1359,14 +1346,70 @@ async def create_monitoring_config(
         StructuredOutputField,
     )
 
-    _ = context  # Used by require_project_permission
+    _ = user_context  # Used by require_project_permission
 
-    # Validate that number of images matches number of descriptions
+    # Resolve context field: prefer 'context' form field, fall back to 'prompt'
+    resolved_context = monitoring_context or prompt
+    if not resolved_context:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either 'context' or 'prompt' must be provided",
+        )
+
+    # Parse pass_criteria if provided
+    parsed_pass_criteria: list[str] = []
+    if pass_criteria:
+        try:
+            parsed_pass_criteria = json.loads(pass_criteria)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid pass_criteria format: {e!s}",
+            ) from e
+        if not isinstance(parsed_pass_criteria, list) or not all(
+            isinstance(item, str) for item in parsed_pass_criteria
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="pass_criteria must be a JSON array of strings",
+            )
+
+    # Parse fail_criteria if provided
+    parsed_fail_criteria: list[str] = []
+    if fail_criteria:
+        try:
+            parsed_fail_criteria = json.loads(fail_criteria)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid fail_criteria format: {e!s}",
+            ) from e
+        if not isinstance(parsed_fail_criteria, list) or not all(
+            isinstance(item, str) for item in parsed_fail_criteria
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="fail_criteria must be a JSON array of strings",
+            )
+
+    # Validate that number of images matches number of descriptions and flags
     if len(reference_images) != len(reference_image_descriptions):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Number of images ({len(reference_images)}) must match number of descriptions ({len(reference_image_descriptions)})",
         )
+    if reference_image_flags and len(reference_images) != len(reference_image_flags):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Number of images ({len(reference_images)}) must match number of flags ({len(reference_image_flags)})",
+        )
+    # Validate flag values
+    for flag in reference_image_flags:
+        if flag not in ("pass", "fail"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid reference_image_flag: '{flag}'. Must be 'pass' or 'fail'",
+            )
 
     # Parse structured_output if provided
     parsed_structured_output = None
@@ -1408,7 +1451,10 @@ async def create_monitoring_config(
 
     # Build the request object from form fields
     rules = AIAnalysisRules(
+        context=resolved_context,
         prompt=prompt,
+        pass_criteria=parsed_pass_criteria,
+        fail_criteria=parsed_fail_criteria,
         reference_images=[],  # Will be populated after upload
         structured_output=parsed_structured_output,
         monitoring_time_window=parsed_time_window,
@@ -1428,6 +1474,7 @@ async def create_monitoring_config(
         request=request,
         reference_images=reference_images,
         reference_image_descriptions=reference_image_descriptions,
+        reference_image_flags=reference_image_flags,
         session=session,
     )
 
@@ -1531,6 +1578,9 @@ async def update_monitoring_config(
     name: str | None = Form(None),
     description: str | None = Form(None),
     prompt: str | None = Form(None),
+    monitoring_context: str | None = Form(None, alias="context"),
+    pass_criteria: str | None = Form(None),
+    fail_criteria: str | None = Form(None),
     structured_output: str | None = Form(None),
     model: str | None = Form(None),
     enabled: bool | None = Form(None),
@@ -1538,9 +1588,10 @@ async def update_monitoring_config(
     # Reference image operations (send only what changes)
     add_images: list[UploadFile] = File(default=[]),
     add_descriptions: list[str] = Form(default=[]),
+    add_image_flags: list[str] = Form(default=[]),
     remove_image_ids: list[str] = Form(default=[]),
     update_descriptions: list[str] = Form(default=[]),
-    context: UserContext = Depends(
+    user_context: UserContext = Depends(
         require_project_permission("project.write", authenticate_user)
     ),
     session: AsyncSession = Depends(db.get_db_async),
@@ -1591,7 +1642,7 @@ async def update_monitoring_config(
     5. Remove all:
        remove_image_ids=[list all current image IDs]
     """
-    _ = context  # Used by require_project_permission
+    _ = user_context  # Used by require_project_permission
 
     # Validate add operations
     if add_images and len(add_images) != len(add_descriptions):
@@ -1600,6 +1651,58 @@ async def update_monitoring_config(
             detail=f"Number of add_images ({len(add_images)}) must match "
             f"number of add_descriptions ({len(add_descriptions)})",
         )
+
+    # Validate add_image_flags if provided
+    if add_image_flags and len(add_image_flags) != len(add_images):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Number of add_image_flags ({len(add_image_flags)}) must match "
+            f"number of add_images ({len(add_images)})",
+        )
+    for flag in add_image_flags:
+        if flag not in ("pass", "fail"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid add_image_flag: '{flag}'. Must be 'pass' or 'fail'",
+            )
+
+    import json
+
+    # Parse pass_criteria if provided
+    parsed_pass_criteria: list[str] | None = None
+    if pass_criteria:
+        try:
+            parsed_pass_criteria = json.loads(pass_criteria)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid pass_criteria format: {e!s}",
+            ) from e
+        if not isinstance(parsed_pass_criteria, list) or not all(
+            isinstance(item, str) for item in parsed_pass_criteria
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="pass_criteria must be a JSON array of strings",
+            )
+
+    # Parse fail_criteria if provided
+    parsed_fail_criteria: list[str] | None = None
+    if fail_criteria:
+        try:
+            parsed_fail_criteria = json.loads(fail_criteria)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid fail_criteria format: {e!s}",
+            ) from e
+        if not isinstance(parsed_fail_criteria, list) or not all(
+            isinstance(item, str) for item in parsed_fail_criteria
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="fail_criteria must be a JSON array of strings",
+            )
 
     # Parse update_descriptions JSON
     import json
@@ -1691,7 +1794,10 @@ async def update_monitoring_config(
     request = UpdateMonitoringConfigRequest(
         name=name,
         description=description,
+        context=monitoring_context,
         prompt=prompt,
+        pass_criteria=parsed_pass_criteria,
+        fail_criteria=parsed_fail_criteria,
         structured_output=parsed_structured_output,
         model=parsed_model,
         enabled=enabled,
@@ -1705,6 +1811,7 @@ async def update_monitoring_config(
         project_id=project_id,
         add_images=add_images,
         add_descriptions=add_descriptions,
+        add_image_flags=add_image_flags,
         remove_image_ids=remove_image_ids,
         update_descriptions=update_desc_map,
     )

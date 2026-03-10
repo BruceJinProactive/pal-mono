@@ -105,6 +105,7 @@ async def upload_reference_images(
     descriptions: list[str],
     project_id: uuid.UUID,
     config_id: uuid.UUID,
+    flags: list[str] | None = None,
 ) -> list[dict]:
     """
     Upload multiple reference images with descriptions to S3.
@@ -114,17 +115,36 @@ async def upload_reference_images(
         descriptions: List of descriptions for each image
         project_id: Project UUID
         config_id: Monitoring config UUID
+        flags: Optional list of 'pass'/'fail' flags per image (defaults to 'pass')
 
     Returns:
-        list[dict]: List of {"id": str, "url": str, "description": str} objects
+        list[dict]: List of {"id": str, "url": str, "description": str, "flag": str} objects
             - id: UUID string for identifying the image
             - url: S3 file path
             - description: Image description
+            - flag: 'pass' or 'fail' indicating what this image represents
 
     Raises:
         HTTPException: If image upload fails
     """
     uploaded_images = []
+
+    # Validate flags if explicitly provided
+    if flags is not None and len(flags) > 0:
+        if len(flags) != len(images):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Number of reference_image_flags ({len(flags)}) must match "
+                    f"number of images ({len(images)})"
+                ),
+            )
+        invalid_flags = [flag for flag in flags if flag not in {"pass", "fail"}]
+        if invalid_flags:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid reference_image_flags: {sorted(set(invalid_flags))}",
+            )
 
     for idx, (image, description) in enumerate(zip(images, descriptions)):
         try:
@@ -173,12 +193,16 @@ async def upload_reference_images(
                 f"Reference image {idx + 1} uploaded successfully: {asset_response.url}"
             )
 
+            # Determine flag for this image
+            image_flag = flags[idx] if flags and idx < len(flags) else "pass"
+
             # Return structured data with UUID for future reference
             uploaded_images.append(
                 {
                     "id": str(image_uuid),
                     "url": file_path,
                     "description": description,
+                    "flag": image_flag,
                 }
             )
 
@@ -426,6 +450,7 @@ async def update_config(
     request: UpdateMonitoringConfigRequest,
     add_images: list[UploadFile] | None = None,
     add_descriptions: list[str] | None = None,
+    add_image_flags: list[str] | None = None,
     remove_image_ids: list[str] | None = None,
     update_descriptions: dict[str, str] | None = None,
 ) -> tuple[MonitoringConfig | None, list[str]]:
@@ -511,6 +536,32 @@ async def update_config(
         # Get current rules or initialize empty
         current_rules = copy.deepcopy(config.rules) if config.rules else {}
         current_rules["prompt"] = request.prompt
+        # Backward compat: when prompt is set, also update context
+        current_rules["context"] = request.prompt
+        updates["rules"] = current_rules
+
+    # Handle context update (part of rules)
+    if request.context is not None:
+        current_rules = copy.deepcopy(
+            updates.get("rules", config.rules if config.rules else {})
+        )
+        current_rules["context"] = request.context
+        updates["rules"] = current_rules
+
+    # Handle pass_criteria update (part of rules)
+    if request.pass_criteria is not None:
+        current_rules = copy.deepcopy(
+            updates.get("rules", config.rules if config.rules else {})
+        )
+        current_rules["pass_criteria"] = request.pass_criteria
+        updates["rules"] = current_rules
+
+    # Handle fail_criteria update (part of rules)
+    if request.fail_criteria is not None:
+        current_rules = copy.deepcopy(
+            updates.get("rules", config.rules if config.rules else {})
+        )
+        current_rules["fail_criteria"] = request.fail_criteria
         updates["rules"] = current_rules
 
     # Handle structured_output update (part of rules)
@@ -648,6 +699,7 @@ async def update_config(
                 descriptions=add_descriptions or [],
                 project_id=project_id,
                 config_id=config_id,
+                flags=add_image_flags or [],
             )
             # Add to map
             for img in uploaded_images:

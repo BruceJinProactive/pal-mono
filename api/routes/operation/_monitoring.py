@@ -36,6 +36,7 @@ async def create_monitoring_config(
     reference_images: list[UploadFile],
     reference_image_descriptions: list[str],
     session: AsyncSession,
+    reference_image_flags: list[str] | None = None,
 ) -> MonitoringConfigResponse:
     """
     Create a new monitoring configuration with optional reference image uploads.
@@ -73,6 +74,7 @@ async def create_monitoring_config(
                 descriptions=reference_image_descriptions,
                 project_id=project_id,
                 config_id=config_id,
+                flags=reference_image_flags or [],
             )
 
             # Track uploaded file paths for potential rollback
@@ -258,6 +260,7 @@ async def update_monitoring_config(
     project_id: uuid.UUID,
     add_images: list[UploadFile] | None = None,
     add_descriptions: list[str] | None = None,
+    add_image_flags: list[str] | None = None,
     remove_image_ids: list[str] | None = None,
     update_descriptions: dict[str, str] | None = None,
 ) -> MonitoringConfigResponse:
@@ -292,6 +295,7 @@ async def update_monitoring_config(
             request=request,
             add_images=add_images or [],
             add_descriptions=add_descriptions or [],
+            add_image_flags=add_image_flags or [],
             remove_image_ids=remove_image_ids or [],
             update_descriptions=update_descriptions or {},
         )

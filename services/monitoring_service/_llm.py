@@ -146,11 +146,13 @@ async def generate_monitoring_llm_prompt(
             detail="Failed to retrieve camera image from storage",
         ) from e
 
-    # Build prompt from rules
+    # Build prompt from rules — prefer 'context', fall back to 'prompt' for legacy configs
     rules = config.rules or {}
-    prompt = rules.get("prompt", "")
+    prompt = rules.get("context", "") or rules.get("prompt", "")
     reference_images_meta = rules.get("reference_images", [])
     structured_output = rules.get("structured_output")
+    pass_criteria = rules.get("pass_criteria", [])
+    fail_criteria = rules.get("fail_criteria", [])
 
     # Get model configuration from rules (optional)
     model_config = rules.get("model", {})
@@ -160,7 +162,7 @@ async def generate_monitoring_llm_prompt(
     if not prompt:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Monitoring config has no prompt in rules",
+            detail="Monitoring config has no prompt or context in rules",
         )
 
     # Fetch reference images if specified
@@ -180,10 +182,13 @@ async def generate_monitoring_llm_prompt(
             )
             ref_content = await asyncio.to_thread(ref_response["Body"].read)
             ref_base64 = base64.b64encode(ref_content).decode("utf-8")
+            # Include flag label in description for LLM context
+            flag = ref_img.get("flag", "pass").upper()
+            flagged_description = f"[{flag} example] {description}"
             reference_images_base64.append(
                 {
                     "base64": ref_base64,
-                    "description": description,
+                    "description": flagged_description,
                 }
             )
         except Exception as e:
@@ -298,6 +303,15 @@ For invalid/problematic images:
             f"[Monitoring LLM] Provider initialized - Final config: Provider={provider.config.provider.value}, Model={provider.config.model}"
         )
 
+        # Build analysis task text with criteria if available (outer scope for prompt_summary)
+        analysis_task_text = f"\n**Analysis Task:**\n{prompt}\n"
+        if pass_criteria:
+            criteria_str = "\n".join(f"- {c}" for c in pass_criteria)
+            analysis_task_text += f"\n**Pass Criteria (conditions that indicate a PASS):**\n{criteria_str}\n"
+        if fail_criteria:
+            criteria_str = "\n".join(f"- {c}" for c in fail_criteria)
+            analysis_task_text += f"\n**Fail Criteria (conditions that indicate a FAIL):**\n{criteria_str}\n"
+
         # Create a wrapper that isolates the LLM call into its own trace.
         # This breaks trace inheritance from the parent voice-agent request
         # so monitoring LLM spans appear as a separate root trace in Datadog.
@@ -319,7 +333,7 @@ For invalid/problematic images:
 
                     llm_response = provider.analyze_image(
                         system_instruction=system_instruction,
-                        analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
+                        analysis_task=analysis_task_text,
                         reference_images=reference_images_for_provider,
                         camera_image_base64=camera_image_base64,
                         response_format=response_format,
@@ -360,7 +374,7 @@ For invalid/problematic images:
         # Build prompt summary (excluding base64 data for readability)
         prompt_summary = {
             "system_instruction": system_instruction,
-            "user_prompt": prompt,
+            "user_prompt": analysis_task_text,
             "reference_images": [
                 {"description": ref_img["description"]}
                 for ref_img in reference_images_base64
@@ -656,11 +670,13 @@ async def generate_monitoring_video_llm_prompt(
         else boto3.client("s3", region_name=AWS_REGION)
     )
 
-    # Build prompt from rules
+    # Build prompt from rules — prefer 'context', fall back to 'prompt' for legacy configs
     rules = config.rules or {}
-    prompt = rules.get("prompt", "")
+    prompt = rules.get("context", "") or rules.get("prompt", "")
     reference_images_meta = rules.get("reference_images", [])
     structured_output = rules.get("structured_output")
+    pass_criteria = rules.get("pass_criteria", [])
+    fail_criteria = rules.get("fail_criteria", [])
 
     # Get model configuration from rules (optional)
     model_config = rules.get("model", {})
@@ -670,7 +686,7 @@ async def generate_monitoring_video_llm_prompt(
     if not prompt:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Monitoring config has no prompt in rules",
+            detail="Monitoring config has no prompt or context in rules",
         )
 
     # Fetch reference images if specified
@@ -689,10 +705,13 @@ async def generate_monitoring_video_llm_prompt(
             )
             ref_content = await asyncio.to_thread(ref_response["Body"].read)
             ref_base64 = base64.b64encode(ref_content).decode("utf-8")
+            # Include flag label in description for LLM context
+            flag = ref_img.get("flag", "pass").upper()
+            flagged_description = f"[{flag} example] {description}"
             reference_images_base64.append(
                 {
                     "base64": ref_base64,
-                    "description": description,
+                    "description": flagged_description,
                 }
             )
         except Exception as e:
@@ -810,6 +829,15 @@ For invalid/problematic frames:
             )
             video_bytes, video_mime_type = await download_video_bytes(video_url)
 
+            # Build analysis task text with criteria (outer scope for prompt_summary)
+            video_analysis_task_text = f"\n**Analysis Task:**\n{prompt}\n"
+            if pass_criteria:
+                criteria_str = "\n".join(f"- {c}" for c in pass_criteria)
+                video_analysis_task_text += f"\n**Pass Criteria (conditions that indicate a PASS):**\n{criteria_str}\n"
+            if fail_criteria:
+                criteria_str = "\n".join(f"- {c}" for c in fail_criteria)
+                video_analysis_task_text += f"\n**Fail Criteria (conditions that indicate a FAIL):**\n{criteria_str}\n"
+
             def call_native_video_llm_with_isolated_trace() -> dict:
                 current_context = tracer.current_trace_context()
                 tracer.context_provider.activate(None)
@@ -832,7 +860,7 @@ For invalid/problematic frames:
 
                         llm_response = provider.analyze_native_video(
                             system_instruction=system_instruction,
-                            analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
+                            analysis_task=video_analysis_task_text,
                             reference_images=reference_images_for_provider,
                             video_bytes=video_bytes,
                             video_mime_type=video_mime_type,
@@ -866,7 +894,7 @@ For invalid/problematic frames:
 
             prompt_summary = {
                 "system_instruction": system_instruction,
-                "user_prompt": prompt,
+                "user_prompt": video_analysis_task_text,
                 "reference_images": [
                     {"description": ref_img["description"]}
                     for ref_img in reference_images_base64
@@ -877,6 +905,15 @@ For invalid/problematic frames:
         else:
             # Frame extraction path: extract frames and send as images
             video_frames = await extract_video_frames(video_url)
+
+            # Build analysis task text with criteria (outer scope for prompt_summary)
+            frames_analysis_task_text = f"\n**Analysis Task:**\n{prompt}\n"
+            if pass_criteria:
+                criteria_str = "\n".join(f"- {c}" for c in pass_criteria)
+                frames_analysis_task_text += f"\n**Pass Criteria (conditions that indicate a PASS):**\n{criteria_str}\n"
+            if fail_criteria:
+                criteria_str = "\n".join(f"- {c}" for c in fail_criteria)
+                frames_analysis_task_text += f"\n**Fail Criteria (conditions that indicate a FAIL):**\n{criteria_str}\n"
 
             def call_video_llm_with_isolated_trace() -> dict:
                 current_context = tracer.current_trace_context()
@@ -899,7 +936,7 @@ For invalid/problematic frames:
 
                         llm_response = provider.analyze_video_frames(
                             system_instruction=system_instruction,
-                            analysis_task=f"\n**Analysis Task:**\n{prompt}\n",
+                            analysis_task=frames_analysis_task_text,
                             reference_images=reference_images_for_provider,
                             video_frames=video_frames,
                             response_format=response_format,
@@ -932,7 +969,7 @@ For invalid/problematic frames:
 
             prompt_summary = {
                 "system_instruction": system_instruction,
-                "user_prompt": prompt,
+                "user_prompt": frames_analysis_task_text,
                 "reference_images": [
                     {"description": ref_img["description"]}
                     for ref_img in reference_images_base64
