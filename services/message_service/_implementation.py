@@ -217,6 +217,34 @@ async def get_chat_response_async(
 
             pal_output = await pal_agent.run(pal_input)
 
+            # Log order_details if present (not persisted to DB, only logged for observability)
+            if hasattr(pal_output, "order_details") and pal_output.order_details:
+                order_details = pal_output.order_details
+                logger.info(
+                    "[order_details]Order successfully placed",
+                    extra={
+                        "event_type": "order_placed",
+                        "conversation_id": str(request_message.conversation_id),
+                        "agent_id": str(agent_id),
+                        "account_name": account_name,
+                        "vendor": order_details.vendor,
+                        "order_id": order_details.order_id,
+                        "store_id": order_details.store_id,
+                        "user_phone_number": order_details.user_phone_number,
+                        "tracking_link": order_details.tracking_link,
+                        "status": order_details.status,
+                        "fulfillment_strategy": order_details.fulfillment_strategy,
+                        "subtotal": float(order_details.subtotal),
+                        "tax": float(order_details.tax),
+                        "service_charge": float(order_details.service_charge),
+                        "delivery_charge": float(order_details.delivery_charge),
+                        "discount": float(order_details.discount),
+                        "total": float(order_details.total),
+                        "item_count": len(order_details.order_items),
+                        "order_time": order_details.order_time,
+                    },
+                )
+
             # Use pal-agents Output fields directly (v0.2.1+)
             output = Output(
                 content=pal_output.content,
@@ -630,6 +658,38 @@ async def get_chat_response_stream(
                                             "error": str(e),
                                         },
                                     )
+
+                            # Log order_details if present (not persisted to DB, only logged for observability)
+                            if hasattr(chunk, "order_details") and chunk.order_details:
+                                order_details = chunk.order_details
+                                logger.info(
+                                    "[order_details]Order successfully placed",
+                                    extra={
+                                        "event_type": "order_placed",
+                                        "conversation_id": str(request_conversation_id),
+                                        "agent_id": str(agent_id),
+                                        "account_name": account_name,
+                                        "vendor": order_details.vendor,
+                                        "order_id": order_details.order_id,
+                                        "store_id": order_details.store_id,
+                                        "user_phone_number": order_details.user_phone_number,
+                                        "tracking_link": order_details.tracking_link,
+                                        "status": order_details.status,
+                                        "fulfillment_strategy": order_details.fulfillment_strategy,
+                                        "subtotal": float(order_details.subtotal),
+                                        "tax": float(order_details.tax),
+                                        "service_charge": float(
+                                            order_details.service_charge
+                                        ),
+                                        "delivery_charge": float(
+                                            order_details.delivery_charge
+                                        ),
+                                        "discount": float(order_details.discount),
+                                        "total": float(order_details.total),
+                                        "item_count": len(order_details.order_items),
+                                        "order_time": order_details.order_time,
+                                    },
+                                )
 
                             if not chunk.content:
                                 continue
