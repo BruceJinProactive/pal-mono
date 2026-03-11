@@ -154,7 +154,6 @@ from api.schemas.admin.prompt import (
     SystemPrompt,
     UpdatePromptRequest,
 )
-from api.schemas.admin.signature import InitiateTermsSigningRequest
 from api.schemas.admin.subscription import (
     AssignCouponRequest,
     CancelProjectSubscriptionResponse,
@@ -583,51 +582,6 @@ def get_account_terms_status(
     Retrieve terms acceptance status by account name.
     """
     return _account.get_account_terms_status(account_name, context, session)
-
-
-@admin_router.post("/accounts/{account_name}/initiate_terms_signing")
-async def initiate_terms_signing_endpoint(
-    account_name: str,
-    request: InitiateTermsSigningRequest,
-    context: UserContext = Depends(
-        require_account_permission("account.write", authenticate_user)
-    ),
-    session: Session = Depends(db.get_db),
-) -> dict:
-    """
-    Initiate DocuSign terms signing. Returns signing URL.
-    After user signs, frontend should call /complete_terms_signing.
-    """
-    return await _account.initiate_terms_signing(
-        account_name=account_name,
-        signer_name=request.signer_name,
-        signer_email=request.signer_email,
-        redirect_url=str(request.redirect_url),
-        frame_ancestors=request.frame_ancestors,
-        context=context,
-        session=session,
-    )
-
-
-@admin_router.post("/accounts/{account_name}/complete_terms_signing")
-async def complete_terms_signing_endpoint(
-    account_name: str,
-    envelope_id: str = Query(..., description="DocuSign envelope ID"),
-    context: UserContext = Depends(
-        require_account_permission("account.write", authenticate_user)
-    ),
-    session: Session = Depends(db.get_db),
-) -> dict:
-    """
-    Mark terms as accepted after DocuSign signing completes.
-    Frontend calls this when DocuSign JS fires 'signing_complete' event.
-    """
-    return await _account.complete_terms_signing(
-        account_name=account_name,
-        envelope_id=envelope_id,
-        context=context,
-        session=session,
-    )
 
 
 @admin_router.put("/accounts/{account_name}/accept_terms")
