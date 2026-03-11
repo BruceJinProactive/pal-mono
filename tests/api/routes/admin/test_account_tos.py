@@ -52,6 +52,7 @@ class TestAcceptAccountTerms:
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
             mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
             mock_get_role.return_value = "owner"
 
             tos_repo_instance = mock_tos_repo.return_value
@@ -65,6 +66,7 @@ class TestAcceptAccountTerms:
 
             # Assert
             assert result.accepted is True
+            assert result.tos_version == "v1.0"
             mock_session.commit.assert_called_once()
             tos_repo_instance.create_tos_acceptance.assert_called_once()
 
@@ -72,21 +74,55 @@ class TestAcceptAccountTerms:
     async def test_accept_terms_blocks_internal_email(
         self, mock_context, mock_account, mock_request
     ):
-        """Should block acceptance from @proactiveailab.com emails."""
-        mock_context.email = "user@proactiveailab.com"
+        """Should block acceptance from @proactiveailab.com."""
         mock_session = MagicMock()
 
+        # Test @proactiveailab.com
+        mock_context.email = "user@proactiveailab.com"
         with patch("api.routes.admin._account.account_service") as mock_account_service:
             mock_account_service.get_account.return_value = mock_account
 
-            # Execute and assert
+            with pytest.raises(HTTPException) as exc_info:
+                await accept_account_terms(
+                    "test-account", mock_request, mock_context, mock_session
+                )
+            assert exc_info.value.status_code == 403
+            assert "Internal Palona users" in exc_info.value.detail
+
+            with pytest.raises(HTTPException) as exc_info:
+                await accept_account_terms(
+                    "test-account", mock_request, mock_context, mock_session
+                )
+            assert exc_info.value.status_code == 403
+            assert "Internal Palona users" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_accept_terms_version_mismatch(
+        self, mock_context, mock_account, mock_request
+    ):
+        """Should reject TOS acceptance when version doesn't match current version."""
+        mock_session = MagicMock()
+        mock_request.tos_version = "v2.0"  # Wrong version
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch(
+                "api.routes.admin._account.get_user_role_on_account"
+            ) as mock_get_role,
+        ):
+            mock_account_service.get_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_get_role.return_value = "owner"
+
             with pytest.raises(HTTPException) as exc_info:
                 await accept_account_terms(
                     "test-account", mock_request, mock_context, mock_session
                 )
 
-            assert exc_info.value.status_code == 403
-            assert "proactiveailab.com" in exc_info.value.detail
+            assert exc_info.value.status_code == 409
+            assert "TOS version mismatch" in exc_info.value.detail
+            assert "v2.0" in exc_info.value.detail
+            assert "v1.0" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_accept_terms_account_not_found(self, mock_context, mock_request):
@@ -166,6 +202,7 @@ class TestAcceptAccountTerms:
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
             mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
             mock_get_role.return_value = "owner"
 
             # Already accepted
@@ -182,6 +219,7 @@ class TestAcceptAccountTerms:
 
             # Assert
             assert result.accepted is True
+            assert result.tos_version == "v1.0"
             mock_session.commit.assert_called_once()
             # Should not create new record since it already exists
             tos_repo_instance.create_tos_acceptance.assert_not_called()
@@ -203,6 +241,7 @@ class TestAcceptAccountTerms:
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
             mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
             mock_get_role.return_value = "owner"
 
             tos_repo_instance = mock_tos_repo.return_value
@@ -226,6 +265,7 @@ class TestAcceptAccountTerms:
 
             # Assert
             assert result.accepted is True
+            assert result.tos_version == "v1.0"
             mock_session.rollback.assert_called_once()
             mock_session.commit.assert_called_once()
             # Should have checked twice (before and after IntegrityError)
@@ -248,6 +288,7 @@ class TestAcceptAccountTerms:
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
             mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
             mock_get_role.return_value = "owner"
 
             tos_repo_instance = mock_tos_repo.return_value
@@ -290,6 +331,7 @@ class TestAcceptAccountTerms:
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
             mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
             mock_get_role.return_value = "owner"
 
             tos_repo_instance = mock_tos_repo.return_value
@@ -322,6 +364,7 @@ class TestAcceptAccountTerms:
             ) as mock_get_role,
         ):
             mock_account_service.get_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
             mock_get_role.return_value = "owner"
             mock_account_service.update_account.side_effect = ValueError(
                 "Update failed"
@@ -357,49 +400,64 @@ class TestGetAccountTermsStatus:
         return account
 
     def test_get_terms_status_success(self, mock_context, mock_account):
-        """Should return terms status with current version from environment."""
+        """Should return terms status from tos_acceptances table."""
         mock_session = MagicMock()
 
-        with (
-            patch("api.routes.admin._account.account_service") as mock_account_service,
-            patch.dict("os.environ", {"CURRENT_TOS_VERSION": "v2.0"}),
-        ):
+        with patch("api.routes.admin._account.account_service") as mock_account_service:
             mock_account_service.get_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_account_service.get_tos_status.return_value = {
+                "accepted_tos_version": "v1.0",
+                "is_compliant": True,
+                "accepted_at": None,
+            }
 
             # Execute
             result = get_account_terms_status(
                 "test-account", mock_context, mock_session
             )
 
-            # Assert
+            # Assert service call
+            mock_account_service.get_tos_status.assert_called_once_with(
+                mock_session, mock_account.id, "v1.0"
+            )
+
+            # Assert response
             assert result.id == mock_account.id
             assert result.name == mock_account.name
             assert result.display_name == mock_account.display_name
             assert result.terms_accepted is False
-            assert result.current_tos_version == "v2.0"
+            assert result.accepted_tos_version == "v1.0"
+            assert result.is_compliant is True
+            assert result.accepted_at is None
 
-    def test_get_terms_status_default_version(self, mock_context, mock_account):
-        """Should use default version v1.0 when env var not set."""
+    def test_get_terms_status_not_compliant(self, mock_context, mock_account):
+        """Should return not compliant when TOS not accepted."""
         mock_session = MagicMock()
 
-        with (
-            patch("api.routes.admin._account.account_service") as mock_account_service,
-            patch.dict("os.environ", {}, clear=False),
-        ):
-            # Remove CURRENT_TOS_VERSION if it exists
-            import os
-
-            os.environ.pop("CURRENT_TOS_VERSION", None)
-
+        with patch("api.routes.admin._account.account_service") as mock_account_service:
             mock_account_service.get_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_account_service.get_tos_status.return_value = {
+                "accepted_tos_version": None,
+                "is_compliant": False,
+                "accepted_at": None,
+            }
 
             # Execute
             result = get_account_terms_status(
                 "test-account", mock_context, mock_session
             )
 
-            # Assert
-            assert result.current_tos_version == "v1.0"
+            # Assert service call
+            mock_account_service.get_tos_status.assert_called_once_with(
+                mock_session, mock_account.id, "v1.0"
+            )
+
+            # Assert response
+            assert result.accepted_tos_version is None
+            assert result.is_compliant is False
+            assert result.accepted_at is None
 
     def test_get_terms_status_account_not_found(self, mock_context):
         """Should raise 404 when account not found."""

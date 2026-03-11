@@ -236,15 +236,22 @@ def get_account_terms_status(
             headers={"Content-Type": "application/json"},
         )
 
-    # Get current TOS version from environment (default to v1.0 if not set)
-    current_tos_version = os.environ.get("CURRENT_TOS_VERSION", "v1.0")
+    # Get TOS status from tos_acceptances table only
+    tos_status = account_service.get_tos_status(
+        session, account.id, account_service.CURRENT_TOS_VERSION
+    )
 
     return TermsStatusResponse(
         id=account.id,
         name=account.name,
-        terms_accepted=account.terms_accepted,
+        terms_accepted=bool(
+            account.terms_accepted
+        ),  # DEPRECATED - kept for data only, not used
         display_name=account.display_name,
-        current_tos_version=current_tos_version,
+        # NEW FIELDS from tos_acceptances table
+        accepted_tos_version=tos_status["accepted_tos_version"],
+        is_compliant=tos_status["is_compliant"],
+        accepted_at=tos_status["accepted_at"],
     )
 
 
@@ -392,7 +399,7 @@ async def accept_account_terms(
     if normalized_email.endswith("@proactiveailab.com"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Users with @proactiveailab.com emails are not allowed to accept Terms of Service.",
+            detail="Internal Palona users are not allowed to accept Terms of Service.",
             headers={"Content-Type": "application/json"},
         )
 
@@ -424,6 +431,14 @@ async def accept_account_terms(
             headers={"Content-Type": "application/json"},
         )
 
+    # Validate TOS version matches current required version (before any updates)
+    if request.tos_version != account_service.CURRENT_TOS_VERSION:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"TOS version mismatch. Client sent '{request.tos_version}' but server requires '{account_service.CURRENT_TOS_VERSION}'. Please refresh and try again.",
+            headers={"Content-Type": "application/json"},
+        )
+
     accepted_at = datetime.now(UTC)
 
     # Update account flag (existing behavior)
@@ -440,9 +455,12 @@ async def accept_account_terms(
     # Create TOS acceptance record (idempotent)
     tos_repo = TosAcceptanceRepository(session)
 
+    # Use shared constant for TOS version (single source of truth)
+    tos_version = account_service.CURRENT_TOS_VERSION
+
     # Check if this TOS version has already been accepted
     existing_acceptance = tos_repo.get_tos_acceptance_by_version(
-        account_id=account.id, tos_version=request.tos_version
+        account_id=account.id, tos_version=tos_version
     )
 
     if not existing_acceptance:
@@ -451,7 +469,7 @@ async def accept_account_terms(
             tos_repo.create_tos_acceptance(
                 account_id=account.id,
                 display_name=account.display_name or account.name,
-                tos_version=request.tos_version,
+                tos_version=tos_version,
                 user_id=user_id,
                 user_email=normalized_email,
                 accepted_at=accepted_at,
@@ -461,7 +479,7 @@ async def accept_account_terms(
             # Roll back and re-check to confirm the record exists
             session.rollback()
             existing_acceptance = tos_repo.get_tos_acceptance_by_version(
-                account_id=account.id, tos_version=request.tos_version
+                account_id=account.id, tos_version=tos_version
             )
             if not existing_acceptance:
                 # Still doesn't exist - this is an unexpected integrity error
@@ -503,7 +521,7 @@ async def accept_account_terms(
     # Explicitly commit the transaction (both account update and TOS acceptance)
     session.commit()
 
-    return AcceptTermsResponse(accepted=True, tos_version=request.tos_version)
+    return AcceptTermsResponse(accepted=True, tos_version=tos_version)
 
 
 def _set_user_session(

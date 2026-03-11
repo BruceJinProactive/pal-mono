@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import List
 from uuid import UUID
 
@@ -58,7 +59,7 @@ class AccountSummary(BaseModel):
     segment: str | None = None
     tier: str | None = None
     contract_signed: bool = False
-    terms_accepted: bool = False
+    terms_accepted: bool = False  # DEPRECATED: Use tos_acceptances table
     notes: str | None = None
     phone_number: str | None = None
     channels: list[str] | None = None
@@ -95,7 +96,7 @@ class UpdateAccountRequest(BaseModel):
     tier: TargetTier | None = None
     notes: str | None = None
     contract_signed: bool | None = None
-    terms_accepted: bool | None = None
+    terms_accepted: bool | None = None  # DEPRECATED: Use tos_acceptances table
     phone_number: str | None = None
     channels: list[str] | None = None
     expected_version: int | None = None
@@ -150,10 +151,20 @@ class TermsStatusResponse(BaseModel):
 
     id: UUID
     name: str
-    terms_accepted: bool
+    terms_accepted: bool  # DEPRECATED - kept for backward compatibility
     display_name: str | None = None
-    current_tos_version: str = Field(
-        ..., description="Current TOS version that must be accepted"
+
+    # NEW FIELDS - Primary source of truth
+    accepted_tos_version: str | None = Field(
+        None,
+        description="Exact TOS version the account accepted (may be older than current), None if not accepted",
+    )
+    is_compliant: bool = Field(
+        default=False,
+        description="Whether account has accepted the currently required TOS version",
+    )
+    accepted_at: datetime | None = Field(
+        None, description="UTC timestamp when the TOS version was accepted"
     )
 
 
