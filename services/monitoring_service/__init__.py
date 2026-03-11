@@ -21,6 +21,7 @@ from ._implementation import (
     get_configs,
     get_run,
     get_runs,
+    test_monitoring_config,
     trigger_run,
     update_config,
     upload_reference_images,
@@ -56,4 +57,5 @@ __all__ = [
     "parse_time",
     "is_within_time_window",
     "should_skip_monitoring",
+    "test_monitoring_config",
 ]

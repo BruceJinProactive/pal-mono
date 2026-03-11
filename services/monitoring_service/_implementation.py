@@ -1057,6 +1057,143 @@ async def delete_runs_batch(
     }
 
 
+async def test_monitoring_config(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    test_image_bytes: bytes | None = None,
+) -> dict:
+    """
+    Test a monitoring configuration without saving to database.
+
+    Uses either provided test image bytes (from upload) or automatically uses the
+    latest captured image from the signal feed. Runs the monitoring logic and returns
+    the data structure that would be saved to the database. This allows users to
+    preview exactly how the monitoring will analyze images before committing the
+    configuration.
+
+    Args:
+        session: Async database session.
+        project_id: Project UUID.
+        config_id: Monitoring config UUID.
+        test_image_bytes: Optional raw image bytes from upload. If not provided,
+            uses the latest image from the signal feed. Test images are NOT saved
+            to S3 - they're passed directly to the LLM.
+
+    Returns:
+        dict with keys matching MonitoringRun structure:
+            - evaluation_result: dict that would be saved to DB (result, details, confidence)
+            - error_message: str or None (extracted from evaluation_result when result='error')
+            - prompt_sent: dict containing system instruction, user prompt, reference images structure
+            - test_image_url: str describing the image source
+
+    Raises:
+        ValueError: If config not found, doesn't belong to project, or no recent image available.
+        HTTPException: If LLM analysis fails.
+    """
+    # Import here to avoid circular dependency
+    from db.repositories import SignalFeedRepositoryAsync
+    from services.monitoring_service._llm import generate_monitoring_llm_prompt
+
+    config_repo = MonitoringConfigRepositoryAsync(session)
+
+    # Verify config exists and belongs to project
+    config = await config_repo.get_by_id(config_id)
+    if not config or config.project_id != project_id:
+        raise ValueError(
+            f"Monitoring config {config_id} not found or doesn't belong to project {project_id}"
+        )
+
+    # Determine which image to use for testing
+    if test_image_bytes is not None:
+        # Validate that uploaded image is not empty
+        if len(test_image_bytes) == 0:
+            raise ValueError("Uploaded test image is empty (0 bytes)")
+
+        # Use the provided custom test image bytes (not saved to S3)
+        image_url = None
+        image_source = "custom_upload"
+        image_description = "uploaded test image"
+        logger.info(
+            f"[Test Monitoring Config] Testing configuration {config_id} with uploaded image",
+            extra={
+                "config_id": str(config_id),
+                "project_id": str(project_id),
+                "signal_source_id": str(config.signal_source_id),
+                "image_source": image_source,
+                "image_size_bytes": len(test_image_bytes),
+            },
+        )
+    else:
+        # Fall back to latest image from signal feed
+        feed_repo = SignalFeedRepositoryAsync(session)
+        feed = await feed_repo.get_by_source_id(config.signal_source_id)
+        if not feed:
+            raise ValueError(
+                f"No signal feed found for signal source {config.signal_source_id}"
+            )
+
+        # Check if there's a recent capture available
+        if not feed.last_capture_url:
+            raise ValueError(
+                "No recent image available from camera. Please wait for the next camera capture or trigger a manual capture."
+            )
+
+        image_url = feed.last_capture_url
+        image_source = "signal_feed"
+        image_description = feed.last_capture_url
+        logger.info(
+            f"[Test Monitoring Config] Testing configuration {config_id} with latest feed image {image_url}",
+            extra={
+                "config_id": str(config_id),
+                "project_id": str(project_id),
+                "signal_source_id": str(config.signal_source_id),
+                "test_image_url": image_url,
+                "image_source": image_source,
+                "last_capture_at": (
+                    feed.last_capture_at.isoformat() if feed.last_capture_at else None
+                ),
+            },
+        )
+
+    # Run LLM analysis using existing monitoring logic
+    # This returns {"prompt_sent": {...}, "analysis_result": {...}}
+    llm_result = await generate_monitoring_llm_prompt(
+        session=session,
+        monitoring_config_id=config_id,
+        image_url=image_url,
+        image_bytes=test_image_bytes,
+    )
+
+    analysis_result = llm_result.get("analysis_result", {})
+    result_status = analysis_result.get("result")
+
+    # Extract error_message if result is "error" (matches create_monitoring_run_with_analysis logic)
+    error_message = None
+    if result_status == "error":
+        error_message = analysis_result.get("details", "Image validation failed")
+
+    logger.info(
+        f"[Test Monitoring Config] Analysis completed for config {config_id}",
+        extra={
+            "config_id": str(config_id),
+            "result": result_status,
+            "error_message": error_message,
+            "test_image_url": image_url,
+            "test_image_source": image_description,
+        },
+    )
+
+    # Return data structure matching MonitoringRun table
+    return {
+        "evaluation_result": analysis_result,
+        "error_message": error_message,
+        "prompt_sent": llm_result.get("prompt_sent", {}),
+        "test_image_url": image_url,  # S3 path or None for uploaded images
+        "test_image_source": image_description,  # Descriptive string
+    }
+
+
 async def build_config_response(config: MonitoringConfig) -> MonitoringConfigResponse:
     """
     Build a MonitoringConfigResponse from a MonitoringConfig model.

@@ -22,6 +22,7 @@ from api.schemas.operations.monitoring import (
     ListMonitoringRunsResponse,
     MonitoringConfigResponse,
     MonitoringRunResponse,
+    TestMonitoringConfigResponse,
     TriggerRunRequest,
     TriggerRunResponse,
     UpdateMonitoringConfigRequest,
@@ -478,6 +479,123 @@ async def trigger_monitoring_run(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to trigger monitoring run",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def test_monitoring_config(
+    config_id: uuid.UUID,
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    test_image: UploadFile | None = None,
+) -> TestMonitoringConfigResponse:
+    """
+    Test a monitoring configuration without saving to database.
+
+    Users can either provide a custom test image or let the system use the latest
+    captured image from the signal feed. Runs the monitoring logic and returns the
+    prompt sent and analysis result including confidence scores. This allows users
+    to preview how the monitoring will analyze images before committing the configuration.
+
+    Test images are NOT saved to S3 - they're passed directly to the LLM for analysis.
+
+    Args:
+        config_id: Config UUID.
+        session: Async database session.
+        project_id: Project UUID (for authorization).
+        test_image: Optional uploaded test image. If not provided, uses latest feed image.
+
+    Returns:
+        TestMonitoringConfigResponse with prompt, analysis result, and confidence scores.
+
+    Raises:
+        HTTPException: If test fails, config not found, or no recent image available.
+    """
+    test_image_bytes = None
+
+    # If user uploaded a test image, read the bytes (don't save to S3)
+    if test_image:
+        try:
+            logger.info(
+                f"[test monitoring config] Reading uploaded test image for config {config_id}"
+            )
+
+            if not test_image.filename:
+                raise ValueError("Image filename is required.")
+
+            # Read image content (not saved to S3)
+            test_image_bytes = await test_image.read()
+
+            logger.info(
+                f"[test monitoring config] Test image loaded ({len(test_image_bytes)} bytes)"
+            )
+
+        except ValueError as ve:
+            logger.error(f"[test monitoring config] Validation error: {ve}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(ve),
+            )
+        except Exception as e:
+            logger.error(f"[test monitoring config] Error reading test image: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to read test image: {str(e)}",
+            )
+
+    # Run the test with either uploaded image bytes or feed image
+    try:
+        result = await monitoring_service.test_monitoring_config(
+            session=session,
+            project_id=project_id,
+            config_id=config_id,
+            test_image_bytes=test_image_bytes,
+        )
+
+        logger.info(
+            "[test monitoring config] Test completed for config %s",
+            config_id,
+            extra={
+                "config_id": str(config_id),
+                "project_id": str(project_id),
+                "test_image_url": result.get("test_image_url"),
+                "test_image_source": result.get("test_image_source"),
+                "result": result.get("evaluation_result", {}).get("result"),
+                "error_message": result.get("error_message"),
+            },
+        )
+
+        return TestMonitoringConfigResponse(
+            evaluation_result=result["evaluation_result"],
+            error_message=result["error_message"],
+            prompt_sent=result["prompt_sent"],
+            test_image_url=result["test_image_url"],
+            test_image_source=result["test_image_source"],
+        )
+
+    except ValueError as e:
+        logger.error(
+            f"[test monitoring config] Validation error testing config {config_id}: {e}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    except HTTPException as e:
+        logger.error(
+            f"[test monitoring config] HTTP error testing config {config_id}: "
+            f"status={e.status_code}, detail={e.detail}"
+        )
+        raise
+    except Exception as e:
+        logger.error(
+            f"[test monitoring config] Unexpected error testing config {config_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to test monitoring configuration",
             headers={"Content-Type": "application/json"},
         )
 

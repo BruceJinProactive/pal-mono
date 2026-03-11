@@ -54,6 +54,7 @@ from api.schemas.operations.monitoring import (
     MonitoringConfigResponse,
     MonitoringRunResponse,
     MonitoringTimeWindow,
+    TestMonitoringConfigResponse,
     TriggerRunRequest,
     TriggerRunResponse,
     UpdateMonitoringConfigRequest,
@@ -1990,6 +1991,57 @@ async def trigger_monitoring_run(
         session=session,
         project_id=project_id,
         user_id=context.username,
+    )
+
+
+@operation_router.post(
+    "/projects/{project_id}/monitoring/configs/{config_id}/test",
+    status_code=status.HTTP_200_OK,
+    response_model=TestMonitoringConfigResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def test_monitoring_config(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    test_image: UploadFile | None = File(None),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> TestMonitoringConfigResponse:
+    """
+    Test a monitoring configuration without saving to database.
+
+    Users can either provide a custom test image or let the system use the latest
+    captured image from the signal feed. Runs the monitoring logic and returns the
+    prompt sent and analysis result including confidence scores. This allows users
+    to preview how the monitoring will analyze images before committing the configuration.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the monitoring configuration
+
+    Form Data (optional):
+    - test_image: Custom test image file (if not provided, uses latest from signal feed)
+
+    Returns:
+    - TestMonitoringConfigResponse with:
+      - evaluation_result: The analysis result that would be saved to DB
+      - error_message: Error details if result='error'
+      - prompt_sent: Debug info about what was sent to LLM
+      - test_image_url: S3 key of the analyzed image
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.test_monitoring_config(
+        config_id=config_id,
+        session=session,
+        project_id=project_id,
+        test_image=test_image,
     )
 
 

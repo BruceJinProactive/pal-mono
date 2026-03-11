@@ -473,3 +473,32 @@ class BatchDeleteMonitoringRunsResponse(BaseModel):
         ..., description="Number of runs user is not authorized to delete"
     )
     message: str = Field(..., description="Summary message")
+
+
+class TestMonitoringConfigResponse(BaseModel):
+    """Response from testing a monitoring configuration.
+
+    Mirrors the structure of actual monitoring run data to preview what will be saved.
+    Includes both the prompt sent to LLM and the evaluation result that would be stored.
+    """
+
+    evaluation_result: dict = Field(
+        ...,
+        description="The evaluation result that would be saved to the database (result, details, confidence, etc.)",
+    )
+    error_message: str | None = Field(
+        None,
+        description="Error message if analysis failed (extracted from evaluation_result when result='error')",
+    )
+    prompt_sent: dict = Field(
+        ...,
+        description="The prompt that was sent to the LLM including system instruction, analysis task, and reference images structure",
+    )
+    test_image_url: str | None = Field(
+        None,
+        description="S3 key/path of the analyzed image (only present if using feed image; null for uploaded test images)",
+    )
+    test_image_source: str = Field(
+        ...,
+        description="Source of the test image: 'uploaded test image' for user uploads, or S3 path for feed images",
+    )

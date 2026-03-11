@@ -76,7 +76,8 @@ def _add_confidence_to_schema(schema: dict) -> dict:
 async def generate_monitoring_llm_prompt(
     session: AsyncSession,
     monitoring_config_id: uuid.UUID,
-    image_url: str,
+    image_url: str | None = None,
+    image_bytes: bytes | None = None,
 ) -> dict:
     """
     Execute LLM analysis for a monitoring configuration.
@@ -87,7 +88,9 @@ async def generate_monitoring_llm_prompt(
     Args:
         session: Async database session
         monitoring_config_id: UUID of the monitoring configuration
-        image_url: S3 key/path of the camera image to analyze
+        image_url: S3 key/path of the camera image to analyze (for feed images)
+        image_bytes: Raw image bytes to analyze (for uploaded test images). If provided,
+            takes precedence over image_url and skips S3 fetch.
 
     Returns:
         dict: Contains both the prompt and analysis result:
@@ -118,7 +121,7 @@ async def generate_monitoring_llm_prompt(
             detail=f"Monitoring config {monitoring_config_id} not found",
         )
 
-    # Initialize S3 client
+    # Initialize S3 client (needed for reference images even if test image is provided as bytes)
     s3_client = (
         boto3.client(
             "s3",
@@ -131,20 +134,32 @@ async def generate_monitoring_llm_prompt(
         else boto3.client("s3", region_name=AWS_REGION)
     )
 
-    # Fetch camera image from S3
-    try:
-        # Run blocking S3 operations in thread pool to avoid blocking event loop
-        camera_response = await asyncio.to_thread(
-            s3_client.get_object, Bucket=AWS_ASSET_BUCKET_NAME, Key=image_url
-        )
-        camera_image_content = await asyncio.to_thread(camera_response["Body"].read)
+    # Get camera image - either from provided bytes or fetch from S3
+    if image_bytes is not None:
+        # Validate that uploaded image is not empty
+        if len(image_bytes) == 0:
+            raise ValueError("Provided image bytes are empty (0 bytes)")
+
+        # Use provided raw image bytes (test image upload - not saved to S3)
+        camera_image_content = image_bytes
         camera_image_base64 = base64.b64encode(camera_image_content).decode("utf-8")
-    except Exception as e:
-        logger.error(f"Failed to retrieve camera image from S3: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve camera image from storage",
-        ) from e
+    elif image_url:
+        # Fetch camera image from S3
+        try:
+            # Run blocking S3 operations in thread pool to avoid blocking event loop
+            camera_response = await asyncio.to_thread(
+                s3_client.get_object, Bucket=AWS_ASSET_BUCKET_NAME, Key=image_url
+            )
+            camera_image_content = await asyncio.to_thread(camera_response["Body"].read)
+            camera_image_base64 = base64.b64encode(camera_image_content).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Failed to retrieve camera image from S3: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve camera image from storage",
+            ) from e
+    else:
+        raise ValueError("Either image_url or image_bytes must be provided")
 
     # Build prompt from rules — prefer 'context', fall back to 'prompt' for legacy configs
     rules = config.rules or {}
