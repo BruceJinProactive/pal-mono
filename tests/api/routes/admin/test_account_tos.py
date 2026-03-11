@@ -97,6 +97,22 @@ class TestAcceptAccountTerms:
             assert "Internal Palona users" in exc_info.value.detail
 
     @pytest.mark.asyncio
+    async def test_accept_terms_empty_email(self, mock_request):
+        """Should raise 400 when user email is missing."""
+        mock_session = MagicMock()
+        mock_context = MagicMock()
+        mock_context.email = None  # Missing email
+        mock_context.username = str(uuid.uuid4())
+
+        with pytest.raises(HTTPException) as exc_info:
+            await accept_account_terms(
+                "test-account", mock_request, mock_context, mock_session
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "User email is required" in exc_info.value.detail
+
+    @pytest.mark.asyncio
     async def test_accept_terms_version_mismatch(
         self, mock_context, mock_account, mock_request
     ):
@@ -272,6 +288,66 @@ class TestAcceptAccountTerms:
             assert tos_repo_instance.get_tos_acceptance_by_version.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_accept_terms_race_condition_account_update_fails(
+        self, mock_context, mock_account, mock_request
+    ):
+        """Should succeed even when deprecated flag re-apply fails after race condition."""
+        mock_session = MagicMock()
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch(
+                "api.routes.admin._account.get_user_role_on_account"
+            ) as mock_get_role,
+            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
+            patch("api.routes.admin._account.logger") as mock_logger,
+        ):
+            # Setup mocks
+            mock_account_service.get_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_get_role.return_value = "owner"
+
+            tos_repo_instance = mock_tos_repo.return_value
+
+            # First update_account: succeeds
+            # First check: not exists
+            # create_tos_acceptance: raises IntegrityError (race condition)
+            # Second check: exists (another request created it)
+            # Second update_account (re-apply after rollback): fails (best-effort, should log warning)
+            existing_acceptance = MagicMock()
+            tos_repo_instance.get_tos_acceptance_by_version.side_effect = [
+                None,
+                existing_acceptance,
+            ]
+            tos_repo_instance.create_tos_acceptance.side_effect = (
+                sqlalchemy_exc.IntegrityError("statement", {}, Exception())
+            )
+            # First call succeeds, second call (re-apply) fails
+            mock_account_service.update_account.side_effect = [
+                mock_account,
+                ValueError("Update failed"),
+            ]
+
+            # Execute - should succeed despite update_account failure
+            response = await accept_account_terms(
+                "test-account", mock_request, mock_context, mock_session
+            )
+
+            # Assert success
+            assert response.accepted is True
+            assert response.tos_version == "v1.0"
+
+            # Verify warning was logged for failed re-apply
+            mock_logger.warning.assert_called_once()
+            warning_call = mock_logger.warning.call_args[0][0]
+            assert "Failed to re-apply deprecated terms_accepted flag" in warning_call
+
+            # Rollback called once (for IntegrityError)
+            mock_session.rollback.assert_called_once()
+            # Commit should still be called since TOS acceptance already exists
+            mock_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_accept_terms_race_condition_unexpected_integrity_error(
         self, mock_context, mock_account, mock_request
     ):
@@ -378,6 +454,255 @@ class TestAcceptAccountTerms:
 
             assert exc_info.value.status_code == 400
             assert "Update failed" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_accept_terms_metrics_failure_on_create(
+        self, mock_context, mock_account, mock_request
+    ):
+        """Should handle statsd metric failures gracefully when creating acceptance."""
+        mock_session = MagicMock()
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch(
+                "api.routes.admin._account.get_user_role_on_account"
+            ) as mock_get_role,
+            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
+            patch("api.routes.admin._account.statsd") as mock_statsd,
+        ):
+            # Setup mocks
+            mock_account_service.get_account.return_value = mock_account
+            mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_get_role.return_value = "owner"
+
+            tos_repo_instance = mock_tos_repo.return_value
+            tos_repo_instance.get_tos_acceptance_by_version.return_value = None
+            tos_repo_instance.create_tos_acceptance.return_value = MagicMock()
+
+            # Make statsd raise exceptions
+            mock_statsd.increment.side_effect = Exception("Statsd error")
+            mock_statsd.histogram.side_effect = Exception("Statsd error")
+
+            # Execute - should succeed despite metrics failures
+            result = await accept_account_terms(
+                "test-account", mock_request, mock_context, mock_session
+            )
+
+            # Assert - business logic should succeed
+            assert result.accepted is True
+            assert result.tos_version == "v1.0"
+            mock_session.commit.assert_called_once()
+            tos_repo_instance.create_tos_acceptance.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_accept_terms_metrics_failure_on_duplicate(
+        self, mock_context, mock_account, mock_request
+    ):
+        """Should handle statsd metric failures gracefully when acceptance already exists."""
+        mock_session = MagicMock()
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch(
+                "api.routes.admin._account.get_user_role_on_account"
+            ) as mock_get_role,
+            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
+            patch("api.routes.admin._account.statsd") as mock_statsd,
+        ):
+            # Setup mocks
+            mock_account_service.get_account.return_value = mock_account
+            mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_get_role.return_value = "owner"
+
+            # Already accepted
+            tos_repo_instance = mock_tos_repo.return_value
+            existing_acceptance = MagicMock()
+            tos_repo_instance.get_tos_acceptance_by_version.return_value = (
+                existing_acceptance
+            )
+
+            # Make statsd raise exceptions
+            mock_statsd.increment.side_effect = Exception("Statsd error")
+            mock_statsd.histogram.side_effect = Exception("Statsd error")
+
+            # Execute - should succeed despite metrics failures
+            result = await accept_account_terms(
+                "test-account", mock_request, mock_context, mock_session
+            )
+
+            # Assert - business logic should succeed
+            assert result.accepted is True
+            assert result.tos_version == "v1.0"
+            mock_session.commit.assert_called_once()
+            tos_repo_instance.create_tos_acceptance.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_accept_terms_metrics_failure_on_race_condition(
+        self, mock_context, mock_account, mock_request
+    ):
+        """Should handle statsd metric failures gracefully during race condition."""
+        mock_session = MagicMock()
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch(
+                "api.routes.admin._account.get_user_role_on_account"
+            ) as mock_get_role,
+            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
+            patch("api.routes.admin._account.statsd") as mock_statsd,
+        ):
+            # Setup mocks
+            mock_account_service.get_account.return_value = mock_account
+            mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_get_role.return_value = "owner"
+
+            tos_repo_instance = mock_tos_repo.return_value
+
+            # First check: not exists, create raises IntegrityError, second check: exists
+            existing_acceptance = MagicMock()
+            tos_repo_instance.get_tos_acceptance_by_version.side_effect = [
+                None,
+                existing_acceptance,
+            ]
+            tos_repo_instance.create_tos_acceptance.side_effect = (
+                sqlalchemy_exc.IntegrityError("statement", {}, Exception())
+            )
+
+            # Make statsd raise exceptions
+            mock_statsd.increment.side_effect = Exception("Statsd error")
+            mock_statsd.histogram.side_effect = Exception("Statsd error")
+
+            # Execute - should succeed despite metrics failures
+            result = await accept_account_terms(
+                "test-account", mock_request, mock_context, mock_session
+            )
+
+            # Assert - business logic should succeed
+            assert result.accepted is True
+            assert result.tos_version == "v1.0"
+            mock_session.rollback.assert_called_once()
+            mock_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_accept_terms_metrics_failure_on_error(
+        self, mock_context, mock_account, mock_request
+    ):
+        """Should handle statsd metric failures gracefully during database errors."""
+        mock_session = MagicMock()
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch(
+                "api.routes.admin._account.get_user_role_on_account"
+            ) as mock_get_role,
+            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
+            patch("api.routes.admin._account.statsd") as mock_statsd,
+        ):
+            # Setup mocks
+            mock_account_service.get_account.return_value = mock_account
+            mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_get_role.return_value = "owner"
+
+            tos_repo_instance = mock_tos_repo.return_value
+            tos_repo_instance.get_tos_acceptance_by_version.return_value = None
+            tos_repo_instance.create_tos_acceptance.side_effect = Exception(
+                "Database error"
+            )
+
+            # Make statsd raise exceptions
+            mock_statsd.increment.side_effect = Exception("Statsd error")
+            mock_statsd.histogram.side_effect = Exception("Statsd error")
+
+            # Execute and assert - should still raise the database error
+            with pytest.raises(HTTPException) as exc_info:
+                await accept_account_terms(
+                    "test-account", mock_request, mock_context, mock_session
+                )
+
+            assert exc_info.value.status_code == 500
+            assert "Failed to record TOS acceptance" in exc_info.value.detail
+            mock_session.rollback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_accept_terms_lookup_failure_before_insert(
+        self, mock_context, mock_account, mock_request
+    ):
+        """Should handle repository lookup failures before insert."""
+        mock_session = MagicMock()
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch(
+                "api.routes.admin._account.get_user_role_on_account"
+            ) as mock_get_role,
+            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
+        ):
+            # Setup mocks
+            mock_account_service.get_account.return_value = mock_account
+            mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_get_role.return_value = "owner"
+
+            tos_repo_instance = mock_tos_repo.return_value
+            # Make the lookup raise a database error
+            tos_repo_instance.get_tos_acceptance_by_version.side_effect = (
+                sqlalchemy_exc.OperationalError(
+                    "statement", {}, Exception("lookup failed")
+                )
+            )
+
+            # Execute and assert
+            with pytest.raises(HTTPException) as exc_info:
+                await accept_account_terms(
+                    "test-account", mock_request, mock_context, mock_session
+                )
+
+            assert exc_info.value.status_code == 500
+            assert "Failed to check TOS acceptance status" in exc_info.value.detail
+            # Should call rollback after lookup failure
+            mock_session.rollback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_accept_terms_commit_failure(
+        self, mock_context, mock_account, mock_request
+    ):
+        """Should handle session.commit() failures gracefully."""
+        mock_session = MagicMock()
+
+        with (
+            patch("api.routes.admin._account.account_service") as mock_account_service,
+            patch(
+                "api.routes.admin._account.get_user_role_on_account"
+            ) as mock_get_role,
+            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
+        ):
+            # Setup mocks
+            mock_account_service.get_account.return_value = mock_account
+            mock_account_service.update_account.return_value = mock_account
+            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
+            mock_get_role.return_value = "owner"
+
+            tos_repo_instance = mock_tos_repo.return_value
+            tos_repo_instance.get_tos_acceptance_by_version.return_value = None
+            tos_repo_instance.create_tos_acceptance.return_value = MagicMock()
+
+            # Make commit fail
+            mock_session.commit.side_effect = Exception("Commit failed")
+
+            # Execute and assert
+            with pytest.raises(HTTPException) as exc_info:
+                await accept_account_terms(
+                    "test-account", mock_request, mock_context, mock_session
+                )
+
+            assert exc_info.value.status_code == 500
+            assert "Failed to save TOS acceptance" in exc_info.value.detail
+            # Should call rollback after commit failure
+            mock_session.rollback.assert_called_once()
 
 
 class TestGetAccountTermsStatus:

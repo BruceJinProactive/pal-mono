@@ -1,5 +1,6 @@
 import math
 import os
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -29,6 +30,7 @@ from services import account_service, admin_service, subscription_service, user_
 from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUserSession
 from services.auth_service.authorization import get_user_role_on_account
+from utils.dd import statsd
 from utils.log import logger
 
 from ._builder import build_account, build_account_summary, build_agent_summary
@@ -255,134 +257,286 @@ async def accept_account_terms(
     context: UserContext,
     session: Session,
 ) -> AcceptTermsResponse:
-    # Server-side validation (frontend validation is UX only)
-    normalized_email = (context.email or "").strip().lower()
-    if normalized_email.endswith("@proactiveailab.com"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Internal Palona users are not allowed to accept Terms of Service.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    account = account_service.get_account(session, account_name)
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Account {account_name} not found",
-            headers={"Content-Type": "application/json"},
-        )
+    # Track acceptance flow duration and outcome
+    start_time = time.time()
+    outcome = "error"  # Default to error, update on success
 
     try:
-        user_id = uuid.UUID(context.username)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication context (missing user id).",
-            headers={"Content-Type": "application/json"},
-        ) from e
+        # Server-side validation (frontend validation is UX only)
+        normalized_email = (context.email or "").strip().lower()
 
-    # Only allow account Owner role to accept (not Manager/Viewer)
-    role = get_user_role_on_account(
-        user_id=user_id, account_id=account.id, session=session
-    )
-    if role != "owner":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only account Owners can accept Terms of Service.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Validate TOS version matches current required version (before any updates)
-    if request.tos_version != account_service.CURRENT_TOS_VERSION:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"TOS version mismatch. Client sent '{request.tos_version}' but server requires '{account_service.CURRENT_TOS_VERSION}'. Please refresh and try again.",
-            headers={"Content-Type": "application/json"},
-        )
-
-    accepted_at = datetime.now(UTC)
-
-    # Update account flag (existing behavior)
-    account_params = AccountParams(terms_accepted=True)
-    try:
-        account_service.update_account(session, context, account_name, account_params)
-    except ValueError as err:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(err),
-            headers={"Content-Type": "application/json"},
-        )
-
-    # Create TOS acceptance record (idempotent)
-    tos_repo = TosAcceptanceRepository(session)
-
-    # Use shared constant for TOS version (single source of truth)
-    tos_version = account_service.CURRENT_TOS_VERSION
-
-    # Check if this TOS version has already been accepted
-    existing_acceptance = tos_repo.get_tos_acceptance_by_version(
-        account_id=account.id, tos_version=tos_version
-    )
-
-    if not existing_acceptance:
-        # Only create if not already accepted
-        try:
-            tos_repo.create_tos_acceptance(
-                account_id=account.id,
-                display_name=account.display_name or account.name,
-                tos_version=tos_version,
-                user_id=user_id,
-                user_email=normalized_email,
-                accepted_at=accepted_at,
+        # Fail fast if email is missing
+        if not normalized_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User email is required to accept Terms of Service.",
+                headers={"Content-Type": "application/json"},
             )
-        except sqlalchemy_exc.IntegrityError as err:
-            # Race condition: another request already created this record
-            # Roll back and re-check to confirm the record exists
-            session.rollback()
+
+        if normalized_email.endswith("@proactiveailab.com"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Internal Palona users are not allowed to accept Terms of Service.",
+                headers={"Content-Type": "application/json"},
+            )
+
+        account = account_service.get_account(session, account_name)
+        if not account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Account {account_name} not found",
+                headers={"Content-Type": "application/json"},
+            )
+
+        try:
+            user_id = uuid.UUID(context.username)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication context (missing user id).",
+                headers={"Content-Type": "application/json"},
+            ) from e
+
+        # Only allow account Owner role to accept (not Manager/Viewer)
+        role = get_user_role_on_account(
+            user_id=user_id, account_id=account.id, session=session
+        )
+        if role != "owner":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only account Owners can accept Terms of Service.",
+                headers={"Content-Type": "application/json"},
+            )
+
+        # Validate TOS version matches current required version (before any updates)
+        if request.tos_version != account_service.CURRENT_TOS_VERSION:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"TOS version mismatch. Client sent '{request.tos_version}' but server requires '{account_service.CURRENT_TOS_VERSION}'. Please refresh and try again.",
+                headers={"Content-Type": "application/json"},
+            )
+
+        accepted_at = datetime.now(UTC)
+
+        # Update account flag (existing behavior)
+        account_params = AccountParams(terms_accepted=True)
+        try:
+            account_service.update_account(
+                session, context, account_name, account_params
+            )
+        except ValueError as err:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(err),
+                headers={"Content-Type": "application/json"},
+            ) from err
+
+        # Create TOS acceptance record (idempotent)
+        tos_repo = TosAcceptanceRepository(session)
+
+        # Use shared constant for TOS version (single source of truth)
+        tos_version = account_service.CURRENT_TOS_VERSION
+
+        # Check if this TOS version has already been accepted
+        try:
             existing_acceptance = tos_repo.get_tos_acceptance_by_version(
                 account_id=account.id, tos_version=tos_version
             )
-            if not existing_acceptance:
-                # Still doesn't exist - this is an unexpected integrity error
+        except sqlalchemy_exc.SQLAlchemyError as db_err:
+            # Database error during lookup - rollback and return error
+            session.rollback()
+            outcome = "error"
+            logger.error(
+                f"Database error checking TOS acceptance for account {account_name}: {db_err}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to check TOS acceptance status. Please try again.",
+                headers={"Content-Type": "application/json"},
+            ) from db_err
+
+        if not existing_acceptance:
+            # Only create if not already accepted
+            try:
+                tos_repo.create_tos_acceptance(
+                    account_id=account.id,
+                    display_name=account.display_name or account.name,
+                    tos_version=tos_version,
+                    user_id=user_id,
+                    user_email=normalized_email,
+                    accepted_at=accepted_at,
+                )
+
+                outcome = "created"
+
+                # METRIC: Track successful TOS acceptance creation (best-effort)
+                try:
+                    statsd.increment(
+                        "tos.acceptance.created", tags=[f"version:{tos_version}"]
+                    )
+                except Exception as metric_err:
+                    logger.warning(
+                        f"Failed to emit tos.acceptance.created metric: {metric_err}"
+                    )
+
+                logger.info(
+                    f"TOS acceptance created for account {account_name} "
+                    f"(version: {tos_version})"
+                )
+            except sqlalchemy_exc.IntegrityError as err:
+                # Race condition: another request already created this record
+                # Roll back and re-check to confirm the record exists
+                session.rollback()
+
+                try:
+                    existing_acceptance = tos_repo.get_tos_acceptance_by_version(
+                        account_id=account.id, tos_version=tos_version
+                    )
+                except sqlalchemy_exc.SQLAlchemyError as db_err:
+                    # Database error during re-check after IntegrityError
+                    outcome = "error"
+                    logger.error(
+                        f"Database error re-checking TOS acceptance after IntegrityError for account {account_name}: {db_err}",
+                        exc_info=True,
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to verify TOS acceptance. Please try again.",
+                        headers={"Content-Type": "application/json"},
+                    ) from db_err
+
+                if not existing_acceptance:
+                    # Still doesn't exist - this is an unexpected integrity error
+                    logger.error(
+                        f"IntegrityError for TOS acceptance but record not found for account {account_name}"
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Failed to record TOS acceptance. Please try again.",
+                        headers={"Content-Type": "application/json"},
+                    ) from err
+                # Record exists, treat as idempotent success
+                # Re-apply account update since rollback undid it (best-effort)
+                try:
+                    account_service.update_account(
+                        session, context, account_name, account_params
+                    )
+                except Exception as update_err:
+                    # Best-effort: log but don't fail the request
+                    # TOS acceptance already exists and tos_compliance checks only read tos_acceptances
+                    logger.warning(
+                        f"Failed to re-apply deprecated terms_accepted flag for account {account_name} "
+                        f"after duplicate TOS acceptance: {update_err}"
+                    )
+
+                outcome = "duplicate"
+
+                # METRIC: Track duplicate acceptance attempts (best-effort)
+                try:
+                    statsd.increment(
+                        "tos.acceptance.duplicate", tags=[f"version:{tos_version}"]
+                    )
+                except Exception as metric_err:
+                    logger.warning(
+                        f"Failed to emit tos.acceptance.duplicate metric: {metric_err}"
+                    )
+
+                logger.info(
+                    f"TOS acceptance already exists for account {account_name} "
+                    f"(version: {tos_version}), treating as idempotent success"
+                )
+            except Exception as e:
+                # Roll back the entire transaction including the account update
+                session.rollback()
+
+                outcome = "error"
+
+                # METRIC: Track acceptance creation failures (best-effort)
+                try:
+                    statsd.increment(
+                        "tos.acceptance.failed",
+                        tags=[f"version:{tos_version}", f"error:{type(e).__name__}"],
+                    )
+                except Exception as metric_err:
+                    logger.warning(
+                        f"Failed to emit tos.acceptance.failed metric: {metric_err}"
+                    )
+
                 logger.error(
-                    f"IntegrityError for TOS acceptance but record not found for account {account_name}"
+                    f"Failed to record TOS acceptance for account {account_name}: {e}",
+                    exc_info=True,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to record TOS acceptance. Please try again.",
                     headers={"Content-Type": "application/json"},
-                ) from err
-            # Record exists, treat as idempotent success
-            # Re-apply account update since rollback undid it
+                ) from e
+        else:
+            outcome = "duplicate"
+
+            # METRIC: Track duplicate acceptance attempts (best-effort)
             try:
-                account_service.update_account(
-                    session, context, account_name, account_params
+                statsd.increment(
+                    "tos.acceptance.duplicate", tags=[f"version:{tos_version}"]
                 )
-            except ValueError as update_err:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=str(update_err),
-                    headers={"Content-Type": "application/json"},
-                ) from update_err
+            except Exception as metric_err:
+                logger.warning(
+                    f"Failed to emit tos.acceptance.duplicate metric: {metric_err}"
+                )
+
             logger.info(
-                f"TOS acceptance already exists for account {account_name}, treating as idempotent success"
+                f"TOS acceptance already exists for account {account_name} "
+                f"(version: {tos_version}), returning success"
             )
-        except Exception as e:
-            # Roll back the entire transaction including the account update
+
+        # Explicitly commit the transaction (both account update and TOS acceptance)
+        try:
+            session.commit()
+        except Exception as commit_err:
+            # Commit failed - rollback and mark as error
             session.rollback()
+            outcome = "error"
+
+            # METRIC: Track commit failures (best-effort)
+            try:
+                statsd.increment(
+                    "tos.acceptance.commit_failed",
+                    tags=[
+                        f"version:{tos_version}",
+                        f"error:{type(commit_err).__name__}",
+                    ],
+                )
+            except Exception as metric_err:
+                logger.warning(
+                    f"Failed to emit tos.acceptance.commit_failed metric: {metric_err}"
+                )
+
             logger.error(
-                f"Failed to record TOS acceptance for account {account_name}: {e}"
+                f"Failed to commit TOS acceptance for account {account_name}: {commit_err}",
+                exc_info=True,
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to record TOS acceptance. Please try again.",
+                detail="Failed to save TOS acceptance. Please try again.",
                 headers={"Content-Type": "application/json"},
-            ) from e
+            ) from commit_err
 
-    # Explicitly commit the transaction (both account update and TOS acceptance)
-    session.commit()
+        return AcceptTermsResponse(accepted=True, tos_version=tos_version)
 
-    return AcceptTermsResponse(accepted=True, tos_version=tos_version)
+    finally:
+        # METRIC: Always track acceptance flow duration with outcome (best-effort)
+        try:
+            duration_ms = (time.time() - start_time) * 1000
+            statsd.histogram(
+                "tos.acceptance.duration",
+                duration_ms,
+                tags=[f"outcome:{outcome}"],
+            )
+        except Exception as metric_err:
+            logger.warning(
+                f"Failed to emit tos.acceptance.duration metric: {metric_err}"
+            )
 
 
 def _set_user_session(
