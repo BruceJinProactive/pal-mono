@@ -248,6 +248,7 @@ def get_account_terms_status(
         accepted_tos_version=tos_status["accepted_tos_version"],
         is_compliant=tos_status["is_compliant"],
         accepted_at=tos_status["accepted_at"],
+        current_tos_version=account_service.CURRENT_TOS_VERSION,
     )
 
 

@@ -166,6 +166,9 @@ class TermsStatusResponse(BaseModel):
     accepted_at: datetime | None = Field(
         None, description="UTC timestamp when the TOS version was accepted"
     )
+    current_tos_version: str = Field(
+        ..., description="Current TOS version that must be accepted"
+    )
 
 
 class AcceptTermsRequest(BaseModel):
