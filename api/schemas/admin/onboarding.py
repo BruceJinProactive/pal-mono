@@ -91,7 +91,8 @@ class SelfOnboardingRequest(BaseModel):
     phone_number: str = Field(..., description="Phone number of the created account")
     terms_accepted: bool | None = Field(
         default=None,
-        description="Whether terms are accepted at signup (optional)",
+        description="User acceptance of Terms of Service. Creates record in tos_acceptances table.",
+        deprecated=True,
     )
     segment: AccountSegment | None = Field(
         default=None,

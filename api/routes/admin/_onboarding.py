@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, Response, status
@@ -23,6 +24,7 @@ from api.schemas.admin.onboarding import (
     SigninGoogleUserResponse,
 )
 from api.schemas.admin.voice_config import CreateVoiceConfigRequest
+from db import TosAcceptanceRepository
 from db.session import AsyncSessionLocal, SyncSessionLocal
 from db.tables.accounts import AccountStatus, OnboardingMethod
 from services import (
@@ -544,6 +546,61 @@ async def self_onboarding(
             headers={"Content-Type": "application/json"},
         )
 
+    # Create TOS acceptance record if terms were accepted in onboarding
+    if request.terms_accepted:
+        try:
+            # Get the newly created account to extract account_id
+            account = account_service.get_account(session, account_name)
+            if not account:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Account was created but cannot be retrieved",
+                    headers={"Content-Type": "application/json"},
+                )
+
+            # Get user_id from Cognito session
+            user_id = uuid.UUID(user.session.user_sub)
+
+            # Create TOS acceptance in tos_acceptances table (idempotent)
+            tos_repo = TosAcceptanceRepository(session)
+
+            # Check if TOS acceptance already exists for this account/version
+            existing_acceptance = tos_repo.get_tos_acceptance_by_version(
+                account_id=account.id,
+                tos_version=account_service.CURRENT_TOS_VERSION,
+            )
+
+            if existing_acceptance:
+                logger.debug(
+                    f"[SelfOnboarding] TOS acceptance already exists for account {account_name} version {account_service.CURRENT_TOS_VERSION}"
+                )
+            else:
+                tos_repo.create_tos_acceptance(
+                    account_id=account.id,
+                    display_name=account.display_name or account.name,
+                    tos_version=account_service.CURRENT_TOS_VERSION,
+                    user_id=user_id,
+                    user_email=request.email,
+                    accepted_at=datetime.now(UTC),
+                )
+                logger.debug(
+                    f"[SelfOnboarding] Created TOS acceptance record for account {account_name}"
+                )
+        except HTTPException:
+            # Re-raise HTTPException as-is (already has proper status/detail)
+            raise
+        except Exception as e:
+            session.rollback()
+            logger.error(
+                f"[SelfOnboarding] Failed to create TOS acceptance: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to record TOS acceptance: {str(e)}",
+                headers={"Content-Type": "application/json"},
+            ) from e
+
     logger.debug(f"[SelfOnboarding] Completed self onboarding for user {request.email}")
 
     session.commit()
@@ -597,7 +654,8 @@ def self_onboard_account(
     account_params.display_name = request.account_display_name
     account_params.phone_number = request.phone_number
     account_params.business_description = request.account_description
-    account_params.terms_accepted = request.terms_accepted
+    # No longer write to terms_accepted field
+    # account_params.terms_accepted = request.terms_accepted
     account_params.segment = request.segment
     # Default notification email to owner's email
     account_params.notification_email = request.email

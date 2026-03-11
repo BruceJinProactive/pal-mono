@@ -288,66 +288,6 @@ class TestAcceptAccountTerms:
             assert tos_repo_instance.get_tos_acceptance_by_version.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_accept_terms_race_condition_account_update_fails(
-        self, mock_context, mock_account, mock_request
-    ):
-        """Should succeed even when deprecated flag re-apply fails after race condition."""
-        mock_session = MagicMock()
-
-        with (
-            patch("api.routes.admin._account.account_service") as mock_account_service,
-            patch(
-                "api.routes.admin._account.get_user_role_on_account"
-            ) as mock_get_role,
-            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
-            patch("api.routes.admin._account.logger") as mock_logger,
-        ):
-            # Setup mocks
-            mock_account_service.get_account.return_value = mock_account
-            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
-            mock_get_role.return_value = "owner"
-
-            tos_repo_instance = mock_tos_repo.return_value
-
-            # First update_account: succeeds
-            # First check: not exists
-            # create_tos_acceptance: raises IntegrityError (race condition)
-            # Second check: exists (another request created it)
-            # Second update_account (re-apply after rollback): fails (best-effort, should log warning)
-            existing_acceptance = MagicMock()
-            tos_repo_instance.get_tos_acceptance_by_version.side_effect = [
-                None,
-                existing_acceptance,
-            ]
-            tos_repo_instance.create_tos_acceptance.side_effect = (
-                sqlalchemy_exc.IntegrityError("statement", {}, Exception())
-            )
-            # First call succeeds, second call (re-apply) fails
-            mock_account_service.update_account.side_effect = [
-                mock_account,
-                ValueError("Update failed"),
-            ]
-
-            # Execute - should succeed despite update_account failure
-            response = await accept_account_terms(
-                "test-account", mock_request, mock_context, mock_session
-            )
-
-            # Assert success
-            assert response.accepted is True
-            assert response.tos_version == "v1.0"
-
-            # Verify warning was logged for failed re-apply
-            mock_logger.warning.assert_called_once()
-            warning_call = mock_logger.warning.call_args[0][0]
-            assert "Failed to re-apply deprecated terms_accepted flag" in warning_call
-
-            # Rollback called once (for IntegrityError)
-            mock_session.rollback.assert_called_once()
-            # Commit should still be called since TOS acceptance already exists
-            mock_session.commit.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_accept_terms_race_condition_unexpected_integrity_error(
         self, mock_context, mock_account, mock_request
     ):
@@ -425,35 +365,6 @@ class TestAcceptAccountTerms:
             assert exc_info.value.status_code == 500
             assert "Failed to record TOS acceptance" in exc_info.value.detail
             mock_session.rollback.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_accept_terms_account_update_fails(
-        self, mock_context, mock_account, mock_request
-    ):
-        """Should raise 400 when account update fails."""
-        mock_session = MagicMock()
-
-        with (
-            patch("api.routes.admin._account.account_service") as mock_account_service,
-            patch(
-                "api.routes.admin._account.get_user_role_on_account"
-            ) as mock_get_role,
-        ):
-            mock_account_service.get_account.return_value = mock_account
-            mock_account_service.CURRENT_TOS_VERSION = "v1.0"
-            mock_get_role.return_value = "owner"
-            mock_account_service.update_account.side_effect = ValueError(
-                "Update failed"
-            )
-
-            # Execute and assert
-            with pytest.raises(HTTPException) as exc_info:
-                await accept_account_terms(
-                    "test-account", mock_request, mock_context, mock_session
-                )
-
-            assert exc_info.value.status_code == 400
-            assert "Update failed" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_accept_terms_metrics_failure_on_create(
@@ -751,7 +662,8 @@ class TestGetAccountTermsStatus:
             assert result.id == mock_account.id
             assert result.name == mock_account.name
             assert result.display_name == mock_account.display_name
-            assert result.terms_accepted is False
+            # terms_accepted now derives from is_compliant
+            assert result.terms_accepted is True
             assert result.accepted_tos_version == "v1.0"
             assert result.is_compliant is True
             assert result.accepted_at is None

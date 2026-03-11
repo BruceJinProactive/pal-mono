@@ -240,9 +240,9 @@ def get_account_terms_status(
     return TermsStatusResponse(
         id=account.id,
         name=account.name,
-        terms_accepted=bool(
-            account.terms_accepted
-        ),  # DEPRECATED - kept for data only, not used
+        terms_accepted=tos_status[
+            "is_compliant"
+        ],  # DEPRECATED - derive from tos_acceptances table for consistency
         display_name=account.display_name,
         # NEW FIELDS from tos_acceptances table
         accepted_tos_version=tos_status["accepted_tos_version"],
@@ -318,18 +318,8 @@ async def accept_account_terms(
 
         accepted_at = datetime.now(UTC)
 
-        # Update account flag (existing behavior)
-        account_params = AccountParams(terms_accepted=True)
-        try:
-            account_service.update_account(
-                session, context, account_name, account_params
-            )
-        except ValueError as err:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(err),
-                headers={"Content-Type": "application/json"},
-            ) from err
+        # No longer update account.terms_accepted field
+        # The tos_acceptances table is the single source of truth for compliance
 
         # Create TOS acceptance record (idempotent)
         tos_repo = TosAcceptanceRepository(session)
@@ -417,18 +407,8 @@ async def accept_account_terms(
                         headers={"Content-Type": "application/json"},
                     ) from err
                 # Record exists, treat as idempotent success
-                # Re-apply account update since rollback undid it (best-effort)
-                try:
-                    account_service.update_account(
-                        session, context, account_name, account_params
-                    )
-                except Exception as update_err:
-                    # Best-effort: log but don't fail the request
-                    # TOS acceptance already exists and tos_compliance checks only read tos_acceptances
-                    logger.warning(
-                        f"Failed to re-apply deprecated terms_accepted flag for account {account_name} "
-                        f"after duplicate TOS acceptance: {update_err}"
-                    )
+                # PHASE 1: No longer re-apply account.terms_accepted update
+                # The tos_acceptances table is the single source of truth
 
                 outcome = "duplicate"
 
