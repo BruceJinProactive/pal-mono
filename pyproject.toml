@@ -21,7 +21,6 @@ dependencies = [
   "datadog==0.52.0", # Datadog API client for metrics and monitoring
   "ddtrace==4.5.0", # Datadog APM and distributed tracing library
   "diff-cover==9.2.4", # Incremental test coverage enforcement on changed lines
-  "docusign-esign==3.26.0", # DocuSign eSignature API client for embedded signing workflows
   "email-validator==2.2.0", # Robust email address validation with DNS checking
   "fastapi==0.116.1", # Modern async web framework with automatic API docs
   "firecrawl-py>=1.5.0", # Web scraping and crawling with LLM extraction

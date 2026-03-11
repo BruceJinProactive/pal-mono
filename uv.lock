@@ -846,25 +846,6 @@ wheels = [
 ]
 
 [[package]]
-name = "docusign-esign"
-version = "3.26.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "certifi" },
-    { name = "cryptography" },
-    { name = "nose" },
-    { name = "pyjwt" },
-    { name = "python-dateutil" },
-    { name = "setuptools" },
-    { name = "six" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/4d/7a/5839e5361da8ec5ca5e091a2fa4e76e052415db8696cda052e74063143bc/docusign-esign-3.26.0.tar.gz", hash = "sha256:81a7b371030385c5f0e89cdd89e1440fb4842bfc909ec65c7219d2787d5e8012", size = 1249521, upload-time = "2024-04-30T10:27:02.594Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/85/4f11333080fc228d3b8dc26e46392b0eef68487454a899a614586f36216d/docusign_esign-3.26.0-py2.py3-none-any.whl", hash = "sha256:6a3e58ea11727f3cd3c97a96e8c3558a780b6b50984a38cc298d57a0d70648ff", size = 1905416, upload-time = "2024-04-30T10:26:59.507Z" },
-]
-
-[[package]]
 name = "email-validator"
 version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2390,15 +2371,6 @@ wheels = [
 ]
 
 [[package]]
-name = "nose"
-version = "1.3.7"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/58/a5/0dc93c3ec33f4e281849523a5a913fa1eea9a3068acfa754d44d88107a44/nose-1.3.7.tar.gz", hash = "sha256:f1bffef9cbc82628f6e7d7b40d7e255aefaa1adb6a1b1d26c69a8b79e6208a98", size = 280488, upload-time = "2015-06-02T09:12:32.961Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/d8/dd071918c040f50fa1cf80da16423af51ff8ce4a0f2399b7bf8de45ac3d9/nose-1.3.7-py3-none-any.whl", hash = "sha256:9ff7c6cc443f8c51994b34a667bbcf45afd6d945be7477b52e97516fd17c53ac", size = 154731, upload-time = "2015-06-02T09:12:40.57Z" },
-]
-
-[[package]]
 name = "notion-client"
 version = "2.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2700,7 +2672,6 @@ dependencies = [
     { name = "datadog" },
     { name = "ddtrace" },
     { name = "diff-cover" },
-    { name = "docusign-esign" },
     { name = "email-validator" },
     { name = "fastapi" },
     { name = "firecrawl-py" },
@@ -2777,7 +2748,6 @@ requires-dist = [
     { name = "datadog", specifier = "==0.52.0" },
     { name = "ddtrace", specifier = "==4.5.0" },
     { name = "diff-cover", specifier = "==9.2.4" },
-    { name = "docusign-esign", specifier = "==3.26.0" },
     { name = "email-validator", specifier = "==2.2.0" },
     { name = "fastapi", specifier = "==0.116.1" },
     { name = "firecrawl-py", specifier = ">=1.5.0" },
