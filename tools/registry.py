@@ -6,6 +6,7 @@ from agent.tool import ToolIdentifier, ToolMetadata
 from tools.adora_tool import AdoraTool
 from tools.adora_v2_tool import AdoraV2Tool
 from tools.catering_tool import CateringTool
+from tools.livekit_tool import LiveKitTool
 from tools.livekit_transfer_tool import LiveKitTransferTool
 from tools.menusifu_tool import MenuSifuTool
 from tools.minitable_tool import MiniTableTool
@@ -38,6 +39,7 @@ class ToolRegistry:
             "toast_tool": ToastTool,
             "olo_tool": OloTool,
             "vapi_tool": VapiTool,
+            "livekit_tool": LiveKitTool,
             "livekit_transfer_tool": LiveKitTransferTool,
             "yelp_tool": YelpTool,
             "yelp_credit_card_tool": YelpCreditCardTool,
