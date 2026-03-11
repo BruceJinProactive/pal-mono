@@ -22,7 +22,7 @@ def build_tool_feedback_modal(
     Build a Slack modal for submitting internal tool feedback.
 
     Args:
-        tools: List of tool dicts with 'name' and 'page_id' fields
+        tools: List of tool dicts with 'name', 'page_id', and 'owner_id' fields
         channel_id: Channel ID stored in private_metadata for response routing
 
     Returns:
@@ -31,7 +31,7 @@ def build_tool_feedback_modal(
     tool_options = [
         {
             "text": {"type": "plain_text", "text": tool["name"][:75]},
-            "value": tool["page_id"][:75],
+            "value": f"{tool['page_id']}|{tool.get('owner_id', '')}"[:75],
         }
         for tool in tools[:100]
     ]

@@ -397,7 +397,7 @@ class TestHandleMercuryViewSubmission:
             "tool_select": {
                 "tool_name": {
                     "selected_option": {
-                        "value": "page-id-123",
+                        "value": "page-id-123|owner-456",
                         "text": {"text": "Analytics"},
                     }
                 }
@@ -434,6 +434,7 @@ class TestHandleMercuryViewSubmission:
                 feedback_text="Something is broken",
                 submitted_by="testuser",
                 submitted_by_id="U123",
+                tool_owner_id="owner-456",
             )
             mock_client.chat_postMessage.assert_called_once()
 

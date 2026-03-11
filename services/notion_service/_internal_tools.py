@@ -153,10 +153,20 @@ async def get_internal_tools(
 
                 if name and name.strip():
                     page_id = page.get("id", "")
+
+                    # Extract the Owner people property (first owner)
+                    owner_id = ""
+                    owner_prop = props.get("Owner", {})
+                    if owner_prop.get("type") == "people":
+                        people = owner_prop.get("people", [])
+                        if people:
+                            owner_id = people[0].get("id", "")
+
                     all_tools.append(
                         {
                             "name": name.strip(),
                             "page_id": page_id,
+                            "owner_id": owner_id,
                         }
                     )
 
@@ -188,6 +198,7 @@ async def submit_tool_feedback(
     feedback_text: str,
     submitted_by: str,
     submitted_by_id: str = "",
+    tool_owner_id: str = "",
     client: Optional[AsyncClient] = None,
 ) -> Optional[str]:
     """
@@ -201,6 +212,7 @@ async def submit_tool_feedback(
         feedback_text: The feedback content
         submitted_by: Slack username of the person submitting
         submitted_by_id: Slack user ID of the submitter
+        tool_owner_id: Notion user ID of the tool owner (for Assigned To)
         client: Optional Notion client to reuse
 
     Returns:
@@ -222,6 +234,10 @@ async def submit_tool_feedback(
         notion_user_id = await find_notion_user_id_by_name(submitted_by, client=client)
         if notion_user_id:
             properties["Requester"] = build_people_property([notion_user_id])
+
+        # Auto-assign to the tool owner if available
+        if tool_owner_id:
+            properties["Assigned To"] = build_people_property([tool_owner_id])
 
         page_url = await create_page(
             database_id=TOOL_FEEDBACK_DATABASE_ID,

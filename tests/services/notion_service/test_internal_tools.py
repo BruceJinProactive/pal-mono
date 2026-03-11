@@ -29,6 +29,10 @@ class TestGetInternalTools:
                             "title": [{"plain_text": "Zebra Tool"}],
                         },
                         "Status": {"select": {"name": "Live"}},
+                        "Owner": {
+                            "type": "people",
+                            "people": [{"id": "owner-2"}],
+                        },
                     },
                 },
                 {
@@ -39,6 +43,10 @@ class TestGetInternalTools:
                             "title": [{"plain_text": "Alpha Tool"}],
                         },
                         "Status": {"select": {"name": "Live"}},
+                        "Owner": {
+                            "type": "people",
+                            "people": [{"id": "owner-1"}],
+                        },
                     },
                 },
             ],
@@ -50,7 +58,33 @@ class TestGetInternalTools:
 
         assert len(result) == 2
         assert result[0]["name"] == "Alpha Tool"
+        assert result[0]["owner_id"] == "owner-1"
         assert result[1]["name"] == "Zebra Tool"
+        assert result[1]["owner_id"] == "owner-2"
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_owner_id_when_no_owner(self) -> None:
+        mock_client = AsyncMock()
+        mock_client.databases.query.return_value = {
+            "results": [
+                {
+                    "id": "page-1",
+                    "properties": {
+                        "Name": {
+                            "type": "title",
+                            "title": [{"plain_text": "Tool A"}],
+                        },
+                        "Owner": {"type": "people", "people": []},
+                    },
+                },
+            ],
+            "has_more": False,
+            "next_cursor": None,
+        }
+
+        result = await get_internal_tools(client=mock_client)
+        assert len(result) == 1
+        assert result[0]["owner_id"] == ""
 
     @pytest.mark.asyncio
     async def test_filters_by_status_live(self) -> None:
@@ -202,6 +236,61 @@ class TestSubmitToolFeedback:
             assert "Priority" in props
             assert "Requester" in props
             assert props["Requester"]["people"][0]["id"] == "notion-user-456"
+
+    @pytest.mark.asyncio
+    async def test_sets_assigned_to_when_owner_id_provided(self) -> None:
+        with (
+            patch(
+                "services.notion_service._internal_tools.create_page",
+                new_callable=AsyncMock,
+                return_value="https://notion.so/page",
+            ) as mock_create,
+            patch(
+                "services.notion_service._internal_tools.find_notion_user_id_by_name",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            await submit_tool_feedback(
+                tool_name="Analytics",
+                tool_page_id="abc123def456abc123def456abc123de",
+                request_type="Bug",
+                priority="P1",
+                feedback_text="Something is broken",
+                submitted_by="testuser",
+                tool_owner_id="owner-user-789",
+            )
+
+            props = mock_create.call_args.kwargs["properties"]
+            assert "Assigned To" in props
+            assert props["Assigned To"]["people"][0]["id"] == "owner-user-789"
+
+    @pytest.mark.asyncio
+    async def test_no_assigned_to_when_owner_id_empty(self) -> None:
+        with (
+            patch(
+                "services.notion_service._internal_tools.create_page",
+                new_callable=AsyncMock,
+                return_value="https://notion.so/page",
+            ) as mock_create,
+            patch(
+                "services.notion_service._internal_tools.find_notion_user_id_by_name",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            await submit_tool_feedback(
+                tool_name="Analytics",
+                tool_page_id="abc123def456abc123def456abc123de",
+                request_type="Bug",
+                priority="P1",
+                feedback_text="Something is broken",
+                submitted_by="testuser",
+                tool_owner_id="",
+            )
+
+            props = mock_create.call_args.kwargs["properties"]
+            assert "Assigned To" not in props
 
     @pytest.mark.asyncio
     async def test_returns_none_on_failure(self) -> None:

@@ -308,10 +308,17 @@ async def _handle_tool_feedback(
     client = get_slack_client()
 
     try:
-        tool_page_id = values["tool_select"]["tool_name"]["selected_option"]["value"]
+        tool_value = values["tool_select"]["tool_name"]["selected_option"]["value"]
         tool_name = values["tool_select"]["tool_name"]["selected_option"]["text"][
             "text"
         ]
+
+        # Parse combined value: "page_id|owner_id"
+        if "|" in tool_value:
+            tool_page_id, tool_owner_id = tool_value.split("|", 1)
+        else:
+            tool_page_id = tool_value
+            tool_owner_id = ""
 
         if tool_page_id == "unknown":
             if channel_id:
@@ -347,6 +354,7 @@ async def _handle_tool_feedback(
             feedback_text=feedback_text,
             submitted_by=user_name,
             submitted_by_id=user_id,
+            tool_owner_id=tool_owner_id,
         )
 
         if page_url and channel_id:

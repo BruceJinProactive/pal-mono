@@ -20,16 +20,23 @@ class TestBuildToolFeedbackModal:
 
     def test_populates_tool_options_from_tools_list(self) -> None:
         tools = [
-            {"name": "Analytics Report", "page_id": "abc123"},
-            {"name": "Camera Monitor", "page_id": "def456"},
+            {"name": "Analytics Report", "page_id": "abc123", "owner_id": "owner-1"},
+            {"name": "Camera Monitor", "page_id": "def456", "owner_id": "owner-2"},
         ]
         result = build_tool_feedback_modal(tools)
         tool_block = result["blocks"][0]
         options = tool_block["element"]["options"]
         assert len(options) == 2
         assert options[0]["text"]["text"] == "Analytics Report"
-        assert options[0]["value"] == "abc123"
+        assert options[0]["value"] == "abc123|owner-1"
         assert options[1]["text"]["text"] == "Camera Monitor"
+        assert options[1]["value"] == "def456|owner-2"
+
+    def test_populates_tool_options_with_empty_owner(self) -> None:
+        tools = [{"name": "Tool A", "page_id": "abc123", "owner_id": ""}]
+        result = build_tool_feedback_modal(tools)
+        options = result["blocks"][0]["element"]["options"]
+        assert options[0]["value"] == "abc123|"
 
     def test_shows_empty_state_when_no_tools(self) -> None:
         result = build_tool_feedback_modal([])
