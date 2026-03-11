@@ -89,6 +89,7 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
         "reverse_string",
         "vapi_tool",
         "livekit_tool",
+        "support_email_tool",
     }
 
     tool_specs = []
