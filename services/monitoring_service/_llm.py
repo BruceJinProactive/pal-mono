@@ -837,6 +837,13 @@ For invalid/problematic frames:
             provider.config.provider, provider.config.model
         )
 
+        # Gemini doesn't support MKV format - force frame extraction for .mkv files
+        if video_url.lower().endswith(".mkv"):
+            logger.info(
+                "[Monitoring LLM] Video is MKV format, using frame extraction instead of native video"
+            )
+            use_native_video = False
+
         if use_native_video and isinstance(provider, GoogleMonitoringProvider):
             # Native video path: download raw bytes and pass entire video to Gemini
             logger.info(
