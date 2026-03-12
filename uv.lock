@@ -2635,8 +2635,8 @@ wheels = [
 
 [[package]]
 name = "pal-agents"
-version = "0.2.141"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.141#9c38ac4fd4d429f0fb547b7c1cba2f37a7846f18" }
+version = "0.2.142"
+source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.142#0f92fbba5f7f7033c1ca23eb9e542b5c699ab365" }
 dependencies = [
     { name = "datadog" },
     { name = "ddtrace" },
@@ -2777,7 +2777,7 @@ requires-dist = [
     { name = "mem0ai", specifier = "==1.0.3" },
     { name = "notion-client", specifier = "==2.2.1" },
     { name = "openai", extras = ["realtime"], specifier = "==2.20.0" },
-    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.141" },
+    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.142" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
     { name = "polyline", specifier = "==2.0.2" },
@@ -2807,8 +2807,8 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "pal-tools"
-version = "0.1.15"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-tools.git?rev=v0.1.15#0622244217f506a69a394218fbd2142ab41c5dd1" }
+version = "0.1.16"
+source = { git = "https://github.com/Proactive-AI-Lab/pal-tools.git?rev=v0.1.16#59fcc1de3e1cbb07ef711ea0263ba58d4907252a" }
 dependencies = [
     { name = "httpx" },
     { name = "livekit-api" },
