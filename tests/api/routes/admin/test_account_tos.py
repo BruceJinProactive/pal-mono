@@ -662,8 +662,7 @@ class TestGetAccountTermsStatus:
             assert result.id == mock_account.id
             assert result.name == mock_account.name
             assert result.display_name == mock_account.display_name
-            # terms_accepted now derives from is_compliant
-            assert result.terms_accepted is True
+            # terms_accepted field removed - use is_compliant instead
             assert result.accepted_tos_version == "v1.0"
             assert result.is_compliant is True
             assert result.accepted_at is None

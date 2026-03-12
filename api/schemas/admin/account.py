@@ -38,7 +38,6 @@ class Account(BaseModel):
     tier: str | None = None
     notes: str | None = None
     contract_signed: bool = False
-    terms_accepted: bool | None = None
     phone_number: str | None = None
     channels: list[str] | None = None
     onboarding_method: OnboardingMethod
@@ -59,7 +58,6 @@ class AccountSummary(BaseModel):
     segment: str | None = None
     tier: str | None = None
     contract_signed: bool = False
-    terms_accepted: bool = False  # DEPRECATED: Use tos_acceptances table
     notes: str | None = None
     phone_number: str | None = None
     channels: list[str] | None = None
@@ -96,7 +94,6 @@ class UpdateAccountRequest(BaseModel):
     tier: TargetTier | None = None
     notes: str | None = None
     contract_signed: bool | None = None
-    terms_accepted: bool | None = None  # DEPRECATED: Use tos_acceptances table
     phone_number: str | None = None
     channels: list[str] | None = None
     expected_version: int | None = None
@@ -117,7 +114,6 @@ class UpdateAccountRequest(BaseModel):
             tier=self.tier,
             notes=self.notes,
             contract_signed=self.contract_signed,
-            terms_accepted=self.terms_accepted,
             phone_number=self.phone_number,
             channels=self.channels,
         )
@@ -151,10 +147,9 @@ class TermsStatusResponse(BaseModel):
 
     id: UUID
     name: str
-    terms_accepted: bool  # DEPRECATED - kept for backward compatibility
     display_name: str | None = None
 
-    # NEW FIELDS - Primary source of truth
+    # Primary source of truth - use tos_acceptances table
     accepted_tos_version: str | None = Field(
         None,
         description="Exact TOS version the account accepted (may be older than current), None if not accepted",

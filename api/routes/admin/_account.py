@@ -240,11 +240,8 @@ def get_account_terms_status(
     return TermsStatusResponse(
         id=account.id,
         name=account.name,
-        terms_accepted=tos_status[
-            "is_compliant"
-        ],  # DEPRECATED - derive from tos_acceptances table for consistency
         display_name=account.display_name,
-        # NEW FIELDS from tos_acceptances table
+        # TOS status from tos_acceptances table
         accepted_tos_version=tos_status["accepted_tos_version"],
         is_compliant=tos_status["is_compliant"],
         accepted_at=tos_status["accepted_at"],
