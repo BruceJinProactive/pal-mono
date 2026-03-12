@@ -56,6 +56,21 @@ class AccountRepositoryAsync:
             logger.error(f"Error retrieving account by ID: {e}")
             return None
 
+    async def get_all_account_names(self) -> List[str]:
+        """Retrieve all active account names, sorted alphabetically."""
+        try:
+            query = (
+                select(Account.name)
+                .filter(Account.status != AccountStatus.deleted)
+                .order_by(Account.name)
+            )
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error retrieving account names: {e}")
+            return []
+
     async def get_account_by_stripe_customer_id(
         self, stripe_customer_id: str
     ) -> Account | None:

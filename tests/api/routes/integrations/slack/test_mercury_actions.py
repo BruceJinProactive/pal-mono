@@ -5,9 +5,18 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from api.routes.integrations.slack._mercury_actions import (
+    _extract_account_name,
+    _extract_multi_account_names,
+    _fetch_account_names,
     _notify_error,
     handle_mercury_block_action,
     handle_mercury_view_submission,
+)
+
+MOCK_FETCH_ACCOUNTS = patch(
+    "api.routes.integrations.slack._mercury_actions._fetch_account_names",
+    new_callable=AsyncMock,
+    return_value=["acme", "romeo", "juliet"],
 )
 
 
@@ -44,6 +53,20 @@ def _make_view_payload(
     }
 
 
+def _account_select_value(name: str) -> dict:
+    """Build a static_select value dict for account name."""
+    return {"account_value": {"selected_option": {"value": name}}}
+
+
+def _multi_account_select_value(names: list[str]) -> dict:
+    """Build a multi_static_select value dict for account names."""
+    return {
+        "accounts_value": {
+            "selected_options": [{"value": n} for n in names],
+        }
+    }
+
+
 class TestNotifyError:
     @pytest.mark.asyncio
     async def test_sends_error_message(self) -> None:
@@ -55,7 +78,7 @@ class TestNotifyError:
         )
 
     @pytest.mark.asyncio
-    async def test_skips_when_no_channel(self) -> None:
+    async def test_does_not_send_when_no_channel(self) -> None:
         mock_client = AsyncMock()
         await _notify_error(mock_client, "", "doing something")
         mock_client.chat_postMessage.assert_not_called()
@@ -66,6 +89,97 @@ class TestNotifyError:
         mock_client.chat_postMessage.side_effect = Exception("Slack down")
         # Should not raise
         await _notify_error(mock_client, "C123", "doing something")
+
+
+class TestExtractAccountName:
+    def test_extracts_selected_account(self) -> None:
+        values = {"account_name": _account_select_value("romeo")}
+        assert _extract_account_name(values) == "romeo"
+
+    def test_returns_empty_when_no_selection(self) -> None:
+        values = {"account_name": {"account_value": {}}}
+        assert _extract_account_name(values) == ""
+
+    def test_returns_empty_when_block_missing(self) -> None:
+        assert _extract_account_name({}) == ""
+
+    def test_returns_empty_when_selected_option_is_none(self) -> None:
+        values = {
+            "account_name": {
+                "account_value": {"selected_option": None, "type": "static_select"}
+            }
+        }
+        assert _extract_account_name(values) == ""
+
+    def test_returns_empty_for_none_placeholder(self) -> None:
+        values = {
+            "account_name": {
+                "account_value": {"selected_option": {"value": "__none__"}}
+            }
+        }
+        assert _extract_account_name(values) == ""
+
+
+class TestFetchAccountNames:
+    @pytest.mark.asyncio
+    async def test_returns_account_names_from_db(self) -> None:
+        mock_repo = AsyncMock()
+        mock_repo.get_all_account_names.return_value = ["acme", "bravo"]
+        mock_session = AsyncMock()
+
+        # Create a proper async context manager
+        class FakeSessionCtx:
+            async def __aenter__(self):
+                return mock_session
+
+            async def __aexit__(self, *args):
+                pass
+
+        with (
+            patch("db.session.AsyncSessionLocal", return_value=FakeSessionCtx()),
+            patch(
+                "db.repositories.account_repository.AccountRepositoryAsync",
+                return_value=mock_repo,
+            ),
+        ):
+            result = await _fetch_account_names()
+        assert result == ["acme", "bravo"]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_on_error(self) -> None:
+        class FailingSessionCtx:
+            async def __aenter__(self):
+                raise Exception("db down")
+
+            async def __aexit__(self, *args):
+                pass
+
+        with patch("db.session.AsyncSessionLocal", return_value=FailingSessionCtx()):
+            result = await _fetch_account_names()
+        assert result == []
+
+
+class TestExtractMultiAccountNames:
+    def test_extracts_multiple_accounts(self) -> None:
+        values = {"account_names": _multi_account_select_value(["romeo", "juliet"])}
+        assert _extract_multi_account_names(values) == "romeo,juliet"
+
+    def test_returns_empty_when_no_selection(self) -> None:
+        values = {"account_names": {"accounts_value": {"selected_options": []}}}
+        assert _extract_multi_account_names(values) == ""
+
+    def test_returns_empty_when_block_missing(self) -> None:
+        assert _extract_multi_account_names({}) == ""
+
+    def test_filters_out_none_placeholder(self) -> None:
+        values = {
+            "account_names": {
+                "accounts_value": {
+                    "selected_options": [{"value": "__none__"}],
+                }
+            }
+        }
+        assert _extract_multi_account_names(values) == ""
 
 
 class TestHandleMercuryBlockAction:
@@ -170,9 +284,12 @@ class TestHandleMercuryBlockAction:
     @pytest.mark.asyncio
     async def test_custom_report_opens_modal(self) -> None:
         payload, action = _make_payload("mercury_custom_report")
-        with patch(
-            "api.routes.integrations.slack._mercury_actions.get_slack_client"
-        ) as mock_get_client:
+        with (
+            patch(
+                "api.routes.integrations.slack._mercury_actions.get_slack_client"
+            ) as mock_get_client,
+            MOCK_FETCH_ACCOUNTS,
+        ):
             mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
 
@@ -225,9 +342,12 @@ class TestHandleMercuryBlockAction:
     @pytest.mark.asyncio
     async def test_modal_open_error_sends_notification(self) -> None:
         payload, action = _make_payload("mercury_custom_report")
-        with patch(
-            "api.routes.integrations.slack._mercury_actions.get_slack_client"
-        ) as mock_get_client:
+        with (
+            patch(
+                "api.routes.integrations.slack._mercury_actions.get_slack_client"
+            ) as mock_get_client,
+            MOCK_FETCH_ACCOUNTS,
+        ):
             mock_client = AsyncMock()
             mock_client.views_open.side_effect = Exception("Slack API error")
             mock_get_client.return_value = mock_client
@@ -298,9 +418,12 @@ class TestHandleMercuryBlockAction:
     @pytest.mark.asyncio
     async def test_subscription_opens_modal(self) -> None:
         payload, action = _make_payload("mercury_subscription")
-        with patch(
-            "api.routes.integrations.slack._mercury_actions.get_slack_client"
-        ) as mock_get_client:
+        with (
+            patch(
+                "api.routes.integrations.slack._mercury_actions.get_slack_client"
+            ) as mock_get_client,
+            MOCK_FETCH_ACCOUNTS,
+        ):
             mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
 
@@ -314,9 +437,12 @@ class TestHandleMercuryBlockAction:
     @pytest.mark.asyncio
     async def test_camera_filter_opens_modal(self) -> None:
         payload, action = _make_payload("mercury_camera_filter")
-        with patch(
-            "api.routes.integrations.slack._mercury_actions.get_slack_client"
-        ) as mock_get_client:
+        with (
+            patch(
+                "api.routes.integrations.slack._mercury_actions.get_slack_client"
+            ) as mock_get_client,
+            MOCK_FETCH_ACCOUNTS,
+        ):
             mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
 
@@ -350,9 +476,12 @@ class TestHandleMercuryBlockAction:
     @pytest.mark.asyncio
     async def test_last_hours_opens_modal(self) -> None:
         payload, action = _make_payload("mercury_last_hours")
-        with patch(
-            "api.routes.integrations.slack._mercury_actions.get_slack_client"
-        ) as mock_get_client:
+        with (
+            patch(
+                "api.routes.integrations.slack._mercury_actions.get_slack_client"
+            ) as mock_get_client,
+            MOCK_FETCH_ACCOUNTS,
+        ):
             mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
 
@@ -366,9 +495,12 @@ class TestHandleMercuryBlockAction:
     @pytest.mark.asyncio
     async def test_date_range_opens_modal(self) -> None:
         payload, action = _make_payload("mercury_date_range")
-        with patch(
-            "api.routes.integrations.slack._mercury_actions.get_slack_client"
-        ) as mock_get_client:
+        with (
+            patch(
+                "api.routes.integrations.slack._mercury_actions.get_slack_client"
+            ) as mock_get_client,
+            MOCK_FETCH_ACCOUNTS,
+        ):
             mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
 
@@ -538,7 +670,7 @@ class TestHandleMercuryViewSubmission:
     async def test_report_submit_calls_report_handler(self) -> None:
         values = {
             "report_period": {"period_value": {"selected_option": {"value": "daily"}}},
-            "account_name": {"account_value": {"value": "romeo"}},
+            "account_name": _account_select_value("romeo"),
         }
         payload = _make_view_payload("mercury_report_submit", values)
 
@@ -661,7 +793,7 @@ class TestHandleMercuryViewSubmission:
     async def test_report_submit_with_account_name(self) -> None:
         values = {
             "report_period": {"period_value": {"selected_option": {"value": "weekly"}}},
-            "account_name": {"account_value": {"value": "acme"}},
+            "account_name": _account_select_value("acme"),
         }
         payload = _make_view_payload("mercury_report_submit", values)
 
@@ -757,7 +889,7 @@ class TestHandleMercuryViewSubmission:
     @pytest.mark.asyncio
     async def test_subscription_submit_calls_handler(self) -> None:
         values = {
-            "account_name": {"account_value": {"value": "romeo"}},
+            "account_name": _account_select_value("romeo"),
         }
         payload = _make_view_payload("mercury_subscription_submit", values)
 
@@ -779,7 +911,7 @@ class TestHandleMercuryViewSubmission:
     @pytest.mark.asyncio
     async def test_subscription_submit_error_sends_notification(self) -> None:
         values = {
-            "account_name": {"account_value": {"value": "romeo"}},
+            "account_name": _account_select_value("romeo"),
         }
         payload = _make_view_payload("mercury_subscription_submit", values)
 
@@ -804,7 +936,7 @@ class TestHandleMercuryViewSubmission:
     @pytest.mark.asyncio
     async def test_camera_filter_submit_calls_handler(self) -> None:
         values = {
-            "account_names": {"accounts_value": {"value": "romeo,juliet"}},
+            "account_names": _multi_account_select_value(["romeo", "juliet"]),
         }
         payload = _make_view_payload("mercury_camera_filter_submit", values)
 
@@ -846,7 +978,7 @@ class TestHandleMercuryViewSubmission:
     @pytest.mark.asyncio
     async def test_camera_filter_submit_error_sends_notification(self) -> None:
         values = {
-            "account_names": {"accounts_value": {"value": "romeo"}},
+            "account_names": _multi_account_select_value(["romeo"]),
         }
         payload = _make_view_payload("mercury_camera_filter_submit", values)
 
@@ -919,7 +1051,7 @@ class TestHandleMercuryViewSubmission:
     @pytest.mark.asyncio
     async def test_subscription_empty_account_posts_warning(self) -> None:
         values = {
-            "account_name": {"account_value": {"value": "  "}},
+            "account_name": {"account_value": {}},
         }
         payload = _make_view_payload("mercury_subscription_submit", values)
 
@@ -933,9 +1065,7 @@ class TestHandleMercuryViewSubmission:
 
             assert result == {"ok": True}
             mock_client.chat_postMessage.assert_called_once()
-            assert (
-                "account name" in mock_client.chat_postMessage.call_args.kwargs["text"]
-            )
+            assert "account" in mock_client.chat_postMessage.call_args.kwargs["text"]
 
     @pytest.mark.asyncio
     async def test_tool_feedback_unknown_tool_posts_warning(self) -> None:
@@ -994,7 +1124,7 @@ class TestHandleMercuryViewSubmission:
     async def test_last_hours_submit_calls_handler(self) -> None:
         values = {
             "hours": {"hours_value": {"value": "6"}},
-            "account_name": {"account_value": {"value": "romeo"}},
+            "account_name": _account_select_value("romeo"),
         }
         payload = _make_view_payload("mercury_last_hours_submit", values)
 
@@ -1066,8 +1196,15 @@ class TestHandleMercuryViewSubmission:
     async def test_date_range_submit_calls_handler(self) -> None:
         values = {
             "start_date": {"start_date_value": {"selected_date": "2024-01-01"}},
+            "start_time": {"start_time_value": {"selected_time": "09:00"}},
             "end_date": {"end_date_value": {"selected_date": "2024-01-31"}},
-            "account_name": {"account_value": {"value": "acme"}},
+            "end_time": {"end_time_value": {"selected_time": "17:00"}},
+            "timezone": {
+                "timezone_value": {
+                    "selected_option": {"value": "America/Los_Angeles"},
+                }
+            },
+            "account_name": _account_select_value("acme"),
         }
         payload = _make_view_payload("mercury_date_range_submit", values)
 
@@ -1088,10 +1225,77 @@ class TestHandleMercuryViewSubmission:
             call_kwargs = mock_handler.call_args.kwargs
             assert call_kwargs["account_name"] == "acme"
             start, end = call_kwargs["custom_dates"]
-            # Dates are converted from PST to UTC
             assert str(start.tzinfo) == "UTC"
+            # 2024-01-01 09:00 PST = 2024-01-01 17:00 UTC
+            assert start.strftime("%Y-%m-%d %H:%M") == "2024-01-01 17:00"
+            # 2024-01-31 17:00 PST = 2024-02-01 01:00 UTC (+ 59 seconds)
+            assert end.strftime("%Y-%m-%d %H:%M") == "2024-02-01 01:00"
+
+    @pytest.mark.asyncio
+    async def test_date_range_submit_defaults_time_and_timezone(self) -> None:
+        """When time and timezone are not provided, defaults are used."""
+        values = {
+            "start_date": {"start_date_value": {"selected_date": "2024-01-01"}},
+            "end_date": {"end_date_value": {"selected_date": "2024-01-31"}},
+        }
+        payload = _make_view_payload("mercury_date_range_submit", values)
+
+        with (
+            patch(
+                "api.routes.integrations.slack._mercury_actions.get_slack_client"
+            ) as mock_get_client,
+            patch(
+                "services.slack_service._commands.handle_report_request",
+                new_callable=AsyncMock,
+            ) as mock_handler,
+        ):
+            mock_get_client.return_value = AsyncMock()
+            result = await handle_mercury_view_submission(payload)
+
+            assert result == {"ok": True}
+            mock_handler.assert_called_once()
+            call_kwargs = mock_handler.call_args.kwargs
+            start, end = call_kwargs["custom_dates"]
+            # Default: 00:00 PST start = 08:00 UTC
             assert start.strftime("%Y-%m-%d %H:%M") == "2024-01-01 08:00"
+            # Default: 23:59 PST end = next day 07:59 UTC
             assert end.strftime("%Y-%m-%d %H:%M") == "2024-02-01 07:59"
+
+    @pytest.mark.asyncio
+    async def test_date_range_submit_with_eastern_timezone(self) -> None:
+        values = {
+            "start_date": {"start_date_value": {"selected_date": "2024-06-01"}},
+            "start_time": {"start_time_value": {"selected_time": "08:00"}},
+            "end_date": {"end_date_value": {"selected_date": "2024-06-30"}},
+            "end_time": {"end_time_value": {"selected_time": "18:00"}},
+            "timezone": {
+                "timezone_value": {
+                    "selected_option": {"value": "America/New_York"},
+                }
+            },
+        }
+        payload = _make_view_payload("mercury_date_range_submit", values)
+
+        with (
+            patch(
+                "api.routes.integrations.slack._mercury_actions.get_slack_client"
+            ) as mock_get_client,
+            patch(
+                "services.slack_service._commands.handle_report_request",
+                new_callable=AsyncMock,
+            ) as mock_handler,
+        ):
+            mock_get_client.return_value = AsyncMock()
+            result = await handle_mercury_view_submission(payload)
+
+            assert result == {"ok": True}
+            mock_handler.assert_called_once()
+            call_kwargs = mock_handler.call_args.kwargs
+            start, end = call_kwargs["custom_dates"]
+            # 2024-06-01 08:00 EDT = 2024-06-01 12:00 UTC
+            assert start.strftime("%Y-%m-%d %H:%M") == "2024-06-01 12:00"
+            # 2024-06-30 18:00 EDT = 2024-06-30 22:00 UTC (+ 59 seconds)
+            assert end.strftime("%Y-%m-%d %H:%M") == "2024-06-30 22:00"
 
     @pytest.mark.asyncio
     async def test_date_range_submit_without_account(self) -> None:

@@ -1,6 +1,7 @@
 """Tests for Slack modal builders."""
 
 from services.slack_service._modals import (
+    TIMEZONE_OPTIONS,
     build_camera_filter_modal,
     build_date_range_modal,
     build_feedback_lookup_modal,
@@ -10,6 +11,8 @@ from services.slack_service._modals import (
     build_tool_feedback_modal,
     build_tool_request_modal,
 )
+
+SAMPLE_ACCOUNTS = ["acme-restaurant", "romeo", "juliet"]
 
 
 class TestBuildToolFeedbackModal:
@@ -149,21 +152,31 @@ class TestBuildToolRequestModal:
 
 class TestBuildReportModal:
     def test_returns_modal_with_correct_callback_id(self) -> None:
-        result = build_report_modal()
+        result = build_report_modal(SAMPLE_ACCOUNTS)
         assert result["callback_id"] == "mercury_report_submit"
 
     def test_has_period_and_account_blocks(self) -> None:
-        result = build_report_modal()
+        result = build_report_modal(SAMPLE_ACCOUNTS)
         block_ids = [b["block_id"] for b in result["blocks"]]
         assert "report_period" in block_ids
         assert "account_name" in block_ids
 
     def test_account_name_is_optional(self) -> None:
-        result = build_report_modal()
+        result = build_report_modal(SAMPLE_ACCOUNTS)
         account_block = next(
             b for b in result["blocks"] if b["block_id"] == "account_name"
         )
         assert account_block["optional"] is True
+
+    def test_account_name_uses_static_select(self) -> None:
+        result = build_report_modal(SAMPLE_ACCOUNTS)
+        account_block = next(
+            b for b in result["blocks"] if b["block_id"] == "account_name"
+        )
+        assert account_block["element"]["type"] == "static_select"
+        options = account_block["element"]["options"]
+        assert len(options) == 3
+        assert options[0]["value"] == "acme-restaurant"
 
 
 class TestBuildFeedbackLookupModal:
@@ -180,73 +193,155 @@ class TestBuildFeedbackLookupModal:
 
 class TestBuildCameraFilterModal:
     def test_returns_modal_with_correct_callback_id(self) -> None:
-        result = build_camera_filter_modal()
+        result = build_camera_filter_modal(SAMPLE_ACCOUNTS)
         assert result["callback_id"] == "mercury_camera_filter_submit"
 
     def test_account_names_is_optional(self) -> None:
-        result = build_camera_filter_modal()
+        result = build_camera_filter_modal(SAMPLE_ACCOUNTS)
         assert result["blocks"][0]["optional"] is True
+
+    def test_uses_multi_static_select(self) -> None:
+        result = build_camera_filter_modal(SAMPLE_ACCOUNTS)
+        assert result["blocks"][0]["element"]["type"] == "multi_static_select"
+        options = result["blocks"][0]["element"]["options"]
+        assert len(options) == 3
+
+    def test_shows_placeholder_when_no_accounts(self) -> None:
+        result = build_camera_filter_modal([])
+        options = result["blocks"][0]["element"]["options"]
+        assert len(options) == 1
+        assert options[0]["value"] == "__none__"
+        assert "No accounts found" in options[0]["text"]["text"]
 
 
 class TestBuildLastHoursModal:
     def test_returns_modal_with_correct_callback_id(self) -> None:
-        result = build_last_hours_modal()
+        result = build_last_hours_modal(SAMPLE_ACCOUNTS)
         assert result["callback_id"] == "mercury_last_hours_submit"
 
     def test_has_hours_and_account_blocks(self) -> None:
-        result = build_last_hours_modal()
+        result = build_last_hours_modal(SAMPLE_ACCOUNTS)
         block_ids = [b["block_id"] for b in result["blocks"]]
         assert "hours" in block_ids
         assert "account_name" in block_ids
 
     def test_account_name_is_optional(self) -> None:
-        result = build_last_hours_modal()
+        result = build_last_hours_modal(SAMPLE_ACCOUNTS)
         account_block = next(
             b for b in result["blocks"] if b["block_id"] == "account_name"
         )
         assert account_block["optional"] is True
 
     def test_stores_channel_id_in_private_metadata(self) -> None:
-        result = build_last_hours_modal(channel_id="C789")
+        result = build_last_hours_modal(SAMPLE_ACCOUNTS, channel_id="C789")
         assert result["private_metadata"] == "C789"
+
+    def test_account_name_uses_static_select(self) -> None:
+        result = build_last_hours_modal(SAMPLE_ACCOUNTS)
+        account_block = next(
+            b for b in result["blocks"] if b["block_id"] == "account_name"
+        )
+        assert account_block["element"]["type"] == "static_select"
 
 
 class TestBuildDateRangeModal:
     def test_returns_modal_with_correct_callback_id(self) -> None:
-        result = build_date_range_modal()
+        result = build_date_range_modal(SAMPLE_ACCOUNTS)
         assert result["callback_id"] == "mercury_date_range_submit"
 
     def test_has_start_end_date_and_account_blocks(self) -> None:
-        result = build_date_range_modal()
+        result = build_date_range_modal(SAMPLE_ACCOUNTS)
         block_ids = [b["block_id"] for b in result["blocks"]]
         assert "start_date" in block_ids
         assert "end_date" in block_ids
         assert "account_name" in block_ids
 
     def test_uses_datepicker_elements(self) -> None:
-        result = build_date_range_modal()
+        result = build_date_range_modal(SAMPLE_ACCOUNTS)
         start_block = next(b for b in result["blocks"] if b["block_id"] == "start_date")
         end_block = next(b for b in result["blocks"] if b["block_id"] == "end_date")
         assert start_block["element"]["type"] == "datepicker"
         assert end_block["element"]["type"] == "datepicker"
 
+    def test_has_timepicker_elements(self) -> None:
+        result = build_date_range_modal(SAMPLE_ACCOUNTS)
+        block_ids = [b["block_id"] for b in result["blocks"]]
+        assert "start_time" in block_ids
+        assert "end_time" in block_ids
+        start_time_block = next(
+            b for b in result["blocks"] if b["block_id"] == "start_time"
+        )
+        end_time_block = next(
+            b for b in result["blocks"] if b["block_id"] == "end_time"
+        )
+        assert start_time_block["element"]["type"] == "timepicker"
+        assert end_time_block["element"]["type"] == "timepicker"
+        assert start_time_block["element"]["initial_time"] == "00:00"
+        assert end_time_block["element"]["initial_time"] == "23:59"
+
+    def test_has_timezone_selector(self) -> None:
+        result = build_date_range_modal(SAMPLE_ACCOUNTS)
+        block_ids = [b["block_id"] for b in result["blocks"]]
+        assert "timezone" in block_ids
+        tz_block = next(b for b in result["blocks"] if b["block_id"] == "timezone")
+        assert tz_block["element"]["type"] == "static_select"
+        assert tz_block["element"]["initial_option"] == TIMEZONE_OPTIONS[0]
+        tz_values = [o["value"] for o in tz_block["element"]["options"]]
+        assert "America/Los_Angeles" in tz_values
+        assert "America/New_York" in tz_values
+        assert "UTC" in tz_values
+
+    def test_timezone_is_optional(self) -> None:
+        result = build_date_range_modal(SAMPLE_ACCOUNTS)
+        tz_block = next(b for b in result["blocks"] if b["block_id"] == "timezone")
+        assert tz_block["optional"] is True
+
     def test_account_name_is_optional(self) -> None:
-        result = build_date_range_modal()
+        result = build_date_range_modal(SAMPLE_ACCOUNTS)
         account_block = next(
             b for b in result["blocks"] if b["block_id"] == "account_name"
         )
         assert account_block["optional"] is True
 
     def test_stores_channel_id_in_private_metadata(self) -> None:
-        result = build_date_range_modal(channel_id="C999")
+        result = build_date_range_modal(SAMPLE_ACCOUNTS, channel_id="C999")
         assert result["private_metadata"] == "C999"
+
+    def test_account_name_uses_static_select(self) -> None:
+        result = build_date_range_modal(SAMPLE_ACCOUNTS)
+        account_block = next(
+            b for b in result["blocks"] if b["block_id"] == "account_name"
+        )
+        assert account_block["element"]["type"] == "static_select"
 
 
 class TestBuildSubscriptionLookupModal:
     def test_returns_modal_with_correct_callback_id(self) -> None:
-        result = build_subscription_lookup_modal()
+        result = build_subscription_lookup_modal(SAMPLE_ACCOUNTS)
         assert result["callback_id"] == "mercury_subscription_submit"
 
     def test_has_account_name_block(self) -> None:
-        result = build_subscription_lookup_modal()
+        result = build_subscription_lookup_modal(SAMPLE_ACCOUNTS)
         assert result["blocks"][0]["block_id"] == "account_name"
+
+    def test_account_name_is_required(self) -> None:
+        result = build_subscription_lookup_modal(SAMPLE_ACCOUNTS)
+        assert result["blocks"][0]["optional"] is False
+
+    def test_account_name_uses_static_select(self) -> None:
+        result = build_subscription_lookup_modal(SAMPLE_ACCOUNTS)
+        assert result["blocks"][0]["element"]["type"] == "static_select"
+        options = result["blocks"][0]["element"]["options"]
+        assert len(options) == 3
+
+
+class TestAccountDropdownWithNoAccounts:
+    def test_shows_placeholder_when_no_accounts(self) -> None:
+        result = build_report_modal([])
+        account_block = next(
+            b for b in result["blocks"] if b["block_id"] == "account_name"
+        )
+        options = account_block["element"]["options"]
+        assert len(options) == 1
+        assert options[0]["value"] == "__none__"
+        assert "No accounts found" in options[0]["text"]["text"]

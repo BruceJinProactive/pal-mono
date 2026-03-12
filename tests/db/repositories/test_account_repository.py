@@ -588,3 +588,31 @@ class TestAccountRepositoryAsync:
         result = await async_repo.get_account_by_id(uuid.uuid4())
         assert result is None
         mock_async_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# TestGetAllAccountNames — Account name listing for dropdowns
+# ---------------------------------------------------------------------------
+
+
+class TestGetAllAccountNames:
+    @pytest.mark.asyncio
+    async def test_returns_sorted_account_names(self, async_repo, mock_async_session):
+        """Returns list of account names from the database."""
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = ["acme", "bravo", "charlie"]
+        mock_result.scalars.return_value = mock_scalars
+        mock_async_session.execute.return_value = mock_result
+
+        result = await async_repo.get_all_account_names()
+        assert result == ["acme", "bravo", "charlie"]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_on_error(self, async_repo, mock_async_session):
+        """Returns empty list and rolls back on DB error."""
+        mock_async_session.execute.side_effect = SQLAlchemyError("connection lost")
+
+        result = await async_repo.get_all_account_names()
+        assert result == []
+        mock_async_session.rollback.assert_awaited_once()

@@ -27,6 +27,43 @@ MERCURY_DIRECT_ACTIONS: frozenset[str] = frozenset(
     }
 )
 
+
+async def _fetch_account_names() -> list[str]:
+    """Fetch all active account names from the database for modal dropdowns."""
+    from db.repositories.account_repository import AccountRepositoryAsync
+    from db.session import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            repo = AccountRepositoryAsync(session)
+            return await repo.get_all_account_names()
+    except Exception as e:
+        logger.error("[Mercury] Error fetching account names: %s", e, exc_info=True)
+        return []
+
+
+def _extract_account_name(values: dict, block_id: str = "account_name") -> str:
+    """Extract account name from a static_select block."""
+    block = values.get(block_id, {}).get("account_value", {})
+    if not block:
+        return ""
+    selected = block.get("selected_option")
+    if not selected:
+        return ""
+    value = selected.get("value", "")
+    return "" if value == "__none__" else value
+
+
+def _extract_multi_account_names(values: dict) -> str:
+    """Extract comma-separated account names from a multi_static_select block."""
+    block = values.get("account_names", {}).get("accounts_value", {})
+    if not block:
+        return ""
+    selected = block.get("selected_options", [])
+    names = [opt["value"] for opt in selected if opt.get("value") != "__none__"]
+    return ",".join(names)
+
+
 # =============================================================================
 # BLOCK ACTIONS — Help menu button clicks
 # =============================================================================
@@ -123,8 +160,10 @@ async def handle_mercury_block_action(
         if action_id == "mercury_custom_report":
             from services.slack_service._modals import build_report_modal
 
+            accounts = await _fetch_account_names()
             await client.views_open(
-                trigger_id=trigger_id, view=build_report_modal(channel_id)
+                trigger_id=trigger_id,
+                view=build_report_modal(accounts, channel_id),
             )
             return {"ok": True}
 
@@ -139,33 +178,40 @@ async def handle_mercury_block_action(
         if action_id == "mercury_subscription":
             from services.slack_service._modals import build_subscription_lookup_modal
 
+            accounts = await _fetch_account_names()
             await client.views_open(
                 trigger_id=trigger_id,
-                view=build_subscription_lookup_modal(channel_id),
+                view=build_subscription_lookup_modal(accounts, channel_id),
             )
             return {"ok": True}
 
         if action_id == "mercury_camera_filter":
             from services.slack_service._modals import build_camera_filter_modal
 
+            accounts = await _fetch_account_names()
             await client.views_open(
-                trigger_id=trigger_id, view=build_camera_filter_modal(channel_id)
+                trigger_id=trigger_id,
+                view=build_camera_filter_modal(accounts, channel_id),
             )
             return {"ok": True}
 
         if action_id == "mercury_last_hours":
             from services.slack_service._modals import build_last_hours_modal
 
+            accounts = await _fetch_account_names()
             await client.views_open(
-                trigger_id=trigger_id, view=build_last_hours_modal(channel_id)
+                trigger_id=trigger_id,
+                view=build_last_hours_modal(accounts, channel_id),
             )
             return {"ok": True}
 
         if action_id == "mercury_date_range":
             from services.slack_service._modals import build_date_range_modal
 
+            accounts = await _fetch_account_names()
             await client.views_open(
-                trigger_id=trigger_id, view=build_date_range_modal(channel_id)
+                trigger_id=trigger_id,
+                view=build_date_range_modal(accounts, channel_id),
             )
             return {"ok": True}
 
@@ -411,8 +457,7 @@ async def _handle_report(
 
     try:
         period = values["report_period"]["period_value"]["selected_option"]["value"]
-        account_input = values.get("account_name", {}).get("account_value", {})
-        account_name = account_input.get("value", "").strip() if account_input else ""
+        account_name = _extract_account_name(values)
 
         event = {"channel": channel_id, "text": period, "user": user_id}
         from services.slack_service._commands import handle_report_request
@@ -489,13 +534,13 @@ async def _handle_subscription(
     client = get_slack_client()
 
     try:
-        account_name = values["account_name"]["account_value"]["value"].strip()
+        account_name = _extract_account_name(values)
 
         if not account_name:
             if channel_id:
                 await client.chat_postMessage(
                     channel=channel_id,
-                    text=":warning: Please provide an account name.",
+                    text=":warning: Please select an account.",
                 )
             return {"ok": True}
 
@@ -530,10 +575,7 @@ async def _handle_camera_filter(
     client = get_slack_client()
 
     try:
-        accounts_input = values.get("account_names", {}).get("accounts_value", {})
-        accounts_text = (
-            accounts_input.get("value", "").strip() if accounts_input else ""
-        )
+        accounts_text = _extract_multi_account_names(values)
 
         text = "camera"
         if accounts_text:
@@ -581,8 +623,7 @@ async def _handle_last_hours(
             return {"ok": True}
 
         hours = int(hours_raw)
-        account_input = values.get("account_name", {}).get("account_value", {})
-        account_name = account_input.get("value", "").strip() if account_input else ""
+        account_name = _extract_account_name(values)
 
         event = {"channel": channel_id, "text": "", "user": user_id}
         from services.slack_service._commands import handle_last_hours_request
@@ -613,8 +654,8 @@ async def _handle_date_range(
 ) -> Dict[str, Any]:
     """Handle date range modal submission — runs a report for the given date range.
 
-    Parses dates from the datepicker and passes them directly as custom_dates,
-    bypassing text serialization and regex parsing.
+    Parses dates, times, and timezone from the modal and passes them directly
+    as custom_dates, bypassing text serialization and regex parsing.
     """
     client = get_slack_client()
 
@@ -630,20 +671,37 @@ async def _handle_date_range(
                 )
             return {"ok": True}
 
-        account_input = values.get("account_name", {}).get("account_value", {})
-        account_name = account_input.get("value", "").strip() if account_input else ""
+        # Extract optional time values (defaults: 00:00 start, 23:59 end)
+        start_time_block = values.get("start_time", {}).get("start_time_value", {})
+        start_time_str = start_time_block.get("selected_time", "00:00") or "00:00"
 
-        pst = ZoneInfo("America/Los_Angeles")
-        start_date = datetime.strptime(start_str, "%Y-%m-%d").replace(tzinfo=pst)
+        end_time_block = values.get("end_time", {}).get("end_time_value", {})
+        end_time_str = end_time_block.get("selected_time", "23:59") or "23:59"
+
+        # Extract timezone (default: America/Los_Angeles)
+        tz_block = values.get("timezone", {}).get("timezone_value", {})
+        tz_selected = tz_block.get("selected_option")
+        tz_name = tz_selected["value"] if tz_selected else "America/Los_Angeles"
+
+        account_name = _extract_account_name(values)
+
+        tz = ZoneInfo(tz_name)
+
+        start_hour, start_minute = (int(p) for p in start_time_str.split(":"))
+        end_hour, end_minute = (int(p) for p in end_time_str.split(":"))
+
+        start_date = datetime.strptime(start_str, "%Y-%m-%d").replace(
+            hour=start_hour, minute=start_minute, second=0, tzinfo=tz
+        )
         end_date = datetime.strptime(end_str, "%Y-%m-%d").replace(
-            hour=23, minute=59, second=59, tzinfo=pst
+            hour=end_hour, minute=end_minute, second=59, tzinfo=tz
         )
 
         if end_date < start_date:
             if channel_id:
                 await client.chat_postMessage(
                     channel=channel_id,
-                    text=":warning: End date must be on or after the start date.",
+                    text=":warning: End date/time must be on or after the start date/time.",
                 )
             return {"ok": True}
 

@@ -14,6 +14,110 @@ Builds Slack modal views for Mercury bot interactive workflows:
 
 from typing import Any, Dict
 
+TIMEZONE_OPTIONS: list[Dict[str, Any]] = [
+    {
+        "text": {"type": "plain_text", "text": "Pacific (PT)"},
+        "value": "America/Los_Angeles",
+    },
+    {
+        "text": {"type": "plain_text", "text": "Mountain (MT)"},
+        "value": "America/Denver",
+    },
+    {
+        "text": {"type": "plain_text", "text": "Central (CT)"},
+        "value": "America/Chicago",
+    },
+    {
+        "text": {"type": "plain_text", "text": "Eastern (ET)"},
+        "value": "America/New_York",
+    },
+    {
+        "text": {"type": "plain_text", "text": "UTC"},
+        "value": "UTC",
+    },
+]
+
+
+def _build_account_options(
+    account_names: list[str],
+) -> list[Dict[str, Any]]:
+    """Build Slack static_select options from a list of account names."""
+    return [
+        {
+            "text": {"type": "plain_text", "text": name[:75]},
+            "value": name[:75],
+        }
+        for name in account_names[:100]
+    ]
+
+
+def _build_account_select_block(
+    account_names: list[str],
+    *,
+    block_id: str = "account_name",
+    action_id: str = "account_value",
+    label: str = "Account Name (optional)",
+    optional: bool = True,
+    placeholder: str = "Select an account...",
+) -> Dict[str, Any]:
+    """Build an account select input block using a static_select dropdown."""
+    options = _build_account_options(account_names)
+    block: Dict[str, Any] = {
+        "type": "input",
+        "block_id": block_id,
+        "optional": optional,
+        "label": {"type": "plain_text", "text": label},
+        "element": {
+            "type": "static_select",
+            "placeholder": {"type": "plain_text", "text": placeholder},
+            "action_id": action_id,
+        },
+    }
+    if options:
+        block["element"]["options"] = options
+    else:
+        block["element"]["options"] = [
+            {
+                "text": {"type": "plain_text", "text": "No accounts found"},
+                "value": "__none__",
+            }
+        ]
+    return block
+
+
+def _build_multi_account_select_block(
+    account_names: list[str],
+    *,
+    block_id: str = "account_names",
+    action_id: str = "accounts_value",
+    label: str = "Account Names (optional)",
+    optional: bool = True,
+    placeholder: str = "Select accounts...",
+) -> Dict[str, Any]:
+    """Build a multi-account select input block using multi_static_select."""
+    options = _build_account_options(account_names)
+    block: Dict[str, Any] = {
+        "type": "input",
+        "block_id": block_id,
+        "optional": optional,
+        "label": {"type": "plain_text", "text": label},
+        "element": {
+            "type": "multi_static_select",
+            "placeholder": {"type": "plain_text", "text": placeholder},
+            "action_id": action_id,
+        },
+    }
+    if options:
+        block["element"]["options"] = options
+    else:
+        block["element"]["options"] = [
+            {
+                "text": {"type": "plain_text", "text": "No accounts found"},
+                "value": "__none__",
+            }
+        ]
+    return block
+
 
 def build_tool_feedback_modal(
     tools: list[dict], channel_id: str = ""
@@ -265,11 +369,14 @@ def build_tool_request_modal(channel_id: str = "") -> Dict[str, Any]:
     }
 
 
-def build_report_modal(channel_id: str = "") -> Dict[str, Any]:
+def build_report_modal(
+    account_names: list[str], channel_id: str = ""
+) -> Dict[str, Any]:
     """
     Build a modal for generating a report with period and optional account filter.
 
     Args:
+        account_names: List of account names for the dropdown
         channel_id: Channel ID for response routing
 
     Returns:
@@ -310,23 +417,7 @@ def build_report_modal(channel_id: str = "") -> Dict[str, Any]:
                     "action_id": "period_value",
                 },
             },
-            {
-                "type": "input",
-                "block_id": "account_name",
-                "optional": True,
-                "label": {
-                    "type": "plain_text",
-                    "text": "Account Name (optional)",
-                },
-                "element": {
-                    "type": "plain_text_input",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "e.g. acme-restaurant (leave empty for all)",
-                    },
-                    "action_id": "account_value",
-                },
-            },
+            _build_account_select_block(account_names),
         ],
     }
 
@@ -391,11 +482,14 @@ def build_feedback_lookup_modal(channel_id: str = "") -> Dict[str, Any]:
     }
 
 
-def build_camera_filter_modal(channel_id: str = "") -> Dict[str, Any]:
+def build_camera_filter_modal(
+    account_names: list[str], channel_id: str = ""
+) -> Dict[str, Any]:
     """
     Build a modal for filtering camera status by account names.
 
     Args:
+        account_names: List of account names for the multi-select dropdown
         channel_id: Channel ID for response routing
 
     Returns:
@@ -409,32 +503,19 @@ def build_camera_filter_modal(channel_id: str = "") -> Dict[str, Any]:
         "close": {"type": "plain_text", "text": "Cancel"},
         "private_metadata": channel_id,
         "blocks": [
-            {
-                "type": "input",
-                "block_id": "account_names",
-                "optional": True,
-                "label": {
-                    "type": "plain_text",
-                    "text": "Account Names (comma-separated, optional)",
-                },
-                "element": {
-                    "type": "plain_text_input",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "e.g. romeo,juliet (leave empty for all)",
-                    },
-                    "action_id": "accounts_value",
-                },
-            },
+            _build_multi_account_select_block(account_names),
         ],
     }
 
 
-def build_last_hours_modal(channel_id: str = "") -> Dict[str, Any]:
+def build_last_hours_modal(
+    account_names: list[str], channel_id: str = ""
+) -> Dict[str, Any]:
     """
     Build a modal for generating a report for the last X hours.
 
     Args:
+        account_names: List of account names for the dropdown
         channel_id: Channel ID for response routing
 
     Returns:
@@ -461,32 +542,20 @@ def build_last_hours_modal(channel_id: str = "") -> Dict[str, Any]:
                     "action_id": "hours_value",
                 },
             },
-            {
-                "type": "input",
-                "block_id": "account_name",
-                "optional": True,
-                "label": {
-                    "type": "plain_text",
-                    "text": "Account Name (optional)",
-                },
-                "element": {
-                    "type": "plain_text_input",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "e.g. acme-restaurant (leave empty for all)",
-                    },
-                    "action_id": "account_value",
-                },
-            },
+            _build_account_select_block(account_names),
         ],
     }
 
 
-def build_date_range_modal(channel_id: str = "") -> Dict[str, Any]:
+def build_date_range_modal(
+    account_names: list[str], channel_id: str = ""
+) -> Dict[str, Any]:
     """
-    Build a modal for generating a report over a custom date range.
+    Build a modal for generating a report over a custom date range
+    with specific start/end times and timezone selection.
 
     Args:
+        account_names: List of account names for the dropdown
         channel_id: Channel ID for response routing
 
     Returns:
@@ -515,6 +584,24 @@ def build_date_range_modal(channel_id: str = "") -> Dict[str, Any]:
             },
             {
                 "type": "input",
+                "block_id": "start_time",
+                "optional": True,
+                "label": {
+                    "type": "plain_text",
+                    "text": "Start Time (defaults to 00:00)",
+                },
+                "element": {
+                    "type": "timepicker",
+                    "action_id": "start_time_value",
+                    "initial_time": "00:00",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Select start time...",
+                    },
+                },
+            },
+            {
+                "type": "input",
                 "block_id": "end_date",
                 "label": {"type": "plain_text", "text": "End Date"},
                 "element": {
@@ -528,30 +615,50 @@ def build_date_range_modal(channel_id: str = "") -> Dict[str, Any]:
             },
             {
                 "type": "input",
-                "block_id": "account_name",
+                "block_id": "end_time",
                 "optional": True,
                 "label": {
                     "type": "plain_text",
-                    "text": "Account Name (optional)",
+                    "text": "End Time (defaults to 23:59)",
                 },
                 "element": {
-                    "type": "plain_text_input",
+                    "type": "timepicker",
+                    "action_id": "end_time_value",
+                    "initial_time": "23:59",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "e.g. acme-restaurant (leave empty for all)",
+                        "text": "Select end time...",
                     },
-                    "action_id": "account_value",
                 },
             },
+            {
+                "type": "input",
+                "block_id": "timezone",
+                "optional": True,
+                "label": {
+                    "type": "plain_text",
+                    "text": "Timezone (defaults to Pacific)",
+                },
+                "element": {
+                    "type": "static_select",
+                    "action_id": "timezone_value",
+                    "initial_option": TIMEZONE_OPTIONS[0],
+                    "options": TIMEZONE_OPTIONS,
+                },
+            },
+            _build_account_select_block(account_names),
         ],
     }
 
 
-def build_subscription_lookup_modal(channel_id: str = "") -> Dict[str, Any]:
+def build_subscription_lookup_modal(
+    account_names: list[str], channel_id: str = ""
+) -> Dict[str, Any]:
     """
     Build a modal for looking up subscription status.
 
     Args:
+        account_names: List of account names for the dropdown
         channel_id: Channel ID for response routing
 
     Returns:
@@ -565,18 +672,11 @@ def build_subscription_lookup_modal(channel_id: str = "") -> Dict[str, Any]:
         "close": {"type": "plain_text", "text": "Cancel"},
         "private_metadata": channel_id,
         "blocks": [
-            {
-                "type": "input",
-                "block_id": "account_name",
-                "label": {"type": "plain_text", "text": "Account Name"},
-                "element": {
-                    "type": "plain_text_input",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "e.g. romeo",
-                    },
-                    "action_id": "account_value",
-                },
-            },
+            _build_account_select_block(
+                account_names,
+                label="Account Name",
+                optional=False,
+                placeholder="Select an account...",
+            ),
         ],
     }
