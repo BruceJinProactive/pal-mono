@@ -45,6 +45,7 @@ from services.number_service import NumberService
 from services.number_service._utils import NumberChannel
 from services.project_service import ProjectParams
 from services.voice_service import VoiceService
+from utils.dd import statsd
 from utils.log import logger
 
 from ._account import _set_user_session, get_account_status
@@ -546,12 +547,32 @@ async def self_onboarding(
             headers={"Content-Type": "application/json"},
         )
 
+    # Track TOS acceptance creation for post-commit metrics
+    tos_acceptance_created = False
+    tos_account_id = None
+
     # Create TOS acceptance record if terms were accepted in onboarding
     if request.terms_accepted:
         try:
             # Get the newly created account to extract account_id
             account = account_service.get_account(session, account_name)
             if not account:
+                # METRIC: Track account retrieval failure (best-effort)
+                try:
+                    statsd.increment(
+                        "tos.acceptance.failed",
+                        tags=[
+                            f"account_name:{account_name}",
+                            f"version:{account_service.CURRENT_TOS_VERSION}",
+                            "error:AccountRetrievalFailed",
+                            "source:onboarding",
+                        ],
+                    )
+                except Exception as metric_err:
+                    logger.debug(
+                        f"Failed to emit tos.acceptance.failed metric: {metric_err}"
+                    )
+
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Account was created but cannot be retrieved",
@@ -571,9 +592,13 @@ async def self_onboarding(
             )
 
             if existing_acceptance:
-                logger.debug(
-                    f"[SelfOnboarding] TOS acceptance already exists for account {account_name} version {account_service.CURRENT_TOS_VERSION}"
+                logger.info(
+                    f"[SelfOnboarding] TOS acceptance already exists for account {account_name} "
+                    f"(version: {account_service.CURRENT_TOS_VERSION}, user: {request.email})"
                 )
+                # Mark for post-commit duplicate metric (already persisted)
+                tos_acceptance_created = False
+                tos_account_id = account.id
             else:
                 tos_repo.create_tos_acceptance(
                     account_id=account.id,
@@ -583,27 +608,82 @@ async def self_onboarding(
                     user_email=request.email,
                     accepted_at=datetime.now(UTC),
                 )
-                logger.debug(
-                    f"[SelfOnboarding] Created TOS acceptance record for account {account_name}"
-                )
+                # Mark for post-commit success metric (will emit after transaction commits)
+                tos_acceptance_created = True
+                tos_account_id = account.id
         except HTTPException:
             # Re-raise HTTPException as-is (already has proper status/detail)
             raise
         except Exception as e:
             session.rollback()
+
+            # METRIC: Track TOS acceptance failures in onboarding (best-effort)
+            try:
+                statsd.increment(
+                    "tos.acceptance.failed",
+                    tags=[
+                        f"account_name:{account_name}",
+                        f"version:{account_service.CURRENT_TOS_VERSION}",
+                        f"error:{type(e).__name__}",
+                        "source:onboarding",
+                    ],
+                )
+            except Exception as metric_err:
+                logger.debug(
+                    f"Failed to emit tos.acceptance.failed metric: {metric_err}"
+                )
+
             logger.error(
-                f"[SelfOnboarding] Failed to create TOS acceptance: {e}",
+                f"[SelfOnboarding] Failed to create TOS acceptance for account {account_name}: {e}",
                 exc_info=True,
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to record TOS acceptance: {str(e)}",
+                detail="Failed to record TOS acceptance",
                 headers={"Content-Type": "application/json"},
             ) from e
 
     logger.debug(f"[SelfOnboarding] Completed self onboarding for user {request.email}")
 
     session.commit()
+
+    # Emit TOS acceptance metrics AFTER successful commit (best-effort)
+    if request.terms_accepted and tos_account_id:
+        if tos_acceptance_created:
+            # METRIC: Track successful TOS acceptance creation in onboarding (best-effort)
+            try:
+                statsd.increment(
+                    "tos.acceptance.created",
+                    tags=[
+                        f"account_id:{tos_account_id}",
+                        f"version:{account_service.CURRENT_TOS_VERSION}",
+                        "source:onboarding",
+                    ],
+                )
+            except Exception as metric_err:
+                logger.debug(
+                    f"Failed to emit tos.acceptance.created metric: {metric_err}"
+                )
+
+            logger.info(
+                f"[SelfOnboarding] TOS acceptance created for account {account_name} "
+                f"(version: {account_service.CURRENT_TOS_VERSION}, user: {request.email})"
+            )
+        else:
+            # METRIC: Track duplicate acceptance in onboarding (best-effort)
+            try:
+                statsd.increment(
+                    "tos.acceptance.duplicate",
+                    tags=[
+                        f"account_id:{tos_account_id}",
+                        f"version:{account_service.CURRENT_TOS_VERSION}",
+                        "source:onboarding",
+                    ],
+                )
+            except Exception as metric_err:
+                logger.debug(
+                    f"Failed to emit tos.acceptance.duplicate metric: {metric_err}"
+                )
 
     # Send notification to #test-channel Slack channel
     try:

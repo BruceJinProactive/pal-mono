@@ -467,6 +467,350 @@ class TestSelfOnboardingTOSIntegration:
 
             # Verify error handling
             assert exc_info.value.status_code == 500
-            assert "Failed to record TOS acceptance" in exc_info.value.detail
-            assert "Database error" in exc_info.value.detail
+            assert exc_info.value.detail == "Failed to record TOS acceptance"
             mock_session.rollback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_self_onboarding_tos_metrics_failure_on_duplicate(self):
+        """Test self_onboarding handles metric failures gracefully when acceptance exists."""
+        request = SelfOnboardingRequest(
+            account_name="test-account",
+            account_display_name="Test Account",
+            account_description="Test business",
+            email="test@example.com",
+            user_name="Test User",
+            password=TEST_PASSWORD,
+            phone_number="+15555555555",
+            agent_name="Test Agent",
+            agent_greeting_message="Hello",
+            agent_communication_style="friendly",
+            agent_interaction_guidelines="Be helpful",
+            agent_voice_id="voice123",
+            agent_language="English",
+            project_name="test-project",
+            project_display_name="Test Project",
+            project_store_hours="Mon-Fri: 9am-5pm",
+            project_address="123 Test St",
+            project_timezone="America/Los_Angeles",
+            terms_accepted=True,
+            segment=AccountSegment.smb,
+        )
+
+        mock_response = MagicMock(spec=Response)
+        mock_session = MagicMock()
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+        mock_account.name = "test-account"
+        mock_account.display_name = "Test Account"
+
+        mock_user = MagicMock()
+        mock_user.email = "test@example.com"
+        mock_user.session = MagicMock()
+        mock_user.session.user_sub = str(uuid.uuid4())
+
+        mock_account_status = AccountStatusResponse(
+            id=mock_account.id,
+            name="test-account",
+            status=AccountStatus.active,
+            display_name="Test Account",
+        )
+
+        # Existing TOS acceptance record
+        existing_tos = MagicMock()
+        existing_tos.account_id = mock_account.id
+        existing_tos.tos_version = "v1.0"
+
+        with (
+            patch(
+                "api.routes.admin._onboarding.self_onboard_account",
+                return_value="test-account",
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_agent",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_project",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_voice_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_user", return_value=mock_user
+            ),
+            patch("api.routes.admin._onboarding.account_service") as mock_account_svc,
+            patch(
+                "api.routes.admin._onboarding.TosAcceptanceRepository"
+            ) as mock_tos_repo,
+            patch(
+                "api.routes.admin._onboarding.slack_service.send_self_onboarding_notification",
+                new_callable=AsyncMock,
+            ),
+            patch("api.routes.admin._onboarding._set_user_session"),
+            patch(
+                "api.routes.admin._onboarding.get_account_status",
+                return_value=mock_account_status,
+            ),
+            patch("api.routes.admin._onboarding.statsd") as mock_statsd,
+            patch("api.routes.admin._onboarding.logger") as mock_logger,
+        ):
+            mock_account_svc.get_account.return_value = mock_account
+            mock_account_svc.CURRENT_TOS_VERSION = "v1.0"
+
+            tos_repo_instance = mock_tos_repo.return_value
+            tos_repo_instance.get_tos_acceptance_by_version.return_value = (
+                existing_tos  # Existing acceptance found
+            )
+
+            # Make statsd raise an exception
+            mock_statsd.increment.side_effect = Exception("Statsd connection error")
+
+            result = await self_onboarding(request, mock_response, mock_session)
+
+            # Verify function still succeeds despite metrics failure
+            assert result is not None
+            assert result.success is True
+
+            # Verify exact StatsD payload was attempted
+            mock_statsd.increment.assert_any_call(
+                "tos.acceptance.duplicate",
+                tags=[
+                    f"account_id:{mock_account.id}",
+                    "version:v1.0",
+                    "source:onboarding",
+                ],
+            )
+
+            # Verify metric failure was logged
+            mock_logger.debug.assert_any_call(
+                "Failed to emit tos.acceptance.duplicate metric: Statsd connection error"
+            )
+
+            # Verify session was still committed
+            mock_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_self_onboarding_tos_metrics_failure_on_create(self):
+        """Test self_onboarding handles metric failures gracefully when creating acceptance."""
+        request = SelfOnboardingRequest(
+            account_name="test-account",
+            account_display_name="Test Account",
+            account_description="Test business",
+            email="test@example.com",
+            user_name="Test User",
+            password=TEST_PASSWORD,
+            phone_number="+15555555555",
+            agent_name="Test Agent",
+            agent_greeting_message="Hello",
+            agent_communication_style="friendly",
+            agent_interaction_guidelines="Be helpful",
+            agent_voice_id="voice123",
+            agent_language="English",
+            project_name="test-project",
+            project_display_name="Test Project",
+            project_store_hours="Mon-Fri: 9am-5pm",
+            project_address="123 Test St",
+            project_timezone="America/Los_Angeles",
+            terms_accepted=True,
+            segment=AccountSegment.smb,
+        )
+
+        mock_response = MagicMock(spec=Response)
+        mock_session = MagicMock()
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+        mock_account.name = "test-account"
+        mock_account.display_name = "Test Account"
+
+        mock_user = MagicMock()
+        mock_user.email = "test@example.com"
+        mock_user.session = MagicMock()
+        mock_user.session.user_sub = str(uuid.uuid4())
+
+        mock_account_status = AccountStatusResponse(
+            id=mock_account.id,
+            name="test-account",
+            status=AccountStatus.active,
+            display_name="Test Account",
+        )
+
+        with (
+            patch(
+                "api.routes.admin._onboarding.self_onboard_account",
+                return_value="test-account",
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_agent",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_project",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_voice_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_user", return_value=mock_user
+            ),
+            patch("api.routes.admin._onboarding.account_service") as mock_account_svc,
+            patch(
+                "api.routes.admin._onboarding.TosAcceptanceRepository"
+            ) as mock_tos_repo,
+            patch(
+                "api.routes.admin._onboarding.slack_service.send_self_onboarding_notification",
+                new_callable=AsyncMock,
+            ),
+            patch("api.routes.admin._onboarding._set_user_session"),
+            patch(
+                "api.routes.admin._onboarding.get_account_status",
+                return_value=mock_account_status,
+            ),
+            patch("api.routes.admin._onboarding.statsd") as mock_statsd,
+            patch("api.routes.admin._onboarding.logger") as mock_logger,
+        ):
+            mock_account_svc.get_account.return_value = mock_account
+            mock_account_svc.CURRENT_TOS_VERSION = "v1.0"
+
+            tos_repo_instance = mock_tos_repo.return_value
+            tos_repo_instance.get_tos_acceptance_by_version.return_value = (
+                None  # No existing acceptance
+            )
+            tos_repo_instance.create_tos_acceptance.return_value = MagicMock()
+
+            # Make statsd raise an exception
+            mock_statsd.increment.side_effect = Exception("Statsd connection error")
+
+            result = await self_onboarding(request, mock_response, mock_session)
+
+            # Verify function still succeeds despite metrics failure
+            assert result is not None
+            assert result.success is True
+
+            # Verify exact StatsD payload was attempted
+            mock_statsd.increment.assert_any_call(
+                "tos.acceptance.created",
+                tags=[
+                    f"account_id:{mock_account.id}",
+                    "version:v1.0",
+                    "source:onboarding",
+                ],
+            )
+
+            # Verify metric failure was logged
+            mock_logger.debug.assert_any_call(
+                "Failed to emit tos.acceptance.created metric: Statsd connection error"
+            )
+
+            # Verify TOS was still created
+            tos_repo_instance.create_tos_acceptance.assert_called_once()
+
+            # Verify session was still committed
+            mock_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_self_onboarding_tos_metrics_failure_on_error(self):
+        """Test self_onboarding handles metric failures gracefully during TOS creation error."""
+        request = SelfOnboardingRequest(
+            account_name="test-account",
+            account_display_name="Test Account",
+            account_description="Test business",
+            email="test@example.com",
+            user_name="Test User",
+            password=TEST_PASSWORD,
+            phone_number="+15555555555",
+            agent_name="Test Agent",
+            agent_greeting_message="Hello",
+            agent_communication_style="friendly",
+            agent_interaction_guidelines="Be helpful",
+            agent_voice_id="voice123",
+            agent_language="English",
+            project_name="test-project",
+            project_display_name="Test Project",
+            project_store_hours="Mon-Fri: 9am-5pm",
+            project_address="123 Test St",
+            project_timezone="America/Los_Angeles",
+            terms_accepted=True,
+            segment=AccountSegment.smb,
+        )
+
+        mock_response = MagicMock(spec=Response)
+        mock_session = MagicMock()
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+        mock_account.name = "test-account"
+        mock_account.display_name = "Test Account"
+
+        mock_user = MagicMock()
+        mock_user.email = "test@example.com"
+        mock_user.session = MagicMock()
+        mock_user.session.user_sub = str(uuid.uuid4())
+
+        with (
+            patch(
+                "api.routes.admin._onboarding.self_onboard_account",
+                return_value="test-account",
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_agent",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_project",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_voice_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_user", return_value=mock_user
+            ),
+            patch("api.routes.admin._onboarding.account_service") as mock_account_svc,
+            patch(
+                "api.routes.admin._onboarding.TosAcceptanceRepository"
+            ) as mock_tos_repo,
+            patch("api.routes.admin._onboarding.statsd") as mock_statsd,
+            patch("api.routes.admin._onboarding.logger") as mock_logger,
+        ):
+            mock_account_svc.get_account.return_value = mock_account
+            mock_account_svc.CURRENT_TOS_VERSION = "v1.0"
+
+            # Make TOS creation fail
+            tos_repo_instance = mock_tos_repo.return_value
+            tos_repo_instance.get_tos_acceptance_by_version.return_value = (
+                None  # No existing acceptance
+            )
+            tos_repo_instance.create_tos_acceptance.side_effect = Exception(
+                "Database error"
+            )
+
+            # Make statsd also raise an exception
+            mock_statsd.increment.side_effect = Exception("Statsd connection error")
+
+            with pytest.raises(HTTPException) as exc_info:
+                await self_onboarding(request, mock_response, mock_session)
+
+            # Verify error handling still works
+            assert exc_info.value.status_code == 500
+            assert exc_info.value.detail == "Failed to record TOS acceptance"
+            mock_session.rollback.assert_called_once()
+
+            # Verify exact StatsD payload was attempted
+            mock_statsd.increment.assert_any_call(
+                "tos.acceptance.failed",
+                tags=[
+                    "account_name:test-account",
+                    "version:v1.0",
+                    "error:Exception",
+                    "source:onboarding",
+                ],
+            )
+
+            # Verify metric failure was logged
+            mock_logger.debug.assert_any_call(
+                "Failed to emit tos.acceptance.failed metric: Statsd connection error"
+            )
