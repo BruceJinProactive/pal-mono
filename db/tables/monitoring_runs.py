@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Dict
 
+from sqlalchemy import Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column
@@ -51,3 +52,11 @@ class MonitoringRun(Base):
 
     # Error Handling
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_monitoring_runs_config_started",
+            "monitoring_config_id",
+            text("started_at DESC"),
+        ),
+    )
