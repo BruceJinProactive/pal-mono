@@ -17,7 +17,7 @@ from db.repositories.catering_request_repository import (
 )
 from db.repositories.contact_repository import ContactRepositoryAsync
 from db.repositories.project_contact_repository import ProjectContactRepositoryAsync
-from db.repositories.project_repository import ProjectRepository
+from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
 from db.session import SyncSessionLocal
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from db.tables.contacts import Contact
@@ -351,6 +351,13 @@ async def update_catering_request(
     Returns:
         CateringRequest: The updated catering request
     """
+    catering_request_repo = CateringRequestRepositoryAsync(session)
+    existing_request = await catering_request_repo.get_catering_request_by_id(
+        catering_request_id
+    )
+    if existing_request is None:
+        raise ValueError(f"Catering request {catering_request_id} not found")
+
     # Create an updated catering request object with only the provided fields
     updated_catering_request = CateringRequest()
 
@@ -372,9 +379,104 @@ async def update_catering_request(
         if value is not None:
             setattr(updated_catering_request, field, value)
 
-    catering_request_repo = CateringRequestRepositoryAsync(session)
-    return await catering_request_repo.update_catering_request(
+    updated_request = await catering_request_repo.update_catering_request(
         catering_request_id, updated_catering_request
+    )
+
+    if _should_send_customer_status_sms(existing_request.status, status):
+        try:
+            business_name = await _get_catering_business_name(
+                session, updated_request.project_id
+            )
+            sms_sent = await asyncio.to_thread(
+                send_sms_notification,
+                updated_request.contact_phone_number,
+                _build_customer_status_sms_message(updated_request, business_name),
+            )
+            if not sms_sent:
+                logger.warning(
+                    "[catering] Updated request status but failed to send customer status SMS.",
+                    extra={
+                        "request_id": str(updated_request.id),
+                        "old_status": existing_request.status.value,
+                        "new_status": updated_request.status.value,
+                    },
+                )
+        except Exception as exc:
+            logger.warning(
+                "[catering] Updated request status but customer status SMS notification failed unexpectedly.",
+                extra={
+                    "request_id": str(updated_request.id),
+                    "old_status": existing_request.status.value,
+                    "new_status": updated_request.status.value,
+                    "error": str(exc),
+                },
+            )
+
+    return updated_request
+
+
+def _should_send_customer_status_sms(
+    previous_status: RequestStatus | None, next_status: RequestStatus | None
+) -> bool:
+    if next_status is None:
+        return False
+
+    return previous_status != next_status and next_status in {
+        RequestStatus.QUOTE_SENT,
+        RequestStatus.CONFIRMED,
+        RequestStatus.CANCELLED,
+        RequestStatus.READY,
+    }
+
+
+async def _get_catering_business_name(
+    session: AsyncSession, project_id: uuid.UUID
+) -> str:
+    project = await ProjectRepositoryAsync(session).get_project(project_id)
+    if project:
+        for candidate in (project.display_name, project.name):
+            if candidate and candidate.strip():
+                return candidate.strip()
+    return "the business"
+
+
+def _build_customer_status_sms_message(
+    catering_request: CateringRequest, business_name: str
+) -> str:
+    event_date = (
+        catering_request.event_date.strftime("%B %d, %Y")
+        if catering_request.event_date is not None
+        else None
+    )
+    event_phrase = f" for {event_date}" if event_date else ""
+
+    if catering_request.status == RequestStatus.QUOTE_SENT:
+        return (
+            f"Hi, your catering request with {business_name} has been reviewed "
+            "and the status has been updated to 'Quote Sent'."
+        )
+
+    if catering_request.status == RequestStatus.CONFIRMED:
+        return (
+            f"Hi, your catering request with {business_name}{event_phrase} "
+            "has been updated to Confirmed."
+        )
+
+    if catering_request.status == RequestStatus.CANCELLED:
+        return (
+            f"Hi, your catering request with {business_name}{event_phrase} "
+            "has been updated to Cancelled. Please reach out if you have any questions."
+        )
+
+    if catering_request.status == RequestStatus.READY:
+        return (
+            f"Hi, your catering request with {business_name}{event_phrase} "
+            "has been updated to Ready."
+        )
+
+    raise ValueError(
+        f"Unsupported catering status for customer SMS: {catering_request.status}"
     )
 
 
