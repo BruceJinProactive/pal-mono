@@ -421,7 +421,7 @@ class RawConfig:
 
             if tool_name == "vapi_tool":
                 tool_args = await self._populate_vapi_tool_args(tool_args, session)
-            elif tool_name == "livekit_transfer_tool":
+            elif tool_name in ["livekit_transfer_tool", "livekit_tool"]:
                 explicit_destinations = tool_args.get("transfer_destinations")
                 explicit_destination_number = tool_args.get("destination_number")
                 tool_args = await self._populate_vapi_tool_args(tool_args, session)
@@ -488,7 +488,7 @@ class RawConfig:
             )
 
         # Filter out voice-only tools for non-voice channels
-        VOICE_ONLY_TOOLS = {"vapi_tool", "livekit_transfer_tool"}
+        VOICE_ONLY_TOOLS = {"vapi_tool", "livekit_transfer_tool", "livekit_tool"}
         if self.channel != Channel.VOICE:
             final_identifiers = [
                 t for t in final_identifiers if t.tool_name not in VOICE_ONLY_TOOLS

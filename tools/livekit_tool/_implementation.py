@@ -1,4 +1,5 @@
 import json
+import os
 
 from agno.tools.toolkit import Toolkit
 from ddtrace.llmobs.decorators import tool
@@ -12,7 +13,6 @@ class LiveKitTool(Toolkit):
     def __init__(
         self,
         tool_metadata: ToolMetadata,
-        lk_api: livekit_api.LiveKitAPI | None = None,
         room_name: str | None = None,
         transfer_destinations: dict[str, str] | None = None,
         destination_number: str | None = None,
@@ -20,8 +20,16 @@ class LiveKitTool(Toolkit):
     ):
         super().__init__(name="livekit_tool")
         self.tool_metadata = tool_metadata
-        self.lk_api = lk_api
         self.room_name = room_name
+        self.lk_api = None
+        lk_url = os.environ.get("LIVEKIT_URL", "")
+        lk_key = os.environ.get("LIVEKIT_API_KEY", "")
+        lk_secret = os.environ.get("LIVEKIT_API_SECRET", "")
+        if lk_url and lk_key and lk_secret:
+            self.lk_api = livekit_api.LiveKitAPI(
+                url=lk_url, api_key=lk_key, api_secret=lk_secret
+            )
+
         # Support flat destination_number as a shorthand for transfer_destinations
         if transfer_destinations is not None:
             self.transfer_destinations = transfer_destinations

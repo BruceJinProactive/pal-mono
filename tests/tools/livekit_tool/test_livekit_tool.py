@@ -2,7 +2,7 @@
 """Tests for LiveKitTool — call transfer via metadata update."""
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from livekit import api as livekit_api
@@ -13,9 +13,6 @@ from tools.livekit_tool._implementation import LiveKitTool
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-# Sentinel value to distinguish "not provided" from "explicitly None"
-_UNSET = object()
 
 
 def _make_metadata(**overrides) -> ToolMetadata:
@@ -37,7 +34,7 @@ def _make_metadata(**overrides) -> ToolMetadata:
 
 def _make_lk_api() -> MagicMock:
     """Create a mock LiveKitAPI with an async room service."""
-    mock_api = MagicMock(spec=livekit_api.LiveKitAPI)
+    mock_api = MagicMock()
     mock_room = MagicMock()
     mock_room.update_room_metadata = AsyncMock(return_value=None)
     mock_api.room = mock_room
@@ -45,24 +42,45 @@ def _make_lk_api() -> MagicMock:
 
 
 def _make_tool(
-    lk_api: MagicMock | None | object = _UNSET,
     room_name: str | None = "call-room-1",
     transfer_destinations: dict[str, str] | None = None,
     metadata_overrides: dict | None = None,
+    mock_lk_api: bool = True,
 ) -> LiveKitTool:
     """Create a LiveKitTool with sensible defaults for testing."""
-    # Use sentinel to distinguish "not provided" from "explicitly None"
-    if lk_api is _UNSET:
-        lk_api = _make_lk_api()
     if transfer_destinations is None:
         transfer_destinations = {"general": "+15559876543"}
     meta = _make_metadata(**(metadata_overrides or {}))
-    return LiveKitTool(
-        tool_metadata=meta,
-        lk_api=lk_api,
-        room_name=room_name,
-        transfer_destinations=transfer_destinations,
-    )
+
+    # Mock environment variables and LiveKitAPI constructor
+    with patch.dict(
+        "os.environ",
+        {
+            "LIVEKIT_URL": "https://test.livekit.cloud" if mock_lk_api else "",
+            "LIVEKIT_API_KEY": "test-key" if mock_lk_api else "",
+            "LIVEKIT_API_SECRET": "test-secret" if mock_lk_api else "",
+        },
+    ):
+        if mock_lk_api:
+            with patch(
+                "tools.livekit_tool._implementation.livekit_api.LiveKitAPI"
+            ) as mock_api_class:
+                mock_api_class.return_value = _make_lk_api()
+                tool = LiveKitTool(
+                    tool_metadata=meta,
+                    room_name=room_name,
+                    transfer_destinations=transfer_destinations,
+                )
+                # Store reference to mock API for test assertions
+                tool.lk_api = mock_api_class.return_value
+                return tool
+        else:
+            tool = LiveKitTool(
+                tool_metadata=meta,
+                room_name=room_name,
+                transfer_destinations=transfer_destinations,
+            )
+            return tool
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +144,33 @@ class TestCallTransferSuccess:
         assert '"transfer_purpose": "unknown_purpose"' in request.metadata
         assert '"transfer_to": "+15559876543"' in request.metadata
 
+    @pytest.mark.asyncio
+    async def test_purpose_normalization(self) -> None:
+        """Purpose is normalized: stripped, lowercased."""
+        tool = _make_tool(
+            transfer_destinations={
+                "general": "+15559876543",
+                "complaint": "+15550001111",
+            }
+        )
+        result = await tool.call_transfer(purpose="  COMPLAINT  ")
+
+        assert result == "Call transfer has been initiated"
+        request = tool.lk_api.room.update_room_metadata.call_args[0][0]
+        assert '"transfer_purpose": "complaint"' in request.metadata
+        assert '"transfer_to": "+15550001111"' in request.metadata
+
+    @pytest.mark.asyncio
+    async def test_empty_purpose_defaults_to_general(self) -> None:
+        """Empty or whitespace-only purpose defaults to 'general'."""
+        tool = _make_tool(transfer_destinations={"general": "+15559876543"})
+        result = await tool.call_transfer(purpose="   ")
+
+        assert result == "Call transfer has been initiated"
+        request = tool.lk_api.room.update_room_metadata.call_args[0][0]
+        assert '"transfer_purpose": "general"' in request.metadata
+        assert '"transfer_to": "+15559876543"' in request.metadata
+
 
 # ---------------------------------------------------------------------------
 # Integration tests: call_transfer — validation errors
@@ -170,7 +215,7 @@ class TestCallTransferValidation:
     @pytest.mark.asyncio
     async def test_missing_lk_api(self) -> None:
         """Missing LiveKit API client returns error."""
-        tool = _make_tool(lk_api=None)
+        tool = _make_tool(mock_lk_api=False)
         result = await tool.call_transfer()
 
         assert "LiveKit API client is not available" in result
@@ -217,15 +262,15 @@ class TestCallTransferErrors:
     @pytest.mark.asyncio
     async def test_room_not_found_returns_call_ended(self) -> None:
         """TwirpError NOT_FOUND → graceful 'call has already ended' message."""
-        lk = _make_lk_api()
-        lk.room.update_room_metadata = AsyncMock(
+        tool = _make_tool()
+        # Override the mock to raise NOT_FOUND error
+        tool.lk_api.room.update_room_metadata = AsyncMock(
             side_effect=livekit_api.TwirpError(
                 code=livekit_api.TwirpErrorCode.NOT_FOUND,
                 msg="room not found",
                 status=404,
             )
         )
-        tool = _make_tool(lk_api=lk)
         result = await tool.call_transfer()
 
         assert result == "Call has already ended. Transfer is no longer possible."
@@ -233,15 +278,15 @@ class TestCallTransferErrors:
     @pytest.mark.asyncio
     async def test_twirp_internal_error(self) -> None:
         """TwirpError INTERNAL → generic error message returned."""
-        lk = _make_lk_api()
-        lk.room.update_room_metadata = AsyncMock(
+        tool = _make_tool()
+        # Override the mock to raise INTERNAL error
+        tool.lk_api.room.update_room_metadata = AsyncMock(
             side_effect=livekit_api.TwirpError(
                 code=livekit_api.TwirpErrorCode.INTERNAL,
                 msg="internal server error",
                 status=500,
             )
         )
-        tool = _make_tool(lk_api=lk)
         result = await tool.call_transfer()
 
         # Should return generic message, not leak backend details
@@ -251,11 +296,11 @@ class TestCallTransferErrors:
     @pytest.mark.asyncio
     async def test_unexpected_exception(self) -> None:
         """Unexpected exception → generic error message returned."""
-        lk = _make_lk_api()
-        lk.room.update_room_metadata = AsyncMock(
+        tool = _make_tool()
+        # Override the mock to raise unexpected exception
+        tool.lk_api.room.update_room_metadata = AsyncMock(
             side_effect=RuntimeError("connection reset")
         )
-        tool = _make_tool(lk_api=lk)
         result = await tool.call_transfer()
 
         # Should return generic message, not leak backend details
@@ -276,25 +321,25 @@ class TestConstructor:
     def test_ignores_unknown_kwargs(self) -> None:
         """Unknown kwargs from raw_config are accepted and ignored."""
         meta = _make_metadata()
-        tool = LiveKitTool(
-            tool_metadata=meta,
-            lk_api=_make_lk_api(),
-            room_name="room-1",
-            transfer_destinations={"general": "+15559876543"},
-            some_unknown_arg="should not raise",
-            another_arg=42,
-        )
+        with patch.dict("os.environ", {}):
+            tool = LiveKitTool(
+                tool_metadata=meta,
+                room_name="room-1",
+                transfer_destinations={"general": "+15559876543"},
+                some_unknown_arg="should not raise",
+                another_arg=42,
+            )
         assert tool.name == "livekit_tool"
 
     def test_destination_number_creates_general_destination(self) -> None:
         """destination_number shorthand populates transfer_destinations."""
         meta = _make_metadata()
-        tool = LiveKitTool(
-            tool_metadata=meta,
-            lk_api=_make_lk_api(),
-            room_name="room-1",
-            destination_number="+16468761234",
-        )
+        with patch.dict("os.environ", {}):
+            tool = LiveKitTool(
+                tool_metadata=meta,
+                room_name="room-1",
+                destination_number="+16468761234",
+            )
         assert tool.transfer_destinations == {"general": "+16468761234"}
 
     def test_transfer_destinations_takes_precedence_over_destination_number(
@@ -302,21 +347,56 @@ class TestConstructor:
     ) -> None:
         """Explicit transfer_destinations wins over destination_number."""
         meta = _make_metadata()
-        tool = LiveKitTool(
-            tool_metadata=meta,
-            lk_api=_make_lk_api(),
-            room_name="room-1",
-            transfer_destinations={"complaint": "+15550001111"},
-            destination_number="+16468761234",
-        )
+        with patch.dict("os.environ", {}):
+            tool = LiveKitTool(
+                tool_metadata=meta,
+                room_name="room-1",
+                transfer_destinations={"complaint": "+15550001111"},
+                destination_number="+16468761234",
+            )
         assert tool.transfer_destinations == {"complaint": "+15550001111"}
 
     def test_neither_destinations_nor_number_gives_empty_dict(self) -> None:
         """No destinations and no destination_number → empty dict."""
         meta = _make_metadata()
-        tool = LiveKitTool(
-            tool_metadata=meta,
-            lk_api=_make_lk_api(),
-            room_name="room-1",
-        )
+        with patch.dict("os.environ", {}):
+            tool = LiveKitTool(
+                tool_metadata=meta,
+                room_name="room-1",
+            )
         assert tool.transfer_destinations == {}
+
+    def test_livekit_api_created_from_env_vars(self) -> None:
+        """LiveKitAPI is created when environment variables are set."""
+        meta = _make_metadata()
+        with patch.dict(
+            "os.environ",
+            {
+                "LIVEKIT_URL": "https://test.livekit.cloud",
+                "LIVEKIT_API_KEY": "test-key",
+                "LIVEKIT_API_SECRET": "test-secret",
+            },
+        ):
+            with patch(
+                "tools.livekit_tool._implementation.livekit_api.LiveKitAPI"
+            ) as mock_api_class:
+                tool = LiveKitTool(
+                    tool_metadata=meta,
+                    room_name="room-1",
+                )
+                mock_api_class.assert_called_once_with(
+                    url="https://test.livekit.cloud",
+                    api_key="test-key",
+                    api_secret="test-secret",
+                )
+                assert tool.lk_api is not None
+
+    def test_livekit_api_not_created_without_env_vars(self) -> None:
+        """LiveKitAPI is not created when environment variables are missing."""
+        meta = _make_metadata()
+        with patch.dict("os.environ", {}, clear=True):
+            tool = LiveKitTool(
+                tool_metadata=meta,
+                room_name="room-1",
+            )
+            assert not hasattr(tool, "lk_api") or tool.lk_api is None
