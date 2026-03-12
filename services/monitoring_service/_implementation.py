@@ -1126,8 +1126,52 @@ async def test_monitoring_config(
             f"No signal feed found for signal source {config.signal_source_id}"
         )
 
-    # Route to appropriate testing logic based on feed type
-    if feed.feed_type == FeedType.video_stream:
+    # Detect media type from S3 URL if provided (overrides feed type)
+    detected_media_type = None
+    if s3_url:
+        s3_url_lower = s3_url.lower()
+        video_extensions = (
+            ".mkv",
+            ".mp4",
+            ".mov",
+            ".avi",
+            ".webm",
+            ".flv",
+            ".mpg",
+            ".wmv",
+            ".3gp",
+        )
+        image_extensions = (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")
+
+        if s3_url_lower.endswith(video_extensions):
+            detected_media_type = "video"
+            logger.info(
+                f"[Test Monitoring Config] Detected video file from S3 URL extension: {s3_url}",
+                extra={
+                    "config_id": str(config_id),
+                    "s3_url": s3_url,
+                    "detected_type": "video",
+                },
+            )
+        elif s3_url_lower.endswith(image_extensions):
+            detected_media_type = "image"
+            logger.info(
+                f"[Test Monitoring Config] Detected image file from S3 URL extension: {s3_url}",
+                extra={
+                    "config_id": str(config_id),
+                    "s3_url": s3_url,
+                    "detected_type": "image",
+                },
+            )
+
+    # Route to appropriate testing logic based on detected media type or feed type
+    use_video_flow = (
+        detected_media_type == "video"
+        if detected_media_type
+        else feed.feed_type == FeedType.video_stream
+    )
+
+    if use_video_flow:
         # VIDEO MONITORING TEST
         logger.info(
             f"[Test Monitoring Config] Detected video monitoring config {config_id}",
@@ -1222,15 +1266,16 @@ async def test_monitoring_config(
             "test_image_source": video_url,  # Video S3 path (from s3_url or feed)
         }
 
-    elif feed.feed_type == FeedType.image_snapshot:
+    else:
         # IMAGE MONITORING TEST
         logger.info(
-            f"[Test Monitoring Config] Detected image monitoring config {config_id}",
+            f"[Test Monitoring Config] Using image monitoring flow for config {config_id}",
             extra={
                 "config_id": str(config_id),
                 "project_id": str(project_id),
                 "signal_source_id": str(config.signal_source_id),
-                "feed_type": "image_snapshot",
+                "detected_media_type": detected_media_type,
+                "feed_type": feed.feed_type.value if feed.feed_type else None,
             },
         )
 
@@ -1333,13 +1378,6 @@ async def test_monitoring_config(
             "test_image_url": image_url,  # S3 path or None for uploaded images
             "test_image_source": image_description,  # Descriptive string
         }
-
-    else:
-        # Unsupported feed type
-        raise ValueError(
-            f"Unsupported feed type '{feed.feed_type}' for monitoring config {config_id}. "
-            f"Only 'image_snapshot' and 'video_stream' are supported."
-        )
 
 
 async def build_config_response(config: MonitoringConfig) -> MonitoringConfigResponse:
