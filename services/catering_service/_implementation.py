@@ -383,7 +383,44 @@ async def update_catering_request(
         catering_request_id, updated_catering_request
     )
 
-    if _should_send_customer_status_sms(existing_request.status, status):
+    previous_status_value = (
+        existing_request.status.value
+        if isinstance(existing_request.status, RequestStatus)
+        else existing_request.status
+    )
+    requested_status_value = (
+        status.value if isinstance(status, RequestStatus) else status
+    )
+    updated_status_value = (
+        updated_request.status.value
+        if isinstance(updated_request.status, RequestStatus)
+        else updated_request.status
+    )
+    sms_skip_reason = _get_customer_status_sms_skip_reason(
+        existing_request.status, status
+    )
+
+    logger.info(
+        "[catering] Processed catering request update.",
+        extra={
+            "request_id": str(updated_request.id),
+            "previous_status": previous_status_value,
+            "requested_status": requested_status_value,
+            "updated_status": updated_status_value,
+            "customer_status_sms_decision": sms_skip_reason,
+        },
+    )
+
+    if sms_skip_reason == "eligible":
+        logger.info(
+            "[catering] Customer status SMS eligible; attempting send.",
+            extra={
+                "request_id": str(updated_request.id),
+                "previous_status": previous_status_value,
+                "requested_status": requested_status_value,
+                "updated_status": updated_status_value,
+            },
+        )
         try:
             business_name = await _get_catering_business_name(
                 session, updated_request.project_id
@@ -412,6 +449,17 @@ async def update_catering_request(
                     "error": str(exc),
                 },
             )
+    else:
+        logger.info(
+            "[catering] Customer status SMS skipped.",
+            extra={
+                "request_id": str(updated_request.id),
+                "previous_status": previous_status_value,
+                "requested_status": requested_status_value,
+                "updated_status": updated_status_value,
+                "skip_reason": sms_skip_reason,
+            },
+        )
 
     return updated_request
 
@@ -428,6 +476,23 @@ def _should_send_customer_status_sms(
         RequestStatus.CANCELLED,
         RequestStatus.READY,
     }
+
+
+def _get_customer_status_sms_skip_reason(
+    previous_status: RequestStatus | None, next_status: RequestStatus | None
+) -> str:
+    if next_status is None:
+        return "no_status_requested"
+    if next_status not in {
+        RequestStatus.QUOTE_SENT,
+        RequestStatus.CONFIRMED,
+        RequestStatus.CANCELLED,
+        RequestStatus.READY,
+    }:
+        return "status_not_supported"
+    if previous_status == next_status:
+        return "status_unchanged"
+    return "eligible"
 
 
 async def _get_catering_business_name(
