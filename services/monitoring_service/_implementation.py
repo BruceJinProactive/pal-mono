@@ -1062,38 +1062,52 @@ async def test_monitoring_config(
     project_id: uuid.UUID,
     config_id: uuid.UUID,
     test_image_bytes: bytes | None = None,
+    s3_url: str | None = None,
 ) -> dict:
     """
     Test a monitoring configuration without saving to database.
 
-    Uses either provided test image bytes (from upload) or automatically uses the
-    latest captured image from the signal feed. Runs the monitoring logic and returns
-    the data structure that would be saved to the database. This allows users to
-    preview exactly how the monitoring will analyze images before committing the
-    configuration.
+    Automatically detects whether the config is for image or video monitoring and
+    uses the appropriate analysis method.
+
+    For IMAGE configs:
+    - Priority: uploaded file > S3 URL > latest feed capture
+    - Supports uploaded test images, S3 URLs, or feed images
+
+    For VIDEO configs:
+    - Priority: S3 URL > latest feed capture
+    - Supports S3 URLs or feed videos (no uploaded files)
 
     Args:
         session: Async database session.
         project_id: Project UUID.
         config_id: Monitoring config UUID.
-        test_image_bytes: Optional raw image bytes from upload. If not provided,
-            uses the latest image from the signal feed. Test images are NOT saved
-            to S3 - they're passed directly to the LLM.
+        test_image_bytes: Optional raw image bytes from upload (only for image configs).
+            Test images are NOT saved to S3 - they're passed directly to the LLM.
+        s3_url: Optional S3 key/path to test media (supports both image and video configs).
+            Examples: "security/cameras/account/project/camera/images/2026-03-12/image.jpg"
+                     "security/cameras/account/project/camera/videos/2026-03-12/video.mp4"
 
     Returns:
         dict with keys matching MonitoringRun structure:
             - evaluation_result: dict that would be saved to DB (result, details, confidence)
             - error_message: str or None (extracted from evaluation_result when result='error')
             - prompt_sent: dict containing system instruction, user prompt, reference images structure
-            - test_image_url: str describing the image source
+            - test_image_url: str describing the image/video source
+            - test_image_source: descriptive string of source type
 
     Raises:
-        ValueError: If config not found, doesn't belong to project, or no recent image available.
+        ValueError: If config not found, doesn't belong to project, feed type unsupported,
+            invalid parameters, or no recent capture available.
         HTTPException: If LLM analysis fails.
     """
     # Import here to avoid circular dependency
     from db.repositories import SignalFeedRepositoryAsync
-    from services.monitoring_service._llm import generate_monitoring_llm_prompt
+    from db.tables.types import FeedType
+    from services.monitoring_service._llm import (
+        generate_monitoring_llm_prompt,
+        generate_monitoring_video_llm_prompt,
+    )
 
     config_repo = MonitoringConfigRepositoryAsync(session)
 
@@ -1104,94 +1118,228 @@ async def test_monitoring_config(
             f"Monitoring config {config_id} not found or doesn't belong to project {project_id}"
         )
 
-    # Determine which image to use for testing
-    if test_image_bytes is not None:
-        # Validate that uploaded image is not empty
-        if len(test_image_bytes) == 0:
-            raise ValueError("Uploaded test image is empty (0 bytes)")
+    # Get signal feed to determine feed type (image vs video)
+    feed_repo = SignalFeedRepositoryAsync(session)
+    feed = await feed_repo.get_by_source_id(config.signal_source_id)
+    if not feed:
+        raise ValueError(
+            f"No signal feed found for signal source {config.signal_source_id}"
+        )
 
-        # Use the provided custom test image bytes (not saved to S3)
-        image_url = None
-        image_source = "custom_upload"
-        image_description = "uploaded test image"
+    # Route to appropriate testing logic based on feed type
+    if feed.feed_type == FeedType.video_stream:
+        # VIDEO MONITORING TEST
         logger.info(
-            f"[Test Monitoring Config] Testing configuration {config_id} with uploaded image",
+            f"[Test Monitoring Config] Detected video monitoring config {config_id}",
             extra={
                 "config_id": str(config_id),
                 "project_id": str(project_id),
                 "signal_source_id": str(config.signal_source_id),
-                "image_source": image_source,
-                "image_size_bytes": len(test_image_bytes),
+                "feed_type": "video_stream",
             },
         )
-    else:
-        # Fall back to latest image from signal feed
-        feed_repo = SignalFeedRepositoryAsync(session)
-        feed = await feed_repo.get_by_source_id(config.signal_source_id)
-        if not feed:
+
+        # Video test doesn't support uploaded test files - only S3 URLs or feed videos
+        if test_image_bytes is not None:
             raise ValueError(
-                f"No signal feed found for signal source {config.signal_source_id}"
+                "Uploaded test files are not supported for video monitoring configs. "
+                "Please provide an s3_url or the test will use the latest captured video from the camera feed."
             )
 
-        # Check if there's a recent capture available
-        if not feed.last_capture_url:
-            raise ValueError(
-                "No recent image available from camera. Please wait for the next camera capture or trigger a manual capture."
+        # Determine which video to use for testing
+        # Priority: S3 URL > latest feed capture
+        if s3_url:
+            # Use provided S3 URL
+            video_url = s3_url
+            video_source = "s3_url"
+            logger.info(
+                f"[Test Monitoring Config] Testing video config {config_id} with S3 URL {video_url}",
+                extra={
+                    "config_id": str(config_id),
+                    "project_id": str(project_id),
+                    "signal_source_id": str(config.signal_source_id),
+                    "test_video_url": video_url,
+                    "source": video_source,
+                },
+            )
+        else:
+            # Fall back to latest feed capture
+            if not feed.last_capture_url:
+                raise ValueError(
+                    "No recent video available from camera and no s3_url provided. "
+                    "Please provide an s3_url or wait for the next camera capture."
+                )
+
+            video_url = feed.last_capture_url
+            video_source = "signal_feed"
+            logger.info(
+                f"[Test Monitoring Config] Testing video config {config_id} with latest feed video {video_url}",
+                extra={
+                    "config_id": str(config_id),
+                    "project_id": str(project_id),
+                    "signal_source_id": str(config.signal_source_id),
+                    "test_video_url": video_url,
+                    "source": video_source,
+                    "last_capture_at": (
+                        feed.last_capture_at.isoformat()
+                        if feed.last_capture_at
+                        else None
+                    ),
+                },
             )
 
-        image_url = feed.last_capture_url
-        image_source = "signal_feed"
-        image_description = feed.last_capture_url
+        # Run video LLM analysis
+        llm_result = await generate_monitoring_video_llm_prompt(
+            session=session,
+            monitoring_config_id=config_id,
+            video_url=video_url,
+        )
+
+        analysis_result = llm_result.get("analysis_result", {})
+        result_status = analysis_result.get("result")
+
+        # Extract error_message if result is "error"
+        error_message = None
+        if result_status == "error":
+            error_message = analysis_result.get("details", "Video validation failed")
+
         logger.info(
-            f"[Test Monitoring Config] Testing configuration {config_id} with latest feed image {image_url}",
+            f"[Test Monitoring Config] Video analysis completed for config {config_id}",
             extra={
                 "config_id": str(config_id),
-                "project_id": str(project_id),
-                "signal_source_id": str(config.signal_source_id),
-                "test_image_url": image_url,
-                "image_source": image_source,
-                "last_capture_at": (
-                    feed.last_capture_at.isoformat() if feed.last_capture_at else None
-                ),
+                "result": result_status,
+                "error_message": error_message,
+                "test_video_url": video_url,
             },
         )
 
-    # Run LLM analysis using existing monitoring logic
-    # This returns {"prompt_sent": {...}, "analysis_result": {...}}
-    llm_result = await generate_monitoring_llm_prompt(
-        session=session,
-        monitoring_config_id=config_id,
-        image_url=image_url,
-        image_bytes=test_image_bytes,
-    )
-
-    analysis_result = llm_result.get("analysis_result", {})
-    result_status = analysis_result.get("result")
-
-    # Extract error_message if result is "error" (matches create_monitoring_run_with_analysis logic)
-    error_message = None
-    if result_status == "error":
-        error_message = analysis_result.get("details", "Image validation failed")
-
-    logger.info(
-        f"[Test Monitoring Config] Analysis completed for config {config_id}",
-        extra={
-            "config_id": str(config_id),
-            "result": result_status,
+        # Return data structure matching MonitoringRun table
+        return {
+            "evaluation_result": analysis_result,
             "error_message": error_message,
-            "test_image_url": image_url,
-            "test_image_source": image_description,
-        },
-    )
+            "prompt_sent": llm_result.get("prompt_sent", {}),
+            "test_image_url": video_url,  # S3 path to video
+            "test_image_source": video_url,  # Video S3 path (from s3_url or feed)
+        }
 
-    # Return data structure matching MonitoringRun table
-    return {
-        "evaluation_result": analysis_result,
-        "error_message": error_message,
-        "prompt_sent": llm_result.get("prompt_sent", {}),
-        "test_image_url": image_url,  # S3 path or None for uploaded images
-        "test_image_source": image_description,  # Descriptive string
-    }
+    elif feed.feed_type == FeedType.image_snapshot:
+        # IMAGE MONITORING TEST
+        logger.info(
+            f"[Test Monitoring Config] Detected image monitoring config {config_id}",
+            extra={
+                "config_id": str(config_id),
+                "project_id": str(project_id),
+                "signal_source_id": str(config.signal_source_id),
+                "feed_type": "image_snapshot",
+            },
+        )
+
+        # Determine which image to use for testing
+        # Priority: uploaded file > S3 URL > latest feed capture
+        if test_image_bytes is not None:
+            # Validate that uploaded image is not empty
+            if len(test_image_bytes) == 0:
+                raise ValueError("Uploaded test image is empty (0 bytes)")
+
+            # Use the provided custom test image bytes (not saved to S3)
+            image_url = None
+            image_source = "custom_upload"
+            image_description = "uploaded test image"
+            logger.info(
+                f"[Test Monitoring Config] Testing configuration {config_id} with uploaded image",
+                extra={
+                    "config_id": str(config_id),
+                    "project_id": str(project_id),
+                    "signal_source_id": str(config.signal_source_id),
+                    "image_source": image_source,
+                    "image_size_bytes": len(test_image_bytes),
+                },
+            )
+        elif s3_url:
+            # Use provided S3 URL
+            image_url = s3_url
+            image_source = "s3_url"
+            image_description = s3_url
+            logger.info(
+                f"[Test Monitoring Config] Testing configuration {config_id} with S3 URL {image_url}",
+                extra={
+                    "config_id": str(config_id),
+                    "project_id": str(project_id),
+                    "signal_source_id": str(config.signal_source_id),
+                    "test_image_url": image_url,
+                    "image_source": image_source,
+                },
+            )
+        else:
+            # Fall back to latest image from signal feed
+            if not feed.last_capture_url:
+                raise ValueError(
+                    "No recent image available from camera, no s3_url provided, and no test image uploaded. "
+                    "Please provide a test_image file, s3_url, or wait for the next camera capture."
+                )
+
+            image_url = feed.last_capture_url
+            image_source = "signal_feed"
+            image_description = feed.last_capture_url
+            logger.info(
+                f"[Test Monitoring Config] Testing configuration {config_id} with latest feed image {image_url}",
+                extra={
+                    "config_id": str(config_id),
+                    "project_id": str(project_id),
+                    "signal_source_id": str(config.signal_source_id),
+                    "test_image_url": image_url,
+                    "image_source": image_source,
+                    "last_capture_at": (
+                        feed.last_capture_at.isoformat()
+                        if feed.last_capture_at
+                        else None
+                    ),
+                },
+            )
+
+        # Run LLM analysis using existing monitoring logic
+        # This returns {"prompt_sent": {...}, "analysis_result": {...}}
+        llm_result = await generate_monitoring_llm_prompt(
+            session=session,
+            monitoring_config_id=config_id,
+            image_url=image_url,
+            image_bytes=test_image_bytes,
+        )
+
+        analysis_result = llm_result.get("analysis_result", {})
+        result_status = analysis_result.get("result")
+
+        # Extract error_message if result is "error"
+        error_message = None
+        if result_status == "error":
+            error_message = analysis_result.get("details", "Image validation failed")
+
+        logger.info(
+            f"[Test Monitoring Config] Image analysis completed for config {config_id}",
+            extra={
+                "config_id": str(config_id),
+                "result": result_status,
+                "error_message": error_message,
+                "test_image_url": image_url,
+                "test_image_source": image_description,
+            },
+        )
+
+        # Return data structure matching MonitoringRun table
+        return {
+            "evaluation_result": analysis_result,
+            "error_message": error_message,
+            "prompt_sent": llm_result.get("prompt_sent", {}),
+            "test_image_url": image_url,  # S3 path or None for uploaded images
+            "test_image_source": image_description,  # Descriptive string
+        }
+
+    else:
+        # Unsupported feed type
+        raise ValueError(
+            f"Unsupported feed type '{feed.feed_type}' for monitoring config {config_id}. "
+            f"Only 'image_snapshot' and 'video_stream' are supported."
+        )
 
 
 async def build_config_response(config: MonitoringConfig) -> MonitoringConfigResponse:

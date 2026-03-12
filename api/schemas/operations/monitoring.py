@@ -480,6 +480,10 @@ class TestMonitoringConfigResponse(BaseModel):
 
     Mirrors the structure of actual monitoring run data to preview what will be saved.
     Includes both the prompt sent to LLM and the evaluation result that would be stored.
+
+    Supports both image and video monitoring configurations:
+    - Image configs: Uses uploaded test image or latest feed image
+    - Video configs: Uses latest captured video from feed (uploaded test videos not supported)
     """
 
     evaluation_result: dict = Field(
@@ -492,13 +496,13 @@ class TestMonitoringConfigResponse(BaseModel):
     )
     prompt_sent: dict = Field(
         ...,
-        description="The prompt that was sent to the LLM including system instruction, analysis task, and reference images structure",
+        description="The prompt that was sent to the LLM including system instruction, analysis task, and reference images/video structure",
     )
     test_image_url: str | None = Field(
         None,
-        description="S3 key/path of the analyzed image (only present if using feed image; null for uploaded test images)",
+        description="S3 key/path of the analyzed media (image or video). Null for uploaded test images. For video configs, always contains the S3 video path.",
     )
     test_image_source: str = Field(
         ...,
-        description="Source of the test image: 'uploaded test image' for user uploads, or S3 path for feed images",
+        description="Source of the test media: 'uploaded test image' for user image uploads, or S3 path for feed images/videos",
     )

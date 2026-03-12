@@ -2009,6 +2009,7 @@ async def test_monitoring_config(
     project_id: uuid.UUID,
     config_id: uuid.UUID,
     test_image: UploadFile | None = File(None),
+    s3_url: str | None = Form(None),
     context: UserContext = Depends(
         require_project_permission("project.read", authenticate_user)
     ),
@@ -2017,24 +2018,42 @@ async def test_monitoring_config(
     """
     Test a monitoring configuration without saving to database.
 
-    Users can either provide a custom test image or let the system use the latest
-    captured image from the signal feed. Runs the monitoring logic and returns the
-    prompt sent and analysis result including confidence scores. This allows users
-    to preview how the monitoring will analyze images before committing the configuration.
+    Automatically detects whether the config is for image or video monitoring and uses
+    the appropriate analysis method.
+
+    For IMAGE monitoring:
+    - Users can provide: uploaded test image, S3 URL, or use latest feed capture
+    - Priority: uploaded file > S3 URL > latest feed
+    - Runs image analysis and returns results including confidence scores
+
+    For VIDEO monitoring:
+    - Users can provide: S3 URL or use latest feed capture
+    - Uploaded test videos are NOT supported (only S3 URLs or feed videos)
+    - Runs video analysis (native video or frame extraction based on model)
+
+    This allows users to preview how the monitoring will analyze media before
+    committing the configuration.
 
     Path Parameters:
     - project_id: UUID of the project
     - config_id: UUID of the monitoring configuration
 
     Form Data (optional):
-    - test_image: Custom test image file (if not provided, uses latest from signal feed)
+    - test_image: Custom test image file (only for image configs)
+    - s3_url: S3 key/path to test image or video (e.g., "security/cameras/...")
+
+    Priority:
+    - If test_image provided: uses uploaded file (image configs only)
+    - Else if s3_url provided: uses S3 media (both image and video configs)
+    - Else: uses latest feed capture
 
     Returns:
     - TestMonitoringConfigResponse with:
       - evaluation_result: The analysis result that would be saved to DB
       - error_message: Error details if result='error'
       - prompt_sent: Debug info about what was sent to LLM
-      - test_image_url: S3 key of the analyzed image
+      - test_image_url: S3 key of the analyzed media (image or video)
+      - test_image_source: Description of media source
     """
     _ = context  # Used by require_project_permission
     return await _monitoring.test_monitoring_config(
@@ -2042,6 +2061,7 @@ async def test_monitoring_config(
         session=session,
         project_id=project_id,
         test_image=test_image,
+        s3_url=s3_url,
     )
 
 

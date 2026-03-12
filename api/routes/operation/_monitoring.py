@@ -488,28 +488,41 @@ async def test_monitoring_config(
     session: AsyncSession,
     project_id: uuid.UUID,
     test_image: UploadFile | None = None,
+    s3_url: str | None = None,
 ) -> TestMonitoringConfigResponse:
     """
     Test a monitoring configuration without saving to database.
 
-    Users can either provide a custom test image or let the system use the latest
-    captured image from the signal feed. Runs the monitoring logic and returns the
-    prompt sent and analysis result including confidence scores. This allows users
-    to preview how the monitoring will analyze images before committing the configuration.
+    Automatically detects whether the config is for image or video monitoring and uses
+    the appropriate analysis method.
 
-    Test images are NOT saved to S3 - they're passed directly to the LLM for analysis.
+    For IMAGE monitoring:
+    - Users can provide: uploaded test image, S3 URL, or use latest feed capture
+    - Priority: uploaded file > S3 URL > latest feed
+    - Test images are NOT saved to S3 - they're passed directly to the LLM
+
+    For VIDEO monitoring:
+    - Users can provide: S3 URL or use latest feed capture
+    - Uploaded test videos are NOT supported (only S3 URLs or feed videos)
+    - Uses native video analysis or frame extraction based on model capabilities
+
+    Runs the monitoring logic and returns the prompt sent and analysis result including
+    confidence scores. This allows users to preview how the monitoring will analyze
+    media before committing the configuration.
 
     Args:
         config_id: Config UUID.
         session: Async database session.
         project_id: Project UUID (for authorization).
-        test_image: Optional uploaded test image. If not provided, uses latest feed image.
+        test_image: Optional uploaded test image (only for image configs).
+        s3_url: Optional S3 key/path to test media (supports both image and video configs).
 
     Returns:
         TestMonitoringConfigResponse with prompt, analysis result, and confidence scores.
 
     Raises:
-        HTTPException: If test fails, config not found, or no recent image available.
+        HTTPException: If test fails, config not found, unsupported feed type, or no recent
+            capture available.
     """
     test_image_bytes = None
 
@@ -543,13 +556,14 @@ async def test_monitoring_config(
                 detail=f"Failed to read test image: {str(e)}",
             )
 
-    # Run the test with either uploaded image bytes or feed image
+    # Run the test with uploaded image bytes, S3 URL, or feed media
     try:
         result = await monitoring_service.test_monitoring_config(
             session=session,
             project_id=project_id,
             config_id=config_id,
             test_image_bytes=test_image_bytes,
+            s3_url=s3_url,
         )
 
         logger.info(
