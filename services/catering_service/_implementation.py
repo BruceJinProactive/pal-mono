@@ -495,7 +495,13 @@ async def _get_catering_business_name(
 ) -> str:
     project = await ProjectRepositoryAsync(session).get_project(project_id)
     if project:
-        for candidate in (project.display_name, project.name):
+        account = getattr(project, "account", None)
+        for candidate in (
+            getattr(account, "display_name", None),
+            getattr(account, "name", None),
+            project.display_name,
+            project.name,
+        ):
             if candidate and candidate.strip():
                 return candidate.strip()
     return "the business"

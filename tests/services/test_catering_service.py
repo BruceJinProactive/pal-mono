@@ -382,10 +382,68 @@ def test_get_catering_business_name_returns_fallback_when_project_missing() -> N
     assert business_name == "the business"
 
 
+def test_get_catering_business_name_prefers_account_display_name() -> None:
+    session = AsyncMock()
+    project_repo = AsyncMock()
+    project_repo.get_project.return_value = SimpleNamespace(
+        display_name="Downtown Location",
+        name="pal-bistro-downtown",
+        account=SimpleNamespace(display_name="Pal Bistro", name="Pal Restaurant Group"),
+    )
+
+    with patch(
+        "services.catering_service._implementation.ProjectRepositoryAsync",
+        return_value=project_repo,
+    ):
+        business_name = asyncio.run(_get_catering_business_name(session, uuid.uuid4()))
+
+    assert business_name == "Pal Bistro"
+
+
+def test_get_catering_business_name_falls_back_to_account_name() -> None:
+    session = AsyncMock()
+    project_repo = AsyncMock()
+    project_repo.get_project.return_value = SimpleNamespace(
+        display_name="Downtown Location",
+        name="pal-bistro-downtown",
+        account=SimpleNamespace(display_name=" ", name="Pal Restaurant Group"),
+    )
+
+    with patch(
+        "services.catering_service._implementation.ProjectRepositoryAsync",
+        return_value=project_repo,
+    ):
+        business_name = asyncio.run(_get_catering_business_name(session, uuid.uuid4()))
+
+    assert business_name == "Pal Restaurant Group"
+
+
+def test_get_catering_business_name_falls_back_to_project_name() -> None:
+    session = AsyncMock()
+    project_repo = AsyncMock()
+    project_repo.get_project.return_value = SimpleNamespace(
+        display_name="Downtown Location",
+        name="pal-bistro-downtown",
+        account=SimpleNamespace(display_name=" ", name=" "),
+    )
+
+    with patch(
+        "services.catering_service._implementation.ProjectRepositoryAsync",
+        return_value=project_repo,
+    ):
+        business_name = asyncio.run(_get_catering_business_name(session, uuid.uuid4()))
+
+    assert business_name == "Downtown Location"
+
+
 def test_get_catering_business_name_returns_fallback_for_blank_project_names() -> None:
     session = AsyncMock()
     project_repo = AsyncMock()
-    project_repo.get_project.return_value = SimpleNamespace(display_name=" ", name="")
+    project_repo.get_project.return_value = SimpleNamespace(
+        display_name=" ",
+        name="",
+        account=SimpleNamespace(display_name=" ", name=""),
+    )
 
     with patch(
         "services.catering_service._implementation.ProjectRepositoryAsync",
