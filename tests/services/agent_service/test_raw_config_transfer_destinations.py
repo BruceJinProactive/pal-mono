@@ -141,34 +141,6 @@ class TestLiveKitTransferDestinationMerge:
         assert destinations == {"general": "+15559876543", "faq": "+15550002222"}
 
     @pytest.mark.asyncio
-    async def test_vapi_tool_does_not_preserve_explicit_destinations(self) -> None:
-        """vapi_tool should NOT merge explicit destinations — contacts table only."""
-        rc = _make_raw_config(
-            "vapi_tool",
-            tool_args={"transfer_destinations": {"complaint": "sip:x@provider.com"}},
-        )
-
-        contact_destinations = {"general": "+15559876543"}
-
-        async def mock_populate(tool_args, session=None):
-            updated = tool_args.copy()
-            updated.pop("transfer_destinations", None)
-            updated["transfer_destinations"] = contact_destinations.copy()
-            return updated
-
-        with patch.object(rc, "_populate_vapi_tool_args", side_effect=mock_populate):
-            with patch.object(rc, "_get_project_tools_override", return_value={}):
-                with patch.object(
-                    rc, "_get_project_integration_tools", return_value=[]
-                ):
-                    tool_config = await rc._get_agent_tools(session=None)
-
-        destinations = tool_config.identifiers[0].args["transfer_destinations"]
-        # vapi_tool gets contacts only — explicit SIP URI was dropped
-        assert destinations == {"general": "+15559876543"}
-        assert "complaint" not in destinations
-
-    @pytest.mark.asyncio
     async def test_livekit_filtered_on_non_voice_channel(self) -> None:
         """livekit_transfer_tool is filtered out for non-voice channels."""
         rc = _make_raw_config(

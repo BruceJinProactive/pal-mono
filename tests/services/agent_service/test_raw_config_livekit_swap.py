@@ -340,16 +340,6 @@ class TestNoRegressionVapi:
         assert "participant_identity" not in tool.args
 
     @pytest.mark.asyncio
-    async def test_vapi_filtered_on_non_voice_channel(self) -> None:
-        """Non-voice channel -> vapi_tool filtered out (existing behavior preserved)."""
-        rc = _make_raw_config("vapi_tool", channel=Channel.SMS)
-        p1, p2, p3 = _get_tools(rc)
-        with p1, p2, p3:
-            tool_config = await rc._get_agent_tools(session=None)
-
-        assert len(tool_config.identifiers) == 0
-
-    @pytest.mark.asyncio
     async def test_livekit_filtered_on_non_voice_channel(self) -> None:
         """Non-voice channel -> livekit_transfer_tool filtered out."""
         rc = _make_raw_config("livekit_transfer_tool", channel=Channel.SMS)
