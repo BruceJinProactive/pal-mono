@@ -135,7 +135,11 @@ class ProjectRepositoryAsync:
         Returns:
             Project, or None if no such Project is found.
         """
-        query = select(Project).filter(Project.id == id)
+        query = (
+            select(Project)
+            .options(selectinload(Project.account))
+            .filter(Project.id == id)
+        )
         result = await self.session.execute(query)
         project = result.scalar_one_or_none()
         return project
