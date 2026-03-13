@@ -22,6 +22,7 @@ from api.schemas.operations.monitoring import (
     ListMonitoringRunsResponse,
     MonitoringConfigResponse,
     MonitoringRunResponse,
+    RerunMonitoringRunResponse,
     TestMonitoringConfigResponse,
     TriggerRunRequest,
     TriggerRunResponse,
@@ -819,5 +820,79 @@ async def batch_delete_monitoring_runs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to batch delete monitoring runs",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def rerun_monitoring_run(
+    run_id: uuid.UUID,
+    session: AsyncSession,
+    project_id: uuid.UUID,
+) -> RerunMonitoringRunResponse:
+    """
+    Rerun a monitoring run analysis.
+
+    This endpoint triggers a rerun of the AI analysis for an existing monitoring run.
+    The analysis runs in the background, and this endpoint returns immediately with
+    a "processing" status.
+
+    The evaluation_result will be updated with the new analysis when complete.
+    The completed_at timestamp is preserved from the original run.
+
+    Automatically detects whether the original run was for image or video monitoring
+    and uses the appropriate analysis method.
+
+    Args:
+        run_id: Run UUID.
+        session: Async database session.
+        project_id: Project UUID (for authorization).
+
+    Returns:
+        RerunMonitoringRunResponse with processing status.
+
+    Raises:
+        HTTPException: If rerun fails or run not found.
+    """
+    try:
+        result = await monitoring_service.rerun_monitoring_run(
+            session=session,
+            project_id=project_id,
+            run_id=run_id,
+        )
+
+        logger.info(
+            f"[rerun monitoring run] Rerun triggered for run {run_id}",
+            extra={
+                "run_id": str(run_id),
+                "project_id": str(project_id),
+                "monitoring_config_id": str(result["monitoring_config_id"]),
+            },
+        )
+
+        return RerunMonitoringRunResponse(
+            run_id=result["run_id"],
+            monitoring_config_id=result["monitoring_config_id"],
+            status="processing",
+            message="Monitoring run reanalysis started. Results will be updated when complete.",
+        )
+
+    except ValueError as e:
+        logger.error(
+            f"[rerun monitoring run] Validation error rerunning run {run_id}: {e}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception as e:
+        await session.rollback()
+        logger.error(
+            f"[rerun monitoring run] Unexpected error rerunning run {run_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to rerun monitoring run",
             headers={"Content-Type": "application/json"},
         )

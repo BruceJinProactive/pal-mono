@@ -72,8 +72,8 @@ sqlalchemy.ext.asyncio.async_sessionmaker = (
     lambda *args, **kwargs: lambda *a, **kw: None
 )
 
-from db.tables.catering_requests import CateringRequest, RequestStatus
-from services.catering_service._implementation import (
+from db.tables.catering_requests import CateringRequest, RequestStatus  # noqa: E402
+from services.catering_service._implementation import (  # noqa: E402
     _build_customer_status_sms_message,
     _get_catering_business_name,
     _should_send_customer_status_sms,

@@ -54,6 +54,7 @@ from api.schemas.operations.monitoring import (
     MonitoringConfigResponse,
     MonitoringRunResponse,
     MonitoringTimeWindow,
+    RerunMonitoringRunResponse,
     TestMonitoringConfigResponse,
     TriggerRunRequest,
     TriggerRunResponse,
@@ -2224,6 +2225,53 @@ async def batch_delete_monitoring_runs(
     _ = context  # Used by require_project_permission
     return await _monitoring.batch_delete_monitoring_runs(
         request=request,
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.post(
+    "/projects/{project_id}/monitoring/runs/{run_id}/rerun",
+    response_model=RerunMonitoringRunResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def rerun_monitoring_run(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> RerunMonitoringRunResponse:
+    """
+    Rerun a monitoring run analysis.
+
+    Triggers a reanalysis of the monitoring run using the original media.
+    The analysis runs in the background, and this endpoint returns immediately
+    with a "processing" status.
+
+    The evaluation_result will show "processing" status and be updated with the
+    new analysis results when complete. The completed_at timestamp is preserved
+    from the original run.
+
+    Automatically detects whether the original run was for image or video monitoring
+    and uses the appropriate analysis method.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - run_id: UUID of the monitoring run to rerun
+
+    Returns:
+    - RerunMonitoringRunResponse with processing status
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.rerun_monitoring_run(
+        run_id=run_id,
         session=session,
         project_id=project_id,
     )

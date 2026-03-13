@@ -506,3 +506,12 @@ class TestMonitoringConfigResponse(BaseModel):
         ...,
         description="Source of the test media: 'uploaded test image' for user image uploads, or S3 path for feed images/videos",
     )
+
+
+class RerunMonitoringRunResponse(BaseModel):
+    """Response for rerunning a monitoring run."""
+
+    run_id: uuid.UUID
+    monitoring_config_id: uuid.UUID
+    status: Literal["processing"]
+    message: str

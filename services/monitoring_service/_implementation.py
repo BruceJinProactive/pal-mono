@@ -9,7 +9,7 @@ import asyncio
 import copy
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1483,3 +1483,272 @@ def build_run_list_response(run: MonitoringRun) -> MonitoringRunListResponse:
         evaluation_result=run.evaluation_result,
         error_message=run.error_message,
     )
+
+
+async def _rerun_monitoring_analysis_background(
+    run_id: uuid.UUID,
+    monitoring_config_id: uuid.UUID,
+    media_url: str,
+    is_video: bool,
+) -> None:
+    """
+    Background task to rerun monitoring analysis and update the run record.
+
+    This function runs the LLM analysis in the background and updates the
+    evaluation_result field when complete. The completed_at timestamp is
+    preserved from the original run.
+
+    Args:
+        run_id: UUID of the monitoring run to update
+        monitoring_config_id: UUID of the monitoring configuration
+        media_url: S3 key/path of the media to analyze (image or video)
+        is_video: True if this is a video analysis, False for image
+    """
+    from db import get_db_async
+
+    try:
+        # Create a new database session for this background task
+        async for session in get_db_async():
+            run_repo = MonitoringRunRepositoryAsync(session)
+            try:
+
+                # Run the analysis
+                if is_video:
+                    # Import here to avoid circular dependency
+                    from services.monitoring_service._llm import (
+                        generate_monitoring_video_llm_prompt,
+                    )
+
+                    logger.info(
+                        f"[Rerun Background] Running video analysis for run {run_id}",
+                        extra={
+                            "run_id": str(run_id),
+                            "config_id": str(monitoring_config_id),
+                            "video_url": media_url,
+                        },
+                    )
+
+                    llm_result = await generate_monitoring_video_llm_prompt(
+                        session=session,
+                        monitoring_config_id=monitoring_config_id,
+                        video_url=media_url,
+                    )
+                else:
+                    # Import here to avoid circular dependency
+                    from services.monitoring_service._llm import (
+                        generate_monitoring_llm_prompt,
+                    )
+
+                    logger.info(
+                        f"[Rerun Background] Running image analysis for run {run_id}",
+                        extra={
+                            "run_id": str(run_id),
+                            "config_id": str(monitoring_config_id),
+                            "image_url": media_url,
+                        },
+                    )
+
+                    llm_result = await generate_monitoring_llm_prompt(
+                        session=session,
+                        monitoring_config_id=monitoring_config_id,
+                        image_url=media_url,
+                    )
+
+                analysis_result = llm_result.get("analysis_result", {})
+                result_status = analysis_result.get("result")
+
+                # Extract error_message if result is "error"
+                error_message = None
+                if result_status == "error":
+                    error_message = analysis_result.get(
+                        "details",
+                        f"{'Video' if is_video else 'Image'} validation failed",
+                    )
+
+                # Update the run with new results (keeping completed_at unchanged)
+                await run_repo.update(
+                    run_id,
+                    evaluation_result=analysis_result,
+                    error_message=error_message,
+                )
+
+                await session.commit()
+
+                logger.info(
+                    f"[Rerun Background] Analysis completed for run {run_id}",
+                    extra={
+                        "run_id": str(run_id),
+                        "config_id": str(monitoring_config_id),
+                        "result": result_status,
+                        "error_message": error_message,
+                    },
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"[Rerun Background] Error during analysis for run {run_id}: {e}",
+                    exc_info=True,
+                    extra={
+                        "run_id": str(run_id),
+                        "config_id": str(monitoring_config_id),
+                    },
+                )
+                await session.rollback()
+
+                # Update run with error status
+                try:
+                    await run_repo.update(
+                        run_id,
+                        evaluation_result={
+                            "result": "error",
+                            "details": f"Rerun failed: {str(e)}",
+                            "status": "failed",
+                        },
+                        error_message=f"Rerun failed: {str(e)}",
+                    )
+                    await session.commit()
+                except Exception as update_error:
+                    logger.error(
+                        f"[Rerun Background] Failed to update run with error status: {update_error}",
+                        extra={"run_id": str(run_id)},
+                    )
+
+            finally:
+                # Session is automatically closed by the async generator
+                break
+
+    except Exception as e:
+        logger.error(
+            f"[Rerun Background] Fatal error in background task for run {run_id}: {e}",
+            exc_info=True,
+        )
+
+
+async def rerun_monitoring_run(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+) -> dict:
+    """
+    Rerun a monitoring run analysis and return immediately with processing status.
+
+    This function:
+    1. Fetches the existing monitoring run
+    2. Determines if it's video or image based on the monitoring config
+    3. Sets the evaluation_result to "processing" status
+    4. Triggers background analysis that will update the result when complete
+    5. Returns immediately without waiting for analysis
+
+    The completed_at timestamp is preserved from the original run.
+
+    Args:
+        session: Async database session
+        project_id: Project UUID (for authorization)
+        run_id: UUID of the monitoring run to rerun
+
+    Returns:
+        dict with run_id, monitoring_config_id, and status
+
+    Raises:
+        ValueError: If run not found, doesn't belong to project, or missing media URL
+    """
+    from db.repositories import SignalFeedRepositoryAsync
+    from db.tables.types import FeedType
+
+    run_repo = MonitoringRunRepositoryAsync(session)
+    config_repo = MonitoringConfigRepositoryAsync(session)
+
+    # Fetch the existing run
+    run = await run_repo.get_by_id(run_id)
+    if not run:
+        raise ValueError(f"Monitoring run {run_id} not found")
+
+    # Fetch the monitoring config to verify project access
+    config = await config_repo.get_by_id(run.monitoring_config_id)
+    if not config:
+        raise ValueError(
+            f"Monitoring config {run.monitoring_config_id} not found for run {run_id}"
+        )
+
+    if config.project_id != project_id:
+        raise ValueError(
+            f"Monitoring run {run_id} does not belong to project {project_id}"
+        )
+
+    # Determine media URL from trigger_metadata
+    trigger_metadata = run.trigger_metadata or {}
+    media_url = (
+        trigger_metadata.get("image_url")
+        or trigger_metadata.get("video_url")
+        or trigger_metadata.get("s3_key")
+    )
+
+    if not media_url:
+        raise ValueError(
+            f"No media URL found in run {run_id} trigger_metadata. "
+            f"Checked image_url, video_url, and s3_key. "
+            f"Cannot rerun analysis without original media reference."
+        )
+
+    # Determine if this is video or image based on signal feed type
+    feed_repo = SignalFeedRepositoryAsync(session)
+    feed = await feed_repo.get_by_source_id(config.signal_source_id)
+    if not feed:
+        raise ValueError(
+            f"No signal feed found for signal source {config.signal_source_id}"
+        )
+
+    is_video = feed.feed_type == FeedType.video_stream
+
+    logger.info(
+        f"[Rerun] Starting rerun for monitoring run {run_id}",
+        extra={
+            "run_id": str(run_id),
+            "config_id": str(run.monitoring_config_id),
+            "project_id": str(project_id),
+            "media_url": media_url,
+            "is_video": is_video,
+            "feed_type": feed.feed_type.value,
+        },
+    )
+
+    # Update evaluation_result to show processing status
+    processing_result = {
+        "result": "processing",
+        "status": "rerunning",
+        "details": "Analysis is being rerun. Results will be updated when complete.",
+        "rerun_started_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    await run_repo.update(
+        run_id,
+        evaluation_result=processing_result,
+        error_message=None,
+    )
+
+    await session.commit()
+
+    # Trigger background analysis (fire and forget)
+    asyncio.create_task(
+        _rerun_monitoring_analysis_background(
+            run_id=run_id,
+            monitoring_config_id=run.monitoring_config_id,
+            media_url=media_url,
+            is_video=is_video,
+        )
+    )
+
+    logger.info(
+        f"[Rerun] Rerun queued for monitoring run {run_id}, returning immediately",
+        extra={
+            "run_id": str(run_id),
+            "config_id": str(run.monitoring_config_id),
+            "status": "processing",
+        },
+    )
+
+    return {
+        "run_id": run_id,
+        "monitoring_config_id": run.monitoring_config_id,
+        "status": "processing",
+    }
