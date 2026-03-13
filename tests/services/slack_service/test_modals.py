@@ -12,7 +12,11 @@ from services.slack_service._modals import (
     build_tool_request_modal,
 )
 
-SAMPLE_ACCOUNTS = ["acme-restaurant", "romeo", "juliet"]
+SAMPLE_ACCOUNTS: list[tuple[str, str | None]] = [
+    ("acme-restaurant", "Acme Restaurant"),
+    ("romeo", "Romeo's Pizza"),
+    ("juliet", None),
+]
 
 
 class TestBuildToolFeedbackModal:
@@ -181,14 +185,20 @@ class TestBuildReportModal:
 
 class TestBuildFeedbackLookupModal:
     def test_returns_modal_with_correct_callback_id(self) -> None:
-        result = build_feedback_lookup_modal()
+        result = build_feedback_lookup_modal(SAMPLE_ACCOUNTS)
         assert result["callback_id"] == "mercury_feedback_lookup_submit"
 
-    def test_has_client_name_and_lookup_type_blocks(self) -> None:
-        result = build_feedback_lookup_modal()
+    def test_has_account_name_and_lookup_type_blocks(self) -> None:
+        result = build_feedback_lookup_modal(SAMPLE_ACCOUNTS)
         block_ids = [b["block_id"] for b in result["blocks"]]
-        assert "client_name" in block_ids
+        assert "account_name" in block_ids
         assert "lookup_type" in block_ids
+
+    def test_account_name_uses_static_select(self) -> None:
+        result = build_feedback_lookup_modal(SAMPLE_ACCOUNTS)
+        account_block = result["blocks"][0]
+        assert account_block["element"]["type"] == "static_select"
+        assert account_block["optional"] is False
 
 
 class TestBuildCameraFilterModal:

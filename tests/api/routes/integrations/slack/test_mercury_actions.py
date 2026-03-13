@@ -7,16 +7,16 @@ import pytest
 from api.routes.integrations.slack._mercury_actions import (
     _extract_account_name,
     _extract_multi_account_names,
-    _fetch_account_names,
+    _fetch_accounts,
     _notify_error,
     handle_mercury_block_action,
     handle_mercury_view_submission,
 )
 
 MOCK_FETCH_ACCOUNTS = patch(
-    "api.routes.integrations.slack._mercury_actions._fetch_account_names",
+    "api.routes.integrations.slack._mercury_actions._fetch_accounts",
     new_callable=AsyncMock,
-    return_value=["acme", "romeo", "juliet"],
+    return_value=[("acme", "Acme Corp"), ("romeo", "Romeo's Pizza"), ("juliet", None)],
 )
 
 
@@ -120,14 +120,16 @@ class TestExtractAccountName:
         assert _extract_account_name(values) == ""
 
 
-class TestFetchAccountNames:
+class TestFetchAccounts:
     @pytest.mark.asyncio
-    async def test_returns_account_names_from_db(self) -> None:
+    async def test_returns_accounts_from_db(self) -> None:
         mock_repo = AsyncMock()
-        mock_repo.get_all_account_names.return_value = ["acme", "bravo"]
+        mock_repo.get_all_account_names.return_value = [
+            ("acme", "Acme Corp"),
+            ("bravo", None),
+        ]
         mock_session = AsyncMock()
 
-        # Create a proper async context manager
         class FakeSessionCtx:
             async def __aenter__(self):
                 return mock_session
@@ -142,8 +144,8 @@ class TestFetchAccountNames:
                 return_value=mock_repo,
             ),
         ):
-            result = await _fetch_account_names()
-        assert result == ["acme", "bravo"]
+            result = await _fetch_accounts()
+        assert result == [("acme", "Acme Corp"), ("bravo", None)]
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_on_error(self) -> None:
@@ -155,7 +157,7 @@ class TestFetchAccountNames:
                 pass
 
         with patch("db.session.AsyncSessionLocal", return_value=FailingSessionCtx()):
-            result = await _fetch_account_names()
+            result = await _fetch_accounts()
         assert result == []
 
 
@@ -402,9 +404,12 @@ class TestHandleMercuryBlockAction:
     @pytest.mark.asyncio
     async def test_feedback_lookup_opens_modal(self) -> None:
         payload, action = _make_payload("mercury_feedback_lookup")
-        with patch(
-            "api.routes.integrations.slack._mercury_actions.get_slack_client"
-        ) as mock_get_client:
+        with (
+            patch(
+                "api.routes.integrations.slack._mercury_actions.get_slack_client"
+            ) as mock_get_client,
+            MOCK_FETCH_ACCOUNTS,
+        ):
             mock_client = AsyncMock()
             mock_get_client.return_value = mock_client
 
@@ -815,7 +820,7 @@ class TestHandleMercuryViewSubmission:
     @pytest.mark.asyncio
     async def test_feedback_lookup_submit_open_issues(self) -> None:
         values = {
-            "client_name": {"client_value": {"value": "romeo"}},
+            "account_name": _account_select_value("romeo"),
             "lookup_type": {"lookup_value": {"selected_option": {"value": "feedback"}}},
         }
         payload = _make_view_payload("mercury_feedback_lookup_submit", values)
@@ -838,7 +843,7 @@ class TestHandleMercuryViewSubmission:
     @pytest.mark.asyncio
     async def test_feedback_lookup_submit_full_history(self) -> None:
         values = {
-            "client_name": {"client_value": {"value": "romeo"}},
+            "account_name": _account_select_value("romeo"),
             "lookup_type": {
                 "lookup_value": {"selected_option": {"value": "feedback-status"}}
             },
@@ -863,7 +868,7 @@ class TestHandleMercuryViewSubmission:
     @pytest.mark.asyncio
     async def test_feedback_lookup_submit_error_sends_notification(self) -> None:
         values = {
-            "client_name": {"client_value": {"value": "romeo"}},
+            "account_name": _account_select_value("romeo"),
             "lookup_type": {"lookup_value": {"selected_option": {"value": "feedback"}}},
         }
         payload = _make_view_payload("mercury_feedback_lookup_submit", values)
@@ -1027,9 +1032,9 @@ class TestHandleMercuryViewSubmission:
             mock_client.chat_postMessage.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_feedback_lookup_empty_client_name_posts_warning(self) -> None:
+    async def test_feedback_lookup_empty_account_name_posts_warning(self) -> None:
         values = {
-            "client_name": {"client_value": {"value": "  "}},
+            "account_name": {"account_value": {}},
             "lookup_type": {"lookup_value": {"selected_option": {"value": "feedback"}}},
         }
         payload = _make_view_payload("mercury_feedback_lookup_submit", values)
@@ -1045,7 +1050,7 @@ class TestHandleMercuryViewSubmission:
             assert result == {"ok": True}
             mock_client.chat_postMessage.assert_called_once()
             assert (
-                "client name" in mock_client.chat_postMessage.call_args.kwargs["text"]
+                "account name" in mock_client.chat_postMessage.call_args.kwargs["text"]
             )
 
     @pytest.mark.asyncio

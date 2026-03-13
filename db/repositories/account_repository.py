@@ -56,16 +56,22 @@ class AccountRepositoryAsync:
             logger.error(f"Error retrieving account by ID: {e}")
             return None
 
-    async def get_all_account_names(self) -> List[str]:
-        """Retrieve all active account names, sorted alphabetically."""
+    async def get_all_account_names(
+        self,
+    ) -> List[tuple[str, str | None]]:
+        """Retrieve all active account names with display names, sorted alphabetically.
+
+        Returns:
+            List of (name, display_name) tuples.
+        """
         try:
             query = (
-                select(Account.name)
+                select(Account.name, Account.display_name)
                 .filter(Account.status != AccountStatus.deleted)
                 .order_by(Account.name)
             )
             result = await self.session.execute(query)
-            return list(result.scalars().all())
+            return list(result.tuples().all())
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(f"Error retrieving account names: {e}")

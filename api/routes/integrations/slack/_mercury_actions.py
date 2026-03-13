@@ -28,8 +28,8 @@ MERCURY_DIRECT_ACTIONS: frozenset[str] = frozenset(
 )
 
 
-async def _fetch_account_names() -> list[str]:
-    """Fetch all active account names from the database for modal dropdowns."""
+async def _fetch_accounts() -> list[tuple[str, str | None]]:
+    """Fetch all active accounts (name, display_name) from the database for modal dropdowns."""
     from db.repositories.account_repository import AccountRepositoryAsync
     from db.session import AsyncSessionLocal
 
@@ -160,7 +160,7 @@ async def handle_mercury_block_action(
         if action_id == "mercury_custom_report":
             from services.slack_service._modals import build_report_modal
 
-            accounts = await _fetch_account_names()
+            accounts = await _fetch_accounts()
             await client.views_open(
                 trigger_id=trigger_id,
                 view=build_report_modal(accounts, channel_id),
@@ -170,15 +170,17 @@ async def handle_mercury_block_action(
         if action_id == "mercury_feedback_lookup":
             from services.slack_service._modals import build_feedback_lookup_modal
 
+            accounts = await _fetch_accounts()
             await client.views_open(
-                trigger_id=trigger_id, view=build_feedback_lookup_modal(channel_id)
+                trigger_id=trigger_id,
+                view=build_feedback_lookup_modal(accounts, channel_id),
             )
             return {"ok": True}
 
         if action_id == "mercury_subscription":
             from services.slack_service._modals import build_subscription_lookup_modal
 
-            accounts = await _fetch_account_names()
+            accounts = await _fetch_accounts()
             await client.views_open(
                 trigger_id=trigger_id,
                 view=build_subscription_lookup_modal(accounts, channel_id),
@@ -188,7 +190,7 @@ async def handle_mercury_block_action(
         if action_id == "mercury_camera_filter":
             from services.slack_service._modals import build_camera_filter_modal
 
-            accounts = await _fetch_account_names()
+            accounts = await _fetch_accounts()
             await client.views_open(
                 trigger_id=trigger_id,
                 view=build_camera_filter_modal(accounts, channel_id),
@@ -198,7 +200,7 @@ async def handle_mercury_block_action(
         if action_id == "mercury_last_hours":
             from services.slack_service._modals import build_last_hours_modal
 
-            accounts = await _fetch_account_names()
+            accounts = await _fetch_accounts()
             await client.views_open(
                 trigger_id=trigger_id,
                 view=build_last_hours_modal(accounts, channel_id),
@@ -208,7 +210,7 @@ async def handle_mercury_block_action(
         if action_id == "mercury_date_range":
             from services.slack_service._modals import build_date_range_modal
 
-            accounts = await _fetch_account_names()
+            accounts = await _fetch_accounts()
             await client.views_open(
                 trigger_id=trigger_id,
                 view=build_date_range_modal(accounts, channel_id),
@@ -487,14 +489,14 @@ async def _handle_feedback_lookup(
     client = get_slack_client()
 
     try:
-        client_name = values["client_name"]["client_value"]["value"].strip()
+        client_name = _extract_account_name(values)
         lookup_type = values["lookup_type"]["lookup_value"]["selected_option"]["value"]
 
         if not client_name:
             if channel_id:
                 await client.chat_postMessage(
                     channel=channel_id,
-                    text=":warning: Please provide a client name.",
+                    text=":warning: Please select an account name.",
                 )
             return {"ok": True}
 

@@ -597,16 +597,24 @@ class TestAccountRepositoryAsync:
 
 class TestGetAllAccountNames:
     @pytest.mark.asyncio
-    async def test_returns_sorted_account_names(self, async_repo, mock_async_session):
-        """Returns list of account names from the database."""
+    async def test_returns_sorted_account_tuples(self, async_repo, mock_async_session):
+        """Returns list of (name, display_name) tuples from the database."""
         mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = ["acme", "bravo", "charlie"]
-        mock_result.scalars.return_value = mock_scalars
+        mock_tuples = MagicMock()
+        mock_tuples.all.return_value = [
+            ("acme", "Acme Corp"),
+            ("bravo", None),
+            ("charlie", "Charlie's Diner"),
+        ]
+        mock_result.tuples.return_value = mock_tuples
         mock_async_session.execute.return_value = mock_result
 
         result = await async_repo.get_all_account_names()
-        assert result == ["acme", "bravo", "charlie"]
+        assert result == [
+            ("acme", "Acme Corp"),
+            ("bravo", None),
+            ("charlie", "Charlie's Diner"),
+        ]
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_on_error(self, async_repo, mock_async_session):
