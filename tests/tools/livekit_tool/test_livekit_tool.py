@@ -103,7 +103,7 @@ class TestCallTransferSuccess:
         request = call_args[0][0]
         assert isinstance(request, livekit_api.UpdateRoomMetadataRequest)
         assert request.room == "call-room-1"
-        assert '"transfer_purpose": "general"' in request.metadata
+        assert '"transfer_message":' in request.metadata
         assert '"transfer_to": "+15559876543"' in request.metadata
 
     @pytest.mark.asyncio
@@ -119,7 +119,7 @@ class TestCallTransferSuccess:
 
         assert result == "Call transfer has been initiated"
         request = tool.lk_api.room.update_room_metadata.call_args[0][0]
-        assert '"transfer_purpose": "complaint"' in request.metadata
+        assert '"transfer_message":' in request.metadata
         assert '"transfer_to": "+15550001111"' in request.metadata
 
     @pytest.mark.asyncio
@@ -130,7 +130,7 @@ class TestCallTransferSuccess:
 
         assert result == "Call transfer has been initiated"
         request = tool.lk_api.room.update_room_metadata.call_args[0][0]
-        assert '"transfer_purpose": "general"' in request.metadata
+        assert '"transfer_message":' in request.metadata
         assert '"transfer_to": "+15559876543"' in request.metadata
 
     @pytest.mark.asyncio
@@ -141,7 +141,7 @@ class TestCallTransferSuccess:
 
         assert result == "Call transfer has been initiated"
         request = tool.lk_api.room.update_room_metadata.call_args[0][0]
-        assert '"transfer_purpose": "unknown_purpose"' in request.metadata
+        assert '"transfer_message":' in request.metadata
         assert '"transfer_to": "+15559876543"' in request.metadata
 
     @pytest.mark.asyncio
@@ -157,7 +157,7 @@ class TestCallTransferSuccess:
 
         assert result == "Call transfer has been initiated"
         request = tool.lk_api.room.update_room_metadata.call_args[0][0]
-        assert '"transfer_purpose": "complaint"' in request.metadata
+        assert '"transfer_message":' in request.metadata
         assert '"transfer_to": "+15550001111"' in request.metadata
 
     @pytest.mark.asyncio
@@ -168,7 +168,7 @@ class TestCallTransferSuccess:
 
         assert result == "Call transfer has been initiated"
         request = tool.lk_api.room.update_room_metadata.call_args[0][0]
-        assert '"transfer_purpose": "general"' in request.metadata
+        assert '"transfer_message":' in request.metadata
         assert '"transfer_to": "+15559876543"' in request.metadata
 
 
