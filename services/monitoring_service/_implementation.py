@@ -1720,6 +1720,10 @@ async def rerun_monitoring_run(
         "rerun_started_at": datetime.now(timezone.utc).isoformat(),
     }
 
+    # Store monitoring_config_id before commit to avoid MissingGreenlet error
+    # After commit, the run object is detached and accessing its attributes causes greenlet_spawn error
+    monitoring_config_id = run.monitoring_config_id
+
     await run_repo.update(
         run_id,
         evaluation_result=processing_result,
@@ -1732,7 +1736,7 @@ async def rerun_monitoring_run(
     asyncio.create_task(
         _rerun_monitoring_analysis_background(
             run_id=run_id,
-            monitoring_config_id=run.monitoring_config_id,
+            monitoring_config_id=monitoring_config_id,
             media_url=media_url,
             is_video=is_video,
         )
@@ -1742,13 +1746,13 @@ async def rerun_monitoring_run(
         f"[Rerun] Rerun queued for monitoring run {run_id}, returning immediately",
         extra={
             "run_id": str(run_id),
-            "config_id": str(run.monitoring_config_id),
+            "config_id": str(monitoring_config_id),
             "status": "processing",
         },
     )
 
     return {
         "run_id": run_id,
-        "monitoring_config_id": run.monitoring_config_id,
+        "monitoring_config_id": monitoring_config_id,
         "status": "processing",
     }
