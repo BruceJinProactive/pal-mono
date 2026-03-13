@@ -15,6 +15,7 @@ from io import BytesIO
 import av
 import boto3
 from fastapi import HTTPException, status
+from PIL import Image
 
 from utils.log import logger
 
@@ -81,25 +82,69 @@ def _extract_frames_sync(
 
                 # Decode the next frame after seeking
                 for frame in container.decode(video=0):
-                    # Convert frame to PIL Image, then to JPEG bytes
-                    pil_image = frame.to_image()
-                    buffer = BytesIO()
-                    pil_image.save(buffer, format="JPEG", quality=85)
-                    jpeg_bytes = buffer.getvalue()
+                    try:
+                        # Convert frame to PIL Image, then to JPEG bytes
+                        pil_image = frame.to_image()
 
-                    # Format timestamp label
-                    minutes = int(target_ts) // 60
-                    seconds = int(target_ts) % 60
-                    timestamp_label = f"{minutes}:{seconds:02d}"
+                        # Validate frame: Check dimensions and that it's not empty
+                        width, height = pil_image.size
+                        if width < 10 or height < 10:
+                            logger.warning(
+                                f"[Video Extraction] Frame at {target_ts}s too small ({width}x{height}), skipping"
+                            )
+                            continue
 
-                    frames.append(
-                        {
-                            "base64_data": base64.b64encode(jpeg_bytes).decode("utf-8"),
-                            "timestamp_seconds": target_ts,
-                            "timestamp_label": timestamp_label,
-                        }
-                    )
-                    break  # Only need one frame per timestamp
+                        if width > 4096 or height > 4096:
+                            logger.warning(
+                                f"[Video Extraction] Frame at {target_ts}s too large ({width}x{height}), resizing"
+                            )
+                            # Resize while maintaining aspect ratio
+                            pil_image.thumbnail((4096, 4096), Image.Resampling.LANCZOS)
+
+                        # Convert to JPEG
+                        buffer = BytesIO()
+                        pil_image.save(buffer, format="JPEG", quality=85)
+                        jpeg_bytes = buffer.getvalue()
+
+                        # Validate JPEG bytes
+                        if len(jpeg_bytes) < 100:  # Suspiciously small JPEG
+                            logger.warning(
+                                f"[Video Extraction] Frame at {target_ts}s produced suspiciously small JPEG ({len(jpeg_bytes)} bytes), skipping"
+                            )
+                            continue
+
+                        # Verify the JPEG can be re-opened (final validation)
+                        try:
+                            Image.open(BytesIO(jpeg_bytes)).verify()
+                        except Exception as verify_error:
+                            logger.warning(
+                                f"[Video Extraction] Frame at {target_ts}s failed JPEG verification: {verify_error}, skipping"
+                            )
+                            continue
+
+                        # Format timestamp label
+                        minutes = int(target_ts) // 60
+                        seconds = int(target_ts) % 60
+                        timestamp_label = f"{minutes}:{seconds:02d}"
+
+                        frames.append(
+                            {
+                                "base64_data": base64.b64encode(jpeg_bytes).decode(
+                                    "utf-8"
+                                ),
+                                "timestamp_seconds": target_ts,
+                                "timestamp_label": timestamp_label,
+                            }
+                        )
+                        logger.debug(
+                            f"[Video Extraction] Successfully extracted frame at {target_ts}s ({width}x{height}, {len(jpeg_bytes)} bytes)"
+                        )
+                        break  # Only need one frame per timestamp
+                    except Exception as frame_error:
+                        logger.warning(
+                            f"[Video Extraction] Error processing frame at {target_ts}s: {frame_error}, skipping"
+                        )
+                        continue
 
             except Exception as e:
                 logger.warning(

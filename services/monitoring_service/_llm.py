@@ -146,14 +146,56 @@ async def generate_monitoring_llm_prompt(
     elif image_url:
         # Fetch camera image from S3
         try:
+            logger.info(
+                "[LLM] Fetching camera image from S3",
+                extra={
+                    "bucket": AWS_ASSET_BUCKET_NAME,
+                    "key": image_url,
+                    "config_id": str(monitoring_config_id),
+                },
+            )
             # Run blocking S3 operations in thread pool to avoid blocking event loop
             camera_response = await asyncio.to_thread(
                 s3_client.get_object, Bucket=AWS_ASSET_BUCKET_NAME, Key=image_url
             )
             camera_image_content = await asyncio.to_thread(camera_response["Body"].read)
             camera_image_base64 = base64.b64encode(camera_image_content).decode("utf-8")
+
+            # Validate image size (Gemini has a ~20MB limit for images)
+            MAX_IMAGE_SIZE_MB = 20
+            image_size_mb = len(camera_image_content) / (1024 * 1024)
+            if image_size_mb > MAX_IMAGE_SIZE_MB:
+                logger.error(
+                    "[LLM] Image too large for processing",
+                    extra={
+                        "image_size_mb": image_size_mb,
+                        "max_size_mb": MAX_IMAGE_SIZE_MB,
+                        "config_id": str(monitoring_config_id),
+                        "s3_key": image_url,
+                    },
+                )
+                raise ValueError(
+                    f"Image too large ({image_size_mb:.2f}MB). Maximum size is {MAX_IMAGE_SIZE_MB}MB"
+                )
+
+            logger.info(
+                "[LLM] Camera image fetched successfully",
+                extra={
+                    "image_size_bytes": len(camera_image_content),
+                    "image_size_mb": f"{image_size_mb:.2f}",
+                    "base64_length": len(camera_image_base64),
+                    "config_id": str(monitoring_config_id),
+                },
+            )
         except Exception as e:
-            logger.error(f"Failed to retrieve camera image from S3: {e}")
+            logger.error(
+                f"Failed to retrieve camera image from S3: {e}",
+                extra={
+                    "bucket": AWS_ASSET_BUCKET_NAME,
+                    "key": image_url,
+                    "config_id": str(monitoring_config_id),
+                },
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve camera image from storage",
@@ -346,6 +388,17 @@ For invalid/problematic images:
                     span.set_tag("monitoring.llm_model", provider.config.model)
                     span.set_tag("monitoring.media_type", "image")
 
+                    logger.info(
+                        "[LLM] Calling LLM provider for image analysis",
+                        extra={
+                            "provider": provider.config.provider.value,
+                            "model": provider.config.model,
+                            "config_id": str(monitoring_config_id),
+                            "camera_image_size": len(camera_image_base64),
+                            "num_reference_images": len(reference_images_for_provider),
+                        },
+                    )
+
                     llm_response = provider.analyze_image(
                         system_instruction=system_instruction,
                         analysis_task=analysis_task_text,
@@ -403,7 +456,16 @@ For invalid/problematic images:
         }
 
     except Exception as e:
-        logger.error(f"Monitoring LLM API call failed: {e}")
+        logger.error(
+            f"Monitoring LLM API call failed: {e}",
+            exc_info=True,
+            extra={
+                "config_id": str(monitoring_config_id),
+                "error_type": type(e).__name__,
+                "image_url": image_url if image_url else "uploaded_bytes",
+                "image_bytes_provided": image_bytes is not None,
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"LLM analysis failed: {str(e)}",
