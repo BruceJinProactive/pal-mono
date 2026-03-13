@@ -17,7 +17,6 @@ from tools.resy_tool_with_reservation import ResyToolWithReservation
 from tools.square_tool import SquareTool
 from tools.store_messaging_tool import StoreMessagingTool
 from tools.toast_tool import ToastTool
-from tools.vapi_tool import VapiTool
 from tools.yelp_credit_card_tool import YelpCreditCardTool
 from tools.yelp_no_credit_card_tool import YelpNoCreditCardTool
 from tools.yelp_tool import YelpTool
@@ -38,7 +37,6 @@ class ToolRegistry:
             "catering_tool": CateringTool,
             "toast_tool": ToastTool,
             "olo_tool": OloTool,
-            "vapi_tool": VapiTool,
             "livekit_tool": LiveKitTool,
             "livekit_transfer_tool": LiveKitTransferTool,
             "yelp_tool": YelpTool,
