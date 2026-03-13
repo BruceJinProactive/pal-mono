@@ -87,7 +87,6 @@ def _build_tool_specs(tool_config: ToolConfig) -> list[ToolSpec]:
         "CalculatorTool",
         "WeatherTool",
         "reverse_string",
-        "vapi_tool",
         "livekit_tool",
         "support_email_tool",
     }
