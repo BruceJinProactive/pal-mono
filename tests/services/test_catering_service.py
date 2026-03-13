@@ -142,7 +142,7 @@ def test_update_catering_request_sends_sms_for_tracked_status_transition() -> No
     )
 
 
-def test_update_catering_request_skips_sms_when_status_is_unchanged() -> None:
+def test_update_catering_request_sends_sms_when_status_is_re_requested() -> None:
     session = AsyncMock()
     existing_request = _build_request(status=RequestStatus.CONFIRMED)
     updated_request = _build_request(status=RequestStatus.CONFIRMED)
@@ -153,11 +153,19 @@ def test_update_catering_request_skips_sms_when_status_is_unchanged() -> None:
     repo = AsyncMock()
     repo.get_catering_request_by_id.return_value = existing_request
     repo.update_catering_request.return_value = updated_request
+    project_repo = AsyncMock()
+    project_repo.get_project.return_value = SimpleNamespace(
+        display_name="Pal Bistro", name="pal-bistro"
+    )
 
     with (
         patch(
             "services.catering_service._implementation.CateringRequestRepositoryAsync",
             return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.ProjectRepositoryAsync",
+            return_value=project_repo,
         ),
         patch(
             "services.catering_service._implementation.send_sms_notification",
@@ -172,7 +180,10 @@ def test_update_catering_request_skips_sms_when_status_is_unchanged() -> None:
             )
         )
 
-    mock_send_sms.assert_not_called()
+    mock_send_sms.assert_called_once_with(
+        updated_request.contact_phone_number,
+        "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Confirmed.",
+    )
 
 
 def test_update_catering_request_skips_sms_for_untracked_status_transition() -> None:
@@ -348,6 +359,13 @@ def test_update_catering_request_swallows_notification_exceptions() -> None:
 
 def test_should_send_customer_status_sms_returns_false_for_none_next_status() -> None:
     assert _should_send_customer_status_sms(RequestStatus.INQUIRY, None) is False
+
+
+def test_should_send_customer_status_sms_returns_true_for_supported_status() -> None:
+    assert (
+        _should_send_customer_status_sms(RequestStatus.INQUIRY, RequestStatus.CONFIRMED)
+        is True
+    )
 
 
 def test_get_catering_business_name_returns_fallback_when_project_missing() -> None:

@@ -396,9 +396,7 @@ async def update_catering_request(
         if isinstance(updated_request.status, RequestStatus)
         else updated_request.status
     )
-    sms_skip_reason = _get_customer_status_sms_skip_reason(
-        existing_request.status, status
-    )
+    sms_skip_reason = _get_customer_status_sms_skip_reason(status)
 
     logger.info(
         "[catering] Processed catering request update.",
@@ -435,8 +433,8 @@ async def update_catering_request(
                     "[catering] Updated request status but failed to send customer status SMS.",
                     extra={
                         "request_id": str(updated_request.id),
-                        "old_status": existing_request.status.value,
-                        "new_status": updated_request.status.value,
+                        "old_status": previous_status_value,
+                        "new_status": updated_status_value,
                     },
                 )
         except Exception as exc:
@@ -444,8 +442,8 @@ async def update_catering_request(
                 "[catering] Updated request status but customer status SMS notification failed unexpectedly.",
                 extra={
                     "request_id": str(updated_request.id),
-                    "old_status": existing_request.status.value,
-                    "new_status": updated_request.status.value,
+                    "old_status": previous_status_value,
+                    "new_status": updated_status_value,
                     "error": str(exc),
                 },
             )
@@ -467,10 +465,11 @@ async def update_catering_request(
 def _should_send_customer_status_sms(
     previous_status: RequestStatus | None, next_status: RequestStatus | None
 ) -> bool:
+    del previous_status
     if next_status is None:
         return False
 
-    return previous_status != next_status and next_status in {
+    return next_status in {
         RequestStatus.QUOTE_SENT,
         RequestStatus.CONFIRMED,
         RequestStatus.CANCELLED,
@@ -478,9 +477,7 @@ def _should_send_customer_status_sms(
     }
 
 
-def _get_customer_status_sms_skip_reason(
-    previous_status: RequestStatus | None, next_status: RequestStatus | None
-) -> str:
+def _get_customer_status_sms_skip_reason(next_status: RequestStatus | None) -> str:
     if next_status is None:
         return "no_status_requested"
     if next_status not in {
@@ -490,8 +487,6 @@ def _get_customer_status_sms_skip_reason(
         RequestStatus.READY,
     }:
         return "status_not_supported"
-    if previous_status == next_status:
-        return "status_unchanged"
     return "eligible"
 
 
