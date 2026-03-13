@@ -2,8 +2,7 @@
 """Tests for transfer destination merging in _raw_config._get_agent_tools.
 
 Verifies that livekit_transfer_tool preserves explicit destinations (e.g. SIP
-URIs from raw_config) while merging in contact-derived phone numbers, while
-vapi_tool continues to rebuild destinations from contacts only.
+URIs from raw_config) while merging in contact-derived phone numbers.
 """
 
 import uuid
