@@ -192,9 +192,35 @@ def get_order_by_order_id_store_vendor(
     )
 
 
+def create_order_from_agent_async(
+    session,
+    order_details,
+    conversation_id,
+):
+    """
+    Create an order from pal-agents order_details with duplicate checking.
+
+    This async function handles all type conversions, duplicate checking, and order
+    creation for orders received from the AI agent. It's idempotent - calling
+    it multiple times with the same order_details will only create one order.
+
+    Args:
+        session: Async database session
+        order_details: Order details object from pal-agents
+        conversation_id: The conversation ID this order belongs to
+
+    Returns:
+        Order | None: The created order, or None if order already exists or creation fails
+    """
+    return _implementation.create_order_from_agent_async(
+        session, order_details, conversation_id
+    )
+
+
 __all__ = [
     # Core order operations
     "create_order",
+    "create_order_from_agent_async",
     "get_order_by_id",
     "get_order_by_order_id_store_vendor",
     # Helper functions for tools

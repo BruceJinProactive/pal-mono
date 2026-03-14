@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any, List, Optional
 
 from sqlalchemy import and_
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from agent.tool import ToolMetadata
@@ -81,6 +82,130 @@ def create_order(
         order_items=order_data.order_items,
         order_time=order_data.order_time,
     )
+
+
+async def create_order_from_agent_async(
+    session: AsyncSession,
+    order_details: Any,
+    conversation_id: uuid.UUID,
+) -> Optional[Order]:
+    """
+    Create an order from pal-agents order_details with duplicate checking.
+
+    This function handles all type conversions, duplicate checking, and order
+    creation for orders received from the AI agent. It's idempotent - calling
+    it multiple times with the same order_details will only create one order.
+
+    Args:
+        session: Async database session
+        order_details: Order details object from pal-agents
+        conversation_id: The conversation ID this order belongs to
+
+    Returns:
+        Order | None: The created order, or None if order already exists or creation fails
+    """
+    try:
+        # Convert vendor string to IntegrationProvider enum
+        vendor_enum = None
+        if order_details.vendor:
+            try:
+                vendor_enum = IntegrationProvider(order_details.vendor.lower())
+            except ValueError:
+                logger.warning(
+                    f"Invalid vendor value: {order_details.vendor}",
+                    extra={"vendor": order_details.vendor},
+                )
+                return None
+
+        # Convert subtotal to Decimal
+        subtotal_decimal = None
+        if order_details.subtotal is not None:
+            subtotal_decimal = Decimal(str(order_details.subtotal))
+
+        # Convert order_time string to datetime if needed
+        order_time_dt = None
+        if order_details.order_time:
+            if isinstance(order_details.order_time, str):
+                try:
+                    # Try ISO format first
+                    order_time_dt = datetime.fromisoformat(order_details.order_time)
+                except ValueError:
+                    # Fallback to dateutil parser for more formats
+                    from dateutil import parser as dateutil_parser
+
+                    order_time_dt = dateutil_parser.isoparse(order_details.order_time)
+            else:
+                order_time_dt = order_details.order_time
+
+        # Use run_sync to execute synchronous ORM operations in async context
+        def _create_order_with_duplicate_check(
+            sync_session: Session,
+        ) -> Optional[Order]:
+            """Create order in database with duplicate checking."""
+            order_repo = OrderRepository(sync_session, auto_commit=False)
+
+            # Check if order already exists (idempotent)
+            if order_details.order_id and order_details.store_id and vendor_enum:
+                existing_order = order_repo.get_order_by_order_id_store_vendor(
+                    order_id=order_details.order_id,
+                    store_id=order_details.store_id,
+                    vendor=vendor_enum,
+                )
+                if existing_order:
+                    logger.info(
+                        "Order already exists, skipping creation",
+                        extra={
+                            "conversation_id": str(conversation_id),
+                            "order_id": order_details.order_id,
+                            "vendor": order_details.vendor,
+                            "existing_order_id": str(existing_order.id),
+                        },
+                    )
+                    return None
+
+            # Create new order
+            order = order_repo.create_order(
+                conversation_id=conversation_id,
+                vendor=vendor_enum,
+                order_id=order_details.order_id,
+                store_id=order_details.store_id,
+                user_phone_number=order_details.user_phone_number,
+                tracking_link=order_details.tracking_link,
+                status=order_details.status,
+                fulfillment_strategy=order_details.fulfillment_strategy,
+                subtotal=subtotal_decimal,
+                order_items=order_details.order_items,
+                order_time=order_time_dt,
+            )
+            return order
+
+        # Execute the order creation
+        order = await session.run_sync(_create_order_with_duplicate_check)
+
+        if order:
+            await session.commit()
+            logger.info(
+                "Order persisted to database from agent",
+                extra={
+                    "conversation_id": str(conversation_id),
+                    "order_id": order_details.order_id,
+                    "vendor": order_details.vendor,
+                    "order_db_id": str(order.id),
+                },
+            )
+        return order
+
+    except Exception as e:
+        await session.rollback()
+        logger.error(
+            "Failed to persist order from agent",
+            extra={
+                "conversation_id": str(conversation_id),
+                "order_id": getattr(order_details, "order_id", None),
+                "error": str(e),
+            },
+        )
+        return None
 
 
 def get_order_by_id(

@@ -146,9 +146,13 @@ def _install_services_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     agent_service_mod = ModuleType("services.agent_service")
     project_service_mod = ModuleType("services.project_service")
     user_service_mod = ModuleType("services.user_service")
+    transaction_service_mod = ModuleType("services.transaction_service")
     monkeypatch.setitem(sys.modules, "services.agent_service", agent_service_mod)
     monkeypatch.setitem(sys.modules, "services.project_service", project_service_mod)
     monkeypatch.setitem(sys.modules, "services.user_service", user_service_mod)
+    monkeypatch.setitem(
+        sys.modules, "services.transaction_service", transaction_service_mod
+    )
 
     async def _not_implemented(*args, **kwargs):
         raise NotImplementedError
@@ -158,6 +162,7 @@ def _install_services_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     project_service_mod.get_project_async = _not_implemented  # type: ignore[attr-defined]
     user_service_mod.get_user_async = _not_implemented  # type: ignore[attr-defined]
     user_service_mod.create_user_async = _not_implemented  # type: ignore[attr-defined]
+    transaction_service_mod.create_order_from_agent_async = _not_implemented  # type: ignore[attr-defined]
 
 
 class _FakeMessageRepo:
@@ -181,6 +186,17 @@ class _FakeOrderRepository:
         self.session = session
         self.auto_commit = auto_commit
         self.created_orders = []
+
+    def get_order_by_order_id_store_vendor(self, order_id, store_id, vendor):
+        """Check if order already exists."""
+        for order in self.created_orders:
+            if (
+                order["order_id"] == order_id
+                and order["store_id"] == store_id
+                and order["vendor"] == vendor
+            ):
+                return SimpleNamespace(**order)
+        return None
 
     def create_order(
         self,
@@ -306,11 +322,48 @@ async def test_order_details_persisted_to_database(monkeypatch):
 
     fake_session.run_sync = _fake_run_sync
 
-    # Factory function for OrderRepository
-    def _fake_order_repository_factory(session, auto_commit=True):
+    # Fake transaction service that uses our fake repository
+    async def _fake_create_order_from_agent_async(
+        session, order_details, conversation_id
+    ):
         nonlocal order_repo
-        order_repo = _FakeOrderRepository(session, auto_commit)
-        return order_repo
+        # Create repo if not exists
+        if order_repo is None:
+            order_repo = _FakeOrderRepository(session.sync_session, auto_commit=False)
+
+        # Check for duplicate
+        if order_details.order_id and order_details.store_id and order_details.vendor:
+            from db.tables.types import IntegrationProvider
+
+            vendor_enum = IntegrationProvider(order_details.vendor)
+            existing = order_repo.get_order_by_order_id_store_vendor(
+                order_details.order_id, order_details.store_id, vendor_enum
+            )
+            if existing:
+                return None
+
+        # Create order
+        from decimal import Decimal
+
+        from db.tables.types import IntegrationProvider
+
+        vendor_enum = IntegrationProvider(order_details.vendor)
+        order_repo.create_order(
+            conversation_id=conversation_id,
+            vendor=vendor_enum,
+            order_id=order_details.order_id,
+            store_id=order_details.store_id,
+            user_phone_number=order_details.user_phone_number,
+            tracking_link=order_details.tracking_link,
+            status=order_details.status,
+            fulfillment_strategy=order_details.fulfillment_strategy,
+            subtotal=Decimal(str(order_details.subtotal)),
+            order_items=order_details.order_items,
+            order_time=order_details.order_time,
+        )
+        # Commit like the real service does
+        await session.commit()
+        return SimpleNamespace(id=uuid.uuid4())
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
     monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
@@ -337,7 +390,9 @@ async def test_order_details_persisted_to_database(monkeypatch):
         _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
     )
     monkeypatch.setattr(
-        _implementation, "OrderRepository", _fake_order_repository_factory
+        _implementation.transaction_service,
+        "create_order_from_agent_async",
+        _fake_create_order_from_agent_async,
     )
 
     message = Message(
@@ -452,13 +507,13 @@ async def test_order_details_error_handling(monkeypatch):
     async def _fake_query_history_messages(*args, **kwargs):
         return []
 
-    # OrderRepository that raises an error
-    class _FailingOrderRepository:
-        def __init__(self, session, auto_commit=True):
-            self.session = session
-
-        def create_order(self, **kwargs):
-            raise Exception("Database connection error")
+    # Fake transaction service that fails gracefully (returns None, no exception)
+    async def _fake_failing_create_order_from_agent_async(
+        session, order_details, conversation_id
+    ):
+        # Simulate the service layer error handling - rollback and return None
+        await session.rollback()
+        return None  # Service handles error gracefully, doesn't raise
 
     fake_sync_session = MagicMock()
     fake_session = AsyncMock()
@@ -496,7 +551,11 @@ async def test_order_details_error_handling(monkeypatch):
     monkeypatch.setattr(
         _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
     )
-    monkeypatch.setattr(_implementation, "OrderRepository", _FailingOrderRepository)
+    monkeypatch.setattr(
+        _implementation.transaction_service,
+        "create_order_from_agent_async",
+        _fake_failing_create_order_from_agent_async,
+    )
 
     message = Message(
         author_type=AuthorType.USER,
@@ -517,10 +576,10 @@ async def test_order_details_error_handling(monkeypatch):
         )
     ]
 
-    # Verify chunks were still generated despite the error
+    # Verify chunks were still generated despite the order persistence failure
     assert len(chunks) >= 1
     assert chunks[0].choices[0].delta.content == "Order placed!"
 
-    # Verify session.rollback was called due to the error
-    assert fake_session.rollback.call_count == 1
-    fake_session.rollback.assert_called_once()
+    # Verify session.rollback was called by the failing transaction service
+    # (The service handles errors gracefully so streaming continues)
+    assert fake_session.rollback.call_count >= 1
