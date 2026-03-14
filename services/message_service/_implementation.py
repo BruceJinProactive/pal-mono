@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import random
 import uuid
+from decimal import Decimal
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
@@ -27,7 +28,8 @@ from api.schemas.chat.message import (
     Metadata,
     TextObject,
 )
-from db.tables.types import Channel
+from db.repositories.order_repository import OrderRepository
+from db.tables.types import Channel, IntegrationProvider
 from services import agent_service, project_service, user_service
 from utils.dd import is_testing_mode, send_dd_histogram_metrics, trace_async_block
 from utils.log import logger
@@ -217,7 +219,7 @@ async def get_chat_response_async(
 
             pal_output = await pal_agent.run(pal_input)
 
-            # Log order_details if present (not persisted to DB, only logged for observability)
+            # Log order_details if present and persist to DB
             if hasattr(pal_output, "order_details") and pal_output.order_details:
                 order_details = pal_output.order_details
                 logger.info(
@@ -244,6 +246,74 @@ async def get_chat_response_async(
                         "order_time": order_details.order_time,
                     },
                 )
+
+                # Persist order to database
+                try:
+                    # Convert vendor string to IntegrationProvider enum
+                    vendor_enum = None
+                    if order_details.vendor:
+                        try:
+                            vendor_enum = IntegrationProvider(
+                                order_details.vendor.lower()
+                            )
+                        except ValueError:
+                            logger.warning(
+                                f"Invalid vendor value: {order_details.vendor}",
+                                extra={"vendor": order_details.vendor},
+                            )
+
+                    # Convert subtotal to Decimal
+                    subtotal_decimal = None
+                    if order_details.subtotal is not None:
+                        subtotal_decimal = Decimal(str(order_details.subtotal))
+
+                    # Convert order_time string to datetime if needed
+                    order_time_dt = None
+                    if order_details.order_time:
+                        if isinstance(order_details.order_time, str):
+                            order_time_dt = datetime.datetime.fromisoformat(
+                                order_details.order_time
+                            )
+                        else:
+                            order_time_dt = order_details.order_time
+
+                    # Use run_sync to safely execute synchronous ORM operations in async context
+                    def _create_order(sync_session):
+                        order_repo = OrderRepository(sync_session, auto_commit=False)
+                        order_repo.create_order(
+                            conversation_id=request_message.conversation_id,
+                            vendor=vendor_enum,
+                            order_id=order_details.order_id,
+                            store_id=order_details.store_id,
+                            user_phone_number=order_details.user_phone_number,
+                            tracking_link=order_details.tracking_link,
+                            status=order_details.status,
+                            fulfillment_strategy=order_details.fulfillment_strategy,
+                            subtotal=subtotal_decimal,
+                            order_items=order_details.order_items,
+                            order_time=order_time_dt,
+                        )
+
+                    await session.run_sync(_create_order)
+                    await session.commit()
+                    logger.info(
+                        "Order persisted to database",
+                        extra={
+                            "conversation_id": str(request_message.conversation_id),
+                            "order_id": order_details.order_id,
+                            "vendor": order_details.vendor,
+                        },
+                    )
+                except Exception as e:
+                    await session.rollback()
+                    logger.error(
+                        "Failed to persist order to database",
+                        extra={
+                            "conversation_id": str(request_message.conversation_id),
+                            "order_id": order_details.order_id,
+                            "error": str(e),
+                        },
+                    )
 
             # Use pal-agents Output fields directly (v0.2.1+)
             output = Output(
@@ -659,13 +729,13 @@ async def get_chat_response_stream(
                                         },
                                     )
 
-                            # Log order_details if present (not persisted to DB, only logged for observability)
+                            # Log order_details if present in streaming response (no DB persistence)
                             if hasattr(chunk, "order_details") and chunk.order_details:
                                 order_details = chunk.order_details
                                 logger.info(
-                                    "[order_details]Order successfully placed",
+                                    "[order_details]Order details received in streaming response",
                                     extra={
-                                        "event_type": "order_placed",
+                                        "event_type": "order_details_streamed",
                                         "conversation_id": str(request_conversation_id),
                                         "agent_id": str(agent_id),
                                         "account_name": account_name,
