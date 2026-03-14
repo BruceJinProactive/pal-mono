@@ -20,8 +20,11 @@ class TestExtractFramesSync:
         """Should extract frames at the configured interval from the video."""
         # Create a mock frame that can be converted to image
         mock_pil_image = MagicMock()
+        mock_pil_image.size = (1920, 1080)  # Mock image dimensions
         mock_pil_image.save = MagicMock(
-            side_effect=lambda buf, **kwargs: buf.write(b"fake-jpeg-data")
+            side_effect=lambda buf, **kwargs: buf.write(
+                b"x" * 200
+            )  # 200 bytes to pass validation
         )
 
         mock_frame = MagicMock()
@@ -34,12 +37,23 @@ class TestExtractFramesSync:
 
         mock_container = MagicMock()
         mock_container.streams.video = [mock_stream]
+        mock_container.seek = MagicMock()
         # Return a fresh iterator each time decode is called
-        mock_container.decode.side_effect = lambda **kwargs: iter([mock_frame])
+        mock_container.decode = MagicMock(
+            side_effect=lambda video=None, **kwargs: iter([mock_frame])
+        )
 
         mocker.patch(
             "services.monitoring_service._video.av.open",
             return_value=mock_container,
+        )
+
+        # Mock Image.open to pass JPEG verification
+        mock_img = MagicMock()
+        mock_img.verify = MagicMock()  # verify() doesn't raise
+        mocker.patch(
+            "services.monitoring_service._video.Image.open",
+            return_value=mock_img,
         )
 
         frames = _extract_frames_sync("/fake/video.mp4", frame_interval_seconds=10)
@@ -50,8 +64,11 @@ class TestExtractFramesSync:
     def test_always_includes_frame_at_zero(self, mocker):
         """Should always include a frame at t=0."""
         mock_pil_image = MagicMock()
+        mock_pil_image.size = (1920, 1080)  # Mock image dimensions
         mock_pil_image.save = MagicMock(
-            side_effect=lambda buf, **kwargs: buf.write(b"fake-jpeg-data")
+            side_effect=lambda buf, **kwargs: buf.write(
+                b"x" * 200
+            )  # 200 bytes to pass validation
         )
         mock_frame = MagicMock()
         mock_frame.to_image.return_value = mock_pil_image
@@ -63,11 +80,22 @@ class TestExtractFramesSync:
 
         mock_container = MagicMock()
         mock_container.streams.video = [mock_stream]
-        mock_container.decode.return_value = iter([mock_frame])
+        mock_container.seek = MagicMock()
+        mock_container.decode = MagicMock(
+            side_effect=lambda video=None, **kwargs: iter([mock_frame])
+        )
 
         mocker.patch(
             "services.monitoring_service._video.av.open",
             return_value=mock_container,
+        )
+
+        # Mock Image.open to pass JPEG verification
+        mock_img = MagicMock()
+        mock_img.verify = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._video.Image.open",
+            return_value=mock_img,
         )
 
         frames = _extract_frames_sync("/fake/video.mp4", frame_interval_seconds=10)
@@ -77,8 +105,11 @@ class TestExtractFramesSync:
     def test_generates_correct_timestamp_labels(self, mocker):
         """Should generate timestamp labels in M:SS format."""
         mock_pil_image = MagicMock()
+        mock_pil_image.size = (1920, 1080)  # Mock image dimensions
         mock_pil_image.save = MagicMock(
-            side_effect=lambda buf, **kwargs: buf.write(b"fake-jpeg-data")
+            side_effect=lambda buf, **kwargs: buf.write(
+                b"x" * 200
+            )  # 200 bytes to pass validation
         )
         mock_frame = MagicMock()
         mock_frame.to_image.return_value = mock_pil_image
@@ -90,11 +121,22 @@ class TestExtractFramesSync:
 
         mock_container = MagicMock()
         mock_container.streams.video = [mock_stream]
-        mock_container.decode.side_effect = lambda **kwargs: iter([mock_frame])
+        mock_container.seek = MagicMock()
+        mock_container.decode = MagicMock(
+            side_effect=lambda video=None, **kwargs: iter([mock_frame])
+        )
 
         mocker.patch(
             "services.monitoring_service._video.av.open",
             return_value=mock_container,
+        )
+
+        # Mock Image.open to pass JPEG verification
+        mock_img = MagicMock()
+        mock_img.verify = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._video.Image.open",
+            return_value=mock_img,
         )
 
         frames = _extract_frames_sync("/fake/video.mp4", frame_interval_seconds=30)
@@ -107,8 +149,11 @@ class TestExtractFramesSync:
     def test_returns_base64_data(self, mocker):
         """Should return base64-encoded JPEG data for each frame."""
         mock_pil_image = MagicMock()
+        mock_pil_image.size = (1920, 1080)  # Mock image dimensions
         mock_pil_image.save = MagicMock(
-            side_effect=lambda buf, **kwargs: buf.write(b"fake-jpeg-data")
+            side_effect=lambda buf, **kwargs: buf.write(
+                b"x" * 200
+            )  # 200 bytes to pass validation
         )
         mock_frame = MagicMock()
         mock_frame.to_image.return_value = mock_pil_image
@@ -120,18 +165,29 @@ class TestExtractFramesSync:
 
         mock_container = MagicMock()
         mock_container.streams.video = [mock_stream]
-        mock_container.decode.return_value = iter([mock_frame])
+        mock_container.seek = MagicMock()
+        mock_container.decode = MagicMock(
+            side_effect=lambda video=None, **kwargs: iter([mock_frame])
+        )
 
         mocker.patch(
             "services.monitoring_service._video.av.open",
             return_value=mock_container,
         )
 
+        # Mock Image.open to pass JPEG verification
+        mock_img = MagicMock()
+        mock_img.verify = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._video.Image.open",
+            return_value=mock_img,
+        )
+
         frames = _extract_frames_sync("/fake/video.mp4")
         assert len(frames) >= 1
         # Verify the base64 data can be decoded
         decoded = base64.b64decode(frames[0]["base64_data"])
-        assert decoded == b"fake-jpeg-data"
+        assert decoded == b"x" * 200
 
     def test_handles_frame_extraction_failure_gracefully(self, mocker):
         """Should log warning and continue when a frame extraction fails."""
@@ -157,8 +213,11 @@ class TestExtractFramesSync:
     def test_zero_duration_video(self, mocker):
         """Should extract only frame at 0 for zero-duration video."""
         mock_pil_image = MagicMock()
+        mock_pil_image.size = (1920, 1080)  # Mock image dimensions
         mock_pil_image.save = MagicMock(
-            side_effect=lambda buf, **kwargs: buf.write(b"fake-jpeg-data")
+            side_effect=lambda buf, **kwargs: buf.write(
+                b"x" * 200
+            )  # 200 bytes to pass validation
         )
         mock_frame = MagicMock()
         mock_frame.to_image.return_value = mock_pil_image
@@ -171,11 +230,22 @@ class TestExtractFramesSync:
         mock_container = MagicMock()
         mock_container.streams.video = [mock_stream]
         mock_container.duration = None
-        mock_container.decode.return_value = iter([mock_frame])
+        mock_container.seek = MagicMock()
+        mock_container.decode = MagicMock(
+            side_effect=lambda video=None, **kwargs: iter([mock_frame])
+        )
 
         mocker.patch(
             "services.monitoring_service._video.av.open",
             return_value=mock_container,
+        )
+
+        # Mock Image.open to pass JPEG verification
+        mock_img = MagicMock()
+        mock_img.verify = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._video.Image.open",
+            return_value=mock_img,
         )
 
         frames = _extract_frames_sync("/fake/video.mp4")
@@ -185,8 +255,11 @@ class TestExtractFramesSync:
     def test_falls_back_to_container_duration(self, mocker):
         """Should use container.duration when stream.duration is None."""
         mock_pil_image = MagicMock()
+        mock_pil_image.size = (1920, 1080)  # Mock image dimensions
         mock_pil_image.save = MagicMock(
-            side_effect=lambda buf, **kwargs: buf.write(b"fake-jpeg-data")
+            side_effect=lambda buf, **kwargs: buf.write(
+                b"x" * 200
+            )  # 200 bytes to pass validation
         )
         mock_frame = MagicMock()
         mock_frame.to_image.return_value = mock_pil_image
@@ -200,11 +273,22 @@ class TestExtractFramesSync:
         mock_container.streams.video = [mock_stream]
         # 60 seconds in microseconds
         mock_container.duration = 60_000_000
-        mock_container.decode.side_effect = lambda **kwargs: iter([mock_frame])
+        mock_container.seek = MagicMock()
+        mock_container.decode = MagicMock(
+            side_effect=lambda video=None, **kwargs: iter([mock_frame])
+        )
 
         mocker.patch(
             "services.monitoring_service._video.av.open",
             return_value=mock_container,
+        )
+
+        # Mock Image.open to pass JPEG verification
+        mock_img = MagicMock()
+        mock_img.verify = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._video.Image.open",
+            return_value=mock_img,
         )
 
         frames = _extract_frames_sync("/fake/video.mp4", frame_interval_seconds=10)
@@ -218,8 +302,11 @@ class TestExtractFramesSync:
     def test_zero_duration_when_both_unavailable(self, mocker):
         """Should extract only 1 frame when both stream and container duration are None."""
         mock_pil_image = MagicMock()
+        mock_pil_image.size = (1920, 1080)  # Mock image dimensions
         mock_pil_image.save = MagicMock(
-            side_effect=lambda buf, **kwargs: buf.write(b"fake-jpeg-data")
+            side_effect=lambda buf, **kwargs: buf.write(
+                b"x" * 200
+            )  # 200 bytes to pass validation
         )
         mock_frame = MagicMock()
         mock_frame.to_image.return_value = mock_pil_image
@@ -232,11 +319,22 @@ class TestExtractFramesSync:
         mock_container = MagicMock()
         mock_container.streams.video = [mock_stream]
         mock_container.duration = None
-        mock_container.decode.return_value = iter([mock_frame])
+        mock_container.seek = MagicMock()
+        mock_container.decode = MagicMock(
+            side_effect=lambda video=None, **kwargs: iter([mock_frame])
+        )
 
         mocker.patch(
             "services.monitoring_service._video.av.open",
             return_value=mock_container,
+        )
+
+        # Mock Image.open to pass JPEG verification
+        mock_img = MagicMock()
+        mock_img.verify = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._video.Image.open",
+            return_value=mock_img,
         )
 
         frames = _extract_frames_sync("/fake/video.mp4", frame_interval_seconds=10)

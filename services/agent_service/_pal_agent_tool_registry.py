@@ -56,11 +56,12 @@ def merge_auth_with_credentials(
 ) -> dict[str, Any] | None:
     """Merge auth structure from config with credentials from Integration.
 
-    The config provides the auth shape (type, token_url, etc.) and the
-    Integration record provides actual secret values (client_id, client_secret).
+    The config provides the auth shape (type, etc.) and the Integration record
+    provides actual secret values (client_id, client_secret).
 
     If no auth config is provided but credentials exist and a *default_token_url*
-    is given, builds a rotating bearer auth dict automatically.
+    is given, builds a rotating bearer auth dict automatically. The caller should
+    handle token_url fallback logic (e.g., config.get("token_url") or DEFAULT_URL).
     """
     if not client_id and not client_secret:
         return auth_config
@@ -87,6 +88,8 @@ def merge_auth_with_credentials(
             rotation["client_id"] = client_id
         if client_secret:
             rotation["client_secret"] = client_secret
+        if default_token_url and "token_url" not in rotation:
+            rotation["token_url"] = default_token_url
         auth["rotation"] = rotation
     elif auth_type == "basic":
         if client_id:
@@ -136,7 +139,7 @@ def _build_adora_v3_spec(
         config.get("auth"),
         client_id,
         client_secret,
-        default_token_url=_ADORA_DEFAULT_TOKEN_URL,
+        default_token_url=config.get("token_url") or _ADORA_DEFAULT_TOKEN_URL,
     )
     if auth is not None:
         kwargs["auth"] = auth

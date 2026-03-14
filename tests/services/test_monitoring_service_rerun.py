@@ -95,11 +95,11 @@ async def test_rerun_with_s3_key_extracts_media_url(
 
     with (
         patch(
-            "db.repositories.MonitoringRunRepositoryAsync",
+            "services.monitoring_service._implementation.MonitoringRunRepositoryAsync",
             return_value=mock_run_repo,
         ),
         patch(
-            "db.repositories.MonitoringConfigRepositoryAsync",
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync",
             return_value=mock_config_repo,
         ),
         patch(
@@ -159,11 +159,11 @@ async def test_rerun_with_missing_media_raises_error(
 
     with (
         patch(
-            "db.repositories.MonitoringRunRepositoryAsync",
+            "services.monitoring_service._implementation.MonitoringRunRepositoryAsync",
             return_value=mock_run_repo,
         ),
         patch(
-            "db.repositories.MonitoringConfigRepositoryAsync",
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync",
             return_value=mock_config_repo,
         ),
         patch(
@@ -193,7 +193,7 @@ async def test_rerun_with_nonexistent_run_raises_error(mock_session):
     mock_run_repo.get_by_id = AsyncMock(return_value=None)
 
     with patch(
-        "db.repositories.MonitoringRunRepositoryAsync",
+        "services.monitoring_service._implementation.MonitoringRunRepositoryAsync",
         return_value=mock_run_repo,
     ):
 
@@ -222,11 +222,11 @@ async def test_rerun_with_wrong_project_raises_error(
 
     with (
         patch(
-            "db.repositories.MonitoringRunRepositoryAsync",
+            "services.monitoring_service._implementation.MonitoringRunRepositoryAsync",
             return_value=mock_run_repo,
         ),
         patch(
-            "db.repositories.MonitoringConfigRepositoryAsync",
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync",
             return_value=mock_config_repo,
         ),
     ):
@@ -279,9 +279,12 @@ async def test_background_rerun_image_success():
     mock_run_repo.update = AsyncMock()
 
     with (
-        patch("db.get_db_async", mock_get_db_async),
         patch(
-            "db.repositories.MonitoringRunRepositoryAsync",
+            "db.get_db_async",
+            mock_get_db_async,
+        ),
+        patch(
+            "services.monitoring_service._implementation.MonitoringRunRepositoryAsync",
             return_value=mock_run_repo,
         ),
         patch(
@@ -329,9 +332,12 @@ async def test_background_rerun_handles_llm_exception():
     mock_run_repo.update = AsyncMock()
 
     with (
-        patch("db.get_db_async", mock_get_db_async),
         patch(
-            "db.repositories.MonitoringRunRepositoryAsync",
+            "db.get_db_async",
+            mock_get_db_async,
+        ),
+        patch(
+            "services.monitoring_service._implementation.MonitoringRunRepositoryAsync",
             return_value=mock_run_repo,
         ),
         patch(
@@ -380,9 +386,12 @@ async def test_background_rerun_preserves_completed_at():
     mock_run_repo.update = AsyncMock()
 
     with (
-        patch("db.get_db_async", mock_get_db_async),
         patch(
-            "db.repositories.MonitoringRunRepositoryAsync",
+            "db.get_db_async",
+            mock_get_db_async,
+        ),
+        patch(
+            "services.monitoring_service._implementation.MonitoringRunRepositoryAsync",
             return_value=mock_run_repo,
         ),
         patch(
