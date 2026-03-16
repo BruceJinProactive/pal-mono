@@ -13,12 +13,8 @@ from api.routes.integrations.stripe import _implementation as stripe_implementat
 from api.routes.integrations.toast import _implementation as toast_implementation
 from api.routes.integrations.toast import toast_router
 from api.routes.integrations.twilio import twilio_router
-from api.routes.integrations.vapi import vapi_router
 
 integrations_router = APIRouter(prefix=endpoints.INTEGRATIONS, tags=["Integrations"])
-
-# Include the VAPI router
-integrations_router.include_router(vapi_router)
 
 # Include the Adora router
 integrations_router.include_router(adora_router)
