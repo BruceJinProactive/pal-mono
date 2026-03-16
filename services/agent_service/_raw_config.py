@@ -19,7 +19,6 @@ from agent import (
     KnowledgeConfig,
     KnowledgeProvider,
     LlamaIndexSettings,
-    MemoryConfig,
     ModelConfig,
     ToolConfig,
     ToolIdentifier,
@@ -71,17 +70,11 @@ class RawConfig:
 
     async def build(self, session: Optional[AsyncSession] = None) -> AgentConfig:
         try:
-            memory_enabled = self.agent.memory_enabled
             filler_words_config = self.agent.filler_words or {}
 
             return AgentConfig(
                 persona=await self._get_agent_persona(self.channel, session),
                 model=self._get_agent_model_config(),
-                memory=MemoryConfig(
-                    enabled=memory_enabled,
-                    identifier=self.account.name,
-                    instruction="Don't remember the user's gender.",
-                ),
                 knowledge=self._get_agent_knowledge(),
                 tool=await self._get_agent_tools(session),
                 feature_config=FeatureConfig(

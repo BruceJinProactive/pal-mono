@@ -12,7 +12,6 @@ from agent.config import AgentConfig
 from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
-from agent.memory import update_memory
 from utils.dd import is_testing_mode, safe_annotate, send_dd_histogram_metrics, traced
 
 
@@ -75,9 +74,6 @@ class Agent:
             }
         )
 
-        # Update memory with the user's input
-        self._update_memory(input.content)
-
         # Start agent task
         agent_task = asyncio.create_task(self._agent.arun(input))  # type: ignore
 
@@ -126,9 +122,6 @@ class Agent:
                         "streaming": True,
                     },
                 )
-
-                # Update memory with the user's input
-                self._update_memory(input.content)
 
                 try:
                     send_dd_histogram_metrics(
@@ -191,17 +184,3 @@ class Agent:
 
         # Return the wrapped streaming iterator
         return stream_wrapper()
-
-    def _update_memory(self, content: str):
-        def run_detached(coro):
-            def runner():
-                asyncio.run(coro)
-
-            asyncio.get_running_loop().run_in_executor(None, runner)
-
-        run_detached(
-            update_memory(
-                user_id=self._metadata.user_id,  # type: ignore
-                content=content,  # type: ignore
-            )
-        )

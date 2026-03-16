@@ -9,7 +9,6 @@ from agent import (
     AgentPersona,
     KnowledgeConfig,
     LlamaIndexSettings,
-    MemoryConfig,
     ModelConfig,
     ToolConfig,
     ToolMetadata,
@@ -28,7 +27,6 @@ def _build_agent_config() -> AgentConfig:
             description="You are a helpful assistant.",
         ),
         model=ModelConfig(),
-        memory=MemoryConfig(enabled=True, identifier="test-memory"),
         knowledge=KnowledgeConfig(
             enabled=True,
             identifier="test-knowledge",

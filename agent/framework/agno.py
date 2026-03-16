@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 from agent.config import AgentConfig
 from agent.framework.internal.filler_words_manager import FillerWordsManager
 from agent.input_output import Input, Output
-from agent.memory._implementation import get_all_memories
 from agent.model import ModelOptions, build_agno_model
 from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
@@ -41,10 +40,9 @@ class AgnoAgent:
             for tool in get_tools(
                 config.tool,
                 config.knowledge,
-                config.memory,
                 user_id=config.metadata.user_id,
             )
-        ]  # Construct tools based on configuration (memory and knowledge tools are conditionally added)
+        ]  # Construct tools based on configuration (knowledge tools are conditionally added)
 
         model = self._get_agent_model(config)
 
@@ -326,12 +324,6 @@ class AgnoAgent:
 
         messages = await self.get_history_messages(input)
 
-        if self.config.memory.enabled:
-            mem_content = await get_all_memories(self.config.metadata.user_id)  # type: ignore
-            if mem_content and mem_content.strip():
-                enhanced_mem_content = f"MEMORY: The following contains important information about your user. Use this context to personalize your responses, remember their preferences, and provide relevant assistance based on their history and needs:\n\n{mem_content}"
-                mem_message = Message(role="user", content=enhanced_mem_content)
-                messages.append(mem_message)
         send_dd_histogram_metrics(
             "framework_agent.query_history_messages_time_spent",
             current_time,

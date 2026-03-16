@@ -5,7 +5,6 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from agent.knowledge import KnowledgeConfig
-from agent.memory import MemoryConfig
 from agent.model import ModelConfig
 from agent.tool import ToolConfig
 
@@ -37,7 +36,6 @@ class AgentConfig(BaseModel):
     persona: AgentPersona
 
     model: ModelConfig
-    memory: MemoryConfig
     knowledge: KnowledgeConfig
     tool: ToolConfig
     feature_config: FeatureConfig = Field(default_factory=FeatureConfig)

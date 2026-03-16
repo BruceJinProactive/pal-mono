@@ -1,7 +1,6 @@
 from agno.tools.toolkit import Toolkit
 
 from agent.knowledge import KnowledgeConfig
-from agent.memory import MemoryConfig
 from agent.tool.internal.query_knowledge_tool import QueryKnowledgeTool
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from utils.log import logger
@@ -12,7 +11,6 @@ from . import _config
 def get_tools(
     tool_config: _config.ToolConfig,
     knowledge_config: KnowledgeConfig,
-    memory_config: MemoryConfig,
     user_id: str,
 ) -> list[Toolkit]:
     """
@@ -21,7 +19,6 @@ def get_tools(
     Args:
         tool_config: Configuration for general tools
         knowledge_config: Configuration for knowledge base access (enabled/disabled)
-        memory_config: Configuration for memory access (enabled/disabled)
         user_id: The user ID for user-specific tools
 
     Returns:
