@@ -106,7 +106,7 @@ class TestBuildAdoraV3Spec:
             "menu_data": {"categories": [{"name": "Pizza"}]},
             "base_url": "https://api.adora.net",
         }
-        result = _build_adora_v3_spec(config, "UGDX4", "cid", "csecret")
+        result = _build_adora_v3_spec(config, "UGDX4", "cid", "csecret", None)
 
         assert isinstance(result, AdoraSpec)
         assert result.enabled is True
@@ -128,7 +128,7 @@ class TestBuildAdoraV3Spec:
                 },
             },
         }
-        result = _build_adora_v3_spec(config, "S1", "k", "s")
+        result = _build_adora_v3_spec(config, "S1", "k", "s", None)
 
         assert result.auth is not None
         assert result.auth["rotation"]["token_url"] == "https://custom/token"
@@ -137,7 +137,7 @@ class TestBuildAdoraV3Spec:
 
     def test_no_credentials_no_auth(self):
         config = {"menu_data": {}}
-        result = _build_adora_v3_spec(config, "S1", None, None)
+        result = _build_adora_v3_spec(config, "S1", None, None, None)
 
         assert result.enabled is True
         assert not hasattr(result, "auth") or result.auth is None
@@ -153,7 +153,7 @@ class TestBuildAdoraV3Spec:
             "no_delivery_entries": True,
             "customer_email": "test@example.com",
         }
-        result = _build_adora_v3_spec(config, "STORE1", "k", "s")
+        result = _build_adora_v3_spec(config, "STORE1", "k", "s", None)
 
         assert result.store_id == "STORE1"
         assert result.coupon_data == {"coupons": []}
@@ -241,9 +241,12 @@ class TestBuildSpecsFromProjectIntegrations:
 class TestResolveIntegrationCredentials:
     @pytest.mark.asyncio
     async def test_returns_none_for_missing_integration(self):
-        client_id, client_secret = await _resolve_integration_credentials(None)
+        client_id, client_secret, parsed_secrets = (
+            await _resolve_integration_credentials(None)
+        )
         assert client_id is None
         assert client_secret is None
+        assert parsed_secrets is None
 
     @pytest.mark.asyncio
     async def test_falls_back_to_integration_columns_when_no_secret_key(self):
@@ -252,9 +255,12 @@ class TestResolveIntegrationCredentials:
             client_secret="db-client-secret",
             secret_key=None,
         )
-        client_id, client_secret = await _resolve_integration_credentials(record)
+        client_id, client_secret, parsed_secrets = (
+            await _resolve_integration_credentials(record)
+        )
         assert client_id == "db-client-id"
         assert client_secret == "db-client-secret"
+        assert parsed_secrets is None
 
     @pytest.mark.asyncio
     @patch("services.agent_service._implementation.async_get_client_secret")
@@ -268,9 +274,13 @@ class TestResolveIntegrationCredentials:
             '{"client_id":"secret-client-id","client_secret":"secret-client-secret"}'
         )
 
-        client_id, client_secret = await _resolve_integration_credentials(record)
+        client_id, client_secret, parsed_secrets = (
+            await _resolve_integration_credentials(record)
+        )
         assert client_id == "secret-client-id"
         assert client_secret == "secret-client-secret"
+        assert parsed_secrets is not None
+        assert parsed_secrets["client_id"] == "secret-client-id"
 
     @pytest.mark.asyncio
     @patch("services.agent_service._implementation.async_get_client_secret")
@@ -282,6 +292,9 @@ class TestResolveIntegrationCredentials:
         )
         mock_get_secret.side_effect = KeyError("missing")
 
-        client_id, client_secret = await _resolve_integration_credentials(record)
+        client_id, client_secret, parsed_secrets = (
+            await _resolve_integration_credentials(record)
+        )
         assert client_id == "db-client-id"
         assert client_secret == "db-client-secret"
+        assert parsed_secrets is None

@@ -13,6 +13,7 @@ To add a new tool:
            store_identifier: str,
            client_id: str | None,
            client_secret: str | None,
+           integration_secrets: dict[str, Any] | None,
        ) -> AppnameSpec:
            ...
 
@@ -30,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from pal_agents.spec import AdoraSpec
+from pal_agents.spec import AdoraSpec, ToastSpec
 
 # ========== Registry infrastructure ==========
 
@@ -41,8 +42,8 @@ class PalAgentToolEntry:
 
     spec_field: str  # kwarg name on Spec(), e.g. "adora"
     builder: Callable[
-        [dict[str, Any], str, str | None, str | None], Any
-    ]  # (config, store_identifier, client_id, client_secret) -> spec
+        [dict[str, Any], str, str | None, str | None, dict[str, Any] | None], Any
+    ]  # (config, store_identifier, client_id, client_secret, integration_secrets) -> spec
 
 
 # ========== Shared helpers ==========
@@ -125,8 +126,10 @@ def _build_adora_v3_spec(
     store_identifier: str,
     client_id: str | None,
     client_secret: str | None,
+    integration_secrets: dict[str, Any] | None,
 ) -> AdoraSpec:
     """Build an AdoraSpec from ProjectIntegration config + Integration credentials."""
+    del integration_secrets
     kwargs: dict[str, Any] = {"enabled": True}
     for field in _ADORA_SPEC_FIELDS:
         if field in config:
@@ -147,8 +150,71 @@ def _build_adora_v3_spec(
     return AdoraSpec(**kwargs)
 
 
+# ========== Toast v3 builder ==========
+
+_TOAST_SPEC_FIELDS = [
+    "menu_data",
+    "takeout_dining_option_guid",
+    "base_url",
+    "timeout",
+    "submit_orders",
+    "debug",
+    "customer_email",
+    "tool_name",
+    "enable_hosted_checkout",
+]
+
+_TOAST_HOSTED_SECRET_FIELDS = [
+    "payment_client_id",
+    "payment_client_secret",
+    "iframe_client_id",
+    "iframe_client_secret",
+    "payment_iframe_secret",
+]
+
+_TOAST_DEFAULT_TOKEN_URL = (
+    "https://ws-api.toasttab.com/authentication/v1/authentication/login"
+)
+
+
+def _build_toast_v3_spec(
+    config: dict[str, Any],
+    store_identifier: str,
+    client_id: str | None,
+    client_secret: str | None,
+    integration_secrets: dict[str, Any] | None,
+) -> ToastSpec:
+    """Build a ToastSpec from ProjectIntegration config + Integration credentials."""
+    kwargs: dict[str, Any] = {"enabled": True}
+    for field in _TOAST_SPEC_FIELDS:
+        if field in config:
+            kwargs[field] = config[field]
+
+    if store_identifier:
+        kwargs["restaurant_guid"] = store_identifier
+
+    auth = merge_auth_with_credentials(
+        config.get("auth"),
+        client_id,
+        client_secret,
+        default_token_url=_TOAST_DEFAULT_TOKEN_URL,
+    )
+    if auth is not None:
+        kwargs["auth"] = auth
+
+    # Allow config to supply hosted checkout fields, then override with Integration secrets.
+    for field in _TOAST_HOSTED_SECRET_FIELDS:
+        if field in config:
+            kwargs[field] = config[field]
+        if integration_secrets and integration_secrets.get(field) is not None:
+            kwargs[field] = integration_secrets[field]
+
+    return ToastSpec(**kwargs)
+
+
 # ========== Registry ==========
 
 PAL_AGENT_TOOL_REGISTRY: dict[str, PalAgentToolEntry] = {
     "adora_v3": PalAgentToolEntry(spec_field="adora", builder=_build_adora_v3_spec),
+    "toast_v3": PalAgentToolEntry(spec_field="toast", builder=_build_toast_v3_spec),
 }

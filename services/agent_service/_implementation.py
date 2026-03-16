@@ -12,6 +12,7 @@ from pal_agents.spec import (
     KnowledgeSpec,
     ModelSpec,
     PromptSpec,
+    ToastSpec,
     ToolSpec,
 )
 from sqlalchemy import select
@@ -241,24 +242,34 @@ def _build_adora_spec_from_raw_config(raw_config: dict) -> AdoraSpec:
 
 async def _resolve_integration_credentials(
     integration_record: Integration | None,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, dict[str, Any] | None]:
     """Resolve integration credentials asynchronously.
 
     Prefers credentials from secret manager via Integration.secret_key and
     falls back to Integration.client_id/client_secret columns.
+    Also returns the parsed secret payload for downstream tool builders.
     """
     if integration_record is None:
-        return None, None
+        return None, None, None
 
     client_id: str | None = None
     client_secret: str | None = None
+    parsed_secrets: dict[str, Any] | None = None
 
     if integration_record.secret_key:
         try:
             secrets_json = await async_get_client_secret(integration_record.secret_key)
-            credentials = json.loads(secrets_json)
-            client_id = credentials.get("client_id")
-            client_secret = credentials.get("client_secret")
+            payload = json.loads(secrets_json)
+            if isinstance(payload, dict):
+                parsed_secrets = payload
+                client_id = payload.get("client_id")
+                client_secret = payload.get("client_secret")
+            else:
+                logger.warning(
+                    "Integration secret payload for integration %s is not an object; got %s",
+                    integration_record.id,
+                    type(payload),
+                )
         except Exception as exc:
             logger.warning(
                 "Failed to resolve integration credentials from secret manager for integration %s: %s",
@@ -272,7 +283,7 @@ async def _resolve_integration_credentials(
     if not client_secret:
         client_secret = integration_record.client_secret
 
-    return client_id, client_secret
+    return client_id, client_secret, parsed_secrets
 
 
 async def _build_specs_from_project_integrations(
@@ -324,8 +335,8 @@ async def _build_specs_from_project_integrations(
             select(Integration).filter(Integration.id == pi.integration_id)
         )
         integration_record = int_result.scalar_one_or_none()
-        client_id, client_secret = await _resolve_integration_credentials(
-            integration_record
+        client_id, client_secret, parsed_secrets = (
+            await _resolve_integration_credentials(integration_record)
         )
 
         specs[entry.spec_field] = entry.builder(
@@ -333,6 +344,7 @@ async def _build_specs_from_project_integrations(
             pi.store_identifier or "",
             client_id,
             client_secret,
+            parsed_secrets,
         )
 
     return specs
@@ -343,6 +355,7 @@ def _agent_config_to_spec(
     model_spec: ModelSpec | None = None,
     generic_api_spec: GenericAPISpec | None = None,
     adora_spec: AdoraSpec | None = None,
+    toast_spec: ToastSpec | None = None,
 ) -> Spec:
     """Convert pal-mono AgentConfig to pal-agents Spec.
 
@@ -355,6 +368,7 @@ def _agent_config_to_spec(
             (defaults to ModelSpec(size=DEFAULT_MODEL_SIZE)).
         generic_api_spec: Optional GenericAPISpec for external API calling.
         adora_spec: Optional AdoraSpec for deterministic adora ordering.
+        toast_spec: Optional ToastSpec for deterministic toast ordering.
 
     Returns:
         Spec: pal-agents specification ready for Agent instantiation.
@@ -392,6 +406,7 @@ def _agent_config_to_spec(
         model=effective_model_spec,
         generic_api=generic_api_spec or GenericAPISpec(),
         adora=adora_spec or AdoraSpec(),
+        toast=toast_spec or ToastSpec(),
         filler_words=filler_words_spec,
     )
 
@@ -461,6 +476,7 @@ async def construct_agent_spec(
     adora_spec = pi_specs.get("adora") or _build_adora_spec_from_raw_config(
         effective_raw_config
     )
+    toast_spec = pi_specs.get("toast")
 
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
     return _agent_config_to_spec(
@@ -468,6 +484,7 @@ async def construct_agent_spec(
         model_spec=model_spec,
         generic_api_spec=generic_api_spec,
         adora_spec=adora_spec,
+        toast_spec=toast_spec,
     )
 
 

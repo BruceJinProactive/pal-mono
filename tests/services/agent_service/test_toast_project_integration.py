@@ -1,0 +1,288 @@
+import uuid
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from pal_agents.spec import ToastSpec
+
+from agent import (
+    AgentConfig,
+    AgentMetadata,
+    AgentPersona,
+    KnowledgeConfig,
+    LlamaIndexSettings,
+    ModelConfig,
+    ToolConfig,
+    ToolMetadata,
+    VectorStoreModality,
+    VectorStoreProvider,
+)
+from db.tables.types import Channel
+from services.agent_service import _implementation
+from services.agent_service._implementation import (
+    _build_specs_from_project_integrations,
+)
+from services.agent_service._pal_agent_tool_registry import (
+    PAL_AGENT_TOOL_REGISTRY,
+    _build_adora_v3_spec,
+    _build_toast_v3_spec,
+)
+
+TEST_PAYMENT_IFRAME_SECRET = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
+
+
+def _make_project_integration(
+    *,
+    tool_name: str = "toast_v3",
+    store_identifier: str = "restaurant-guid-1",
+    config: dict | None = None,
+    integration_id: uuid.UUID | None = None,
+):
+    pi = MagicMock()
+    pi.tool_name = tool_name
+    pi.store_identifier = store_identifier
+    pi.config = config or {}
+    pi.integration_id = integration_id or uuid.uuid4()
+    return pi
+
+
+def _make_integration_record(
+    *,
+    client_id: str = "toast-client-id",
+    client_secret: str = "toast-client-secret",
+    secret_key: str | None = None,
+):
+    record = MagicMock()
+    record.id = uuid.uuid4()
+    record.client_id = client_id
+    record.client_secret = client_secret
+    record.secret_key = secret_key
+    return record
+
+
+def _build_agent_config() -> AgentConfig:
+    return AgentConfig(
+        persona=AgentPersona(
+            name="Test Agent",
+            role="assistant",
+            description="You are a helpful assistant.",
+        ),
+        model=ModelConfig(),
+        knowledge=KnowledgeConfig(
+            enabled=True,
+            identifier="test-knowledge",
+            settings=LlamaIndexSettings(
+                vector_store_provider=VectorStoreProvider.PINECONE,
+                vector_store_modality=VectorStoreModality.TEXT,
+                index_name="test-index",
+                namespace="test-namespace",
+            ),
+        ),
+        tool=ToolConfig(
+            identifiers=[],
+            metadata=ToolMetadata(
+                agent_id=uuid.uuid4(),
+                account_id=uuid.uuid4(),
+                account_name="test-account",
+                user_id=uuid.uuid4(),
+                session_id=uuid.uuid4(),
+                project_id=uuid.uuid4(),
+            ),
+        ),
+        metadata=AgentMetadata(
+            account_name="test-account",
+            agent_id=str(uuid.uuid4()),
+            user_id=str(uuid.uuid4()),
+            session_id=str(uuid.uuid4()),
+        ),
+    )
+
+
+class TestBuildToastV3Spec:
+    def test_basic_build_uses_store_identifier_and_auto_auth(self):
+        config = {
+            "menu_data": {"version": "v2", "items": []},
+            "takeout_dining_option_guid": "takeout-guid-1",
+            "submit_orders": True,
+        }
+
+        result = _build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "cid",
+            "csecret",
+            None,
+        )
+
+        assert isinstance(result, ToastSpec)
+        assert result.enabled is True
+        assert result.restaurant_guid == "restaurant-guid-1"
+        assert result.takeout_dining_option_guid == "takeout-guid-1"
+        assert result.submit_orders is True
+        assert result.auth is not None
+        assert result.auth["type"] == "bearer"
+        assert result.auth["rotation"]["token_url"] == (
+            "https://ws-api.toasttab.com/authentication/v1/authentication/login"
+        )
+        assert result.auth["rotation"]["client_id"] == "cid"
+        assert result.auth["rotation"]["client_secret"] == "csecret"
+
+    def test_auth_from_config_is_merged_with_credentials(self):
+        config = {
+            "menu_data": {"version": "v2", "items": []},
+            "takeout_dining_option_guid": "takeout-guid-1",
+            "auth": {
+                "type": "bearer",
+                "rotation": {
+                    "enabled": True,
+                    "token_url": "https://custom.toast/token",
+                    "scope": "orders:read",
+                },
+            },
+        }
+
+        result = _build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "secret-client-id",
+            "secret-client-secret",
+            None,
+        )
+
+        assert result.auth is not None
+        assert result.auth["rotation"]["token_url"] == "https://custom.toast/token"
+        assert result.auth["rotation"]["scope"] == "orders:read"
+        assert result.auth["rotation"]["client_id"] == "secret-client-id"
+        assert result.auth["rotation"]["client_secret"] == "secret-client-secret"
+
+    def test_hosted_checkout_secret_values_override_config(self):
+        config = {
+            "menu_data": {"version": "v2"},
+            "takeout_dining_option_guid": "takeout-guid-1",
+            "enable_hosted_checkout": True,
+            "payment_client_id": "config-payment-id",
+            "payment_client_secret": "config-payment-secret",
+            "iframe_client_id": "config-iframe-id",
+            "iframe_client_secret": "config-iframe-secret",
+            "payment_iframe_secret": TEST_PAYMENT_IFRAME_SECRET,
+        }
+        integration_secrets = {
+            "payment_client_id": "secret-payment-id",
+            "payment_client_secret": "secret-payment-secret",
+            "iframe_client_id": "secret-iframe-id",
+            "iframe_client_secret": "secret-iframe-secret",
+            "payment_iframe_secret": TEST_PAYMENT_IFRAME_SECRET,
+        }
+
+        result = _build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "cid",
+            "csecret",
+            integration_secrets,
+        )
+
+        assert result.enable_hosted_checkout is True
+        assert result.payment_client_id == "secret-payment-id"
+        assert result.payment_client_secret == "secret-payment-secret"
+        assert result.iframe_client_id == "secret-iframe-id"
+        assert result.iframe_client_secret == "secret-iframe-secret"
+        assert result.payment_iframe_secret == TEST_PAYMENT_IFRAME_SECRET
+
+    def test_hosted_checkout_missing_credentials_raises(self):
+        config = {
+            "menu_data": {"version": "v2"},
+            "takeout_dining_option_guid": "takeout-guid-1",
+            "enable_hosted_checkout": True,
+        }
+
+        with pytest.raises(
+            ValueError, match="required when enable_hosted_checkout is True"
+        ):
+            _build_toast_v3_spec(
+                config,
+                "restaurant-guid-1",
+                "cid",
+                "csecret",
+                None,
+            )
+
+
+class TestBuildSpecsFromProjectIntegrationsToast:
+    @pytest.mark.asyncio
+    async def test_dispatches_toast_v3(self):
+        pi = _make_project_integration(
+            config={
+                "menu_data": {"version": "v2", "items": []},
+                "takeout_dining_option_guid": "takeout-guid-1",
+            },
+        )
+        integration_record = _make_integration_record(
+            client_id="real-client-id",
+            client_secret="real-client-secret",
+            secret_key=None,
+        )
+
+        session = AsyncMock()
+        pi_result = MagicMock()
+        pi_result.scalars.return_value = iter([pi])
+        int_result = MagicMock()
+        int_result.scalar_one_or_none.return_value = integration_record
+        session.execute = AsyncMock(side_effect=[pi_result, int_result])
+
+        result = await _build_specs_from_project_integrations(session, uuid.uuid4())
+
+        assert "toast" in result
+        spec = result["toast"]
+        assert isinstance(spec, ToastSpec)
+        assert spec.enabled is True
+        assert spec.restaurant_guid == "restaurant-guid-1"
+        assert spec.takeout_dining_option_guid == "takeout-guid-1"
+        assert spec.auth is not None
+        assert spec.auth["rotation"]["client_id"] == "real-client-id"
+        assert spec.auth["rotation"]["client_secret"] == "real-client-secret"
+
+
+@pytest.mark.asyncio
+async def test_construct_agent_spec_threads_toast_spec(monkeypatch):
+    mock_construct_agent_config = AsyncMock(return_value=_build_agent_config())
+    monkeypatch.setattr(
+        _implementation,
+        "construct_agent_config",
+        mock_construct_agent_config,
+    )
+    monkeypatch.setattr(
+        _implementation,
+        "_build_specs_from_project_integrations",
+        AsyncMock(
+            return_value={
+                "toast": ToastSpec(
+                    enabled=True,
+                    menu_data={"version": "v2", "items": []},
+                    restaurant_guid="restaurant-guid-1",
+                    takeout_dining_option_guid="takeout-guid-1",
+                    submit_orders=True,
+                )
+            }
+        ),
+    )
+
+    spec = await _implementation.construct_agent_spec(
+        session=AsyncMock(),
+        agent_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        channel=Channel.SMS,
+        raw_config={},
+    )
+
+    assert spec.toast.enabled is True
+    assert spec.toast.restaurant_guid == "restaurant-guid-1"
+    assert spec.toast.takeout_dining_option_guid == "takeout-guid-1"
+    assert spec.toast.submit_orders is True
+
+
+def test_registry_keeps_adora_mapping_unchanged():
+    adora_entry = PAL_AGENT_TOOL_REGISTRY["adora_v3"]
+    assert adora_entry.spec_field == "adora"
+    assert adora_entry.builder is _build_adora_v3_spec
