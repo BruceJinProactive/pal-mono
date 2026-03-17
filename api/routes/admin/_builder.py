@@ -4,7 +4,6 @@ import db
 from api.routes.admin._utils import get_agent_type
 from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent, AgentSummary
-from api.schemas.admin.checkpoint import Checkpoint, CheckpointResult
 from api.schemas.admin.conversation import Conversation, ConversationDetail, Message
 from api.schemas.admin.faq import FAQ
 from api.schemas.admin.feedback import Feedback
@@ -543,22 +542,6 @@ def build_stripe_customer(customer_info: CustomerInfo) -> StripeCustomer:
     )
 
 
-def build_checkpoint(checkpoint: db.CheckPoint) -> Checkpoint:
-    """Build Checkpoint response from database CheckPoint."""
-    return Checkpoint(
-        id=str(checkpoint.id),
-        project_id=str(checkpoint.project_id),
-        checklist_id=str(checkpoint.checklist_id) if checkpoint.checklist_id else None,
-        name=checkpoint.name,
-        description=checkpoint.description,
-        image_url=map_uri_to_s3_url(checkpoint.image_url),
-        is_active=checkpoint.is_active,
-        group=checkpoint.group,
-        rules=checkpoint.rules,
-        requires_image=checkpoint.requires_image,
-    )
-
-
 def build_faq(faq: db.FAQ) -> FAQ:
     """Build FAQ response from database FAQ."""
     return FAQ(
@@ -570,32 +553,5 @@ def build_faq(faq: db.FAQ) -> FAQ:
         created_at=faq.created_at.isoformat(),
         updated_at=(
             faq.updated_at.isoformat() if faq.updated_at else faq.created_at.isoformat()
-        ),
-    )
-
-
-def build_checkpoint_result(
-    checkpoint_result: db.CheckpointRun,
-) -> CheckpointResult:
-    """Build CheckpointRun response from database CheckpointRun.
-
-    Note: Does NOT generate presigned URLs for performance reasons.
-    Use the single run endpoint GET /checkpoints/runs/{run_id} to get presigned URLs.
-    """
-    return CheckpointResult(
-        id=str(checkpoint_result.id),
-        checkpoint_id=str(checkpoint_result.checkpoint_id),
-        submission_id=str(checkpoint_result.submission_id),
-        result=checkpoint_result.result or {},
-        status=checkpoint_result.status.value,
-        image_url=None,
-        review=checkpoint_result.review,
-        reviewer=checkpoint_result.reviewer,
-        is_reviewed=checkpoint_result.is_reviewed,
-        created_at=checkpoint_result.created_at.isoformat(),
-        updated_at=(
-            checkpoint_result.updated_at.isoformat()
-            if checkpoint_result.updated_at
-            else None
         ),
     )

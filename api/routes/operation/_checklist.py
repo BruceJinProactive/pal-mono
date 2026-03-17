@@ -4,16 +4,13 @@ Checklist Operation Routes
 This module handles authorization and delegates to the checklist_service for business logic.
 """
 
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.checklist import (
-    BatchChecklistHistoryResponse,
     Checklist,
-    ChecklistHistoryResponse,
     CreateChecklistRequest,
     ListChecklistsResponse,
     UpdateChecklistRequest,
@@ -191,50 +188,3 @@ async def delete_checklist(
     Authorization handled by require_checklist_permission in route decorator.
     """
     await checklist_service.delete_checklist(checklist_id, context, session)
-
-
-async def get_checklist_history(
-    checklist_id: UUID,
-    start_date: datetime,
-    end_date: datetime,
-    context: UserContext,
-    session: Session,
-) -> ChecklistHistoryResponse:
-    """
-    Get check history for a checklist within a date range.
-    Authorization happens here before delegating to checklist_service.
-    """
-    # Get checklist to determine project for authorization
-    checklist = await checklist_service.get_checklist(checklist_id, context, session)
-
-    # Authorize based on checklist's project
-    _authorize_checklist_access(session, checklist, context)
-
-    # Delegate to service for business logic
-    return await checklist_service.get_checklist_history(
-        checklist_id, start_date, end_date, context, session
-    )
-
-
-async def get_batch_checklist_history(
-    checklist_ids: list[UUID],
-    start_date: datetime,
-    end_date: datetime,
-    context: UserContext,
-    session: Session,
-) -> BatchChecklistHistoryResponse:
-    """
-    Get check history for multiple checklists within a date range.
-    Authorization happens here for each checklist before delegating to checklist_service.
-    """
-    # Authorize each checklist upfront
-    for checklist_id in checklist_ids:
-        checklist = await checklist_service.get_checklist(
-            checklist_id, context, session
-        )
-        _authorize_checklist_access(session, checklist, context)
-
-    # Delegate to service for business logic
-    return await checklist_service.get_batch_checklist_history(
-        checklist_ids, start_date, end_date, context, session
-    )

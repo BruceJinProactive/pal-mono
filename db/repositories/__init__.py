@@ -1,4 +1,3 @@
-from . import checkpoint_repository
 from .account_repository import AccountRepository, AccountRepositoryAsync
 from .account_user_repository import AccountUserRepository
 from .agent_capability_repository import AgentCapabilityRepositoryAsync
@@ -6,7 +5,6 @@ from .agent_repository import AgentRepository, AgentRepositoryAsync
 from .analytics_repository import AnalyticsRepository
 from .capability_action_repository import CapabilityActionRepositoryAsync
 from .change_log_repository import ChangeLogRepository
-from .checkpoint_repository import CheckpointRepository
 from .conversation_repository import ConversationRepository, ConversationRepositoryAsync
 from .faq_repository import FAQRepository
 from .feature_repository import FeatureRepositoryAsync
