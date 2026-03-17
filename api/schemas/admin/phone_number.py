@@ -12,6 +12,13 @@ from services.number_service._utils import (
 )
 
 
+class VoiceProvider(str, Enum):
+    """Supported voice routing providers."""
+
+    VAPI = "vapi"
+    LIVEKIT = "livekit"
+
+
 class ReserveProjectNumberRequest(BaseModel):
     """Request model for creating a new phone number or reserving an existing one."""
 
@@ -27,9 +34,9 @@ class ReserveProjectNumberRequest(BaseModel):
         None,
         description="Optional existing phone number to reserve instead of creating new one",
     )
-    voice_provider: str = Field(
-        "vapi",
-        description="Voice routing provider: 'vapi' (default) or 'livekit'",
+    voice_provider: VoiceProvider = Field(
+        VoiceProvider.LIVEKIT,
+        description="Voice routing provider (default: 'livekit')",
     )
 
 
@@ -71,9 +78,9 @@ class PhoneNumberInfo(BaseModel):
         None,
         description="Type of phone number: 'toll-free' or 'other'",
     )
-    voice_provider: Optional[str] = Field(
+    voice_provider: VoiceProvider | None = Field(
         None,
-        description="Voice routing provider: 'vapi' or 'livekit'",
+        description="Voice routing provider",
     )
 
 
@@ -115,9 +122,9 @@ class PurchaseNumberRequest(BaseModel):
         "Examples: '555' to find numbers containing '555', '6666' for numbers containing '6666'. "
         "Can be combined with area_code for more specific searches.",
     )
-    voice_provider: str = Field(
-        "vapi",
-        description="Voice routing provider: 'vapi' (default) or 'livekit'",
+    voice_provider: VoiceProvider = Field(
+        VoiceProvider.LIVEKIT,
+        description="Voice routing provider (default: 'livekit')",
     )
 
 
@@ -148,7 +155,7 @@ class ReleaseNumberResponse(BaseModel):
     phone_number: str = Field(..., description="The phone number that was released")
     message: str = Field(..., description="Success message")
     released_from_vapi: bool = Field(
-        ..., description="Whether the number was removed from Vapi"
+        ..., description="Whether the number was removed from VAPI (legacy field)"
     )
     released_from_twilio: bool = Field(
         ..., description="Whether the number was released from Twilio"
