@@ -62,8 +62,11 @@ def _build_agent_config() -> AgentConfig:
     [
         ({"model": "m"}, "m", False),
         ({"model": "L"}, "l", False),
+        ({"model": "XM"}, "xm", False),
+        ({"model": "xm"}, "xm", False),
         ({"model": "mega"}, "m", False),
         ({"model": {"size": "m", "priority": True}}, "m", True),
+        ({"model": {"size": "xm", "priority": True}}, "xm", True),
         ({"model": {"size": "xl"}}, "xl", False),
         ({"model": {"size": "huge", "priority": True}}, "m", True),
         ({"model": {"size": "m", "priority": "true"}}, "m", False),
