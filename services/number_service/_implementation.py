@@ -2,14 +2,10 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
-import requests
 from twilio.rest import Client
 from twilio.rest.api.v2010.account.incoming_phone_number import (
     IncomingPhoneNumberInstance,
 )
-from vapi import Vapi
-from vapi.types.create_twilio_phone_number_dto import CreateTwilioPhoneNumberDto
-from vapi.types.custom_llm_model import CustomLlmModel
 
 from db.repositories.project_repository import ProjectRepository
 from utils.log import logger
@@ -77,7 +73,6 @@ class NumberService:
             # Retrieve each secret via public API
             twilio_account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
             twilio_auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
-            vapi_token = os.environ.get("VAPI_API_KEY", "")
 
             # Validate that none are empty or None
             missing = [
@@ -85,15 +80,12 @@ class NumberService:
                 for name, val in [
                     ("TWILIO_ACCOUNT_SID", twilio_account_sid),
                     ("TWILIO_AUTH_TOKEN", twilio_auth_token),
-                    ("VAPI_API_KEY", vapi_token),
                 ]
                 if not val
             ]
             if missing:
                 raise KeyError(f"Missing required secrets: {', '.join(missing)}")
 
-            self.vapi_client = Vapi(token=vapi_token)
-            self.vapi_token = vapi_token  # Store for reuse in HTTP API calls
             self.twilio_client = Client(twilio_account_sid, twilio_auth_token)
             self._twilio_sip_trunk_sid = os.environ.get("TWILIO_SIP_TRUNK_SID")
         except Exception as e:
@@ -217,21 +209,6 @@ class NumberService:
             country_code=country_code,
             toll_free=True,
         )
-
-    def _create_assistant_and_get_id(self, config: AssistantConfig) -> str:
-        """Create a new Vapi assistant with custom model configuration.
-
-        Args:
-            config: Assistant configuration including model details and server URL
-
-        Returns:
-            Assistant instance configured with the specified model
-        """
-        assistant = self.vapi_client.assistants.create(
-            name=config["merchant_name"],
-            model=CustomLlmModel(url=config["model_url"], model=config["model_name"]),
-        )
-        return assistant.id
 
     def _setup_number_for_livekit(
         self,
@@ -381,22 +358,6 @@ class NumberService:
             except Exception as e:
                 self._delete_number_from_twilio(phone_number)
                 raise ValueError(f"Failed to provision number for LiveKit: {e}") from e
-        else:
-            # Import number to Vapi (default)
-            try:
-                self.vapi_client.phone_numbers.create(
-                    request=CreateTwilioPhoneNumberDto(
-                        number=phone_number,
-                        twilio_account_sid=self.twilio_client.username,  # type: ignore
-                        twilio_auth_token=self.twilio_client.password,
-                        name=self._get_friendly_name(merchant_name, for_twilio=True),
-                    ),
-                )
-            except Exception as e:
-                self._delete_number_from_twilio(
-                    phone_number
-                )  # release the purchased number if the vapi call fails
-                raise ValueError(f"Failed to import number to Vapi: {e}") from e
 
         return number_response
 
@@ -637,10 +598,6 @@ class NumberService:
                 raise ValueError(
                     f"Phone number {phone_number} is not provisioned for LiveKit"
                 )
-        elif not self._is_number_in_vapi(phone_number):
-            raise ValueError(
-                f"Phone number {phone_number} is not registered in Vapi and is not available for assignment"
-            )
 
         if self._is_number_associated_with_project(phone_number, session):
             raise ValueError(
@@ -651,9 +608,6 @@ class NumberService:
             # Update the friendly name to associate with the project
             new_friendly_name = self._get_friendly_name(merchant_name, for_twilio=True)
             number_details.update(friendly_name=new_friendly_name)
-
-            # Keep Vapi synchronized with Twilio friendly name
-            self._update_vapi_phone_number_name(phone_number, new_friendly_name)
 
             return True
 
@@ -957,7 +911,7 @@ class NumberService:
         """Set phone number friendly name to AVAILABLE for reuse.
 
         This method handles both rollback scenarios and explicit "return to pool" operations
-        by setting the number's friendly name to AVAILABLE in both Twilio and Vapi.
+        by setting the number's friendly name to AVAILABLE in Twilio.
 
         Args:
             phone_number: The phone number to mark as available
@@ -973,32 +927,11 @@ class NumberService:
                 )
                 number_details.update(friendly_name=available_name)
 
-                # Keep Vapi synchronized
-                self._update_vapi_phone_number_name(phone_number, available_name)
-
         except Exception as e:
             logger.warning(
                 f"Failed to rollback reservation for number {phone_number}: {e}",
                 extra={"phone_number": phone_number},
             )
-
-    def _release_number_from_vapi(self, number: str):
-        """Release a phone number from Vapi integration.
-
-        Args:
-            number: The phone number to release
-
-        Raises:
-            ValueError: If release from Vapi fails
-        """
-        try:
-            vapi_numbers = self.vapi_client.phone_numbers.list()
-            for n in vapi_numbers:
-                if n.number == number:
-                    self.vapi_client.phone_numbers.delete(id=n.id)
-                    break
-        except Exception as e:
-            raise ValueError(f"Failed to release number from Vapi: {e}") from e
 
     def _release_number_from_twilio(self, number: str):
         """Release a phone number from Twilio (marks as RELEASED, keeps number).
@@ -1054,11 +987,11 @@ class NumberService:
             raise ValueError(f"Failed to delete number from Twilio: {e}") from e
 
     def delete_number(self, number: str):
-        """Completely delete a phone number from Vapi/LiveKit and Twilio.
+        """Completely delete a phone number from LiveKit and Twilio.
 
         This method ensures complete deletion by:
-        1. Checking if number is on LiveKit (via API) or Vapi
-        2. Removing the number from the appropriate voice provider
+        1. Checking if number is on LiveKit (via API)
+        2. Removing the number from LiveKit if provisioned
         3. Deleting the number from Twilio (not just marking as released)
 
         Args:
@@ -1069,8 +1002,6 @@ class NumberService:
         """
         if self._is_number_on_livekit(number):
             self._release_number_from_livekit(number)
-        else:
-            self._release_number_from_vapi(number)
         self._delete_number_from_twilio(number)
 
     def activate_number(self, number: str):
@@ -1090,19 +1021,16 @@ class NumberService:
             raise ValueError("Number is already activated")
 
     def release_number(self, number: str):
-        """Release a phone number from both Vapi and Twilio.
+        """Release a phone number from Twilio.
 
-        This method ensures complete cleanup by:
-        1. Removing the number from Vapi integration
-        2. Releasing the number from Twilio
+        This method releases the number from Twilio by marking it as RELEASED.
 
         Args:
             number: The phone number to release
 
         Raises:
-            ValueError: If release from either service fails
+            ValueError: If release from Twilio fails
         """
-        self._release_number_from_vapi(number)
         self._release_number_from_twilio(number)
 
     def release_number_with_options(self, phone_number: str, release_type: Any):
@@ -1224,26 +1152,6 @@ class NumberService:
 
         return NumberType.OTHER
 
-    def _is_number_in_vapi(self, phone_number: str) -> bool:
-        """
-        Check if a phone number exists in Vapi.
-
-        Args:
-            phone_number: The phone number to check
-
-        Returns:
-            True if the number exists in Vapi, False otherwise
-        """
-        try:
-            vapi_numbers = self.vapi_client.phone_numbers.list()
-            for vapi_number in vapi_numbers:
-                if vapi_number.number == phone_number:
-                    return True
-            return False
-        except Exception:
-            # Fail silently - caller will handle validation failure appropriately
-            return False
-
     def _is_number_associated_with_project(self, phone_number: str, session) -> bool:
         """
         Check if a phone number is associated with any project.
@@ -1262,62 +1170,6 @@ class NumberService:
         except Exception:
             # Fail silently - caller will handle validation failure appropriately
             return False
-
-    def _update_vapi_phone_number_name(self, phone_number: str, new_name: str):
-        """
-        Update the name/friendly name of a phone number in Vapi using direct HTTP API.
-
-        Uses the Vapi REST API directly with requests.patch(), which works for all phone number
-        types (Twilio, BYO, Vonage, etc.) without depending on SDK-specific DTOs.
-
-        Args:
-            phone_number: The phone number to update
-            new_name: The new friendly name to set
-
-        Note:
-            This method fails gracefully and logs only critical errors to avoid log spam.
-        """
-        try:
-            if not self.vapi_token:
-                return  # Silently skip if no token available
-
-            # Find the phone number in Vapi to get its ID
-            vapi_numbers = self.vapi_client.phone_numbers.list()
-            vapi_number_id = None
-
-            for vapi_number in vapi_numbers:
-                if vapi_number.number == phone_number:
-                    vapi_number_id = vapi_number.id
-                    break
-
-            if not vapi_number_id:
-                return  # Silently skip if number not found
-
-            # Update the phone number name using direct HTTP API call
-            url = f"https://api.vapi.ai/phone-number/{vapi_number_id}"
-            headers = {
-                "Authorization": f"Bearer {self.vapi_token}",
-                "Content-Type": "application/json",
-            }
-            data = {"name": new_name}
-
-            response = requests.patch(
-                url,
-                json=data,
-                headers=headers,
-                timeout=10,  # seconds; prevent indefinite hangs on network issues
-            )
-
-            if response.status_code != 200:
-                logger.warning(
-                    f"Failed to update Vapi phone number name for {phone_number}: "
-                    f"HTTP {response.status_code} - {response.text}"
-                )
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to update Vapi phone number name for {phone_number}: {e}"
-            )
 
     def get_toll_free_verification_status(
         self, number_sid: str
