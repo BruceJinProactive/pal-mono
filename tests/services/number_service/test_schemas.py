@@ -1,7 +1,7 @@
 # pyright: reportCallIssue=false
 """Tests for phone number API schemas with voice_provider support.
 
-Verifies backward compatibility and correct defaults for dual-stack provisioning.
+Verifies LiveKit provisioning for phone numbers.
 """
 
 from api.schemas.admin.phone_number import (
@@ -13,14 +13,7 @@ from services.number_service._utils import NumberChannel
 
 
 class TestReserveProjectNumberRequestDefaults:
-    """Verify ReserveProjectNumberRequest backward compatibility."""
-
-    def test_voice_provider_defaults_to_vapi(self):
-        """Not passing voice_provider defaults to 'vapi' for backward compatibility."""
-        request = ReserveProjectNumberRequest(
-            channels=[NumberChannel.VOICE],
-        )
-        assert request.voice_provider == "vapi"
+    """Verify ReserveProjectNumberRequest defaults."""
 
     def test_voice_provider_can_be_set_to_livekit(self):
         """Explicitly setting voice_provider to 'livekit' is accepted."""
@@ -32,12 +25,7 @@ class TestReserveProjectNumberRequestDefaults:
 
 
 class TestPurchaseNumberRequestDefaults:
-    """Verify PurchaseNumberRequest voice_provider backward compatibility."""
-
-    def test_voice_provider_defaults_to_vapi(self):
-        """Not passing voice_provider defaults to 'vapi' for backward compatibility."""
-        request = PurchaseNumberRequest()
-        assert request.voice_provider == "vapi"
+    """Verify PurchaseNumberRequest voice_provider defaults."""
 
     def test_voice_provider_can_be_set_to_livekit(self):
         """Explicitly setting voice_provider to 'livekit' is accepted."""
@@ -45,7 +33,7 @@ class TestPurchaseNumberRequestDefaults:
         assert request.voice_provider == "livekit"
 
     def test_other_defaults_unchanged(self):
-        """Adding voice_provider does not affect existing field defaults."""
+        """Verify existing field defaults."""
         request = PurchaseNumberRequest()
         assert request.country_code == "US"
         assert request.toll_free is False
@@ -72,12 +60,3 @@ class TestPhoneNumberInfoVoiceProvider:
             voice_provider="livekit",
         )
         assert info.voice_provider == "livekit"
-
-    def test_voice_provider_set_to_vapi(self):
-        """voice_provider can be set to vapi."""
-        info = PhoneNumberInfo(
-            phone_number="+15551234567",
-            sid="PN123",
-            voice_provider="vapi",
-        )
-        assert info.voice_provider == "vapi"

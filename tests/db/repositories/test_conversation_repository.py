@@ -109,7 +109,7 @@ class TestConversationLookupAsync:
     async def test_get_conversation_by_call_id(
         self, async_repo, mock_async_session, sample_conversation
     ):
-        """Voice call lookup by VAPI call ID."""
+        """Voice call lookup by call ID."""
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_conversation
         mock_async_session.execute.return_value = mock_result

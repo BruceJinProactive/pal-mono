@@ -61,7 +61,7 @@ class TestParseCallerInfoLiveKit:
         assert participant_identity is None
 
     def test_missing_both_livekit_fields_returns_none(self) -> None:
-        """Standard Vapi caller_info (no LiveKit fields) returns None for both."""
+        """Caller info without LiveKit fields returns None for both room and participant."""
         model = json.dumps(
             {
                 "sender_identifier": "+15551111111",
