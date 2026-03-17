@@ -15,7 +15,6 @@ from services.number_service._utils import (
 class VoiceProvider(str, Enum):
     """Supported voice routing providers."""
 
-    VAPI = "vapi"
     LIVEKIT = "livekit"
 
 
