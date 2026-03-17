@@ -52,7 +52,6 @@ async def reserve_phone_number(
             phone_number=request.phone_number,  # None for new numbers
             country_code=request.country_code,
             toll_free=request.toll_free,
-            voice_provider=request.voice_provider,
         )
     except ValueError as err:
         # Determine appropriate HTTP status based on the error
@@ -302,7 +301,6 @@ async def purchase_number(
             purchase_number=True,  # Force purchase new number
             area_code=request.area_code,
             contains=request.contains,
-            voice_provider=request.voice_provider,
         )
 
         logger.info(
@@ -354,13 +352,15 @@ async def release_standalone_number(
 
         number_service.delete_number(request.phone_number)
 
-        success_message = f"Number {request.phone_number} deleted successfully from both Vapi and Twilio"
+        success_message = (
+            f"Number {request.phone_number} deleted successfully from Twilio"
+        )
         logger.info(success_message)
 
         return ReleaseNumberResponse(
             phone_number=request.phone_number,
             message=success_message,
-            released_from_vapi=True,  # Assume success if no exception
+            released_from_vapi=False,  # VAPI no longer supported
             released_from_twilio=True,
         )
 

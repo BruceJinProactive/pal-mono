@@ -279,7 +279,7 @@ class NumberService:
         purchase_number: bool = False,
         area_code: Optional[str] = None,
         contains: Optional[str] = None,
-        voice_provider: str = "vapi",
+        voice_provider: str = "livekit",
     ) -> NumberResponse:
         """Set up a phone number with optional Vapi assistant integration.
 
@@ -569,7 +569,7 @@ class NumberService:
         phone_number: str,
         merchant_name: str,
         session,
-        voice_provider: str = "vapi",
+        voice_provider: str = "livekit",
     ) -> bool:
         """Reserve an existing phone number for a project.
 
@@ -630,7 +630,7 @@ class NumberService:
         country_code: str = "US",
         toll_free: bool = True,
         auto_commit: bool = True,
-        voice_provider: str = "vapi",
+        voice_provider: str = "livekit",
     ) -> str:
         """Assign a phone number to a project with complete channel setup.
 
