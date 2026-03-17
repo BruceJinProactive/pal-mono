@@ -137,8 +137,9 @@ async def test_publish_event_no_analytics_uses_close_reason():
         mock_db.ProjectRepositoryAsync.return_value = mock_repo
         mock_publish.return_value = True
 
+        # LiveKit sends hyphenated strings; the fallback path must normalise them.
         kwargs = _common_kwargs(
-            analytics=None, close_reason="silence_timeout", conversation_history=[]
+            analytics=None, close_reason="silence-timed-out", conversation_history=[]
         )
         await _publish_livekit_evaluation_event(**kwargs)
 
@@ -247,3 +248,32 @@ async def test_publish_event_content_list_format():
         assert len(event.transcript) == 2
         assert event.transcript[0]["text"] == "Welcome!"
         assert event.transcript[1]["text"] == "Thanks"
+
+
+@pytest.mark.asyncio
+async def test_publish_event_no_analytics_unknown_close_reason_defaults_to_other():
+    """Unrecognised LiveKit close_reason values should fall back to 'other'."""
+    project = _make_project()
+    mock_session = AsyncMock()
+    mock_repo = AsyncMock()
+    mock_repo.get_project.return_value = project
+
+    with (
+        patch("db.session.AsyncSessionLocal") as mock_session_cls,
+        patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
+    ):
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_db.ProjectRepositoryAsync.return_value = mock_repo
+        mock_publish.return_value = True
+
+        kwargs = _common_kwargs(
+            analytics=None,
+            close_reason="some-unknown-livekit-reason",
+            conversation_history=[],
+        )
+        await _publish_livekit_evaluation_event(**kwargs)
+
+        event = mock_publish.call_args[0][0]
+        assert event.call_metadata["ended_reason"] == "other"

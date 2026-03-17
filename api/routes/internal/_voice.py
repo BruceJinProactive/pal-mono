@@ -43,6 +43,17 @@ _SPEECH_RATE_TO_FLOAT: dict[SpeechRate, float] = {
     SpeechRate.fastest: 1.5,
 }
 
+# Mapping from raw LiveKit close_reason strings to CallEndedReason enum values.
+# LiveKit sends hyphenated strings; the evaluator expects underscore enum values.
+_LIVEKIT_CLOSE_REASON_MAP: dict[str, str] = {
+    "customer-ended-call": "customer_ended",
+    "assistant-forwarded-call": "assistant_forwarded",
+    "twilio-reported-customer-misdialed": "misdialed",
+    "silence-timed-out": "silence_timeout",
+    "exceeded-max-duration": "max_duration_exceeded",
+    "other": "other",
+}
+
 # Time-based greetings per language
 _TIMEZONE_GREETINGS: dict[str, dict[str, str]] = {
     "english": {
@@ -916,7 +927,9 @@ async def _publish_livekit_evaluation_event(
             call_metadata={
                 "duration_seconds": duration_seconds,
                 "ended_reason": (
-                    analytics["ended_reason"].value if analytics else close_reason
+                    analytics["ended_reason"].value
+                    if analytics
+                    else _LIVEKIT_CLOSE_REASON_MAP.get(close_reason, "other")
                 ),
                 "call_purpose": (
                     [p.value for p in analytics["call_purpose"]] if analytics else []
