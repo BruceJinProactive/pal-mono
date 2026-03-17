@@ -218,11 +218,11 @@ class RawConfig:
 
         return tools
 
-    async def _populate_vapi_tool_args(
+    async def _populate_transfer_tool_args(
         self, tool_args: dict, session: Optional[AsyncSession] = None
     ) -> dict:
         """
-        Populate VAPI tool arguments with transfer settings.
+        Populate transfer tool arguments with transfer settings.
 
         Builds 'transfer_destinations' dict from contacts table.
         Falls back to project.transfer_phone_number if no contacts exist (deprecated).
@@ -415,7 +415,7 @@ class RawConfig:
             if tool_name in ["livekit_transfer_tool", "livekit_tool"]:
                 explicit_destinations = tool_args.get("transfer_destinations")
                 explicit_destination_number = tool_args.get("destination_number")
-                tool_args = await self._populate_vapi_tool_args(tool_args, session)
+                tool_args = await self._populate_transfer_tool_args(tool_args, session)
                 if explicit_destinations:
                     # Merge: explicit destinations (e.g. SIP URIs from raw_config)
                     # override contact-derived phone numbers for the same role.
@@ -427,7 +427,7 @@ class RawConfig:
                     explicit_destinations and "general" in explicit_destinations
                 ):
                     # Preserve raw_config destination_number shorthand.
-                    # _populate_vapi_tool_args() rebuilds transfer_destinations from
+                    # _populate_transfer_tool_args() rebuilds transfer_destinations from
                     # contacts and would otherwise override destination_number with a
                     # potentially formatted number.
                     # Skip when explicit transfer_destinations already defines "general".

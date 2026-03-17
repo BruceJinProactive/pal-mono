@@ -70,7 +70,7 @@ def _make_raw_config(
 
 
 async def _mock_populate(tool_args, session=None):
-    """Stub _populate_vapi_tool_args to avoid DB calls."""
+    """Stub _populate_transfer_tool_args to avoid DB calls."""
     updated = tool_args.copy()
     updated.pop("transfer_destinations", None)
     updated["transfer_destinations"] = {}
@@ -81,7 +81,7 @@ async def _mock_populate(tool_args, session=None):
 def _get_tools(rc):
     """Patch helpers and call _get_agent_tools."""
     return (
-        patch.object(rc, "_populate_vapi_tool_args", side_effect=_mock_populate),
+        patch.object(rc, "_populate_transfer_tool_args", side_effect=_mock_populate),
         patch.object(rc, "_get_project_tools_override", return_value={}),
         patch.object(rc, "_get_project_integration_tools", return_value=[]),
     )
@@ -200,7 +200,7 @@ class TestLiveKitContextInjection:
             return updated
 
         with patch.object(
-            rc, "_populate_vapi_tool_args", side_effect=mock_populate_with_contacts
+            rc, "_populate_transfer_tool_args", side_effect=mock_populate_with_contacts
         ):
             with patch.object(rc, "_get_project_tools_override", return_value={}):
                 with patch.object(
@@ -238,7 +238,7 @@ class TestLiveKitContextInjection:
         )
 
         async def mock_populate_with_formatted_contact(tool_args, session=None):
-            _ = session  # noqa: ARG001 – signature must match _populate_vapi_tool_args
+            _ = session  # noqa: ARG001 - signature must match _populate_transfer_tool_args
             updated = tool_args.copy()
             updated.pop("transfer_destinations", None)
             # Simulate contacts table storing a human-formatted phone number.
@@ -247,7 +247,7 @@ class TestLiveKitContextInjection:
 
         with patch.object(
             rc,
-            "_populate_vapi_tool_args",
+            "_populate_transfer_tool_args",
             side_effect=mock_populate_with_formatted_contact,
         ):
             with patch.object(rc, "_get_project_tools_override", return_value={}):
@@ -276,7 +276,7 @@ class TestLiveKitContextInjection:
         )
 
         async def mock_populate(tool_args, session=None):
-            _ = session  # noqa: ARG001 – signature must match _populate_vapi_tool_args
+            _ = session  # noqa: ARG001 - signature must match _populate_transfer_tool_args
             updated = tool_args.copy()
             updated.pop("transfer_destinations", None)
             updated["transfer_destinations"] = {"general": "(646) 876-1234"}
@@ -284,7 +284,7 @@ class TestLiveKitContextInjection:
 
         with patch.object(
             rc,
-            "_populate_vapi_tool_args",
+            "_populate_transfer_tool_args",
             side_effect=mock_populate,
         ):
             with patch.object(rc, "_get_project_tools_override", return_value={}):

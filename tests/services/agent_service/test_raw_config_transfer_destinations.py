@@ -82,7 +82,7 @@ class TestLiveKitTransferDestinationMerge:
             tool_args={"transfer_destinations": explicit_destinations},
         )
 
-        # _populate_vapi_tool_args rebuilds from contacts — simulate it returning
+        # _populate_transfer_tool_args rebuilds from contacts — simulate it returning
         # contact-derived phone numbers for "general" and "complaint"
         contact_destinations = {
             "general": "+15559876543",
@@ -96,7 +96,9 @@ class TestLiveKitTransferDestinationMerge:
             updated["transfer_message"] = "Transferring you now."
             return updated
 
-        with patch.object(rc, "_populate_vapi_tool_args", side_effect=mock_populate):
+        with patch.object(
+            rc, "_populate_transfer_tool_args", side_effect=mock_populate
+        ):
             with patch.object(rc, "_get_project_tools_override", return_value={}):
                 with patch.object(
                     rc, "_get_project_integration_tools", return_value=[]
@@ -129,7 +131,9 @@ class TestLiveKitTransferDestinationMerge:
             updated["transfer_destinations"] = contact_destinations.copy()
             return updated
 
-        with patch.object(rc, "_populate_vapi_tool_args", side_effect=mock_populate):
+        with patch.object(
+            rc, "_populate_transfer_tool_args", side_effect=mock_populate
+        ):
             with patch.object(rc, "_get_project_tools_override", return_value={}):
                 with patch.object(
                     rc, "_get_project_integration_tools", return_value=[]
@@ -154,7 +158,9 @@ class TestLiveKitTransferDestinationMerge:
             updated["transfer_destinations"] = {"general": "+15559876543"}
             return updated
 
-        with patch.object(rc, "_populate_vapi_tool_args", side_effect=mock_populate):
+        with patch.object(
+            rc, "_populate_transfer_tool_args", side_effect=mock_populate
+        ):
             with patch.object(rc, "_get_project_tools_override", return_value={}):
                 with patch.object(
                     rc, "_get_project_integration_tools", return_value=[]
