@@ -19,7 +19,7 @@ Last updated: 2025-03-01
 
 ## Known Issues
 
-- (none currently documented)
+- **DB connection pool leaks** (2026-03-17) — Fixed 5 async session leak patterns across monitoring service, onboarding, chat, and voice endpoints. Remaining risk: `services/message_service/_implementation.py` holds session across entire LLM streaming loop (not yet fixed). → `docs/records/2026-03-17-db-connection-leak-fixes.md`
 
 ## Don't Touch (fragile / in-progress)
 

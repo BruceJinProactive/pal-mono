@@ -962,73 +962,74 @@ async def self_onboard_voice_config(
     Returns:
         UUID of the created voice config, or None if creation fails
     """
-    # Create async session for voice service
-    async_session = AsyncSessionLocal()
+    # Create async session for voice service using context manager to guarantee
+    # connection return to pool (fixes connection leak from bare AsyncSessionLocal())
     language = request.agent_language
     voice_service = VoiceService()
 
-    try:
-        if language != "Multilingual":
-            # Get localized messages for the selected language
-            lang_config = _get_language_config(language, request.agent_greeting_message)
+    async with AsyncSessionLocal() as async_session:
+        try:
+            if language != "Multilingual":
+                # Get localized messages for the selected language
+                lang_config = _get_language_config(
+                    language, request.agent_greeting_message
+                )
 
-            # Create voice config request with localized data
-            voice_config_request = CreateVoiceConfigRequest(
-                project_id=project_id,
-                language=lang_config["language"],
-                voice_id=request.agent_voice_id,
-                first_message=lang_config["first_message"],
-                transfer_message=lang_config["transfer_message"],
-            )
-
-            # Create voice config using voice service
-            voice_config = await voice_service.create_voice_config(
-                create_request=voice_config_request,
-                async_session=async_session,
-            )
-
-            logger.debug(
-                f"[SelfOnboarding] Created voice config {voice_config.id} for project {project_id}"
-            )
-            return
-        else:
-            # Create multilingual squad with all language configs
-            language_configs = [
-                _get_language_config("English"),
-                _get_language_config("Spanish"),
-                _get_language_config("Chinese"),
-                _get_language_config("Triage", request.agent_greeting_message),
-            ]
-
-            for language_config in language_configs:
+                # Create voice config request with localized data
                 voice_config_request = CreateVoiceConfigRequest(
                     project_id=project_id,
-                    language=language_config["language"],
+                    language=lang_config["language"],
                     voice_id=request.agent_voice_id,
-                    first_message=language_config["first_message"],
-                    transfer_message=language_config["transfer_message"],
+                    first_message=lang_config["first_message"],
+                    transfer_message=lang_config["transfer_message"],
                 )
+
+                # Create voice config using voice service
                 voice_config = await voice_service.create_voice_config(
                     create_request=voice_config_request,
                     async_session=async_session,
                 )
+
                 logger.debug(
                     f"[SelfOnboarding] Created voice config {voice_config.id} for project {project_id}"
                 )
-            return
+                return
+            else:
+                # Create multilingual squad with all language configs
+                language_configs = [
+                    _get_language_config("English"),
+                    _get_language_config("Spanish"),
+                    _get_language_config("Chinese"),
+                    _get_language_config("Triage", request.agent_greeting_message),
+                ]
 
-    except Exception as e:
-        await async_session.rollback()
-        logger.error(
-            f"[SelfOnboarding] Failed to create voice config for project {project_id}: {e}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to create voice config: {e}",
-            headers={"Content-Type": "application/json"},
-        )
-    finally:
-        await async_session.close()
+                for language_config in language_configs:
+                    voice_config_request = CreateVoiceConfigRequest(
+                        project_id=project_id,
+                        language=language_config["language"],
+                        voice_id=request.agent_voice_id,
+                        first_message=language_config["first_message"],
+                        transfer_message=language_config["transfer_message"],
+                    )
+                    voice_config = await voice_service.create_voice_config(
+                        create_request=voice_config_request,
+                        async_session=async_session,
+                    )
+                    logger.debug(
+                        f"[SelfOnboarding] Created voice config {voice_config.id} for project {project_id}"
+                    )
+                return
+
+        except Exception as e:
+            await async_session.rollback()
+            logger.error(
+                f"[SelfOnboarding] Failed to create voice config for project {project_id}: {e}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to create voice config: {e}",
+                headers={"Content-Type": "application/json"},
+            )
 
 
 def self_onboard_user(request: SelfOnboardingRequest, session: Session) -> CognitoUser:

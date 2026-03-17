@@ -30,6 +30,9 @@ from services import project_service, user_service
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
+# Track background tasks so they aren't garbage-collected before completion.
+_background_tasks: set[asyncio.Task[object]] = set()
+
 # Numeric speed mapping matching CARTESIA_SONIC3_SPEED_MAPPING from
 # services/voice_service/providers/vapi/_implementation.py
 _SPEECH_RATE_TO_FLOAT: dict[SpeechRate, float] = {
@@ -666,7 +669,7 @@ async def end_voice_call(
     # Publish conversation evaluation event (fire-and-forget)
     # Pass primitive values — the background task creates its own DB session
     # Use stored values to avoid accessing detached conversation object
-    _task = asyncio.create_task(
+    task = asyncio.create_task(
         _publish_livekit_evaluation_event(
             conversation_id=conversation_id,
             user_id=user_id_for_event,
@@ -681,6 +684,19 @@ async def end_voice_call(
             customer_converted=customer_converted_for_event,
         )
     )
+    _background_tasks.add(task)
+
+    def _on_done(t: asyncio.Task[object]) -> None:
+        _background_tasks.discard(t)
+        if not t.cancelled() and t.exception() is not None:
+            logger.error(
+                "[Voice] Background evaluation task failed for conversation %s: %s",
+                conversation_id,
+                t.exception(),
+                exc_info=t.exception(),
+            )
+
+    task.add_done_callback(_on_done)
 
     return {
         "status": "success",

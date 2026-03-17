@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from agno.run.response import RunResponse
 from ddtrace.trace import tracer
@@ -27,6 +27,9 @@ from utils.log import logger
 from utils.request_context import RequestContext
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])
+
+# Track background tasks so they aren't garbage-collected before completion.
+_background_tasks: set[asyncio.Task[Any]] = set()
 DEFAULT_ACCOUNT_ICON = "images/accounts/palona_icon.png"
 DEFAULT_USER_ICON = "images/agents/default_user_icon.png"
 
@@ -175,7 +178,19 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
                             except asyncio.CancelledError:
                                 pass
 
-            asyncio.create_task(generate_and_send())
+            task = asyncio.create_task(generate_and_send())
+            _background_tasks.add(task)
+
+            def _on_done(t: asyncio.Task[Any]) -> None:
+                _background_tasks.discard(t)
+                if not t.cancelled() and t.exception() is not None:
+                    logger.error(
+                        "[Chat] Background generate_and_send task failed: %s",
+                        t.exception(),
+                        exc_info=t.exception(),
+                    )
+
+            task.add_done_callback(_on_done)
 
             # Return a successful response immediately
             return ChatResponse(status="success")

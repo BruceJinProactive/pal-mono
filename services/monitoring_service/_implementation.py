@@ -33,6 +33,26 @@ from services.asset_service._implementation import WriteAssetRequest
 from services.asset_service._utils import map_uri_to_s3_url
 from utils.log import logger
 
+# Track background tasks so they aren't garbage-collected before completion.
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+def _schedule_background_task(coro: object, name: str) -> None:
+    """Schedule an async coroutine as a background task with exception logging."""
+    task = asyncio.create_task(coro, name=name)  # type: ignore[arg-type]
+    _background_tasks.add(task)
+
+    def _done(t: asyncio.Task[None]) -> None:
+        _background_tasks.discard(t)
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logger.exception("[Monitoring] Background task %s failed: %s", name, exc)
+
+    task.add_done_callback(_done)
+
+
 # AWS Configuration
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_ASSET_BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME")
@@ -1504,11 +1524,22 @@ async def _rerun_monitoring_analysis_background(
         media_url: S3 key/path of the media to analyze (image or video)
         is_video: True if this is a video analysis, False for image
     """
-    from db import get_db_async
+    from db.session import AsyncSessionLocal
+    from utils.dd import statsd
+
+    media_type = "video" if is_video else "image"
+    log_extra = {
+        "run_id": str(run_id),
+        "config_id": str(monitoring_config_id),
+        "media_type": media_type,
+        "media_url": media_url,
+    }
+    start_time = datetime.now(timezone.utc)
 
     try:
         # Create a new database session for this background task
-        async for session in get_db_async():
+        # Use `async with` context manager to guarantee connection return to pool
+        async with AsyncSessionLocal() as session:
             run_repo = MonitoringRunRepositoryAsync(session)
             try:
 
@@ -1520,12 +1551,9 @@ async def _rerun_monitoring_analysis_background(
                     )
 
                     logger.info(
-                        f"[Rerun Background] Running video analysis for run {run_id}",
-                        extra={
-                            "run_id": str(run_id),
-                            "config_id": str(monitoring_config_id),
-                            "video_url": media_url,
-                        },
+                        "[Rerun Background] Running video analysis for run %s",
+                        run_id,
+                        extra=log_extra,
                     )
 
                     llm_result = await generate_monitoring_video_llm_prompt(
@@ -1540,12 +1568,9 @@ async def _rerun_monitoring_analysis_background(
                     )
 
                     logger.info(
-                        f"[Rerun Background] Running image analysis for run {run_id}",
-                        extra={
-                            "run_id": str(run_id),
-                            "config_id": str(monitoring_config_id),
-                            "image_url": media_url,
-                        },
+                        "[Rerun Background] Running image analysis for run %s",
+                        run_id,
+                        extra=log_extra,
                     )
 
                     llm_result = await generate_monitoring_llm_prompt(
@@ -1574,23 +1599,62 @@ async def _rerun_monitoring_analysis_background(
 
                 await session.commit()
 
+                duration_ms = (
+                    datetime.now(timezone.utc) - start_time
+                ).total_seconds() * 1000
+                try:
+                    statsd.histogram(
+                        "monitoring.rerun.duration_ms",
+                        duration_ms,
+                        tags=[
+                            f"media_type:{media_type}",
+                            f"result:{result_status}",
+                        ],
+                    )
+                    statsd.increment(
+                        "monitoring.rerun.completed",
+                        tags=[
+                            f"media_type:{media_type}",
+                            f"result:{result_status}",
+                        ],
+                    )
+                except Exception:
+                    logger.warning(
+                        "[Rerun Background] Metrics emission failed for run %s",
+                        run_id,
+                        exc_info=True,
+                        extra={**log_extra, "duration_ms": duration_ms},
+                    )
+
                 logger.info(
-                    f"[Rerun Background] Analysis completed for run {run_id}",
+                    "[Rerun Background] Analysis completed for run %s in %.0fms",
+                    run_id,
+                    duration_ms,
                     extra={
-                        "run_id": str(run_id),
-                        "config_id": str(monitoring_config_id),
+                        **log_extra,
                         "result": result_status,
-                        "error_message": error_message,
+                        "duration_ms": duration_ms,
                     },
                 )
 
             except Exception as e:
+                duration_ms = (
+                    datetime.now(timezone.utc) - start_time
+                ).total_seconds() * 1000
+                statsd.increment(
+                    "monitoring.rerun.failed",
+                    tags=[f"media_type:{media_type}", f"error_type:{type(e).__name__}"],
+                )
+
                 logger.error(
-                    f"[Rerun Background] Error during analysis for run {run_id}: {e}",
+                    "[Rerun Background] Error during analysis for run %s: %s",
+                    run_id,
+                    e,
                     exc_info=True,
                     extra={
-                        "run_id": str(run_id),
-                        "config_id": str(monitoring_config_id),
+                        **log_extra,
+                        "duration_ms": duration_ms,
+                        "error_type": type(e).__name__,
                     },
                 )
                 await session.rollback()
@@ -1609,18 +1673,22 @@ async def _rerun_monitoring_analysis_background(
                     await session.commit()
                 except Exception as update_error:
                     logger.error(
-                        f"[Rerun Background] Failed to update run with error status: {update_error}",
-                        extra={"run_id": str(run_id)},
+                        "[Rerun Background] Failed to update run with error status: %s",
+                        update_error,
+                        extra=log_extra,
                     )
 
-            finally:
-                # Session is automatically closed by the async generator
-                break
-
     except Exception as e:
+        statsd.increment(
+            "monitoring.rerun.fatal_error",
+            tags=[f"media_type:{media_type}", f"error_type:{type(e).__name__}"],
+        )
         logger.error(
-            f"[Rerun Background] Fatal error in background task for run {run_id}: {e}",
+            "[Rerun Background] Fatal error in background task for run %s: %s",
+            run_id,
+            e,
             exc_info=True,
+            extra={**log_extra, "error_type": type(e).__name__},
         )
 
 
@@ -1779,13 +1847,14 @@ async def rerun_monitoring_run(
     await session.commit()
 
     # Trigger background analysis (fire and forget)
-    asyncio.create_task(
+    _schedule_background_task(
         _rerun_monitoring_analysis_background(
             run_id=run_id,
             monitoring_config_id=monitoring_config_id,
             media_url=media_url,
             is_video=is_video,
-        )
+        ),
+        name=f"rerun-monitoring-{run_id}",
     )
 
     logger.info(
