@@ -410,11 +410,15 @@ async def get_chat_response_stream(
                 user = await user_service.create_user_async(session, project, message)
             await session.refresh(user, attribute_names=["id"])
 
+            # Capture user_id early while object is attached to session
+            # (prevents MissingGreenlet errors after commits expire the object)
+            user_id = user.id
+
             # For VOICE channel with call_id, use voice-specific message creation
             # to reuse the conversation created during handle_assistant_request
             if message.channel == Channel.VOICE and call_id:
                 request_message = await message_repo.add_message_to_voice_conversation(
-                    user_id=user.id,
+                    user_id=user_id,
                     message_body=message.to_dict(),
                     call_id=call_id,
                 )
@@ -425,7 +429,7 @@ async def get_chat_response_stream(
                         "[get_chat_response_stream] Voice message missing call_id, "
                         "falling back to text message conversation logic",
                         extra={
-                            "user_id": str(user.id),
+                            "user_id": str(user_id),
                             "project_id": str(project_id),
                             "sender_identifier": message.sender_identifier,
                             "recipient_identifier": message.recipient_identifier,
@@ -433,7 +437,7 @@ async def get_chat_response_stream(
                     )
                 # Existing text message logic with conversation reuse
                 request_message = await message_repo.create_message(
-                    user_id=user.id,
+                    user_id=user_id,
                     project_id=project_id,
                     message_body=message.to_dict(),
                     channel=message.channel.value if message.channel else "unknown",
@@ -470,7 +474,7 @@ async def get_chat_response_stream(
                 spec = await agent_service.construct_agent_spec(
                     session=session,
                     agent_id=agent_id,
-                    user_id=user.id,
+                    user_id=user_id,
                     project_id=project_id,
                     conversation_id=request_message.conversation_id,
                     channel=message.channel,
@@ -514,7 +518,7 @@ async def get_chat_response_stream(
                         )
 
                 runtime_context = RuntimeContext(
-                    user_id=str(user.id),
+                    user_id=str(user_id),
                     session_id=str(request_message.conversation_id),
                     customer_phone=customer_phone,
                     project_id=str(project_id),
@@ -766,7 +770,7 @@ async def get_chat_response_stream(
                 config = await agent_service.construct_agent_config(
                     session=session,
                     agent_id=agent_id,
-                    user_id=user.id,
+                    user_id=user_id,
                     project_id=project_id,
                     conversation_id=request_message.conversation_id,
                     channel=message.channel,
@@ -908,7 +912,7 @@ async def get_chat_response_stream(
                     account_name=account_name,
                     project_name=project_name,
                     agent_id=str(agent_id),
-                    user_id=str(user.id),
+                    user_id=str(user_id),
                     session_id=str(request_message.conversation_id),
                     testing=testing,
                 )
