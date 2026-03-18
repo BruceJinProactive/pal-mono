@@ -20,7 +20,7 @@ Last updated: 2026-03-17
 
 ## Known Issues
 
-- **DB connection pool leaks** (2026-03-17) — Fixed 5 async session leak patterns across monitoring service, onboarding, chat, and voice endpoints. Remaining risk: `services/message_service/_implementation.py` holds session across entire LLM streaming loop (not yet fixed). → `docs/records/2026-03-17-db-connection-leak-fixes.md`
+- **DB connection pool leaks** (2026-03-17) — All known leak sources fixed. PR #3716 fixed 5 patterns (fire-and-forget tasks, bare sessions, generator break). PR #3725 fixed streaming session lifecycle (`chat_completions.py`, `chat.py` now own sessions via `AsyncSessionLocal()` inside generators). → `docs/records/2026-03-17-db-connection-leak-fixes.md`, `docs/records/2026-03-17-chat-stream-session-lifecycle.md`, ADR-019
 
 ## Don't Touch (fragile / in-progress)
 

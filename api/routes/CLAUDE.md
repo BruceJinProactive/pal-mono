@@ -530,33 +530,55 @@ def create_resource(
 ### Background Task Pattern
 ```python
 import asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
+from db.session import AsyncSessionLocal
+
+# Module-level set prevents GC of in-flight tasks
+_background_tasks: set[asyncio.Task] = set()
 
 @router.post("/process")
 async def trigger_processing(request: ProcessRequest):
     async def background_task():
         async with AsyncSessionLocal() as session:
-            # Long-running work
-            await process_data(request)
-            await session.commit()
+            try:
+                await process_data(session, request)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
-    # Fire and forget
-    asyncio.create_task(background_task())
+    task = asyncio.create_task(background_task())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
-    # Return immediately
     return {"status": "processing", "message": "Task started"}
 ```
 
+**NEVER** use bare `asyncio.create_task()` without storing the reference in a module-level set. The task can be garbage-collected before completion, abandoning any checked-out DB connections.
+
 ### Streaming Response Pattern
+
+**WARNING:** `Depends(get_db_async)` MUST NOT be used for sessions that are needed inside a `StreamingResponse` generator. When `BaseHTTPMiddleware` is present, FastAPI dependency cleanup runs when the handler returns the `StreamingResponse` object — **before the generator starts streaming** — so the session is closed before the generator can use it. This leaks exactly 1 connection per streaming request.
+
+Instead, the generator must own its session via `AsyncSessionLocal()`:
+
 ```python
 from fastapi.responses import StreamingResponse
 from typing import AsyncIterator
+from db.session import AsyncSessionLocal
 
 @router.post("/stream")
 async def stream_response(request: StreamRequest):
+    # Auth/validation params can still use Depends() — they complete before return
+
     async def generate() -> AsyncIterator[str]:
-        async for chunk in data_source:
-            yield f"data: {json.dumps(chunk)}\n\n"
+        async with AsyncSessionLocal() as session:
+            try:
+                async for chunk in get_data_stream(session, request):
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
@@ -569,6 +591,8 @@ async def stream_response(request: StreamRequest):
         },
     )
 ```
+
+See ADR-019 (`docs/decisions/019-streaming-session-ownership.md`) for full context.
 
 ## SPECIAL ENDPOINT PATTERNS
 

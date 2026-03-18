@@ -85,6 +85,16 @@ task.add_done_callback(_background_tasks.discard)
 | `tests/api/routes/chat/test_task_gc.py` | 2 tests: _background_tasks set exists, no bare create_task |
 | `tests/api/routes/internal/test_voice_task_gc.py` | 2 tests: _background_tasks set exists, no local _task variable |
 
+## Related: Streaming Session Leak (Fixed in PR #3725)
+
+This document covers the 5 patterns fixed in PR #3716. A sixth, dominant leak source was identified and fixed separately in PR #3725: the `BaseHTTPMiddleware` + `StreamingResponse` + `Depends(get_db_async)` interaction in `chat_completions.py` and `chat.py`.
+
+Every streaming request leaked exactly 1 connection because FastAPI dependency cleanup fired when the handler returned the `StreamingResponse` object (before streaming began), closing the session while the generator still needed it.
+
+The fix moves session ownership into the generator via `AsyncSessionLocal()`. See:
+- `docs/records/2026-03-17-chat-stream-session-lifecycle.md`
+- `docs/decisions/019-streaming-session-ownership.md`
+
 ## Validation
 
 All 11 tests pass locally. Pool configuration unchanged (size=30, max_overflow=50, pool_timeout=30).

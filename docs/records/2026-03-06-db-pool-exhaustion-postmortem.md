@@ -101,6 +101,16 @@ The leaky code paths were either **brand new** or **low traffic** before March 2
 
 The critical shift was that **every voice call** — the highest-traffic path — now ran through the fire-and-forget pattern. The pool drain rate exceeded the GC recovery rate, and it compounded throughout the day as traffic increased.
 
+### Update (2026-03-18): Streaming Session Leak Identified
+
+Investigation revealed a **sixth, dominant leak source**: the `BaseHTTPMiddleware` + `StreamingResponse` + `Depends(get_db_async)` interaction. Every streaming request through `POST /chat/completions` (used by LiveKit voice) and `POST /chat` leaked exactly 1 connection because:
+
+- `BaseHTTPMiddleware` (added Feb 20, `2a18fba0`) causes dependency cleanup to fire when the handler returns the `StreamingResponse` object, before streaming begins.
+- The streaming generator's `session` (from `Depends`) is closed before it's used.
+- **Zero streaming traffic existed before March 3** — LiveKit voice calls were the first to use the `POST /chat/completions` streaming path. Datadog confirms "Completed streaming response after" logs first appeared March 3 (120 entries), with zero before that date.
+
+This means `BaseHTTPMiddleware` was a latent condition since Feb 20, and LiveKit streaming traffic starting March 3 was the trigger. See ADR-019 (`docs/decisions/019-streaming-session-ownership.md`) for the fix.
+
 ---
 
 ## Resolution
