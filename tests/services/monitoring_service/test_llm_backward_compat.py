@@ -17,6 +17,9 @@ def _build_llm_mocks(mocker, rules: dict):
     """Set up common mocks for generate_monitoring_llm_prompt tests."""
     mock_config = MagicMock()
     mock_config.rules = rules
+    model_rules = rules.get("model", {})
+    provider_name = model_rules.get("provider", "azure")
+    model_name = model_rules.get("model", "gpt-4o")
 
     mock_config_repo = mocker.patch(
         "services.monitoring_service._llm.MonitoringConfigRepositoryAsync"
@@ -32,8 +35,8 @@ def _build_llm_mocks(mocker, rules: dict):
 
     # Mock provider
     mock_provider = MagicMock()
-    mock_provider.config.provider.value = "azure"
-    mock_provider.config.model = "gpt-4o"
+    mock_provider.config.provider.value = provider_name
+    mock_provider.config.model = model_name
     mock_provider.analyze_image.return_value = {
         "result": {"result": "pass", "details": "All clear"},
         "token_usage": {
@@ -241,6 +244,43 @@ class TestLLMCriteriaInPrompt:
         assert result["analysis_result"]["result"] == "pass"
 
 
+class TestLLMStructuredOutputDefaults:
+    """Test that monitoring prompt generation always provides a JSON schema."""
+
+    @pytest.mark.asyncio
+    async def test_default_schema_sent_when_structured_output_missing(
+        self, mocker
+    ) -> None:
+        """Legacy/default monitoring configs should still use structured outputs."""
+        from services.monitoring_service._llm import generate_monitoring_llm_prompt
+
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_provider = _build_llm_mocks(
+            mocker,
+            rules={
+                "context": "Check the prep station",
+                "reference_images": [],
+                "model": {"provider": "google", "model": "gemini-3-flash-preview"},
+            },
+        )
+
+        await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
+
+        call_kwargs = mock_provider.analyze_image.call_args
+        response_format = (
+            call_kwargs.kwargs.get("response_format")
+            or call_kwargs[1]["response_format"]
+        )
+        schema = response_format["json_schema"]["schema"]
+
+        assert response_format["type"] == "json_schema"
+        assert schema["required"] == ["result", "details"]
+        assert schema["properties"]["result"]["enum"] == ["pass", "fail", "error"]
+        assert schema["properties"]["confidence"]["type"] == "integer"
+
+
 class TestLLMReferenceImageFlags:
     """Test that reference image flags are reflected in LLM descriptions."""
 
@@ -355,6 +395,9 @@ def _build_video_llm_mocks(mocker, rules: dict):
     """Set up common mocks for generate_monitoring_video_llm_prompt tests."""
     mock_config = MagicMock()
     mock_config.rules = rules
+    model_rules = rules.get("model", {})
+    provider_name = model_rules.get("provider", "azure")
+    model_name = model_rules.get("model", "gpt-4o")
 
     mock_config_repo = mocker.patch(
         "services.monitoring_service._llm.MonitoringConfigRepositoryAsync"
@@ -382,8 +425,8 @@ def _build_video_llm_mocks(mocker, rules: dict):
 
     # Mock provider
     mock_provider = MagicMock()
-    mock_provider.config.provider.value = "azure"
-    mock_provider.config.model = "gpt-4o"
+    mock_provider.config.provider.value = provider_name
+    mock_provider.config.model = model_name
     mock_provider.analyze_video_frames.return_value = {
         "result": {"result": "pass", "details": "All clear"},
         "token_usage": {

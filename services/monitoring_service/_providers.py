@@ -70,6 +70,65 @@ def _strip_additional_properties(schema: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+def _extract_gemini_json_candidates(raw_text: str) -> list[str]:
+    """Build likely JSON payload candidates from Gemini text output."""
+    stripped = raw_text.strip()
+    if not stripped:
+        return []
+
+    candidates: list[str] = [stripped]
+
+    if stripped.startswith("```") and stripped.endswith("```"):
+        fenced_lines = stripped.splitlines()
+        if len(fenced_lines) >= 3:
+            candidates.append("\n".join(fenced_lines[1:-1]).strip())
+
+    for open_char, close_char in (("{", "}"), ("[", "]")):
+        start = stripped.find(open_char)
+        end = stripped.rfind(close_char)
+        if start != -1 and end > start:
+            candidates.append(stripped[start : end + 1].strip())
+
+    return list(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
+def _parse_gemini_json_response(response: Any) -> dict[str, Any]:
+    """Parse Gemini structured output, preferring SDK-parsed JSON over raw text."""
+    parsed = getattr(response, "parsed", None)
+    if parsed is not None:
+        if isinstance(parsed, dict):
+            return parsed
+        if hasattr(parsed, "model_dump"):
+            normalized = parsed.model_dump(mode="json")
+            if isinstance(normalized, dict):
+                return normalized
+
+    raw_text = response.text or ""
+    parse_error: json.JSONDecodeError | None = None
+
+    for candidate in _extract_gemini_json_candidates(raw_text):
+        try:
+            decoded = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            if parse_error is None:
+                parse_error = exc
+            continue
+
+        if isinstance(decoded, dict):
+            return decoded
+
+        raise json.JSONDecodeError(
+            "Gemini response JSON must decode to an object",
+            candidate,
+            0,
+        )
+
+    if parse_error is not None:
+        raise parse_error
+
+    return {}
+
+
 # Models that support native video input (entire video file passed directly).
 # For unlisted models, video is pre-processed into frames before analysis.
 NATIVE_VIDEO_MODELS: set[str] = {
@@ -648,7 +707,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
 
         # Parse and return response with defensive error handling
         try:
-            result = json.loads(response.text or "{}")
+            result = _parse_gemini_json_response(response)
             logger.info(
                 f"[Monitoring LLM] Gemini analysis completed - Result: {result.get('result', 'unknown')}"
             )
@@ -788,7 +847,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
 
         # Parse and return response
         try:
-            result = json.loads(response.text or "{}")
+            result = _parse_gemini_json_response(response)
             logger.info(
                 f"[Monitoring LLM] Gemini video analysis completed - Result: {result.get('result', 'unknown')}"
             )
@@ -933,7 +992,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
 
         # Parse and return response
         try:
-            result = json.loads(response.text or "{}")
+            result = _parse_gemini_json_response(response)
             logger.info(
                 f"[Monitoring LLM] Gemini native video analysis completed - Result: {result.get('result', 'unknown')}"
             )

@@ -45,6 +45,31 @@ AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_ASSET_BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME")
 
 
+def _default_monitoring_response_schema() -> dict:
+    """Return the baseline structured output schema for monitoring analysis."""
+    return {
+        "type": "object",
+        "properties": {
+            "result": {
+                "type": "string",
+                "enum": ["pass", "fail", "error"],
+                "description": "Overall monitoring outcome.",
+            },
+            "details": {
+                "type": "string",
+                "description": "Short explanation supporting the outcome.",
+            },
+            "confidence": {
+                "type": "integer",
+                "description": "Confidence level from 1-100 for pass/fail results.",
+                "minimum": 1,
+                "maximum": 100,
+            },
+        },
+        "required": ["result", "details"],
+    }
+
+
 def _add_confidence_to_schema(schema: dict) -> dict:
     """
     Add confidence field to structured output schema if not already present.
@@ -305,17 +330,15 @@ For invalid/problematic images:
     ]
 
     # Determine response format based on custom structured output
-    response_format = None
-    if enhanced_schema:
-        # Use structured outputs with custom JSON schema
-        response_format = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "monitoring_analysis",
-                "strict": True,
-                "schema": enhanced_schema,
-            },
-        }
+    response_schema = enhanced_schema or _default_monitoring_response_schema()
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "monitoring_analysis",
+            "strict": True,
+            "schema": response_schema,
+        },
+    }
 
     # Call LLM Vision API using provider abstraction
     try:
@@ -846,16 +869,15 @@ For invalid/problematic frames:
     ]
 
     # Determine response format based on custom structured output
-    response_format = None
-    if enhanced_schema:
-        response_format = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "monitoring_analysis",
-                "strict": True,
-                "schema": enhanced_schema,
-            },
-        }
+    response_schema = enhanced_schema or _default_monitoring_response_schema()
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "monitoring_analysis",
+            "strict": True,
+            "schema": response_schema,
+        },
+    }
 
     # Call LLM Vision API using provider abstraction
     try:

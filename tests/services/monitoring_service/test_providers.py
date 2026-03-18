@@ -11,6 +11,7 @@ from services.monitoring_service._providers import (
     GoogleMonitoringProvider,
     MonitoringLLMConfig,
     MonitoringLLMProvider,
+    _parse_gemini_json_response,
     _strip_additional_properties,
     create_monitoring_llm_provider,
     supports_native_video,
@@ -149,6 +150,32 @@ class TestMonitoringLLMConfig:
         """Should allow custom max_tokens."""
         config = MonitoringLLMConfig(max_tokens=4000)
         assert config.max_tokens == 4000
+
+
+class TestParseGeminiJsonResponse:
+    """Tests for Gemini response parsing helpers."""
+
+    def test_prefers_sdk_parsed_payload(self):
+        """Should use response.parsed when Gemini SDK already decoded JSON."""
+        response = MagicMock()
+        response.parsed = {"result": "pass", "details": "parsed"}
+        response.text = '{"result":"fail","details":"raw"}'
+
+        assert _parse_gemini_json_response(response) == {
+            "result": "pass",
+            "details": "parsed",
+        }
+
+    def test_accepts_markdown_fenced_json(self):
+        """Should recover valid JSON from fenced Gemini text output."""
+        response = MagicMock()
+        response.parsed = None
+        response.text = '```json\n{"result":"pass","details":"wrapped"}\n```'
+
+        assert _parse_gemini_json_response(response) == {
+            "result": "pass",
+            "details": "wrapped",
+        }
 
 
 class TestCreateMonitoringLLMProvider:
