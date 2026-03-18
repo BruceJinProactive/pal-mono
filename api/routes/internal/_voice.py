@@ -448,6 +448,19 @@ async def end_voice_call(
         )
         analytics = _get_default_analytics()
 
+    # Override ended_reason if call was transferred to human
+    # This takes precedence over LLM-extracted analytics
+    ended_reason_override = None
+    if conversation.transfer_purpose:
+        from db.tables.types import CallEndedReason
+
+        ended_reason_override = CallEndedReason.assistant_forwarded
+        logger.info(
+            f"[end_voice_call] Overriding ended_reason to assistant_forwarded due to transfer_purpose: {conversation.transfer_purpose}",
+            extra={"conversation_id": str(conversation_id)},
+        )
+        analytics["ended_reason"] = ended_reason_override
+
     # --- Step 3: Close conversation and create phone call record in a single transaction ---
     try:
         # Convert call_purpose list to comma-separated string for storage
@@ -483,7 +496,12 @@ async def end_voice_call(
         conversation.status = ConversationStatus.CLOSED
         conversation.purpose = purpose_str
         conversation.language = analytics["language"].value
-        conversation.ended_reason = analytics["ended_reason"].value
+        # Use override if transfer occurred, otherwise use LLM analytics
+        conversation.ended_reason = (
+            ended_reason_override.value
+            if ended_reason_override
+            else analytics["ended_reason"].value
+        )
         conversation.customer_converted = customer_converted_id
         conversation.call_id = call_id
 
