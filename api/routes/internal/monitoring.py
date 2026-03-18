@@ -25,6 +25,7 @@ from db.repositories.monitoring_config_repository import MonitoringConfigReposit
 from db.tables import MonitoringConfig, MonitoringRun
 from services import monitoring_service
 from services.asset_service import _utils as asset_utils
+from utils.dd import statsd
 from utils.log import logger
 
 monitoring_router = APIRouter(prefix="/monitoring", tags=["internal-monitoring"])
@@ -258,6 +259,21 @@ async def record_capture(
             await feed_repo.update_last_capture(
                 feed.id, captured_at, request.capture_url
             )
+
+            # METRIC: Track camera feed update
+            try:
+                camera_id = log_extra.get("camera_id", str(request.signal_source_id))
+                project_id = log_extra.get("project_id", "unknown")
+                statsd.increment(
+                    "camera.feed.updated",
+                    tags=[
+                        f"camera_id:{camera_id}",
+                        f"project_id:{project_id}",
+                        f"signal_source_id:{request.signal_source_id}",
+                    ],
+                )
+            except Exception as metric_err:
+                logger.debug(f"Failed to emit camera.feed.updated metric: {metric_err}")
 
             # Generate presigned URL if S3 key exists
             presigned_url = None
