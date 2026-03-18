@@ -52,6 +52,9 @@ class Project(Base):
     )
     transfer_message: Mapped[str | None] = mapped_column(String, nullable=True)
     transfer_phone_number: Mapped[str | None] = mapped_column(String, nullable=True)
+    show_agent_caller_id: Mapped[bool] = mapped_column(
+        nullable=False, server_default=text("false")
+    )
     reservation_link: Mapped[str | None] = mapped_column(String, nullable=True)
     ordering_link: Mapped[str | None] = mapped_column(String, nullable=True)
     call_forwarding_setup_completed: Mapped[bool] = mapped_column(
