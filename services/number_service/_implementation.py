@@ -350,13 +350,12 @@ class NumberService:
                 country_code=country_code,
                 toll_free=toll_free,
             )
-        # Route number to voice provider
-        if voice_provider == "livekit":
-            try:
-                self._setup_number_for_livekit(phone_number)
-            except Exception as e:
-                self._delete_number_from_twilio(phone_number)
-                raise ValueError(f"Failed to provision number for LiveKit: {e}") from e
+        # Setup LiveKit voice routing
+        try:
+            self._setup_number_for_livekit(phone_number)
+        except Exception as e:
+            self._delete_number_from_twilio(phone_number)
+            raise ValueError(f"Failed to provision number for LiveKit: {e}") from e
 
         return number_response
 
@@ -591,12 +590,11 @@ class NumberService:
         if not number_details:
             raise ValueError(f"Phone number {phone_number} not found in Twilio account")
 
-        # Check if the number is available for assignment
-        if voice_provider == "livekit":
-            if not self._is_number_on_livekit(phone_number):
-                raise ValueError(
-                    f"Phone number {phone_number} is not provisioned for LiveKit"
-                )
+        # Validate LiveKit provisioning
+        if not self._is_number_on_livekit(phone_number):
+            raise ValueError(
+                f"Phone number {phone_number} is not provisioned for LiveKit"
+            )
 
         if self._is_number_associated_with_project(phone_number, session):
             raise ValueError(
@@ -645,7 +643,7 @@ class NumberService:
             phone_number: Optional existing phone number to reserve (if None, purchases new)
             country_code: Country code for new numbers (default: "US")
             toll_free: Whether new numbers should be toll-free (default: True)
-            voice_provider: Voice routing provider ('vapi' or 'livekit')
+            voice_provider: Voice routing provider (default: 'livekit')
 
         Returns:
             str: The phone number that was assigned to the project
@@ -1353,7 +1351,7 @@ class NumberService:
 
             # Determine voice provider from trunk_sid (already fetched)
             voice_provider = (
-                "livekit" if getattr(twilio_number, "trunk_sid", None) else "vapi"
+                "livekit" if getattr(twilio_number, "trunk_sid", None) else None
             )
 
             # Build processed phone number data
