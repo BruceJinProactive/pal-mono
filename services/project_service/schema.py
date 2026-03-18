@@ -17,6 +17,7 @@ class ProjectParams:
     timezone: str | None = None
     transfer_message: str | None = None
     transfer_phone_number: str | None = None
+    show_agent_caller_id: bool | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
     google_place_id: str | None = None

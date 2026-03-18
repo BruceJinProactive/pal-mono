@@ -24,6 +24,7 @@ class Project(BaseModel):
     timezone: str | None = None
     transfer_message: str | None = None
     transfer_phone_number: str | None = None
+    show_agent_caller_id: bool = False
     reservation_link: str | None = None
     ordering_link: str | None = None
     google_place_id: str | None = None
@@ -60,6 +61,7 @@ class UpdateProjectRequest(BaseModel):
     timezone: str | None = None
     transfer_message: str | None = None
     transfer_phone_number: str | None = None
+    show_agent_caller_id: bool | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
     google_place_id: str | None = None
@@ -79,6 +81,7 @@ class UpdateProjectRequest(BaseModel):
             timezone=self.timezone,
             transfer_message=self.transfer_message,
             transfer_phone_number=self.transfer_phone_number,
+            show_agent_caller_id=self.show_agent_caller_id,
             reservation_link=self.reservation_link,
             ordering_link=self.ordering_link,
             google_place_id=self.google_place_id,
@@ -189,6 +192,7 @@ class ProjectUpdateData(BaseModel):
     timezone: str | None = None
     transfer_message: str | None = None
     transfer_phone_number: str | None = None
+    show_agent_caller_id: bool | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
     google_place_id: str | None = None
@@ -208,6 +212,7 @@ class ProjectUpdateData(BaseModel):
             timezone=self.timezone,
             transfer_message=self.transfer_message,
             transfer_phone_number=self.transfer_phone_number,
+            show_agent_caller_id=self.show_agent_caller_id,
             reservation_link=self.reservation_link,
             ordering_link=self.ordering_link,
             google_place_id=self.google_place_id,
