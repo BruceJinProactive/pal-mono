@@ -24,18 +24,17 @@ AVAILABLE_LABEL = "AVAILABLE"
 
 
 class NumberService:
-    """Service for managing phone numbers and Vapi assistants.
+    """Service for managing phone numbers with LiveKit voice routing.
 
     This service provides functionality for:
     1. Purchasing and managing phone numbers through Twilio
-    2. Creating and configuring Vapi assistants
-    3. Integrating phone numbers with Vapi
-    4. Handling both local and toll-free numbers
+    2. Configuring phone numbers with LiveKit SIP trunk routing
+    3. Handling both local and toll-free numbers
 
     Required environment variables:
         - TWILIO_ACCOUNT_SID: Twilio account identifier
         - TWILIO_AUTH_TOKEN: Twilio authentication token
-        - VAPI_API_KEY: Vapi API key for assistant integration
+        - TWILIO_SIP_TRUNK_SID: SIP trunk for LiveKit voice routing
 
     Example:
         ```python
