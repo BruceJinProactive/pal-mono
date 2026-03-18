@@ -91,15 +91,8 @@ class TestRecordCapture:
             assert result.signal_source_id == signal_source_id
             assert result.feed_id == feed_id
 
-            # Verify metric was emitted with correct tags
-            mock_statsd.increment.assert_called_once_with(
-                "camera.feed.updated",
-                tags=[
-                    "camera_id:camera-123",
-                    f"project_id:{project_id}",
-                    f"signal_source_id:{signal_source_id}",
-                ],
-            )
+            # Verify metric was emitted (no high-cardinality tags)
+            mock_statsd.increment.assert_called_once_with("camera.feed.updated")
 
             # Verify feed was updated
             mock_feed_repo.update_last_capture.assert_awaited_once_with(
@@ -290,11 +283,10 @@ class TestRecordCapture:
             assert exc_info.value.status_code == 500
             assert "Failed to record capture" in exc_info.value.detail
 
-            # Verify error metric was emitted
+            # Verify error metric was emitted (only error_type tag, no camera_id)
             mock_statsd.increment.assert_called_once_with(
                 "camera.feed.error",
                 tags=[
-                    f"camera_id:{signal_source_id}",
                     "error_type:Exception",
                 ],
             )
@@ -304,7 +296,7 @@ class TestRecordCapture:
 
     @pytest.mark.asyncio
     async def test_record_capture_exception_with_source_context(self):
-        """Test error metric uses camera_id from source when available."""
+        """Test error metric emits only error_type tag (no high-cardinality camera_id)."""
         signal_source_id = uuid.uuid4()
 
         request = RecordCaptureRequest(
@@ -341,11 +333,10 @@ class TestRecordCapture:
             # Verify 500 error
             assert exc_info.value.status_code == 500
 
-            # Verify error metric was emitted with camera_id from source
+            # Verify error metric was emitted (only error_type tag, no camera_id)
             mock_statsd.increment.assert_called_once_with(
                 "camera.feed.error",
                 tags=[
-                    "camera_id:camera-123",
                     "error_type:RuntimeError",
                 ],
             )

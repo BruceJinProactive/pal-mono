@@ -263,16 +263,7 @@ async def record_capture(
 
             # METRIC: Track camera feed update
             try:
-                camera_id = log_extra.get("camera_id", str(request.signal_source_id))
-                project_id = log_extra.get("project_id", "unknown")
-                statsd.increment(
-                    "camera.feed.updated",
-                    tags=[
-                        f"camera_id:{camera_id}",
-                        f"project_id:{project_id}",
-                        f"signal_source_id:{request.signal_source_id}",
-                    ],
-                )
+                statsd.increment("camera.feed.updated")
             except Exception as metric_err:
                 logger.debug(f"Failed to emit camera.feed.updated metric: {metric_err}")
 
@@ -314,16 +305,10 @@ async def record_capture(
     except Exception as e:
         # METRIC: Track camera feed errors
         try:
-            # Try to get camera_id from source if available, otherwise use signal_source_id
-            camera_id = str(request.signal_source_id)
-            if source and source.config:
-                camera_id = source.config.get("camera_id") or camera_id
-
             error_type = type(e).__name__
             statsd.increment(
                 "camera.feed.error",
                 tags=[
-                    f"camera_id:{camera_id}",
                     f"error_type:{error_type}",
                 ],
             )
