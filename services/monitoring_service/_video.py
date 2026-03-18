@@ -19,6 +19,91 @@ from PIL import Image
 
 from utils.log import logger
 
+# Codecs that can be remuxed into an MP4 container without re-encoding.
+_MP4_COMPATIBLE_CODECS: set[str] = {"h264", "hevc", "h265", "mpeg4", "av1"}
+
+
+def remux_to_mp4(src: bytes) -> bytes:
+    """Remux a video file (e.g. MKV) into an MP4 container.
+
+    If the source video codec is MP4-compatible (H.264, HEVC, etc.) the
+    packets are copied directly — no re-encoding, so it's fast and lossless.
+    If the codec is incompatible (VP8/VP9), the video is re-encoded to H.264.
+
+    Args:
+        src: Raw bytes of the source video file.
+
+    Returns:
+        Raw bytes of the MP4-remuxed video.
+
+    Raises:
+        ValueError: If the source contains no video stream.
+    """
+    input_buf = BytesIO(src)
+    output_buf = BytesIO()
+
+    input_container = av.open(input_buf, mode="r")
+    try:
+        if not input_container.streams.video:
+            raise ValueError("Source video contains no video stream")
+
+        src_video = input_container.streams.video[0]
+        codec_name = src_video.codec_context.name or ""
+        needs_reencode = codec_name.lower() not in _MP4_COMPATIBLE_CODECS
+
+        output_container = av.open(output_buf, mode="w", format="mp4")
+        try:
+            if needs_reencode:
+                logger.info(
+                    f"[Video Remux] Codec '{codec_name}' not MP4-compatible, re-encoding to H.264"
+                )
+                out_video = output_container.add_stream(
+                    "libx264", rate=src_video.average_rate or 30
+                )
+                out_video.width = src_video.codec_context.width
+                out_video.height = src_video.codec_context.height
+                out_video.pix_fmt = "yuv420p"
+
+                for frame in input_container.decode(video=0):
+                    for packet in out_video.encode(frame):
+                        output_container.mux(packet)
+                # Flush encoder
+                for packet in out_video.encode():
+                    output_container.mux(packet)
+            else:
+                logger.info(
+                    f"[Video Remux] Codec '{codec_name}' is MP4-compatible, remuxing (no re-encode)"
+                )
+                out_video = output_container.add_stream_from_template(src_video)
+
+                for packet in input_container.demux(src_video):
+                    if packet.dts is None:
+                        continue
+                    packet.stream = out_video
+                    output_container.mux(packet)
+
+            # Copy audio streams if present
+            if input_container.streams.audio:
+                src_audio = input_container.streams.audio[0]
+                out_audio = output_container.add_stream_from_template(src_audio)
+                # Re-demux to get audio packets
+                input_container.seek(0)
+                for packet in input_container.demux(src_audio):
+                    if packet.dts is None:
+                        continue
+                    packet.stream = out_audio
+                    output_container.mux(packet)
+        finally:
+            output_container.close()
+    finally:
+        input_container.close()
+
+    logger.info(
+        f"[Video Remux] Remuxed {len(src)} bytes -> {output_buf.tell()} bytes (MP4)"
+    )
+    return output_buf.getvalue()
+
+
 # AWS Configuration (reuse same env vars as _llm.py)
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_ASSET_BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME")

@@ -7,9 +7,11 @@ import pytest
 from fastapi import HTTPException
 
 from services.monitoring_service._video import (
+    _MP4_COMPATIBLE_CODECS,
     _extract_frames_sync,
     download_video_bytes,
     extract_video_frames,
+    remux_to_mp4,
 )
 
 
@@ -692,3 +694,122 @@ class TestDownloadVideoBytes:
 
         _, mime_type = await download_video_bytes("path/to/video.mov")
         assert mime_type == "video/quicktime"
+
+
+class TestRemuxToMp4:
+    """Tests for remux_to_mp4 — MKV/AVI/WebM to MP4 container conversion."""
+
+    def test_remux_h264_copies_packets(self, mocker):
+        """Should remux H.264 video without re-encoding (copy packets)."""
+        mock_src_stream = MagicMock()
+        mock_src_stream.codec_context.name = "h264"
+        mock_src_stream.average_rate = 30
+
+        mock_packet = MagicMock()
+        mock_packet.dts = 100
+
+        mock_input_container = MagicMock()
+        mock_input_container.streams.video = [mock_src_stream]
+        mock_input_container.streams.audio = []
+        mock_input_container.demux.return_value = iter([mock_packet])
+
+        mock_out_stream = MagicMock()
+        mock_output_container = MagicMock()
+        mock_output_container.add_stream_from_template.return_value = mock_out_stream
+
+        mocker.patch(
+            "services.monitoring_service._video.av.open",
+            side_effect=[mock_input_container, mock_output_container],
+        )
+
+        result = remux_to_mp4(b"fake-mkv-bytes")
+
+        # Should use add_stream_from_template (remux), not add_stream (re-encode)
+        mock_output_container.add_stream_from_template.assert_called_once_with(
+            mock_src_stream
+        )
+        mock_output_container.mux.assert_called()
+        assert isinstance(result, bytes)
+
+    def test_remux_vp9_reencodes_to_h264(self, mocker):
+        """Should re-encode VP9 video to H.264 since VP9 is not MP4-compatible."""
+        mock_src_stream = MagicMock()
+        mock_src_stream.codec_context.name = "vp9"
+        mock_src_stream.codec_context.width = 1920
+        mock_src_stream.codec_context.height = 1080
+        mock_src_stream.average_rate = 30
+
+        mock_frame = MagicMock()
+        mock_encoded_packet = MagicMock()
+
+        mock_input_container = MagicMock()
+        mock_input_container.streams.video = [mock_src_stream]
+        mock_input_container.streams.audio = []
+        mock_input_container.decode.return_value = iter([mock_frame])
+
+        mock_out_stream = MagicMock()
+        mock_out_stream.encode.side_effect = [
+            [mock_encoded_packet],  # encode(frame)
+            [],  # flush
+        ]
+
+        mock_output_container = MagicMock()
+        mock_output_container.add_stream.return_value = mock_out_stream
+
+        mocker.patch(
+            "services.monitoring_service._video.av.open",
+            side_effect=[mock_input_container, mock_output_container],
+        )
+
+        result = remux_to_mp4(b"fake-webm-bytes")
+
+        # Should add stream with libx264 codec (re-encode)
+        mock_output_container.add_stream.assert_called_once_with("libx264", rate=30)
+        assert mock_out_stream.width == 1920
+        assert mock_out_stream.height == 1080
+        assert isinstance(result, bytes)
+
+    def test_raises_on_no_video_stream(self, mocker):
+        """Should raise ValueError when source has no video stream."""
+        mock_input_container = MagicMock()
+        mock_input_container.streams.video = []
+
+        mocker.patch(
+            "services.monitoring_service._video.av.open",
+            return_value=mock_input_container,
+        )
+
+        with pytest.raises(ValueError, match="no video stream"):
+            remux_to_mp4(b"bad-data")
+
+    def test_mp4_compatible_codecs_set(self):
+        """Should include common surveillance camera codecs."""
+        assert "h264" in _MP4_COMPATIBLE_CODECS
+        assert "hevc" in _MP4_COMPATIBLE_CODECS
+        assert "h265" in _MP4_COMPATIBLE_CODECS
+        # VP8/VP9 should NOT be compatible
+        assert "vp8" not in _MP4_COMPATIBLE_CODECS
+        assert "vp9" not in _MP4_COMPATIBLE_CODECS
+
+    def test_containers_closed_on_success(self, mocker):
+        """Should close both input and output containers."""
+        mock_src_stream = MagicMock()
+        mock_src_stream.codec_context.name = "h264"
+
+        mock_input_container = MagicMock()
+        mock_input_container.streams.video = [mock_src_stream]
+        mock_input_container.streams.audio = []
+        mock_input_container.demux.return_value = iter([])
+
+        mock_output_container = MagicMock()
+        mock_output_container.add_stream_from_template.return_value = MagicMock()
+
+        mocker.patch(
+            "services.monitoring_service._video.av.open",
+            side_effect=[mock_input_container, mock_output_container],
+        )
+
+        remux_to_mp4(b"data")
+
+        mock_input_container.close.assert_called_once()
+        mock_output_container.close.assert_called_once()

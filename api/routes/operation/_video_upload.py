@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 
 from api.schemas.asset.asset import AssetResponse
 from services import signal_source_service
+from services.monitoring_service._video import remux_to_mp4
 from utils.log import logger
 
 # Get S3 configuration from environment
@@ -147,6 +148,54 @@ async def upload_camera_video(
             f"{MAX_VIDEO_SIZE_BYTES // (1024 * 1024)}MB",
         )
 
+    # Remux non-MP4 containers (e.g. MKV) to MP4 so downstream consumers
+    # (Gemini native video) always receive a Gemini-supported format.
+    upload_file = video.file
+    if ext in {".mkv", ".avi", ".webm"}:
+        try:
+            video_bytes = await run_in_threadpool(video.file.read)
+            mp4_bytes = await run_in_threadpool(remux_to_mp4, video_bytes)
+
+            # Validate remuxed size (re-encoding can inflate the output)
+            if len(mp4_bytes) > MAX_VIDEO_SIZE_BYTES:
+                logger.warning(
+                    f"Remuxed MP4 exceeds size limit ({len(mp4_bytes)} bytes), uploading original",
+                    extra={
+                        "camera_id": camera_id,
+                        "original_size": len(video_bytes),
+                        "mp4_size": len(mp4_bytes),
+                    },
+                )
+                video.file.seek(0)
+                upload_file = video.file
+            else:
+                from io import BytesIO
+
+                upload_file = BytesIO(mp4_bytes)
+                filename = os.path.splitext(filename)[0] + ".mp4"
+                content_type = "video/mp4"
+                logger.info(
+                    f"Remuxed {ext} to MP4 for upload",
+                    extra={
+                        "camera_id": camera_id,
+                        "original_ext": ext,
+                        "original_size": len(video_bytes),
+                        "mp4_size": len(mp4_bytes),
+                    },
+                )
+        except Exception as e:
+            logger.error(
+                f"Failed to remux {ext} to MP4, uploading original: {e}",
+                extra={
+                    "camera_id": camera_id,
+                    "video_filename": filename,
+                    "error": str(e),
+                },
+            )
+            # Reset file position and upload original on remux failure
+            video.file.seek(0)
+            upload_file = video.file
+
     # Build S3 key
     # Format: security/cameras/{account_id}/{project_id}/{camera_id}/videos/{date}/{filename}
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -160,7 +209,7 @@ async def upload_camera_video(
         # Wrap in run_in_threadpool to avoid blocking the event loop
         await run_in_threadpool(
             s3_client.upload_fileobj,
-            video.file,  # SpooledTemporaryFile from FastAPI
+            upload_file,
             AWS_ASSET_BUCKET_NAME,
             s3_key,
             ExtraArgs={

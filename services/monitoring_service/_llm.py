@@ -894,15 +894,31 @@ For invalid/problematic frames:
             f"[Monitoring LLM] Provider initialized (video) - Final config: Provider={provider.config.provider.value}, Model={provider.config.model}"
         )
 
-        # Check if this model supports native video input
+        # Check if this model supports native video input.
+        # New uploads remux MKV/AVI/WebM to MP4, but pre-existing files or
+        # remux failures may still have unsupported extensions in S3.
         use_native_video = supports_native_video(
             provider.config.provider, provider.config.model
         )
 
-        # Gemini doesn't support MKV format - force frame extraction for .mkv files
-        if video_url.lower().endswith(".mkv"):
+        # Gemini-supported video formats (from Google docs).
+        # Fall back to frame extraction for anything else.
+        _GEMINI_VIDEO_EXTENSIONS = {
+            ".mp4",
+            ".mpeg",
+            ".mov",
+            ".avi",
+            ".flv",
+            ".mpg",
+            ".webm",
+            ".wmv",
+            ".3gpp",
+        }
+        video_ext = os.path.splitext(video_url)[1].lower()
+        if use_native_video and video_ext not in _GEMINI_VIDEO_EXTENSIONS:
             logger.info(
-                "[Monitoring LLM] Video is MKV format, using frame extraction instead of native video"
+                f"[Monitoring LLM] Video extension '{video_ext}' not in Gemini-supported formats, "
+                "using frame extraction instead of native video"
             )
             use_native_video = False
 
