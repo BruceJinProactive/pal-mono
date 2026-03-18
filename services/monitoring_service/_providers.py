@@ -570,6 +570,86 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
 
         self.client = genai.Client(api_key=api_key)
 
+    def _parse_response(
+        self,
+        response: Any,
+        media_type: str,
+        token_usage: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Parse Gemini response with finish_reason check for truncation detection.
+
+        Checks whether generation completed normally (STOP) before attempting
+        JSON parsing. If the response was stopped early (safety filter, token
+        limit, recitation, etc.), returns a structured error result instead of
+        raising a JSONDecodeError.
+
+        Args:
+            response: Gemini GenerateContentResponse object
+            media_type: Description for logging (e.g., "image", "video", "native_video")
+            token_usage: Pre-built token usage dict
+
+        Returns:
+            dict with "result" and "token_usage" keys
+
+        Raises:
+            json.JSONDecodeError: If finish_reason is STOP but response is not valid JSON
+        """
+        # Extract finish_reason for truncation detection
+        finish_reason = None
+        if response.candidates:
+            finish_reason = response.candidates[0].finish_reason
+
+        # Detect incomplete generation (safety filter, token limit, recitation, etc.)
+        # FinishReason is a str enum in google-genai; compare with string value
+        if finish_reason is not None and finish_reason != "STOP":
+            logger.warning(
+                f"[Monitoring LLM] Gemini {media_type} generation stopped early - "
+                f"finish_reason: {finish_reason}"
+            )
+            partial_text = response.text[:500] if response.text else None
+            if partial_text:
+                logger.warning(f"[Monitoring LLM] Partial response: {partial_text}")
+            return {
+                "result": {
+                    "result": "error",
+                    "details": (
+                        f"LLM analysis incomplete: generation stopped ({finish_reason}). "
+                        "The model could not finish its response."
+                    ),
+                },
+                "token_usage": token_usage,
+            }
+
+        # Handle missing candidates (fully blocked response)
+        if not response.candidates:
+            logger.warning(
+                f"[Monitoring LLM] Gemini {media_type} returned no candidates"
+            )
+            return {
+                "result": {
+                    "result": "error",
+                    "details": "LLM analysis failed: no response candidates returned",
+                },
+                "token_usage": token_usage,
+            }
+
+        # Normal completion — parse JSON
+        try:
+            result = _parse_gemini_json_response(response)
+            logger.info(
+                f"[Monitoring LLM] Gemini {media_type} analysis completed - "
+                f"Result: {result.get('result', 'unknown')}"
+            )
+            return {"result": result, "token_usage": token_usage}
+        except json.JSONDecodeError as e:
+            logger.error(
+                f"[Monitoring LLM] Failed to parse Gemini {media_type} response as JSON: {e}"
+            )
+            logger.error(f"[Monitoring LLM] Raw response text: {response.text}")
+            logger.error(f"[Monitoring LLM] finish_reason: {finish_reason}")
+            raise
+
     def analyze_image(
         self,
         system_instruction: str,
@@ -705,19 +785,8 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                 "total_tokens": response.usage_metadata.total_token_count,
             }
 
-        # Parse and return response with defensive error handling
-        try:
-            result = _parse_gemini_json_response(response)
-            logger.info(
-                f"[Monitoring LLM] Gemini analysis completed - Result: {result.get('result', 'unknown')}"
-            )
-            return {"result": result, "token_usage": token_usage}
-        except json.JSONDecodeError as e:
-            logger.error(
-                f"[Monitoring LLM] Failed to parse Gemini response as JSON: {e}"
-            )
-            logger.error(f"[Monitoring LLM] Raw response text: {response.text}")
-            raise
+        # Parse and return response with finish_reason check
+        return self._parse_response(response, "image", token_usage)
 
     def analyze_video_frames(
         self,
@@ -845,19 +914,8 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                 "total_tokens": response.usage_metadata.total_token_count,
             }
 
-        # Parse and return response
-        try:
-            result = _parse_gemini_json_response(response)
-            logger.info(
-                f"[Monitoring LLM] Gemini video analysis completed - Result: {result.get('result', 'unknown')}"
-            )
-            return {"result": result, "token_usage": token_usage}
-        except json.JSONDecodeError as e:
-            logger.error(
-                f"[Monitoring LLM] Failed to parse Gemini video response as JSON: {e}"
-            )
-            logger.error(f"[Monitoring LLM] Raw response text: {response.text}")
-            raise
+        # Parse and return response with finish_reason check
+        return self._parse_response(response, "video", token_usage)
 
     def analyze_native_video(
         self,
@@ -990,19 +1048,8 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                 "total_tokens": response.usage_metadata.total_token_count,
             }
 
-        # Parse and return response
-        try:
-            result = _parse_gemini_json_response(response)
-            logger.info(
-                f"[Monitoring LLM] Gemini native video analysis completed - Result: {result.get('result', 'unknown')}"
-            )
-            return {"result": result, "token_usage": token_usage}
-        except json.JSONDecodeError as e:
-            logger.error(
-                f"[Monitoring LLM] Failed to parse Gemini native video response as JSON: {e}"
-            )
-            logger.error(f"[Monitoring LLM] Raw response text: {response.text}")
-            raise
+        # Parse and return response with finish_reason check
+        return self._parse_response(response, "native_video", token_usage)
 
 
 def create_monitoring_llm_provider(

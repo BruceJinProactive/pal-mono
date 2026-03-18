@@ -312,6 +312,9 @@ class TestGoogleMonitoringProviderAnalyzeNativeVideo:
         mock_response.usage_metadata.prompt_token_count = 100
         mock_response.usage_metadata.candidates_token_count = 50
         mock_response.usage_metadata.total_token_count = 150
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = "STOP"
+        mock_response.candidates = [mock_candidate]
         mock_client.models.generate_content.return_value = mock_response
 
         mock_part_from_bytes = mocker.patch(
@@ -360,6 +363,9 @@ class TestGoogleMonitoringProviderAnalyzeNativeVideo:
         mock_response = MagicMock()
         mock_response.text = '{"result": "pass", "details": "OK"}'
         mock_response.usage_metadata = None
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = "STOP"
+        mock_response.candidates = [mock_candidate]
         mock_client.models.generate_content.return_value = mock_response
 
         mock_part_from_bytes = mocker.patch(
@@ -405,6 +411,9 @@ class TestGoogleMonitoringProviderAnalyzeNativeVideo:
         mock_response = MagicMock()
         mock_response.text = '{"result": "pass"}'
         mock_response.usage_metadata = None
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = "STOP"
+        mock_response.candidates = [mock_candidate]
         mock_client.models.generate_content.return_value = mock_response
 
         mocker.patch(
@@ -444,7 +453,7 @@ class TestGoogleMonitoringProviderAnalyzeNativeVideo:
         assert gen_config.response_mime_type == "application/json"
 
     def test_raises_on_invalid_json_response(self, mocker):
-        """Should raise JSONDecodeError when response is not valid JSON."""
+        """Should raise JSONDecodeError when response is not valid JSON and finish_reason is STOP."""
         mocker.patch(
             "services.monitoring_service._providers.get_server_secret_with_fallback",
             return_value="test-key",
@@ -459,6 +468,10 @@ class TestGoogleMonitoringProviderAnalyzeNativeVideo:
         mock_response = MagicMock()
         mock_response.text = "not valid json"
         mock_response.usage_metadata = None
+        # Set finish_reason to STOP so _parse_response attempts JSON parsing
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = "STOP"
+        mock_response.candidates = [mock_candidate]
         mock_client.models.generate_content.return_value = mock_response
 
         mocker.patch(
@@ -480,6 +493,88 @@ class TestGoogleMonitoringProviderAnalyzeNativeVideo:
                 reference_images=[],
                 video_bytes=b"video",
             )
+
+    def test_returns_error_on_truncated_response(self, mocker):
+        """Should return error result when finish_reason is not STOP (e.g., safety filter)."""
+        mocker.patch(
+            "services.monitoring_service._providers.get_server_secret_with_fallback",
+            return_value="test-key",
+        )
+
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.genai.Client",
+            return_value=mock_client,
+        )
+
+        mock_response = MagicMock()
+        mock_response.text = '{"result":"fail","details":"At 00:01, the staff'
+        mock_response.usage_metadata = None
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = "SAFETY"
+        mock_response.candidates = [mock_candidate]
+        mock_client.models.generate_content.return_value = mock_response
+
+        mocker.patch(
+            "services.monitoring_service._providers.Part.from_bytes",
+            return_value=MagicMock(),
+        )
+
+        config = MonitoringLLMConfig(
+            provider=MonitoringLLMProvider.GOOGLE, model="gemini-2.5-flash"
+        )
+        provider = GoogleMonitoringProvider(config)
+
+        response = provider.analyze_native_video(
+            system_instruction="Test",
+            analysis_task="Task",
+            reference_images=[],
+            video_bytes=b"video",
+        )
+
+        assert response["result"]["result"] == "error"
+        assert "SAFETY" in response["result"]["details"]
+        assert "token_usage" in response
+
+    def test_returns_error_on_no_candidates(self, mocker):
+        """Should return error result when response has no candidates (fully blocked)."""
+        mocker.patch(
+            "services.monitoring_service._providers.get_server_secret_with_fallback",
+            return_value="test-key",
+        )
+
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.genai.Client",
+            return_value=mock_client,
+        )
+
+        mock_response = MagicMock()
+        mock_response.text = None
+        mock_response.usage_metadata = None
+        mock_response.candidates = []
+        mock_client.models.generate_content.return_value = mock_response
+
+        mocker.patch(
+            "services.monitoring_service._providers.Part.from_bytes",
+            return_value=MagicMock(),
+        )
+
+        config = MonitoringLLMConfig(
+            provider=MonitoringLLMProvider.GOOGLE, model="gemini-2.5-flash"
+        )
+        provider = GoogleMonitoringProvider(config)
+
+        response = provider.analyze_native_video(
+            system_instruction="Test",
+            analysis_task="Task",
+            reference_images=[],
+            video_bytes=b"video",
+        )
+
+        assert response["result"]["result"] == "error"
+        assert "no response candidates" in response["result"]["details"]
+        assert "token_usage" in response
 
 
 class TestAzureOpenAIMonitoringProviderAnalyzeImage:
@@ -606,6 +701,9 @@ class TestGoogleMonitoringProviderAnalyzeImage:
         mock_response.usage_metadata.prompt_token_count = 300
         mock_response.usage_metadata.candidates_token_count = 90
         mock_response.usage_metadata.total_token_count = 390
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = "STOP"
+        mock_response.candidates = [mock_candidate]
         mock_client.models.generate_content.return_value = mock_response
 
         mocker.patch(
@@ -654,6 +752,9 @@ class TestGoogleMonitoringProviderAnalyzeVideoFrames:
         mock_response.usage_metadata.prompt_token_count = 800
         mock_response.usage_metadata.candidates_token_count = 150
         mock_response.usage_metadata.total_token_count = 950
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = "STOP"
+        mock_response.candidates = [mock_candidate]
         mock_client.models.generate_content.return_value = mock_response
 
         mocker.patch(
