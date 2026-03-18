@@ -157,6 +157,9 @@ cython_debug/
 # mem0 configuration
 .mem0/config.json
 
+# Firecrawl
+.firecrawl/
+
 # OMC
 .omc/
 **/.omc/

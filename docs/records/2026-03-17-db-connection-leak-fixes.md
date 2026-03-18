@@ -95,6 +95,7 @@ The fix moves session ownership into the generator via `AsyncSessionLocal()`. Se
 - `docs/records/2026-03-17-chat-stream-session-lifecycle.md`
 - `docs/decisions/019-streaming-session-ownership.md`
 
+
 ## Validation
 
 All 11 tests pass locally. Pool configuration unchanged (size=30, max_overflow=50, pool_timeout=30).

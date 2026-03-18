@@ -1,206 +1,161 @@
-# CLAUDE.md
+# CLAUDE.md — Agent Harness for pal-mono
 
-This file contains operating rules for AI agents working on pal-mono. For deeper context, see `docs/README.md`.
+Operating rules and guardrails for AI agents. Obey hard rules unconditionally. For deep context, see `docs/README.md`.
 
-## Overview
+---
 
-The pal-mono service is a Python modular monolithic architecture. The system serves:
+## Hard Rules
 
-- **api** - FastAPI REST endpoints for external client interactions.
-- **agent** - AI conversational system orchestrating LLM interactions and tool execution.
-- **db** - SQLAlchemy models, migrations, and repository pattern for data access.
-- **events** - AWS EventBridge integration for asynchronous event-driven communication.
-- **services** - Business logic layer enforcing rules between API and database.
-- **tools** - External tool-calling system integrations (Adora, Toast, Square, Yelp, etc.) for AI agents.
+### MUST
 
-For detailed architecture: `docs/state/architecture.md`
-For conventions and patterns: `docs/memory/long-term.md`
-For current active work: `docs/memory/short-term.md`
-For all documentation: `docs/README.md`
+- **Type hints** on ALL functions — no exceptions, enforced by pyright
+- **`Depends()`** for dependency injection — except DB sessions inside `StreamingResponse` generators (see ADR-019)
+- **Run `./scripts/validate.sh`** before declaring any task complete (see Validation Gate below)
+- **Read `docs/memory/short-term.md`** before starting any task (fragile zones, active work)
+- **Respect dependency flow**: API → Service → Database — `import-linter` enforces this at CI
+- **Repository pattern** for all database access — never raw SQL or direct ORM queries in services
+- **Async consistency** — async endpoints use `AsyncSession = Depends(db.get_db_async)`, sync use `Session = Depends(db.get_db)`
+- **Update `docs/`** in the same PR as code changes (see Documentation Gate below)
+- **Write tests** for new functionality and bug fixes — match existing patterns in `tests/`
+- **Export new models** in `db/tables/__init__.py` before generating migrations — autogenerate only detects imported models
 
-## Important Notes
+### MUST NOT
 
-- Enforce a strict dependency flow: API → Service → Database, with no shared packages.
-- All functions must have type hints
-- Use FastAPI's `Depends()` for dependencies
+- **Suppress type errors** — no `type: ignore`, `cast(Any, ...)`, or `# pyright: ignore`
+- **Reverse dependencies** — never import from API in Service, or Service in DB layer
+- **LLM calls inside tools** — tool methods must not invoke language models
+- **Commit secrets** — never commit `local.env`, API keys, tokens, or credentials
+- **Skip validation** — never claim work is done without running `./scripts/validate.sh`
+- **Manual session management** — never use `next(db.get_db())`, always use `Depends()`
+- **Mix async/sync** — never use sync DB session in async endpoint or vice versa
+- **Modify `db/migrations/versions/` directly** — always use Alembic to generate migrations
+- **Delete or skip failing tests** to make a PR pass
+
+---
+
+## Gates (Verification Checkpoints)
+
+### Gate 0: Pre-Work Context Load
+
+Before starting ANY task:
+
+1. **Read `docs/memory/short-term.md`** — check "Active Work" and "Don't Touch" sections
+2. **Read `docs/memory/long-term.md`** — understand conventions and gotchas
+
+### Gate 1: Architecture Compliance
+
+Before writing code:
+
+- Verify your change respects the dependency flow: **API → Service → Database**
+- `utils/` must NOT import from `agent`, `api`, `db`, `services`, or `tools`
+- Run `uv run lint-imports` to check — CI will block violations
+
+```
+import-linter contracts (from pyproject.toml):
+  Layered:  api → services → db
+  Isolated: utils → (no internal deps)
+```
+
+### Gate 2: Validation (MANDATORY before done)
+
+```bash
+./scripts/install.sh           # Install dev dependencies
+./scripts/validate.sh          # Auto-fix mode (formats, sorts, lints, type-checks)
+./scripts/validate.sh --check  # CI mode (check only, no modifications)
+```
+
+Runs: black → ruff → isort → pyright → lint-imports → toml-sort. Fix failures before declaring done.
+
+### Gate 3: Documentation
+
+If your change meets any of these criteria, update docs in the **same PR**:
+
+| Changed | Update |
+|---------|--------|
+| System architecture or behavior | `docs/state/` — update relevant file, set `Last updated: YYYY-MM-DD` |
+| Started new work | `docs/memory/short-term.md` — add to "Active Work" |
+| Completed significant work | `docs/records/YYYY-MM-DD-description.md` + clear from short-term |
+| Discovered gotcha or pattern | `docs/memory/long-term.md` — add with rationale |
+| New feature or multi-step work | `docs/plans/` — create or update plan document |
+| Architectural decision with tradeoffs | `docs/decisions/` — create ADR (e.g., `019-streaming-session-ownership.md`) |
+| Any significant change | `docs/log.md` — append entry |
+
+Full lifecycle rules: `docs/README.md`
+
+### Gate 4: Security
+
+- **Never** commit `local.env` or any file containing real credentials
+- **Never** hardcode API keys, tokens, or passwords in source code
+- Credentials go in `local.env` (dev) or AWS Secrets Manager (prod)
+- Use `get_client_secret_with_fallback()` for credential access in code
+
+---
+
+## System Overview
+
+**pal-mono** is a multi-tenant conversational AI platform for restaurant/food service businesses. Python ≥3.11, FastAPI, PostgreSQL + pgvector.
+
+**Multi-tenant hierarchy**: Account (business) → Project (store/location) → Agent (AI persona) → User
+
+**Entry points**:
+- API: `api/main.py` → FastAPI app
+- Agent: `agent/agent.py` → AI orchestration
+- Database: `db/tables/` → SQLAlchemy models
+- Events: `events/` → EventBridge integration
+
+**Environments**: `dev` (local) → `lat` (latest/HEAD) → `stg` (staging) → `prd` (production)
+
+**Architecture**: `docs/state/architecture.md` (612 lines — comprehensive reference)
+
+---
+---
 
 ## Commands
 
-### Running Services
+### Validation (run before claiming done)
 
 ```bash
-# Build and run both API and database locally
-docker-compose up -d --build
-
-# Force rebuild from scratch
-docker-compose up -d --build --force-recreate
-
-# Stop services
-docker-compose down
-
-# View logs
-docker-compose logs -f api
+./scripts/validate.sh          # Auto-fix mode (formats, sorts, lints, type-checks)
+./scripts/validate.sh --check  # CI mode (check only, no modifications)
 ```
 
-### Local Environment Setup
+### Services
 
 ```bash
-# Install dependencies using uv (creates virtual environment automatically)
-./scripts/install.sh
-
-# Or directly with uv:
-uv sync --all-extras
-```
-
-### Dependency Management
-
-```bash
-# Update lock file after adding new dependencies to pyproject.toml
-./scripts/upgrade.sh
-# or: uv lock
-
-# Upgrade all dependencies to latest compatible versions
-./scripts/upgrade.sh all
-# or: uv lock --upgrade
-```
-
-### Validation
-
-```bash
-# Run all validation checks (format, lint, type check, import-linter, toml-sort)
-./scripts/validate.sh
-
-# Run validation in check mode (CI-style, no auto-fix)
-./scripts/validate.sh --check
-
-# Format with black
-uv run black .
-
-# Sort imports
-uv run isort .
-
-# Lint with ruff
-uv run ruff check . --fix
-
-# Type check with pyright
-uv run pyright .
-
-# Check import architecture
-uv run lint-imports
-
-# Sort pyproject.toml
-uv run toml-sort pyproject.toml --in-place
-```
-
-### Testing
-
-```bash
-# Start the containers first
-docker-compose up -d --build
-
-# Run tests with pytest
-docker exec -it pal-mono-api pytest
-```
-
-## Project Structure
-
-```tree
-pal-mono/
-├── agent/              # AI agent system (core conversational logic)
-├── api/                # FastAPI REST API
-├── services/           # Business logic layer
-├── db/                 # Database layer
-├── events/             # AWS EventBridge integration for async events
-├── tools/              # AI agent tools
-├── utils/              # Shared utilities
-├── scripts/            # Development and deployment scripts
-└── .github/workflows/  # CI/CD pipelines
-```
-
-## Key Concepts
-
-### Multi-Tenant Architecture
-
-- **Accounts**: Business accounts (restaurants)
-- **Projects**: Stores, belongs to a business account
-- **Agents**: AI agent configurations with persona and settings
-- **Users**: User accounts associated with accounts
-
-## Tools
-
-For full tool development guidelines, see `docs/memory/long-term.md` → "Tool Development" section.
-
-Quick reference:
-- Inherit from `Toolkit`, use `@tool` decorator (from ddtrace, not Agno), register in `tools/registry.py`
-- Docstrings max 1024 chars with when-to-use / when-not-to-use
-- Never make LLM calls inside tool methods
-- Validate inputs with Pydantic models
-
-## Development Workflow
-
-### Making Changes
-
-1. **Code Changes**: Edit files in your preferred editor
-2. **Validate All**: Run `./scripts/validate.sh`
-
-### Configuration
-
-The system uses environment-based configuration:
-
-- **RUNTIME_ENV**: `dev` (local), `lat`, `stg`, `prd`
-- **Local secrets**: Use `local.env` file (see docker-compose.yml)
-- **Production secrets**: AWS Secrets Manager
-
-## Common Tasks
-
-### Viewing Logs
-
-```bash
-# API logs
-docker logs -f pal-mono-api
-
-# Database logs
-docker logs -f pal-mono-db
-```
-
-### Restarting Services
-
-```bash
-# Restart all services
-docker-compose restart
-
-# Restart API only
-docker restart pal-mono-api
+docker-compose up -d --build              # Build and run API + database
+docker-compose up -d --build --force-recreate  # Force rebuild
+docker-compose down                       # Stop all services
+docker-compose logs -f api                # View API logs
+docker restart pal-mono-api               # Restart API only
 ```
 
 ### Database Migrations
 
 ```bash
-# Generate a new migration after modifying tables
+# IMPORTANT: Export new models in db/tables/__init__.py BEFORE generating
 docker exec -it pal-mono-api alembic -c db/alembic.ini revision --autogenerate -m "description"
-
-# Apply migrations
-docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head
-
-# Rollback one migration
-docker exec -it pal-mono-api alembic -c db/alembic.ini downgrade -1
-
-# View migration history
-docker exec -it pal-mono-api alembic -c db/alembic.ini history
+docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head      # Apply
+docker exec -it pal-mono-api alembic -c db/alembic.ini downgrade -1      # Rollback
+docker exec -it pal-mono-api alembic -c db/alembic.ini history           # View history
 ```
 
-### Database Access
+Migration gotcha: empty migration generated = model not exported in `db/tables/__init__.py`.
+
+### Testing
 
 ```bash
-# Connect to local database
-psql -h localhost -U app -d app
-# Password: app
-
-# Or via Docker
-docker exec -it pal-mono-db psql -U app -d app
+uv run pytest                              # Run all tests (mocked, no docker needed)
+uv run pytest tests/path/to/test_file.py   # Run specific
+docker exec -it pal-mono-api pytest        # Run inside container (integration tests)
 ```
 
-### Debugging
+Tests live in `tests/` directory. Test files: `test_*.py`. Async mode: auto.
 
-1. **API Issues**: Check logs with `docker logs -f pal-mono-api`
-2. **Database Issues**: Check migrations with `alembic history` and verify schema
+---
+
+## Configuration
+
+- **`RUNTIME_ENV`**: `dev` (local), `lat`, `stg`, `prd`
+- **Local secrets**: `local.env` (gitignored) — see `local.env.example` for required keys
+- **Production secrets**: AWS Secrets Manager
+- **Docker**: `docker-compose.yml` — API on port 8000, Postgres on port 5432
