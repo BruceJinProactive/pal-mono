@@ -2,7 +2,7 @@
 
 Institutional knowledge for the pal-mono codebase. Every entry has a rationale — no rules without "because."
 
-Last curated: 2025-03-01
+Last curated: 2026-03-17
 
 ---
 
@@ -96,6 +96,7 @@ API → Service → Database
 
 ## Lessons Learned
 
+- **Long-lived async responses must own their DB session** (2026-03-17): Releasing the current transaction before LLM work is not enough for `StreamingResponse` or other cancellation-prone flows. If a request-scoped `AsyncSession` survives inside a long-lived generator or task, SQLAlchemy may later warn that a non-checked-in asyncpg connection is being garbage-collected. Fix the ownership boundary instead: create and close `AsyncSessionLocal()` inside the generator/task that owns the lifetime.
 - **Monitoring trace isolation** (2025-02-14): Monitoring LLM calls (image/video analysis) were inheriting active voice-agent trace context in Datadog. Fix: explicit trace isolation in `/services/monitoring_service/_llm.py`. See `docs/records/2025-02-14-monitoring-trace-fix.md`.
 - **Permission decorators** have limitations: endpoints with resource IDs in form data, query params, or request body can't use simple route-level decorators. Need custom permission handlers that traverse the resource hierarchy. See `docs/state/auth.md`.
 - **Event-driven vs completion events**: For observability, Datadog Lambda Extension is simpler and more effective than completion events + CloudWatch. Fewer moving parts, better developer experience.

@@ -2,7 +2,7 @@
 
 Current project context. Read this before starting any work.
 
-Last updated: 2025-03-01
+Last updated: 2026-03-17
 
 ---
 
@@ -15,6 +15,7 @@ Last updated: 2025-03-01
 
 ## Recently Landed
 
+- 2026-03-17: Fixed chat streaming session ownership so long-lived/cancelled streams close async DB sessions explicitly and do not rely on request dependency teardown
 - 2025-03-01: Reorganized docs/ from `.claude/docs/` to tool-agnostic `docs/` knowledge management system
 
 ## Known Issues

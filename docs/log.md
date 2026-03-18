@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-17
+- Fix chat streaming async session ownership to prevent non-checked-in connection warnings → `docs/records/2026-03-17-chat-stream-session-lifecycle.md`
+
 ### 2026-03-03
 - Fix the Async Issue (@BruceJinProactive, #3612)
 - Refactor end_voice_call to simplify transaction handling and create p (@BruceJinProactive, #3611)

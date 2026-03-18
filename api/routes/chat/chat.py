@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 from agno.run.response import RunResponse
@@ -34,6 +35,22 @@ DEFAULT_ACCOUNT_ICON = "images/accounts/palona_icon.png"
 DEFAULT_USER_ICON = "images/agents/default_user_icon.png"
 
 
+@asynccontextmanager
+async def _managed_session(
+    session: AsyncSession | None,
+) -> AsyncIterator[AsyncSession]:
+    if session is not None:
+        yield session
+        return
+
+    async with AsyncSessionLocal() as managed_session:
+        try:
+            yield managed_session
+        except Exception:
+            await managed_session.rollback()
+            raise
+
+
 def categorize_chat_request(request: ChatRequest) -> str:
     """
     Check the type of chat request based on the Request object
@@ -50,7 +67,11 @@ def categorize_chat_request(request: ChatRequest) -> str:
     response_model=ChatResponse,
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_async)):
+async def chat_endpoint(request: ChatRequest):
+    return await chat(request)
+
+
+async def chat(request: ChatRequest, session: AsyncSession | None = None):
     try:
 
         request_context = RequestContext()
@@ -86,38 +107,39 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
         if request.stream:
 
             async def generate() -> AsyncIterator[str]:
-                try:
-                    response_stream = await get_chat_response_stream(
-                        session=session,
-                        message=request.message,
-                        request_context=request_context,
-                    )
+                async with _managed_session(session) as active_session:
+                    try:
+                        response_stream = await get_chat_response_stream(
+                            session=active_session,
+                            message=request.message,
+                            request_context=request_context,
+                        )
 
-                    if response_stream:
-                        async for chunk in response_stream:
-                            if isinstance(chunk, RunResponse):
-                                content = chunk.get_content_as_string()
-                                if content:
+                        if response_stream:
+                            async for chunk in response_stream:
+                                if isinstance(chunk, RunResponse):
+                                    content = chunk.get_content_as_string()
+                                    if content:
+                                        yield f"data: {content}\n\n"
+                                elif isinstance(chunk, tuple):
+                                    yield f"data: {chunk[0]}\n\n"
+                                elif chunk:
+                                    if not isinstance(chunk, (str, int, float, bool)):
+                                        logger.warning(
+                                            f"Unexpected chunk type: {type(chunk)}"
+                                        )
+                                        continue
+                                    content = str(chunk)
                                     yield f"data: {content}\n\n"
-                            elif isinstance(chunk, tuple):
-                                yield f"data: {chunk[0]}\n\n"
-                            elif chunk:
-                                if not isinstance(chunk, (str, int, float, bool)):
-                                    logger.warning(
-                                        f"Unexpected chunk type: {type(chunk)}"
-                                    )
-                                    continue
-                                content = str(chunk)
-                                yield f"data: {content}\n\n"
 
-                        # Send completion signal
+                        # Send completion signal even if upstream returns no stream.
                         yield "data: [DONE]\n\n"
-                except asyncio.CancelledError:
-                    logger.debug("[Chat] Stream cancelled (client disconnect)")
-                    return
-                except Exception as e:
-                    logger.error(f"Error in generate(): {str(e)}")
-                    yield "data: [ERROR] An error occurred while streaming the response.\n\n"
+                    except asyncio.CancelledError:
+                        logger.debug("[Chat] Stream cancelled (client disconnect)")
+                        return
+                    except Exception as e:
+                        logger.error(f"Error in generate(): {str(e)}")
+                        yield "data: [ERROR] An error occurred while streaming the response.\n\n"
 
             return StreamingResponse(
                 generate(),
@@ -196,11 +218,12 @@ async def chat(request: ChatRequest, session: AsyncSession = Depends(db.get_db_a
             return ChatResponse(status="success")
 
         # Get the response message from message service
-        response_messages = await get_chat_response_async(
-            session=session,
-            message=request.message,
-            request_context=request_context,
-        )
+        async with _managed_session(session) as active_session:
+            response_messages = await get_chat_response_async(
+                session=active_session,
+                message=request.message,
+                request_context=request_context,
+            )
 
         # Create and return the ChatResponse with the messages
         return ChatResponse(

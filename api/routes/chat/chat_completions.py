@@ -2,9 +2,10 @@ import asyncio
 import datetime
 import json
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,17 +40,33 @@ class ChatCompletionRequest(BaseModel):
     user: Optional[str] = None
 
 
+@asynccontextmanager
+async def _managed_session(
+    session: AsyncSession | None,
+):
+    if session is not None:
+        yield session
+        return
+
+    from db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as managed_session:
+        try:
+            yield managed_session
+        except Exception:
+            await managed_session.rollback()
+            raise
+
+
 @chat_router.post(
     "/completions",
     response_model=Dict[str, Any],  # Use a generic dict response model
     responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}},
 )
-async def chat_completions(
-    request: ChatCompletionRequest, session: AsyncSession = Depends(db.get_db_async)
-):
+async def chat_completions(request: ChatCompletionRequest):
     request_context = RequestContext()
     model = request.model
-    return await chat_completions_agno(request, model, request_context, session)
+    return await chat_completions_agno(request, model, request_context)
 
 
 def _extract_content_from_request(request: ChatCompletionRequest) -> str:
@@ -397,7 +414,7 @@ async def chat_completions_agno(
     request: ChatCompletionRequest,
     model: str,
     request_context: RequestContext,
-    session: AsyncSession = Depends(db.get_db_async),
+    session: AsyncSession | None = None,
 ):
     # Guardrail: Ensure streaming mode is always used
     if not request.stream:
@@ -437,112 +454,115 @@ async def chat_completions_agno(
         fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
 
         async def generate_stream():
-            try:
-                send_dd_histogram_metrics(
-                    "chat_completions.start_streaming", request_context.request_time
-                )
-
-                response_stream = await get_chat_response_stream(
-                    session=session,
-                    message=message,
-                    request_context=request_context,
-                    call_id=call_id,
-                    room_name=room_name,
-                    participant_identity=participant_identity,
-                )
-
-                collected_content = []
-                if response_stream:
-                    chunk_count = 0
-                    url_filter = create_url_filter()
+            async with _managed_session(session) as active_session:
+                try:
                     send_dd_histogram_metrics(
-                        "chat_completions.waiting_first_chunk",
-                        request_context.request_time,
-                        [
-                            f"sender_identifier:{sender_identifier}",
-                            f"recipient_identifier:{recipient_identifier}",
-                        ],
+                        "chat_completions.start_streaming", request_context.request_time
                     )
 
-                    # Stream chunks immediately as they arrive
-                    async for chunk in response_stream:
-                        chunk_count += 1
-                        chunk_data = _convert_chunk_to_dict(chunk)
+                    response_stream = await get_chat_response_stream(
+                        session=active_session,
+                        message=message,
+                        request_context=request_context,
+                        call_id=call_id,
+                        room_name=room_name,
+                        participant_identity=participant_identity,
+                    )
 
-                        choices = chunk_data.get("choices", [])
-                        content = (
-                            choices[0].get("delta", {}).get("content", "")
-                            if choices
-                            else ""
+                    collected_content = []
+                    if response_stream:
+                        chunk_count = 0
+                        url_filter = create_url_filter()
+                        send_dd_histogram_metrics(
+                            "chat_completions.waiting_first_chunk",
+                            request_context.request_time,
+                            [
+                                f"sender_identifier:{sender_identifier}",
+                                f"recipient_identifier:{recipient_identifier}",
+                            ],
                         )
 
-                        # Collect content for URL extraction later
-                        collected_content.append(content)
+                        # Stream chunks immediately as they arrive
+                        async for chunk in response_stream:
+                            chunk_count += 1
+                            chunk_data = _convert_chunk_to_dict(chunk)
 
-                        # Apply URL filtering to this chunk
-                        filtered_content = url_filter.filter_content(content)
+                            choices = chunk_data.get("choices", [])
+                            content = (
+                                choices[0].get("delta", {}).get("content", "")
+                                if choices
+                                else ""
+                            )
 
-                        # Yield chunk immediately if content passes filter
-                        if filtered_content is not None:
-                            if (
-                                chunk_data.get("choices")
-                                and len(chunk_data["choices"]) > 0
-                            ):
-                                if "delta" in chunk_data["choices"][0]:
-                                    chunk_data["choices"][0]["delta"][
-                                        "content"
-                                    ] = filtered_content
+                            # Collect content for URL extraction later
+                            collected_content.append(content)
 
-                            # Track TTFT on first chunk
-                            if chunk_count == 1:
-                                time_diff = (
-                                    datetime.datetime.now(datetime.timezone.utc)
-                                    - request_context.request_time
-                                ).total_seconds() * 1000
-                                logger.debug(
-                                    f"[ChatCompletions] TTFT is {time_diff}",
-                                    extra={
-                                        "recipient_identifier": recipient_identifier,
-                                        "sender_identifier": sender_identifier,
-                                    },
-                                )
-                                send_dd_histogram_metrics(
-                                    "chat_completions.sent_first_chunk",
-                                    request_context.request_time,
-                                    [
-                                        f"sender_identifier:{sender_identifier}",
-                                        f"recipient_identifier:{recipient_identifier}",
-                                    ],
-                                )
+                            # Apply URL filtering to this chunk
+                            filtered_content = url_filter.filter_content(content)
 
-                            # Stream chunk to client immediately
-                            yield f"data: {json.dumps(chunk_data)}\n\n"
+                            # Yield chunk immediately if content passes filter
+                            if filtered_content is not None:
+                                if (
+                                    chunk_data.get("choices")
+                                    and len(chunk_data["choices"]) > 0
+                                ):
+                                    if "delta" in chunk_data["choices"][0]:
+                                        chunk_data["choices"][0]["delta"][
+                                            "content"
+                                        ] = filtered_content
 
-                    # Log completion of stream
-                    logger.info(
-                        f"Completed streaming response after {chunk_count} chunks."
+                                # Track TTFT on first chunk
+                                if chunk_count == 1:
+                                    time_diff = (
+                                        datetime.datetime.now(datetime.timezone.utc)
+                                        - request_context.request_time
+                                    ).total_seconds() * 1000
+                                    logger.debug(
+                                        f"[ChatCompletions] TTFT is {time_diff}",
+                                        extra={
+                                            "recipient_identifier": recipient_identifier,
+                                            "sender_identifier": sender_identifier,
+                                        },
+                                    )
+                                    send_dd_histogram_metrics(
+                                        "chat_completions.sent_first_chunk",
+                                        request_context.request_time,
+                                        [
+                                            f"sender_identifier:{sender_identifier}",
+                                            f"recipient_identifier:{recipient_identifier}",
+                                        ],
+                                    )
+
+                                # Stream chunk to client immediately
+                                yield f"data: {json.dumps(chunk_data)}\n\n"
+
+                        # Log completion of stream
+                        logger.info(
+                            f"Completed streaming response after {chunk_count} chunks."
+                        )
+
+                        # Send URLs via SMS if any are found in the collected content
+                        # Note: _send_urls_via_sms creates its own DB session for persistence
+                        await _send_urls_via_sms(
+                            collected_content,
+                            sender_identifier,
+                            recipient_identifier,
+                            call_id=call_id,
+                        )
+
+                        yield "data: [DONE]\n\n"
+
+                except asyncio.CancelledError:
+                    logger.debug(
+                        "[ChatCompletions] Stream cancelled (client disconnect)"
                     )
+                    return
 
-                    # Send URLs via SMS if any are found in the collected content
-                    # Note: _send_urls_via_sms creates its own DB session for persistence
-                    await _send_urls_via_sms(
-                        collected_content,
-                        sender_identifier,
-                        recipient_identifier,
-                        call_id=call_id,
-                    )
-
+                except Exception as e:
+                    logger.error(f"Error in streaming response: {str(e)}")
+                    fallback_chunk = _create_fallback_chunk(model, fallback_content)
+                    yield f"data: {json.dumps(fallback_chunk)}\n\n"
                     yield "data: [DONE]\n\n"
-
-            except asyncio.CancelledError:
-                logger.debug("[ChatCompletions] Stream cancelled (client disconnect)")
-                return
-
-            except Exception as e:
-                logger.error(f"Error in streaming response: {str(e)}")
-                fallback_chunk = _create_fallback_chunk(model, fallback_content)
-                yield f"data: {json.dumps(fallback_chunk)}\n\n"
-                yield "data: [DONE]\n\n"
 
         return StreamingResponse(
             generate_stream(),

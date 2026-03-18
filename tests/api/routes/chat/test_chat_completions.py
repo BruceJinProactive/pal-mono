@@ -27,8 +27,10 @@ from api.routes.chat.chat_completions import (
     _convert_chunk_to_dict,
     _create_fallback_chunk,
     _extract_content_from_request,
+    _managed_session,
     _parse_caller_info,
     _send_urls_via_sms,
+    chat_completions,
     chat_completions_agno,
     is_invalid_url,
 )
@@ -699,6 +701,50 @@ class TestSendUrlsViaSms:
 
 class TestChatCompletionsAgno:
     """Test chat_completions_agno() main function."""
+
+    @pytest.mark.asyncio
+    async def test_managed_session_rolls_back_on_error(self) -> None:
+        """Rollback managed session when an exception escapes the context."""
+
+        class _SessionContext:
+            def __init__(self) -> None:
+                self.session = AsyncMock()
+
+            async def __aenter__(self):
+                return self.session
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        session_ctx = _SessionContext()
+
+        with patch("db.session.AsyncSessionLocal", return_value=session_ctx):
+            with pytest.raises(RuntimeError, match="boom"):
+                async with _managed_session(None):
+                    raise RuntimeError("boom")
+
+        session_ctx.session.rollback.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_chat_completions_endpoint_delegates(self) -> None:
+        """Endpoint wrapper should forward request to the Agno handler."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "user", "recipient_identifier": "agent"}',
+            message="Hello",
+            stream=True,
+        )
+
+        with patch(
+            "api.routes.chat.chat_completions.RequestContext", return_value="ctx"
+        ):
+            with patch(
+                "api.routes.chat.chat_completions.chat_completions_agno",
+                new=AsyncMock(return_value={"status": "ok"}),
+            ) as mock_agno:
+                result = await chat_completions(request)
+
+        assert result == {"status": "ok"}
+        mock_agno.assert_awaited_once_with(request, request.model, "ctx")
 
     @pytest.mark.asyncio
     async def test_non_streaming_mode_raises_error(self) -> None:
