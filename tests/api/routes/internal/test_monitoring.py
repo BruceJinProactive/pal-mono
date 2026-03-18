@@ -264,7 +264,7 @@ class TestRecordCapture:
 
     @pytest.mark.asyncio
     async def test_record_capture_exception_handling(self):
-        """Test record_capture handles exceptions correctly."""
+        """Test record_capture handles exceptions correctly and emits error metric."""
         signal_source_id = uuid.uuid4()
 
         request = RecordCaptureRequest(
@@ -280,6 +280,7 @@ class TestRecordCapture:
                 "api.routes.internal.monitoring.SignalSourceRepositoryAsync",
                 side_effect=Exception("Database error"),
             ),
+            patch("api.routes.internal.monitoring.statsd") as mock_statsd,
             patch("api.routes.internal.monitoring.logger") as mock_logger,
         ):
             with pytest.raises(HTTPException) as exc_info:
@@ -289,5 +290,107 @@ class TestRecordCapture:
             assert exc_info.value.status_code == 500
             assert "Failed to record capture" in exc_info.value.detail
 
+            # Verify error metric was emitted
+            mock_statsd.increment.assert_called_once_with(
+                "camera.feed.error",
+                tags=[
+                    f"camera_id:{signal_source_id}",
+                    "error_type:Exception",
+                ],
+            )
+
             # Verify error was logged
+            mock_logger.error.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_record_capture_exception_with_source_context(self):
+        """Test error metric uses camera_id from source when available."""
+        signal_source_id = uuid.uuid4()
+
+        request = RecordCaptureRequest(
+            signal_source_id=signal_source_id,
+            captured_at=None,
+            capture_url=None,
+        )
+
+        # Mock source with camera_id
+        mock_source = AsyncMock()
+        mock_source.id = signal_source_id
+        mock_source.config = {"camera_id": "camera-123"}
+
+        mock_source_repo = AsyncMock()
+        mock_source_repo.get_by_id.return_value = mock_source
+
+        mock_session = AsyncMock()
+
+        with (
+            patch(
+                "api.routes.internal.monitoring.SignalSourceRepositoryAsync",
+                return_value=mock_source_repo,
+            ),
+            patch(
+                "api.routes.internal.monitoring.AccountRepositoryAsync",
+                side_effect=RuntimeError("Account lookup failed"),
+            ),
+            patch("api.routes.internal.monitoring.statsd") as mock_statsd,
+            patch("api.routes.internal.monitoring.logger") as mock_logger,
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await record_capture(request, mock_session)
+
+            # Verify 500 error
+            assert exc_info.value.status_code == 500
+
+            # Verify error metric was emitted with camera_id from source
+            mock_statsd.increment.assert_called_once_with(
+                "camera.feed.error",
+                tags=[
+                    "camera_id:camera-123",
+                    "error_type:RuntimeError",
+                ],
+            )
+
+            # Verify error was logged
+            mock_logger.error.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_record_capture_error_metric_failure_doesnt_break(self):
+        """Test that error metric failure doesn't prevent error handling."""
+        signal_source_id = uuid.uuid4()
+
+        request = RecordCaptureRequest(
+            signal_source_id=signal_source_id,
+            captured_at=None,
+            capture_url=None,
+        )
+
+        mock_session = AsyncMock()
+
+        with (
+            patch(
+                "api.routes.internal.monitoring.SignalSourceRepositoryAsync",
+                side_effect=Exception("Database error"),
+            ),
+            patch("api.routes.internal.monitoring.statsd") as mock_statsd,
+            patch("api.routes.internal.monitoring.logger") as mock_logger,
+        ):
+            # Make statsd raise an exception
+            mock_statsd.increment.side_effect = Exception("Statsd connection error")
+
+            with pytest.raises(HTTPException) as exc_info:
+                await record_capture(request, mock_session)
+
+            # Verify 500 error still raised despite metric failure
+            assert exc_info.value.status_code == 500
+            assert "Failed to record capture" in exc_info.value.detail
+
+            # Verify metric was attempted
+            mock_statsd.increment.assert_called_once()
+
+            # Verify metric failure was logged
+            mock_logger.debug.assert_any_call(
+                "Failed to emit camera.feed.error metric: Statsd connection error"
+            )
+
+            # Verify original error was still logged
             mock_logger.error.assert_called_once()

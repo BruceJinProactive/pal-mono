@@ -205,6 +205,7 @@ async def record_capture(
     Raises:
         500: Database error
     """
+    source = None  # Initialize for exception handler
     try:
         captured_at = request.captured_at or datetime.now(timezone.utc)
 
@@ -311,6 +312,24 @@ async def record_capture(
             )
 
     except Exception as e:
+        # METRIC: Track camera feed errors
+        try:
+            # Try to get camera_id from source if available, otherwise use signal_source_id
+            camera_id = str(request.signal_source_id)
+            if source and source.config:
+                camera_id = source.config.get("camera_id") or camera_id
+
+            error_type = type(e).__name__
+            statsd.increment(
+                "camera.feed.error",
+                tags=[
+                    f"camera_id:{camera_id}",
+                    f"error_type:{error_type}",
+                ],
+            )
+        except Exception as metric_err:
+            logger.debug(f"Failed to emit camera.feed.error metric: {metric_err}")
+
         logger.error(
             f"[Internal API] Error recording capture for signal_source_id={request.signal_source_id}",
             exc_info=True,
