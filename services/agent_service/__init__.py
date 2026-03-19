@@ -28,6 +28,7 @@ async def construct_agent_spec(
     raw_config: dict | None = None,
     room_name: str | None = None,
     participant_identity: str | None = None,
+    language: str | None = None,
 ) -> Spec:
     """Build a pal_agents.Spec from database configuration."""
     return await _implementation.construct_agent_spec(
@@ -42,6 +43,7 @@ async def construct_agent_spec(
         raw_config,
         room_name,
         participant_identity,
+        language,
     )
 
 

@@ -90,6 +90,7 @@ class RawConfig:
                     agent_id=str(self.agent.id),
                     user_id=str(self.user_id),
                     session_id=str(self.conversation_id),
+                    language=self.agent.language.value if self.agent.language else None,
                 ),
                 additional_context=self._get_additional_context(),
             )

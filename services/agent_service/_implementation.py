@@ -356,6 +356,7 @@ def _agent_config_to_spec(
     generic_api_spec: GenericAPISpec | None = None,
     adora_spec: AdoraSpec | None = None,
     toast_spec: ToastSpec | None = None,
+    language: str | None = None,
 ) -> Spec:
     """Convert pal-mono AgentConfig to pal-agents Spec.
 
@@ -369,6 +370,7 @@ def _agent_config_to_spec(
         generic_api_spec: Optional GenericAPISpec for external API calling.
         adora_spec: Optional AdoraSpec for deterministic adora ordering.
         toast_spec: Optional ToastSpec for deterministic toast ordering.
+        language: Optional language code for the agent.
 
     Returns:
         Spec: pal-agents specification ready for Agent instantiation.
@@ -391,12 +393,15 @@ def _agent_config_to_spec(
     effective_model_spec = model_spec or ModelSpec(size=DEFAULT_MODEL_SIZE)
 
     # ========== Build FillerWordsSpec ==========
-    filler_words_spec = FillerWordsSpec(
-        agent_id=agent_config.metadata.agent_id,
-        account_name=agent_config.metadata.account_name,
-        chat_filler_words_percentage=agent_config.feature_config.chat_filler_words_percentage,
-        tool_calling_filler_words_percentage=agent_config.feature_config.tool_calling_filler_words_percentage,
-    )
+    filler_words_kwargs = {
+        "agent_id": agent_config.metadata.agent_id,
+        "account_name": agent_config.metadata.account_name,
+        "chat_filler_words_percentage": agent_config.feature_config.chat_filler_words_percentage,
+        "tool_calling_filler_words_percentage": agent_config.feature_config.tool_calling_filler_words_percentage,
+    }
+    if "language" in FillerWordsSpec.model_fields:
+        filler_words_kwargs["language"] = language
+    filler_words_spec = FillerWordsSpec(**filler_words_kwargs)
 
     # ========== Build final Spec ==========
     return Spec(
@@ -423,11 +428,12 @@ async def construct_agent_spec(
     raw_config: dict | None = None,
     room_name: str | None = None,
     participant_identity: str | None = None,
+    language: str | None = None,
 ) -> Spec:
     """Build a pal_agents.Spec from database configuration.
 
-    This function reuses construct_agent_config() to load all database data
-    and build the AgentConfig, then converts it to a pal-agents Spec.
+    This function loads the agent once, passes it to construct_agent_config()
+    to build the AgentConfig, then converts it to a pal-agents Spec.
 
     Args:
         session: Async database session.
@@ -446,12 +452,7 @@ async def construct_agent_spec(
     Raises:
         ValueError: If agent_id or project_id is invalid (from construct_agent_config).
     """
-    # Reuse existing construct_agent_config - it handles all database operations:
-    # - Loads agent, project from database
-    # - Gets POS integration
-    # - Loads FAQs
-    # - Builds RawConfig with full prompt logic
-    # - Returns complete AgentConfig
+    # Build agent config (includes language in metadata)
     agent_config = await construct_agent_config(
         db_session=session,
         agent_id=agent_id,
@@ -463,6 +464,11 @@ async def construct_agent_spec(
         receiver_identifier=receiver_identifier,
         room_name=room_name,
         participant_identity=participant_identity,
+    )
+
+    # Use provided language parameter or fall back to agent's language from metadata
+    effective_language = (
+        language if language is not None else agent_config.metadata.language
     )
 
     # Use provided raw_config or default to empty dict
@@ -485,6 +491,7 @@ async def construct_agent_spec(
         generic_api_spec=generic_api_spec,
         adora_spec=adora_spec,
         toast_spec=toast_spec,
+        language=effective_language,
     )
 
 
@@ -517,7 +524,7 @@ async def construct_agent_config(
         ValueError: If the agent_id or project_id is invalid.
 
     Returns:
-        AgentConfig: The agent configuration object.
+        AgentConfig: The agent configuration object (with language in metadata).
     """
 
     # Retrieve the agent from the database

@@ -266,6 +266,20 @@ async def test_construct_agent_spec_threads_toast_spec(monkeypatch):
         ),
     )
 
+    # Mock AgentRepositoryAsync to return agent with no language
+    from unittest.mock import MagicMock
+
+    mock_db_agent = MagicMock()
+    mock_db_agent.language = None
+
+    mock_agent_repo = AsyncMock()
+    mock_agent_repo.get_agent = AsyncMock(return_value=mock_db_agent)
+    monkeypatch.setattr(
+        _implementation.db,
+        "AgentRepositoryAsync",
+        lambda session: mock_agent_repo,
+    )
+
     spec = await _implementation.construct_agent_spec(
         session=AsyncMock(),
         agent_id=uuid.uuid4(),

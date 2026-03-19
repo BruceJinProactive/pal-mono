@@ -211,6 +211,11 @@ class _FakeConversationRepo:
         return SimpleNamespace(id=conversation_id, status="active")
 
 
+class _FakeAgentRepo:
+    async def get_agent(self, agent_id):
+        return SimpleNamespace(language=None)
+
+
 @pytest.mark.asyncio
 async def test_get_chat_response_async_captures_project_attributes_early(monkeypatch):
     """
@@ -225,6 +230,7 @@ async def test_get_chat_response_async_captures_project_attributes_early(monkeyp
 
     message_repo = _FakeMessageRepo()
     conversation_repo = _FakeConversationRepo()
+    agent_repo = _FakeAgentRepo()
 
     user = SimpleNamespace(id=uuid.uuid4())
     project = SimpleNamespace(
@@ -277,6 +283,9 @@ async def test_get_chat_response_async_captures_project_attributes_early(monkeyp
         _implementation.db,
         "ConversationRepositoryAsync",
         lambda session: conversation_repo,
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
     )
     monkeypatch.setattr(
         _implementation.project_service, "get_project_async", _fake_get_project_async
@@ -341,6 +350,7 @@ async def test_get_chat_response_async_legacy_path_uses_captured_attributes(
 
     message_repo = _FakeMessageRepo()
     conversation_repo = _FakeConversationRepo()
+    agent_repo = _FakeAgentRepo()
 
     user = SimpleNamespace(id=uuid.uuid4())
     project = SimpleNamespace(
@@ -389,6 +399,9 @@ async def test_get_chat_response_async_legacy_path_uses_captured_attributes(
         _implementation.db,
         "ConversationRepositoryAsync",
         lambda session: conversation_repo,
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
     )
     monkeypatch.setattr(
         _implementation.project_service, "get_project_async", _fake_get_project_async

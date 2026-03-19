@@ -236,6 +236,11 @@ class _FakeAgent:
         return _stream()
 
 
+class _FakeAgentRepo:
+    async def get_agent(self, agent_id):
+        return SimpleNamespace(language=None)
+
+
 @pytest.mark.asyncio
 async def test_get_chat_response_stream_generates_chatcmpl_stream_id_and_reuses_it(
     monkeypatch,
@@ -248,6 +253,7 @@ async def test_get_chat_response_stream_generates_chatcmpl_stream_id_and_reuses_
 
     entered_blocks: list[str] = []
     message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
 
     @asynccontextmanager
     async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
@@ -283,6 +289,9 @@ async def test_get_chat_response_stream_generates_chatcmpl_stream_id_and_reuses_
     monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
     )
     monkeypatch.setattr(
         _implementation.project_service, "get_project_async", _fake_get_project_async
@@ -345,6 +354,7 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
 
     entered_blocks: list[str] = []
     message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
 
     @asynccontextmanager
     async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
@@ -393,6 +403,9 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
     monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
     )
     monkeypatch.setattr(
         _implementation.project_service, "get_project_async", _fake_get_project_async
@@ -464,6 +477,7 @@ async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
     from services.message_service import _implementation
 
     message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
     user = SimpleNamespace(id=uuid.uuid4())
     project = SimpleNamespace(
         id=uuid.uuid4(),
@@ -504,6 +518,9 @@ async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
     monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
     )
     monkeypatch.setattr(
         _implementation.project_service, "get_project_async", _fake_get_project_async
@@ -557,6 +574,7 @@ async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error
     from services.message_service import _implementation
 
     message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
     user = SimpleNamespace(id=uuid.uuid4())
     project = SimpleNamespace(
         id=uuid.uuid4(),
@@ -597,6 +615,9 @@ async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error
     monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
     )
     monkeypatch.setattr(
         _implementation.project_service, "get_project_async", _fake_get_project_async
@@ -651,6 +672,7 @@ async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_clea
     from services.message_service import _implementation
 
     message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
     user = SimpleNamespace(id=uuid.uuid4())
     project = SimpleNamespace(
         id=uuid.uuid4(),
@@ -696,6 +718,9 @@ async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_clea
     monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
     )
     monkeypatch.setattr(
         _implementation.project_service, "get_project_async", _fake_get_project_async

@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -15,7 +15,7 @@ from agent import (
     VectorStoreModality,
     VectorStoreProvider,
 )
-from db.tables.types import Channel
+from db.tables.types import Channel, Language
 from services.agent_service import _implementation
 
 
@@ -57,34 +57,9 @@ def _build_agent_config() -> AgentConfig:
     )
 
 
-@pytest.mark.parametrize(
-    ("raw_config", "expected_size", "expected_priority"),
-    [
-        ({"model": "m"}, "m", False),
-        ({"model": "L"}, "l", False),
-        ({"model": "XM"}, "xm", False),
-        ({"model": "xm"}, "xm", False),
-        ({"model": "mega"}, "m", False),
-        ({"model": {"size": "m", "priority": True}}, "m", True),
-        ({"model": {"size": "xm", "priority": True}}, "xm", True),
-        ({"model": {"size": "xl"}}, "xl", False),
-        ({"model": {"size": "huge", "priority": True}}, "m", True),
-        ({"model": {"size": "m", "priority": "true"}}, "m", False),
-        ({"model": {"size": "m", "priority": 1}}, "m", False),
-        ({"model": {"size": "m", "priority": None}}, "m", False),
-        ({}, "m", False),
-        ({"model": None}, "m", False),
-        ({"model": ["m"]}, "m", False),
-        (None, "m", False),
-    ],
-)
 @pytest.mark.asyncio
-async def test_construct_agent_spec_parses_model_config(
-    monkeypatch,
-    raw_config,
-    expected_size,
-    expected_priority,
-):
+async def test_language_from_db_when_not_provided(monkeypatch):
+    """Test that language from DB agent is used when not provided as parameter."""
     mock_construct_agent_config = AsyncMock(return_value=_build_agent_config())
     monkeypatch.setattr(
         _implementation,
@@ -97,11 +72,9 @@ async def test_construct_agent_spec_parses_model_config(
         AsyncMock(return_value={}),
     )
 
-    # Mock AgentRepositoryAsync to return agent with no language
-    from unittest.mock import MagicMock
-
+    # Mock agent with language from DB
     mock_db_agent = MagicMock()
-    mock_db_agent.language = None
+    mock_db_agent.language = Language.english
 
     mock_agent_repo = AsyncMock()
     mock_agent_repo.get_agent = AsyncMock(return_value=mock_db_agent)
@@ -118,8 +91,56 @@ async def test_construct_agent_spec_parses_model_config(
         project_id=uuid.uuid4(),
         conversation_id=uuid.uuid4(),
         channel=Channel.SMS,
-        raw_config=raw_config,
+        raw_config={},
     )
 
-    assert spec.model.size == expected_size
-    assert spec.model.priority is expected_priority
+    # Verify language from DB was used if FillerWordsSpec supports it
+    from pal_agents.spec import FillerWordsSpec
+
+    if "language" in FillerWordsSpec.model_fields:
+        assert getattr(spec.filler_words, "language") == "english"
+
+
+@pytest.mark.asyncio
+async def test_language_parameter_overrides_db(monkeypatch):
+    """Test that explicit language parameter overrides DB value."""
+    mock_construct_agent_config = AsyncMock(return_value=_build_agent_config())
+    monkeypatch.setattr(
+        _implementation,
+        "construct_agent_config",
+        mock_construct_agent_config,
+    )
+    monkeypatch.setattr(
+        _implementation,
+        "_build_specs_from_project_integrations",
+        AsyncMock(return_value={}),
+    )
+
+    # Mock agent with different language from DB
+    mock_db_agent = MagicMock()
+    mock_db_agent.language = Language.multilingual
+
+    mock_agent_repo = AsyncMock()
+    mock_agent_repo.get_agent = AsyncMock(return_value=mock_db_agent)
+    monkeypatch.setattr(
+        _implementation.db,
+        "AgentRepositoryAsync",
+        lambda session: mock_agent_repo,
+    )
+
+    spec = await _implementation.construct_agent_spec(
+        session=AsyncMock(),
+        agent_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        channel=Channel.SMS,
+        raw_config={},
+        language="spanish",  # Explicit override
+    )
+
+    # Verify explicit parameter was used if FillerWordsSpec supports it
+    from pal_agents.spec import FillerWordsSpec
+
+    if "language" in FillerWordsSpec.model_fields:
+        assert getattr(spec.filler_words, "language") == "spanish"

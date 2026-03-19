@@ -20,6 +20,7 @@ class AgentMetadata(BaseModel):
     agent_id: str
     user_id: str
     session_id: str
+    language: Optional[str] = None
 
 
 # ============================================================================

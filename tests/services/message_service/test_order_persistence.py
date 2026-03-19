@@ -230,6 +230,11 @@ class _FakeOrderRepository:
         return SimpleNamespace(**order_data)
 
 
+class _FakeAgentRepo:
+    async def get_agent(self, agent_id):
+        return SimpleNamespace(language=None)
+
+
 @pytest.mark.asyncio
 async def test_order_details_persisted_to_database(monkeypatch):
     """Test that order_details from streaming chunk are persisted to the database."""
@@ -239,6 +244,7 @@ async def test_order_details_persisted_to_database(monkeypatch):
     from services.message_service import _implementation
 
     message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
     order_repo = None  # Will be set by the factory
     user = SimpleNamespace(id=uuid.uuid4())
     project = SimpleNamespace(
@@ -372,6 +378,9 @@ async def test_order_details_persisted_to_database(monkeypatch):
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
     monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
+    )
+    monkeypatch.setattr(
         _implementation.project_service, "get_project_async", _fake_get_project_async
     )
     monkeypatch.setattr(
@@ -449,6 +458,7 @@ async def test_order_details_error_handling(monkeypatch):
     from services.message_service import _implementation
 
     message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
     user = SimpleNamespace(id=uuid.uuid4())
     project = SimpleNamespace(
         id=uuid.uuid4(),
@@ -532,6 +542,9 @@ async def test_order_details_error_handling(monkeypatch):
     monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
     )
     monkeypatch.setattr(
         _implementation.project_service, "get_project_async", _fake_get_project_async
