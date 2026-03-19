@@ -90,11 +90,10 @@ async def create_order_from_agent_async(
     conversation_id: uuid.UUID,
 ) -> Optional[Order]:
     """
-    Create an order from pal-agents order_details with duplicate checking.
+    Create an order from pal-agents order_details.
 
-    This function handles all type conversions, duplicate checking, and order
-    creation for orders received from the AI agent. It's idempotent - calling
-    it multiple times with the same order_details will only create one order.
+    This function handles all type conversions and order creation for orders
+    received from the AI agent.
 
     Args:
         session: Async database session
@@ -102,7 +101,7 @@ async def create_order_from_agent_async(
         conversation_id: The conversation ID this order belongs to
 
     Returns:
-        Order | None: The created order, or None if order already exists or creation fails
+        Order | None: The created order, or None if creation fails
     """
     try:
         # Convert vendor string to IntegrationProvider enum
@@ -138,30 +137,9 @@ async def create_order_from_agent_async(
                 order_time_dt = order_details.order_time
 
         # Use run_sync to execute synchronous ORM operations in async context
-        def _create_order_with_duplicate_check(
-            sync_session: Session,
-        ) -> Optional[Order]:
-            """Create order in database with duplicate checking."""
+        def _create_order(sync_session: Session) -> Optional[Order]:
+            """Create order in database."""
             order_repo = OrderRepository(sync_session, auto_commit=False)
-
-            # Check if order already exists (idempotent)
-            if order_details.order_id and order_details.store_id and vendor_enum:
-                existing_order = order_repo.get_order_by_order_id_store_vendor(
-                    order_id=order_details.order_id,
-                    store_id=order_details.store_id,
-                    vendor=vendor_enum,
-                )
-                if existing_order:
-                    logger.info(
-                        "Order already exists, skipping creation",
-                        extra={
-                            "conversation_id": str(conversation_id),
-                            "order_id": order_details.order_id,
-                            "vendor": order_details.vendor,
-                            "existing_order_id": str(existing_order.id),
-                        },
-                    )
-                    return None
 
             # Create new order
             order = order_repo.create_order(
@@ -180,7 +158,7 @@ async def create_order_from_agent_async(
             return order
 
         # Execute the order creation
-        order = await session.run_sync(_create_order_with_duplicate_check)
+        order = await session.run_sync(_create_order)
 
         if order:
             await session.commit()

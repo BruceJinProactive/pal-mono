@@ -83,7 +83,6 @@ class TestCreateOrderFromAgentAsync:
         async def mock_run_sync(func):
             mock_sync_session = Mock()
             mock_repo = Mock()
-            mock_repo.get_order_by_order_id_store_vendor = Mock(return_value=None)
             mock_repo.create_order = Mock(return_value=mock_order)
 
             with patch(
@@ -106,41 +105,6 @@ class TestCreateOrderFromAgentAsync:
         assert result.id == mock_order.id
         assert mock_session.commit.called
         assert not mock_session.rollback.called
-
-    async def test_duplicate_order_detection(self, mock_session, conversation_id):
-        """Test that duplicate orders are detected and skipped."""
-        order_details = FakeOrderDetails()
-
-        # Mock existing order
-        existing_order = Mock()
-        existing_order.id = uuid.uuid4()
-
-        async def mock_run_sync(func):
-            mock_sync_session = Mock()
-            mock_repo = Mock()
-            # Return existing order on duplicate check
-            mock_repo.get_order_by_order_id_store_vendor = Mock(
-                return_value=existing_order
-            )
-
-            with patch(
-                "services.transaction_service._implementation.OrderRepository",
-                return_value=mock_repo,
-            ):
-                return func(mock_sync_session)
-
-        mock_session.run_sync = mock_run_sync
-
-        # Execute
-        result = await create_order_from_agent_async(
-            session=mock_session,
-            order_details=order_details,
-            conversation_id=conversation_id,
-        )
-
-        # Assert
-        assert result is None
-        assert not mock_session.commit.called
 
     async def test_invalid_vendor_returns_none(self, mock_session, conversation_id):
         """Test that invalid vendor returns None."""
@@ -169,7 +133,6 @@ class TestCreateOrderFromAgentAsync:
             nonlocal captured_vendor
             mock_sync_session = Mock()
             mock_repo = Mock()
-            mock_repo.get_order_by_order_id_store_vendor = Mock(return_value=None)
 
             def capture_create_order(**kwargs):
                 nonlocal captured_vendor
@@ -208,7 +171,6 @@ class TestCreateOrderFromAgentAsync:
             nonlocal captured_subtotal
             mock_sync_session = Mock()
             mock_repo = Mock()
-            mock_repo.get_order_by_order_id_store_vendor = Mock(return_value=None)
 
             def capture_create_order(**kwargs):
                 nonlocal captured_subtotal
@@ -248,7 +210,6 @@ class TestCreateOrderFromAgentAsync:
             nonlocal captured_order_time
             mock_sync_session = Mock()
             mock_repo = Mock()
-            mock_repo.get_order_by_order_id_store_vendor = Mock(return_value=None)
 
             def capture_create_order(**kwargs):
                 nonlocal captured_order_time
@@ -288,7 +249,6 @@ class TestCreateOrderFromAgentAsync:
             nonlocal captured_subtotal
             mock_sync_session = Mock()
             mock_repo = Mock()
-            mock_repo.get_order_by_order_id_store_vendor = Mock(return_value=None)
 
             def capture_create_order(**kwargs):
                 nonlocal captured_subtotal
@@ -329,7 +289,6 @@ class TestCreateOrderFromAgentAsync:
             nonlocal captured_order_time
             mock_sync_session = Mock()
             mock_repo = Mock()
-            mock_repo.get_order_by_order_id_store_vendor = Mock(return_value=None)
 
             def capture_create_order(**kwargs):
                 nonlocal captured_order_time
@@ -377,45 +336,3 @@ class TestCreateOrderFromAgentAsync:
         assert result is None
         assert mock_session.rollback.called
         assert not mock_session.commit.called
-
-    async def test_missing_order_id_skips_duplicate_check(
-        self, mock_session, mock_order, conversation_id
-    ):
-        """Test that missing order_id skips duplicate check."""
-        order_details = FakeOrderDetails(order_id=None)
-
-        duplicate_check_called = False
-
-        async def mock_run_sync(func):
-            nonlocal duplicate_check_called
-            mock_sync_session = Mock()
-            mock_repo = Mock()
-
-            def track_duplicate_check(*args, **kwargs):
-                nonlocal duplicate_check_called
-                duplicate_check_called = True
-                return None
-
-            mock_repo.get_order_by_order_id_store_vendor = Mock(
-                side_effect=track_duplicate_check
-            )
-            mock_repo.create_order = Mock(return_value=mock_order)
-
-            with patch(
-                "services.transaction_service._implementation.OrderRepository",
-                return_value=mock_repo,
-            ):
-                return func(mock_sync_session)
-
-        mock_session.run_sync = mock_run_sync
-
-        # Execute
-        result = await create_order_from_agent_async(
-            session=mock_session,
-            order_details=order_details,
-            conversation_id=conversation_id,
-        )
-
-        # Assert
-        assert result is not None
-        assert not duplicate_check_called
