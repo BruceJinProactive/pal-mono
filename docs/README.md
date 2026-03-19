@@ -4,7 +4,7 @@ Tool-agnostic documentation system for humans and AI agents working on pal-mono.
 
 ## Reading Order
 
-| Priority | Path | What | When to read |
+| Default Read Order | Path | What | When to read |
 |----------|------|------|--------------|
 | P0 | `CLAUDE.md` (root) | Operating rules, commands | Auto-loaded by Claude/OpenCode |
 | P1 | `docs/memory/short-term.md` | Active work, don't-touch zones | Before starting ANY task |
@@ -13,7 +13,7 @@ Tool-agnostic documentation system for humans and AI agents working on pal-mono.
 | P3 | `docs/state/` | Current system architecture | When working on a specific system |
 | P3 | `docs/plans/` | Active designs and proposals | When implementing planned work |
 | P3 | `docs/records/` | Completed work and decisions | When understanding past decisions |
-| P3 | `docs/decisions/` | Architecture decision records | When questioning why something is designed a certain way |
+| P3 | `docs/decisions/` | Architecture decision records (authoritative policy) | When changing architecture, boundaries, or defaults; code and docs changes must obey accepted ADRs |
 
 ## Structure
 
@@ -62,7 +62,8 @@ docs/
 - **Naming**: `{NNN}-{kebab-case-title}.md` (numbered for ordering)
 - **Required**: Status, Date, Decision makers, Context, Decision, Consequences, Evidence
 - **Never deleted**: When a decision changes, mark old ADR `Superseded by ADR-{NNN}` and create a new one
-- **Template**: See `docs/decisions/README.md`
+- **Prescriptive**: ADRs define architecture policy and defaults for future work, not a description of the current codebase
+- **Guide + template**: See `docs/decisions/USERGUIDE.md`
 
 ### plans/ — Active Designs
 - **Created when**: Designing a new feature or significant change

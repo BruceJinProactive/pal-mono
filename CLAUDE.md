@@ -12,6 +12,7 @@ Operating rules and guardrails for AI agents. Obey hard rules unconditionally. F
 - **`Depends()`** for dependency injection — except DB sessions inside `StreamingResponse` generators (see ADR-019)
 - **Run `./scripts/validate.sh`** before declaring any task complete (see Validation Gate below)
 - **Read `docs/memory/short-term.md`** before starting any task (fragile zones, active work)
+- **Check relevant accepted ADRs** before changing architecture, boundaries, or defaults — changes must obey active ADRs
 - **Respect dependency flow**: API → Service → Database — `import-linter` enforces this at CI
 - **Repository pattern** for all database access — never raw SQL or direct ORM queries in services
 - **Async consistency** — async endpoints use `AsyncSession = Depends(db.get_db_async)`, sync use `Session = Depends(db.get_db)`
@@ -41,11 +42,13 @@ Before starting ANY task:
 
 1. **Read `docs/memory/short-term.md`** — check "Active Work" and "Don't Touch" sections
 2. **Read `docs/memory/long-term.md`** — understand conventions and gotchas
+3. **Load ADRs only as needed** — use `docs/decisions/README.md` to find relevant accepted ADRs, then read only the ones your task might affect
 
 ### Gate 1: Architecture Compliance
 
 Before writing code:
 
+- Verify the change does not violate any **accepted** ADRs that apply to the area you are touching
 - Verify your change respects the dependency flow: **API → Service → Database**
 - `utils/` must NOT import from `agent`, `api`, `db`, `services`, or `tools`
 - Run `uv run lint-imports` to check — CI will block violations
