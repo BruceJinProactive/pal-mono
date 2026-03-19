@@ -91,7 +91,7 @@ docs/
 
 ### memory/short-term.md — Active Context
 - **Updated when**: Starting/finishing significant work
-- **Sections**: Active Work, Recently Landed, Known Issues, Don't Touch, Upcoming
+- **Sections**: Active Work, Recently Landed, Known Issues or Recent Resolutions, Don't Touch, Upcoming
 - **Required**: Every entry must include a date — `(started YYYY-MM)` for active work, `YYYY-MM-DD:` prefix for recently landed
 - **Refreshed at**: Sprint/cycle boundaries — clear completed items, add new ones
 - **Stale items**: >4 weeks with no activity → remove or promote to plan/record

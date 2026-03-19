@@ -2,7 +2,7 @@
 
 Institutional knowledge for the pal-mono codebase. Every entry has a rationale — no rules without "because."
 
-Last curated: 2026-03-17
+Last curated: 2026-03-19
 
 ---
 
@@ -11,7 +11,7 @@ Last curated: 2026-03-17
 ### Code Style
 
 - All functions must have **type hints** — enforced project-wide, no exceptions
-- Use FastAPI's `Depends()` for all dependency injection
+- Use FastAPI's `Depends()` for dependency injection, except DB sessions owned inside long-lived `StreamingResponse` generators/tasks (see ADR-019)
 - Enforce strict dependency flow: **API → Service → Database** — `lint-imports` enforces this at CI
 - Format with `black`, sort imports with `isort`, lint with `ruff`, type check with `pyright`
 - Run `./scripts/validate.sh` before every PR — it runs all checks in sequence
@@ -26,7 +26,7 @@ Last curated: 2026-03-17
 
 - **Standard**: Fetch credentials from AWS Secrets Manager via `get_client_secret_with_fallback()`
 - **Alternative** (dev/testing only): Accept tokens from `raw_config` as constructor parameters (e.g., Square's `access_token` fallback)
-- Always ask which auth method to use when creating new tools or changing existing ones
+- Default to AWS Secrets Manager; use `raw_config` token fallbacks only when a tool explicitly supports a dev/testing-only override
 
 ### Database
 
@@ -74,7 +74,7 @@ API → Service → Database
 
 ## Architecture Anti-Patterns
 
-- **Never** suppress type errors with `as any`, `@ts-ignore`, `@ts-expect-error`
+- **Never** suppress type errors with `type: ignore`, `cast(Any, ...)`, or `# pyright: ignore`
 - **Never** import from API layer in Service layer (or any reverse dependency)
 - **Never** return full catalogs from tools — use query engines for large datasets
 - **Never** make additional LLM calls inside tool methods
@@ -90,7 +90,7 @@ API → Service → Database
 - **Toast API** menu data can be very large — use the indexer pipeline (Toast → Pinecone) rather than returning raw data
 - **Vapi** `assistant-request` webhook has a tight timeout — cache agent configs where possible
 - **ddtrace context inheritance**: Monitoring LLM calls can inherit voice agent trace context, causing spans to appear in wrong trace trees. Use trace isolation when running LLM analysis outside the agent pipeline.
-- **Agno is being dropped** in favor of `pal-agents` (`PalAgent` with `Spec` and `RuntimeContext`)
+- **ADR-007 migration state**: Agno and `pal-agents` coexist during the migration. Prefer `pal-agents` (`PalAgent` with `Spec` and `RuntimeContext`) for new LiveKit-oriented agent work; maintain Agno only where existing integrations still depend on it.
 
 ---
 
