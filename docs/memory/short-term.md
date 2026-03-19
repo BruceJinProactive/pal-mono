@@ -8,11 +8,19 @@ Last updated: 2026-03-19
 
 ## Active Work
 
-- **LiveKit migration** (started 2025-02) — Migrating voice AI from Vapi (managed) to LiveKit (self-hosted). Major architectural shift: agent worker process replaces webhook-driven model. → `docs/plans/livekit-migration/`
-- **Checkpoint auth migration** (started 2025-02) — Migrating endpoint authorization from internal `_check_account_access` to route-level `require_checkpoint_permission` decorators. 5/8 endpoints done. → `docs/plans/auth/checkpoint-permission-migration.md`
+- **LiveKit migration** (started 2025-02) — Migrating voice AI from Vapi to LiveKit. LiveKit is now the active voice system (dependencies, tools, SIP integration, VoiceProvider enum all in place). Vapi routes removed. Remaining: `services/voice_service/providers/livekit/` not yet created, some later migration phases TBD. → `docs/plans/livekit-migration/`
 
 ## Recently Landed
 
+- 2026-03-19: Plans audit — graduated 4 completed plans to records, removed stale checkpoint auth plan
+  - Monitoring config restructure → `docs/records/2026-03-09-monitoring-config-restructure.md`
+  - PromptV2 capability system → `docs/records/2026-01-21-prompt-v2-capability-system.md`
+  - Billing notifications V1 → `docs/records/2025-12-04-billing-notifications-v1.md`
+  - Google business hours updater → `docs/records/2025-11-14-business-updater-google-hours.md`
+  - Checkpoint auth migration removed (feature deprecated → `docs/records/2026-03-17-deprecate-checkpoint-service.md`)
+  - Operations: signal sources V1 → `docs/records/2025-12-23-signal-sources-v1.md`
+  - Operations: monitoring system V1 → `docs/records/2025-12-29-monitoring-system-v1.md`
+  - Operations: routines system V1 → `docs/records/2025-12-30-routines-system-v1.md`
 - 2026-03-17: Fixed chat streaming session ownership so long-lived/cancelled streams close async DB sessions explicitly and do not rely on request dependency teardown
 
 ## Recent Resolutions
@@ -22,10 +30,7 @@ Last updated: 2026-03-19
 ## Don't Touch (fragile / in-progress)
 
 - `agent/agent.py` LLMObs bootstrap — trace isolation depends on current structure
-- `tools/registry.py` — tool registration may change with capability-based prompt system
-- Auth decorators on migrated endpoints — migration in progress, check status before changing auth logic
 
 ## Upcoming
 
-- PromptV2 capability system — Design tracked in `docs/plans/prompt-v2/design.md`; keep out of short-term active work until implementation resumes
 - Billing V2/V3 — multi-channel notifications with EventBridge, throttling, SMS → `docs/plans/notifications/v2-architecture.md`

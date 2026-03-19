@@ -38,16 +38,20 @@ docs/
 │   └── {NNN}-{title}.md   ← Individual decisions with context + rationale
 │
 ├── plans/                 ← Future work (active designs)
-│   ├── livekit-migration/ ← Vapi → LiveKit voice migration
-│   ├── billing/           ← Billing architecture design
-│   ├── prompt-v2/         ← Capability-based prompt system
-│   ├── auth/              ← Checkpoint permission migration
-│   ├── notifications/     ← Billing notifications V1/V2
-│   ├── operations/        ← Routines, monitoring, inputs, notifications
-│   └── business-updater/  ← Planned but not implemented features
+│   ├── livekit-migration/ ← Vapi → LiveKit voice migration (in progress)
+│   ├── billing/           ← Billing architecture design (future)
+│   └── notifications/     ← Billing notifications V2 (future)
 │
 └── records/               ← Past work (detailed, date-prefixed)
-    └── 2025-02-14-monitoring-trace-fix.md
+    ├── 2025-02-14-monitoring-trace-fix.md
+    ├── 2025-11-14-business-updater-google-hours.md
+    ├── 2025-12-04-billing-notifications-v1.md
+    ├── 2025-12-23-signal-sources-v1.md
+    ├── 2025-12-29-monitoring-system-v1.md
+    ├── 2025-12-30-routines-system-v1.md
+    ├── 2026-01-21-prompt-v2-capability-system.md
+    ├── 2026-03-09-monitoring-config-restructure.md
+    └── 2025-11-14-business-updater-google-hours.md
 
 ## Lifecycle Rules
 
