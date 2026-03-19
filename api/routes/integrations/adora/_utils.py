@@ -113,7 +113,10 @@ async def update_order_status(
 
     # Update the order status in orders table (event should not be None for order type)
     if webhook_request.Event is not None:
-        order.status = webhook_request.Event
+        # Normalize "Paid" to lowercase "paid" for consistency
+        order.status = (
+            "paid" if webhook_request.Event == "Paid" else webhook_request.Event
+        )
 
     # If there's a tracking link in the webhook, update it
     if webhook_request.trackingLink:
@@ -122,11 +125,15 @@ async def update_order_status(
     # Also update the corresponding transaction in transactions table
     # Note: Using sync helper function, but the session will be committed later
     try:
+        # Normalize "Paid" to lowercase "paid" for consistency
+        normalized_status = (
+            "paid" if webhook_request.Event == "Paid" else webhook_request.Event
+        )
         success = await asyncio.to_thread(
             update_order_by_phone,
             store_id=webhook_request.storeId,
             vendor=IntegrationProvider.adora,
-            new_status=webhook_request.Event,
+            new_status=normalized_status,
             user_phone_number=webhook_request.PhoneNumber,
             order_date=webhook_request.OrderDate,
             tracking_link=webhook_request.trackingLink,
