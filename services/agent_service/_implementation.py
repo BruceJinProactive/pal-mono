@@ -223,6 +223,7 @@ def _build_adora_spec_from_raw_config(raw_config: dict) -> AdoraSpec:
     adora_spec_kwargs: dict[str, Any] = {"enabled": True}
     for field in [
         "menu_data",
+        "lookup_menu_data",
         "coupon_data",
         "base_url",
         "auth",
@@ -232,12 +233,37 @@ def _build_adora_spec_from_raw_config(raw_config: dict) -> AdoraSpec:
         "store_id",
         "customer_email",
         "tool_name",
+        "lookup_tool_name",
         "debug",
     ]:
         if field in adora_config:
             adora_spec_kwargs[field] = adora_config[field]
 
     return AdoraSpec(**adora_spec_kwargs)
+
+
+def _merge_adora_raw_config_overrides(
+    adora_spec: AdoraSpec | None,
+    raw_config: dict | None,
+) -> AdoraSpec | None:
+    """Overlay prototype-only raw_config fields onto an existing AdoraSpec."""
+    if adora_spec is None or not isinstance(raw_config, dict):
+        return adora_spec
+
+    raw_adora_config = raw_config.get("adora")
+    if not isinstance(raw_adora_config, dict):
+        return adora_spec
+
+    override_fields = ("lookup_menu_data", "lookup_tool_name")
+    overrides = {
+        field: raw_adora_config[field]
+        for field in override_fields
+        if field in raw_adora_config
+    }
+    if not overrides:
+        return adora_spec
+
+    return AdoraSpec(**{**adora_spec.model_dump(), **overrides})
 
 
 async def _resolve_integration_credentials(
@@ -479,9 +505,10 @@ async def construct_agent_spec(
 
     # Build specs from ProjectIntegration registry, fall back to raw_config
     pi_specs = await _build_specs_from_project_integrations(session, project_id)
-    adora_spec = pi_specs.get("adora") or _build_adora_spec_from_raw_config(
-        effective_raw_config
-    )
+    adora_spec = _merge_adora_raw_config_overrides(
+        pi_specs.get("adora"),
+        effective_raw_config,
+    ) or _build_adora_spec_from_raw_config(effective_raw_config)
     toast_spec = pi_specs.get("toast")
 
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
