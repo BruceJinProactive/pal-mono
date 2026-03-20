@@ -407,6 +407,34 @@ class RawConfig:
                     ),
                 )
 
+        # Auto-inject livekit_tool for voice channels if not already present
+        # and the project has transfer contacts configured.
+        LIVEKIT_TOOL_NAMES = {"livekit_transfer_tool", "livekit_tool"}
+        has_livekit_tool = bool(LIVEKIT_TOOL_NAMES & set(merged_tools.keys()))
+        if self.channel == Channel.VOICE and not has_livekit_tool and session:
+            has_transfer_destination = False
+            try:
+                project_contact_repo = ProjectContactRepositoryAsync(session)
+                contact_ids = await project_contact_repo.list_contacts_by_project(
+                    self.project.id
+                )
+                if contact_ids:
+                    has_transfer_destination = True
+            except (DBTimeoutError, SQLAlchemyError):
+                logger.exception(
+                    "[_get_agent_tools] Failed to check contacts for auto-inject "
+                    "(project %s)",
+                    self.project.id,
+                )
+
+            if has_transfer_destination:
+                _set_tool("livekit_tool", {}, True)
+                logger.debug(
+                    "[_get_agent_tools] Auto-injected livekit_tool for voice channel "
+                    "(project %s)",
+                    self.project.id,
+                )
+
         final_identifiers: List[ToolIdentifier] = []
 
         for tool_name in tool_order:
