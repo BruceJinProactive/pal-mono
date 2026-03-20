@@ -1,6 +1,6 @@
 """Internal voice initialization endpoint for LiveKit agent worker."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
@@ -46,3 +46,13 @@ async def end_voice_call(
     and finds the conversation_id associated with the call.
     """
     return await _voice.end_voice_call(request, session)
+
+
+@voice_router.post("/upload-recording", status_code=status.HTTP_201_CREATED)
+async def upload_recording(
+    file: UploadFile = File(...),
+    call_id: str = Form(...),
+    room_name: str = Form(...),
+) -> dict:
+    """Upload an audio recording from the LiveKit agent worker."""
+    return await _voice.upload_recording(file, call_id, room_name)

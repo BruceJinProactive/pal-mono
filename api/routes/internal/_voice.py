@@ -2,12 +2,14 @@
 
 import asyncio
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 
 import pytz
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 import db
 from api.schemas.chat.message import (
@@ -982,3 +984,152 @@ async def _publish_livekit_evaluation_event(
             f"[_publish_livekit_evaluation_event] Failed to publish event: {e}",
             extra={"conversation_id": str(conversation_id)},
         )
+
+
+async def upload_recording(
+    file: UploadFile, call_id: str, room_name: str
+) -> dict[str, str]:
+    """Upload an audio recording from the LiveKit agent worker to S3.
+
+    Args:
+        file: Audio file upload (OGG, WAV, or MP3)
+        call_id: Unique call identifier
+        room_name: LiveKit room name
+
+    Returns:
+        dict with audio_recording_s3_uri key containing the S3 URI
+
+    Raises:
+        HTTPException: If validation fails or S3 upload errors occur
+    """
+    # Get S3 configuration
+    bucket_name = os.getenv("AUDIO_RECORDINGS_S3_BUCKET")
+    if not bucket_name:
+        logger.error("[upload_recording] AUDIO_RECORDINGS_S3_BUCKET not configured")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Audio recordings bucket not configured",
+            headers={"Content-Type": "application/json"},
+        )
+
+    region = os.getenv("AWS_REGION", "us-east-1")
+
+    _log_extra = {
+        "call_id": call_id,
+        "room_name": room_name,
+        "upload_filename": file.filename,
+    }
+
+    # Validate filename is provided
+    if not file.filename:
+        logger.error("[upload_recording] No filename provided", extra=_log_extra)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is required",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Validate file extension
+    filename = os.path.basename(file.filename)
+    ext = os.path.splitext(filename)[1].lower()
+    allowed_extensions = {".ogg", ".wav", ".mp3"}
+
+    if ext not in allowed_extensions:
+        logger.error(
+            "[upload_recording] Unsupported file extension",
+            extra={**_log_extra, "extension": ext},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file extension: {ext}. Allowed: .ogg, .wav, .mp3",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Read file content
+    try:
+        file_content = await file.read()
+    except Exception as e:
+        logger.error(
+            f"[upload_recording] Failed to read file content: {e}", extra=_log_extra
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to read file content",
+            headers={"Content-Type": "application/json"},
+        ) from e
+
+    # Validate file is not empty
+    if not file_content:
+        logger.error("[upload_recording] Empty file received", extra=_log_extra)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is empty",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Validate file size (max 10MB)
+    max_size_bytes = 10 * 1024 * 1024
+    file_size = len(file_content)
+    if file_size > max_size_bytes:
+        logger.error(
+            "[upload_recording] File too large",
+            extra={**_log_extra, "size_bytes": file_size, "max_bytes": max_size_bytes},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File size {file_size} bytes exceeds maximum of {max_size_bytes} bytes",
+            headers={"Content-Type": "application/json"},
+        )
+
+    # Sanitize room_name and call_id for safe S3 key construction
+    # Allow only alphanumeric, hyphens, and underscores
+    safe_room = re.sub(r"[^a-zA-Z0-9_-]", "_", room_name)
+    safe_call_id = re.sub(r"[^a-zA-Z0-9_-]", "_", call_id)
+
+    # Build S3 key: recordings/{room_name}/{call_id}.ogg (use original extension)
+    s3_key = f"recordings/{safe_room}/{safe_call_id}{ext}"
+    s3_uri = f"s3://{bucket_name}/{s3_key}"
+
+    # Upload to S3
+    try:
+        from services.asset_service._utils import init_s3
+
+        s3_client = init_s3(region)
+
+        # Map extensions to MIME types for fallback
+        ext_to_mime = {
+            ".ogg": "audio/ogg",
+            ".wav": "audio/wav",
+            ".mp3": "audio/mpeg",
+        }
+
+        # Use put_object since files are small (<10MB)
+        await run_in_threadpool(
+            s3_client.put_object,
+            Bucket=bucket_name,
+            Key=s3_key,
+            Body=file_content,
+            ContentType=file.content_type or ext_to_mime.get(ext, "audio/ogg"),
+        )
+
+        logger.info(
+            "[upload_recording] Successfully uploaded audio recording",
+            extra={
+                **_log_extra,
+                "s3_uri": s3_uri,
+                "size_bytes": file_size,
+            },
+        )
+
+        return {"audio_recording_s3_uri": s3_uri}
+
+    except Exception as e:
+        logger.error(
+            f"[upload_recording] S3 upload failed: {e!s}",
+            extra={**_log_extra, "s3_key": s3_key, "error": str(e)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload to S3: {e!s}",
+            headers={"Content-Type": "application/json"},
+        ) from e
