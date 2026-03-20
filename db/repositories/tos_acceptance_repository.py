@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db.tables import TosAcceptance
+from db.tables import Account, TosAcceptance
 
 
 class TosAcceptanceRepository:
@@ -95,4 +96,30 @@ class TosAcceptanceRepository:
                 TosAcceptance.tos_version == tos_version,
             )
             .first()
+        )
+
+    def get_accounts_without_version(self, tos_version: str) -> list[Account]:
+        """
+        Future use - when we support multiple versions.
+        Get all accounts that have not accepted a specific TOS version.
+
+        Args:
+            tos_version: The TOS version to check
+
+        Returns:
+            list[Account]: List of Account objects that have not accepted the version
+
+        Raises:
+            SQLAlchemyError: If database query fails
+        """
+        # Subquery to find account IDs that have accepted this version
+        accepted_account_ids = select(TosAcceptance.account_id).where(
+            TosAcceptance.tos_version == tos_version
+        )
+
+        # Find all accounts NOT in the accepted list
+        return list(
+            self.session.query(Account)
+            .filter(Account.id.notin_(accepted_account_ids))
+            .all()
         )
