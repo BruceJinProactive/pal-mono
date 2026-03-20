@@ -809,3 +809,142 @@ async def test_get_chat_response_stream_outer_cancelled_error_returns_cleanly(
     ]
 
     assert chunks == []
+
+
+@pytest.mark.asyncio
+async def test_get_chat_response_stream_legacy_agent_closing_conversation_updates_status(
+    monkeypatch,
+):
+    """Test that closing_conversation flag triggers conversation status update in legacy agent path."""
+    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    entered_blocks: list[str] = []
+    message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
+        entered_blocks.append(name)
+        yield None
+
+    user = SimpleNamespace(id=uuid.uuid4())
+    project = SimpleNamespace(
+        id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        raw_config={"use_pal_agents": False},
+        agent_id=uuid.uuid4(),
+        account=SimpleNamespace(name="test-account"),
+        agent=SimpleNamespace(),
+        timezone="America/Los_Angeles",
+        name="test-project",
+    )
+
+    async def _fake_get_project_async(session, message):
+        return project
+
+    async def _fake_get_user_async(session, project, message):
+        return user, False
+
+    async def _fake_construct_agent_config(**kwargs):
+        return SimpleNamespace(stream=False)
+
+    async def _fake_get_agent_input_from_message(**kwargs):
+        return {"input": "ok"}
+
+    # Create an Agent that yields a chunk with closing_conversation=True
+    class _ClosingAgent:
+        def __init__(self, config):
+            self.config = config
+
+        async def arun(self, _input):
+            async def _stream():
+                # Import Output from agent.input_output to match implementation
+                from agent.input_output import Output
+
+                yield Output(content="goodbye", closing_conversation=True)
+
+            return _stream()
+
+    # Track calls to ConversationRepositoryAsync
+    conversation_repo_calls = []
+    fake_conversation = SimpleNamespace(status=None)
+
+    class _FakeConversationRepo:
+        def __init__(self, session):
+            self.session = session
+
+        async def get_conversation_by_id(self, conversation_id):
+            conversation_repo_calls.append(conversation_id)
+            return fake_conversation
+
+    monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
+    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
+    monkeypatch.setattr(
+        _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db,
+        "ConversationRepositoryAsync",
+        _FakeConversationRepo,
+    )
+    monkeypatch.setattr(
+        _implementation.project_service, "get_project_async", _fake_get_project_async
+    )
+    monkeypatch.setattr(
+        _implementation.user_service, "get_user_async", _fake_get_user_async
+    )
+    monkeypatch.setattr(
+        _implementation.agent_service,
+        "construct_agent_config",
+        _fake_construct_agent_config,
+    )
+    monkeypatch.setattr(
+        _implementation._utils,
+        "get_agent_input_from_message",
+        _fake_get_agent_input_from_message,
+    )
+    monkeypatch.setattr(_implementation, "Agent", _ClosingAgent)
+
+    # Mock ConversationStatus enum
+    class _FakeConversationStatus:
+        CLOSING = "closing"
+
+    monkeypatch.setattr(
+        _implementation.db, "ConversationStatus", _FakeConversationStatus
+    )
+
+    session = AsyncMock()
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.SMS,
+        text=TextObject(body="goodbye"),
+        metadata=Metadata(testing=True),
+    )
+
+    chunks = [
+        chunk
+        async for chunk in _implementation.get_chat_response_stream(
+            session=session,
+            message=message,
+            request_context=RequestContext(),
+        )
+    ]
+
+    # Verify conversation repository was called
+    assert len(conversation_repo_calls) == 1
+    # Verify conversation status was updated
+    assert fake_conversation.status == "closing"
+    # Verify session.flush was called
+    assert session.flush.called
+    # Verify chunks were produced
+    assert len(chunks) >= 1

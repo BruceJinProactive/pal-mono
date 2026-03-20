@@ -476,7 +476,7 @@ async def get_chat_response_stream(
                     agent_id=agent_id,
                     user_id=user_id,
                     project_id=project_id,
-                    conversation_id=request_message.conversation_id,
+                    conversation_id=request_conversation_id,
                     channel=message.channel,
                     sender_identifier=message.sender_identifier,
                     raw_config=project_raw_config,
@@ -501,7 +501,7 @@ async def get_chat_response_stream(
                         conversation = await db.ConversationRepositoryAsync(
                             session
                         ).get_conversation_by_id(
-                            conversation_id=request_message.conversation_id
+                            conversation_id=request_conversation_id
                         )
                         vapi_control_url = conversation.vapi_control_url
                     except Exception as e:
@@ -511,7 +511,7 @@ async def get_chat_response_stream(
                             "Failed to fetch conversation for vapi_control_url: %s",
                             str(e),
                             extra={
-                                "conversation_id": str(request_message.conversation_id),
+                                "conversation_id": str(request_conversation_id),
                                 "call_id": call_id,
                                 "exception_type": type(e).__name__,
                             },
@@ -519,7 +519,7 @@ async def get_chat_response_stream(
 
                 runtime_context = RuntimeContext(
                     user_id=str(user_id),
-                    session_id=str(request_message.conversation_id),
+                    session_id=str(request_conversation_id),
                     customer_phone=customer_phone,
                     project_id=str(project_id),
                     account_id=str(project_account_id),
@@ -536,7 +536,7 @@ async def get_chat_response_stream(
 
                 # Fetch and format conversation history (same as non-streaming)
                 history_messages = await query_history_messages(
-                    request_message.conversation_id,
+                    request_conversation_id,
                     limit=100,
                 )
 
@@ -642,7 +642,7 @@ async def get_chat_response_stream(
                                     conversation = await db.ConversationRepositoryAsync(
                                         session
                                     ).get_conversation_by_id(
-                                        conversation_id=request_message.conversation_id
+                                        conversation_id=request_conversation_id
                                     )
                                     if conversation:
                                         conversation.transfer_purpose = (
@@ -772,7 +772,7 @@ async def get_chat_response_stream(
                     agent_id=agent_id,
                     user_id=user_id,
                     project_id=project_id,
-                    conversation_id=request_message.conversation_id,
+                    conversation_id=request_conversation_id,
                     channel=message.channel,
                     sender_identifier=message.sender_identifier,
                     receiver_identifier=message.recipient_identifier,
@@ -826,9 +826,7 @@ async def get_chat_response_stream(
                                 "Process Stream Chunk",
                                 tags={
                                     "chunk_index": index,
-                                    "conversation_id": str(
-                                        request_message.conversation_id
-                                    ),
+                                    "conversation_id": str(request_conversation_id),
                                     "chunk_type": type(chunk).__name__,
                                 },
                             ) as span:
@@ -841,10 +839,12 @@ async def get_chat_response_stream(
                                         hasattr(chunk, "closing_conversation")
                                         and chunk.closing_conversation
                                     ):
-                                        conversation = await db.ConversationRepositoryAsync(
-                                            session
-                                        ).get_conversation_by_id(
-                                            conversation_id=request_message.conversation_id
+                                        conversation = (
+                                            await db.ConversationRepositoryAsync(
+                                                session
+                                            ).get_conversation_by_id(
+                                                conversation_id=request_conversation_id
+                                            )
                                         )
                                         if conversation:
                                             conversation.status = (
@@ -913,7 +913,7 @@ async def get_chat_response_stream(
                     project_name=project_name,
                     agent_id=str(agent_id),
                     user_id=str(user_id),
-                    session_id=str(request_message.conversation_id),
+                    session_id=str(request_conversation_id),
                     testing=testing,
                 )
 
