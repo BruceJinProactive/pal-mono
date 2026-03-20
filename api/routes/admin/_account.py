@@ -271,10 +271,12 @@ async def accept_account_terms(
                 headers={"Content-Type": "application/json"},
             )
 
-        if normalized_email.endswith("@proactiveailab.com"):
+        if normalized_email.endswith(
+            "@proactiveailab.com"
+        ) or normalized_email.endswith("@palona.ai"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Internal Palona users are not allowed to accept Terms of Service.",
+                detail="Internal team members are not allowed to accept Terms of Service.",
                 headers={"Content-Type": "application/json"},
             )
 

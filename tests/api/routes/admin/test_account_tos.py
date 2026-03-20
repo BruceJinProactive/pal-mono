@@ -74,7 +74,7 @@ class TestAcceptAccountTerms:
     async def test_accept_terms_blocks_internal_email(
         self, mock_context, mock_account, mock_request
     ):
-        """Should block acceptance from @proactiveailab.com."""
+        """Should block acceptance from @proactiveailab.com and @palona.ai."""
         mock_session = MagicMock()
 
         # Test @proactiveailab.com
@@ -87,14 +87,31 @@ class TestAcceptAccountTerms:
                     "test-account", mock_request, mock_context, mock_session
                 )
             assert exc_info.value.status_code == 403
-            assert "Internal Palona users" in exc_info.value.detail
+            assert "internal team members" in exc_info.value.detail.lower()
+
+        # Test @palona.ai
+        mock_context.email = "user@palona.ai"
+        with patch("api.routes.admin._account.account_service") as mock_account_service:
+            mock_account_service.get_account.return_value = mock_account
 
             with pytest.raises(HTTPException) as exc_info:
                 await accept_account_terms(
                     "test-account", mock_request, mock_context, mock_session
                 )
             assert exc_info.value.status_code == 403
-            assert "Internal Palona users" in exc_info.value.detail
+            assert "internal team members" in exc_info.value.detail.lower()
+
+        # Test case insensitive @PALONA.AI
+        mock_context.email = "user@PALONA.AI"
+        with patch("api.routes.admin._account.account_service") as mock_account_service:
+            mock_account_service.get_account.return_value = mock_account
+
+            with pytest.raises(HTTPException) as exc_info:
+                await accept_account_terms(
+                    "test-account", mock_request, mock_context, mock_session
+                )
+            assert exc_info.value.status_code == 403
+            assert "internal team members" in exc_info.value.detail.lower()
 
     @pytest.mark.asyncio
     async def test_accept_terms_empty_email(self, mock_request):

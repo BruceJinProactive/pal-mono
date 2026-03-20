@@ -814,3 +814,280 @@ class TestSelfOnboardingTOSIntegration:
             mock_logger.debug.assert_any_call(
                 "Failed to emit tos.acceptance.failed metric: Statsd connection error"
             )
+
+    @pytest.mark.asyncio
+    async def test_self_onboarding_internal_email_skips_tos_proactiveailab(self):
+        """Test self_onboarding skips TOS creation for @proactiveailab.com emails."""
+        request = SelfOnboardingRequest(
+            account_name="test-account",
+            account_display_name="Test Account",
+            account_description="Test business",
+            email="internal@proactiveailab.com",  # Internal email
+            user_name="Internal User",
+            password=TEST_PASSWORD,
+            phone_number="+15555555555",
+            agent_name="Test Agent",
+            agent_greeting_message="Hello",
+            agent_communication_style="friendly",
+            agent_interaction_guidelines="Be helpful",
+            agent_voice_id="voice123",
+            agent_language="English",
+            project_name="test-project",
+            project_display_name="Test Project",
+            project_store_hours="Mon-Fri: 9am-5pm",
+            project_address="123 Test St",
+            project_timezone="America/Los_Angeles",
+            terms_accepted=True,  # TOS acceptance requested
+            segment=AccountSegment.smb,
+        )
+
+        mock_response = MagicMock(spec=Response)
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.email = "internal@proactiveailab.com"
+        mock_user.session = MagicMock()
+        mock_user.session.user_sub = str(uuid.uuid4())
+
+        mock_account_status = AccountStatusResponse(
+            id=uuid.uuid4(),
+            name="test-account",
+            status=AccountStatus.active,
+            display_name="Test Account",
+        )
+
+        with (
+            patch(
+                "api.routes.admin._onboarding.self_onboard_account",
+                return_value="test-account",
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_agent",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_project",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_voice_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_user", return_value=mock_user
+            ),
+            patch("api.routes.admin._onboarding.account_service"),
+            patch(
+                "api.routes.admin._onboarding.TosAcceptanceRepository"
+            ) as mock_tos_repo,
+            patch(
+                "api.routes.admin._onboarding.slack_service.send_self_onboarding_notification",
+                new_callable=AsyncMock,
+            ),
+            patch("api.routes.admin._onboarding._set_user_session"),
+            patch(
+                "api.routes.admin._onboarding.get_account_status",
+                return_value=mock_account_status,
+            ),
+            patch("api.routes.admin._onboarding.logger") as mock_logger,
+        ):
+            tos_repo_instance = mock_tos_repo.return_value
+
+            # Execute
+            result = await self_onboarding(request, mock_response, mock_session)
+
+            # Verify signup succeeded
+            assert result is not None
+            mock_session.commit.assert_called_once()
+
+            # Verify TOS acceptance was NOT created (skipped for internal email)
+            tos_repo_instance.create_tos_acceptance.assert_not_called()
+            tos_repo_instance.get_tos_acceptance_by_version.assert_not_called()
+
+            # Verify internal email skip was logged
+            mock_logger.info.assert_any_call(
+                "Skipping TOS acceptance for internal email: internal@proactiveailab.com"
+            )
+
+    @pytest.mark.asyncio
+    async def test_self_onboarding_internal_email_skips_tos_palona(self):
+        """Test self_onboarding skips TOS creation for @palona.ai emails."""
+        request = SelfOnboardingRequest(
+            account_name="test-account",
+            account_display_name="Test Account",
+            account_description="Test business",
+            email="team@palona.ai",  # Internal email
+            user_name="Team Member",
+            password=TEST_PASSWORD,
+            phone_number="+15555555555",
+            agent_name="Test Agent",
+            agent_greeting_message="Hello",
+            agent_communication_style="friendly",
+            agent_interaction_guidelines="Be helpful",
+            agent_voice_id="voice123",
+            agent_language="English",
+            project_name="test-project",
+            project_display_name="Test Project",
+            project_store_hours="Mon-Fri: 9am-5pm",
+            project_address="123 Test St",
+            project_timezone="America/Los_Angeles",
+            terms_accepted=True,  # TOS acceptance requested
+            segment=AccountSegment.smb,
+        )
+
+        mock_response = MagicMock(spec=Response)
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.email = "team@palona.ai"
+        mock_user.session = MagicMock()
+        mock_user.session.user_sub = str(uuid.uuid4())
+
+        mock_account_status = AccountStatusResponse(
+            id=uuid.uuid4(),
+            name="test-account",
+            status=AccountStatus.active,
+            display_name="Test Account",
+        )
+
+        with (
+            patch(
+                "api.routes.admin._onboarding.self_onboard_account",
+                return_value="test-account",
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_agent",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_project",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_voice_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_user", return_value=mock_user
+            ),
+            patch("api.routes.admin._onboarding.account_service"),
+            patch(
+                "api.routes.admin._onboarding.TosAcceptanceRepository"
+            ) as mock_tos_repo,
+            patch(
+                "api.routes.admin._onboarding.slack_service.send_self_onboarding_notification",
+                new_callable=AsyncMock,
+            ),
+            patch("api.routes.admin._onboarding._set_user_session"),
+            patch(
+                "api.routes.admin._onboarding.get_account_status",
+                return_value=mock_account_status,
+            ),
+            patch("api.routes.admin._onboarding.logger") as mock_logger,
+        ):
+            tos_repo_instance = mock_tos_repo.return_value
+
+            # Execute
+            result = await self_onboarding(request, mock_response, mock_session)
+
+            # Verify signup succeeded
+            assert result is not None
+            mock_session.commit.assert_called_once()
+
+            # Verify TOS acceptance was NOT created (skipped for internal email)
+            tos_repo_instance.create_tos_acceptance.assert_not_called()
+            tos_repo_instance.get_tos_acceptance_by_version.assert_not_called()
+
+            # Verify internal email skip was logged
+            mock_logger.info.assert_any_call(
+                "Skipping TOS acceptance for internal email: team@palona.ai"
+            )
+
+    @pytest.mark.asyncio
+    async def test_self_onboarding_internal_email_case_insensitive(self):
+        """Test internal email check is case-insensitive."""
+        request = SelfOnboardingRequest(
+            account_name="test-account",
+            account_display_name="Test Account",
+            account_description="Test business",
+            email="USER@PALONA.AI",  # Uppercase internal email
+            user_name="User",
+            password=TEST_PASSWORD,
+            phone_number="+15555555555",
+            agent_name="Test Agent",
+            agent_greeting_message="Hello",
+            agent_communication_style="friendly",
+            agent_interaction_guidelines="Be helpful",
+            agent_voice_id="voice123",
+            agent_language="English",
+            project_name="test-project",
+            project_display_name="Test Project",
+            project_store_hours="Mon-Fri: 9am-5pm",
+            project_address="123 Test St",
+            project_timezone="America/Los_Angeles",
+            terms_accepted=True,
+            segment=AccountSegment.smb,
+        )
+
+        mock_response = MagicMock(spec=Response)
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.email = "USER@PALONA.AI"
+        mock_user.session = MagicMock()
+        mock_user.session.user_sub = str(uuid.uuid4())
+
+        mock_account_status = AccountStatusResponse(
+            id=uuid.uuid4(),
+            name="test-account",
+            status=AccountStatus.active,
+            display_name="Test Account",
+        )
+
+        with (
+            patch(
+                "api.routes.admin._onboarding.self_onboard_account",
+                return_value="test-account",
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_agent",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_project",
+                return_value=uuid.uuid4(),
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_voice_config",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "api.routes.admin._onboarding.self_onboard_user", return_value=mock_user
+            ),
+            patch("api.routes.admin._onboarding.account_service"),
+            patch(
+                "api.routes.admin._onboarding.TosAcceptanceRepository"
+            ) as mock_tos_repo,
+            patch(
+                "api.routes.admin._onboarding.slack_service.send_self_onboarding_notification",
+                new_callable=AsyncMock,
+            ),
+            patch("api.routes.admin._onboarding._set_user_session"),
+            patch(
+                "api.routes.admin._onboarding.get_account_status",
+                return_value=mock_account_status,
+            ),
+            patch("api.routes.admin._onboarding.logger") as mock_logger,
+        ):
+            tos_repo_instance = mock_tos_repo.return_value
+
+            # Execute
+            result = await self_onboarding(request, mock_response, mock_session)
+
+            # Verify signup succeeded
+            assert result is not None
+
+            # Verify TOS acceptance was NOT created (case-insensitive check should work)
+            tos_repo_instance.create_tos_acceptance.assert_not_called()
+
+            # Verify internal email skip was logged
+            mock_logger.info.assert_any_call(
+                "Skipping TOS acceptance for internal email: USER@PALONA.AI"
+            )

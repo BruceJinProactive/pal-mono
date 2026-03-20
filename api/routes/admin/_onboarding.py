@@ -552,19 +552,89 @@ async def self_onboarding(
     tos_account_id = None
 
     # Create TOS acceptance record if terms were accepted in onboarding
+    # Skip TOS acceptance for internal team members
     if request.terms_accepted:
-        try:
-            # Get the newly created account to extract account_id
-            account = account_service.get_account(session, account_name)
-            if not account:
-                # METRIC: Track account retrieval failure (best-effort)
+        normalized_email = request.email.lower().strip()
+        is_internal = normalized_email.endswith(
+            "@proactiveailab.com"
+        ) or normalized_email.endswith("@palona.ai")
+
+        if is_internal:
+            # Internal users cannot accept TOS - skip TOS creation silently
+            logger.info(f"Skipping TOS acceptance for internal email: {request.email}")
+        else:
+            try:
+                # Get the newly created account to extract account_id
+                account = account_service.get_account(session, account_name)
+                if not account:
+                    # METRIC: Track account retrieval failure (best-effort)
+                    try:
+                        statsd.increment(
+                            "tos.acceptance.failed",
+                            tags=[
+                                f"account_name:{account_name}",
+                                f"version:{account_service.CURRENT_TOS_VERSION}",
+                                "error:AccountRetrievalFailed",
+                                "source:onboarding",
+                            ],
+                        )
+                    except Exception as metric_err:
+                        logger.debug(
+                            f"Failed to emit tos.acceptance.failed metric: {metric_err}"
+                        )
+
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Account was created but cannot be retrieved",
+                        headers={"Content-Type": "application/json"},
+                    )
+
+                # Get user_id from Cognito session
+                user_id = uuid.UUID(user.session.user_sub)
+
+                # Create TOS acceptance in tos_acceptances table (idempotent)
+                tos_repo = TosAcceptanceRepository(session)
+
+                # Check if TOS acceptance already exists for this account/version
+                existing_acceptance = tos_repo.get_tos_acceptance_by_version(
+                    account_id=account.id,
+                    tos_version=account_service.CURRENT_TOS_VERSION,
+                )
+
+                if existing_acceptance:
+                    logger.info(
+                        f"[SelfOnboarding] TOS acceptance already exists for account {account_name} "
+                        f"(version: {account_service.CURRENT_TOS_VERSION}, user: {request.email})"
+                    )
+                    # Mark for post-commit duplicate metric (already persisted)
+                    tos_acceptance_created = False
+                    tos_account_id = account.id
+                else:
+                    tos_repo.create_tos_acceptance(
+                        account_id=account.id,
+                        display_name=account.display_name or account.name,
+                        tos_version=account_service.CURRENT_TOS_VERSION,
+                        user_id=user_id,
+                        user_email=request.email,
+                        accepted_at=datetime.now(UTC),
+                    )
+                    # Mark for post-commit success metric (will emit after transaction commits)
+                    tos_acceptance_created = True
+                    tos_account_id = account.id
+            except HTTPException:
+                # Re-raise HTTPException as-is (already has proper status/detail)
+                raise
+            except Exception as e:
+                session.rollback()
+
+                # METRIC: Track TOS acceptance failures in onboarding (best-effort)
                 try:
                     statsd.increment(
                         "tos.acceptance.failed",
                         tags=[
                             f"account_name:{account_name}",
                             f"version:{account_service.CURRENT_TOS_VERSION}",
-                            "error:AccountRetrievalFailed",
+                            f"error:{type(e).__name__}",
                             "source:onboarding",
                         ],
                     )
@@ -573,75 +643,15 @@ async def self_onboarding(
                         f"Failed to emit tos.acceptance.failed metric: {metric_err}"
                     )
 
+                logger.error(
+                    f"[SelfOnboarding] Failed to create TOS acceptance for account {account_name}: {e}",
+                    exc_info=True,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Account was created but cannot be retrieved",
+                    detail="Failed to record TOS acceptance",
                     headers={"Content-Type": "application/json"},
-                )
-
-            # Get user_id from Cognito session
-            user_id = uuid.UUID(user.session.user_sub)
-
-            # Create TOS acceptance in tos_acceptances table (idempotent)
-            tos_repo = TosAcceptanceRepository(session)
-
-            # Check if TOS acceptance already exists for this account/version
-            existing_acceptance = tos_repo.get_tos_acceptance_by_version(
-                account_id=account.id,
-                tos_version=account_service.CURRENT_TOS_VERSION,
-            )
-
-            if existing_acceptance:
-                logger.info(
-                    f"[SelfOnboarding] TOS acceptance already exists for account {account_name} "
-                    f"(version: {account_service.CURRENT_TOS_VERSION}, user: {request.email})"
-                )
-                # Mark for post-commit duplicate metric (already persisted)
-                tos_acceptance_created = False
-                tos_account_id = account.id
-            else:
-                tos_repo.create_tos_acceptance(
-                    account_id=account.id,
-                    display_name=account.display_name or account.name,
-                    tos_version=account_service.CURRENT_TOS_VERSION,
-                    user_id=user_id,
-                    user_email=request.email,
-                    accepted_at=datetime.now(UTC),
-                )
-                # Mark for post-commit success metric (will emit after transaction commits)
-                tos_acceptance_created = True
-                tos_account_id = account.id
-        except HTTPException:
-            # Re-raise HTTPException as-is (already has proper status/detail)
-            raise
-        except Exception as e:
-            session.rollback()
-
-            # METRIC: Track TOS acceptance failures in onboarding (best-effort)
-            try:
-                statsd.increment(
-                    "tos.acceptance.failed",
-                    tags=[
-                        f"account_name:{account_name}",
-                        f"version:{account_service.CURRENT_TOS_VERSION}",
-                        f"error:{type(e).__name__}",
-                        "source:onboarding",
-                    ],
-                )
-            except Exception as metric_err:
-                logger.debug(
-                    f"Failed to emit tos.acceptance.failed metric: {metric_err}"
-                )
-
-            logger.error(
-                f"[SelfOnboarding] Failed to create TOS acceptance for account {account_name}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to record TOS acceptance",
-                headers={"Content-Type": "application/json"},
-            ) from e
+                ) from e
 
     logger.debug(f"[SelfOnboarding] Completed self onboarding for user {request.email}")
 
