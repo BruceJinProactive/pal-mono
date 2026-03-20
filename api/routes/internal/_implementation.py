@@ -13,7 +13,7 @@ from utils.log import logger
 
 # Safe mode: When True, only processes projects specified in env vars
 # Set to False for production to update all stores
-SAFE_MODE = True
+SAFE_MODE = False
 
 
 def _get_safe_mode_project_ids() -> set[str]:
