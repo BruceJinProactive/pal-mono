@@ -499,6 +499,9 @@ class RawConfig:
                         self.participant_identity,
                     )
 
+                # Populate show_agent_caller_id from project DB column
+                tool_args["show_agent_caller_id"] = self.project.show_agent_caller_id
+
             final_identifiers.append(
                 ToolIdentifier(
                     tool_name=tool_name,
