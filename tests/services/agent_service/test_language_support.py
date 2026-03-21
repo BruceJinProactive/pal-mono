@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -19,7 +19,7 @@ from db.tables.types import Channel, Language
 from services.agent_service import _implementation
 
 
-def _build_agent_config() -> AgentConfig:
+def _build_agent_config(language: str | None = None) -> AgentConfig:
     return AgentConfig(
         persona=AgentPersona(
             name="Test Agent",
@@ -53,6 +53,7 @@ def _build_agent_config() -> AgentConfig:
             agent_id=str(uuid.uuid4()),
             user_id=str(uuid.uuid4()),
             session_id=str(uuid.uuid4()),
+            language=language,
         ),
     )
 
@@ -60,7 +61,9 @@ def _build_agent_config() -> AgentConfig:
 @pytest.mark.asyncio
 async def test_language_from_db_when_not_provided(monkeypatch):
     """Test that language from DB agent is used when not provided as parameter."""
-    mock_construct_agent_config = AsyncMock(return_value=_build_agent_config())
+    mock_construct_agent_config = AsyncMock(
+        return_value=_build_agent_config(language=Language.english.value)
+    )
     monkeypatch.setattr(
         _implementation,
         "construct_agent_config",
@@ -70,18 +73,6 @@ async def test_language_from_db_when_not_provided(monkeypatch):
         _implementation,
         "_build_specs_from_project_integrations",
         AsyncMock(return_value={}),
-    )
-
-    # Mock agent with language from DB
-    mock_db_agent = MagicMock()
-    mock_db_agent.language = Language.english
-
-    mock_agent_repo = AsyncMock()
-    mock_agent_repo.get_agent = AsyncMock(return_value=mock_db_agent)
-    monkeypatch.setattr(
-        _implementation.db,
-        "AgentRepositoryAsync",
-        lambda session: mock_agent_repo,
     )
 
     spec = await _implementation.construct_agent_spec(
@@ -104,7 +95,9 @@ async def test_language_from_db_when_not_provided(monkeypatch):
 @pytest.mark.asyncio
 async def test_language_parameter_overrides_db(monkeypatch):
     """Test that explicit language parameter overrides DB value."""
-    mock_construct_agent_config = AsyncMock(return_value=_build_agent_config())
+    mock_construct_agent_config = AsyncMock(
+        return_value=_build_agent_config(language=Language.multilingual.value)
+    )
     monkeypatch.setattr(
         _implementation,
         "construct_agent_config",
@@ -114,18 +107,6 @@ async def test_language_parameter_overrides_db(monkeypatch):
         _implementation,
         "_build_specs_from_project_integrations",
         AsyncMock(return_value={}),
-    )
-
-    # Mock agent with different language from DB
-    mock_db_agent = MagicMock()
-    mock_db_agent.language = Language.multilingual
-
-    mock_agent_repo = AsyncMock()
-    mock_agent_repo.get_agent = AsyncMock(return_value=mock_db_agent)
-    monkeypatch.setattr(
-        _implementation.db,
-        "AgentRepositoryAsync",
-        lambda session: mock_agent_repo,
     )
 
     spec = await _implementation.construct_agent_spec(

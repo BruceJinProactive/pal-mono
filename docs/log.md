@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-20
+- Remove the Adora raw-config overlay and document ProjectIntegration as the source of truth for Adora spec data → `docs/memory/long-term.md`
+
 ### 2026-03-19
 - Clarify memory doc guidance for auth defaults, ADR-007 migration state, short-term section structure, and active-work curation → `docs/memory/long-term.md`, `docs/memory/short-term.md`, `docs/README.md`
 
