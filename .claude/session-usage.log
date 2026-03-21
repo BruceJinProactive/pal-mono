@@ -1,0 +1,9 @@
+# Session token usage log (TSV) — logged by .claude/hooks/log-session-usage.sh on each Stop event
+# Fields: timestamp	user	session_id	model	input_tokens	output_tokens	cache_read_tokens	cache_write_tokens	msg_count
+# Notes: Tokens are cumulative per session. Multiple entries per session indicate progressive snapshots.
+1774128780	jacobwang	987c8cce-0bf0-4321-802f-91283e071e1d	claude-opus-4-6	985	49204	25339319	3127542	333
+1774128807	jacobwang	987c8cce-0bf0-4321-802f-91283e071e1d	claude-opus-4-6	988	49735	25344829	3200891	334
+1774128855	jacobwang	987c8cce-0bf0-4321-802f-91283e071e1d	claude-opus-4-6	1012	50328	25985144	3207877	342
+1774128902	jacobwang	987c8cce-0bf0-4321-802f-91283e071e1d	claude-opus-4-6	1027	50931	26395567	3212365	347
+1774129036	jacobwang	987c8cce-0bf0-4321-802f-91283e071e1d	claude-opus-4-6	1087	53012	28112177	3225515	367
+1774129511	jacobwang	987c8cce-0bf0-4321-802f-91283e071e1d	claude-opus-4-6	1148	56362	30251702	3506066	392

@@ -105,6 +105,7 @@ __pypackages__/
 # Claude Code
 **/.claude/settings.local.json
 !.claude/skill-usage.log
+!.claude/session-usage.log
 
 # Third-party tools
 .mem0/config.json

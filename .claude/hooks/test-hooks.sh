@@ -133,6 +133,38 @@ echo '{"user_prompt": "/foo.bar"}' \
   | SKILL_LOG_FILE="$LOG_FILE" "$SCRIPT_DIR/log-slash-command.sh"
 assert_eq "no log for partial token /foo.bar" "0" "$(line_count)"
 
+# ── log-session-usage.sh tests ─────────────────────────────────────
+
+echo ""
+echo "=== log-session-usage.sh ==="
+
+# Test 12: Logs token usage from project transcript (live data)
+reset_log
+SESSION_LOG_FILE="$LOG_FILE" "$SCRIPT_DIR/log-session-usage.sh"
+if [[ "$(line_count)" -ge 1 ]]; then
+  assert_eq "session: logs one line" "1" "$(line_count)"
+  assert_match "session: has model" "claude" "$(field 4)"
+  # output_tokens should be > 0
+  OUTPUT_TOKENS=$(field 6)
+  if [[ "$OUTPUT_TOKENS" =~ ^[0-9]+$ ]] && [[ "$OUTPUT_TOKENS" -gt 0 ]]; then
+    echo "  PASS: session: output tokens > 0 ($OUTPUT_TOKENS)"
+    ((PASS++))
+  else
+    echo "  FAIL: session: output tokens > 0 (got $OUTPUT_TOKENS)"
+    ((FAIL++))
+  fi
+  # Tab count: 8 tabs = 9 fields
+  TAB_COUNT=$(awk -F'\t' '{print NF-1}' < "$LOG_FILE" | tail -1)
+  assert_eq "session: tab-separated (8 tabs)" "8" "$TAB_COUNT"
+else
+  echo "  SKIP: no project transcript available"
+fi
+
+# Test 13: Dedup — running again with same data should not add a line
+BEFORE=$(line_count)
+SESSION_LOG_FILE="$LOG_FILE" "$SCRIPT_DIR/log-session-usage.sh"
+assert_eq "session: dedup prevents duplicate" "$BEFORE" "$(line_count)"
+
 # ── Summary ──────────────────────────────────────────────────────────
 
 echo ""
