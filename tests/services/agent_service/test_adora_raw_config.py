@@ -67,12 +67,13 @@ def _build_agent_config() -> AgentConfig:
     )
 
 
-def test_build_adora_spec_from_raw_config_ignores_lookup_menu_data():
+def test_build_adora_spec_from_raw_config_includes_lookup_fields():
     raw_config = {
         "adora": {
             "enabled": True,
             "menu_data": MENU_DATA,
             "lookup_menu_data": LOOKUP_MENU_DATA,
+            "lookup_tool_name": "lookup_adora_item_details",
         }
     }
 
@@ -80,11 +81,12 @@ def test_build_adora_spec_from_raw_config_ignores_lookup_menu_data():
 
     assert spec.enabled is True
     assert spec.menu_data == MENU_DATA
-    assert not hasattr(spec, "lookup_menu_data")
+    assert spec.lookup_menu_data == LOOKUP_MENU_DATA
+    assert spec.lookup_tool_name == "lookup_adora_item_details"
 
 
 @pytest.mark.asyncio
-async def test_construct_agent_spec_builds_adora_from_raw_config(monkeypatch):
+async def test_construct_agent_spec_builds_adora_lookup_from_raw_config(monkeypatch):
     monkeypatch.setattr(
         _implementation,
         "construct_agent_config",
@@ -107,16 +109,18 @@ async def test_construct_agent_spec_builds_adora_from_raw_config(monkeypatch):
             "adora": {
                 "enabled": True,
                 "menu_data": MENU_DATA,
+                "lookup_menu_data": LOOKUP_MENU_DATA,
             }
         },
     )
 
     assert spec.adora.enabled is True
     assert spec.adora.menu_data == MENU_DATA
+    assert spec.adora.lookup_menu_data == LOOKUP_MENU_DATA
 
 
 @pytest.mark.asyncio
-async def test_construct_agent_spec_prefers_project_integration_adora_spec(
+async def test_construct_agent_spec_overlays_lookup_raw_config_on_project_integration(
     monkeypatch,
 ):
     monkeypatch.setattr(
@@ -148,13 +152,14 @@ async def test_construct_agent_spec_prefers_project_integration_adora_spec(
         channel=Channel.SMS,
         raw_config={
             "adora": {
-                "enabled": True,
                 "lookup_menu_data": LOOKUP_MENU_DATA,
+                "lookup_tool_name": "lookup_adora_item_details",
             }
         },
     )
 
     assert spec.adora.enabled is True
     assert spec.adora.menu_data == MENU_DATA
+    assert spec.adora.lookup_menu_data == LOOKUP_MENU_DATA
+    assert spec.adora.lookup_tool_name == "lookup_adora_item_details"
     assert spec.adora.store_id == "UGDX4"
-    assert not hasattr(spec.adora, "lookup_menu_data")

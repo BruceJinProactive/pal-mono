@@ -2,7 +2,7 @@
 
 Institutional knowledge for the pal-mono codebase. Every entry has a rationale — no rules without "because."
 
-Last curated: 2026-03-20
+Last curated: 2026-03-19
 
 ---
 
@@ -88,7 +88,6 @@ API → Service → Database
 - **Stripe webhooks** can fire multiple times for the same event — always check idempotency
 - **Square OAuth tokens** expire every 30 days — `SQUARE_TOKEN_REFRESHER` handles automatic refresh
 - **Toast API** menu data can be very large — use the indexer pipeline (Toast → Pinecone) rather than returning raw data
-- **`pal_agents.AdoraSpec` rejects `lookup_menu_data`** — treat ProjectIntegration-backed specs as the source of truth for Adora configuration and ignore stale raw_config-only lookup payloads, because Pydantic now forbids that extra field
 - **Vapi** `assistant-request` webhook has a tight timeout — cache agent configs where possible
 - **ddtrace context inheritance**: Monitoring LLM calls can inherit voice agent trace context, causing spans to appear in wrong trace trees. Use trace isolation when running LLM analysis outside the agent pipeline.
 - **ADR-007 migration state**: Agno and `pal-agents` coexist during the migration. Prefer `pal-agents` (`PalAgent` with `Spec` and `RuntimeContext`) for new LiveKit-oriented agent work; maintain Agno only where existing integrations still depend on it.
