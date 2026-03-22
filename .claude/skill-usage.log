@@ -1,2 +1,10 @@
-1774127167  jacobwang   docs-auditor  
-1774129309	jacobwang	code-review:code-review	IjM3Njci
+# Skill/command usage log (TSV) — logged by .claude/hooks/log-skill.sh, log-slash-command.sh, and .opencode/plugins/tracking-plugin.ts
+# Fields: timestamp	user	session_id	skill	[tag]
+# Notes: Tag "(slash-command)" marks slash-command entries vs skill tool calls. Entries before 2025-03-22 lack session_id.
+1774127167	jacobwang		docs-auditor
+1774129309	jacobwang		code-review:code-review
+1774152363	jacobwang		test-skill
+1774152621	jacobwang		docs-reviewer
+1774153303	jacobwang		agentic-dev
+1774153971	jacobwang	dbdcf144-4c51-417f-8f5f-41859390b50e	Notion:create-task
+1774155054	jacobwang	eadb82d1-fede-47e3-a78f-180db0cea2f7	loop

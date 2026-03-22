@@ -7,12 +7,12 @@ Hook scripts that run automatically during Claude Code sessions via `.claude/set
 ### log-skill.sh
 **Event:** `PreToolUse` (matcher: `Skill`)
 
-Logs every Skill tool invocation. Captures skill name and base64-encoded args.
+Logs every Skill tool invocation. Captures session ID and skill name.
 
 ### log-slash-command.sh
 **Event:** `UserPromptSubmit`
 
-Captures `/slash-command` invocations (e.g. `/pr-workflow create draft`). Validates command syntax with regex and base64-encodes args.
+Captures `/slash-command` invocations (e.g. `/pr-workflow create draft`). Validates command syntax with regex.
 
 ### log-session-usage.sh
 **Event:** `Stop`
@@ -23,10 +23,10 @@ Logs per-session token usage by reading the project-level transcript at `~/.clau
 
 | File | Format | Contents |
 |------|--------|----------|
-| `.claude/skill-usage.log` | TSV | `timestamp user skill args_b64 [tag]` |
+| `.claude/skill-usage.log` | TSV | `timestamp user session_id skill [tag]` |
 | `.claude/session-usage.log` | TSV | `timestamp user session_id model input output cache_read cache_write msg_count` |
 
-Both logs use tab-separated values. Args are base64-encoded to prevent log injection.
+Both logs use tab-separated values.
 
 ## Testing
 

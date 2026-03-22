@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+
+# Auto-run install after git pull/merge if dependency files changed
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+if [ -x "${REPO_ROOT}/scripts/install.sh" ]; then
+  "${REPO_ROOT}/scripts/install.sh"
+fi
