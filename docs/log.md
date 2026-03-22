@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-21
+- Restructure pal-skills submodule: mount at `.pal-skills` with sparse checkout (`.claude/skills/` only), symlink `.claude/skills` → `.pal-skills/.claude/skills`, add submodule init to `scripts/install.sh`
+
 ### 2026-03-20
 - Remove the Adora raw-config overlay and document ProjectIntegration as the source of truth for Adora spec data → `docs/memory/long-term.md`
 
