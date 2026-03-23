@@ -1,6 +1,6 @@
 # Endpoints That Cannot Use Simple Permission Decorators
 
-> **Last updated:** 2025-03-01
+> **Last updated:** 2026-03-23
 
 ## Overview
 This document catalogs all API endpoints that use internal authorization checks (`_check_*_access` functions) instead of route-level permission decorators. These endpoints have patterns that make simple decorator-based authorization impractical.
@@ -12,51 +12,6 @@ This document catalogs all API endpoints that use internal authorization checks 
 3. **Dynamic resource types**: Endpoint accepts multiple resource types via a parameter
 4. **Async session issues**: Some endpoints use AsyncSession but permission checking requires sync Session
 5. **Admin-only operations**: Some endpoints require admin role, not resource-based permissions
-
----
-
-## Checkpoint Endpoints (`api/routes/operation/_checkpoint.py`)
-
-### Endpoints with run_id (need checkpoint lookup)
-
-| Route | Parameter | Issue |
-|-------|-----------|-------|
-| `GET /checkpoints/runs/{run_id}` | `run_id` | Need run -> checkpoint -> project chain |
-| `PATCH /checkpoints/runs/{run_id}/review` | `run_id` | Need run -> checkpoint -> project chain |
-| `DELETE /checkpoints/runs/{run_id}` | `run_id` | Need run -> checkpoint -> project chain |
-
-**Current solution**: Internal `_check_account_access` after looking up the run and checkpoint
-
-**Potential decorator**: `require_checkpoint_run_permission(run_id)` that internally does:
-```python
-run = get_checkpoint_result(session, run_id)
-checkpoint = get_checkpoint(session, run.checkpoint_id)
-# then check permission on checkpoint
-```
-
-### Endpoints with submission_id
-
-| Route | Parameter | Issue |
-|-------|-----------|-------|
-| `DELETE /checkpoints/submissions/{submission_id}/runs` | `submission_id` | Need submission -> first_run -> checkpoint chain |
-
-**Current solution**: Get all runs for submission, use first run's checkpoint for auth
-
-### Endpoints with form-based checkpoint_id
-
-| Route | Parameter | Issue |
-|-------|-----------|-------|
-| `POST /checkpoints/runs` | `checkpoint_id` (form) | ID is in form data, not path |
-
-**Current solution**: Internal `_check_account_access` after extracting from form
-
-### Endpoints with query-based project_id
-
-| Route | Parameter | Issue |
-|-------|-----------|-------|
-| `GET /checkpoints/results` | `project_id` (query) | Uses query param not path |
-
-**Current solution**: Internal `_check_account_access` via project lookup
 
 ---
 

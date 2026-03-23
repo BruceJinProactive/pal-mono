@@ -1,6 +1,6 @@
 # Billing System & Stripe Integration
 
-> **Last updated:** 2025-03-01
+> **Last updated:** 2026-03-23
 
 ## Overview
 

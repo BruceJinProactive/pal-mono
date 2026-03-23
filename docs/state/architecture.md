@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2025-03-01
+> **Last updated:** 2026-03-23
 
 ## Quick Reference
 
@@ -8,16 +8,16 @@
 **Primary Language**: Python >=3.11,<3.14
 **Web Framework**: FastAPI (async)
 **Database**: PostgreSQL + pgvector
-**AI Frameworks**: Agno (v1.7.6) + pal-agents (v0.2.113)
-**Voice Platforms**: VAPI (v1.6.0) + LiveKit (>=1.0.0)
+**AI Frameworks**: Agno + pal-agents (v0.2.185)
+**Voice Platform**: LiveKit
 **Architecture Style**: Monolithic with event-driven components
 **Deployment**: Docker (local), AWS (production)
 
 **Key Metrics**:
 - 47 database tables
-- 43 repository classes
-- 45 business services
-- 17 registered AI agent tools (19 tool directories)
+- 56 repository classes
+- 47 business services
+- 17 registered AI agent tools
 - 9 API route groups
 - 4 environments (dev/lat/stg/prd)
 
@@ -29,14 +29,14 @@
 
 ## System Overview
 
-pal-mono is a multi-tenant conversational AI platform designed for restaurant and food service businesses. It provides AI-powered agents that can handle customer interactions across multiple channels (voice, SMS, web chat) while integrating with POS systems, reservation platforms, and other business tools. The system supports both VAPI (webhook-driven) and LiveKit (agent-worker) voice platforms.
+pal-mono is a multi-tenant conversational AI platform designed for restaurant and food service businesses. It provides AI-powered agents that can handle customer interactions across multiple channels (voice, SMS, web chat) while integrating with POS systems, reservation platforms, and other business tools. The system uses LiveKit (agent-worker) as its voice platform.
 
 ## High-Level Architecture
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Client Layer                             │
-│  (Web Chat, SMS via Twilio, Voice via VAPI/LiveKit, API Clients)│
+│  (Web Chat, SMS via Twilio, Voice via LiveKit, API Clients)     │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -52,7 +52,7 @@ pal-mono is a multi-tenant conversational AI platform designed for restaurant an
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Service Layer                              │
-│  - 45 Business Services (account, agent, message, integration) │
+│  - 47 Business Services (account, agent, message, integration) │
 │  - Business Logic & Orchestration                               │
 │  - Transaction Management                                       │
 │  - Monitoring, Routines, Notifications                          │
@@ -104,9 +104,9 @@ pal-mono is a multi-tenant conversational AI platform designed for restaurant an
 **Route Groups** (9 routers in `/v1`):
 - `/v1/admin` - Account, agent, project, user, team, billing, capabilities management (29 sub-modules)
 - `/v1/chat` - Main conversational interface (streaming and non-streaming, OpenAI-compatible completions)
-- `/v1/integrations` - Third-party integrations (Adora, OLO, Shopify, Slack, Square, Stripe, Toast, Twilio, VAPI)
+- `/v1/integrations` - Third-party integrations (Adora, OLO, Slack, Square, Stripe, Toast, Twilio)
 - `/v1/assets` - Asset management (S3-backed)
-- `/v1/operation` - Checklists, checkpoints, monitoring, routines, signal sources, video upload
+- `/v1/operation` - Checklists, monitoring, routines, signal sources, video upload
 - `/v1/catering` - Catering request handling
 - `/v1/telephony` - Twilio telephony webhooks
 - `/v1/internal` - Internal APIs (monitoring, routines, events, catering, voice/LiveKit)
@@ -169,14 +169,14 @@ The core AI agent implementation providing conversational capabilities.
 - Persona settings (name, role, description, instructions)
 - Model selection and parameters
 - Memory, knowledge, and tool configuration
-- Voice settings (VAPI and LiveKit integration)
+- Voice settings (LiveKit integration)
 - Transcription configuration
 
-**Additional Framework**: `pal-agents` (v0.2.113) — a separate agent framework (`PalAgent` with `Spec` and `RuntimeContext`) used alongside Agno, particularly for LiveKit voice agent workers.
+**Additional Framework**: `pal-agents` (v0.2.185) — a separate agent framework (`PalAgent` with `Spec` and `RuntimeContext`) used alongside Agno, particularly for LiveKit voice agent workers.
 
 ### 3. Service Layer (`/services`)
 
-45 specialized services implementing business logic:
+47 specialized services implementing business logic:
 
 | Service | Category | Purpose |
 |---------|----------|---------|
@@ -193,7 +193,7 @@ The core AI agent implementation providing conversational capabilities.
 | `postmark_service` | Communication | Postmark email delivery |
 | `realtime_service` | Communication | Realtime capabilities (WebSocket) |
 | `relay_service` | Communication | External message relay |
-| `voice_service` | Communication | Voice call handling (VAPI + LiveKit) |
+| `voice_service` | Communication | Voice call handling (LiveKit) |
 | `integration_service` | Integration | Third-party integration management |
 | `knowledge_service` | Integration | Integration-specific knowledge bases |
 | `menu_service` | Integration | Menu management |
@@ -211,7 +211,6 @@ The core AI agent implementation providing conversational capabilities.
 | `subscription_service` | Business | Stripe billing management |
 | `terms_service` | Business | Terms of service management |
 | `checklist_service` | Operations | Operational checklists |
-| `checkpoint_service` | Operations | Quality review checkpoints |
 | `monitoring_service` | Operations | Monitoring configuration and LLM-powered analysis |
 | `routine_service` | Operations | Routine definitions |
 | `routine_execution_service` | Operations | Routine execution tracking |
@@ -232,7 +231,7 @@ The core AI agent implementation providing conversational capabilities.
 
 **Components**:
 - `/db/tables/` - SQLAlchemy 2.0 table definitions (47 tables)
-- `/db/repositories/` - Repository pattern for data access (43 repositories)
+- `/db/repositories/` - Repository pattern for data access (56 repository classes)
 - `/db/migrations/` - Alembic migrations
 
 **Tables by Domain**:
@@ -278,8 +277,8 @@ The core AI agent implementation providing conversational capabilities.
 | `yelp_no_credit_card_tool` | Reservation | Yelp without credit card | `/tools/yelp_no_credit_card_tool/` |
 | `minitable_tool` | Reservation | MiniTable bookings | `/tools/minitable_tool/` |
 | `store_messaging_tool` | Communication | Store messaging | `/tools/store_messaging_tool/` |
-| `vapi_tool` | Communication | VAPI voice integration | `/tools/vapi_tool/` |
-| `livekit_transfer_tool` | Communication | LiveKit call transfer | `/tools/livekit_transfer_tool/` |
+| `livekit_tool` | Voice | LiveKit voice operations | `/tools/livekit_tool/` |
+| `livekit_transfer_tool` | Voice | LiveKit call transfer | `/tools/livekit_transfer_tool/` |
 | `catering_tool` | Business | Catering requests | `/tools/catering_tool/` |
 
 *Unregistered tool directories* (exist but not in registry):
@@ -556,7 +555,7 @@ Pydantic Settings for type-safe configuration:
 | Routine Service | `/services/routine_service/` | Routine management |
 | **Database** | | |
 | Tables | `/db/tables/` | SQLAlchemy models (47 tables) |
-| Repositories | `/db/repositories/` | Data access layer (43 repos) |
+| Repositories | `/db/repositories/` | Data access layer (56 repo classes) |
 | Migrations | `/db/migrations/versions/` | Alembic migrations |
 | DB Settings | `/db/settings.py` | Database configuration |
 | Migration Config | `/db/alembic.ini` | Alembic configuration |
@@ -583,10 +582,9 @@ Pydantic Settings for type-safe configuration:
 | Test Coverage | `/.github/workflows/test-coverage.yml` | Coverage reporting |
 | **Documentation** | | |
 | Project Guide | `/CLAUDE.md` | High-level project instructions |
-| Architecture | `/.claude/docs/architecture.md` | This file |
+| Architecture | `docs/state/architecture.md` | This file |
 | API Routes Guide | `/api/routes/CLAUDE.md` | Route development patterns |
 | Tool Standards | `/tools/CLAUDE.md` | Tool development guide |
-| Logging Guide | `/utils/CLAUDE.md` | Logging guidelines |
 
 ## Future Considerations
 
@@ -595,10 +593,10 @@ Pydantic Settings for type-safe configuration:
 - Consider service decomposition for scale
 - Event-driven architecture already in place (EventBridge)
 
-### Voice Platform Migration
-- VAPI (current production) → LiveKit (in progress)
+### Voice Platform
+- LiveKit is the production voice platform (ADR-018)
 - pal-agents framework for LiveKit agent workers
-- See `/.claude/docs/livekit-migration/` for detailed migration plans
+- See `docs/plans/livekit-migration/` for migration history
 
 ### Observability
 - Comprehensive Datadog integration
@@ -609,4 +607,4 @@ Pydantic Settings for type-safe configuration:
 - Tool registry allows easy addition of new tools
 - Multi-provider LLM support
 - Plugin-style service architecture
-- Capability-based prompt system (see `/.claude/docs/prompts/promptv2-design.md`)
+- Capability-based prompt system (see `docs/records/2026-01-21-prompt-v2-capability-system.md`)

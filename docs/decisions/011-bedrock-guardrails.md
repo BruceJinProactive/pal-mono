@@ -1,8 +1,8 @@
 # ADR-011: Bedrock Guardrails for Content Safety
 
-> **Status:** Accepted
+> **Status:** Deprecated
 > **Date:** 2024-01-01
-> **Decision makers:** _To be filled_
+> **Decision makers:** Shuo, Jeff Crooks
 
 ## Context
 

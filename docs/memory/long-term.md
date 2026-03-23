@@ -30,7 +30,7 @@ Last curated: 2026-03-20
 
 ### Database
 
-- Use repository pattern for all data access (25 repository classes)
+- Use repository pattern for all data access (56 repository classes)
 - Alembic for migrations — generate revision files after model changes or DB schema will diverge from code
 - Multi-tenant architecture: Account → Project → Agent hierarchy
 - PostgreSQL + pgvector for vector storage

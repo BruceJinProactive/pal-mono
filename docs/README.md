@@ -30,8 +30,7 @@ docs/
 │   ├── architecture.md    ← System-wide architecture overview
 │   ├── auth.md            ← Current auth system + endpoint permissions
 │   ├── billing.md         ← Billing + Stripe integration
-│   ├── notifications.md   ← Stripe webhook setup
-│   └── business-updater/  ← Event-driven business data updater system
+│   └── notifications.md   ← Stripe webhook setup
 │
 ├── decisions/             ← Architecture Decision Records (ADRs)
 │   ├── README.md          ← Index of all decisions
@@ -40,18 +39,28 @@ docs/
 ├── plans/                 ← Future work (active designs)
 │   ├── livekit-migration/ ← Vapi → LiveKit voice migration (in progress)
 │   ├── billing/           ← Billing architecture design (future)
-│   └── notifications/     ← Billing notifications V2 (future)
+│   ├── notifications/     ← Billing notifications V2 (future)
+│   ├── operations/        ← Monitoring + routines PRDs
+│   └── PAL-9097-audio-upload-endpoint.md ← Audio recording upload (implemented)
 │
 └── records/               ← Past work (detailed, date-prefixed)
     ├── 2025-02-14-monitoring-trace-fix.md
+    ├── 2025-07-14-square-integration.md
+    ├── 2025-08-26-toast-menu-integration.md
     ├── 2025-11-14-business-updater-google-hours.md
     ├── 2025-12-04-billing-notifications-v1.md
+    ├── 2025-12-04-rbac-permission-system.md
+    ├── 2025-12-08-stripe-billing-integration.md
     ├── 2025-12-23-signal-sources-v1.md
     ├── 2025-12-29-monitoring-system-v1.md
     ├── 2025-12-30-routines-system-v1.md
     ├── 2026-01-21-prompt-v2-capability-system.md
+    ├── 2026-03-06-db-pool-exhaustion-postmortem.md
     ├── 2026-03-09-monitoring-config-restructure.md
-    └── 2025-11-14-business-updater-google-hours.md
+    ├── 2026-03-12-monitoring-runs-index.md
+    ├── 2026-03-17-chat-stream-session-lifecycle.md
+    ├── 2026-03-17-db-connection-leak-fixes.md
+    └── 2026-03-17-deprecate-checkpoint-service.md
 
 ## Lifecycle Rules
 
