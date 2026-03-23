@@ -46,3 +46,24 @@ def test_merge_auth_with_credentials_without_token_url_uses_default():
     assert result["rotation"]["token_url"] == TEST_DEFAULT_TOKEN_URL
     assert result["rotation"]["client_id"] == TEST_CLIENT_ID
     assert result["rotation"]["client_secret"] == TEST_CLIENT_SECRET
+
+
+def test_merge_auth_with_credentials_bearer_without_rotation_promotes_to_rotation():
+    """Test that bare bearer auth is promoted to rotating bearer when credentials exist."""
+    auth_config = {
+        "type": "bearer",
+    }
+
+    result = merge_auth_with_credentials(
+        auth_config=auth_config,
+        client_id=TEST_CLIENT_ID,
+        client_secret=TEST_CLIENT_SECRET,
+        default_token_url=TEST_DEFAULT_TOKEN_URL,
+    )
+
+    assert result is not None
+    assert result["type"] == "bearer"
+    assert result["rotation"]["enabled"] is True
+    assert result["rotation"]["token_url"] == TEST_DEFAULT_TOKEN_URL
+    assert result["rotation"]["client_id"] == TEST_CLIENT_ID
+    assert result["rotation"]["client_secret"] == TEST_CLIENT_SECRET

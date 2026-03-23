@@ -154,6 +154,32 @@ class TestBuildToastV3Spec:
         assert result.auth["rotation"]["client_id"] == "secret-client-id"
         assert result.auth["rotation"]["client_secret"] == "secret-client-secret"
 
+    def test_bearer_auth_without_rotation_uses_integration_credentials(self):
+        config = {
+            "menu_data": {"version": "v2", "items": []},
+            "takeout_dining_option_guid": "takeout-guid-1",
+            "auth": {
+                "type": "bearer",
+            },
+        }
+
+        result = _build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "secret-client-id",
+            "secret-client-secret",
+            None,
+        )
+
+        assert result.auth is not None
+        assert result.auth["type"] == "bearer"
+        assert result.auth["rotation"]["enabled"] is True
+        assert result.auth["rotation"]["token_url"] == (
+            "https://ws-api.toasttab.com/authentication/v1/authentication/login"
+        )
+        assert result.auth["rotation"]["client_id"] == "secret-client-id"
+        assert result.auth["rotation"]["client_secret"] == "secret-client-secret"
+
     def test_hosted_checkout_secret_values_override_config(self):
         config = {
             "menu_data": {"version": "v2"},

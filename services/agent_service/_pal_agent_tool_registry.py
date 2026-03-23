@@ -83,15 +83,27 @@ def merge_auth_with_credentials(
     auth = dict(auth_config)
     auth_type = auth.get("type")
 
-    if auth_type == "bearer" and isinstance(auth.get("rotation"), dict):
-        rotation = dict(auth["rotation"])
-        if client_id:
-            rotation["client_id"] = client_id
-        if client_secret:
-            rotation["client_secret"] = client_secret
-        if default_token_url and "token_url" not in rotation:
-            rotation["token_url"] = default_token_url
-        auth["rotation"] = rotation
+    if auth_type == "bearer":
+        rotation_config = auth.get("rotation")
+        rotation: dict[str, Any] | None = None
+
+        if isinstance(rotation_config, dict):
+            rotation = dict(rotation_config)
+        elif default_token_url and client_id and client_secret:
+            # Preserve bearer auth defaults by promoting Integration credentials
+            # into rotating-bearer auth when the auth shape is incomplete.
+            rotation = {}
+
+        if rotation is not None:
+            if client_id:
+                rotation["client_id"] = client_id
+            if client_secret:
+                rotation["client_secret"] = client_secret
+            if default_token_url and not rotation.get("token_url"):
+                rotation["token_url"] = default_token_url
+            if client_id and client_secret:
+                rotation["enabled"] = True
+            auth["rotation"] = rotation
     elif auth_type == "basic":
         if client_id:
             auth["username"] = client_id
