@@ -2,6 +2,7 @@ import asyncio
 
 from . import _eventbridge
 from .schema import (
+    AudioRecordingReference,
     BaseEvent,
     CateringRequestCancelled,
     CateringRequestCreated,
@@ -84,4 +85,6 @@ __all__ = [
     "KnowledgeUpdateRequested",
     "RoutineExecutionGenerationRequested",
     "RoutineScheduleUpdated",
+    # Helper classes
+    "AudioRecordingReference",
 ]

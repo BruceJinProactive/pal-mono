@@ -47,3 +47,6 @@ class VoiceEndCallRequest(BaseModel):
         ..., description="Call conversation history"
     )
     close_reason: str = Field(..., description="Reason for call ending")
+    audio_recording_s3_uri: str | None = Field(
+        default=None, description="S3 URI of the call recording (e.g., s3://bucket/key)"
+    )

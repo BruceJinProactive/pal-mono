@@ -158,7 +158,31 @@ Tests live in `tests/` directory. Test files: `test_*.py`. Async mode: auto.
 
 ## Configuration
 
-- **`RUNTIME_ENV`**: `dev` (local), `lat`, `stg`, `prd`
-- **Local secrets**: `local.env` (gitignored) — see `local.env.example` for required keys
-- **Production secrets**: AWS Secrets Manager
-- **Docker**: `docker-compose.yml` — API on port 8000, Postgres on port 5432
+1. **API Issues**: Check logs with `docker logs -f pal-mono-api`
+2. **Database Issues**: Check migrations with `alembic history` and verify schema
+
+## CI & Quality Checks
+
+### MagicMock auto-attributes are truthy non-None objects — always pin optional fields explicitly
+
+When a test uses `mock_request = MagicMock()` and the production code reads an
+`str | None` field (e.g. `request.audio_recording_s3_uri`), the auto-created
+attribute is a `MagicMock` instance — not `None`. Any code that then calls
+`re.match()`, `re.search()`, or `.startswith()` on that value will raise
+`TypeError: expected string or bytes-like object, got 'MagicMock'`.
+
+**Rule:** For every `MagicMock()` request object, explicitly set all fields that
+the function under test reads — including optional ones — to their intended test
+values (typically `None` for unused optional fields). Do not rely on the schema
+default; MagicMock does not enforce it.
+
+```python
+# Wrong — audio_recording_s3_uri will be a MagicMock, not None
+mock_request = MagicMock()
+mock_request.call_id = "call-123"
+
+# Correct — pin every field the function reads
+mock_request = MagicMock()
+mock_request.call_id = "call-123"
+mock_request.audio_recording_s3_uri = None  # must be explicit
+```

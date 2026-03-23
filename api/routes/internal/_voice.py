@@ -27,13 +27,21 @@ from api.schemas.internal.voice_init import (
 )
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.types import Channel, SpeechRate
-from events import ConversationEvaluationRequested, publish_event
+from events import (
+    AudioRecordingReference,
+    ConversationEvaluationRequested,
+    publish_event,
+)
 from services import project_service, user_service
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
 # Track background tasks so they aren't garbage-collected before completion.
 _background_tasks: set[asyncio.Task[object]] = set()
+
+# S3 URI validation pattern
+_S3_URI_PATTERN = re.compile(r"^s3://[a-z0-9][a-z0-9.-]*[a-z0-9]/.+$")
+
 
 # Numeric speed mapping matching CARTESIA_SONIC3_SPEED_MAPPING from
 # services/voice_service/providers/vapi/_implementation.py
@@ -372,6 +380,7 @@ async def end_voice_call(
     duration_seconds = request.duration_seconds
     close_reason = request.close_reason
     conversation_history = request.conversation
+    audio_recording_s3_uri = request.audio_recording_s3_uri
 
     _log_extra = {
         "call_id": call_id,
@@ -379,6 +388,7 @@ async def end_voice_call(
         "dialed_number": dialed_number,
         "duration_seconds": duration_seconds,
         "close_reason": close_reason,
+        "has_audio_recording": audio_recording_s3_uri is not None,
     }
 
     logger.info("[end_voice_call] Received end-call request", extra=_log_extra)
@@ -697,6 +707,30 @@ async def end_voice_call(
             },
         }
 
+    # Build audio recording reference if URI provided
+    audio_recording = _build_audio_recording_reference(
+        audio_recording_s3_uri, duration_seconds
+    )
+    if audio_recording:
+        logger.info(
+            "[end_voice_call] Audio recording available",
+            extra={
+                "conversation_id": str(conversation_id),
+                "audio_recording_uri_present": True,
+            },
+        )
+    else:
+        if audio_recording_s3_uri:
+            logger.warning(
+                "[end_voice_call] Audio recording URI provided but invalid",
+                extra={"conversation_id": str(conversation_id)},
+            )
+        else:
+            logger.debug(
+                "[end_voice_call] No audio recording URI provided",
+                extra={"conversation_id": str(conversation_id)},
+            )
+
     # Publish conversation evaluation event (fire-and-forget)
     # Pass primitive values — the background task creates its own DB session
     # Use stored values to avoid accessing detached conversation object
@@ -713,6 +747,7 @@ async def end_voice_call(
             channel=channel_for_event,
             is_test=is_test_for_event,
             customer_converted=customer_converted_for_event,
+            audio_recording=audio_recording,
         )
     )
     _background_tasks.add(task)
@@ -888,6 +923,33 @@ def _extract_transcript_text(msg: dict) -> str:
     return str(content or "")
 
 
+def _build_audio_recording_reference(
+    audio_recording_s3_uri: str | None,
+    duration_seconds: float,
+) -> AudioRecordingReference | None:
+    """Build AudioRecordingReference from S3 URI, with validation.
+
+    Args:
+        audio_recording_s3_uri: S3 URI (e.g., "s3://bucket/key.wav")
+        duration_seconds: Call duration in seconds
+
+    Returns:
+        AudioRecordingReference if URI is valid, None otherwise
+    """
+    if not audio_recording_s3_uri:
+        return None
+
+    # Validate S3 URI format
+    if not _S3_URI_PATTERN.match(audio_recording_s3_uri):
+        logger.warning("[_build_audio_recording_reference] Invalid S3 URI format")
+        return None
+
+    return AudioRecordingReference(
+        s3_uri=audio_recording_s3_uri,
+        duration_seconds=duration_seconds,
+    )
+
+
 async def _publish_livekit_evaluation_event(
     conversation_id,
     user_id,
@@ -900,6 +962,7 @@ async def _publish_livekit_evaluation_event(
     channel: str,
     is_test: bool,
     customer_converted,
+    audio_recording: AudioRecordingReference | None,
 ) -> None:
     """Publish ConversationEvaluationRequested for a LiveKit call. Fire-and-forget.
 
@@ -966,6 +1029,7 @@ async def _publish_livekit_evaluation_event(
             transcript=transcript,
             tool_calls=[],  # LiveKit tool call extraction not yet available here
             turn_latencies_ms=[],  # Not available from LiveKit agent HTTP report
+            audio_recording=audio_recording,
         )
 
         published = await publish_event(event)

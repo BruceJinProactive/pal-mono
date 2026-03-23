@@ -4,7 +4,7 @@ Event definitions for AWS EventBridge.
 All events must inherit from BaseEvent and define their structure and DetailType.
 """
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime
 from typing import Any, ClassVar, Dict
 from uuid import UUID
@@ -28,17 +28,65 @@ class BaseEvent:
         Convert the event to a dictionary for EventBridge detail.
 
         Handles UUID and datetime serialization automatically.
+        Skips None values.
+        Recursively serializes nested dataclasses.
         Includes the detail_type in the output.
         """
-        detail = {"detail_type": self.detail_type}
-        for key, value in asdict(self).items():
-            if isinstance(value, UUID):
-                detail[key] = str(value)
+        detail: Dict[str, Any] = {"detail_type": self.detail_type}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            # Skip None values
+            if value is None:
+                continue
+            # Serialize UUIDs
+            elif isinstance(value, UUID):
+                detail[f.name] = str(value)
+            # Serialize datetimes
             elif isinstance(value, datetime):
-                detail[key] = value.isoformat()
+                detail[f.name] = value.isoformat()
+            # Recursively serialize nested dataclasses
+            elif is_dataclass(value) and not isinstance(value, type):
+                detail[f.name] = self._serialize_dataclass(value)
+            # Handle lists that might contain dataclasses
+            elif isinstance(value, list):
+                detail[f.name] = [
+                    (
+                        self._serialize_dataclass(item)
+                        if (is_dataclass(item) and not isinstance(item, type))
+                        else item
+                    )
+                    for item in value
+                ]
             else:
-                detail[key] = value
+                detail[f.name] = value
         return detail
+
+    @staticmethod
+    def _serialize_dataclass(obj: Any) -> Dict[str, Any]:
+        """Recursively serialize a dataclass to a dict, handling nested types."""
+        result = {}
+        for f in fields(obj):
+            value = getattr(obj, f.name)
+            if value is None:
+                continue
+            elif isinstance(value, UUID):
+                result[f.name] = str(value)
+            elif isinstance(value, datetime):
+                result[f.name] = value.isoformat()
+            elif is_dataclass(value) and not isinstance(value, type):
+                result[f.name] = BaseEvent._serialize_dataclass(value)
+            elif isinstance(value, list):
+                result[f.name] = [
+                    (
+                        BaseEvent._serialize_dataclass(item)
+                        if (is_dataclass(item) and not isinstance(item, type))
+                        else item
+                    )
+                    for item in value
+                ]
+            else:
+                result[f.name] = value
+        return result
 
 
 @dataclass
@@ -167,6 +215,18 @@ class RoutineScheduleUpdated(BaseEvent):
 
 
 @dataclass
+class AudioRecordingReference:
+    """Reference to an audio recording stored in S3.
+
+    Used to provide evaluators with access to the raw audio recording
+    of a conversation for quality assessment and analysis.
+    """
+
+    s3_uri: str
+    duration_seconds: float | None = None
+
+
+@dataclass
 class ConversationEvaluationRequested(BaseEvent):
     """Event published at end of voice conversation to trigger evaluation.
 
@@ -188,3 +248,4 @@ class ConversationEvaluationRequested(BaseEvent):
     transcript: list[Dict[str, Any]] = field(default_factory=list)
     tool_calls: list[Dict[str, Any]] = field(default_factory=list)
     turn_latencies_ms: list[float] = field(default_factory=list)
+    audio_recording: AudioRecordingReference | None = None
