@@ -32,8 +32,8 @@ jobs:
           SCHEMA_FILES=$(echo "$CHANGED_FILES" | grep -E "^db/(migrations/versions|tables)/.*\.py$" || true)
           SCHEMA_COUNT=$(echo "$SCHEMA_FILES" | grep -c . || echo 0)
 
-          # Non-schema files (excluding this workflow file)
-          NON_SCHEMA_FILES=$(echo "$CHANGED_FILES" | grep -vE "^db/(migrations/versions|tables)/.*\.py$|^\.github/workflows/validate-db-schema-pr\.yml$" || true)
+          # Non-schema files (excluding this workflow file and docs — docs are allowed alongside schema changes)
+          NON_SCHEMA_FILES=$(echo "$CHANGED_FILES" | grep -vE "^db/(migrations/versions|tables)/.*\.py$|^docs/|^\.github/workflows/(validate-db-schema-pr|check-docs-with-changes)\.yml$" || true)
           NON_SCHEMA_COUNT=$(echo "$NON_SCHEMA_FILES" | grep -c . || echo 0)
 
           echo "=== Changed Files Summary ==="

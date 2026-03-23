@@ -15,6 +15,10 @@
 # Agent interfaces
 /agent/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
 
+# Documentation (plans are auto-approvable, everything else requires review)
+/docs/** jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/docs/plans/**
+
 # CLAUDE.md files
 **/CLAUDE.md jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
 

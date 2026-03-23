@@ -1,0 +1,88 @@
+name: Check Docs with Schema Changes
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - labeled
+    branches:
+      - "main"
+
+jobs:
+  check-docs-required:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require documentation for schema changes
+        run: |
+          LABELS=$(gh pr view "${{ github.event.pull_request.number }}" \
+            --json labels -q '.labels[].name' 2>/dev/null || true)
+          if echo "$LABELS" | grep -qx "skip-docs-check"; then
+            echo "skip-docs-check label present — bypassed by codeowner"
+            exit 0
+          fi
+
+          git fetch origin main
+          CHANGED=$(git diff --name-only origin/main...HEAD)
+
+          if [ -z "$CHANGED" ]; then
+            echo "No changes"
+            exit 0
+          fi
+
+          API_SCHEMA=$(echo "$CHANGED" | grep -E "^api/schemas/.*\.py$" || true)
+          DB_TABLES=$(echo "$CHANGED" | grep -E "^db/tables/.*\.py$" || true)
+          DB_MIGRATIONS=$(echo "$CHANGED" | grep -E "^db/migrations/versions/.*\.py$" || true)
+
+          API_COUNT=$(echo "$API_SCHEMA" | grep -c . || true)
+          DB_TABLE_COUNT=$(echo "$DB_TABLES" | grep -c . || true)
+          DB_MIGRATION_COUNT=$(echo "$DB_MIGRATIONS" | grep -c . || true)
+          SCHEMA_COUNT=$((API_COUNT + DB_TABLE_COUNT + DB_MIGRATION_COUNT))
+
+          if [ "$SCHEMA_COUNT" -eq 0 ]; then
+            echo "No schema changes detected — docs check not required"
+            exit 0
+          fi
+
+          DOC_ADDITIONS=$(git diff origin/main...HEAD --numstat -- 'docs/' \
+            | awk '{sum += $1} END {print sum+0}')
+
+          echo "=== Schema Change Summary ==="
+          if [ "$API_COUNT" -gt 0 ]; then
+            echo "API schema files ($API_COUNT):"
+            echo "$API_SCHEMA" | sed 's/^/  /'
+          fi
+          if [ "$DB_TABLE_COUNT" -gt 0 ]; then
+            echo "DB table files ($DB_TABLE_COUNT):"
+            echo "$DB_TABLES" | sed 's/^/  /'
+          fi
+          if [ "$DB_MIGRATION_COUNT" -gt 0 ]; then
+            echo "DB migration files ($DB_MIGRATION_COUNT):"
+            echo "$DB_MIGRATIONS" | sed 's/^/  /'
+          fi
+          echo ""
+          echo "Documentation lines added: $DOC_ADDITIONS"
+
+          if [ "$DOC_ADDITIONS" -eq 0 ]; then
+            echo ""
+            echo "ERROR: Schema changes detected but no documentation added."
+            echo ""
+            echo "AGENTS.md Gate 3 requires docs/ updates in the same PR:"
+            echo "  docs/state/*.md      — system behavior changed"
+            echo "  docs/decisions/*.md  — architectural tradeoff"
+            echo "  docs/records/*.md    — completed significant work"
+            echo "  docs/log.md          — any significant change"
+            echo ""
+            echo "Override: a codeowner may add the 'skip-docs-check' label."
+            exit 1
+          fi
+
+          echo ""
+          echo "Documentation check passed ($DOC_ADDITIONS lines added)"
+        env:
+          GH_TOKEN: ${{ github.token }}
