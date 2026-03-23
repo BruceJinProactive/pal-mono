@@ -236,8 +236,7 @@ class RawConfig:
             Updated tool arguments with transfer_destinations
         """
         updated_args = tool_args.copy()
-
-        updated_args.pop("transfer_destinations", None)
+        updated_args.pop("transfer_destinations", None)  # Always rebuild from contacts
 
         # Primary: Build transfer_destinations from contacts table
         if session:
@@ -409,7 +408,7 @@ class RawConfig:
 
         # Auto-inject livekit_tool for voice channels if not already present
         # and the project has transfer contacts configured.
-        LIVEKIT_TOOL_NAMES = {"livekit_transfer_tool", "livekit_tool"}
+        LIVEKIT_TOOL_NAMES = {"livekit_tool"}
         has_livekit_tool = bool(LIVEKIT_TOOL_NAMES & set(merged_tools.keys()))
         if self.channel == Channel.VOICE and not has_livekit_tool and session:
             has_transfer_destination = False
@@ -441,29 +440,8 @@ class RawConfig:
             entry = merged_tools[tool_name]
             tool_args: Dict[str, Any] = dict(entry["args"])
 
-            if tool_name in ["livekit_transfer_tool", "livekit_tool"]:
-                explicit_destinations = tool_args.get("transfer_destinations")
-                explicit_destination_number = tool_args.get("destination_number")
+            if tool_name == "livekit_tool":
                 tool_args = await self._populate_transfer_tool_args(tool_args, session)
-                if explicit_destinations:
-                    # Merge: explicit destinations (e.g. SIP URIs from raw_config)
-                    # override contact-derived phone numbers for the same role.
-                    tool_args["transfer_destinations"] = {
-                        **tool_args.get("transfer_destinations", {}),
-                        **explicit_destinations,
-                    }
-                if explicit_destination_number and not (
-                    explicit_destinations and "general" in explicit_destinations
-                ):
-                    # Preserve raw_config destination_number shorthand.
-                    # _populate_transfer_tool_args() rebuilds transfer_destinations from
-                    # contacts and would otherwise override destination_number with a
-                    # potentially formatted number.
-                    # Skip when explicit transfer_destinations already defines "general".
-                    tool_args["transfer_destinations"] = {
-                        **tool_args.get("transfer_destinations", {}),
-                        "general": explicit_destination_number,
-                    }
                 # Inject LiveKit runtime context for SIP REFER
                 logger.debug(
                     "[_get_agent_tools] LiveKit transfer tool context: "
@@ -511,7 +489,7 @@ class RawConfig:
             )
 
         # Filter out voice-only tools for non-voice channels
-        VOICE_ONLY_TOOLS = {"livekit_transfer_tool", "livekit_tool"}
+        VOICE_ONLY_TOOLS = {"livekit_tool"}
         if self.channel != Channel.VOICE:
             final_identifiers = [
                 t for t in final_identifiers if t.tool_name not in VOICE_ONLY_TOOLS

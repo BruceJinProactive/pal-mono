@@ -1,7 +1,7 @@
 # pyright: reportGeneralTypeIssues=false, reportAttributeAccessIssue=false
 """Tests for LiveKit transfer tool context injection.
 
-When livekit_transfer_tool is configured on an agent, room_name,
+When livekit_tool is configured on an agent, room_name,
 participant_identity, and lk_api are injected into its args so
 LiveKitTransferTool.call_transfer() can execute SIP REFER.
 """
@@ -93,13 +93,13 @@ def _get_tools(rc):
 
 
 class TestLiveKitContextInjection:
-    """room_name, participant_identity, and lk_api injected into livekit_transfer_tool args."""
+    """room_name, participant_identity, and lk_api injected into livekit_tool args."""
 
     @pytest.mark.asyncio
     async def test_room_name_and_participant_identity_injected(self) -> None:
         """LiveKit context present -> tool_args contain room_name and participant_identity."""
         rc = _make_raw_config(
-            "livekit_transfer_tool",
+            "livekit_tool",
             room_name="room-abc",
             participant_identity="participant-xyz",
         )
@@ -108,7 +108,7 @@ class TestLiveKitContextInjection:
             tool_config = await rc._get_agent_tools(session=None)
 
         tool = tool_config.identifiers[0]
-        assert tool.tool_name == "livekit_transfer_tool"
+        assert tool.tool_name == "livekit_tool"
         assert tool.args["room_name"] == "room-abc"
         assert tool.args["participant_identity"] == "participant-xyz"
 
@@ -116,7 +116,7 @@ class TestLiveKitContextInjection:
     async def test_lk_api_injected_when_env_vars_set(self) -> None:
         """LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET set -> lk_api present."""
         rc = _make_raw_config(
-            "livekit_transfer_tool",
+            "livekit_tool",
             room_name="room-abc",
             participant_identity="participant-xyz",
         )
@@ -148,7 +148,7 @@ class TestLiveKitContextInjection:
     async def test_lk_api_not_injected_when_env_vars_missing(self) -> None:
         """Env vars not set -> lk_api NOT in tool_args (room_name/participant_identity still are)."""
         rc = _make_raw_config(
-            "livekit_transfer_tool",
+            "livekit_tool",
             room_name="room-abc",
             participant_identity="participant-xyz",
         )
@@ -168,135 +168,13 @@ class TestLiveKitContextInjection:
     @pytest.mark.asyncio
     async def test_no_injection_without_livekit_context(self) -> None:
         """No room_name/participant_identity -> tool_args have no LiveKit fields."""
-        rc = _make_raw_config("livekit_transfer_tool")
+        rc = _make_raw_config("livekit_tool")
         p1, p2, p3 = _get_tools(rc)
         with p1, p2, p3:
             tool_config = await rc._get_agent_tools(session=None)
 
         tool = tool_config.identifiers[0]
-        assert tool.tool_name == "livekit_transfer_tool"
+        assert tool.tool_name == "livekit_tool"
         assert "room_name" not in tool.args
         assert "participant_identity" not in tool.args
         assert "lk_api" not in tool.args
-
-    @pytest.mark.asyncio
-    async def test_injection_works_with_explicit_destinations(self) -> None:
-        """LiveKit context + explicit SIP destinations -> both merge AND injection happen."""
-        explicit_destinations = {"catering": "sip:catering@sip.provider.com"}
-        rc = _make_raw_config(
-            "livekit_transfer_tool",
-            tool_args={"transfer_destinations": explicit_destinations},
-            room_name="room-abc",
-            participant_identity="participant-xyz",
-        )
-
-        contact_destinations = {"general": "+15559876543"}
-
-        async def mock_populate_with_contacts(tool_args, session=None):
-            updated = tool_args.copy()
-            updated.pop("transfer_destinations", None)
-            updated["transfer_destinations"] = contact_destinations.copy()
-            updated["transfer_message"] = "Transferring you now."
-            return updated
-
-        with patch.object(
-            rc, "_populate_transfer_tool_args", side_effect=mock_populate_with_contacts
-        ):
-            with patch.object(rc, "_get_project_tools_override", return_value={}):
-                with patch.object(
-                    rc, "_get_project_integration_tools", return_value=[]
-                ):
-                    with patch.dict(
-                        os.environ,
-                        {
-                            "LIVEKIT_URL": "",
-                            "LIVEKIT_API_KEY": "",
-                            "LIVEKIT_API_SECRET": "",
-                        },
-                    ):
-                        tool_config = await rc._get_agent_tools(session=None)
-
-        tool = tool_config.identifiers[0]
-        assert tool.tool_name == "livekit_transfer_tool"
-        # Context injection
-        assert tool.args["room_name"] == "room-abc"
-        assert tool.args["participant_identity"] == "participant-xyz"
-        # Destination merge: explicit SIP overrides contact for same role,
-        # contact-derived "general" preserved
-        destinations = tool.args["transfer_destinations"]
-        assert destinations["catering"] == "sip:catering@sip.provider.com"
-        assert destinations["general"] == "+15559876543"
-
-    @pytest.mark.asyncio
-    async def test_destination_number_shorthand_preserved(self) -> None:
-        """Raw-config destination_number should override contact-derived general target."""
-        rc = _make_raw_config(
-            "livekit_transfer_tool",
-            tool_args={"destination_number": "+16468761234"},
-            room_name="room-abc",
-            participant_identity="participant-xyz",
-        )
-
-        async def mock_populate_with_formatted_contact(tool_args, session=None):
-            _ = session  # noqa: ARG001 - signature must match _populate_transfer_tool_args
-            updated = tool_args.copy()
-            updated.pop("transfer_destinations", None)
-            # Simulate contacts table storing a human-formatted phone number.
-            updated["transfer_destinations"] = {"general": "(646) 876-1234"}
-            return updated
-
-        with patch.object(
-            rc,
-            "_populate_transfer_tool_args",
-            side_effect=mock_populate_with_formatted_contact,
-        ):
-            with patch.object(rc, "_get_project_tools_override", return_value={}):
-                with patch.object(
-                    rc, "_get_project_integration_tools", return_value=[]
-                ):
-                    tool_config = await rc._get_agent_tools(session=None)
-
-        tool = tool_config.identifiers[0]
-        assert tool.tool_name == "livekit_transfer_tool"
-        assert tool.args["transfer_destinations"]["general"] == "+16468761234"
-
-    @pytest.mark.asyncio
-    async def test_explicit_general_destination_takes_precedence_over_shorthand(
-        self,
-    ) -> None:
-        """Explicit transfer_destinations 'general' wins over destination_number."""
-        rc = _make_raw_config(
-            "livekit_transfer_tool",
-            tool_args={
-                "transfer_destinations": {"general": "sip:reception@pbx.example.com"},
-                "destination_number": "+16468761234",
-            },
-            room_name="room-abc",
-            participant_identity="participant-xyz",
-        )
-
-        async def mock_populate(tool_args, session=None):
-            _ = session  # noqa: ARG001 - signature must match _populate_transfer_tool_args
-            updated = tool_args.copy()
-            updated.pop("transfer_destinations", None)
-            updated["transfer_destinations"] = {"general": "(646) 876-1234"}
-            return updated
-
-        with patch.object(
-            rc,
-            "_populate_transfer_tool_args",
-            side_effect=mock_populate,
-        ):
-            with patch.object(rc, "_get_project_tools_override", return_value={}):
-                with patch.object(
-                    rc, "_get_project_integration_tools", return_value=[]
-                ):
-                    tool_config = await rc._get_agent_tools(session=None)
-
-        tool = tool_config.identifiers[0]
-        assert tool.tool_name == "livekit_transfer_tool"
-        # Explicit SIP URI for "general" should win over destination_number shorthand
-        assert (
-            tool.args["transfer_destinations"]["general"]
-            == "sip:reception@pbx.example.com"
-        )

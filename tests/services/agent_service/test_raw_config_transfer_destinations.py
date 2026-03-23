@@ -1,8 +1,8 @@
 # pyright: reportGeneralTypeIssues=false, reportAttributeAccessIssue=false
-"""Tests for transfer destination merging in _raw_config._get_agent_tools.
+"""Tests for transfer destination population in _raw_config._get_agent_tools.
 
-Verifies that livekit_transfer_tool preserves explicit destinations (e.g. SIP
-URIs from raw_config) while merging in contact-derived phone numbers.
+Verifies that livekit_tool transfer_destinations are populated from
+contacts via _populate_transfer_tool_args.
 """
 
 import uuid
@@ -67,23 +67,17 @@ def _make_raw_config(
 # ---------------------------------------------------------------------------
 
 
-class TestLiveKitTransferDestinationMerge:
-    """Explicit destinations in raw_config are preserved for livekit_transfer_tool."""
+class TestLiveKitTransferDestinations:
+    """Transfer destinations are populated from contacts for livekit_tool."""
 
     @pytest.mark.asyncio
-    async def test_explicit_sip_destinations_preserved(self) -> None:
-        """SIP URIs from raw_config override contact-derived destinations."""
-        explicit_destinations = {
-            "complaint": "sip:complaints@sip.provider.com",
-            "catering": "sip:catering@sip.provider.com",
-        }
+    async def test_contact_destinations_populated(self) -> None:
+        """Contact-derived destinations are set by _populate_transfer_tool_args."""
         rc = _make_raw_config(
-            "livekit_transfer_tool",
-            tool_args={"transfer_destinations": explicit_destinations},
+            "livekit_tool",
+            tool_args={},
         )
 
-        # _populate_transfer_tool_args rebuilds from contacts — simulate it returning
-        # contact-derived phone numbers for "general" and "complaint"
         contact_destinations = {
             "general": "+15559876543",
             "complaint": "+15550001111",
@@ -91,7 +85,6 @@ class TestLiveKitTransferDestinationMerge:
 
         async def mock_populate(tool_args, session=None):
             updated = tool_args.copy()
-            updated.pop("transfer_destinations", None)
             updated["transfer_destinations"] = contact_destinations.copy()
             updated["transfer_message"] = "Transferring you now."
             return updated
@@ -106,20 +99,17 @@ class TestLiveKitTransferDestinationMerge:
                     tool_config = await rc._get_agent_tools(session=None)
 
         tool = tool_config.identifiers[0]
-        assert tool.tool_name == "livekit_transfer_tool"
+        assert tool.tool_name == "livekit_tool"
         destinations = tool.args["transfer_destinations"]
 
-        # Explicit SIP URIs win over contact-derived phone for same role
-        assert destinations["complaint"] == "sip:complaints@sip.provider.com"
-        assert destinations["catering"] == "sip:catering@sip.provider.com"
-        # Contact-derived "general" is preserved (no explicit override)
+        assert destinations["complaint"] == "+15550001111"
         assert destinations["general"] == "+15559876543"
 
     @pytest.mark.asyncio
     async def test_no_explicit_destinations_uses_contacts_only(self) -> None:
         """When no explicit destinations in raw_config, contacts table drives all."""
         rc = _make_raw_config(
-            "livekit_transfer_tool",
+            "livekit_tool",
             tool_args={},
         )
 
@@ -144,10 +134,25 @@ class TestLiveKitTransferDestinationMerge:
         assert destinations == {"general": "+15559876543", "faq": "+15550002222"}
 
     @pytest.mark.asyncio
-    async def test_livekit_filtered_on_non_voice_channel(self) -> None:
-        """livekit_transfer_tool is filtered out for non-voice channels."""
+    async def test_stale_raw_config_destinations_cleared(self) -> None:
+        """Stale transfer_destinations from raw_config are cleared when no contacts exist."""
         rc = _make_raw_config(
-            "livekit_transfer_tool",
+            "livekit_tool",
+            tool_args={"transfer_destinations": {"stale_role": "+15550009999"}},
+        )
+
+        with patch.object(rc, "_get_project_tools_override", return_value={}):
+            with patch.object(rc, "_get_project_integration_tools", return_value=[]):
+                tool_config = await rc._get_agent_tools(session=None)
+
+        tool = tool_config.identifiers[0]
+        assert tool.args["transfer_destinations"] == {}
+
+    @pytest.mark.asyncio
+    async def test_livekit_filtered_on_non_voice_channel(self) -> None:
+        """livekit_tool is filtered out for non-voice channels."""
+        rc = _make_raw_config(
+            "livekit_tool",
             tool_args={},
             channel=Channel.SMS,
         )

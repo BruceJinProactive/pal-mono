@@ -170,25 +170,6 @@ class TestAutoInjectLiveKitTool:
         assert len(livekit_tools) == 1
 
     @pytest.mark.asyncio
-    async def test_no_injection_when_livekit_transfer_tool_configured(self) -> None:
-        """If legacy livekit_transfer_tool is already configured, don't inject."""
-        existing_tools = [
-            {
-                "tool_name": "livekit_transfer_tool",
-                "tool_args": {},
-                "access_metadata": True,
-            }
-        ]
-        rc = _make_raw_config(agent_tools=existing_tools)
-        p1, p2, p3, p4 = _patch_helpers(rc)
-        with p1, p2, p3, p4:
-            tool_config = await rc._get_agent_tools(session=_MOCK_SESSION)
-
-        tool_names = [t.tool_name for t in tool_config.identifiers]
-        assert "livekit_transfer_tool" in tool_names
-        assert tool_names.count("livekit_tool") == 0
-
-    @pytest.mark.asyncio
     async def test_injected_tool_gets_populated(self) -> None:
         """Auto-injected tool should still get transfer_destinations populated."""
         rc = _make_raw_config()
