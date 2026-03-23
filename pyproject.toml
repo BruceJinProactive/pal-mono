@@ -84,7 +84,7 @@ dev = [
 
 [tool.black]
 line-length = 88
-extend-exclude = "(?x)(^|/)build/"
+extend-exclude = "(?x)(^|/)(build|\\.agents|\\.claude|\\.pal-skills)/"
 
 [tool.coverage.report]
 show_missing = true
@@ -112,10 +112,21 @@ forbidden_modules = ["agent", "api", "db", "services", "tools"]
 [tool.isort]
 profile = "black"
 line_length = 88
-skip_glob = ["build/**"]
+skip_glob = [".agents/**", ".claude/**", ".pal-skills/**", "build/**"]
 
 [tool.pyright]
-exclude = ["**/__pycache__", ".git", ".venv*", "aienv*", "build", "db/migrations/versions/", "workspace/"]
+exclude = [
+  "**/__pycache__",
+  ".agents",
+  ".claude",
+  ".git",
+  ".pal-skills",
+  ".venv*",
+  "aienv*",
+  "build",
+  "db/migrations/versions/",
+  "workspace/"
+]
 typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
@@ -128,7 +139,7 @@ python_functions = ["test_*"]
 
 [tool.ruff]
 extend-include = ["*.ipynb"]
-exclude = [".git", ".venv*", "aienv*", "build"]
+exclude = [".agents", ".claude", ".git", ".pal-skills", ".venv*", "aienv*", "build"]
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore `F401` (import violations) in all `__init__.py` files
