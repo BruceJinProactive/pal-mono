@@ -506,7 +506,7 @@ async def get_chat_response_stream(
                         vapi_control_url = conversation.vapi_control_url
                     except Exception as e:
                         # Catch all exceptions for graceful degradation during voice calls.
-                        # VapiTool has fallback to fetch control_url from Vapi API if None.
+                        # Voice transfer tools can function without this URL if needed.
                         logger.warning(
                             "Failed to fetch conversation for vapi_control_url: %s",
                             str(e),

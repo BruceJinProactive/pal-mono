@@ -7,6 +7,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-03
 
 ### 2026-03-24
+- Remove outdated VAPI comments and references to deleted code paths (VAPI migration cleanup)
 - Remove unused VAPI AssistantConfig and related dead code from number service (VAPI migration cleanup)
 - Update database field comments to remove VAPI-specific language (VAPI migration cleanup)
 - Remove legacy `released_from_vapi` field from ReleaseNumberResponse API schema (VAPI migration cleanup)

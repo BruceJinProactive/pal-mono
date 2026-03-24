@@ -43,8 +43,7 @@ _background_tasks: set[asyncio.Task[object]] = set()
 _S3_URI_PATTERN = re.compile(r"^s3://[a-z0-9][a-z0-9.-]*[a-z0-9]/.+$")
 
 
-# Numeric speed mapping matching CARTESIA_SONIC3_SPEED_MAPPING from
-# services/voice_service/providers/vapi/_implementation.py
+# Numeric speed mapping for Cartesia TTS (Sonic-3 voice model)
 _SPEECH_RATE_TO_FLOAT: dict[SpeechRate, float] = {
     SpeechRate.slowest: 0.6,
     SpeechRate.slower: 0.8,
@@ -575,7 +574,6 @@ async def end_voice_call(
     if should_track:
         try:
             # Load project and account relationship after commit to access stripe_customer_id
-            # This follows the same pattern as Vapi integration (see vapi/_implementation.py:1296)
             logger.debug(
                 f"[end_voice_call] Loading project for billing: project_id={project_id_for_billing}",
                 extra={
