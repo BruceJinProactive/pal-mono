@@ -72,10 +72,10 @@ class Conversation(Base):
         default=False, nullable=False, server_default=text("false")
     )
 
-    # Vapi control URL for call transfer
+    # Legacy VAPI control URL for call transfer (deprecated, LiveKit uses room_name)
     vapi_control_url: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
-    # Call ID for call transfer
+    # Voice call identifier for call transfer and tracking
     call_id: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
     # Channel that initiated this conversation (sms, voice, whatsapp, etc.)
