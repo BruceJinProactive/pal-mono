@@ -42,10 +42,10 @@ class ConversationRepositoryAsync:
 
     async def get_conversation_by_call_id(self, call_id: str) -> Conversation | None:
         """
-        Retrieve a conversation by its VAPI call ID.
+        Retrieve a conversation by its voice call ID.
 
         Args:
-            call_id: The VAPI call ID associated with the conversation.
+            call_id: The voice call ID associated with the conversation.
 
         Returns:
             Conversation | None: The conversation if found, None otherwise.

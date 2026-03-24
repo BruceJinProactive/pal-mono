@@ -197,7 +197,7 @@ class MessageRepositoryAsync:
             user_id: The ID of the user making the call
             project_id: The project ID
             message_body: The message content as a dict
-            call_id: The VAPI call ID (required for voice calls)
+            call_id: The voice call ID (required for voice calls)
 
         Returns:
             Message: The created message
@@ -276,7 +276,7 @@ class MessageRepositoryAsync:
         Args:
             user_id: The ID of the user
             message_body: The message content as a dict
-            call_id: The VAPI call ID to look up the conversation
+            call_id: The voice call ID to look up the conversation
 
         Returns:
             Message: The created message

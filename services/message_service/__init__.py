@@ -61,7 +61,7 @@ async def get_chat_response_stream(
          session (AsyncSession): The asynchronous database session to use for the query.
          message (Message): The message object containing the details of the user's message.
          request_context (RequestContext): The request context containing metadata about the request.
-         call_id (str | None): The VAPI call ID for voice calls. When provided, the message will
+         call_id (str | None): The voice call ID for voice calls. When provided, the message will
              be added to the existing conversation associated with this call_id.
          room_name (str | None): The LiveKit room name for LiveKit voice calls.
          participant_identity (str | None): The LiveKit participant identity for LiveKit voice calls.
