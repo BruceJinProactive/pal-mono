@@ -1,5 +1,4 @@
 import enum
-from typing import TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -17,15 +16,6 @@ class NumberResponse(BaseModel):
         """Pydantic model configuration."""
 
         from_attributes = True  # Allow ORM model conversion
-
-
-class AssistantConfig(TypedDict):
-    """Configuration for creating a Vapi assistant."""
-
-    merchant_name: str
-    model_url: str
-    model_name: str
-    server_url: str
 
 
 class NumberChannel(str, enum.Enum):

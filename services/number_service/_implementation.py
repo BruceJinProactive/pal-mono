@@ -11,7 +11,6 @@ from db.repositories.project_repository import ProjectRepository
 from utils.log import logger
 
 from ._utils import (
-    AssistantConfig,
     NumberChannel,
     NumberResponse,
     NumberType,
@@ -40,19 +39,12 @@ class NumberService:
         ```python
         service = NumberService()
 
-        # Purchase a toll-free number with assistant
-        config = AssistantConfig(
-            merchant_name="My Business",
-            model_url="https://api.example.com/v1/",
-            model_name="custom-model",
-            server_url="https://webhook.example.com"
-        )
-
+        # Purchase a toll-free number
         number = service.setup_number(
             country_code="US",
             toll_free=True,
-            merchant_name="My Business",
-            assistant_config=config
+            purchase_number=True,
+            merchant_name="My Business"
         )
         ```
     """
@@ -274,36 +266,40 @@ class NumberService:
         country_code: str,
         toll_free: bool,
         merchant_name: str,
-        assistant_config: Optional[AssistantConfig] = None,
         purchase_number: bool = False,
         area_code: Optional[str] = None,
         contains: Optional[str] = None,
         voice_provider: str = "livekit",
     ) -> NumberResponse:
-        """Set up a phone number with optional Vapi assistant integration.
+        """Set up a phone number with LiveKit voice routing.
 
         This method handles the complete setup process:
-        1. Creates a Vapi assistant if configuration is provided
-        2. Purchases a phone number (local or toll-free) or reuses approved numbers
-        3. Integrates the number with Vapi
-        4. Handles cleanup if any step fails
+        1. Purchases a phone number (local or toll-free) or reuses approved numbers
+        2. Configures the number with LiveKit SIP trunk routing
+        3. Handles cleanup if any step fails
 
         Args:
             country_code: Two-letter country code (e.g., 'US')
             toll_free: Whether to purchase a toll-free number
             merchant_name: Business name to associate with the number
-            assistant_config: Optional assistant configuration for Vapi integration
             purchase_number: If True, always purchase a new number. If False (default),
                            reuse approved numbers first, only purchasing if none available.
             area_code: Optional area code for local numbers (e.g., '415')
             contains: Optional pattern for number search (supports wildcards like '*6666')
+            voice_provider: Voice provider to use (default: 'livekit')
 
         Returns:
             NumberResponse containing the set up number details
 
         Raises:
-            ValueError: If number setup or integration fails
+            ValueError: If number setup or integration fails, or if unsupported voice provider
         """
+        # Validate voice provider
+        if voice_provider != "livekit":
+            raise ValueError(
+                f"Unsupported voice provider: {voice_provider}. Only 'livekit' is currently supported."
+            )
+
         # Check if we should purchase a new number or reuse approved ones
         if purchase_number:
             # Force purchase a new number regardless of approved numbers

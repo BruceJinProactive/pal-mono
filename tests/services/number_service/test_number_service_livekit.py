@@ -6,6 +6,7 @@ These tests verify LiveKit provisioning behavior using trunk_sid:
 - Release paths: clear trunk_sid for LiveKit
 """
 
+import re
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -91,6 +92,39 @@ class TestSetupNumberLiveKitPath:
                 merchant_name="Test",
                 purchase_number=True,
                 voice_provider="livekit",
+            )
+
+
+class TestSetupNumberVoiceProviderValidation:
+    """Verify that unsupported voice providers are rejected."""
+
+    @patch("services.number_service._implementation.Client")
+    def test_unsupported_voice_provider_raises(self, mock_twilio_cls):
+        """setup_number raises ValueError for unsupported voice providers."""
+        from services.number_service._implementation import NumberService
+
+        with patch.dict(
+            "os.environ",
+            {
+                "TWILIO_ACCOUNT_SID": "ACtest",
+                "TWILIO_AUTH_TOKEN": "token",
+                "TWILIO_SIP_TRUNK_SID": "TK-sip-trunk",
+            },
+        ):
+            service = NumberService()
+
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "Unsupported voice provider: vapi. Only 'livekit' is currently supported."
+            ),
+        ):
+            service.setup_number(
+                country_code="US",
+                toll_free=True,
+                merchant_name="Test",
+                purchase_number=True,
+                voice_provider="vapi",
             )
 
 
