@@ -7,6 +7,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-03
 
 ### 2026-03-24
+- Add daily catering inquiry reminder: internal endpoint `POST /internal/catering/inquiry-reminders` sends one SMS per project for INQUIRY requests exactly 2 days old whose event hasn't passed
 - Remove outdated VAPI comments and references to deleted code paths (VAPI migration cleanup)
 - Remove unused VAPI AssistantConfig and related dead code from number service (VAPI migration cleanup)
 - Update database field comments to remove VAPI-specific language (VAPI migration cleanup)

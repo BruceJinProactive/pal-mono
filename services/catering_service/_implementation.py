@@ -1005,7 +1005,8 @@ async def send_catering_inquiry_reminders(
             )
             continue
 
-        # Send one reminder SMS
+        # Send one reminder SMS. Not idempotent, but retries only happen if
+        # pal-mono is fully down (5xx/timeout), so duplicates are near-impossible.
         message = format_catering_reminder_message(qualifying)
         try:
             sms_success = await asyncio.to_thread(
