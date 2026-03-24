@@ -33,6 +33,23 @@ from services.asset_service._implementation import WriteAssetRequest
 from services.asset_service._utils import map_uri_to_s3_url
 from utils.log import logger
 
+# HTTP status codes and statuses that indicate transient LLM API errors worth retrying.
+_RETRYABLE_CODES = ["503", "429", "500", "502", "504"]
+_RETRYABLE_STATUSES = ["unavailable", "resource_exhausted", "deadline_exceeded"]
+
+
+def _is_retryable_error(exception: Exception) -> bool:
+    """Check if an exception is a transient API error worth retrying."""
+    error_str = str(exception).lower()
+    for code in _RETRYABLE_CODES:
+        if code in error_str:
+            return True
+    for status_name in _RETRYABLE_STATUSES:
+        if status_name in error_str:
+            return True
+    return False
+
+
 # Track background tasks so they aren't garbage-collected before completion.
 _background_tasks: set[asyncio.Task[None]] = set()
 
@@ -1542,41 +1559,87 @@ async def _rerun_monitoring_analysis_background(
         async with AsyncSessionLocal() as session:
             run_repo = MonitoringRunRepositoryAsync(session)
             try:
+                # Retry with exponential backoff for transient LLM errors (e.g. 503 UNAVAILABLE)
+                max_retries = 5
+                base_delay = 2.0
+                llm_result: dict | None = None
 
-                # Run the analysis
-                if is_video:
-                    # Import here to avoid circular dependency
-                    from services.monitoring_service._llm import (
-                        generate_monitoring_video_llm_prompt,
-                    )
+                for attempt in range(max_retries):
+                    try:
+                        # Run the analysis
+                        if is_video:
+                            from services.monitoring_service._llm import (
+                                generate_monitoring_video_llm_prompt,
+                            )
 
-                    logger.info(
-                        "[Rerun Background] Running video analysis for run %s",
-                        run_id,
-                        extra=log_extra,
-                    )
+                            logger.info(
+                                "[Rerun Background] Running video analysis for run %s (attempt %d/%d)",
+                                run_id,
+                                attempt + 1,
+                                max_retries,
+                                extra={**log_extra, "attempt": attempt + 1},
+                            )
 
-                    llm_result = await generate_monitoring_video_llm_prompt(
-                        session=session,
-                        monitoring_config_id=monitoring_config_id,
-                        video_url=media_url,
-                    )
-                else:
-                    # Import here to avoid circular dependency
-                    from services.monitoring_service._llm import (
-                        generate_monitoring_llm_prompt,
-                    )
+                            llm_result = await generate_monitoring_video_llm_prompt(
+                                session=session,
+                                monitoring_config_id=monitoring_config_id,
+                                video_url=media_url,
+                            )
+                        else:
+                            from services.monitoring_service._llm import (
+                                generate_monitoring_llm_prompt,
+                            )
 
-                    logger.info(
-                        "[Rerun Background] Running image analysis for run %s",
-                        run_id,
-                        extra=log_extra,
-                    )
+                            logger.info(
+                                "[Rerun Background] Running image analysis for run %s (attempt %d/%d)",
+                                run_id,
+                                attempt + 1,
+                                max_retries,
+                                extra={**log_extra, "attempt": attempt + 1},
+                            )
 
-                    llm_result = await generate_monitoring_llm_prompt(
-                        session=session,
-                        monitoring_config_id=monitoring_config_id,
-                        image_url=media_url,
+                            llm_result = await generate_monitoring_llm_prompt(
+                                session=session,
+                                monitoring_config_id=monitoring_config_id,
+                                image_url=media_url,
+                            )
+                        # Success — break out of retry loop
+                        break
+
+                    except Exception as retry_exc:
+                        if (
+                            not _is_retryable_error(retry_exc)
+                            or attempt >= max_retries - 1
+                        ):
+                            if attempt >= max_retries - 1:
+                                logger.error(
+                                    "[Rerun Background] All %d retry attempts exhausted for run %s. Last error: %s",
+                                    max_retries,
+                                    run_id,
+                                    retry_exc,
+                                    extra={**log_extra, "attempt": attempt + 1},
+                                )
+                            raise
+
+                        delay = base_delay * (2**attempt)
+                        logger.warning(
+                            "[Rerun Background] Retryable error on attempt %d/%d for run %s: %s. Retrying in %.1fs",
+                            attempt + 1,
+                            max_retries,
+                            run_id,
+                            retry_exc,
+                            delay,
+                            extra={
+                                **log_extra,
+                                "attempt": attempt + 1,
+                                "retry_delay": delay,
+                            },
+                        )
+                        await asyncio.sleep(delay)
+
+                if llm_result is None:
+                    raise RuntimeError(
+                        f"Rerun analysis failed after {max_retries} retries"
                     )
 
                 analysis_result = llm_result.get("analysis_result", {})
