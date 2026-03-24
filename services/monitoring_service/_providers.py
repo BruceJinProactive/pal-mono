@@ -133,6 +133,7 @@ def _parse_gemini_json_response(response: Any) -> dict[str, Any]:
 # For unlisted models, video is pre-processed into frames before analysis.
 NATIVE_VIDEO_MODELS: set[str] = {
     "gemini-2.5-flash",
+    "gemini-3.1-flash-lite-preview",
 }
 
 

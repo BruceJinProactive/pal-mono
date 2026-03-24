@@ -264,6 +264,19 @@ class TestSupportsNativeVideo:
         """gemini-2.5-flash should be in NATIVE_VIDEO_MODELS set."""
         assert "gemini-2.5-flash" in NATIVE_VIDEO_MODELS
 
+    def test_gemini_3_1_flash_lite_preview_supported(self):
+        """gemini-3.1-flash-lite-preview should support native video."""
+        assert (
+            supports_native_video(
+                MonitoringLLMProvider.GOOGLE, "gemini-3.1-flash-lite-preview"
+            )
+            is True
+        )
+
+    def test_gemini_3_1_flash_lite_preview_in_native_video_models(self):
+        """gemini-3.1-flash-lite-preview should be in NATIVE_VIDEO_MODELS set."""
+        assert "gemini-3.1-flash-lite-preview" in NATIVE_VIDEO_MODELS
+
     def test_gemini_3_flash_preview_not_supported(self):
         """gemini-3-flash-preview should not support native video."""
         assert (
