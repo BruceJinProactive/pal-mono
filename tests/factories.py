@@ -25,6 +25,8 @@ from db.tables import (
     Conversation,
     Integration,
     Message,
+    MonitoringConfig,
+    MonitoringRun,
     PhoneCall,
     Project,
     ProjectIntegration,
@@ -36,6 +38,8 @@ from db.tables import (
     RoutineItemResponse,
     RoutineSchedule,
     RoutineSubmission,
+    SignalFeed,
+    SignalSource,
     SubscriptionPlan,
     User,
     VoiceConfig,
@@ -45,7 +49,9 @@ from db.tables.conversations import ConversationStatus
 from db.tables.types import (
     AccountUserStatus,
     AuthType,
+    CaptureMode,
     ExecutionStatus,
+    FeedType,
     IntegrationProvider,
     IntegrationType,
     ItemResponseStatus,
@@ -53,6 +59,9 @@ from db.tables.types import (
     RoutineCategory,
     RoutineFrequency,
     RoutineInputType,
+    SignalFeedStatus,
+    SignalSourceStatus,
+    SignalType,
     SubmissionStatus,
     SubscriptionStatus,
     TargetTier,
@@ -431,6 +440,93 @@ def make_phone_call(
     session.add(pc)
     session.flush()
     return pc
+
+
+# ---------------------------------------------------------------------------
+# Monitoring (Signal Sources, Feeds, Configs, Runs)
+# ---------------------------------------------------------------------------
+
+
+def make_signal_source(
+    session: Session, *, account_id: uuid.UUID, **overrides: Any
+) -> SignalSource:
+    defaults: dict[str, Any] = {
+        "id": uuid.uuid4(),
+        "account_id": account_id,
+        "signal_type": SignalType.camera,
+        "name": f"test-camera-{_short_id()}",
+        "status": SignalSourceStatus.active,
+        "config": {},
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    defaults.update(overrides)
+    ss = SignalSource(**defaults)
+    session.add(ss)
+    session.flush()
+    return ss
+
+
+def make_signal_feed(
+    session: Session, *, source_id: uuid.UUID, **overrides: Any
+) -> SignalFeed:
+    defaults: dict[str, Any] = {
+        "id": uuid.uuid4(),
+        "source_id": source_id,
+        "feed_type": FeedType.image_snapshot,
+        "capture_mode": CaptureMode.pull,
+        "status": SignalFeedStatus.active,
+        "capture_count": 0,
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    defaults.update(overrides)
+    sf = SignalFeed(**defaults)
+    session.add(sf)
+    session.flush()
+    return sf
+
+
+def make_monitoring_config(
+    session: Session,
+    *,
+    project_id: uuid.UUID,
+    signal_source_id: uuid.UUID,
+    **overrides: Any,
+) -> MonitoringConfig:
+    defaults: dict[str, Any] = {
+        "id": uuid.uuid4(),
+        "project_id": project_id,
+        "signal_source_id": signal_source_id,
+        "name": f"test-monitor-{_short_id()}",
+        "rules": {"prompt": "Check for cleanliness"},
+        "enabled": True,
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    defaults.update(overrides)
+    mc = MonitoringConfig(**defaults)
+    session.add(mc)
+    session.flush()
+    return mc
+
+
+def make_monitoring_run(
+    session: Session, *, monitoring_config_id: uuid.UUID, **overrides: Any
+) -> MonitoringRun:
+    now = _now()
+    defaults: dict[str, Any] = {
+        "id": uuid.uuid4(),
+        "monitoring_config_id": monitoring_config_id,
+        "trigger_metadata": {"source": "test"},
+        "started_at": now,
+        "evaluation_result": {"result": "pass"},
+    }
+    defaults.update(overrides)
+    mr = MonitoringRun(**defaults)
+    session.add(mr)
+    session.flush()
+    return mr
 
 
 # ---------------------------------------------------------------------------
