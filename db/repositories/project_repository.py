@@ -182,6 +182,31 @@ class ProjectRepositoryAsync:
             logger.error(f"Error creating project: {e}")
             raise
 
+    async def list_projects_by_ids(self, project_ids: list[uuid.UUID]) -> list[Project]:
+        """
+        Retrieve multiple projects by their IDs asynchronously.
+
+        Args:
+            project_ids: List of project UUIDs to fetch.
+
+        Returns:
+            list[Project]: The matching projects (with account eager-loaded).
+        """
+        if not project_ids:
+            return []
+        try:
+            query = (
+                select(Project)
+                .options(selectinload(Project.account))
+                .filter(Project.id.in_(project_ids))
+            )
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error listing projects by IDs: {e}")
+            raise
+
     async def delete_project(self, project_id: uuid.UUID) -> None:
         """
         Delete a project from the database asynchronously.

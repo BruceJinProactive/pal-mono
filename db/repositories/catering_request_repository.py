@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import List
 
 from sqlalchemy import select
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from db.tables import CateringRequest
+from db.tables.catering_requests import RequestStatus
 from utils.log import logger
 
 
@@ -94,6 +96,34 @@ class CateringRequestRepositoryAsync:
             logger.error(
                 f"Error retrieving catering requests for project {project_id}: {e}"
             )
+            raise
+
+    async def list_inquiry_requests_in_date_range(
+        self,
+        created_after: datetime,
+        created_before: datetime,
+    ) -> list[CateringRequest]:
+        """
+        List all INQUIRY catering requests created within a UTC date range.
+
+        Args:
+            created_after: Start of the UTC window (inclusive).
+            created_before: End of the UTC window (exclusive).
+
+        Returns:
+            list[CateringRequest]: Matching catering requests.
+        """
+        try:
+            query = select(CateringRequest).filter(
+                CateringRequest.status == RequestStatus.INQUIRY,
+                CateringRequest.created_at >= created_after,
+                CateringRequest.created_at < created_before,
+            )
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error listing inquiry requests in date range: {e}")
             raise
 
     async def update_catering_request(
