@@ -1,16 +1,12 @@
-name: Test Coverage
+name: Nightly Tests (Tier 3)
 
 on:
-  pull_request:
-    types:
-      - opened
-      - synchronize
-    branches:
-      - "main"
+  schedule:
+    - cron: "0 6 * * *"  # Daily at 6am UTC
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   test:
@@ -37,7 +33,6 @@ jobs:
 
     steps:
       - name: Checkout code
-        id: checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -68,7 +63,7 @@ jobs:
         run: |
           echo "${PWD}/.venv/bin" >> $GITHUB_PATH
 
-      - name: Run tests with coverage
+      - name: Run all tests including slow
         env:
           db_host: localhost
           db_port: "5432"
@@ -81,24 +76,12 @@ jobs:
           AWS_ADMIN_CONSOLE_USER_POOL_ID: test
           AWS_ADMIN_CONSOLE_APP_CLIENT_ID: test
         run: |
-          pytest --cov --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --junitxml=junit.xml -q -m "not slow"
+          pytest --cov --cov-report=term-missing:skip-covered --junitxml=junit.xml -v --tb=short
 
-      - name: Absolute coverage floor
-        run: |
-          coverage report --fail-under=20
-
-      - name: Incremental coverage check
-        run: |
-          diff-cover coverage.xml --compare-branch=origin/main --diff-range-notation=.. --fail-under=80
-
-      - name: Pytest coverage comment
-        if: always() && steps.checkout.outcome == 'success'
-        uses: MishaKav/pytest-coverage-comment@main
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          pytest-xml-coverage-path: coverage.xml
-          junitxml-path: junit.xml
-          report-only-changed-files: true
-          xml-skip-covered: true
-          remove-links-to-files: true
-          remove-links-to-lines: true
-          hide-report: true
+          name: nightly-test-results
+          path: junit.xml
+          retention-days: 14

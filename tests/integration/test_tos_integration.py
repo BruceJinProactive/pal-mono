@@ -29,7 +29,6 @@ class TestTosAcceptanceIntegration:
         db_session: Session,
         test_account: Account,
         test_user,
-        cleanup_tos_acceptances,
     ):
         """
         Test: Accept TOS v1.0 → create record → query shows v1.0
@@ -43,9 +42,6 @@ class TestTosAcceptanceIntegration:
         repo = TosAcceptanceRepository(db_session)
         tos_version = "v1.0"
         accepted_at = datetime.now(UTC)
-
-        # Register account for cleanup after commit
-        cleanup_tos_acceptances(test_account.id)
 
         # Act - Create TOS acceptance
         tos_acceptance = repo.create_tos_acceptance(
@@ -113,7 +109,6 @@ class TestTosAcceptanceIntegration:
         db_session: Session,
         test_account: Account,
         test_user,
-        cleanup_tos_acceptances,
     ):
         """
         Test: Accepting the same TOS version twice raises IntegrityError
@@ -124,9 +119,6 @@ class TestTosAcceptanceIntegration:
         repo = TosAcceptanceRepository(db_session)
         tos_version = "v1.0"
         accepted_at = datetime.now(UTC)
-
-        # Register account for cleanup after commit
-        cleanup_tos_acceptances(test_account.id)
 
         # Act - Create first acceptance
         repo.create_tos_acceptance(
@@ -158,7 +150,6 @@ class TestTosAcceptanceIntegration:
         db_session: Session,
         test_account: Account,
         test_user,
-        cleanup_tos_acceptances,
     ):
         """
         Test: Same account can accept multiple TOS versions
@@ -169,9 +160,6 @@ class TestTosAcceptanceIntegration:
         # Arrange
         repo = TosAcceptanceRepository(db_session)
         accepted_at_v1 = datetime.now(UTC)
-
-        # Register account for cleanup after commits
-        cleanup_tos_acceptances(test_account.id)
 
         # Act - Accept v1.0
         acceptance_v1 = repo.create_tos_acceptance(
@@ -218,7 +206,6 @@ class TestTosAcceptanceIntegration:
         db_session: Session,
         test_account: Account,
         test_user,
-        cleanup_tos_acceptances,
     ):
         """
         Test: get_tos_status returns correct status when TOS is accepted
@@ -229,9 +216,6 @@ class TestTosAcceptanceIntegration:
         repo = TosAcceptanceRepository(db_session)
         tos_version = "v1.0"
         accepted_at = datetime.now(UTC)
-
-        # Register account for cleanup after commit
-        cleanup_tos_acceptances(test_account.id)
 
         repo.create_tos_acceptance(
             account_id=test_account.id,
@@ -276,7 +260,6 @@ class TestTosAcceptanceIntegration:
         db_session: Session,
         test_account: Account,
         test_user,
-        cleanup_tos_acceptances,
     ):
         """
         Test: get_accounts_without_version returns accounts that haven't accepted a version
@@ -308,10 +291,6 @@ class TestTosAcceptanceIntegration:
         )
         db_session.add(account3)
         db_session.flush()
-
-        # Register accounts for cleanup after commits
-        cleanup_tos_acceptances(test_account.id)
-        cleanup_tos_acceptances(account3.id)
 
         # Arrange - Have test_account accept v1.0, account3 accept v0.9, account2 accept nothing
         repo = TosAcceptanceRepository(db_session)
@@ -357,7 +336,6 @@ class TestTermsStatusEndpointIntegration:
         db_session: Session,
         test_account: Account,
         test_user,
-        cleanup_tos_acceptances,
     ):
         """
         Test: /terms_status endpoint returns correct data when TOS is accepted
@@ -368,9 +346,6 @@ class TestTermsStatusEndpointIntegration:
         repo = TosAcceptanceRepository(db_session)
         tos_version = "v1.0"
         accepted_at = datetime.now(UTC)
-
-        # Register account for cleanup after commit
-        cleanup_tos_acceptances(test_account.id)
 
         repo.create_tos_acceptance(
             account_id=test_account.id,
@@ -507,7 +482,6 @@ class TestAcceptTermsEndpointIntegration:
         db_session: Session,
         test_account: Account,
         test_user,
-        cleanup_tos_acceptances,
     ):
         """
         Test: accept_terms endpoint is idempotent (accepting twice succeeds)
@@ -517,9 +491,6 @@ class TestAcceptTermsEndpointIntegration:
         # Arrange - Create initial acceptance
         repo = TosAcceptanceRepository(db_session)
         accepted_at = datetime.now(UTC)
-
-        # Register account for cleanup after commit
-        cleanup_tos_acceptances(test_account.id)
 
         repo.create_tos_acceptance(
             account_id=test_account.id,

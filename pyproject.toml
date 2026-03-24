@@ -89,7 +89,7 @@ extend-exclude = "(?x)(^|/)(build|\\.agents|\\.claude|\\.pal-skills)/"
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
-fail_under = 0
+fail_under = 20 # TARGET: 40 -- raise after Phase 0 integration fixtures land
 
 [tool.coverage.run]
 source = ["agent", "api", "db", "events", "services", "tools", "utils"]
@@ -136,6 +136,12 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+addopts = "--strict-markers"
+markers = [
+  "integration: Tests requiring a real PostgreSQL database",
+  "slow: Long-running tests (concurrency, full CRUD matrix) for nightly runs only",
+  "smoke: Fast tests (<30s total) for pre-commit and quick CI feedback"
+]
 
 [tool.ruff]
 extend-include = ["*.ipynb"]
