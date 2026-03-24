@@ -1,9 +1,11 @@
 import asyncio
+import dataclasses
 import os
 import re
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -820,3 +822,208 @@ def send_sms_notification(phone_number: str, message: str) -> bool:
     except Exception as e:
         logger.error(f"[catering] Failed to send SMS to {phone_number}: {e}")
         return False
+
+
+@dataclasses.dataclass
+class CateringReminderResult:
+    """Result summary from processing catering inquiry reminders."""
+
+    projects_checked: int = 0
+    reminders_sent: int = 0
+    errors: list[str] = dataclasses.field(default_factory=list)
+
+    @property
+    def success(self) -> bool:
+        return len(self.errors) == 0
+
+
+async def _find_catering_manager_for_project(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+) -> ContactSchema | None:
+    """
+    Find the catering manager contact for a project (without assignment side effects).
+
+    Args:
+        session: Database session.
+        project_id: The project to look up contacts for.
+
+    Returns:
+        The catering manager contact if found, None otherwise.
+    """
+    project_contact_repo = ProjectContactRepositoryAsync(session)
+    contact_repo = ContactRepositoryAsync(session)
+
+    contact_ids = await project_contact_repo.list_contacts_by_project(project_id)
+    if not contact_ids:
+        return None
+
+    contacts = await contact_repo.batch_list_contacts(contact_ids)
+    if not contacts:
+        return None
+
+    return next(
+        (c for c in contacts if c.role.lower() == "catering_manager"),
+        None,
+    )
+
+
+def format_catering_reminder_message(
+    requests: list[CateringRequest],
+) -> str:
+    """
+    Format a reminder message for stale catering inquiry requests.
+
+    Args:
+        requests: The qualifying catering requests (all for the same project).
+
+    Returns:
+        Formatted SMS message string.
+    """
+    if len(requests) == 1:
+        req = requests[0]
+        parts = [
+            "A catering request from 2 days ago is still at 'inquiry' status.",
+            f"Date: {req.event_date.strftime('%B %d, %Y')}",
+            f"Contact: {req.contact_name} ({req.contact_phone_number})",
+        ]
+        if req.party_size:
+            parts.append(f"Party Size: {req.party_size}")
+        parts.append("Please review and update this request.")
+        return "\n".join(parts)
+
+    parts = [
+        f"There are {len(requests)} catering requests from 2 days ago that are still at 'inquiry' status.",
+        "",
+    ]
+    for i, req in enumerate(requests, 1):
+        line = f"{i}. {req.event_date.strftime('%b %d')} - {req.contact_name} ({req.contact_phone_number})"
+        if req.party_size:
+            line += f", Party of {req.party_size}"
+        parts.append(line)
+    parts.append("")
+    parts.append("You may want to review or update these requests.")
+    return "\n".join(parts)
+
+
+async def send_catering_inquiry_reminders(
+    session: AsyncSession,
+) -> CateringReminderResult:
+    """
+    Send reminder SMS for catering inquiries that are exactly 2 calendar days old.
+
+    For each project with qualifying requests, sends ONE reminder SMS to the
+    catering manager. A request qualifies if:
+    - Status is INQUIRY
+    - created_at date (in the project's timezone) is exactly 2 days ago
+    - The event date/time has not yet passed
+
+    Args:
+        session: Async database session.
+
+    Returns:
+        CateringReminderResult with summary of actions taken.
+    """
+    result = CateringReminderResult()
+    now_utc = datetime.now(timezone.utc)
+
+    # Wide UTC window to ensure no request is missed by the prefilter.
+    # A request created late on "2 days ago" in an eastern timezone (e.g. 11 PM ET)
+    # may be only ~36h old at job time (19:00 UTC). A request created early on
+    # "2 days ago" in a western timezone may be ~63h old. We use 72h-24h to be safe;
+    # the per-project timezone filter in Python handles exact calendar-day matching.
+    created_after = now_utc - timedelta(hours=72)
+    created_before = now_utc - timedelta(hours=24)
+
+    catering_repo = CateringRequestRepositoryAsync(session)
+    candidate_requests = await catering_repo.list_inquiry_requests_in_date_range(
+        created_after=created_after,
+        created_before=created_before,
+    )
+
+    if not candidate_requests:
+        logger.debug("[catering-reminder] No candidate inquiry requests found")
+        return result
+
+    # Group by project
+    requests_by_project: dict[uuid.UUID, list[CateringRequest]] = {}
+    for req in candidate_requests:
+        requests_by_project.setdefault(req.project_id, []).append(req)
+
+    # Fetch all projects for timezone info
+    project_repo = ProjectRepositoryAsync(session)
+    projects = await project_repo.list_projects_by_ids(list(requests_by_project.keys()))
+    projects_by_id = {p.id: p for p in projects}
+
+    for project_id, project_requests in requests_by_project.items():
+        project = projects_by_id.get(project_id)
+        if not project:
+            logger.warning(
+                f"[catering-reminder] Project {project_id} not found, skipping"
+            )
+            continue
+
+        result.projects_checked += 1
+        try:
+            tz = ZoneInfo(project.timezone or "America/Los_Angeles")
+        except (KeyError, Exception):
+            logger.warning(
+                f"[catering-reminder] Invalid timezone '{project.timezone}' for project {project_id}, skipping"
+            )
+            continue
+        now_local = now_utc.astimezone(tz)
+        today_local = now_local.date()
+        two_days_ago = today_local - timedelta(days=2)
+
+        # Filter: created exactly 2 calendar days ago in project timezone
+        qualifying: list[CateringRequest] = []
+        for req in project_requests:
+            created_local = req.created_at.astimezone(tz).date()
+            if created_local != two_days_ago:
+                continue
+
+            # Filter: event hasn't passed
+            if req.event_date < today_local:
+                continue
+            if (
+                req.event_date == today_local
+                and req.event_time is not None
+                and req.event_time < now_local.time()
+            ):
+                continue
+
+            qualifying.append(req)
+
+        if not qualifying:
+            continue
+
+        # Find catering manager
+        catering_manager = await _find_catering_manager_for_project(session, project_id)
+        if not catering_manager:
+            logger.warning(
+                f"[catering-reminder] No catering manager for project {project_id}, skipping"
+            )
+            continue
+
+        # Send one reminder SMS
+        message = format_catering_reminder_message(qualifying)
+        try:
+            sms_success = await asyncio.to_thread(
+                send_sms_notification, catering_manager.phone_number, message
+            )
+            if sms_success:
+                result.reminders_sent += 1
+                logger.info(
+                    f"[catering-reminder] Sent reminder to {catering_manager.name} "
+                    f"for project {project_id} ({len(qualifying)} request(s))"
+                )
+            else:
+                error_msg = f"SMS failed for project {project_id}"
+                result.errors.append(error_msg)
+                logger.error(f"[catering-reminder] {error_msg}")
+        except Exception as e:
+            error_msg = f"Error sending reminder for project {project_id}: {e}"
+            result.errors.append(error_msg)
+            logger.error(f"[catering-reminder] {error_msg}")
+
+    return result
