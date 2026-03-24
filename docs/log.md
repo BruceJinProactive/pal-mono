@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-24
+- Remove legacy `released_from_vapi` field from ReleaseNumberResponse API schema (VAPI migration cleanup)
+
 ### 2026-03-21
 - Restructure pal-skills submodule: mount at `.pal-skills` with sparse checkout (`.claude/skills/` only), symlink `.claude/skills` → `.pal-skills/.claude/skills`, add submodule init to `scripts/install.sh`
 

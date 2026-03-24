@@ -153,9 +153,6 @@ class ReleaseNumberResponse(BaseModel):
 
     phone_number: str = Field(..., description="The phone number that was released")
     message: str = Field(..., description="Success message")
-    released_from_vapi: bool = Field(
-        ..., description="Whether the number was removed from VAPI (legacy field)"
-    )
     released_from_twilio: bool = Field(
         ..., description="Whether the number was released from Twilio"
     )

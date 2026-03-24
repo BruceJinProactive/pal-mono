@@ -360,7 +360,6 @@ async def release_standalone_number(
         return ReleaseNumberResponse(
             phone_number=request.phone_number,
             message=success_message,
-            released_from_vapi=False,  # VAPI no longer supported
             released_from_twilio=True,
         )
 

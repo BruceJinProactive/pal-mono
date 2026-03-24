@@ -54,7 +54,6 @@ class TestReleaseStandaloneNumber:
             # Assert response
             assert response.phone_number == "+15551234567"
             assert "deleted successfully from Twilio" in response.message
-            assert response.released_from_vapi is False  # VAPI no longer supported
             assert response.released_from_twilio is True
 
     @pytest.mark.asyncio
