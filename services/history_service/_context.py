@@ -46,6 +46,14 @@ class ChangeLogContext:
         self._resource_id = value
 
     @property
+    def old_record(self) -> Optional[Any]:
+        return self._old_record
+
+    @old_record.setter
+    def old_record(self, value: Optional[Any]):
+        self._old_record = value
+
+    @property
     def new_record(self) -> Optional[Any]:
         return self._new_record
 

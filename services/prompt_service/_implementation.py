@@ -149,6 +149,10 @@ def update_prompt(
         account_id=account.id,
         auto_commit=auto_commit,
     ) as ctx:
+        # Set old_record for change tracking
+        ctx.old_record = existing_prompt
+        ctx.resource_id = str(prompt_id)
+
         prompt_update_data = {}
         if name is not None:
             prompt_update_data["name"] = name
@@ -164,10 +168,13 @@ def update_prompt(
             )
             if not updated_prompt:
                 raise ValueError("Failed to update prompt")
-            ctx.resource_id = str(updated_prompt.id)
-            ctx.new_record = updated_prompt
 
         if content is not None:
+            # Content changes are tracked in PromptDetails (version history),
+            # separate from Prompt metadata tracked in change logs.
+            # When only content changes, the Prompt record is unchanged, so
+            # change_log will show old_record == new_record (no metadata diff).
+            # This is intentional: version history tracks content, change logs track metadata.
             next_version = prompt_repository.get_next_version_number(prompt_id)
 
             details_params = PromptDetailsParams(
@@ -179,6 +186,9 @@ def update_prompt(
             )
 
             prompt_repository.create_prompt_details(**asdict(details_params))
+
+        # Set new_record after all updates
+        ctx.new_record = updated_prompt
 
         return updated_prompt
 
@@ -245,9 +255,12 @@ def delete_prompt(
         account_id=account.id,
         auto_commit=auto_commit,
     ) as ctx:
+        # Set old_record before deletion for change tracking
+        ctx.old_record = existing_prompt
+        ctx.resource_id = str(prompt_id)
+
         deleted = prompt_repository.delete_prompt(prompt_id)
         if not deleted:
             raise ValueError("Failed to delete prompt")
 
-        ctx.resource_id = str(prompt_id)
         ctx.new_record = None
