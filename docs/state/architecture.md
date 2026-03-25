@@ -278,7 +278,6 @@ The core AI agent implementation providing conversational capabilities.
 | `minitable_tool` | Reservation | MiniTable bookings | `/tools/minitable_tool/` |
 | `store_messaging_tool` | Communication | Store messaging | `/tools/store_messaging_tool/` |
 | `livekit_tool` | Voice | LiveKit voice operations | `/tools/livekit_tool/` |
-| `livekit_transfer_tool` | Voice | LiveKit call transfer | `/tools/livekit_transfer_tool/` |
 | `catering_tool` | Business | Catering requests | `/tools/catering_tool/` |
 
 *Unregistered tool directories* (exist but not in registry):
@@ -566,7 +565,6 @@ Pydantic Settings for type-safe configuration:
 | Square Tool | `/tools/square_tool/` | Square POS integration |
 | OpenTable Tool | `/tools/opentable_tool/` | OpenTable integration |
 | Resy Tool | `/tools/resy_tool/` | Resy integration |
-| LiveKit Transfer | `/tools/livekit_transfer_tool/` | LiveKit call transfer |
 | **Configuration** | | |
 | Dependencies | `/pyproject.toml` | Dev tool configuration |
 | Environment File | `/local.env` | Local environment variables |

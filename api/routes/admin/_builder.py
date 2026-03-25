@@ -166,7 +166,6 @@ def build_project(project: db.Project) -> Project:
         service_instruction=project.service_instruction,
         timezone=project.timezone,
         transfer_message=project.transfer_message,
-        transfer_phone_number=project.transfer_phone_number,
         show_agent_caller_id=project.show_agent_caller_id,
         reservation_link=project.reservation_link,
         ordering_link=project.ordering_link,

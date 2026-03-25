@@ -331,33 +331,8 @@ class TestConstructor:
             )
         assert tool.name == "livekit_tool"
 
-    def test_destination_number_creates_general_destination(self) -> None:
-        """destination_number shorthand populates transfer_destinations."""
-        meta = _make_metadata()
-        with patch.dict("os.environ", {}):
-            tool = LiveKitTool(
-                tool_metadata=meta,
-                room_name="room-1",
-                destination_number="+16468761234",
-            )
-        assert tool.transfer_destinations == {"general": "+16468761234"}
-
-    def test_transfer_destinations_takes_precedence_over_destination_number(
-        self,
-    ) -> None:
-        """Explicit transfer_destinations wins over destination_number."""
-        meta = _make_metadata()
-        with patch.dict("os.environ", {}):
-            tool = LiveKitTool(
-                tool_metadata=meta,
-                room_name="room-1",
-                transfer_destinations={"complaint": "+15550001111"},
-                destination_number="+16468761234",
-            )
-        assert tool.transfer_destinations == {"complaint": "+15550001111"}
-
-    def test_neither_destinations_nor_number_gives_empty_dict(self) -> None:
-        """No destinations and no destination_number → empty dict."""
+    def test_no_destinations_gives_empty_dict(self) -> None:
+        """No transfer_destinations → empty dict."""
         meta = _make_metadata()
         with patch.dict("os.environ", {}):
             tool = LiveKitTool(

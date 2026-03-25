@@ -259,7 +259,7 @@ async def init_voice_call(
     await session.refresh(user, attribute_names=["id"])
     await session.refresh(
         project,
-        attribute_names=["id", "timezone", "transfer_phone_number", "transfer_message"],
+        attribute_names=["id", "timezone"],
     )
 
     logger.info("[init_voice_call] Step 4 done: conversation created", extra=_log_extra)
@@ -267,8 +267,6 @@ async def init_voice_call(
     # --- Step 5: Build caller_info ---
     # Capture project attributes into locals so later DB queries can't expire them.
     project_timezone = project.timezone
-    project_transfer_phone = project.transfer_phone_number
-    project_transfer_msg = project.transfer_message
     project_id = project.id
 
     caller_info = {
@@ -276,8 +274,6 @@ async def init_voice_call(
         "recipient_identifier": dialed_number,
         "call_id": call_id,
         "timezone": project_timezone,
-        "transfer_phone_number": project_transfer_phone,
-        "transfer_message": project_transfer_msg,
     }
 
     # --- Step 6: Fetch voice configs ---

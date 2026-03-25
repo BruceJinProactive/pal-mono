@@ -226,7 +226,7 @@ class RawConfig:
         Populate transfer tool arguments with transfer settings.
 
         Builds 'transfer_destinations' dict from contacts table.
-        Falls back to project.transfer_phone_number if no contacts exist (deprecated).
+        Sets empty dict if no contacts exist.
 
         Args:
             tool_args: Existing tool arguments dictionary
@@ -289,7 +289,7 @@ class RawConfig:
             updated_args["transfer_message"] = self.project.transfer_message
 
         if "transfer_destinations" not in updated_args:
-            # Secondary: Fallback to deprecated project.transfer_phone_number
+            # No contacts configured; default to empty destinations
             updated_args["transfer_destinations"] = {}
 
         return updated_args

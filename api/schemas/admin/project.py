@@ -23,7 +23,6 @@ class Project(BaseModel):
     service_instruction: str | None = None
     timezone: str | None = None
     transfer_message: str | None = None
-    transfer_phone_number: str | None = None
     show_agent_caller_id: bool = False
     reservation_link: str | None = None
     ordering_link: str | None = None
@@ -60,7 +59,6 @@ class UpdateProjectRequest(BaseModel):
     service_instruction: str | None = None
     timezone: str | None = None
     transfer_message: str | None = None
-    transfer_phone_number: str | None = None
     show_agent_caller_id: bool | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
@@ -80,7 +78,6 @@ class UpdateProjectRequest(BaseModel):
             service_instruction=self.service_instruction,
             timezone=self.timezone,
             transfer_message=self.transfer_message,
-            transfer_phone_number=self.transfer_phone_number,
             show_agent_caller_id=self.show_agent_caller_id,
             reservation_link=self.reservation_link,
             ordering_link=self.ordering_link,
@@ -110,9 +107,6 @@ class LocationProjectData(BaseModel):
     display_name: str = Field(..., description="Human-readable display name")
     address: str | None = Field(None, description="Full address of the location")
     store_hours: str | None = Field(None, description="Store operating hours")
-    transfer_phone_number: str | None = Field(
-        None, description="Phone number for transfers"
-    )
     timezone: str | None = Field(None, description="Timezone for the location")
     product_info: str | None = Field(None, description="Product/menu information")
     service_instruction: str | None = Field(
@@ -130,7 +124,6 @@ class LocationProjectData(BaseModel):
             agent_id=agent_id,
             address=self.address,
             store_hours=self.store_hours,
-            transfer_phone_number=self.transfer_phone_number,
             timezone=self.timezone,
             product_info=self.product_info,
             service_instruction=self.service_instruction,
@@ -191,7 +184,6 @@ class ProjectUpdateData(BaseModel):
     service_instruction: str | None = None
     timezone: str | None = None
     transfer_message: str | None = None
-    transfer_phone_number: str | None = None
     show_agent_caller_id: bool | None = None
     reservation_link: str | None = None
     ordering_link: str | None = None
@@ -211,7 +203,6 @@ class ProjectUpdateData(BaseModel):
             service_instruction=self.service_instruction,
             timezone=self.timezone,
             transfer_message=self.transfer_message,
-            transfer_phone_number=self.transfer_phone_number,
             show_agent_caller_id=self.show_agent_caller_id,
             reservation_link=self.reservation_link,
             ordering_link=self.ordering_link,

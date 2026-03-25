@@ -3,7 +3,7 @@
 
 When livekit_tool is configured on an agent, room_name,
 participant_identity, and lk_api are injected into its args so
-LiveKitTransferTool.call_transfer() can execute SIP REFER.
+LiveKitTool.call_transfer() can execute SIP REFER.
 """
 
 import os

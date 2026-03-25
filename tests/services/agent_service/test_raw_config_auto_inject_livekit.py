@@ -24,7 +24,6 @@ def _make_raw_config(
     channel: Channel = Channel.VOICE,
     room_name: str | None = "test-room",
     participant_identity: str | None = "test-participant",
-    transfer_phone_number: str | None = "+15559999999",
 ) -> RawConfig:
     """Build a RawConfig with optional tools."""
     agent = MagicMock()
@@ -40,7 +39,6 @@ def _make_raw_config(
     project.timezone = "America/New_York"
     project.raw_config = {}
     project.transfer_message = "Transferring you now."
-    project.transfer_phone_number = transfer_phone_number
 
     account = MagicMock()
     account.id = uuid.uuid4()
@@ -128,20 +126,9 @@ class TestAutoInjectLiveKitTool:
         assert "livekit_tool" not in tool_names
 
     @pytest.mark.asyncio
-    async def test_no_injection_when_no_contacts_or_phone(self) -> None:
-        """No contacts and no transfer_phone_number -> no injection."""
-        rc = _make_raw_config(transfer_phone_number=None)
-        p1, p2, p3, p4 = _patch_helpers(rc, has_contacts=False)
-        with p1, p2, p3, p4:
-            tool_config = await rc._get_agent_tools(session=_MOCK_SESSION)
-
-        tool_names = [t.tool_name for t in tool_config.identifiers]
-        assert "livekit_tool" not in tool_names
-
-    @pytest.mark.asyncio
-    async def test_no_injection_when_no_contacts_but_has_phone(self) -> None:
-        """No contacts -> no injection, even if transfer_phone_number exists."""
-        rc = _make_raw_config(transfer_phone_number="+15551234567")
+    async def test_no_injection_when_no_contacts(self) -> None:
+        """No contacts configured -> no injection."""
+        rc = _make_raw_config()
         p1, p2, p3, p4 = _patch_helpers(rc, has_contacts=False)
         with p1, p2, p3, p4:
             tool_config = await rc._get_agent_tools(session=_MOCK_SESSION)

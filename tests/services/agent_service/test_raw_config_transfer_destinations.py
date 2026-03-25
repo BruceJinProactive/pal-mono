@@ -1,8 +1,7 @@
 # pyright: reportGeneralTypeIssues=false, reportAttributeAccessIssue=false
 """Tests for transfer destination population in _raw_config._get_agent_tools.
 
-Verifies that livekit_tool transfer_destinations are populated from
-contacts via _populate_transfer_tool_args.
+Verifies that livekit_tool transfer_destinations are populated from contacts via _populate_transfer_tool_args.
 """
 
 import uuid

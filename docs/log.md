@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-25
+- Deprecate old call transfer: remove `transfer_phone_number` from project admin schemas, delete `livekit_transfer_tool`, and drop deprecated transfer fields from agent config
+
 ### 2026-03-24
 - Add daily catering inquiry reminder: internal endpoint `POST /internal/catering/inquiry-reminders` sends one SMS per project for INQUIRY requests exactly 2 days old whose event hasn't passed
 - Remove outdated VAPI comments and references to deleted code paths (VAPI migration cleanup)

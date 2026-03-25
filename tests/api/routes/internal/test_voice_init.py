@@ -29,10 +29,6 @@ def _make_project(**overrides) -> MagicMock:
     project = MagicMock()
     project.id = overrides.get("id", uuid.uuid4())
     project.timezone = overrides.get("timezone", "America/New_York")
-    project.transfer_phone_number = overrides.get(
-        "transfer_phone_number", "+15550001111"
-    )
-    project.transfer_message = overrides.get("transfer_message", "Transferring you now")
     project.account = MagicMock()
     project.account.id = uuid.uuid4()
     return project
@@ -262,8 +258,6 @@ class TestInitVoiceCallSuccess:
     async def test_caller_info_populated(self) -> None:
         project = _make_project(
             timezone="US/Pacific",
-            transfer_phone_number="+15559999999",
-            transfer_message="Please hold",
         )
         vc = _make_voice_config()
         result = await _run(
@@ -280,8 +274,6 @@ class TestInitVoiceCallSuccess:
         assert result.caller_info["recipient_identifier"] == "+15552222222"
         assert result.caller_info["call_id"] == "call-999"
         assert result.caller_info["timezone"] == "US/Pacific"
-        assert result.caller_info["transfer_phone_number"] == "+15559999999"
-        assert result.caller_info["transfer_message"] == "Please hold"
 
     @pytest.mark.asyncio
     async def test_null_first_message_uses_default(self) -> None:

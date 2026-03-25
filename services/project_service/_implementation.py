@@ -52,7 +52,6 @@ def _create_project_data_snapshot(project):
         "order_integration_id": getattr(project, "order_integration_id", None),
         "timezone": getattr(project, "timezone", None),
         "transfer_message": getattr(project, "transfer_message", None),
-        "transfer_phone_number": getattr(project, "transfer_phone_number", None),
         "reservation_link": getattr(project, "reservation_link", None),
         "ordering_link": getattr(project, "ordering_link", None),
         "call_forwarding_setup_completed": getattr(

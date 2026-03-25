@@ -15,7 +15,6 @@ class LiveKitTool(Toolkit):
         tool_metadata: ToolMetadata,
         room_name: str | None = None,
         transfer_destinations: dict[str, str] | None = None,
-        destination_number: str | None = None,
         transfer_message: str | None = None,
         **kwargs,  # Accept and ignore unknown args from raw_config
     ):
@@ -31,13 +30,7 @@ class LiveKitTool(Toolkit):
                 url=lk_url, api_key=lk_key, api_secret=lk_secret
             )
 
-        # Support flat destination_number as a shorthand for transfer_destinations
-        if transfer_destinations is not None:
-            self.transfer_destinations = transfer_destinations
-        elif destination_number:
-            self.transfer_destinations = {"general": destination_number}
-        else:
-            self.transfer_destinations = {}
+        self.transfer_destinations = transfer_destinations or {}
 
         self.transfer_message = (
             transfer_message
