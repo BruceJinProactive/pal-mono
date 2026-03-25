@@ -77,10 +77,12 @@ class ChangeLogRepository:
             author: The username or identifier of who made the changes
             action: The type of action performed (edit, add, delete)
             changes: List of dictionaries containing field, old_value, and new_value
-        """
-        if not changes:
-            return None
 
+        Note:
+            Empty changes list is valid - indicates an action occurred without metadata changes.
+            For example, prompt content updates create new PromptDetails versions but don't
+            change the Prompt metadata, resulting in empty changes while still being tracked.
+        """
         try:
             # Create the change log
             change_log = ChangeLog(

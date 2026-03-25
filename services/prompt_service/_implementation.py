@@ -170,11 +170,10 @@ def update_prompt(
                 raise ValueError("Failed to update prompt")
 
         if content is not None:
-            # Content changes are tracked in PromptDetails (version history),
-            # separate from Prompt metadata tracked in change logs.
-            # When only content changes, the Prompt record is unchanged, so
-            # change_log will show old_record == new_record (no metadata diff).
-            # This is intentional: version history tracks content, change logs track metadata.
+            # Content changes are tracked in PromptDetails (version history).
+            # When only content changes, the Prompt record metadata is unchanged, so
+            # the change log will have empty field changes, but the log entry itself
+            # is still created to track that an update occurred (check version history for details).
             next_version = prompt_repository.get_next_version_number(prompt_id)
 
             details_params = PromptDetailsParams(
