@@ -294,23 +294,19 @@ class TestVoiceRepositoryIntegration:
         assert result is None
 
     def test_voice_config_multi_language_per_project(self, db_session: Session) -> None:
-        """Multiple VoiceConfigs (english, spanish, triage) coexist per project."""
+        """Multiple VoiceConfigs (english, spanish, chinese) coexist per project."""
         world = make_world(db_session)
 
         make_voice_config(db_session, project_id=world.project.id, language="english")
         make_voice_config(db_session, project_id=world.project.id, language="spanish")
-        make_voice_config(db_session, project_id=world.project.id, language="triage")
+        make_voice_config(db_session, project_id=world.project.id, language="chinese")
 
         repo = VoiceConfigRepository(db_session, auto_commit=False)
         configs = repo.get_voice_configs_by_project(world.project.id)
         assert len(configs) == 3
 
         languages = {c.language for c in configs}
-        assert languages == {"english", "spanish", "triage"}
-
-        # Triage configs are filtered out in init_voice_call — verify we can filter
-        non_triage = [c for c in configs if c.language != "triage"]
-        assert len(non_triage) == 2
+        assert languages == {"english", "spanish", "chinese"}
 
     def test_phone_call_create_with_analytics(self, db_session: Session) -> None:
         """PhoneCallRepository.create_phone_call persists all analytics fields."""

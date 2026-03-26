@@ -132,8 +132,8 @@ class TestOnboardingSessionLeak:
 
             mock_async_session.__aenter__.assert_awaited_once()
             mock_async_session.__aexit__.assert_awaited_once()
-            # Multilingual creates 4 configs: English, Spanish, Chinese, Triage
-            assert mock_voice_svc.create_voice_config.await_count == 4
+            # Multilingual creates 3 configs: English, Spanish, Chinese
+            assert mock_voice_svc.create_voice_config.await_count == 3
 
     @pytest.mark.asyncio
     async def test_error_path_rolls_back_and_closes_session(

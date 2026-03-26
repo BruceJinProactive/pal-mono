@@ -197,19 +197,6 @@ class TestInitVoiceCallNoVoiceConfigs:
         assert "No voice configuration found" in exc.detail
 
     @pytest.mark.asyncio
-    async def test_returns_404_only_triage(self) -> None:
-        """Single triage config should return 404 after filtering."""
-        triage_vc = _make_voice_config(language="triage")
-        exc = await _run_expecting_error(
-            _make_request(),
-            project=_make_project(),
-            user=_make_user(),
-            voice_configs=[triage_vc],
-        )
-        assert exc.status_code == 404
-        assert "No language voice configuration" in exc.detail
-
-    @pytest.mark.asyncio
     async def test_returns_500_combined_language(self) -> None:
         """Combined language format should return 500 error."""
         combined_vc = _make_voice_config(language="english+spanish")
@@ -303,23 +290,21 @@ class TestInitVoiceCallSuccess:
     @pytest.mark.asyncio
     async def test_multiple_configs_prefers_english(self) -> None:
         """Multiple voice configs should prefer English for voice_id but aggregate all languages."""
-        triage = _make_voice_config(language="triage", voice_id="triage-voice")
         spanish = _make_voice_config(language="spanish", voice_id="spanish-voice")
         english = _make_voice_config(language="english", voice_id="english-voice")
         result = await _run(
-            _make_request(), _make_project(), _make_user(), [triage, spanish, english]
+            _make_request(), _make_project(), _make_user(), [spanish, english]
         )
         assert result.voice_id == "english-voice"
         assert result.languages == ["spanish", "english"]
 
     @pytest.mark.asyncio
     async def test_multiple_configs_no_english_uses_first(self) -> None:
-        """When multiple configs with no English, use first non-triage."""
-        triage = _make_voice_config(language="triage", voice_id="triage-voice")
+        """When multiple configs with no English, use first."""
         spanish = _make_voice_config(language="spanish", voice_id="spanish-voice")
         chinese = _make_voice_config(language="chinese", voice_id="chinese-voice")
         result = await _run(
-            _make_request(), _make_project(), _make_user(), [triage, spanish, chinese]
+            _make_request(), _make_project(), _make_user(), [spanish, chinese]
         )
         assert result.voice_id == "spanish-voice"
         assert result.languages == ["spanish", "chinese"]

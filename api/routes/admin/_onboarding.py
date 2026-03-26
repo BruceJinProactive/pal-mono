@@ -915,7 +915,7 @@ def _get_language_config(language: str, custom_greeting: str | None = None) -> d
     Get localized voice configuration for a given language.
 
     Args:
-        language: The language code (English, Spanish, Chinese, Triage)
+        language: The language code (English, Spanish, Chinese)
         custom_greeting: Optional custom greeting message to override default
 
     Returns:
@@ -934,16 +934,12 @@ def _get_language_config(language: str, custom_greeting: str | None = None) -> d
             "first_message": "您好，我能帮您什么？",
             "transfer_message": "请稍等。",
         },
-        "Triage": {
-            "first_message": "Hi, this is an AI assistant. How can I help you?",
-            "transfer_message": "One moment please.",
-        },
     }
 
     # Get config for the language, fallback to English if not found
     config = language_defaults.get(language, language_defaults["English"])
 
-    # Override first_message if custom greeting provided (used for Triage)
+    # Override first_message if custom greeting provided
     if custom_greeting:
         config = {**config, "first_message": custom_greeting}
 
@@ -1010,7 +1006,6 @@ async def self_onboard_voice_config(
                     _get_language_config("English"),
                     _get_language_config("Spanish"),
                     _get_language_config("Chinese"),
-                    _get_language_config("Triage", request.agent_greeting_message),
                 ]
 
                 for language_config in language_configs:

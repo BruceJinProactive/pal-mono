@@ -91,7 +91,7 @@ docker exec pal-mono-api alembic -c db/alembic.ini history
 
 **`transfer_message`** exists in two tables (different purposes):
 - `Project.transfer_message` - message when transferring to a human (VapiTool)
-- `VoiceConfig.transfer_message` - message when routing between language assistants (triage)
+- `VoiceConfig.transfer_message` - message when routing between language assistants
 
 **`transfer_phone_number`** on `Project` is mapped to `destination_number` in VapiTool.
 Override priority: `Project.transfer_phone_number` (highest), `project.raw_config`, `agent.raw_config`

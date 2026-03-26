@@ -286,12 +286,6 @@ async def init_voice_call(
             headers={"Content-Type": "application/json"},
         )
 
-    voice_configs = [
-        voice_config
-        for voice_config in voice_configs
-        if voice_config.language != "triage"
-    ]
-
     if not voice_configs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
