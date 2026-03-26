@@ -61,6 +61,20 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         "submission.write",  # Modify any submission (staff collaborate on routines)
         "account.status.read",  # View basic account status (terms acceptance)
     },
+    # Store Owner: Project-scoped management role
+    # Can: manage their assigned store(s), agents, view conversation history
+    # Cannot: manage team, modify billing, access other stores
+    "store_owner": {
+        "project.read",
+        "project.write",
+        "agent.create",
+        "agent.read",
+        "agent.write",
+        "agent.delete",
+        "history.read",
+        "account.read",
+        "account.status.read",
+    },
 }
 
 # =============================================================================

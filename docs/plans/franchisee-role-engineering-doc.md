@@ -43,8 +43,8 @@ Add a `store_owner` role (displayed as "Store Owner" in UI) that grants **full m
 - Store Owner can view/modify their assigned project(s) settings
 - Store Owner can manage agents for their project(s)
 - Store Owner can view conversation history for their project(s)
-- Store Owner can invite staff members to their project(s)
 - Store Owner CANNOT see other store owners' projects
+- Store Owner CANNOT invite team members
 - Store Owner CANNOT modify account settings or billing
 - Account owner (owner role) maintains full access to all projects
 
@@ -87,7 +87,6 @@ Add a `store_owner` role (displayed as "Store Owner" in UI) that grants **full m
   - Project settings → Can view/edit store hours, menu, contact info
   - Agents → Can view/configure agents for their store
   - Conversations → Can view call logs for their store only
-  - Team → Can invite staff members for their store
 5. **Store Owner tries to access another store:**
   - API returns 404 Not Found
   - UI shows "Not Found" or simply doesn't show unauthorized stores
@@ -187,7 +186,6 @@ Add to `ROLE_PERMISSIONS` dict:
     "agent.write",
     "agent.delete",
     "history.read",
-    "project.team_manage",
     "account.read",
     "account.status.read",
 },
@@ -198,7 +196,6 @@ Add to `ROLE_PERMISSIONS` dict:
 - `project.read`, `project.write` - View and modify their store settings
 - `agent.create`, `agent.read`, `agent.write`, `agent.delete` - Full agent lifecycle management for their store
 - `history.read` - View conversation logs for their store
-- `project.team_manage` - Invite staff members to their store
 - `account.read`, `account.status.read` - Read-only account visibility (no modification)
 
 ### 3. Backend: Assign Users via Invitation Flow

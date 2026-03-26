@@ -22,6 +22,7 @@ class UserRole(str, Enum):
     OWNER = "owner"
     MANAGER = "manager"
     VIEWER = "viewer"
+    STORE_OWNER = "store_owner"
     STAFF = "staff"
 
 
@@ -260,6 +261,7 @@ class ProjectRole(str, Enum):
     """User roles for project-level permissions."""
 
     STAFF = "staff"
+    STORE_OWNER = "store_owner"
     MANAGER = "manager"
     VIEWER = "viewer"
 
