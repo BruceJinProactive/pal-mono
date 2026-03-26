@@ -12,7 +12,7 @@ from uuid import UUID
 # Account-level roles: assigned to the account resource, grants access to all projects
 ACCOUNT_ROLE_PRECEDENCE: list[str] = ["owner", "manager", "staff", "viewer"]
 # Project-level roles: assigned to specific projects
-PROJECT_ROLE_PRECEDENCE: list[str] = ["manager", "staff", "viewer"]
+PROJECT_ROLE_PRECEDENCE: list[str] = ["manager", "store_owner", "staff", "viewer"]
 
 
 @dataclass
