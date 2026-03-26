@@ -209,6 +209,19 @@ class TestInitVoiceCallNoVoiceConfigs:
         assert exc.status_code == 404
         assert "No language voice configuration" in exc.detail
 
+    @pytest.mark.asyncio
+    async def test_returns_500_combined_language(self) -> None:
+        """Combined language format should return 500 error."""
+        combined_vc = _make_voice_config(language="english+spanish")
+        exc = await _run_expecting_error(
+            _make_request(),
+            project=_make_project(),
+            user=_make_user(),
+            voice_configs=[combined_vc],
+        )
+        assert exc.status_code == 500
+        assert "Invalid voice configuration language format" in exc.detail
+
 
 # ---------------------------------------------------------------------------
 # init_voice_call tests — success paths
@@ -312,26 +325,14 @@ class TestInitVoiceCallSuccess:
         assert result.languages == ["spanish", "chinese"]
 
     @pytest.mark.asyncio
-    async def test_combined_language_splits_into_array(self) -> None:
-        """Combined language like 'english+spanish' should split into array."""
-        vc = _make_voice_config(language="english+spanish", voice_id="combo-voice")
-        result = await _run(_make_request(), _make_project(), _make_user(), [vc])
-        assert result.languages == ["english", "spanish"]
-
-    @pytest.mark.asyncio
-    async def test_multiple_configs_with_combined_languages(self) -> None:
-        """Multiple configs with combined languages should merge all languages."""
-        vc1 = _make_voice_config(language="english+spanish", voice_id="voice1")
-        vc2 = _make_voice_config(language="chinese", voice_id="voice2")
-        result = await _run(_make_request(), _make_project(), _make_user(), [vc1, vc2])
-        assert result.languages == ["english", "spanish", "chinese"]
-
-    @pytest.mark.asyncio
     async def test_languages_deduplicated(self) -> None:
         """Duplicate languages should be removed."""
         vc1 = _make_voice_config(language="english", voice_id="voice1")
-        vc2 = _make_voice_config(language="english+spanish", voice_id="voice2")
-        result = await _run(_make_request(), _make_project(), _make_user(), [vc1, vc2])
+        vc2 = _make_voice_config(language="spanish", voice_id="voice2")
+        vc3 = _make_voice_config(language="english", voice_id="voice3")
+        result = await _run(
+            _make_request(), _make_project(), _make_user(), [vc1, vc2, vc3]
+        )
         assert result.languages == ["english", "spanish"]
 
     @pytest.mark.asyncio

@@ -300,13 +300,25 @@ async def init_voice_call(
         )
 
     # Collect all languages from voice configs
-    all_languages = []
-    for voice_config in voice_configs:
-        # Split combined languages like "english+spanish" into separate languages
-        if "+" in voice_config.language:
-            all_languages.extend(voice_config.language.split("+"))
-        else:
-            all_languages.append(voice_config.language)
+    # Languages are already normalized (no combined languages after migration)
+    # Fail-fast validation: detect any combined language tokens that survived migration
+    invalid_combined_languages = [
+        voice_config.language
+        for voice_config in voice_configs
+        if "+" in voice_config.language
+    ]
+    if invalid_combined_languages:
+        logger.error(
+            "[init_voice_call] Invalid combined language format in voice configs",
+            extra={**_log_extra, "invalid_languages": invalid_combined_languages},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Invalid voice configuration language format",
+            headers={"Content-Type": "application/json"},
+        )
+
+    all_languages = [voice_config.language for voice_config in voice_configs]
 
     # Remove duplicates while preserving order
     languages = list(dict.fromkeys(all_languages))
