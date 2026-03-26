@@ -15,14 +15,17 @@ Removed the remaining checklist service and all related code. The checklist feat
 - **Auth references:** `require_checklist_permission`, `"checklists"` from `VALID_RESOURCE_TYPES`, `RESOURCE_HIERARCHY`, and resolution logic
 - **Tests:** Checklist-specific tests in auth service test suite
 
+## Database tables dropped (PAL-9360)
+
+- **Tables:** `checklists`, `checkpoints`, `checkpoint_runs` dropped via Alembic migration `49a119d0677f`
+- **Table models:** `db/tables/checklists.py`, `db/tables/checkpoints.py`, `db/tables/checkpoint_runs.py` deleted
+- **Exports:** Removed from `db/tables/__init__.py`
+- **Downgrade:** Migration includes full table and `checkstatus` enum type recreation
+- **`checkstatus` enum type:** Dropped in the same migration.
+
 ## What was preserved
 
-- **Database tables:** `checklists`, `checkpoints`, and `checkpoint_runs` table models remain in `db/tables/` to prevent Alembic from generating drop-table migrations.
-- **Database table exports:** Kept in `db/tables/__init__.py` for the same reason.
 - **Migrations:** All existing migration files left untouched.
-- **RBAC resource type enum:** `CHECKLIST` in `resource_role_assignment_repository.py` preserved for existing DB data.
+- **Python `CheckStatus` enum:** Kept in `db/tables/types.py` — to be removed in follow-up PR with `CHECKLIST` from `ResourceType`.
+- **RBAC resource type enum:** `CHECKLIST` in `resource_role_assignment_repository.py` — to be removed in follow-up PR.
 - **Routine comparison mode:** `"checklist"` literal in `api/schemas/operations/routine.py` is a routine feature, not the checklist service.
-
-## Lines removed
-
-~1,004 lines across 14 files.
