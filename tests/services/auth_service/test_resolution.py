@@ -154,35 +154,6 @@ class TestResolveResourceIdentifier:
         with pytest.raises(ValueError, match="not found"):
             resolve_resource_identifier("agents", str(agent_id), mock_session)
 
-    def test_resolve_checklist_by_uuid(self, mocker):
-        """Should resolve checklist UUID."""
-        mock_session = MagicMock()
-        checklist_id = UUID("12345678-1234-5678-1234-567812345678")
-
-        mock_checklist = MagicMock()
-        mock_checklist_repo = mocker.patch(
-            "services.auth_service.resolution.checklist_repository"
-        )
-        mock_checklist_repo.get_checklist_by_id.return_value = mock_checklist
-
-        result = resolve_resource_identifier(
-            "checklists", str(checklist_id), mock_session
-        )
-        assert result == checklist_id
-
-    def test_resolve_checklist_not_found(self, mocker):
-        """Should raise ValueError for non-existent checklist."""
-        mock_session = MagicMock()
-        checklist_id = UUID("12345678-1234-5678-1234-567812345678")
-
-        mock_checklist_repo = mocker.patch(
-            "services.auth_service.resolution.checklist_repository"
-        )
-        mock_checklist_repo.get_checklist_by_id.return_value = None
-
-        with pytest.raises(ValueError, match="not found"):
-            resolve_resource_identifier("checklists", str(checklist_id), mock_session)
-
     def test_resolve_history_by_uuid(self, mocker):
         """Should resolve history UUID."""
         mock_session = MagicMock()
@@ -243,23 +214,6 @@ class TestResolveResourceIdentifier:
 class TestGetParentResource:
     """Tests for get_parent_resource function."""
 
-    def test_get_parent_project_from_checklist(self, mocker):
-        """Should return (projects, uuid) for checklist."""
-        mock_session = MagicMock()
-        checklist_id = UUID("12345678-1234-5678-1234-567812345678")
-        project_id = UUID("87654321-4321-8765-4321-876543218765")
-
-        mock_checklist = MagicMock()
-        mock_checklist.project_id = project_id
-
-        mock_checklist_repo = mocker.patch(
-            "services.auth_service.resolution.checklist_repository"
-        )
-        mock_checklist_repo.get_checklist_by_id.return_value = mock_checklist
-
-        result = get_parent_resource("checklists", checklist_id, mock_session)
-        assert result == ("projects", project_id)
-
     def test_get_parent_account_from_project(self, mocker):
         """Should return (accounts, uuid) for project."""
         mock_session = MagicMock()
@@ -319,19 +273,6 @@ class TestGetParentResource:
         result = get_parent_resource("accounts", account_id, mock_session)
         assert result is None
 
-    def test_get_parent_checklist_not_found(self, mocker):
-        """Should return None when checklist not found."""
-        mock_session = MagicMock()
-        checklist_id = UUID("12345678-1234-5678-1234-567812345678")
-
-        mock_checklist_repo = mocker.patch(
-            "services.auth_service.resolution.checklist_repository"
-        )
-        mock_checklist_repo.get_checklist_by_id.return_value = None
-
-        result = get_parent_resource("checklists", checklist_id, mock_session)
-        assert result is None
-
     def test_get_parent_project_not_found(self, mocker):
         """Should return None when project not found."""
         mock_session = MagicMock()
@@ -358,22 +299,6 @@ class TestGetParentResource:
         result = get_parent_resource("agents", agent_id, mock_session)
         assert result is None
 
-    def test_get_parent_checklist_no_project_id(self, mocker):
-        """Should return None when checklist has no project_id."""
-        mock_session = MagicMock()
-        checklist_id = UUID("12345678-1234-5678-1234-567812345678")
-
-        mock_checklist = MagicMock()
-        mock_checklist.project_id = None
-
-        mock_checklist_repo = mocker.patch(
-            "services.auth_service.resolution.checklist_repository"
-        )
-        mock_checklist_repo.get_checklist_by_id.return_value = mock_checklist
-
-        result = get_parent_resource("checklists", checklist_id, mock_session)
-        assert result is None
-
     def test_get_parent_project_no_account_id(self, mocker):
         """Should return None when project has no account_id."""
         mock_session = MagicMock()
@@ -393,14 +318,14 @@ class TestGetParentResource:
     def test_get_parent_exception_returns_none(self, mocker):
         """Should return None on exception."""
         mock_session = MagicMock()
-        checklist_id = UUID("12345678-1234-5678-1234-567812345678")
+        routine_id = UUID("12345678-1234-5678-1234-567812345678")
 
-        mock_checklist_repo = mocker.patch(
-            "services.auth_service.resolution.checklist_repository"
+        mocker.patch(
+            "services.auth_service.resolution.select",
+            side_effect=Exception("DB error"),
         )
-        mock_checklist_repo.get_checklist_by_id.side_effect = Exception("DB error")
 
-        result = get_parent_resource("checklists", checklist_id, mock_session)
+        result = get_parent_resource("routines", routine_id, mock_session)
         assert result is None
 
     def test_get_parent_unknown_resource_type(self):

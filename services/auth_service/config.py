@@ -83,7 +83,6 @@ RESOURCE_HIERARCHY: Dict[str, Optional[str]] = {
     "accounts": None,  # Account is top-level (no parent)
     "projects": "accounts",  # Project belongs to account
     "agents": "accounts",  # Agent belongs to account
-    "checklists": "projects",  # Checklist belongs to project
     # Routine workflow resources (hierarchy: submission → execution → routine → project)
     "routines": "projects",  # Routine belongs to project
     "executions": "routines",  # Execution belongs to routine

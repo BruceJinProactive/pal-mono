@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-26
+- Remove checklist service, routes, schemas, repository, and auth references — replaced by routine system ([record](records/2026-03-26-remove-checklist-service.md))
+
 ### 2026-03-25
 - Deprecate old call transfer: remove `transfer_phone_number` from project admin schemas, delete `livekit_transfer_tool`, and drop deprecated transfer fields from agent config
 

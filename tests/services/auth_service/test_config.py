@@ -96,10 +96,6 @@ class TestResourceHierarchy:
         """Submissions should belong to executions."""
         assert RESOURCE_HIERARCHY["submissions"] == "executions"
 
-    def test_resource_hierarchy_checklists(self):
-        """Checklists should belong to projects."""
-        assert RESOURCE_HIERARCHY["checklists"] == "projects"
-
     def test_resource_hierarchy_projects(self):
         """Projects should belong to accounts."""
         assert RESOURCE_HIERARCHY["projects"] == "accounts"

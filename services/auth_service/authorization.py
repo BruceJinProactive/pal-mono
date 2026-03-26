@@ -30,7 +30,6 @@ VALID_RESOURCE_TYPES = {
     "accounts",
     "projects",
     "agents",
-    "checklists",
     "plans",
     "data",
     "histories",
@@ -51,7 +50,7 @@ def parse_resource_id(resource_id: str) -> tuple[str, str]:
     Resolution happens later in check_permission().
 
     Args:
-        resource_id: Resource identifier (e.g., "accounts/palona", "checklists/uuid")
+        resource_id: Resource identifier (e.g., "accounts/palona", "projects/uuid")
 
     Returns:
         Tuple of (resource_type, identifier_string)
@@ -62,9 +61,6 @@ def parse_resource_id(resource_id: str) -> tuple[str, str]:
     Examples:
         >>> parse_resource_id("accounts/palona")
         ("accounts", "palona")
-
-        >>> parse_resource_id("checklists/123e4567-e89b-12d3-a456-426614174000")
-        ("checklists", "123e4567-e89b-12d3-a456-426614174000")
 
         >>> parse_resource_id("invalid/format/too/many")
         ValueError: Invalid resource_id format
@@ -195,7 +191,7 @@ def check_permission(
     Supports:
     - Name or UUID identifiers for accounts (e.g., "accounts/palona" or "accounts/uuid")
     - UUID identifiers for other resources
-    - Hierarchical permission checking (checklist → project → account)
+    - Hierarchical permission checking (routine → project → account)
     - Admin bypass (when user_role="Admin", grants all permissions)
 
     Process:
@@ -204,15 +200,15 @@ def check_permission(
     3. Resolve identifier to UUID using resolution layer
     4. Check direct permission on resource
     5. If not found AND check_hierarchy=True:
-       - Get parent resource (e.g., checklist → project)
+       - Get parent resource (e.g., routine → project)
        - Recursively check parent permissions
     6. Return result
 
     Args:
         user_id: User ID
         resource_id: Resource identifier in format "resource_type/identifier"
-                    (e.g., "accounts/palona", "checklists/uuid")
-        permission_name: Permission to check (e.g., "project.create", "checklist.read")
+                    (e.g., "accounts/palona", "routines/uuid")
+        permission_name: Permission to check (e.g., "project.create", "routine.read")
         session: Database session
         check_hierarchy: Whether to check parent resources if permission not found (default True)
         user_role: Optional user role string for admin bypass (e.g., "Admin")
@@ -223,9 +219,6 @@ def check_permission(
     Examples:
         >>> check_permission(user_id, "accounts/palona", "project.create", session)
         True
-
-        >>> check_permission(user_id, "checklists/uuid", "checklist.read", session)
-        True  # May be granted via checklist, project, or account role
 
         >>> check_permission(user_id, "any/resource", "any.permission", session, user_role="Admin")
         True  # Admin bypass

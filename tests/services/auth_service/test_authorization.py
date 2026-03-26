@@ -55,14 +55,6 @@ class TestParseResourceId:
         assert rtype == "submissions"
         assert identifier == uuid_str
 
-    def test_parse_resource_id_valid_checklists(self):
-        """Should accept checklists as valid resource type."""
-        assert "checklists" in VALID_RESOURCE_TYPES
-        uuid_str = "12345678-1234-5678-1234-567812345678"
-        rtype, identifier = parse_resource_id(f"checklists/{uuid_str}")
-        assert rtype == "checklists"
-        assert identifier == uuid_str
-
     def test_parse_resource_id_invalid_format_too_many_slashes(self):
         """Should raise ValueError for too many slashes."""
         with pytest.raises(ValueError, match="Invalid resource_id format"):

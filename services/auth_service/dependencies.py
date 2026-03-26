@@ -270,35 +270,6 @@ def require_project_permission(
 
 
 # -----------------------------------------------------------------------------
-# Checklist Permission
-# -----------------------------------------------------------------------------
-
-
-def require_checklist_permission(
-    permission: str, auth_dependency: Callable
-) -> Callable[..., Coroutine[Any, Any, UserContext]]:
-    """Create a permission dependency for checklist resources."""
-
-    async def dependency(
-        checklist_id: UUID,
-        current_user: UserContext = Depends(auth_dependency),
-        session: Session = Depends(db.get_db),
-    ) -> UserContext:
-        return await run_in_threadpool(
-            partial(
-                _create_permission_dependency_impl,
-                checklist_id,
-                "checklists",
-                permission,
-                current_user,
-                session,
-            )
-        )
-
-    return dependency
-
-
-# -----------------------------------------------------------------------------
 # Agent Permission
 # -----------------------------------------------------------------------------
 
@@ -569,7 +540,7 @@ class PermissionChecker:
     FastAPI dependency for permission checking via query parameter.
 
     NOTE: For most use cases, prefer the factory functions like
-    require_project_permission(), require_checklist_permission(), etc.
+    require_project_permission(), require_routine_permission(), etc.
     which automatically extract resource IDs from path parameters.
 
     This class is useful when the resource_id must be passed as a query parameter.
@@ -578,10 +549,10 @@ class PermissionChecker:
         @router.post("/admin/actions")
         async def perform_action(
             context: UserContext = Depends(
-                PermissionChecker("checklist.write", authenticate_user)
+                PermissionChecker("routine.write", authenticate_user)
             ),
         ):
-            # Client must pass ?resource_id=checklists/uuid-here
+            # Client must pass ?resource_id=routines/uuid-here
             pass
     """
 

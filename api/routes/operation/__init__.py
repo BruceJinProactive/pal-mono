@@ -26,12 +26,6 @@ from api.schemas.admin.camera import (
     GetCamerasResponse,
     ImageMetadata,
 )
-from api.schemas.admin.checklist import (
-    Checklist,
-    CreateChecklistRequest,
-    ListChecklistsResponse,
-    UpdateChecklistRequest,
-)
 from api.schemas.asset.asset import AssetResponse
 from api.schemas.error.error import ErrorResponse
 from api.schemas.operations.monitoring import (
@@ -83,7 +77,6 @@ from db.tables.types import ExecutionStatus
 from services import signal_source_service
 from services.auth_service.authorization import check_permission
 from services.auth_service.dependencies import (
-    require_checklist_permission,
     require_execution_permission,
     require_project_permission,
     require_routine_permission,
@@ -92,14 +85,7 @@ from services.auth_service.dependencies import (
 from services.auth_types import UserContext
 from utils.log import logger
 
-from . import (
-    _checklist,
-    _implementation,
-    _monitoring,
-    _routines,
-    _signal_sources,
-    _video_upload,
-)
+from . import _implementation, _monitoring, _routines, _signal_sources, _video_upload
 
 operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
 
@@ -342,96 +328,6 @@ async def get_camera_images_by_time_interval(
         start_time=start_time,
         end_time=end_time,
     )
-
-
-"""
----------- Checklist Endpoints ----------
------------------------------------------
-"""
-
-
-@operation_router.post(
-    "/projects/{project_id}/checklists", status_code=status.HTTP_201_CREATED
-)
-async def create_checklist(
-    project_id: uuid.UUID,
-    checklist: CreateChecklistRequest,
-    context: UserContext = Depends(
-        require_project_permission("project.write", authenticate_user)
-    ),
-    session: Session = Depends(db.get_db),
-) -> Checklist:
-    """
-    Create a new checklist for a project.
-    """
-    return await _checklist.create_checklist(project_id, checklist, context, session)
-
-
-@operation_router.get("/checklists/{checklist_id}")
-async def get_checklist(
-    checklist_id: uuid.UUID,
-    context: UserContext = Depends(
-        require_checklist_permission("account.read", authenticate_user)
-    ),
-    session: Session = Depends(db.get_db),
-) -> Checklist:
-    """
-    Get a checklist by ID.
-    """
-    return await _checklist.get_checklist(checklist_id, context, session)
-
-
-@operation_router.get("/projects/{project_id}/checklists")
-async def list_project_checklists(
-    project_id: uuid.UUID,
-    exclude: uuid.UUID | None = Query(
-        None, description="Optional checklist ID to exclude from results"
-    ),
-    context: UserContext = Depends(
-        require_project_permission("project.read", authenticate_user)
-    ),
-    session: Session = Depends(db.get_db),
-) -> ListChecklistsResponse:
-    """
-    Retrieve a list of checklists for the specified project.
-    Optionally exclude a specific checklist by ID.
-    """
-    return await _checklist.list_checklists_by_project(
-        project_id, context, session, exclude
-    )
-
-
-@operation_router.patch("/checklists/{checklist_id}")
-async def update_checklist(
-    checklist_id: uuid.UUID,
-    update_request: UpdateChecklistRequest,
-    context: UserContext = Depends(
-        require_checklist_permission("account.write", authenticate_user)
-    ),
-    session: Session = Depends(db.get_db),
-) -> Checklist:
-    """
-    Update a checklist by ID.
-    """
-    return await _checklist.update_checklist(
-        checklist_id, update_request, context, session
-    )
-
-
-@operation_router.delete(
-    "/checklists/{checklist_id}", status_code=status.HTTP_204_NO_CONTENT
-)
-async def delete_checklist(
-    checklist_id: uuid.UUID,
-    context: UserContext = Depends(
-        require_checklist_permission("account.write", authenticate_user)
-    ),
-    session: Session = Depends(db.get_db),
-) -> None:
-    """
-    Delete a checklist by ID.
-    """
-    await _checklist.delete_checklist(checklist_id, context, session)
 
 
 """

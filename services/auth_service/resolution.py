@@ -11,7 +11,6 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db.repositories import checklist_repository
 from db.repositories.account_repository import AccountRepository
 from db.repositories.agent_repository import AgentRepository
 from db.repositories.change_log_repository import ChangeLogRepository
@@ -74,7 +73,7 @@ def resolve_resource_identifier(
     Resolve resource identifier to UUID based on resource type.
 
     - accounts: Supports name or UUID
-    - projects/agents/checklists: UUID only
+    - projects/agents: UUID only
 
     Args:
         resource_type: Resource type (e.g., "accounts", "projects")
@@ -91,8 +90,6 @@ def resolve_resource_identifier(
         >>> resolve_resource_identifier("accounts", "palona", session)
         UUID("123e4567-...")
 
-        >>> resolve_resource_identifier("checklists", "abc-123-...", session)
-        UUID("abc-123-...")
     """
     if resource_type == "accounts":
         return resolve_account_identifier(identifier, session)
@@ -118,11 +115,6 @@ def resolve_resource_identifier(
         agent = agent_repo.get_agent(resource_id)
         if not agent:
             raise ValueError(f"Agent with ID {resource_id} not found")
-
-    elif resource_type == "checklists":
-        checklist = checklist_repository.get_checklist_by_id(session, resource_id)
-        if not checklist:
-            raise ValueError(f"Checklist with ID {resource_id} not found")
 
     elif resource_type == "histories":
         change_log_repo = ChangeLogRepository(session)
@@ -168,7 +160,6 @@ def get_parent_resource(
     Get parent resource for hierarchical permission checking.
 
     Resource hierarchy:
-    - checklist → project → account
     - routine → project → account
     - execution → project (via routine)
     - submission → project (via execution → routine)
@@ -179,7 +170,7 @@ def get_parent_resource(
     - account → None (top-level)
 
     Args:
-        resource_type: Resource type (e.g., "checklists")
+        resource_type: Resource type (e.g., "routines")
         resource_id: Resource UUID
         session: Database session
 
@@ -187,20 +178,11 @@ def get_parent_resource(
         Tuple of (parent_resource_type, parent_resource_id) or None if no parent
 
     Examples:
-        >>> get_parent_resource("checklists", checklist_id, session)
-        ("projects", UUID("project-uuid"))
-
         >>> get_parent_resource("accounts", account_id, session)
         None  # Top-level, no parent
     """
     try:
-        if resource_type == "checklists":
-            checklist = checklist_repository.get_checklist_by_id(session, resource_id)
-            if checklist and checklist.project_id:
-                return ("projects", checklist.project_id)
-            logger.debug(f"Checklist {resource_id} has no parent project or not found")
-
-        elif resource_type == "routines":
+        if resource_type == "routines":
             # Sync query since RoutineRepositoryAsync is async-only
             result = session.execute(select(Routine).where(Routine.id == resource_id))
             routine = result.scalar_one_or_none()
