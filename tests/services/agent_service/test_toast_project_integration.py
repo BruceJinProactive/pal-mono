@@ -27,8 +27,6 @@ from services.agent_service._pal_agent_tool_registry import (
     _build_toast_v3_spec,
 )
 
-TEST_PAYMENT_IFRAME_SECRET = "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
-
 
 def _make_project_integration(
     *,
@@ -180,23 +178,18 @@ class TestBuildToastV3Spec:
         assert result.auth["rotation"]["client_id"] == "secret-client-id"
         assert result.auth["rotation"]["client_secret"] == "secret-client-secret"
 
-    def test_hosted_checkout_secret_values_override_config(self):
+    def test_hosted_checkout_flag_is_preserved(self):
         config = {
             "menu_data": {"version": "v2"},
             "takeout_dining_option_guid": "takeout-guid-1",
             "enable_hosted_checkout": True,
-            "payment_client_id": "config-payment-id",
-            "payment_client_secret": "config-payment-secret",
-            "iframe_client_id": "config-iframe-id",
-            "iframe_client_secret": "config-iframe-secret",
-            "payment_iframe_secret": TEST_PAYMENT_IFRAME_SECRET,
         }
         integration_secrets = {
             "payment_client_id": "secret-payment-id",
             "payment_client_secret": "secret-payment-secret",
             "iframe_client_id": "secret-iframe-id",
             "iframe_client_secret": "secret-iframe-secret",
-            "payment_iframe_secret": TEST_PAYMENT_IFRAME_SECRET,
+            "payment_iframe_secret": "ignored-secret",
         }
 
         result = _build_toast_v3_spec(
@@ -208,29 +201,23 @@ class TestBuildToastV3Spec:
         )
 
         assert result.enable_hosted_checkout is True
-        assert result.payment_client_id == "secret-payment-id"
-        assert result.payment_client_secret == "secret-payment-secret"
-        assert result.iframe_client_id == "secret-iframe-id"
-        assert result.iframe_client_secret == "secret-iframe-secret"
-        assert result.payment_iframe_secret == TEST_PAYMENT_IFRAME_SECRET
 
-    def test_hosted_checkout_missing_credentials_raises(self):
+    def test_hosted_checkout_builds_without_embedding_credentials(self):
         config = {
             "menu_data": {"version": "v2"},
             "takeout_dining_option_guid": "takeout-guid-1",
             "enable_hosted_checkout": True,
         }
 
-        with pytest.raises(
-            ValueError, match="required when enable_hosted_checkout is True"
-        ):
-            _build_toast_v3_spec(
-                config,
-                "restaurant-guid-1",
-                "cid",
-                "csecret",
-                None,
-            )
+        result = _build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "cid",
+            "csecret",
+            None,
+        )
+
+        assert result.enable_hosted_checkout is True
 
 
 class TestBuildSpecsFromProjectIntegrationsToast:

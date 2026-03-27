@@ -176,14 +176,6 @@ _TOAST_SPEC_FIELDS = [
     "enable_hosted_checkout",
 ]
 
-_TOAST_HOSTED_SECRET_FIELDS = [
-    "payment_client_id",
-    "payment_client_secret",
-    "iframe_client_id",
-    "iframe_client_secret",
-    "payment_iframe_secret",
-]
-
 _TOAST_DEFAULT_TOKEN_URL = (
     "https://ws-api.toasttab.com/authentication/v1/authentication/login"
 )
@@ -213,13 +205,6 @@ def _build_toast_v3_spec(
     )
     if auth is not None:
         kwargs["auth"] = auth
-
-    # Allow config to supply hosted checkout fields, then override with Integration secrets.
-    for field in _TOAST_HOSTED_SECRET_FIELDS:
-        if field in config:
-            kwargs[field] = config[field]
-        if integration_secrets and integration_secrets.get(field) is not None:
-            kwargs[field] = integration_secrets[field]
 
     return ToastSpec(**kwargs)
 
