@@ -2,7 +2,7 @@
 
 Current project context. Read this before starting any work.
 
-Last updated: 2026-03-19
+Last updated: 2026-03-27
 
 ---
 
@@ -12,6 +12,7 @@ Last updated: 2026-03-19
 
 ## Recently Landed
 
+- 2026-03-27: Voice config language refactoring complete (3-PR series) — PR1: Pydantic validators. PR2: SQLAlchemy CHECK constraints. PR3: Alembic migration for data cleanup + removed legacy handling. All voice configs now lowercase, no more combined languages or triage.
 - 2026-03-19: Plans audit — graduated 4 completed plans to records, removed stale checkpoint auth plan
   - Monitoring config restructure → `docs/records/2026-03-09-monitoring-config-restructure.md`
   - PromptV2 capability system → `docs/records/2026-01-21-prompt-v2-capability-system.md`

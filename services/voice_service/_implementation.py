@@ -33,6 +33,20 @@ class VoiceService:
 
         # Create voice config using repository
         voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
+
+        # Check for duplicate language in same project
+        existing_configs = await voice_repo.get_voice_configs_by_project(
+            create_request.project_id
+        )
+
+        normalized_language = create_request.language.lower().strip()
+        if any(vc.language == normalized_language for vc in existing_configs):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Voice config for language '{normalized_language}' already exists for this project",
+                headers={"Content-Type": "application/json"},
+            )
+
         try:
             db_voice_config = await voice_repo.create_voice_config(
                 project_id=create_request.project_id,
@@ -103,6 +117,34 @@ class VoiceService:
         """Update an existing voice config."""
         voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
 
+        # Check for duplicate language if updating language
+        if update_request.language is not None:
+            # Fetch existing config to get project_id and current language
+            existing_config = await voice_repo.get_voice_config_by_id(voice_config_id)
+            if not existing_config:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Voice config not found",
+                )
+
+            normalized_language = update_request.language.lower().strip()
+
+            # Only check if actually changing the language
+            if normalized_language != existing_config.language:
+                existing_configs = await voice_repo.get_voice_configs_by_project(
+                    existing_config.project_id
+                )
+
+                if any(
+                    vc.language == normalized_language and vc.id != voice_config_id
+                    for vc in existing_configs
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"Voice config for language '{normalized_language}' already exists for this project",
+                        headers={"Content-Type": "application/json"},
+                    )
+
         # Build update kwargs - exclude fields that weren't set
         update_kwargs = update_request.model_dump(exclude_unset=True)
         if "speech_rate" in update_kwargs and update_kwargs["speech_rate"] is not None:
@@ -117,7 +159,7 @@ class VoiceService:
                     # Use the new voice_id being set
                     update_kwargs["cloned_voice_id"] = update_kwargs["voice_id"]
                 else:
-                    # Get the current voice_id from the database
+                    # Fetch existing config to get voice_id
                     existing_config = await voice_repo.get_voice_config_by_id(
                         voice_config_id
                     )
