@@ -7,6 +7,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-03
 
 ### 2026-03-26
+- Add CapabilityAction resource type to change tracking enum ([record](records/2026-03-26-capability-action-change-tracking.md))
 - Remove checklist service, routes, schemas, repository, and auth references — replaced by routine system ([record](records/2026-03-26-remove-checklist-service.md))
 - Drop `checklists`, `checkpoints`, `checkpoint_runs` DB tables and remove table models ([record](records/2026-03-26-remove-checklist-service.md))
 

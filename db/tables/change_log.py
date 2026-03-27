@@ -23,6 +23,7 @@ class ChangeResourceType(str, enum.Enum):
     SubscriptionPlan = "SubscriptionPlan"
     Subscription = "Subscription"
     Prompt = "Prompt"
+    CapabilityAction = "CapabilityAction"
 
 
 class ChangeAction(str, enum.Enum):
