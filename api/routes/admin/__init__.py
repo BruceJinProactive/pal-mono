@@ -3987,7 +3987,7 @@ async def create_action(
     session: AsyncSession = Depends(db.get_db_async),
 ) -> ActionResponse:
     """Create a new action for a capability."""
-    return await _capabilities.create_action(agent_id, data, session)
+    return await _capabilities.create_action(agent_id, data, context, session)
 
 
 @admin_router.get("/agents/{agent_id}/capabilities/{capability_id}/actions")
@@ -4021,7 +4021,9 @@ async def update_action(
     session: AsyncSession = Depends(db.get_db_async),
 ) -> ActionResponse:
     """Update a capability action."""
-    return await _capabilities.update_action(agent_id, action_id, data, session)
+    return await _capabilities.update_action(
+        agent_id, action_id, data, context, session
+    )
 
 
 @admin_router.delete(
@@ -4037,4 +4039,4 @@ async def delete_action(
     session: AsyncSession = Depends(db.get_db_async),
 ) -> None:
     """Delete a capability action."""
-    await _capabilities.delete_action(agent_id, action_id, session)
+    await _capabilities.delete_action(agent_id, action_id, context, session)

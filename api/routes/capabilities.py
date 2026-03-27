@@ -190,7 +190,9 @@ async def create_action(
 ) -> ActionResponse:
     """Create a new capability action."""
     try:
-        return await capability_service.create_capability_action(session, data)
+        return await capability_service.create_capability_action(
+            session, data, "system"
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
@@ -231,7 +233,9 @@ async def update_action(
     session: AsyncSession = Depends(get_db_async),
 ) -> ActionResponse:
     """Update a capability action."""
-    action = await capability_service.update_capability_action(session, action_id, data)
+    action = await capability_service.update_capability_action(
+        session, action_id, data, "system"
+    )
     if not action:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -251,7 +255,9 @@ async def delete_action(
     session: AsyncSession = Depends(get_db_async),
 ) -> None:
     """Delete a capability action."""
-    deleted = await capability_service.delete_capability_action(session, action_id)
+    deleted = await capability_service.delete_capability_action(
+        session, action_id, "system"
+    )
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

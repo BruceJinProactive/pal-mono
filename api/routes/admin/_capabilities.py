@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import services.capability_service as capability_service
 from db.repositories.agent_capability_repository import AgentCapabilityRepositoryAsync
 from db.repositories.capability_action_repository import CapabilityActionRepositoryAsync
+from services.auth_types import UserContext
 from services.capability_service.schema import (
     ActionCreate,
     ActionResponse,
@@ -179,6 +180,7 @@ async def bulk_update_priorities(
 async def create_action(
     agent_id: UUID,
     data: ActionCreate,
+    context: UserContext,
     session: AsyncSession,
 ) -> ActionResponse:
     """Create a new capability action."""
@@ -199,7 +201,9 @@ async def create_action(
         )
 
     try:
-        return await capability_service.create_capability_action(session, data)
+        return await capability_service.create_capability_action(
+            session, data, context.email
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except HTTPException:
@@ -239,6 +243,7 @@ async def update_action(
     agent_id: UUID,
     action_id: UUID,
     data: ActionUpdate,
+    context: UserContext,
     session: AsyncSession,
 ) -> ActionResponse:
     """Update a capability action."""
@@ -270,7 +275,7 @@ async def update_action(
 
     # Update the action
     updated_action = await capability_service.update_capability_action(
-        session, action_id, data
+        session, action_id, data, context.email
     )
     if not updated_action:
         raise HTTPException(
@@ -283,6 +288,7 @@ async def update_action(
 async def delete_action(
     agent_id: UUID,
     action_id: UUID,
+    context: UserContext,
     session: AsyncSession,
 ) -> None:
     """Delete a capability action."""
@@ -313,7 +319,9 @@ async def delete_action(
         )
 
     # Delete the action
-    deleted = await capability_service.delete_capability_action(session, action_id)
+    deleted = await capability_service.delete_capability_action(
+        session, action_id, context.email
+    )
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

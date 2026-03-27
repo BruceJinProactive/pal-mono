@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from db.tables import AgentCapability, CapabilityAction
+from db.tables.change_log import ChangeResourceType
+from services.history_service._implementation import create_change_log
 from services.prompt_service.prompts_v2 import PromptFactoryV2
 from utils.log import logger
 
@@ -264,6 +266,7 @@ async def bulk_update_priorities(
 async def create_capability_action(
     session: AsyncSession,
     data: ActionCreate,
+    author: str,
 ) -> ActionResponse:
     """
     Create a new capability action.
@@ -271,6 +274,7 @@ async def create_capability_action(
     Args:
         session: Database session
         data: Action creation data
+        author: Email of the user making the change
 
     Returns:
         Created action
@@ -283,6 +287,12 @@ async def create_capability_action(
     capability = await cap_repo.get_by_id(data.agent_capability_id)
     if not capability:
         raise ValueError(f"Agent capability {data.agent_capability_id} not found")
+
+    # Get agent to find account_id for change tracking
+    agent_repo = db.AgentRepositoryAsync(session)
+    agent = await agent_repo.get_agent(capability.agent_id)
+    if not agent:
+        raise ValueError(f"Agent {capability.agent_id} not found")
 
     # Check if action already exists
     action_repo = db.CapabilityActionRepositoryAsync(session)
@@ -311,6 +321,19 @@ async def create_capability_action(
 
     if not action:
         raise ValueError("Failed to create capability action")
+
+    # Create change log entry
+    await session.run_sync(
+        lambda sync_session: create_change_log(
+            session=sync_session,
+            account_id=agent.account_id,
+            resource_type=ChangeResourceType.CapabilityAction,
+            resource_id=str(action.id),
+            author=author,
+            old_record=None,
+            new_record=action,
+        )
+    )
 
     logger.info(
         f"Created action '{data.action}' for capability {data.agent_capability_id}"
@@ -344,6 +367,7 @@ async def update_capability_action(
     session: AsyncSession,
     action_id: UUID,
     data: ActionUpdate,
+    author: str,
 ) -> Optional[ActionResponse]:
     """
     Update a capability action.
@@ -352,11 +376,19 @@ async def update_capability_action(
         session: Database session
         action_id: Action ID
         data: Update data
+        author: Email of the user making the change
 
     Returns:
         Updated action if found, None otherwise
     """
     action_repo = db.CapabilityActionRepositoryAsync(session)
+    cap_repo = db.AgentCapabilityRepositoryAsync(session)
+    agent_repo = db.AgentRepositoryAsync(session)
+
+    # Get the old action record for change tracking
+    old_action = await action_repo.get_by_id(action_id)
+    if not old_action:
+        return None
 
     # Build update dict
     update_data = {}
@@ -371,17 +403,37 @@ async def update_capability_action(
 
     if not update_data:
         # No fields to update
-        action = await action_repo.get_by_id(action_id)
-        if action:
-            return ActionResponse.model_validate(action)
+        return ActionResponse.model_validate(old_action)
+
+    # Get capability and agent to find account_id for change tracking
+    capability = await cap_repo.get_by_id(old_action.agent_capability_id)
+    if not capability:
         return None
 
-    action = await action_repo.update(action_id, **update_data)
+    agent = await agent_repo.get_agent(capability.agent_id)
+    if not agent:
+        return None
 
-    if action:
-        logger.info(f"Updated action {action_id}")
-        return ActionResponse.model_validate(action)
-    return None
+    # Update the action
+    action = await action_repo.update(action_id, **update_data)
+    if not action:
+        return None
+
+    # Create change log entry
+    await session.run_sync(
+        lambda sync_session: create_change_log(
+            session=sync_session,
+            account_id=agent.account_id,
+            resource_type=ChangeResourceType.CapabilityAction,
+            resource_id=str(action_id),
+            author=author,
+            old_record=old_action,
+            new_record=action,
+        )
+    )
+
+    logger.info(f"Updated action {action_id}")
+    return ActionResponse.model_validate(action)
 
 
 async def upsert_capability_action(
@@ -433,6 +485,7 @@ async def upsert_capability_action(
 async def delete_capability_action(
     session: AsyncSession,
     action_id: UUID,
+    author: str,
 ) -> bool:
     """
     Delete a capability action.
@@ -440,15 +493,48 @@ async def delete_capability_action(
     Args:
         session: Database session
         action_id: Action ID
+        author: Email of the user making the change
 
     Returns:
         True if deleted, False if not found
     """
     action_repo = db.CapabilityActionRepositoryAsync(session)
-    deleted = await action_repo.delete(action_id)
+    cap_repo = db.AgentCapabilityRepositoryAsync(session)
+    agent_repo = db.AgentRepositoryAsync(session)
 
-    if deleted:
-        logger.info(f"Deleted action {action_id}")
+    # Get the action record before deletion for change tracking
+    old_action = await action_repo.get_by_id(action_id)
+    if not old_action:
+        return False
+
+    # Get capability and agent to find account_id for change tracking
+    capability = await cap_repo.get_by_id(old_action.agent_capability_id)
+    if not capability:
+        return False
+
+    agent = await agent_repo.get_agent(capability.agent_id)
+    if not agent:
+        return False
+
+    # Delete the action
+    deleted = await action_repo.delete(action_id)
+    if not deleted:
+        return False
+
+    # Create change log entry
+    await session.run_sync(
+        lambda sync_session: create_change_log(
+            session=sync_session,
+            account_id=agent.account_id,
+            resource_type=ChangeResourceType.CapabilityAction,
+            resource_id=str(action_id),
+            author=author,
+            old_record=old_action,
+            new_record=None,
+        )
+    )
+
+    logger.info(f"Deleted action {action_id}")
     return deleted
 
 
