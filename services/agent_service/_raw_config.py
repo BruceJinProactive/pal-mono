@@ -30,6 +30,7 @@ from db.repositories.project_contact_repository import ProjectContactRepositoryA
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, IdentifierType, TargetTier
 from services import features_service
+from services.agent_service._fingerprint import compute_agent_fingerprint
 from services.agent_service._pal_agent_tool_registry import PAL_AGENT_TOOL_REGISTRY
 from services.integration_service.schema import IntegrationDetail
 from services.prompt_service.prompts import prompt_factory
@@ -98,6 +99,59 @@ class RawConfig:
             raise ValueError(f"Invalid RawConfig: {e}") from e
         except Exception as e:
             raise ValueError(f"Failed to convert to AgentConfig: {e}") from e
+
+    async def build_with_fingerprint(
+        self, session: Optional[AsyncSession] = None
+    ) -> tuple[AgentConfig, str, str, dict[str, Any]]:
+        """
+        Build AgentConfig and return it along with SHA-256 fingerprints for the agent
+        and prompt, plus the stable config dict used for hashing.
+
+        Args:
+            session: Database session for fetching overrides (optional)
+
+        Returns:
+            Tuple of (config, agent_fingerprint, prompt_fingerprint, config_dict) where:
+                - config is the fully built AgentConfig
+                - agent_fingerprint is the hex SHA-256 digest of stable agent fields
+                - prompt_fingerprint is the hex SHA-256 digest of the prompt text
+                - config_dict is the stable fields dict used to compute agent_fingerprint
+        """
+        config = await self.build(session=session)
+
+        # Get canonical prompts for fingerprinting
+        prompts = await prompt_factory_v2.build(
+            agent_id=self.agent.id, channel=self.channel, session=session
+        )
+
+        # Stable agent-level fields (exclude session/conversation-specific runtime values)
+        config_dict: dict[str, Any] = {
+            "agent_id": str(self.agent.id),
+            "agent_name": self.agent.name,
+            "agent_type": (
+                self.agent.agent_type.value if self.agent.agent_type else None
+            ),
+            "language": self.agent.language.value if self.agent.language else None,
+            "raw_config": self.agent.raw_config,
+            "filler_words": self.agent.filler_words,
+            "communication_style": self.agent.communication_style,
+            "interaction_guidelines": self.agent.interaction_guidelines,
+            "project_id": str(self.project.id),
+            "project_timezone": self.project.timezone,
+            "project_address": self.project.address,
+            "project_store_hours": self.project.store_hours,
+            "project_service_instruction": self.project.service_instruction,
+            "project_product_info": self.project.product_info,
+            "account_id": str(self.account.id),
+            "account_name": self.account.name,
+            "channel": self.channel.value if self.channel else None,
+        }
+
+        agent_fingerprint, prompt_fingerprint, _ = compute_agent_fingerprint(
+            config_dict, prompts
+        )
+
+        return config, agent_fingerprint, prompt_fingerprint, config_dict
 
     @staticmethod
     def _coerce_bool(value: object) -> bool:

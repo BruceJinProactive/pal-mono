@@ -5,6 +5,7 @@ This module provides a more flexible prompt factory that loads prompts from YAML
 allowing for easier management and updates without code changes.
 """
 
+import hashlib
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -372,6 +373,32 @@ class PromptFactoryV2:
             prompts.append((title, combined_instructions))
 
         return prompts
+
+    async def build_with_hash(
+        self,
+        agent_id: UUID,
+        channel: Optional[Channel] = None,
+        session: Optional[AsyncSession] = None,
+    ) -> tuple[list[tuple[str, str]], str]:
+        """
+        Build prompts and return them along with a SHA-256 hash of the canonical text.
+
+        Args:
+            agent_id: Agent ID for database override support
+            channel: Communication channel enum or None for all
+            session: Database session for fetching overrides (optional)
+
+        Returns:
+            Tuple of (prompts, prompt_hash) where:
+                - prompts is a list of (title, instructions) tuples
+                - prompt_hash is the hex SHA-256 digest of the canonical prompt text
+        """
+        prompts = await self.build(agent_id=agent_id, channel=channel, session=session)
+        canonical = "\n\n".join(
+            f"{title}\n{instructions}" for title, instructions in prompts
+        )
+        prompt_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        return prompts, prompt_hash
 
 
 prompt_factory_v2 = PromptFactoryV2()
