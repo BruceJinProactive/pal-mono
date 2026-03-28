@@ -25,3 +25,5 @@
 # Auto-approvable: no code owners required (overrides /* rule)
 /pyproject.toml
 /uv.lock
+/.claude/skill-usage.log
+/.claude/session-usage.log
