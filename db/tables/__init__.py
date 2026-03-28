@@ -3,6 +3,7 @@ from .accounts import Account
 from .adora_orders import AdoraOrder
 from .affiliates import Affiliate
 from .agent_capabilities import AgentCapability
+from .agent_config_snapshots import AgentConfigSnapshot
 from .agents import Agent
 from .base import Base
 from .campaigns import Campaign, CampaignChannel, CampaignMessage, CampaignMessageStatus
@@ -12,6 +13,8 @@ from .change_log import ChangeAction, ChangeField, ChangeLog
 from .contacts import Contact
 from .conversations import Conversation, ConversationStatus
 from .credit_grants import CreditGrant
+from .eval_results import EvalResult
+from .eval_runs import EvalRun
 from .faqs import FAQ
 from .features import Feature
 from .feedback import Feedback

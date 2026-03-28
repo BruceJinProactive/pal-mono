@@ -6,6 +6,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-28
+- Add `eval_runs`, `eval_results`, `agent_config_snapshots` DB tables for eval platform ([record](records/2026-03-28-eval-platform-schema.md))
+- Add `agent_fingerprint` and `prompt_fingerprint` columns to `conversations` table for agent version tracking ([record](records/2026-03-28-eval-platform-schema.md))
+
 ### 2026-03-26
 - Add CapabilityAction resource type to change tracking enum ([record](records/2026-03-26-capability-action-change-tracking.md))
 - Remove checklist service, routes, schemas, repository, and auth references — replaced by routine system ([record](records/2026-03-26-remove-checklist-service.md))

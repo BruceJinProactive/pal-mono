@@ -100,6 +100,14 @@ class Conversation(Base):
         UUID(as_uuid=True), nullable=True
     )
 
+    # Fingerprints for agent/prompt version tracking
+    agent_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+    prompt_fingerprint: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
+
     # Relationships
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
