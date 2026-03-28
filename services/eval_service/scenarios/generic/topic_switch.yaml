@@ -1,0 +1,40 @@
+- scenario_id: gen-topic-switch-001
+  scenario: "Customer switches from asking about hours to asking about the menu mid-conversation"
+  test_category: topic_switch
+  persona: standard_customer
+  user_turns:
+    - "What time do you close?"
+    - "Actually, never mind that. What kind of food do you serve?"
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Agent should handle the topic switch gracefully and answer the new question"
+
+- scenario_id: gen-topic-switch-002
+  scenario: "Customer switches from a complaint to placing an order"
+  test_category: topic_switch
+  persona: standard_customer
+  user_turns:
+    - "I had a bad experience last time I visited."
+    - type: ai_driven
+      goal: "Acknowledge the bad experience and then ask to place an order"
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Agent should acknowledge the complaint empathetically then transition smoothly to taking the order"
+
+- scenario_id: gen-topic-switch-003
+  scenario: "Customer switches topics multiple times within a single call"
+  test_category: topic_switch
+  persona: standard_customer
+  user_turns:
+    - "Do you have any vegetarian options?"
+    - "Oh wait, are you open on Sundays?"
+    - "And what's your address again?"
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Agent should address each topic in turn without losing context or confusing prior questions"

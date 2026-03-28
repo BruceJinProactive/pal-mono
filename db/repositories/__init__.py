@@ -1,11 +1,14 @@
 from .account_repository import AccountRepository, AccountRepositoryAsync
 from .account_user_repository import AccountUserRepository
 from .agent_capability_repository import AgentCapabilityRepositoryAsync
+from .agent_config_snapshot_repository import AgentConfigSnapshotRepositoryAsync
 from .agent_repository import AgentRepository, AgentRepositoryAsync
 from .analytics_repository import AnalyticsRepository
 from .capability_action_repository import CapabilityActionRepositoryAsync
 from .change_log_repository import ChangeLogRepository
 from .conversation_repository import ConversationRepository, ConversationRepositoryAsync
+from .eval_result_repository import EvalResultRepositoryAsync
+from .eval_run_repository import EvalRunRepositoryAsync
 from .faq_repository import FAQRepository
 from .feature_repository import FeatureRepositoryAsync
 from .feedback_repository import FeedbackRepository

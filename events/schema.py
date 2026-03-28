@@ -249,3 +249,5 @@ class ConversationEvaluationRequested(BaseEvent):
     tool_calls: list[Dict[str, Any]] = field(default_factory=list)
     turn_latencies_ms: list[float] = field(default_factory=list)
     audio_recording: AudioRecordingReference | None = None
+    agent_fingerprint: str | None = None
+    prompt_fingerprint: str | None = None
