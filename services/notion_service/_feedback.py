@@ -693,7 +693,7 @@ async def create_client_page(
                 "people": [
                     {
                         "object": "user",
-                        "id": "e21e8323-2e3c-4d61-bd2e-a2f2c0b1546f",
+                        "id": "2b6d872b-594c-817f-a134-00020c633368",
                     }
                 ]
             },
