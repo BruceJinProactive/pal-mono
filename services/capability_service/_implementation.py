@@ -322,6 +322,9 @@ async def create_capability_action(
     if not action:
         raise ValueError("Failed to create capability action")
 
+    # Build response before run_sync expires the ORM object's attributes
+    response = ActionResponse.model_validate(action)
+
     # Create change log entry
     await session.run_sync(
         lambda sync_session: create_change_log(
@@ -338,7 +341,7 @@ async def create_capability_action(
     logger.info(
         f"Created action '{data.action}' for capability {data.agent_capability_id}"
     )
-    return ActionResponse.model_validate(action)
+    return response
 
 
 async def get_capability_actions(
@@ -419,6 +422,9 @@ async def update_capability_action(
     if not action:
         return None
 
+    # Build response before run_sync expires the ORM object's attributes
+    response = ActionResponse.model_validate(action)
+
     # Create change log entry
     await session.run_sync(
         lambda sync_session: create_change_log(
@@ -433,7 +439,7 @@ async def update_capability_action(
     )
 
     logger.info(f"Updated action {action_id}")
-    return ActionResponse.model_validate(action)
+    return response
 
 
 async def upsert_capability_action(
