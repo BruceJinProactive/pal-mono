@@ -294,24 +294,7 @@ async def init_voice_call(
         )
 
     # Collect all languages from voice configs
-    # Languages are already normalized (no combined languages after migration)
-    # Fail-fast validation: detect any combined language tokens that survived migration
-    invalid_combined_languages = [
-        voice_config.language
-        for voice_config in voice_configs
-        if "+" in voice_config.language
-    ]
-    if invalid_combined_languages:
-        logger.error(
-            "[init_voice_call] Invalid combined language format in voice configs",
-            extra={**_log_extra, "invalid_languages": invalid_combined_languages},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Invalid voice configuration language format",
-            headers={"Content-Type": "application/json"},
-        )
-
+    # Languages are validated and normalized by Pydantic schema validators
     all_languages = [voice_config.language for voice_config in voice_configs]
 
     # Remove duplicates while preserving order
@@ -322,7 +305,9 @@ async def init_voice_call(
         vc = voice_configs[0]
     else:
         english_configs = [
-            vc for vc in voice_configs if "english" in vc.language.lower()
+            vc
+            for vc in voice_configs
+            if (vc.language or "").strip().lower() == "english"
         ]
         vc = english_configs[0] if english_configs else voice_configs[0]
 

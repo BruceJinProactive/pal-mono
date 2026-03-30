@@ -118,6 +118,14 @@ class VoiceConfigUpdateData(BaseModel):
     voice_model: Optional[str] = None
     transcriber: Optional[dict] = None
 
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, v: str | None) -> str | None:
+        """Normalize and validate language against allowed values."""
+        if v is None:
+            return v
+        return _validate_language(v)
+
 
 class BatchUpdateVoiceConfigsRequest(BaseModel):
     """Request schema for batch voice config updates"""

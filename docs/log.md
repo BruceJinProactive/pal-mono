@@ -8,6 +8,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ### 2026-03-30
 - Add Pydantic `field_validator` on voice config schemas to enforce allowed languages (`english`, `spanish`, `chinese`) at the API boundary
+- Remove redundant manual language normalization from voice service and combined-language fail-fast from voice init
 - Update priority field comments on `agent_capabilities` and `capability_actions` tables to clarify recency-based prompt positioning (comment-only, no schema change)
 
 ### 2026-03-28

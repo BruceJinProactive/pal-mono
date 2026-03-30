@@ -196,19 +196,6 @@ class TestInitVoiceCallNoVoiceConfigs:
         assert exc.status_code == 404
         assert "No voice configuration found" in exc.detail
 
-    @pytest.mark.asyncio
-    async def test_returns_500_combined_language(self) -> None:
-        """Combined language format should return 500 error."""
-        combined_vc = _make_voice_config(language="english+spanish")
-        exc = await _run_expecting_error(
-            _make_request(),
-            project=_make_project(),
-            user=_make_user(),
-            voice_configs=[combined_vc],
-        )
-        assert exc.status_code == 500
-        assert "Invalid voice configuration language format" in exc.detail
-
 
 # ---------------------------------------------------------------------------
 # init_voice_call tests — success paths

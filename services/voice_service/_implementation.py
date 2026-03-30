@@ -35,15 +35,18 @@ class VoiceService:
         voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
 
         # Check for duplicate language in same project
+        # Language is already normalized (lowercased, stripped) by Pydantic validator
         existing_configs = await voice_repo.get_voice_configs_by_project(
             create_request.project_id
         )
 
-        normalized_language = create_request.language.lower().strip()
-        if any(vc.language == normalized_language for vc in existing_configs):
+        if any(
+            (vc.language or "").strip().lower() == create_request.language
+            for vc in existing_configs
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Voice config for language '{normalized_language}' already exists for this project",
+                detail=f"Voice config for language '{create_request.language}' already exists for this project",
                 headers={"Content-Type": "application/json"},
             )
 
@@ -118,6 +121,7 @@ class VoiceService:
         voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
 
         # Check for duplicate language if updating language
+        # Language is already normalized (lowercased, stripped) by Pydantic validator
         if update_request.language is not None:
             # Fetch existing config to get project_id and current language
             existing_config = await voice_repo.get_voice_config_by_id(voice_config_id)
@@ -127,21 +131,21 @@ class VoiceService:
                     detail="Voice config not found",
                 )
 
-            normalized_language = update_request.language.lower().strip()
-
             # Only check if actually changing the language
-            if normalized_language != existing_config.language:
+            normalized_existing = (existing_config.language or "").strip().lower()
+            if update_request.language != normalized_existing:
                 existing_configs = await voice_repo.get_voice_configs_by_project(
                     existing_config.project_id
                 )
 
                 if any(
-                    vc.language == normalized_language and vc.id != voice_config_id
+                    (vc.language or "").strip().lower() == update_request.language
+                    and vc.id != voice_config_id
                     for vc in existing_configs
                 ):
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
-                        detail=f"Voice config for language '{normalized_language}' already exists for this project",
+                        detail=f"Voice config for language '{update_request.language}' already exists for this project",
                         headers={"Content-Type": "application/json"},
                     )
 

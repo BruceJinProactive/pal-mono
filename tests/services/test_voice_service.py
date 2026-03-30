@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from api.schemas.admin.voice_config import (
     CreateVoiceConfigRequest,
     UpdateVoiceConfigRequest,
+    VoiceConfigUpdateData,
 )
 from db.tables.voice_configs import SpeechRate
 from services.voice_service import VoiceService
@@ -319,3 +320,21 @@ class TestVoiceConfigLanguageValidation:
         """Should allow omitting language entirely."""
         request = UpdateVoiceConfigRequest(first_message="Hello")
         assert request.language is None
+
+    def test_batch_update_data_accepts_valid_language(self) -> None:
+        """Should accept allowed language on VoiceConfigUpdateData."""
+        data = VoiceConfigUpdateData(project_id=uuid.uuid4(), language="spanish")
+        assert data.language == "spanish"
+
+    def test_batch_update_data_rejects_invalid_language(self) -> None:
+        """Should reject invalid language on VoiceConfigUpdateData."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError) as exc_info:
+            VoiceConfigUpdateData(project_id=uuid.uuid4(), language="fr")
+        assert "not supported" in str(exc_info.value).lower()
+
+    def test_batch_update_data_allows_none_language(self) -> None:
+        """Should allow None language on VoiceConfigUpdateData."""
+        data = VoiceConfigUpdateData(project_id=uuid.uuid4(), language=None)
+        assert data.language is None
