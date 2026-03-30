@@ -45,7 +45,7 @@ class Action:
     action: str  # Action identifier (e.g., 'create_order', 'cancel_order')
     instruction: str  # The prompt/instruction text for this action
     channel: ChannelType = "ALL"  # Channel-specific override (SMS, VOICE, EMAIL, ALL)
-    priority: int = 50  # Priority for ordering (lower = higher priority)
+    priority: int = 50  # Prompt position (higher = later = stronger)
     enabled: bool = True  # Whether this action is enabled (defaults to True)
 
 
@@ -54,7 +54,7 @@ class Capability:
     """Represents a capability with its associated actions"""
 
     identifier: str  # Capability identifier (e.g., 'ordering', 'reservation')
-    priority: int = 50  # Capability priority (lower = higher priority)
+    priority: int = 50  # Prompt position (higher = later = stronger)
     enabled: bool = True
     actions: list[Action] = field(default_factory=list)
 
@@ -336,7 +336,7 @@ class PromptFactoryV2:
 
         prompts = []
 
-        # Sort capabilities by priority
+        # Sort by priority (lower = earlier, higher = later/stronger)
         sorted_capabilities = sorted(capabilities.values(), key=lambda c: c.priority)
 
         for capability in sorted_capabilities:
@@ -367,10 +367,11 @@ class PromptFactoryV2:
 
             combined_instructions = "\n\n".join(action_instructions)
 
-            words = capability.identifier.replace("_", " ").title()
-            title = f"## {words} Instruction"
+            # Wrap capability instructions in XML tags for clear section boundaries
+            tag = capability.identifier
+            wrapped = f"<{tag}>\n{combined_instructions}\n</{tag}>"
 
-            prompts.append((title, combined_instructions))
+            prompts.append(("", wrapped))
 
         return prompts
 

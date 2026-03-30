@@ -565,21 +565,44 @@ class RawConfig:
 
         return ModelConfig(provider=provider, identifier=identifier)
 
+    # XML tags for data sections — helps the model scope lookups precisely
+    _DATA_XML_TAGS: dict[str, str] = {
+        "## Store Address": "store_address",
+        "## Store Hours": "store_hours",
+        "## Store Product & Menu": "menu_context",
+        "## F.A.Q.": "faq",
+        "## Current Promotions": "promotions",
+        "## Catalog": "catalog",
+        "## Description": "brand_description",
+        "## Others": "brand_others",
+    }
+
+    @staticmethod
+    def _build_section(
+        title: str,
+        info_list: Sequence[tuple[str, str | None]],
+        xml_tags: dict[str, str] | None = None,
+    ) -> list[str]:
+        blocks = [title]
+        for header, content in info_list:
+            if content:
+                tag = xml_tags.get(header) if xml_tags else None
+                if tag:
+                    blocks.append(f"<{tag}>\n{content}\n</{tag}>")
+                elif header:
+                    blocks.extend([header, content])
+                else:
+                    blocks.append(content)
+        # add newline to the end for better formatting
+        blocks.extend("\n")
+        if len(blocks) <= 2:
+            # if blocks does not contain any content, then clear everything
+            blocks = []
+        return blocks
+
     async def _build_agent_prompt(
         self, channel: Channel, session: Optional[AsyncSession] = None
     ) -> str:
-        def build_section(title, info_list) -> list[str]:
-            blocks = [title]
-            for header, content in info_list:
-                if content:
-                    blocks.extend([header, content])
-            # add newline to the end for better formatting
-            blocks.extend("\n")
-            if len(blocks) <= 2:
-                # if blocks does not contain any content, then clear everything
-                blocks = []
-            return blocks
-
         brand_info_list = self._get_brand_info()
         store_info_list = self._get_store_info()
 
@@ -609,10 +632,13 @@ class RawConfig:
         else:
             agent_info_list = self._get_agent_info(channel)
 
+        xml_tags = self._DATA_XML_TAGS if use_v2 else None
+        bs = self._build_section
+
         sections = [self._build_agent_introduction()]
-        sections.extend(build_section("# Brand Information", brand_info_list))
-        sections.extend(build_section("# Store Information", store_info_list))
-        sections.extend(build_section("# Agent Information", agent_info_list))
+        sections.extend(bs("# Store Context", store_info_list, xml_tags))
+        sections.extend(bs("# Brand Information", brand_info_list, xml_tags))
+        sections.extend(bs("# Agent Instructions", agent_info_list))
         return "\n".join(sections)
 
     def _build_agent_introduction(self):

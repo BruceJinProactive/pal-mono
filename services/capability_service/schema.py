@@ -22,7 +22,7 @@ class AgentCapabilityBase(BaseModel):
         default=50,
         ge=0,
         le=99,
-        description="Priority for capability ordering (lower = higher priority)",
+        description="Prompt position (higher = later = stronger)",
     )
     enabled: bool = Field(
         default=True,
@@ -43,7 +43,7 @@ class AgentCapabilityUpdate(BaseModel):
         None,
         ge=0,
         le=99,
-        description="Priority for capability ordering",
+        description="Prompt position (higher = later = stronger)",
     )
     enabled: Optional[bool] = Field(
         None,
@@ -86,7 +86,7 @@ class ActionBase(BaseModel):
         default=50,
         ge=0,
         le=99,
-        description="Priority for action ordering (lower = higher priority)",
+        description="Prompt position (higher = later = stronger)",
     )
     enabled: bool = Field(
         default=False,
@@ -119,7 +119,7 @@ class ActionUpdate(BaseModel):
         None,
         ge=0,
         le=99,
-        description="Priority for action ordering",
+        description="Prompt position (higher = later = stronger)",
     )
     enabled: Optional[bool] = Field(
         None,

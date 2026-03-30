@@ -238,7 +238,7 @@ class CapabilityActionRepositoryAsync:
             action: Name of the action.
             prompt: Prompt text for the action.
             channel: Channel for the action (default: "ALL").
-            priority: Priority of the action (lower number = higher priority).
+            priority: Position in prompt (higher number = later = stronger via recency).
             enabled: Whether the action is enabled (default: False).
 
         Returns:

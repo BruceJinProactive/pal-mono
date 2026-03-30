@@ -188,7 +188,7 @@ class AgentCapabilityRepositoryAsync:
         Args:
             agent_id: UUID of the agent.
             capability_identifier: Identifier of the capability.
-            priority: Priority of the capability (lower number = higher priority).
+            priority: Position in prompt (higher number = later = stronger via recency).
             enabled: Whether the capability is enabled.
 
         Returns:
