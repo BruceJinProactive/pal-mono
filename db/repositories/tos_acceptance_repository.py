@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 
+import sqlalchemy
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -123,3 +124,41 @@ class TosAcceptanceRepository:
             .filter(Account.id.notin_(accepted_account_ids))
             .all()
         )
+
+    def delete_by_email_domains(self, email_domains: list[str]) -> int:
+        """
+        Delete TOS acceptances by email domain patterns.
+
+        Used to clean up invalid acceptances (e.g., by internal team members).
+
+        Args:
+            email_domains: List of email domains to match (e.g., ['@proactiveailab.com', '@palona.ai'])
+
+        Returns:
+            int: Number of records deleted
+
+        Raises:
+            SQLAlchemyError: If database operation fails
+        """
+        if not email_domains:
+            return 0
+
+        # Build filter conditions for each domain
+        conditions = [
+            TosAcceptance.user_email.ilike(f"%{domain}") for domain in email_domains
+        ]
+
+        # Count before deletion for return value
+        count = (
+            self.session.query(TosAcceptance)
+            .filter(sqlalchemy.or_(*conditions))
+            .count()
+        )
+
+        # Delete matching records
+        self.session.query(TosAcceptance).filter(sqlalchemy.or_(*conditions)).delete(
+            synchronize_session=False
+        )
+
+        self.session.flush()
+        return count
