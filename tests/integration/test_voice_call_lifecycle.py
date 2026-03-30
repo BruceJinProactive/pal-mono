@@ -5,13 +5,27 @@ creation, retrieval, project isolation, conversation linkage.
 Also tests repository-layer CRUD and analytics field round-trips.
 """
 
+import uuid
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from db.repositories.phone_call_repository import PhoneCallRepository
 from db.repositories.voice_config_repository import VoiceConfigRepository
-from db.tables import Conversation, PhoneCall, VoiceConfig
+from db.tables import (
+    Account,
+    Agent,
+    Conversation,
+    PhoneCall,
+    Project,
+    User,
+    VoiceConfig,
+)
+from db.tables.accounts import AccountStatus
 from db.tables.types import (
     CallEndedReason,
     CallLanguage,
@@ -412,3 +426,114 @@ class TestVoiceRepositoryIntegration:
         assert result.call_purpose is not None
         assert result.call_purpose == purposes
         assert len(result.call_purpose) == 3
+
+
+@pytest.mark.integration
+class TestVoiceInitSessionRefresh:
+    """Regression: project columns must survive session.commit() inside create_voice_message.
+
+    create_voice_message commits the session, expiring all ORM objects.
+    If project is only partially refreshed afterwards, accessing columns like
+    agent_id triggers MissingGreenlet in async context.
+    """
+
+    @pytest.mark.asyncio
+    async def test_project_attributes_accessible_after_commit(
+        self, async_session: AsyncSession
+    ) -> None:
+        now = datetime.now(UTC)
+
+        # --- Set up real ORM entities in the async session ---
+        account = Account(
+            id=uuid.uuid4(),
+            name=f"test-account-{uuid.uuid4().hex[:8]}",
+            display_name="Test Account",
+            status=AccountStatus.active,
+            created_at=now,
+            updated_at=now,
+        )
+        async_session.add(account)
+        await async_session.flush()
+
+        agent = Agent(
+            id=uuid.uuid4(),
+            account_id=account.id,
+            name="test-agent",
+            raw_config={},
+            created_at=now,
+            updated_at=now,
+        )
+        async_session.add(agent)
+        await async_session.flush()
+
+        project = Project(
+            id=uuid.uuid4(),
+            account_id=account.id,
+            agent_id=agent.id,
+            name="test-project",
+            display_name="Test Project",
+            raw_config={},
+            channel_identifiers=["voice:+15559876543"],
+            timezone="America/New_York",
+            created_at=now,
+            updated_at=now,
+        )
+        async_session.add(project)
+        await async_session.flush()
+
+        user = User(
+            id=uuid.uuid4(),
+            account_id=account.id,
+            channel_identifiers=["+15551234567"],
+            created_at=now,
+            updated_at=now,
+        )
+        async_session.add(user)
+        await async_session.flush()
+
+        vc = VoiceConfig(
+            id=uuid.uuid4(),
+            project_id=project.id,
+            language="english",
+            voice_id="test-voice-id",
+            first_message="Hello!",
+            transfer_message="Transferring...",
+            raw_config={},
+            created_at=now,
+            updated_at=now,
+        )
+        async_session.add(vc)
+        await async_session.flush()
+
+        # --- Call init_voice_call with real async session ---
+        from api.routes.internal._voice import init_voice_call
+        from api.schemas.internal.voice_init import VoiceInitRequest, VoiceInitResponse
+
+        request = VoiceInitRequest(
+            caller_number="+15551234567",
+            dialed_number="+15559876543",
+            call_id=f"call-{uuid.uuid4().hex[:8]}",
+        )
+
+        # Mock only the service-layer lookups that do complex orchestration;
+        # repositories use the real session so commit/expiration is exercised.
+        with (
+            patch(
+                "api.routes.internal._voice.project_service.get_project_async",
+                new_callable=AsyncMock,
+                return_value=project,
+            ),
+            patch(
+                "api.routes.internal._voice.user_service.get_user_async",
+                new_callable=AsyncMock,
+                return_value=(user, None),
+            ),
+        ):
+            # This raises MissingGreenlet if project is not fully refreshed
+            # after the commit inside create_voice_message.
+            result = await init_voice_call(request, async_session)
+
+        assert isinstance(result, VoiceInitResponse)
+        assert result.voice_id == "test-voice-id"
+        assert result.first_message == "Hello!"
+        assert result.caller_info["timezone"] == "America/New_York"

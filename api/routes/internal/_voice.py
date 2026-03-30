@@ -259,10 +259,7 @@ async def init_voice_call(
         call_id=call_id,
     )
     await session.refresh(user, attribute_names=["id"])
-    await session.refresh(
-        project,
-        attribute_names=["id", "timezone"],
-    )
+    await session.refresh(project)
 
     logger.info("[init_voice_call] Step 4 done: conversation created", extra=_log_extra)
 
