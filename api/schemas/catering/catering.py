@@ -139,11 +139,14 @@ class ContactListResponse(BaseModel):
 
 
 class CateringReminderResponse(BaseModel):
-    """Response from processing catering inquiry reminders."""
+    """Response from processing catering inquiry reminders and apologies."""
 
     success: bool = Field(description="Whether the job completed without errors")
     projects_checked: int = Field(
         description="Number of projects evaluated for reminders"
     )
     reminders_sent: int = Field(description="Number of reminder SMS messages sent")
+    apologies_sent: int = Field(
+        default=0, description="Number of apology SMS messages sent to requesters"
+    )
     errors: list[str] = Field(default_factory=list, description="Error messages if any")

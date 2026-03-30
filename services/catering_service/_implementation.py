@@ -830,6 +830,7 @@ class CateringReminderResult:
 
     projects_checked: int = 0
     reminders_sent: int = 0
+    apologies_sent: int = 0
     errors: list[str] = dataclasses.field(default_factory=list)
 
     @property
@@ -1026,5 +1027,131 @@ async def send_catering_inquiry_reminders(
             error_msg = f"Error sending reminder for project {project_id}: {e}"
             result.errors.append(error_msg)
             logger.error(f"[catering-reminder] {error_msg}")
+
+    return result
+
+
+def format_catering_apology_message(
+    request: CateringRequest,
+    project_name: str,
+) -> str:
+    """
+    Format an apology message for a requester whose catering event has passed
+    while still at inquiry status.
+
+    Args:
+        request: The catering request.
+        project_name: Display name of the project/restaurant.
+
+    Returns:
+        Formatted SMS message string.
+    """
+    parts = [
+        f"Hi {request.contact_name}, we're sorry if we weren't able to respond "
+        f"to your catering request for {request.event_date.strftime('%B %d, %Y')} in time.",
+        "We apologize for the inconvenience and hope to assist you with future catering needs.",
+        f"- {project_name}",
+    ]
+    return "\n".join(parts)
+
+
+async def send_catering_inquiry_apologies(
+    session: AsyncSession,
+) -> CateringReminderResult:
+    """
+    Send apology SMS to requesters whose catering event has passed while still
+    at INQUIRY status.
+
+    A request qualifies if:
+    - Status is INQUIRY
+    - event_date (calendar date) was yesterday in the project's timezone
+
+    Sends one apology SMS per qualifying request to the requester's phone number.
+
+    Args:
+        session: Async database session.
+
+    Returns:
+        CateringReminderResult with apologies_sent populated.
+    """
+    result = CateringReminderResult()
+    now_utc = datetime.now(timezone.utc)
+
+    # event_date is a plain Date column. "Yesterday" can vary across timezones
+    # by up to ~1 day, so we query a 3-day window and filter per-project timezone.
+    event_date_start = (now_utc - timedelta(days=3)).date()
+    event_date_end = (now_utc - timedelta(days=0)).date()
+
+    catering_repo = CateringRequestRepositoryAsync(session)
+    candidate_requests = await catering_repo.list_inquiry_requests_by_event_date_range(
+        event_date_start=event_date_start,
+        event_date_end=event_date_end,
+    )
+
+    if not candidate_requests:
+        logger.debug("[catering-apology] No candidate inquiry requests found")
+        return result
+
+    # Group by project
+    requests_by_project: dict[uuid.UUID, list[CateringRequest]] = {}
+    for req in candidate_requests:
+        requests_by_project.setdefault(req.project_id, []).append(req)
+
+    # Fetch all projects for timezone info and display name
+    project_repo = ProjectRepositoryAsync(session)
+    projects = await project_repo.list_projects_by_ids(list(requests_by_project.keys()))
+    projects_by_id = {p.id: p for p in projects}
+
+    for project_id, project_requests in requests_by_project.items():
+        project = projects_by_id.get(project_id)
+        if not project:
+            logger.warning(
+                f"[catering-apology] Project {project_id} not found, skipping"
+            )
+            continue
+
+        result.projects_checked += 1
+        try:
+            tz = ZoneInfo(project.timezone or "America/Los_Angeles")
+        except (KeyError, Exception):
+            logger.warning(
+                f"[catering-apology] Invalid timezone '{project.timezone}' for project {project_id}, skipping"
+            )
+            continue
+        now_local = now_utc.astimezone(tz)
+        yesterday_local = now_local.date() - timedelta(days=1)
+
+        # Filter: event_date was exactly yesterday in the project timezone
+        qualifying = [
+            req for req in project_requests if req.event_date == yesterday_local
+        ]
+
+        if not qualifying:
+            continue
+
+        project_name = getattr(project, "display_name", None) or getattr(
+            project, "name", "Our Restaurant"
+        )
+
+        for req in qualifying:
+            message = format_catering_apology_message(req, project_name)
+            try:
+                sms_success = await asyncio.to_thread(
+                    send_sms_notification, req.contact_phone_number, message
+                )
+                if sms_success:
+                    result.apologies_sent += 1
+                    logger.info(
+                        f"[catering-apology] Sent apology to {req.contact_name} "
+                        f"for request {req.id} in project {project_id}"
+                    )
+                else:
+                    error_msg = f"Apology SMS failed for request {req.id} in project {project_id}"
+                    result.errors.append(error_msg)
+                    logger.error(f"[catering-apology] {error_msg}")
+            except Exception as e:
+                error_msg = f"Error sending apology for request {req.id} in project {project_id}: {e}"
+                result.errors.append(error_msg)
+                logger.error(f"[catering-apology] {error_msg}")
 
     return result

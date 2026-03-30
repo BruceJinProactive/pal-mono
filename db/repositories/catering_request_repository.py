@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import List
 
 from sqlalchemy import select
@@ -124,6 +124,34 @@ class CateringRequestRepositoryAsync:
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(f"Error listing inquiry requests in date range: {e}")
+            raise
+
+    async def list_inquiry_requests_by_event_date_range(
+        self,
+        event_date_start: date,
+        event_date_end: date,
+    ) -> list[CateringRequest]:
+        """
+        List all INQUIRY catering requests whose event_date falls within a range.
+
+        Args:
+            event_date_start: Start of the event date range (inclusive).
+            event_date_end: End of the event date range (inclusive).
+
+        Returns:
+            list[CateringRequest]: Matching catering requests.
+        """
+        try:
+            query = select(CateringRequest).filter(
+                CateringRequest.status == RequestStatus.INQUIRY,
+                CateringRequest.event_date >= event_date_start,
+                CateringRequest.event_date <= event_date_end,
+            )
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error listing inquiry requests by event date range: {e}")
             raise
 
     async def update_catering_request(

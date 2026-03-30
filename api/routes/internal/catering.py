@@ -6,7 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import db
 from api.routes.catering._implementation import handle_catering_event
 from api.schemas.catering.catering import CateringReminderResponse, EventBridgeEvent
-from services.catering_service import send_catering_inquiry_reminders
+from services.catering_service import (
+    send_catering_inquiry_apologies,
+    send_catering_inquiry_reminders,
+)
 
 catering_router = APIRouter(prefix="/catering", tags=["internal-catering"])
 
@@ -41,10 +44,15 @@ async def process_inquiry_reminders(
     sending one reminder SMS per project to the catering manager for any
     INQUIRY requests whose event hasn't passed.
     """
-    result = await send_catering_inquiry_reminders(session)
+    reminder_result = await send_catering_inquiry_reminders(session)
+    apology_result = await send_catering_inquiry_apologies(session)
+
+    combined_errors = reminder_result.errors + apology_result.errors
     return CateringReminderResponse(
-        success=result.success,
-        projects_checked=result.projects_checked,
-        reminders_sent=result.reminders_sent,
-        errors=result.errors,
+        success=len(combined_errors) == 0,
+        projects_checked=reminder_result.projects_checked
+        + apology_result.projects_checked,
+        reminders_sent=reminder_result.reminders_sent,
+        apologies_sent=apology_result.apologies_sent,
+        errors=combined_errors,
     )
