@@ -31,7 +31,7 @@ def sample_create_request() -> CreateVoiceConfigRequest:
     """Sample voice config creation request."""
     return CreateVoiceConfigRequest(
         project_id=uuid.uuid4(),
-        language="en",
+        language="english",
         voice_id="test-voice",
         first_message="Hello",
         transfer_message="Transferring",
@@ -55,7 +55,7 @@ class TestCreateVoiceConfigDuplicateValidation:
         """Should raise 409 when creating voice config with duplicate language."""
         # Mock existing voice config with same language
         existing_config = MagicMock()
-        existing_config.language = "en"
+        existing_config.language = "english"
         existing_config.project_id = sample_create_request.project_id
 
         with patch(
@@ -72,7 +72,7 @@ class TestCreateVoiceConfigDuplicateValidation:
 
             assert exc_info.value.status_code == 409
             assert "already exists" in exc_info.value.detail.lower()
-            assert "en" in exc_info.value.detail
+            assert "english" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_create_with_different_language_succeeds(
@@ -84,12 +84,12 @@ class TestCreateVoiceConfigDuplicateValidation:
         """Should succeed when language is different."""
         # Existing config has different language
         existing_config = MagicMock()
-        existing_config.language = "es"
+        existing_config.language = "spanish"
         existing_config.project_id = sample_create_request.project_id
 
         mock_created_config = MagicMock()
         mock_created_config.id = uuid.uuid4()
-        mock_created_config.language = "en"
+        mock_created_config.language = "english"
         mock_created_config.created_at = MagicMock()
         mock_created_config.updated_at = None
 
@@ -116,7 +116,7 @@ class TestCreateVoiceConfigDuplicateValidation:
         """Should succeed when no existing voice configs for project."""
         mock_created_config = MagicMock()
         mock_created_config.id = uuid.uuid4()
-        mock_created_config.language = "en"
+        mock_created_config.language = "english"
 
         with patch(
             "services.voice_service._implementation.VoiceConfigRepositoryAsync"
@@ -145,15 +145,15 @@ class TestUpdateVoiceConfigDuplicateValidation:
 
         existing_config = MagicMock()
         existing_config.id = voice_config_id
-        existing_config.language = "en"
+        existing_config.language = "english"
         existing_config.project_id = project_id
 
         other_config = MagicMock()
         other_config.id = uuid.uuid4()
-        other_config.language = "es"
+        other_config.language = "spanish"
         other_config.project_id = project_id
 
-        update_request = UpdateVoiceConfigRequest(language="es")
+        update_request = UpdateVoiceConfigRequest(language="spanish")
 
         with patch(
             "services.voice_service._implementation.VoiceConfigRepositoryAsync"
@@ -184,10 +184,10 @@ class TestUpdateVoiceConfigDuplicateValidation:
 
         existing_config = MagicMock()
         existing_config.id = voice_config_id
-        existing_config.language = "en"
+        existing_config.language = "english"
         existing_config.project_id = project_id
 
-        update_request = UpdateVoiceConfigRequest(language="en")
+        update_request = UpdateVoiceConfigRequest(language="english")
 
         with patch(
             "services.voice_service._implementation.VoiceConfigRepositoryAsync"
@@ -211,7 +211,7 @@ class TestUpdateVoiceConfigDuplicateValidation:
 
         existing_config = MagicMock()
         existing_config.id = voice_config_id
-        existing_config.language = "en"
+        existing_config.language = "english"
 
         update_request = UpdateVoiceConfigRequest(first_message="New message")
 
@@ -234,7 +234,7 @@ class TestUpdateVoiceConfigDuplicateValidation:
     ) -> None:
         """Should raise 404 when updating non-existent config."""
         voice_config_id = uuid.uuid4()
-        update_request = UpdateVoiceConfigRequest(language="en")
+        update_request = UpdateVoiceConfigRequest(language="english")
 
         with patch(
             "services.voice_service._implementation.VoiceConfigRepositoryAsync"
@@ -249,3 +249,73 @@ class TestUpdateVoiceConfigDuplicateValidation:
                 )
 
             assert exc_info.value.status_code == 404
+
+
+class TestVoiceConfigLanguageValidation:
+    """Test Pydantic language validators on voice config schemas."""
+
+    @pytest.mark.parametrize("language", ["english", "spanish", "chinese"])
+    def test_create_request_accepts_valid_languages(self, language: str) -> None:
+        """Should accept allowed language values."""
+        request = CreateVoiceConfigRequest(
+            project_id=uuid.uuid4(),
+            language=language,
+            voice_id="test-voice",
+            first_message="Hello",
+            transfer_message="Transferring",
+        )
+        assert request.language == language
+
+    @pytest.mark.parametrize("language", ["English", "SPANISH", " Chinese "])
+    def test_create_request_normalizes_language(self, language: str) -> None:
+        """Should normalize language to lowercase and stripped."""
+        request = CreateVoiceConfigRequest(
+            project_id=uuid.uuid4(),
+            language=language,
+            voice_id="test-voice",
+            first_message="Hello",
+            transfer_message="Transferring",
+        )
+        assert request.language == language.lower().strip()
+
+    @pytest.mark.parametrize(
+        "language", ["french", "en", "es", "mandarin", "english+spanish", "triage"]
+    )
+    def test_create_request_rejects_invalid_languages(self, language: str) -> None:
+        """Should reject languages not in the allowed list."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError) as exc_info:
+            CreateVoiceConfigRequest(
+                project_id=uuid.uuid4(),
+                language=language,
+                voice_id="test-voice",
+                first_message="Hello",
+                transfer_message="Transferring",
+            )
+        assert "not supported" in str(exc_info.value).lower()
+
+    @pytest.mark.parametrize("language", ["english", "spanish", "chinese"])
+    def test_update_request_accepts_valid_languages(self, language: str) -> None:
+        """Should accept allowed language values on update."""
+        request = UpdateVoiceConfigRequest(language=language)
+        assert request.language == language
+
+    @pytest.mark.parametrize("language", ["french", "en", "english+spanish"])
+    def test_update_request_rejects_invalid_languages(self, language: str) -> None:
+        """Should reject invalid languages on update."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError) as exc_info:
+            UpdateVoiceConfigRequest(language=language)
+        assert "not supported" in str(exc_info.value).lower()
+
+    def test_update_request_allows_none_language(self) -> None:
+        """Should allow None language (no update to language field)."""
+        request = UpdateVoiceConfigRequest(language=None)
+        assert request.language is None
+
+    def test_update_request_allows_omitted_language(self) -> None:
+        """Should allow omitting language entirely."""
+        request = UpdateVoiceConfigRequest(first_message="Hello")
+        assert request.language is None

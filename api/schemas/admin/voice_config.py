@@ -1,9 +1,22 @@
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from db.tables.voice_configs import SpeechRate
+
+ALLOWED_LANGUAGES = {"english", "spanish", "chinese"}
+
+
+def _validate_language(value: str) -> str:
+    """Normalize and validate language against allowed values."""
+    normalized = value.lower().strip()
+    if normalized not in ALLOWED_LANGUAGES:
+        raise ValueError(
+            f"Language '{value}' is not supported. "
+            f"Allowed languages: {sorted(ALLOWED_LANGUAGES)}"
+        )
+    return normalized
 
 
 class VoiceConfig(BaseModel):
@@ -22,8 +35,15 @@ class VoiceConfig(BaseModel):
     cloned_voice_id: Optional[str] = None
     voice_model: str = "sonic-2"
     transcriber: Optional[dict] = None
+
     created_at: int  # timestamp in seconds and UTC tz
     updated_at: int  # timestamp in seconds and UTC tz
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, v: str) -> str:
+        """Normalize and validate language against allowed values."""
+        return _validate_language(v)
 
 
 class CreateVoiceConfigRequest(BaseModel):
@@ -42,6 +62,12 @@ class CreateVoiceConfigRequest(BaseModel):
     voice_model: Optional[str] = "sonic-2"
     transcriber: Optional[dict] = None
 
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, v: str) -> str:
+        """Normalize and validate language against allowed values."""
+        return _validate_language(v)
+
 
 class UpdateVoiceConfigRequest(BaseModel):
     """Update Voice Config Request"""
@@ -57,6 +83,14 @@ class UpdateVoiceConfigRequest(BaseModel):
     cloned: Optional[bool] = None
     voice_model: Optional[str] = None
     transcriber: Optional[dict] = None
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, v: str | None) -> str | None:
+        """Normalize and validate language against allowed values."""
+        if v is None:
+            return v
+        return _validate_language(v)
 
 
 class ListVoiceConfigsResponse(BaseModel):
