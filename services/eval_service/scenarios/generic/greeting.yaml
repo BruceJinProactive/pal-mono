@@ -1,0 +1,30 @@
+- scenario_id: gen-greeting-001
+  scenario: "Customer calls and the agent greets them, identifies the restaurant, and asks how to help"
+  test_category: greeting
+  persona: standard_customer
+  user_turns:
+    - "Hello?"
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+
+- scenario_id: gen-greeting-002
+  scenario: "Customer greets the agent warmly and the agent responds in kind before offering assistance"
+  test_category: greeting
+  persona: standard_customer
+  user_turns:
+    - "Hi there, how are you doing today?"
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+
+- scenario_id: gen-greeting-003
+  scenario: "Customer is silent at the start and the agent prompts them to speak"
+  test_category: greeting
+  persona: standard_customer
+  user_turns:
+    - type: ai_driven
+      goal: "Stay silent for a moment then say hello after the agent prompts"
+  expected_outcomes:
+    task_completed: true
+    hallucination: false

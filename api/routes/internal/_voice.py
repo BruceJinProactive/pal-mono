@@ -25,6 +25,7 @@ from api.schemas.internal.voice_init import (
     VoiceInitRequest,
     VoiceInitResponse,
 )
+from db.repositories.agent_repository import AgentRepositoryAsync
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.types import Channel, SpeechRate
 from events import (
@@ -33,6 +34,7 @@ from events import (
     publish_event,
 )
 from services import project_service, user_service
+from services.agent_service._raw_config import RawConfig
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
@@ -268,6 +270,7 @@ async def init_voice_call(
     # Capture project attributes into locals so later DB queries can't expire them.
     project_timezone = project.timezone
     project_id = project.id
+    project_agent_id = project.agent_id
 
     caller_info = {
         "sender_identifier": caller_number,
@@ -344,15 +347,63 @@ async def init_voice_call(
     # --- Step 8: Map speech rate to float ---
     speech_rate = _SPEECH_RATE_TO_FLOAT.get(vc.speech_rate, 1.0)
 
+    # Capture ORM attributes into locals before any commit expires them (MissingGreenlet guard)
+    voice_id = vc.voice_id
+    background_sound = vc.background_sound or None
+
+    # --- Step 9: Compute and persist agent fingerprints ---
+    try:
+        agent_repo = AgentRepositoryAsync(session)
+        db_agent = await agent_repo.get_agent(agent_id=project_agent_id)
+
+        if db_agent and db_agent.account:
+            raw_config = RawConfig(
+                agent=db_agent,
+                project=project,
+                account=db_agent.account,
+                user_id=user.id,
+                conversation_id=uuid.uuid4(),  # placeholder — fingerprint is config-only, not session-specific
+                channel=Channel.VOICE,
+            )
+            _, agent_fp, prompt_fp, _ = await raw_config.build_with_fingerprint(session)
+
+            # Retrieve the just-created conversation and stamp it
+            conversation_repo = db.ConversationRepositoryAsync(session)
+            conversation = await conversation_repo.get_conversation_by_call_id(call_id)
+            if conversation:
+                conversation.agent_fingerprint = agent_fp
+                conversation.prompt_fingerprint = prompt_fp
+                await session.commit()
+                logger.info(
+                    "[init_voice_call] Fingerprints stored",
+                    extra={**_log_extra, "agent_fingerprint": agent_fp[:8]},
+                )
+            else:
+                logger.warning(
+                    "[init_voice_call] Conversation not found for fingerprinting",
+                    extra=_log_extra,
+                )
+        else:
+            logger.warning(
+                "[init_voice_call] Agent not found or missing account — skipping fingerprint",
+                extra=_log_extra,
+            )
+    except Exception:
+        # Fingerprinting is non-critical — log and continue; call must not fail
+        logger.exception(
+            "[init_voice_call] Failed to compute/persist fingerprints",
+            extra=_log_extra,
+        )
+
     logger.info("[init_voice_call] Completed successfully", extra=_log_extra)
 
     return VoiceInitResponse(
         caller_info=caller_info,
-        voice_id=vc.voice_id,
+        voice_id=voice_id,
         speech_rate=speech_rate,
         first_message=first_message,
         languages=languages,
-        background_sound=vc.background_sound or None,
+        background_sound=background_sound,
     )
 
 
@@ -427,6 +478,8 @@ async def end_voice_call(
     channel_for_event = conversation.channel.value if conversation.channel else "voice"
     is_test_for_event = conversation.is_test or False
     customer_converted_for_event = conversation.customer_converted
+    agent_fingerprint_for_event = conversation.agent_fingerprint
+    prompt_fingerprint_for_event = conversation.prompt_fingerprint
 
     # --- Step 2: Extract call analytics using LLM with retry ---
     analytics = None
@@ -748,6 +801,8 @@ async def end_voice_call(
             is_test=is_test_for_event,
             customer_converted=customer_converted_for_event,
             audio_recording=audio_recording,
+            agent_fingerprint=agent_fingerprint_for_event,
+            prompt_fingerprint=prompt_fingerprint_for_event,
         )
     )
     _background_tasks.add(task)
@@ -963,6 +1018,8 @@ async def _publish_livekit_evaluation_event(
     is_test: bool,
     customer_converted,
     audio_recording: AudioRecordingReference | None,
+    agent_fingerprint: str | None = None,
+    prompt_fingerprint: str | None = None,
 ) -> None:
     """Publish ConversationEvaluationRequested for a LiveKit call. Fire-and-forget.
 
@@ -1030,6 +1087,8 @@ async def _publish_livekit_evaluation_event(
             tool_calls=[],  # LiveKit tool call extraction not yet available here
             turn_latencies_ms=[],  # Not available from LiveKit agent HTTP report
             audio_recording=audio_recording,
+            agent_fingerprint=agent_fingerprint,
+            prompt_fingerprint=prompt_fingerprint,
         )
 
         published = await publish_event(event)
