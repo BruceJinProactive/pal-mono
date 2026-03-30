@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-30
+- Update priority field comments on `agent_capabilities` and `capability_actions` tables to clarify recency-based prompt positioning (comment-only, no schema change)
+
 ### 2026-03-28
 - Add `eval_runs`, `eval_results`, `agent_config_snapshots` DB tables for eval platform ([record](records/2026-03-28-eval-platform-schema.md))
 - Add `agent_fingerprint` and `prompt_fingerprint` columns to `conversations` table for agent version tracking ([record](records/2026-03-28-eval-platform-schema.md))

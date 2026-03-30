@@ -58,7 +58,7 @@ class CapabilityAction(Base):
         index=True,
     )
 
-    # Priority for ordering actions (lower number = higher priority)
+    # Position in prompt (higher number = later = stronger via recency)
     priority: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
