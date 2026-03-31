@@ -8,6 +8,7 @@ Operating rules and guardrails for AI agents. Obey hard rules unconditionally. F
 
 ### MUST
 
+- **Use the `agentic-dev` skill** (via the Skill tool) for ALL PAL-* dev workflow tasks: planning, scoping into Notion tasks, executing task plans, shipping PRs, reviewing diffs, fixing CI, addressing CodeRabbit/reviewer feedback, resolving merge conflicts, cleaning up worktrees/branches, and updating changelogs
 - **Type hints** on ALL functions — no exceptions, enforced by pyright
 - **`Depends()`** for dependency injection — except DB sessions inside `StreamingResponse` generators (see ADR-019)
 - **Run `./scripts/validate.sh`** before declaring any task complete (see Validation Gate below)
