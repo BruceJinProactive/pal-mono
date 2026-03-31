@@ -35,6 +35,7 @@ from events import (
 )
 from services import project_service, user_service
 from services.agent_service._raw_config import RawConfig
+from services.eval_service._snapshot import upsert_agent_config_snapshot
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
@@ -347,7 +348,9 @@ async def init_voice_call(
                 conversation_id=uuid.uuid4(),  # placeholder — fingerprint is config-only, not session-specific
                 channel=Channel.VOICE,
             )
-            _, agent_fp, prompt_fp, _ = await raw_config.build_with_fingerprint(session)
+            config, agent_fp, prompt_fp, config_dict = (
+                await raw_config.build_with_fingerprint(session)
+            )
 
             # Retrieve the just-created conversation and stamp it
             conversation_repo = db.ConversationRepositoryAsync(session)
@@ -365,6 +368,20 @@ async def init_voice_call(
                     "[init_voice_call] Conversation not found for fingerprinting",
                     extra=_log_extra,
                 )
+            # Fire background task to upsert agent config snapshot
+            system_prompt_text = (config.persona.description if config else "") or ""
+            bg_snapshot = asyncio.create_task(
+                upsert_agent_config_snapshot(
+                    fingerprint=agent_fp,
+                    agent_id=db_agent.id,
+                    project_id=project_id,
+                    config_dict=config_dict if isinstance(config_dict, dict) else {},
+                    prompt_hash=prompt_fp,
+                    prompt_text=system_prompt_text,
+                )
+            )
+            _background_tasks.add(bg_snapshot)
+            bg_snapshot.add_done_callback(_background_tasks.discard)
         else:
             logger.warning(
                 "[init_voice_call] Agent not found or missing account — skipping fingerprint",

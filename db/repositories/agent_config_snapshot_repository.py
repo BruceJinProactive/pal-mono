@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import literal_column, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,21 +61,18 @@ class AgentConfigSnapshotRepositoryAsync:
                 )
                 .returning(
                     AgentConfigSnapshot,
-                    # xmax == 0 means the row was freshly inserted (no prior version)
-                    AgentConfigSnapshot.__table__.c.fingerprint,
+                    literal_column("xmax::text::integer").label("xmax"),
                 )
             )
 
             result = await self.session.execute(stmt)
-            row = result.scalar_one()
+            row, xmax = result.one()
 
             await self.session.flush()
             await self.session.refresh(row)
 
-            # Detect insert vs update: on insert first_seen_at == last_seen_at
-            # (both set by server default now()); on conflict the explicit
-            # func.now() in set_ updates last_seen_at so they diverge.
-            created = row.first_seen_at == row.last_seen_at
+            # xmax == 0 means the row was freshly inserted (no prior version)
+            created = xmax == 0
             return row, created
         except SQLAlchemyError as e:
             await self.session.rollback()

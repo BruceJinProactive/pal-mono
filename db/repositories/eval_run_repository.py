@@ -52,9 +52,6 @@ class EvalRunRepositoryAsync:
 
         Returns:
             EvalRun if found, None otherwise.
-
-        Raises:
-            SQLAlchemyError: If there is a database error.
         """
         try:
             query = select(EvalRun).filter(EvalRun.id == run_id)
@@ -63,7 +60,7 @@ class EvalRunRepositoryAsync:
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(f"Error getting eval run by id: {e}")
-            raise
+            return None
 
     async def get_by_project(
         self,
@@ -103,7 +100,7 @@ class EvalRunRepositoryAsync:
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(f"Error getting eval runs by project: {e}")
-            raise
+            return []
 
     async def update_status(
         self,

@@ -308,6 +308,8 @@ Eval runs in-process as a FastAPI background task. No separate worker, no Lambda
 **Files to modify**:
 - `api/routes/endpoints.py` — add `EVAL = "/eval"`
 - `api/routes/v1_router.py` — `v1_router.include_router(eval_router)`
+- `api/schemas/admin/conversation.py` — add `agent_fingerprint: str | None = None` and `prompt_fingerprint: str | None = None` to both `Conversation` and `ConversationDetail` schemas (fingerprints are stored on every voice call via P1-B1 but never surfaced through admin conversation routes without this)
+- `api/routes/admin/_builder.py` — update `build_conversation(...)` and `build_conversation_detail(...)` to map `agent_fingerprint` and `prompt_fingerprint` from `db.Conversation` into response schemas
 
 **Routes**:
 ```

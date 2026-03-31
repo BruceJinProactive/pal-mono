@@ -108,14 +108,14 @@ class TestGetById:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_sqlalchemy_error_rolls_back_and_raises(
+    async def test_sqlalchemy_error_rolls_back_and_returns_none(
         self, repo: EvalRunRepositoryAsync, mock_session: AsyncMock
     ) -> None:
         mock_session.execute.side_effect = SQLAlchemyError("db error")
 
-        with pytest.raises(SQLAlchemyError):
-            await repo.get_by_id(uuid.uuid4())
+        result = await repo.get_by_id(uuid.uuid4())
 
+        assert result is None
         mock_session.rollback.assert_awaited_once()
 
 
@@ -188,14 +188,14 @@ class TestGetByProject:
         assert "desc" in compiled.lower()
 
     @pytest.mark.asyncio
-    async def test_sqlalchemy_error_rolls_back_and_raises(
+    async def test_sqlalchemy_error_rolls_back_and_returns_empty(
         self, repo: EvalRunRepositoryAsync, mock_session: AsyncMock
     ) -> None:
         mock_session.execute.side_effect = SQLAlchemyError("db error")
 
-        with pytest.raises(SQLAlchemyError):
-            await repo.get_by_project(uuid.uuid4())
+        result = await repo.get_by_project(uuid.uuid4())
 
+        assert result == []
         mock_session.rollback.assert_awaited_once()
 
 

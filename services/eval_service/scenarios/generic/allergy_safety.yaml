@@ -42,8 +42,7 @@
   persona: standard_customer
   user_turns:
     - "I'm allergic to shellfish. I want to make sure nothing I order has shrimp or crab."
-    - type: ai_driven
-      goal: "Follow up if the agent does not address the allergy concern directly"
+    - "I still need a direct answer about shellfish allergy safety. Can you verify with staff?"
   expected_outcomes:
     task_completed: true
     hallucination: false

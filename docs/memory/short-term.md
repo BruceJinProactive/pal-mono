@@ -10,6 +10,8 @@ Last updated: 2026-03-27
 
 - **LiveKit migration** (started 2025-02) — Migrating voice AI from Vapi to LiveKit. LiveKit is now the active voice system (dependencies, tools, SIP integration, VoiceProvider enum all in place). Vapi routes removed. Remaining: `services/voice_service/providers/livekit/` not yet created, some later migration phases TBD. → `docs/plans/livekit-migration/`
 
+- **Eval platform Wave 3** (started 2026-03-28) — Eval service runner, evaluators, config snapshot. Wave 3 shipped as PR #3840. Now integrating pal-agents DeepEval metrics (v0.2.210) to replace custom LLM judges. → `docs/plans/eval-platform-proposal.md`
+
 ## Recently Landed
 
 - 2026-03-27: Voice config language refactoring complete (3-PR series) — PR1: Pydantic validators. PR2: SQLAlchemy CHECK constraints. PR3: Alembic migration for data cleanup + removed legacy handling. All voice configs now lowercase, no more combined languages or triage.

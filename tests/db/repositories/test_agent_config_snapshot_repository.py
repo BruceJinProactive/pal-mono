@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
@@ -54,11 +54,12 @@ class TestGetOrCreate:
         snap = _make_snapshot(fingerprint="fp_new", first_seen_at=now, last_seen_at=now)
 
         mock_execute_result = MagicMock()
-        mock_execute_result.scalar_one.return_value = snap
+        # get_or_create uses result.one() which returns (row, xmax)
+        # xmax == 0 means freshly inserted
+        mock_execute_result.one.return_value = (snap, 0)
         mock_session.execute.return_value = mock_execute_result
 
-        with patch.object(repo, "get_by_fingerprint", return_value=snap):
-            result, created = await repo.get_or_create(snap)
+        result, created = await repo.get_or_create(snap)
 
         assert result is snap
         assert created is True
@@ -78,11 +79,11 @@ class TestGetOrCreate:
         )
 
         mock_execute_result = MagicMock()
-        mock_execute_result.scalar_one.return_value = snap
+        # xmax != 0 means row already existed (conflict update)
+        mock_execute_result.one.return_value = (snap, 1)
         mock_session.execute.return_value = mock_execute_result
 
-        with patch.object(repo, "get_by_fingerprint", return_value=snap):
-            result, created = await repo.get_or_create(snap)
+        result, created = await repo.get_or_create(snap)
 
         assert result is snap
         assert created is False
