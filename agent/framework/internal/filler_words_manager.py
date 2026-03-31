@@ -773,7 +773,7 @@ class FillerWordsManager:
             },
         )
 
-        return selected_filler + " <flush />"
+        return selected_filler + "\n"
 
     def is_language_supported(self, language: str) -> bool:
         """Check if a language is supported for filler words"""
