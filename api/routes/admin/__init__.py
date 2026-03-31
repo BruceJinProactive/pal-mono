@@ -578,22 +578,6 @@ async def accept_account_terms(
     return await _account.accept_account_terms(account_name, request, context, session)
 
 
-@admin_router.delete("/tos-acceptances/cleanup")
-def cleanup_invalid_tos_acceptances(
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> dict:
-    """
-    Admin-only: Clean up invalid TOS acceptances by internal team members.
-
-    Deletes TOS acceptances made by @proactiveailab.com and @palona.ai emails
-    that were created due to a bug in the blocking logic.
-
-    Requires admin role.
-    """
-    return _account.cleanup_invalid_tos_acceptances(context, session)
-
-
 """
 ---------- Integrations Endpoints ----------
 --------------------------------------------

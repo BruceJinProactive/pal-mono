@@ -7,11 +7,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import exc as sqlalchemy_exc
 
-from api.routes.admin._account import (
-    accept_account_terms,
-    cleanup_invalid_tos_acceptances,
-    get_account_terms_status,
-)
+from api.routes.admin._account import accept_account_terms, get_account_terms_status
 from api.schemas.admin.account import AcceptTermsRequest
 from db.tables.accounts import Account
 
@@ -729,103 +725,3 @@ class TestGetAccountTermsStatus:
 
             assert exc_info.value.status_code == 404
             assert "not found" in exc_info.value.detail
-
-
-class TestCleanupInvalidTosAcceptances:
-    """Tests for cleanup_invalid_tos_acceptances function."""
-
-    @pytest.fixture
-    def mock_context(self):
-        """Create a mock user context."""
-        context = MagicMock()
-        context.is_admin = True
-        return context
-
-    def test_cleanup_success(self, mock_context):
-        """Should successfully delete invalid TOS acceptances."""
-        mock_session = MagicMock()
-
-        with (
-            patch("api.routes.admin._account.authorize_admin") as mock_authorize,
-            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
-        ):
-            # Setup mocks
-            mock_authorize.return_value = None
-            tos_repo_instance = mock_tos_repo.return_value
-            tos_repo_instance.delete_by_email_domains.return_value = 5
-
-            # Execute
-            result = cleanup_invalid_tos_acceptances(mock_context, mock_session)
-
-            # Assert
-            mock_authorize.assert_called_once_with(mock_context)
-            tos_repo_instance.delete_by_email_domains.assert_called_once_with(
-                ["@proactiveailab.com", "@palona.ai"]
-            )
-            mock_session.commit.assert_called_once()
-            assert result["deleted_count"] == 5
-            assert result["email_domains"] == ["@proactiveailab.com", "@palona.ai"]
-
-    def test_cleanup_no_records_deleted(self, mock_context):
-        """Should return 0 when no invalid TOS acceptances exist."""
-        mock_session = MagicMock()
-
-        with (
-            patch("api.routes.admin._account.authorize_admin") as mock_authorize,
-            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
-        ):
-            # Setup mocks
-            mock_authorize.return_value = None
-            tos_repo_instance = mock_tos_repo.return_value
-            tos_repo_instance.delete_by_email_domains.return_value = 0
-
-            # Execute
-            result = cleanup_invalid_tos_acceptances(mock_context, mock_session)
-
-            # Assert
-            assert result["deleted_count"] == 0
-            assert result["email_domains"] == ["@proactiveailab.com", "@palona.ai"]
-            mock_session.commit.assert_called_once()
-
-    def test_cleanup_requires_admin(self, mock_context):
-        """Should raise 403 when non-admin tries to cleanup."""
-        mock_session = MagicMock()
-
-        with patch("api.routes.admin._account.authorize_admin") as mock_authorize:
-            # Setup mock to raise HTTPException
-            mock_authorize.side_effect = HTTPException(
-                status_code=403, detail="Admin access required"
-            )
-
-            # Execute and assert
-            with pytest.raises(HTTPException) as exc_info:
-                cleanup_invalid_tos_acceptances(mock_context, mock_session)
-
-            assert exc_info.value.status_code == 403
-            assert "Admin access required" in exc_info.value.detail
-            mock_session.commit.assert_not_called()
-
-    def test_cleanup_database_error(self, mock_context):
-        """Should rollback on database error."""
-        mock_session = MagicMock()
-
-        with (
-            patch("api.routes.admin._account.authorize_admin") as mock_authorize,
-            patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
-        ):
-            # Setup mocks
-            mock_authorize.return_value = None
-            tos_repo_instance = mock_tos_repo.return_value
-            tos_repo_instance.delete_by_email_domains.side_effect = Exception(
-                "Database error"
-            )
-
-            # Execute and assert
-            with pytest.raises(HTTPException) as exc_info:
-                cleanup_invalid_tos_acceptances(mock_context, mock_session)
-
-            assert exc_info.value.status_code == 500
-            assert "Failed to cleanup TOS acceptances" in exc_info.value.detail
-            assert "Database error" in exc_info.value.detail
-            mock_session.commit.assert_not_called()
-            mock_session.rollback.assert_called_once()

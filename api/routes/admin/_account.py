@@ -33,7 +33,6 @@ from services.auth_service.authorization import get_user_role_on_account
 from utils.dd import statsd
 from utils.log import logger
 
-from ._auth import authorize_admin
 from ._builder import build_account, build_account_summary, build_agent_summary
 from ._utils import UserContext, not_found_error
 
@@ -660,50 +659,3 @@ async def update_notification_preferences(
         notification_preferences=notification_prefs,
         notification_email=updated_account.notification_email,
     )
-
-
-def cleanup_invalid_tos_acceptances(
-    context: "UserContext", session: Session
-) -> dict[str, int | list[str]]:
-    """
-    Delete TOS acceptances made by internal team members.
-
-    This cleanup endpoint removes invalid TOS acceptances that were
-    created due to a bug in the blocking logic that allowed internal
-    team members to accept terms on behalf of customer accounts.
-
-    Args:
-        context: User context (must be admin)
-        session: Database session
-
-    Returns:
-        Dict with count of deleted records and email domains
-
-    Raises:
-        HTTPException: If user is not an admin or deletion fails
-    """
-    authorize_admin(context)
-
-    # Internal team email domains to clean up
-    internal_domains = ["@proactiveailab.com", "@palona.ai"]
-
-    try:
-        tos_repo = TosAcceptanceRepository(session)
-        deleted_count = tos_repo.delete_by_email_domains(internal_domains)
-
-        session.commit()
-
-        logger.info(
-            f"Cleaned up {deleted_count} invalid TOS acceptances by admin {context.email}"
-        )
-
-        return {"deleted_count": deleted_count, "email_domains": internal_domains}
-
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Failed to cleanup invalid TOS acceptances: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to cleanup TOS acceptances: {str(e)}",
-            headers={"Content-Type": "application/json"},
-        ) from e
