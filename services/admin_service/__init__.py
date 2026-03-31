@@ -13,7 +13,6 @@ from services.auth_types import UserContext
 from ..agent_service import AgentParams
 from ..knowledge_service import KnowledgeFile
 from . import _implementation, agent_prompt_generation, menu_builder
-from ._backfill_owners import backfill_accounts_without_owners
 from .schema import (
     CognitoUser,
     CreatedProjectInfo,
@@ -904,5 +903,4 @@ __all__ = [
     "build_menu_from_url",
     "build_menu_from_upload",
     "scrape_brand_from_url",
-    "backfill_accounts_without_owners",
 ]

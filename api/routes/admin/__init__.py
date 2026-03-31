@@ -479,27 +479,6 @@ async def update_notification_preferences(
     )
 
 
-@admin_router.post("/accounts/backfill-owners")
-async def backfill_accounts_without_owners(
-    dry_run: bool = Query(
-        False,
-        description="If true, only return what would be changed without making changes",
-    ),
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-) -> dict:
-    """
-    Backfill accounts that have no owners with environment-specific default owners.
-
-    For LAT: jacob+palona.lat@proactiveailab.com and kelvin+lat@proactiveailab.com
-    For PRD: jacob+palona@proactiveailab.com and kelvin@proactiveailab.com
-
-    Returns:
-        Dict containing accounts that were/would be updated and owners added
-    """
-    return await _account.backfill_accounts_without_owners(context, session, dry_run)
-
-
 @admin_router.get("/accounts/{account_name}/agents")
 async def list_account_agents(
     account_name: str,
