@@ -53,6 +53,7 @@ class VoiceConfig(Base):
         server_default=text("'{}'::jsonb"),
         default=dict,
     )
+    pronunciation_dict_id: Mapped[str | None] = mapped_column(String, nullable=True)
     cloned_voice_id: Mapped[str | None] = mapped_column(String, nullable=True)
     voice_model: Mapped[str] = mapped_column(
         String,
