@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from db.tables import AgentCapability, CapabilityAction
-from db.tables.change_log import ChangeResourceType
+from db.tables.change_log import ChangeField, ChangeResourceType
 from services.history_service._implementation import create_change_log
 from services.prompt_service.prompts_v2 import PromptFactoryV2
 from utils.log import logger
@@ -326,6 +326,7 @@ async def create_capability_action(
     response = ActionResponse.model_validate(action)
 
     # Create change log entry
+    section = capability.capability_identifier
     await session.run_sync(
         lambda sync_session: create_change_log(
             session=sync_session,
@@ -335,6 +336,9 @@ async def create_capability_action(
             author=author,
             old_record=None,
             new_record=action,
+            extra_fields=[
+                ChangeField(field="section", old_value=None, new_value=section)
+            ],
         )
     )
 
@@ -393,6 +397,12 @@ async def update_capability_action(
     if not old_action:
         return None
 
+    # Detach old_action from the session's identity map before calling action_repo.update().
+    # action_repo.update() calls get_by_id() internally — without expunge, SQLAlchemy's
+    # identity map returns the same Python object, so the setattr calls in update() would
+    # mutate old_action's attributes in place before the diff is computed.
+    session.expunge(old_action)
+
     # Build update dict
     update_data = {}
     if data.prompt is not None:
@@ -426,6 +436,7 @@ async def update_capability_action(
     response = ActionResponse.model_validate(action)
 
     # Create change log entry
+    section = capability.capability_identifier
     await session.run_sync(
         lambda sync_session: create_change_log(
             session=sync_session,
@@ -435,6 +446,9 @@ async def update_capability_action(
             author=author,
             old_record=old_action,
             new_record=action,
+            extra_fields=[
+                ChangeField(field="section", old_value=section, new_value=section)
+            ],
         )
     )
 
@@ -528,6 +542,7 @@ async def delete_capability_action(
         return False
 
     # Create change log entry
+    section = capability.capability_identifier
     await session.run_sync(
         lambda sync_session: create_change_log(
             session=sync_session,
@@ -537,6 +552,9 @@ async def delete_capability_action(
             author=author,
             old_record=old_action,
             new_record=None,
+            extra_fields=[
+                ChangeField(field="section", old_value=section, new_value=None)
+            ],
         )
     )
 
