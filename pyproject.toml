@@ -51,8 +51,8 @@ dependencies = [
   "nltk>=3.9.3", # Security floor for transitive NLP utilities
   "notion-client==2.2.1",
   "openai[realtime]==2.20.0", # Official OpenAI API client for GPT models with realtime WebSocket support
-  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.218", # Pal-agents AI agent framework (production)
-  "pal-agents[eval] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.218", # Pal-agents eval metrics extra (deepeval)
+  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.219", # Pal-agents AI agent framework (production)
+  "pal-agents[eval] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.219", # Pal-agents eval metrics extra (deepeval)
   "pgvector==0.3.2", # PostgreSQL extension for vector similarity search
   "pinecone==7.3.0", # Managed vector database for AI applications
   "polyline==2.0.2", # Google polyline encoding/decoding for GPS coordinates
