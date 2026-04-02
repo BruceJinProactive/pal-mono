@@ -4,6 +4,11 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-04
+
+### 2026-04-02
+- Add optional `pronunciation_dict_id` column to `voice_configs` table for per-project Cartesia pronunciation dictionaries
+
 ## 2026-03
 
 ### 2026-03-30
