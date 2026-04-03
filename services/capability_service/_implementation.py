@@ -31,15 +31,15 @@ from .schema import (
 )
 
 
-def _snapshot_columns(record: CapabilityAction) -> SimpleNamespace:
-    """Snapshot all column values from a CapabilityAction into a SimpleNamespace.
+def _snapshot_columns(record) -> SimpleNamespace:
+    """Snapshot all column values from an ORM record into a SimpleNamespace.
 
     This avoids DetachedInstanceError when comparing old vs new records
     across session boundaries (e.g. after expunge or inside run_sync).
     SimpleNamespace supports getattr, so _inspect_field_changes works unchanged.
     """
     return SimpleNamespace(
-        **{c.key: getattr(record, c.key) for c in CapabilityAction.__table__.columns}
+        **{c.key: getattr(record, c.key) for c in type(record).__table__.columns}
     )
 
 
@@ -321,6 +321,10 @@ async def create_capability_action(
             f"with channel {data.channel.upper()}"
         )
 
+    # Capture values from ORM objects BEFORE the repo commit expires them
+    section = capability.capability_identifier
+    account_id = agent.account_id
+
     # Create the action
     new_action = CapabilityAction(
         agent_capability_id=data.agent_capability_id,
@@ -336,20 +340,21 @@ async def create_capability_action(
     if not action:
         raise ValueError("Failed to create capability action")
 
-    # Build response before run_sync expires the ORM object's attributes
+    # Snapshot values before run_sync; repo.create() committed so ORM objects are expired
+    new_snapshot = _snapshot_columns(action)
     response = ActionResponse.model_validate(action)
 
     # Create change log entry
-    section = capability.capability_identifier
     await session.run_sync(
         lambda sync_session: create_change_log(
             session=sync_session,
-            account_id=agent.account_id,
+            account_id=account_id,
             resource_type=ChangeResourceType.CapabilityAction,
-            resource_id=str(action.id),
+            resource_id=str(new_snapshot.id),
             author=author,
             old_record=None,
-            new_record=action,
+            new_record=new_snapshot,
+            model_class=CapabilityAction,
             extra_fields=[
                 ChangeField(field="section", old_value=None, new_value=section)
             ],
@@ -439,25 +444,30 @@ async def update_capability_action(
     if not agent:
         return None
 
+    # Capture values from ORM objects BEFORE the repo commit expires them
+    section = capability.capability_identifier
+    account_id = agent.account_id
+
     # Update the action
     action = await action_repo.update(action_id, **update_data)
     if not action:
         return None
 
-    # Build response before run_sync expires the ORM object's attributes
+    # Snapshot values before run_sync; repo.update() committed so ORM objects are expired
+    new_snapshot = _snapshot_columns(action)
     response = ActionResponse.model_validate(action)
 
     # Create change log entry
-    section = capability.capability_identifier
     await session.run_sync(
         lambda sync_session: create_change_log(
             session=sync_session,
-            account_id=agent.account_id,
+            account_id=account_id,
             resource_type=ChangeResourceType.CapabilityAction,
             resource_id=str(action_id),
             author=author,
             old_record=old_snapshot,
-            new_record=action,
+            new_record=new_snapshot,
+            model_class=CapabilityAction,
             extra_fields=[
                 ChangeField(field="section", old_value=section, new_value=section)
             ],
@@ -548,22 +558,28 @@ async def delete_capability_action(
     if not agent:
         return False
 
+    # Snapshot ALL ORM values BEFORE the repo commit expires them.
+    # repo.delete() commits, which expires every object in the session.
+    old_snapshot = _snapshot_columns(old_action)
+    section = capability.capability_identifier
+    account_id = agent.account_id
+
     # Delete the action
     deleted = await action_repo.delete(action_id)
     if not deleted:
         return False
 
     # Create change log entry
-    section = capability.capability_identifier
     await session.run_sync(
         lambda sync_session: create_change_log(
             session=sync_session,
-            account_id=agent.account_id,
+            account_id=account_id,
             resource_type=ChangeResourceType.CapabilityAction,
             resource_id=str(action_id),
             author=author,
-            old_record=old_action,
+            old_record=old_snapshot,
             new_record=None,
+            model_class=CapabilityAction,
             extra_fields=[
                 ChangeField(field="section", old_value=section, new_value=None)
             ],

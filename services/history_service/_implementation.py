@@ -52,10 +52,11 @@ def create_change_log(
     old_record: object | None,
     new_record: object | None,
     extra_fields: list[ChangeField] | None = None,
+    model_class: type | None = None,
 ):
     change_log_repo = ChangeLogRepository(session)
     field_changes = _inspect_field_changes(
-        account_id, resource_type, resource_id, old_record, new_record
+        account_id, resource_type, resource_id, old_record, new_record, model_class
     )
     if extra_fields:
         field_changes.extend(extra_fields)
@@ -83,9 +84,12 @@ def _inspect_field_changes(
     resource_id: str,
     old_record,
     new_record,
+    model_class: type | None = None,
 ):
     mapper = None
-    if new_record:
+    if model_class:
+        mapper = inspect(model_class)
+    elif new_record:
         mapper = inspect(type(new_record))
     elif old_record:
         mapper = inspect(type(old_record))

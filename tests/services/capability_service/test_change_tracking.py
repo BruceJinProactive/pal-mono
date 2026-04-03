@@ -2,6 +2,7 @@
 Tests for capability action change tracking
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -97,7 +98,7 @@ def test_create_change_log_with_extra_fields():
 async def test_create_capability_action_creates_change_log(
     mocker, mock_async_session, mock_capability, mock_agent, mock_action
 ):
-    """Test that create_capability_action creates a change log entry"""
+    """Test that create_capability_action creates a change log entry with snapshots"""
     # Setup mocks
     mock_cap_repo = mocker.Mock()
     mock_cap_repo.get_by_id = mocker.AsyncMock(return_value=mock_capability)
@@ -116,6 +117,20 @@ async def test_create_capability_action_creates_change_log(
         db, "CapabilityActionRepositoryAsync", return_value=mock_action_repo
     )
 
+    # Patch _snapshot_columns since CapabilityAction.__table__ doesn't work on MagicMock
+    new_snap = SimpleNamespace(
+        id=mock_action.id,
+        action="test_action",
+        prompt="test prompt",
+        channel="VOICE",
+        priority=1,
+        enabled=True,
+    )
+    mocker.patch(
+        "services.capability_service._implementation._snapshot_columns",
+        return_value=new_snap,
+    )
+
     # Create action
     data = ActionCreate(
         agent_capability_id=mock_capability.id,
@@ -129,7 +144,7 @@ async def test_create_capability_action_creates_change_log(
 
     result = await create_capability_action(mock_async_session, data, author)
 
-    # Verify change log was created
+    # Verify change log was created via run_sync with snapshot, not ORM object
     assert mock_async_session.run_sync.called
     assert result.action == "test_action"
 
@@ -185,7 +200,7 @@ async def test_update_capability_action_creates_change_log(
 async def test_delete_capability_action_creates_change_log(
     mocker, mock_async_session, mock_capability, mock_agent, mock_action
 ):
-    """Test that delete_capability_action creates a change log entry"""
+    """Test that delete_capability_action creates a change log entry with snapshots"""
     # Setup mocks
     mock_action_repo = mocker.Mock()
     mock_action_repo.get_by_id = mocker.AsyncMock(return_value=mock_action)
@@ -204,12 +219,26 @@ async def test_delete_capability_action_creates_change_log(
     mock_agent_repo.get_agent = mocker.AsyncMock(return_value=mock_agent)
     mocker.patch.object(db, "AgentRepositoryAsync", return_value=mock_agent_repo)
 
+    # Patch _snapshot_columns since CapabilityAction.__table__ doesn't work on MagicMock
+    old_snap = SimpleNamespace(
+        id=mock_action.id,
+        action="test_action",
+        prompt="test prompt",
+        channel="VOICE",
+        priority=1,
+        enabled=True,
+    )
+    mocker.patch(
+        "services.capability_service._implementation._snapshot_columns",
+        return_value=old_snap,
+    )
+
     # Delete action
     author = "test@example.com"
 
     result = await delete_capability_action(mock_async_session, mock_action.id, author)
 
-    # Verify change log was created
+    # Verify change log was created via run_sync with snapshot, not ORM object
     assert mock_async_session.run_sync.called
     assert result is True
 
@@ -502,9 +531,76 @@ async def test_delete_capability_action_delete_fails(
     mock_agent_repo.get_agent = mocker.AsyncMock(return_value=mock_agent)
     mocker.patch.object(db, "AgentRepositoryAsync", return_value=mock_agent_repo)
 
+    # Patch _snapshot_columns since CapabilityAction.__table__ doesn't work on MagicMock
+    mocker.patch(
+        "services.capability_service._implementation._snapshot_columns",
+        return_value=SimpleNamespace(),
+    )
+
     # Delete action
     author = "test@example.com"
 
     result = await delete_capability_action(mock_async_session, mock_action.id, author)
 
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_run_sync_receives_snapshots_not_orm_objects(
+    mocker, mock_async_session, mock_capability, mock_agent, mock_action
+):
+    """Verify that run_sync callback receives SimpleNamespace snapshots and plain values,
+    never expired ORM objects. This is the core fix: after repo.commit() all ORM objects
+    in the session are expired, so passing them to run_sync causes DetachedInstanceError.
+    """
+    # Setup mocks
+    mock_cap_repo = mocker.Mock()
+    mock_cap_repo.get_by_id = mocker.AsyncMock(return_value=mock_capability)
+    mocker.patch.object(
+        db, "AgentCapabilityRepositoryAsync", return_value=mock_cap_repo
+    )
+
+    mock_agent_repo = mocker.Mock()
+    mock_agent_repo.get_agent = mocker.AsyncMock(return_value=mock_agent)
+    mocker.patch.object(db, "AgentRepositoryAsync", return_value=mock_agent_repo)
+
+    mock_action_repo = mocker.Mock()
+    mock_action_repo.get_by_id = mocker.AsyncMock(return_value=mock_action)
+    mock_action_repo.update = mocker.AsyncMock(return_value=mock_action)
+    mocker.patch.object(
+        db, "CapabilityActionRepositoryAsync", return_value=mock_action_repo
+    )
+
+    old_snap = SimpleNamespace(prompt="old prompt", id=mock_action.id)
+    new_snap = SimpleNamespace(prompt="new prompt", id=mock_action.id)
+    snapshot_calls = [old_snap, new_snap]
+    mocker.patch(
+        "services.capability_service._implementation._snapshot_columns",
+        side_effect=snapshot_calls,
+    )
+
+    data = ActionUpdate(prompt="new prompt", channel=None, priority=None, enabled=None)
+    await update_capability_action(
+        mock_async_session, mock_action.id, data, "test@example.com"
+    )
+
+    # Extract the lambda passed to run_sync and inspect its closure values
+    assert mock_async_session.run_sync.called
+    run_sync_call = mock_async_session.run_sync.call_args
+    callback = run_sync_call[0][0]
+
+    # Call the callback with a mock sync session to capture args to create_change_log
+    mock_sync_session = MagicMock()
+    with patch(
+        "services.capability_service._implementation.create_change_log"
+    ) as mock_create_cl:
+        callback(mock_sync_session)
+
+        call_kwargs = mock_create_cl.call_args.kwargs
+        # old_record and new_record must be SimpleNamespace, not ORM objects
+        assert isinstance(call_kwargs["old_record"], SimpleNamespace)
+        assert isinstance(call_kwargs["new_record"], SimpleNamespace)
+        # account_id must be a plain UUID, not an ORM attribute accessor
+        assert call_kwargs["account_id"] == mock_agent.account_id
+        # model_class must be passed so _inspect_field_changes can get the mapper
+        assert call_kwargs["model_class"] is CapabilityAction
