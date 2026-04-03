@@ -74,6 +74,11 @@ async def test_language_from_db_when_not_provided(monkeypatch):
         "_build_specs_from_project_integrations",
         AsyncMock(return_value={}),
     )
+    monkeypatch.setattr(
+        _implementation,
+        "_build_pal_tools_specs_from_project_integrations",
+        AsyncMock(return_value=[]),
+    )
 
     spec = await _implementation.construct_agent_spec(
         session=AsyncMock(),
@@ -107,6 +112,11 @@ async def test_language_parameter_overrides_db(monkeypatch):
         _implementation,
         "_build_specs_from_project_integrations",
         AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        _implementation,
+        "_build_pal_tools_specs_from_project_integrations",
+        AsyncMock(return_value=[]),
     )
 
     spec = await _implementation.construct_agent_spec(

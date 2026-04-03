@@ -96,6 +96,11 @@ async def test_construct_agent_spec_parses_model_config(
         "_build_specs_from_project_integrations",
         AsyncMock(return_value={}),
     )
+    monkeypatch.setattr(
+        _implementation,
+        "_build_pal_tools_specs_from_project_integrations",
+        AsyncMock(return_value=[]),
+    )
 
     # Mock AgentRepositoryAsync to return agent with no language
     from unittest.mock import MagicMock

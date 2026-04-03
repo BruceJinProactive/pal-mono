@@ -95,6 +95,11 @@ async def test_construct_agent_spec_builds_adora_from_raw_config(monkeypatch):
         "_build_specs_from_project_integrations",
         AsyncMock(return_value={}),
     )
+    monkeypatch.setattr(
+        _implementation,
+        "_build_pal_tools_specs_from_project_integrations",
+        AsyncMock(return_value=[]),
+    )
 
     spec = await _implementation.construct_agent_spec(
         session=AsyncMock(),
@@ -137,6 +142,11 @@ async def test_construct_agent_spec_prefers_project_integration_adora_spec(
                 )
             }
         ),
+    )
+    monkeypatch.setattr(
+        _implementation,
+        "_build_pal_tools_specs_from_project_integrations",
+        AsyncMock(return_value=[]),
     )
 
     spec = await _implementation.construct_agent_spec(

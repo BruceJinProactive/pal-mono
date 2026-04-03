@@ -2,7 +2,7 @@ import copy
 import json
 import uuid
 from dataclasses import asdict
-from typing import Any, Dict, Literal, Optional, cast
+from typing import Any, Callable, Dict, Literal, Optional, cast
 
 from pal_agents import Spec
 from pal_agents.spec import (
@@ -351,6 +351,88 @@ async def _build_specs_from_project_integrations(
     return specs
 
 
+# ========== pal-tools ToolSpec builders (MiniTable, Yelp, etc.) ==========
+
+# Maps ProjectIntegration.tool_name to pal-tools toolkit name and config builder.
+# Each entry is (pal_tools_toolkit_name, config_builder_fn).
+# The config builder receives (store_identifier, client_id, client_secret, pi_config)
+# and returns the config dict for ToolSpec.
+_PAL_TOOLS_INTEGRATIONS: dict[
+    str,
+    tuple[str, Callable[[str, str | None, str | None, dict[str, Any]], dict[str, Any]]],
+] = {
+    "minitable_tool": (
+        "MiniTableToolkit",
+        lambda store_id, client_id, client_secret, _config: {
+            "username": client_id or "",
+            "password": client_secret or "",
+            "restaurant_id": store_id,
+        },
+    ),
+}
+
+
+async def _build_pal_tools_specs_from_project_integrations(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+) -> list[ToolSpec]:
+    """Query ProjectIntegrations for pal-tools toolkits and build ToolSpecs.
+
+    This handles integrations that map to standalone pal-tools toolkits
+    (e.g., MiniTableToolkit, YelpNoCCToolkit) rather than dedicated Spec
+    fields like Adora/Toast.
+    """
+    tool_names = list(_PAL_TOOLS_INTEGRATIONS.keys())
+    if not tool_names:
+        return []
+
+    pi_result = await session.execute(
+        select(db.ProjectIntegration)
+        .filter(
+            db.ProjectIntegration.project_id == project_id,
+            db.ProjectIntegration.tool_name.in_(tool_names),
+        )
+        .order_by(db.ProjectIntegration.created_at, db.ProjectIntegration.id)
+    )
+    integrations = list(pi_result.scalars())
+
+    if not integrations:
+        return []
+
+    tool_specs: list[ToolSpec] = []
+    for pi in integrations:
+        if not pi.tool_name or pi.tool_name not in _PAL_TOOLS_INTEGRATIONS:
+            continue
+
+        toolkit_name, config_builder = _PAL_TOOLS_INTEGRATIONS[pi.tool_name]
+
+        # Resolve credentials from linked Integration record
+        int_result = await session.execute(
+            select(Integration).filter(Integration.id == pi.integration_id)
+        )
+        integration_record = int_result.scalar_one_or_none()
+        client_id, client_secret, _parsed_secrets = (
+            await _resolve_integration_credentials(integration_record)
+        )
+
+        config = config_builder(
+            pi.store_identifier or "",
+            client_id,
+            client_secret,
+            dict(pi.config or {}),
+        )
+
+        tool_specs.append(ToolSpec(tool_name=toolkit_name, config=config))
+        logger.debug(
+            "[_build_pal_tools_specs] Built ToolSpec for %s (tool_name=%s, project_id=%s)",
+            toolkit_name,
+            pi.tool_name,
+            project_id,
+        )
+
+    return tool_specs
+
+
 def _agent_config_to_spec(
     agent_config: AgentConfig,
     model_spec: ModelSpec | None = None,
@@ -485,8 +567,13 @@ async def construct_agent_spec(
     )
     toast_spec = pi_specs.get("toast")
 
+    # Build pal-tools ToolSpecs from ProjectIntegrations (MiniTable, etc.)
+    pal_tools_specs = await _build_pal_tools_specs_from_project_integrations(
+        session, project_id
+    )
+
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
-    return _agent_config_to_spec(
+    spec = _agent_config_to_spec(
         agent_config,
         model_spec=model_spec,
         generic_api_spec=generic_api_spec,
@@ -494,6 +581,12 @@ async def construct_agent_spec(
         toast_spec=toast_spec,
         language=effective_language,
     )
+
+    # Append pal-tools toolkit specs to the tools list
+    if pal_tools_specs:
+        spec = spec.model_copy(update={"tools": spec.tools + pal_tools_specs})
+
+    return spec
 
 
 async def construct_agent_config(
