@@ -51,14 +51,11 @@ def create_change_log(
     author: str,
     old_record,
     new_record,
-    extra_fields: list[ChangeField] | None = None,
 ):
     change_log_repo = ChangeLogRepository(session)
     field_changes = _inspect_field_changes(
         account_id, resource_type, resource_id, old_record, new_record
     )
-    if extra_fields:
-        field_changes.extend(extra_fields)
 
     if not old_record:
         action = ChangeAction.Create

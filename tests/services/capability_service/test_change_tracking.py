@@ -2,7 +2,7 @@
 Tests for capability action change tracking
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -10,14 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from db.tables import Agent, AgentCapability, CapabilityAction
-from db.tables.change_log import ChangeField, ChangeResourceType
 from services.capability_service._implementation import (
     create_capability_action,
     delete_capability_action,
     update_capability_action,
 )
 from services.capability_service.schema import ActionCreate, ActionUpdate
-from services.history_service._implementation import create_change_log
 
 
 @pytest.fixture
@@ -58,38 +56,6 @@ def mock_action():
     action.priority = 1
     action.enabled = True
     return action
-
-
-def test_create_change_log_with_extra_fields():
-    """Test that extra_fields are appended to the change log fields."""
-    mock_session = MagicMock()
-    mock_repo = MagicMock()
-    mock_repo.create_change_log.return_value = MagicMock()
-
-    extra = ChangeField(
-        field="section", old_value=None, new_value="communication_style"
-    )
-
-    with patch(
-        "services.history_service._implementation.ChangeLogRepository",
-        return_value=mock_repo,
-    ):
-        create_change_log(
-            session=mock_session,
-            account_id=uuid4(),
-            resource_type=ChangeResourceType.CapabilityAction,
-            resource_id=str(uuid4()),
-            author="test@example.com",
-            old_record=None,
-            new_record=None,
-            extra_fields=[extra],
-        )
-
-    called_changes = mock_repo.create_change_log.call_args.kwargs["changes"]
-    assert any(
-        f.field == "section" and f.new_value == "communication_style"
-        for f in called_changes
-    )
 
 
 @pytest.mark.asyncio
