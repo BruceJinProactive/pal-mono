@@ -2,7 +2,7 @@
 Tests for capability action change tracking
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -10,12 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from db.tables import Agent, AgentCapability, CapabilityAction
+from db.tables.change_log import ChangeField, ChangeResourceType
 from services.capability_service._implementation import (
     create_capability_action,
     delete_capability_action,
     update_capability_action,
 )
 from services.capability_service.schema import ActionCreate, ActionUpdate
+from services.history_service._implementation import create_change_log
 
 
 @pytest.fixture
@@ -32,6 +34,7 @@ def mock_capability():
     capability = MagicMock(spec=AgentCapability)
     capability.id = uuid4()
     capability.agent_id = uuid4()
+    capability.capability_identifier = "communication_style"
     return capability
 
 
@@ -56,6 +59,38 @@ def mock_action():
     action.priority = 1
     action.enabled = True
     return action
+
+
+def test_create_change_log_with_extra_fields():
+    """Test that extra_fields are appended to the change log fields."""
+    mock_session = MagicMock()
+    mock_repo = MagicMock()
+    mock_repo.create_change_log.return_value = MagicMock()
+
+    extra = ChangeField(
+        field="section", old_value=None, new_value="communication_style"
+    )
+
+    with patch(
+        "services.history_service._implementation.ChangeLogRepository",
+        return_value=mock_repo,
+    ):
+        create_change_log(
+            session=mock_session,
+            account_id=uuid4(),
+            resource_type=ChangeResourceType.CapabilityAction,
+            resource_id=str(uuid4()),
+            author="test@example.com",
+            old_record=None,
+            new_record=None,
+            extra_fields=[extra],
+        )
+
+    called_changes = mock_repo.create_change_log.call_args.kwargs["changes"]
+    assert any(
+        f.field == "section" and f.new_value == "communication_style"
+        for f in called_changes
+    )
 
 
 @pytest.mark.asyncio
@@ -126,6 +161,12 @@ async def test_update_capability_action_creates_change_log(
     mock_agent_repo = mocker.Mock()
     mock_agent_repo.get_agent = mocker.AsyncMock(return_value=mock_agent)
     mocker.patch.object(db, "AgentRepositoryAsync", return_value=mock_agent_repo)
+
+    # Patch _snapshot_columns since CapabilityAction.__table__ doesn't work on MagicMock
+    mocker.patch(
+        "services.capability_service._implementation._snapshot_columns",
+        return_value=MagicMock(prompt="old prompt"),
+    )
 
     # Update action
     data = ActionUpdate(prompt="new prompt", channel=None, priority=None, enabled=None)
@@ -278,6 +319,12 @@ async def test_update_capability_action_no_fields_to_update(
         db, "CapabilityActionRepositoryAsync", return_value=mock_action_repo
     )
 
+    # Patch _snapshot_columns since CapabilityAction.__table__ doesn't work on MagicMock
+    mocker.patch(
+        "services.capability_service._implementation._snapshot_columns",
+        return_value=MagicMock(),
+    )
+
     # Update with no fields
     data = ActionUpdate(
         prompt=None, channel=None, priority=None, enabled=None
@@ -303,6 +350,12 @@ async def test_update_capability_action_capability_not_found(
     mock_action_repo.get_by_id = mocker.AsyncMock(return_value=mock_action)
     mocker.patch.object(
         db, "CapabilityActionRepositoryAsync", return_value=mock_action_repo
+    )
+
+    # Patch _snapshot_columns since CapabilityAction.__table__ doesn't work on MagicMock
+    mocker.patch(
+        "services.capability_service._implementation._snapshot_columns",
+        return_value=MagicMock(),
     )
 
     mock_cap_repo = mocker.Mock()
@@ -333,6 +386,12 @@ async def test_update_capability_action_update_fails(
     old_action = MagicMock(spec=CapabilityAction)
     old_action.id = mock_action.id
     old_action.agent_capability_id = mock_capability.id
+
+    # Patch _snapshot_columns since CapabilityAction.__table__ doesn't work on MagicMock
+    mocker.patch(
+        "services.capability_service._implementation._snapshot_columns",
+        return_value=MagicMock(prompt="old prompt"),
+    )
 
     mock_action_repo = mocker.Mock()
     mock_action_repo.get_by_id = mocker.AsyncMock(return_value=old_action)
