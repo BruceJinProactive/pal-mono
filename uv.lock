@@ -2556,8 +2556,8 @@ wheels = [
 
 [[package]]
 name = "pal-agents"
-version = "0.2.222"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.222#4b5334c426d9b9a0b41bbd443c4a77509d9c82e9" }
+version = "0.2.223"
+source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.223#f0acb2fd098ebe46a6763e53511676a55f9f21c7" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2724,8 +2724,8 @@ requires-dist = [
     { name = "nltk", specifier = ">=3.9.3" },
     { name = "notion-client", specifier = "==2.2.1" },
     { name = "openai", extras = ["realtime"], specifier = "==2.20.0" },
-    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.222" },
-    { name = "pal-agents", extras = ["eval"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.222" },
+    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.223" },
+    { name = "pal-agents", extras = ["eval"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.223" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
     { name = "polyline", specifier = "==2.0.2" },
