@@ -68,6 +68,7 @@ class VoiceService:
                 cloned_voice_id=cloned_voice_id,
                 voice_model=create_request.voice_model,
                 transcriber=create_request.transcriber,
+                pronunciation_dict_id=create_request.pronunciation_dict_id,
             )
 
             return build_voice_config(db_voice_config)

@@ -28,6 +28,7 @@ class VoiceConfigRepositoryAsync:
         cloned_voice_id: Optional[str] = None,
         voice_model: Optional[str] = None,
         transcriber: Optional[Dict] = None,
+        pronunciation_dict_id: Optional[str] = None,
     ) -> VoiceConfig:
         """
         Create a new voice config asynchronously.
@@ -45,6 +46,7 @@ class VoiceConfigRepositoryAsync:
             cloned_voice_id (Optional[str]): The cloned voice ID
             voice_model (Optional[str]): The voice model (sonic-2 or sonic-3)
             transcriber (Optional[Dict]): The transcriber configuration
+            pronunciation_dict_id (Optional[str]): Cartesia pronunciation dictionary ID
 
         Returns:
             VoiceConfig: The created voice config
@@ -62,6 +64,7 @@ class VoiceConfigRepositoryAsync:
             cloned_voice_id=cloned_voice_id,
             voice_model=voice_model or "sonic-2",
             transcriber=transcriber,
+            pronunciation_dict_id=pronunciation_dict_id,
         )
         self.session.add(db_voice_config)
 
@@ -207,6 +210,7 @@ class VoiceConfigRepository:
         cloned_voice_id: Optional[str] = None,
         voice_model: Optional[str] = None,
         transcriber: Optional[Dict] = None,
+        pronunciation_dict_id: Optional[str] = None,
     ) -> VoiceConfig:
         """
         Create a new voice config synchronously.
@@ -224,6 +228,7 @@ class VoiceConfigRepository:
             cloned_voice_id (Optional[str]): The cloned voice ID
             voice_model (Optional[str]): The voice model (sonic-2 or sonic-3)
             transcriber (Optional[Dict]): The transcriber configuration
+            pronunciation_dict_id (Optional[str]): Cartesia pronunciation dictionary ID
 
         Returns:
             VoiceConfig: The created voice config
@@ -241,6 +246,7 @@ class VoiceConfigRepository:
             cloned_voice_id=cloned_voice_id,
             voice_model=voice_model or "sonic-2",
             transcriber=transcriber,
+            pronunciation_dict_id=pronunciation_dict_id,
         )
         self.session.add(db_voice_config)
 

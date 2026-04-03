@@ -32,6 +32,7 @@ class VoiceConfig(BaseModel):
     speech_rate: SpeechRate
     background_sound: str
     raw_config: dict
+    pronunciation_dict_id: Optional[str] = None
     cloned_voice_id: Optional[str] = None
     voice_model: str = "sonic-2"
     transcriber: Optional[dict] = None
@@ -58,6 +59,7 @@ class CreateVoiceConfigRequest(BaseModel):
     speech_rate: Optional[SpeechRate] = SpeechRate.normal
     background_sound: Optional[str] = "office"
     raw_config: Optional[dict] = Field(default_factory=dict)
+    pronunciation_dict_id: Optional[str] = None
     cloned: Optional[bool] = False
     voice_model: Optional[str] = "sonic-2"
     transcriber: Optional[dict] = None
@@ -80,6 +82,7 @@ class UpdateVoiceConfigRequest(BaseModel):
     speech_rate: Optional[SpeechRate] = None
     background_sound: Optional[str] = None
     raw_config: Optional[dict] = None
+    pronunciation_dict_id: Optional[str] = None
     cloned: Optional[bool] = None
     voice_model: Optional[str] = None
     transcriber: Optional[dict] = None
@@ -114,6 +117,7 @@ class VoiceConfigUpdateData(BaseModel):
     speech_rate: Optional[SpeechRate] = None
     background_sound: Optional[str] = None
     raw_config: Optional[dict] = None
+    pronunciation_dict_id: Optional[str] = None
     cloned: Optional[bool] = None
     voice_model: Optional[str] = None
     transcriber: Optional[dict] = None

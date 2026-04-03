@@ -41,6 +41,7 @@ def _make_voice_config(**overrides) -> MagicMock:
     vc.speech_rate = overrides.get("speech_rate", SpeechRate.normal)
     vc.first_message = overrides.get("first_message", "Hello, how can I help?")
     vc.background_sound = overrides.get("background_sound", "office")
+    vc.pronunciation_dict_id = overrides.get("pronunciation_dict_id", None)
     return vc
 
 

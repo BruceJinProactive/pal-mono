@@ -17,6 +17,7 @@ def build_voice_config(voice_config: db.VoiceConfig) -> VoiceConfig:
         speech_rate=voice_config.speech_rate,
         background_sound=voice_config.background_sound,
         raw_config=voice_config.raw_config,
+        pronunciation_dict_id=voice_config.pronunciation_dict_id,
         cloned_voice_id=voice_config.cloned_voice_id,
         voice_model=voice_config.voice_model,
         transcriber=voice_config.transcriber,

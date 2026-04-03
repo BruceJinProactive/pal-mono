@@ -34,6 +34,9 @@ class VoiceInitResponse(BaseModel):
     background_sound: str | None = Field(
         default=None, description="Background ambient sound"
     )
+    pronunciation_dict_id: str | None = Field(
+        default=None, description="Cartesia pronunciation dictionary ID"
+    )
 
 
 class VoiceEndCallRequest(BaseModel):
