@@ -78,5 +78,3 @@ async def get_db_async():
             await db.rollback()
             logger.error(f"Unexpected error occurred: {str(e)}")
             raise
-        finally:
-            await db.close()
