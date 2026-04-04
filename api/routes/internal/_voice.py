@@ -333,7 +333,6 @@ async def init_voice_call(
     # Capture ORM attributes into locals before any commit expires them (MissingGreenlet guard)
     voice_id = vc.voice_id
     background_sound = vc.background_sound or None
-    pronunciation_dict_id = vc.pronunciation_dict_id
 
     # --- Step 9: Compute and persist agent fingerprints ---
     try:
@@ -353,6 +352,7 @@ async def init_voice_call(
                 await raw_config.build_with_fingerprint(session)
             )
 
+            db_agent_id = db_agent.id
             # Retrieve the just-created conversation and stamp it
             conversation_repo = db.ConversationRepositoryAsync(session)
             conversation = await conversation_repo.get_conversation_by_call_id(call_id)
@@ -374,7 +374,7 @@ async def init_voice_call(
             bg_snapshot = asyncio.create_task(
                 upsert_agent_config_snapshot(
                     fingerprint=agent_fp,
-                    agent_id=db_agent.id,
+                    agent_id=db_agent_id,
                     project_id=project_id,
                     config_dict=config_dict if isinstance(config_dict, dict) else {},
                     prompt_hash=prompt_fp,
@@ -404,7 +404,6 @@ async def init_voice_call(
         first_message=first_message,
         languages=languages,
         background_sound=background_sound,
-        pronunciation_dict_id=pronunciation_dict_id,
     )
 
 
