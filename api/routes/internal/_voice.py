@@ -353,6 +353,7 @@ async def init_voice_call(
                 await raw_config.build_with_fingerprint(session)
             )
 
+            db_agent_id = db_agent.id
             # Retrieve the just-created conversation and stamp it
             conversation_repo = db.ConversationRepositoryAsync(session)
             conversation = await conversation_repo.get_conversation_by_call_id(call_id)
@@ -374,7 +375,7 @@ async def init_voice_call(
             bg_snapshot = asyncio.create_task(
                 upsert_agent_config_snapshot(
                     fingerprint=agent_fp,
-                    agent_id=db_agent.id,
+                    agent_id=db_agent_id,
                     project_id=project_id,
                     config_dict=config_dict if isinstance(config_dict, dict) else {},
                     prompt_hash=prompt_fp,
