@@ -363,10 +363,10 @@ _PAL_TOOLS_INTEGRATIONS: dict[
 ] = {
     "minitable_tool": (
         "MiniTableToolkit",
-        lambda store_id, client_id, client_secret, _config: {
+        lambda store_id, client_id, client_secret, config: {
             "username": client_id or "",
             "password": client_secret or "",
-            "restaurant_id": store_id,
+            "restaurant_id": config.get("restaurant_id", ""),
         },
     ),
 }

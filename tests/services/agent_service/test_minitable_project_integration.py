@@ -30,7 +30,7 @@ class TestBuildPalToolsSpecsFromProjectIntegrations:
     async def test_builds_minitable_toolkit_spec(self, monkeypatch):
         pi = _make_project_integration(
             tool_name="minitable_tool",
-            store_identifier="12345",
+            config={"restaurant_id": "12345"},
         )
 
         session = AsyncMock()
