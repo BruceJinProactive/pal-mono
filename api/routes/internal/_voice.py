@@ -333,6 +333,7 @@ async def init_voice_call(
     # Capture ORM attributes into locals before any commit expires them (MissingGreenlet guard)
     voice_id = vc.voice_id
     background_sound = vc.background_sound or None
+    pronunciation_dict_id = vc.pronunciation_dict_id
 
     # --- Step 9: Compute and persist agent fingerprints ---
     try:
@@ -404,6 +405,7 @@ async def init_voice_call(
         first_message=first_message,
         languages=languages,
         background_sound=background_sound,
+        pronunciation_dict_id=pronunciation_dict_id,
     )
 
 
