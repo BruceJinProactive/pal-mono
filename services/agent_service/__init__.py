@@ -29,6 +29,7 @@ async def construct_agent_spec(
     room_name: str | None = None,
     participant_identity: str | None = None,
     language: str | None = None,
+    sip_provider: str | None = None,
 ) -> Spec:
     """Build a pal_agents.Spec from database configuration."""
     return await _implementation.construct_agent_spec(
@@ -44,6 +45,7 @@ async def construct_agent_spec(
         room_name,
         participant_identity,
         language,
+        sip_provider,
     )
 
 
@@ -59,6 +61,7 @@ async def construct_agent_config(
     receiver_identifier: str | None = None,
     room_name: str | None = None,
     participant_identity: str | None = None,
+    sip_provider: str | None = None,
 ) -> AgentConfig:
     return await _implementation.construct_agent_config(
         session,
@@ -71,6 +74,7 @@ async def construct_agent_config(
         receiver_identifier,
         room_name,
         participant_identity,
+        sip_provider,
     )
 
 

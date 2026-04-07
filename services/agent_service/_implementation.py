@@ -512,6 +512,7 @@ async def construct_agent_spec(
     room_name: str | None = None,
     participant_identity: str | None = None,
     language: str | None = None,
+    sip_provider: str | None = None,
 ) -> Spec:
     """Build a pal_agents.Spec from database configuration.
 
@@ -547,6 +548,7 @@ async def construct_agent_spec(
         receiver_identifier=receiver_identifier,
         room_name=room_name,
         participant_identity=participant_identity,
+        sip_provider=sip_provider,
     )
 
     # Use provided language parameter or fall back to agent's language from metadata
@@ -600,6 +602,7 @@ async def construct_agent_config(
     receiver_identifier: str | None = None,
     room_name: str | None = None,
     participant_identity: str | None = None,
+    sip_provider: str | None = None,
 ) -> AgentConfig:
     """
     Builds an Agent Config based on the Raw Config.
@@ -667,6 +670,7 @@ async def construct_agent_config(
         faqs=faqs,
         room_name=room_name,
         participant_identity=participant_identity,
+        sip_provider=sip_provider,
     )
 
     # Convert blueprint to agent config

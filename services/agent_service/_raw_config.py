@@ -54,6 +54,7 @@ class RawConfig:
         faqs: Sequence[db.FAQ] | None = None,
         room_name: str | None = None,
         participant_identity: str | None = None,
+        sip_provider: str | None = None,
     ):
         self.agent = agent
         self.project = project
@@ -68,6 +69,7 @@ class RawConfig:
         self.faqs = list(faqs or [])
         self.room_name = room_name
         self.participant_identity = participant_identity
+        self.sip_provider = sip_provider
 
     async def build(self, session: Optional[AsyncSession] = None) -> AgentConfig:
         try:
@@ -384,6 +386,7 @@ class RawConfig:
             customer_phone=customer_phone,
             store_phone=store_phone,
             channel=self.channel.value if self.channel else None,
+            sip_provider=self.sip_provider,
         )
 
         raw_tools: Dict[str, Any] = self.agent.raw_config.get("tools", {})

@@ -28,7 +28,7 @@ class TestParseCallerInfoLiveKit:
                 "participant_identity": "participant-xyz",
             }
         )
-        sender, recipient, call_id, room_name, participant_identity = (
+        sender, recipient, call_id, room_name, participant_identity, sip_provider = (
             _parse_caller_info(model)
         )
         assert room_name == "room-abc"
@@ -43,7 +43,7 @@ class TestParseCallerInfoLiveKit:
                 "participant_identity": "participant-xyz",
             }
         )
-        _, _, _, room_name, participant_identity = _parse_caller_info(model)
+        _, _, _, room_name, participant_identity, _ = _parse_caller_info(model)
         assert room_name is None
         assert participant_identity == "participant-xyz"
 
@@ -56,7 +56,7 @@ class TestParseCallerInfoLiveKit:
                 "room_name": "room-abc",
             }
         )
-        _, _, _, room_name, participant_identity = _parse_caller_info(model)
+        _, _, _, room_name, participant_identity, _ = _parse_caller_info(model)
         assert room_name == "room-abc"
         assert participant_identity is None
 
@@ -69,7 +69,7 @@ class TestParseCallerInfoLiveKit:
                 "call_id": "call-123",
             }
         )
-        _, _, _, room_name, participant_identity = _parse_caller_info(model)
+        _, _, _, room_name, participant_identity, _ = _parse_caller_info(model)
         assert room_name is None
         assert participant_identity is None
 
@@ -84,7 +84,7 @@ class TestParseCallerInfoLiveKit:
                 "participant_identity": "participant-xyz",
             }
         )
-        sender, recipient, call_id, room_name, participant_identity = (
+        sender, recipient, call_id, room_name, participant_identity, sip_provider = (
             _parse_caller_info(model)
         )
         assert sender == "+15551111111"
@@ -103,6 +103,6 @@ class TestParseCallerInfoLiveKit:
                 "participant_identity": "",
             }
         )
-        _, _, _, room_name, participant_identity = _parse_caller_info(model)
+        _, _, _, room_name, participant_identity, _ = _parse_caller_info(model)
         assert room_name == ""
         assert participant_identity == ""

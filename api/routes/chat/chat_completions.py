@@ -92,8 +92,8 @@ def _extract_content_from_request(request: ChatCompletionRequest) -> str:
 
 def _parse_caller_info(
     model: str,
-) -> tuple[str, str, str | None, str | None, str | None]:
-    """Parse model string to extract sender, recipient, call_id, room_name, and participant_identity."""
+) -> tuple[str, str, str | None, str | None, str | None, str | None]:
+    """Parse model string to extract sender, recipient, call_id, room_name, participant_identity, and sip_provider."""
     try:
         # Parse model as JSON, it could be a string representation of JSON
         caller_info = json.loads(model) if isinstance(model, str) else model
@@ -121,12 +121,16 @@ def _parse_caller_info(
         room_name = caller_info.get("room_name")
         participant_identity = caller_info.get("participant_identity")
 
+        # SIP provider: "pizzacloud", "twilio", or "snet"
+        sip_provider = caller_info.get("sip_provider")
+
         return (
             sender_identifier,
             recipient_identifier,
             call_id,
             room_name,
             participant_identity,
+            sip_provider,
         )
     except (json.JSONDecodeError, TypeError, ValueError) as e:
         # Handle case where model isn't valid JSON
@@ -226,6 +230,7 @@ async def _send_urls_via_sms(
     sender_identifier: str,
     recipient_identifier: str,
     call_id: Optional[str] = None,
+    sip_provider: Optional[str] = None,
 ) -> None:
     """
     Extract URLs from collected content and send them via SMS if found.
@@ -331,13 +336,19 @@ Instructions:
 
                 logger.debug(f"Post processed SMS summary to {summary_content}")
 
+                # Resolve broker from SIP provider
+                try:
+                    broker = Broker(sip_provider) if sip_provider else Broker.TWILIO
+                except ValueError:
+                    broker = Broker.TWILIO
+
                 # Create a Message object and send it via relay service
                 relay_message = Message(
                     author_type=AuthorType.AGENT,
                     sender_identifier=recipient_identifier,
                     recipient_identifier=sender_identifier,
                     channel=Channel.SMS,
-                    broker=Broker.TWILIO,
+                    broker=broker,
                     text=TextObject(body=summary_content),
                     metadata=Metadata(testing=False),
                 )
@@ -438,6 +449,7 @@ async def chat_completions_agno(
             call_id,
             room_name,
             participant_identity,
+            sip_provider,
         ) = _parse_caller_info(model)
 
         # Create a Message object
@@ -467,6 +479,7 @@ async def chat_completions_agno(
                         call_id=call_id,
                         room_name=room_name,
                         participant_identity=participant_identity,
+                        sip_provider=sip_provider,
                     )
 
                     collected_content = []
@@ -548,6 +561,7 @@ async def chat_completions_agno(
                             sender_identifier,
                             recipient_identifier,
                             call_id=call_id,
+                            sip_provider=sip_provider,
                         )
 
                         yield "data: [DONE]\n\n"

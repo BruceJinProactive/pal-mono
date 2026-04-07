@@ -29,6 +29,8 @@ class Broker(str, Enum):
     SENDBLUE = "sendblue"
     TWILIO = "twilio"
     SES = "ses"
+    PIZZACLOUD = "pizzacloud"
+    SNET = "snet"
 
 
 class Type(str, Enum):

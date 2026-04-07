@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04
 
+### 2026-04-03
+- [PAL-9574] Make `store_messaging_tool` transport-aware: auto-detect PizzaCloud via `sip_provider` field, route SMS through PizzaCloud broker
+
 ### 2026-04-02
 - Add optional `pronunciation_dict_id` column to `voice_configs` table for per-project Cartesia pronunciation dictionaries
 - Thread `pronunciation_dict_id` through admin voice config schemas and voice init response

@@ -373,6 +373,7 @@ async def get_chat_response_stream(
     call_id: str | None = None,
     room_name: str | None = None,
     participant_identity: str | None = None,
+    sip_provider: str | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
     # Initialize LLMObs for Datadog LLM Observability
     if is_testing_mode():
@@ -482,6 +483,7 @@ async def get_chat_response_stream(
                     raw_config=project_raw_config,
                     room_name=room_name,
                     participant_identity=participant_identity,
+                    sip_provider=sip_provider,
                 )
                 pal_agent = PalAgent(spec=spec)
 
@@ -778,6 +780,7 @@ async def get_chat_response_stream(
                     receiver_identifier=message.recipient_identifier,
                     room_name=room_name,
                     participant_identity=participant_identity,
+                    sip_provider=sip_provider,
                 )
                 config.stream = True
 

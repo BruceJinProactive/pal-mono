@@ -158,7 +158,9 @@ class TestParseCallerInfo:
                 "participant_identity": "participant-xyz",
             }
         )
-        sender, recipient, call_id, room_name, participant = _parse_caller_info(model)
+        sender, recipient, call_id, room_name, participant, sip_provider = (
+            _parse_caller_info(model)
+        )
 
         assert sender == "+15551234567"
         assert recipient == "+15557654321"
@@ -174,7 +176,9 @@ class TestParseCallerInfo:
                 "recipient_identifier": "agent-001",
             }
         )
-        sender, recipient, call_id, room_name, participant = _parse_caller_info(model)
+        sender, recipient, call_id, room_name, participant, sip_provider = (
+            _parse_caller_info(model)
+        )
 
         assert sender == "user@example.com"
         assert recipient == "agent-001"
@@ -189,7 +193,9 @@ class TestParseCallerInfo:
                 "recipient_identifier": "agent-001",
             }
         )
-        sender, recipient, call_id, room_name, participant = _parse_caller_info(model)
+        sender, recipient, call_id, room_name, participant, sip_provider = (
+            _parse_caller_info(model)
+        )
 
         assert sender == "user"
         assert recipient == "agent-001"
@@ -201,7 +207,9 @@ class TestParseCallerInfo:
                 "sender_identifier": "user@example.com",
             }
         )
-        sender, recipient, call_id, room_name, participant = _parse_caller_info(model)
+        sender, recipient, call_id, room_name, participant, sip_provider = (
+            _parse_caller_info(model)
+        )
 
         assert sender == "user@example.com"
         assert recipient == model  # Falls back to original model string
@@ -213,7 +221,9 @@ class TestParseCallerInfo:
                 "call_id": "call-123",
             }
         )
-        sender, recipient, call_id, room_name, participant = _parse_caller_info(model)
+        sender, recipient, call_id, room_name, participant, sip_provider = (
+            _parse_caller_info(model)
+        )
 
         assert sender == "user"
         assert recipient == model  # Falls back to model string

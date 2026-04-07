@@ -21,6 +21,7 @@ class ToolMetadata(BaseModel):
     customer_phone: str | None = None
     store_phone: str | None = None
     channel: str | None = None
+    sip_provider: str | None = None
 
 
 class ToolIdentifier(BaseModel):

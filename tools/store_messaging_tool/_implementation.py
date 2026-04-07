@@ -70,12 +70,12 @@ class StoreMessagingTool(Toolkit):
         # Format the message with customer phone
         full_message = f"From: {customer_phone}\n{message_content}"
 
-        # Log warning if message is long (will be split by Twilio)
+        # Log warning if message is long (will be split by carrier)
         message_length = len(full_message)
         if message_length > 160:
             logger.warning(
                 f"Message length {message_length} exceeds 160 chars. "
-                f"Twilio will split into multiple SMS segments."
+                f"Carrier will split into multiple SMS segments."
             )
 
         logger.debug(
@@ -83,12 +83,18 @@ class StoreMessagingTool(Toolkit):
             f"(length: {message_length} chars)"
         )
 
+        try:
+            sip_provider = self.tool_metadata.sip_provider
+            broker = Broker(sip_provider) if sip_provider else Broker.TWILIO
+        except ValueError:
+            broker = Broker.TWILIO
+
         message = Message(
             author_type=AuthorType.AGENT,
             sender_identifier=store_phone,
             recipient_identifier=self.message_to_number,
             channel=Channel.SMS,
-            broker=Broker.TWILIO,
+            broker=broker,
             text=TextObject(body=full_message),
             metadata=Metadata(testing=False),
         )
