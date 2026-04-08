@@ -143,6 +143,29 @@ class TestConversationLookupAsync:
         assert result == [sample_conversation]
 
     @pytest.mark.asyncio
+    async def test_get_by_project_returns_conversations(
+        self, async_repo, mock_async_session, sample_conversation
+    ):
+        """Retrieve recent conversations for a project."""
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [sample_conversation]
+        mock_async_session.execute.return_value = mock_result
+
+        result = await async_repo.get_by_project(sample_conversation.project_id)
+        assert result == [sample_conversation]
+
+    @pytest.mark.asyncio
+    async def test_get_by_project_returns_empty_on_error(
+        self, async_repo, mock_async_session
+    ):
+        """DB error returns empty list."""
+        mock_async_session.execute.side_effect = SQLAlchemyError("error")
+
+        result = await async_repo.get_by_project(uuid.uuid4())
+        assert result == []
+        mock_async_session.rollback.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_count_conversations_by_account(self, async_repo, mock_async_session):
         """Dashboard metric: total sessions for account."""
         mock_result = MagicMock()

@@ -84,6 +84,23 @@ class ConversationRepositoryAsync:
         )
         return result.scalars().all()
 
+    async def get_by_project(
+        self, project_id: uuid.UUID, limit: int = 10
+    ) -> list[Conversation]:
+        """Retrieve recent conversations for a project, ordered by created_at DESC."""
+        try:
+            result = await self.session.execute(
+                select(Conversation)
+                .filter(Conversation.project_id == project_id)
+                .order_by(Conversation.created_at.desc())
+                .limit(limit)
+            )
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error retrieving conversations by project: {e}")
+            return []
+
     async def count_conversations_by_account_id(self, account_id: uuid.UUID) -> int:
         """
         Count the total number of conversations for a given account id.
