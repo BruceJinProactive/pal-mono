@@ -32,6 +32,7 @@ _background_tasks: set[asyncio.Task[object]] = set()
 async def create_eval_run(
     project_id: uuid.UUID,
     account_id: uuid.UUID,
+    channel_identifier: str,
     driver_mode: str,
     triggered_by: str,
     session: AsyncSession,
@@ -41,6 +42,7 @@ async def create_eval_run(
     Args:
         project_id: Project to evaluate.
         account_id: Account that owns the project.
+        channel_identifier: Channel identifier for routing (e.g. "api:pokeworks-san_jose").
         driver_mode: "http" or "direct".
         triggered_by: Who triggered the run (e.g. "api", "schedule").
         session: Database session for creating the run row.
@@ -61,18 +63,19 @@ async def create_eval_run(
     await session.commit()
     await session.refresh(run)
 
-    _schedule_eval_background(run.id, project_id, driver_mode)
+    _schedule_eval_background(run.id, project_id, channel_identifier, driver_mode)
     return run
 
 
 def _schedule_eval_background(
     eval_run_id: uuid.UUID,
     project_id: uuid.UUID,
+    channel_identifier: str,
     driver_mode: str,
 ) -> None:
     """Fire-and-forget background task for running evaluation."""
     task = asyncio.create_task(
-        _run_eval_background(eval_run_id, project_id, driver_mode),
+        _run_eval_background(eval_run_id, project_id, channel_identifier, driver_mode),
         name=f"eval-run-{eval_run_id}",
     )
     _background_tasks.add(task)
@@ -82,6 +85,7 @@ def _schedule_eval_background(
 async def _run_eval_background(
     eval_run_id: uuid.UUID,
     project_id: uuid.UUID,
+    channel_identifier: str,
     driver_mode: str,
 ) -> None:
     """Execute an evaluation run in the background.
@@ -115,8 +119,11 @@ async def _run_eval_background(
                 await session.commit()
                 return
 
+            # Parse caller-provided channel identifier into channel + recipient_id
+            channel, recipient_id = _parse_channel_identifier(channel_identifier)
+
             # Create driver and simulator
-            driver = create_driver(driver_mode, str(project_id))
+            driver = create_driver(driver_mode, recipient_id, channel=channel)
             simulator = UserSimulator()
 
             passed_count = 0
@@ -203,6 +210,32 @@ async def _run_eval_background(
                     error_message=str(exc)[:500],
                 )
                 await err_session.commit()
+
+
+def _parse_channel_identifier(channel_identifier: str) -> tuple[str, str]:
+    """Parse a channel identifier string into (channel, recipient_id).
+
+    Args:
+        channel_identifier: Colon-separated identifier (e.g. "api:pokeworks-san_jose").
+
+    Returns:
+        Tuple of (channel, recipient_id).
+
+    Raises:
+        ValueError: If the format is invalid.
+    """
+    if ":" not in channel_identifier:
+        raise ValueError(
+            f"Invalid channel_identifier format: {channel_identifier!r}. "
+            "Expected 'channel:identifier' (e.g. 'api:pokeworks-san_jose')."
+        )
+    channel, recipient_id = channel_identifier.split(":", 1)
+    if not channel or not recipient_id:
+        raise ValueError(
+            f"Invalid channel_identifier format: {channel_identifier!r}. "
+            "Both channel and identifier must be non-empty."
+        )
+    return channel, recipient_id
 
 
 async def _run_conversation(

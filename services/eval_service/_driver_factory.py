@@ -12,12 +12,14 @@ from utils.log import logger
 def create_driver(
     driver_mode: str,
     project_identifier: str,
+    channel: str = "api",
 ) -> InProcessDriver:
     """Create an AgentDriver for the given mode.
 
     Args:
         driver_mode: One of "http" or "direct".
-        project_identifier: Project identifier for routing messages.
+        project_identifier: Channel-specific identifier for routing messages.
+        channel: Channel type (e.g. "api", "voice"). Defaults to "api".
 
     Returns:
         An AgentDriver instance.
@@ -28,10 +30,11 @@ def create_driver(
     if driver_mode == "http":
         logger.info(
             "Creating InProcessDriver",
-            extra={"project": project_identifier},
+            extra={"project": project_identifier, "channel": channel},
         )
         return InProcessDriver(
             recipient_identifier=project_identifier,
+            channel=channel,
         )
 
     if driver_mode == "direct":

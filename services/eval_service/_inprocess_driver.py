@@ -26,9 +26,11 @@ class InProcessDriver:
         self,
         recipient_identifier: str,
         sender_identifier: str = "eval-user@test.com",
+        channel: str = "api",
     ) -> None:
         self.recipient_identifier = recipient_identifier
         self.sender_identifier = sender_identifier
+        self.channel = Channel(channel)
 
     async def send_turn(
         self,
@@ -73,7 +75,7 @@ class InProcessDriver:
             author_type=AuthorType.USER,
             sender_identifier=self.sender_identifier,
             recipient_identifier=self.recipient_identifier,
-            channel=Channel.API,
+            channel=self.channel,
             type=Type.TEXT,
             text=TextObject(body=text),
             metadata=Metadata(testing=True),

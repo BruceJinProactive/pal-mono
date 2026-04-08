@@ -54,6 +54,7 @@ class TestCreateEvalRun:
             result = await create_eval_run(
                 project_id=uuid.uuid4(),
                 account_id=uuid.uuid4(),
+                channel_identifier="api:test-project",
                 driver_mode="http",
                 triggered_by="api",
                 session=mock_session,
@@ -163,11 +164,15 @@ class TestScheduleEvalBackground:
             )
 
             initial_count = len(_background_tasks)
-            _schedule_eval_background(eval_run_id, project_id, "http")
+            _schedule_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
             # Task should have been added to the set (may already be removed if it
             # completed synchronously, but the add+discard callback must have fired)
-            mock_bg.assert_called_once_with(eval_run_id, project_id, "http")
+            mock_bg.assert_called_once_with(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
             # Let the event loop tick so the task runs and the done callback fires
             await asyncio.sleep(0)
@@ -195,7 +200,9 @@ class TestScheduleEvalBackground:
         ):
             from services.eval_service._runner import _schedule_eval_background
 
-            _schedule_eval_background(eval_run_id, project_id, "direct")
+            _schedule_eval_background(
+                eval_run_id, project_id, "api:test-project", "direct"
+            )
 
         assert len(captured_tasks) == 1
         assert str(eval_run_id) in captured_tasks[0].get_name()
@@ -220,7 +227,9 @@ class TestScheduleEvalBackground:
         ):
             from services.eval_service._runner import _schedule_eval_background
 
-            _schedule_eval_background(eval_run_id, project_id, "http")
+            _schedule_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
         # The task should have been created
         assert len(captured_task) == 1
@@ -279,7 +288,9 @@ class TestRunEvalBackground:
                 return_value=mock_result_repo,
             ),
             patch(f"{RUNNER_MODULE}.load_scenarios", return_value=[scenario]),
-            patch(f"{RUNNER_MODULE}.create_driver", return_value=AsyncMock()),
+            patch(
+                f"{RUNNER_MODULE}.create_driver", return_value=AsyncMock()
+            ) as mock_create_driver,
             patch(
                 f"{RUNNER_MODULE}._run_conversation",
                 new_callable=AsyncMock,
@@ -293,8 +304,14 @@ class TestRunEvalBackground:
         ):
             from services.eval_service._runner import _run_eval_background
 
-            await _run_eval_background(eval_run_id, project_id, "http")
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
+        # Verify channel_identifier is parsed and forwarded to driver factory
+        mock_create_driver.assert_called_once_with(
+            "http", "test-project", channel="api"
+        )
         mock_run_repo.update_status.assert_any_await(
             eval_run_id, "running", started_at=unittest_mock_any
         )
@@ -361,7 +378,9 @@ class TestRunEvalBackground:
         ):
             from services.eval_service._runner import _run_eval_background
 
-            await _run_eval_background(eval_run_id, project_id, "http")
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
         mock_run_repo.update_status.assert_any_await(
             eval_run_id, "completed", completed_at=unittest_mock_any
@@ -389,7 +408,9 @@ class TestRunEvalBackground:
         ):
             from services.eval_service._runner import _run_eval_background
 
-            await _run_eval_background(eval_run_id, project_id, "http")
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
         mock_run_repo.update_status.assert_any_await(
             eval_run_id,
@@ -456,7 +477,9 @@ class TestRunEvalBackground:
         ):
             from services.eval_service._runner import _run_eval_background
 
-            await _run_eval_background(eval_run_id, project_id, "http")
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
         mock_run_repo.update_counts.assert_awaited_once_with(
             eval_run_id,
@@ -518,7 +541,9 @@ class TestRunEvalBackground:
         ):
             from services.eval_service._runner import _run_eval_background
 
-            await _run_eval_background(eval_run_id, project_id, "http")
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
         assert mock_result_repo.create.call_count == 1
         db_result = mock_result_repo.create.call_args[0][0]
@@ -560,7 +585,9 @@ class TestRunEvalBackground:
         ):
             from services.eval_service._runner import _run_eval_background
 
-            await _run_eval_background(eval_run_id, project_id, "http")
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
         mock_err_repo.update_status.assert_awaited_once_with(
             eval_run_id,
@@ -633,7 +660,9 @@ class TestRunEvalBackground:
         ):
             from services.eval_service._runner import _run_eval_background
 
-            await _run_eval_background(eval_run_id, project_id, "http")
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
 
         assert mock_result_repo.create.call_count == 3
         for call in mock_result_repo.create.call_args_list:

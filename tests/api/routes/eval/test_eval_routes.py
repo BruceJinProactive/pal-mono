@@ -72,6 +72,7 @@ class TestTriggerEvalRun:
             json={
                 "project_id": str(project_id),
                 "account_id": str(account_id),
+                "channel_identifier": "api:test-project",
                 "driver": "http",
                 "triggered_by": "api",
             },
@@ -95,6 +96,7 @@ class TestTriggerEvalRun:
             json={
                 "project_id": str(project_id),
                 "account_id": str(account_id),
+                "channel_identifier": "api:test-project",
                 "driver": "direct",
             },
         )

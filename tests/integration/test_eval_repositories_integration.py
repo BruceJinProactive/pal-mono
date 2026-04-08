@@ -706,6 +706,7 @@ class TestCreateEvalRunCommitRefresh:
             run = await create_eval_run(
                 project_id=project_id,
                 account_id=account_id,
+                channel_identifier="api:test-project",
                 driver_mode="http",
                 triggered_by="api",
                 session=async_session,

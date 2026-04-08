@@ -34,6 +34,7 @@ async def trigger_eval_run(
     run = await create_eval_run(
         project_id=request.project_id,
         account_id=request.account_id,
+        channel_identifier=request.channel_identifier,
         driver_mode=request.driver,
         triggered_by=request.triggered_by,
         session=session,
