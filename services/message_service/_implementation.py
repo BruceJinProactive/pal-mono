@@ -27,6 +27,7 @@ from api.schemas.chat.message import (
     Metadata,
     TextObject,
 )
+from db.session import AsyncSessionLocal
 from db.tables.types import Channel
 from services import agent_service, project_service, transaction_service, user_service
 from utils.dd import is_testing_mode, send_dd_histogram_metrics, trace_async_block
@@ -34,6 +35,71 @@ from utils.log import logger
 from utils.request_context import RequestContext
 
 from . import _utils
+
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _fingerprint_conversation(
+    agent_id: uuid.UUID,
+    project_id: uuid.UUID,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    channel: Channel,
+) -> None:
+    """Compute and store agent fingerprints for a conversation.
+
+    Fire-and-forget background task. Owns its own session.
+    Skips if conversation already has a fingerprint.
+    """
+    try:
+        from services.agent_service._raw_config import RawConfig
+        from services.eval_service._snapshot import upsert_agent_config_snapshot
+
+        async with AsyncSessionLocal() as session:
+            conversation_repo = db.ConversationRepositoryAsync(session)
+            conversation = await conversation_repo.get_conversation_by_id(
+                conversation_id
+            )
+            if conversation.agent_fingerprint:
+                return
+
+            agent_repo = db.AgentRepositoryAsync(session)
+            db_agent = await agent_repo.get_agent(agent_id=agent_id)
+            if not db_agent or not db_agent.account:
+                return
+
+            project_repo = db.ProjectRepositoryAsync(session)
+            db_project = await project_repo.get_project(project_id)
+            if not db_project:
+                return
+
+            raw_config = RawConfig(
+                agent=db_agent,
+                project=db_project,
+                account=db_agent.account,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                channel=channel,
+            )
+            config, agent_fp, prompt_fp, config_dict = (
+                await raw_config.build_with_fingerprint(session)
+            )
+
+            conversation.agent_fingerprint = agent_fp
+            conversation.prompt_fingerprint = prompt_fp
+            await session.commit()
+
+            prompt_text = (config.persona.description if config else "") or ""
+            await upsert_agent_config_snapshot(
+                fingerprint=agent_fp,
+                agent_id=agent_id,
+                project_id=project_id,
+                config_dict=config_dict,
+                prompt_hash=prompt_fp,
+                prompt_text=prompt_text,
+            )
+    except Exception:
+        logger.exception("Failed to fingerprint conversation %s", conversation_id)
 
 
 def get_filler_message(message: Message) -> Message:
@@ -283,6 +349,19 @@ async def get_chat_response_async(
             )
             # Get Output
             output: Output = await agent.arun(input)  # type: ignore # Temporarily disable specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
+
+        # Fire background fingerprinting (covers both pal-agents and legacy flows)
+        fp_task = asyncio.create_task(
+            _fingerprint_conversation(
+                agent_id=agent_id,
+                project_id=project_id,
+                user_id=user.id,
+                conversation_id=request_message.conversation_id,
+                channel=message.channel,
+            )
+        )
+        _background_tasks.add(fp_task)
+        fp_task.add_done_callback(_background_tasks.discard)
 
         # ================ Step 3: Get response messages ================
         # Check if output.content contains a link and create additional SMS response if message.channel is VOICE
