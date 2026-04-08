@@ -58,6 +58,7 @@ async def create_eval_run(
     )
     run = await repo.create(run)
     await session.commit()
+    await session.refresh(run)
 
     _schedule_eval_background(run.id, project_id, driver_mode)
     return run

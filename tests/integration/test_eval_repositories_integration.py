@@ -668,6 +668,74 @@ class TestAgentConfigSnapshotRepository:
         result = await repo.get_by_agent_id(uuid.uuid4())
         assert result == []
 
+
+# ---------------------------------------------------------------------------
+# Service-level integration: create_eval_run + model_validate after commit
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestCreateEvalRunCommitRefresh:
+    """Regression test for greenlet error when accessing ORM attributes
+    after session.commit() in create_eval_run.
+
+    session.commit() expires all ORM attributes. Without an explicit
+    refresh, model_validate(run) triggers a lazy load that fails in async
+    context with 'greenlet_spawn has not been called'.
+    """
+
+    async def test_create_eval_run_returns_accessible_attributes(
+        self, async_session: AsyncSession
+    ) -> None:
+        """Call the actual create_eval_run service function and access attributes.
+
+        This is the exact code path the route handler uses:
+        create_eval_run() -> EvalRunResponse.model_validate(run).
+        Before the fix, this raised MissingGreenlet.
+        """
+        from unittest.mock import patch
+
+        from api.schemas.eval.responses import EvalRunResponse
+        from services.eval_service._runner import create_eval_run
+
+        project_id = uuid.uuid4()
+        account_id = uuid.uuid4()
+
+        # Patch out background task scheduling — we only test the DB path
+        with patch("services.eval_service._runner._schedule_eval_background"):
+            run = await create_eval_run(
+                project_id=project_id,
+                account_id=account_id,
+                driver_mode="http",
+                triggered_by="api",
+                session=async_session,
+            )
+
+        # This is what the route handler does — if refresh is missing, this explodes
+        response = EvalRunResponse.model_validate(run)
+        assert response.id == run.id
+        assert response.project_id == project_id
+        assert response.status == "pending"
+        assert response.driver_mode == "http"
+        assert response.triggered_by == "api"
+        assert response.scenario_count == 0
+        assert response.created_at is not None
+
+    async def test_attributes_fail_without_refresh_after_commit(
+        self, async_session: AsyncSession
+    ) -> None:
+        """Proves the bug: without refresh after commit, attribute access raises."""
+        from sqlalchemy.exc import MissingGreenlet
+
+        repo = EvalRunRepositoryAsync(async_session)
+        run = _make_eval_run(uuid.uuid4(), uuid.uuid4())
+        run = await repo.create(run)
+        await async_session.commit()
+        # Deliberately skip refresh — this is what the old code did
+
+        with pytest.raises(MissingGreenlet):
+            _ = run.status
+
     async def test_upsert_then_fetch_lifecycle(
         self, async_session: AsyncSession
     ) -> None:
