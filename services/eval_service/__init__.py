@@ -3,6 +3,9 @@ from services.eval_service._evaluators import (
     EvaluatorResult,
     evaluate_scenario,
 )
+from services.eval_service._prompt_traceability import (
+    get_conversation_history_with_prompts,
+)
 from services.eval_service._runner import (
     create_eval_run,
     get_eval_results,
@@ -26,6 +29,7 @@ __all__ = [
     "get_scorecard",
     "load_scenarios",
     "mark_stale_runs_failed",
+    "get_conversation_history_with_prompts",
     "upsert_agent_config_snapshot",
     "validate_scenarios_from_yaml",
 ]
