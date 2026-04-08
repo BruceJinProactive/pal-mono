@@ -125,6 +125,7 @@ class TestVoiceFireAndForgetTaskLeak:
         mock_request.close_reason = "agent_hangup"
         mock_request.conversation = []
         mock_request.audio_recording_s3_uri = None
+        mock_request.metrics = None
 
         initial_count = len(_background_tasks)
 

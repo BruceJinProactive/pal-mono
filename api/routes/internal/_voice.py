@@ -25,6 +25,7 @@ from api.schemas.internal.voice_init import (
     VoiceInitRequest,
     VoiceInitResponse,
 )
+from api.schemas.internal.voice_metrics import compute_latency_averages
 from db.repositories.agent_repository import AgentRepositoryAsync
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.types import Channel, SpeechRate
@@ -574,6 +575,18 @@ async def end_voice_call(
         conversation.call_id = call_id
 
         # --- Step 4: update phone call record ---
+        # Only pass latency kwargs when we have actual turn data.
+        # The repository skips fields whose value is None, so omitting
+        # them entirely avoids overwriting previously-persisted values
+        # on retried / replayed end-call requests.
+        latency_avgs: dict[str, float] = {}
+        if request.metrics and request.metrics.turn_latencies_ms:
+            latency_avgs = {
+                k: v
+                for k, v in compute_latency_averages(request.metrics).items()
+                if v is not None
+            }
+
         phone_call_repo = PhoneCallRepositoryAsync(session)
         phone_call = await phone_call_repo.update_phone_call(
             call_id=call_id,
@@ -582,6 +595,7 @@ async def end_voice_call(
             call_purpose=analytics["call_purpose"],
             user_satisfaction=analytics["user_satisfaction"],
             language=analytics["language"],
+            **latency_avgs,
         )
 
         # Store phone_call_id before commit to avoid accessing expired object attributes
