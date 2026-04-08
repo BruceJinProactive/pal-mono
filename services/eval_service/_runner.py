@@ -21,7 +21,8 @@ from db.tables import EvalResult, EvalRun
 from services.eval_service._driver_factory import create_driver
 from services.eval_service._evaluators import ConversationRecord, evaluate_scenario
 from services.eval_service._scenario_loader import load_scenarios
-from services.eval_service.schema import EvalScenario, UserTurn
+from services.eval_service._user_simulator import END_SENTINEL, UserSimulator
+from services.eval_service.schema import EvalScenario, TurnType, UserTurn
 from utils.log import logger
 
 # GC prevention for background tasks
@@ -114,15 +115,16 @@ async def _run_eval_background(
                 await session.commit()
                 return
 
-            # Create driver
+            # Create driver and simulator
             driver = create_driver(driver_mode, str(project_id))
+            simulator = UserSimulator()
 
             passed_count = 0
             failed_count = 0
 
             for scenario in scenarios:
                 try:
-                    record = await _run_conversation(driver, scenario)
+                    record = await _run_conversation(driver, scenario, simulator)
                     eval_results = await evaluate_scenario(record)
 
                     # Write results
@@ -206,12 +208,17 @@ async def _run_eval_background(
 async def _run_conversation(
     driver: Any,
     scenario: EvalScenario,
+    simulator: UserSimulator,
 ) -> ConversationRecord:
     """Execute a conversation with the agent driver for one scenario.
+
+    Handles both static turns (fixed text) and ai_driven turns (generated
+    by UserSimulator based on persona, scenario, and goal).
 
     Args:
         driver: AgentDriver instance.
         scenario: The scenario to run.
+        simulator: UserSimulator for ai_driven turns.
 
     Returns:
         ConversationRecord with all turns and responses.
@@ -219,8 +226,23 @@ async def _run_conversation(
     record = ConversationRecord(scenario=scenario)
     history: list[ConversationTurn] = []
 
-    for turn in scenario.user_turns:
-        if isinstance(turn, UserTurn):
+    for turn_number, turn in enumerate(scenario.user_turns):
+        if isinstance(turn, UserTurn) and turn.type == TurnType.AI_DRIVEN:
+            message = await simulator.generate_user_message(
+                persona=scenario.persona,
+                scenario=scenario.scenario,
+                goal=turn.goal or "",
+                conversation_history=history,
+                turn_number=turn_number,
+            )
+            if message == END_SENTINEL:
+                logger.info(
+                    "Simulator ended conversation at turn %d for scenario %s",
+                    turn_number,
+                    scenario.scenario_id,
+                )
+                break
+        elif isinstance(turn, UserTurn):
             message = turn.text or turn.goal or ""
         else:
             message = str(turn)

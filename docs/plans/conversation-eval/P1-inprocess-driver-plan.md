@@ -135,11 +135,11 @@ Changes from current:
 
 ---
 
-## Part 3: Wire ai_driven turns in pal-mono
+## Part 3: Wire ai_driven turns in pal-mono (DONE)
 
 **Goal:** Handle `ai_driven` scenario turns using the UserSimulator.
 
-**Depends on:** Part 2 (UserSimulator in pal-agents SDK)
+**Status:** Completed — uses `UserSimulator` from pal-agents SDK v0.2.242 (`pal_agents.evals.simulator`). Part 2 shipped alongside this work.
 
 ### Files to modify
 
@@ -184,13 +184,20 @@ async def _run_conversation(
 - Instantiate `UserSimulator` once per eval run
 - Pass to `_run_conversation(driver, scenario, simulator)`
 
+### Files created
+
+#### `services/eval_service/_user_simulator.py`
+
+- Re-exports `UserSimulator` from `pal_agents.evals.simulator`
+- Defines `END_SENTINEL = "[END]"` constant used by the runner
+
 ### Acceptance criteria
 
-- [ ] Scripted turns work exactly as before (no regression)
-- [ ] `ai_driven` turns generate contextual user messages via simulator
-- [ ] Conversation ends when simulator returns `[END]`
-- [ ] Simulator instantiated once per eval run (not per scenario)
-- [ ] Unit tests with mocked simulator for ai_driven turn handling
+- [x] Scripted turns work exactly as before (no regression)
+- [x] `ai_driven` turns generate contextual user messages via simulator
+- [x] Conversation ends when simulator returns `[END]`
+- [x] Simulator instantiated once per eval run (not per scenario)
+- [x] Unit tests with mocked simulator for ai_driven turn handling
 
 ---
 
