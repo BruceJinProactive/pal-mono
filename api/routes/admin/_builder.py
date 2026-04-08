@@ -249,6 +249,8 @@ def build_conversation(
         ended_reason=conversation.ended_reason,
         customer_converted=conversation.customer_converted,
         transfer_purpose=conversation.transfer_purpose,
+        agent_fingerprint=conversation.agent_fingerprint,
+        prompt_fingerprint=conversation.prompt_fingerprint,
     )
 
 
@@ -269,6 +271,8 @@ def build_conversation_detail(conversation: db.Conversation) -> ConversationDeta
         ended_reason=conversation.ended_reason,
         customer_converted=conversation.customer_converted,
         transfer_purpose=conversation.transfer_purpose,
+        agent_fingerprint=conversation.agent_fingerprint,
+        prompt_fingerprint=conversation.prompt_fingerprint,
     )
 
 

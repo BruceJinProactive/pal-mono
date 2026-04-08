@@ -37,6 +37,8 @@ class Conversation(BaseModel):
     ended_reason: str | None = None
     customer_converted: uuid.UUID | None = None
     transfer_purpose: str | None = None
+    agent_fingerprint: str | None = None
+    prompt_fingerprint: str | None = None
 
 
 class ConversationPreview(BaseModel):
@@ -95,6 +97,8 @@ class ConversationDetail(BaseModel):
     ended_reason: str | None = None
     customer_converted: uuid.UUID | None = None
     transfer_purpose: str | None = None
+    agent_fingerprint: str | None = None
+    prompt_fingerprint: str | None = None
 
 
 class UpdateConversationRequest(BaseModel):

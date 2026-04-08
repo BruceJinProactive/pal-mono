@@ -4,6 +4,7 @@ from api.routes.admin import admin_router
 from api.routes.asset import asset_router
 from api.routes.catering import catering_router
 from api.routes.chat.chat import chat_router
+from api.routes.eval import eval_router
 from api.routes.integrations import integrations_router
 from api.routes.internal import internal_router
 from api.routes.operation import operation_router
@@ -20,3 +21,4 @@ v1_router.include_router(operation_router)
 v1_router.include_router(catering_router)
 v1_router.include_router(telephony_router)
 v1_router.include_router(internal_router)
+v1_router.include_router(eval_router)

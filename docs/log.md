@@ -18,6 +18,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-03
 
+### 2026-03-31
+- Add eval API routes and surface conversation fingerprints ([record](records/2026-03-31-eval-api-routes.md))
+
 ### 2026-03-30
 - Integrate pal-agents DeepEval metrics (v0.2.210) into eval service — replace custom LLM judges (E2 menu_hallucination, E3 groundedness) with FaithfulnessMetric; add Responsive, VoiceAppropriate, TaskCompletion metrics; delete `_llm.py`
 - Add Pydantic `field_validator` on voice config schemas to enforce allowed languages (`english`, `spanish`, `chinese`) at the API boundary
