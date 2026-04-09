@@ -13,8 +13,9 @@ Conversion Triggers:
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from agent.tool import ToolMetadata
@@ -150,6 +151,29 @@ def save_reservation(
     )
 
 
+async def save_reservation_from_agent_async(
+    session: AsyncSession,
+    reservation_details: Any,
+    conversation_id: uuid.UUID,
+) -> Optional[uuid.UUID]:
+    """
+    Save a reservation/waitlist from pal-agents reservation_details.
+
+    Args:
+        session: Async database session
+        reservation_details: ReservationDetails object from pal-agents Output
+        conversation_id: The conversation ID this reservation belongs to
+
+    Returns:
+        uuid.UUID: The created reservation ID, or None if failed
+    """
+    return await _implementation.save_reservation_from_agent_async(
+        session=session,
+        reservation_details=reservation_details,
+        conversation_id=conversation_id,
+    )
+
+
 def update_reservation_by_external_id(
     reservation_id: str,
     vendor: IntegrationProvider,
@@ -187,6 +211,7 @@ __all__ = [
     "create_reservation",
     "get_reservation_by_id",
     "save_reservation",
+    "save_reservation_from_agent_async",
     "save_waitlist",
     "update_reservation_by_external_id",
 ]

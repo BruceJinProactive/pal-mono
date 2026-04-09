@@ -10,9 +10,10 @@ Conversion Triggers:
 """
 
 import uuid
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from agent.tool import ToolMetadata
@@ -386,3 +387,133 @@ def update_reservation_by_external_id(
     finally:
         if session_created_here:
             db_session.close()
+
+
+def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+    """Parse a datetime string (ISO 8601 or Unix epoch) to a datetime object."""
+    if not value:
+        return None
+    # Try ISO 8601 first
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        pass
+    # Try Unix epoch (integer or float as string)
+    try:
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+    except (ValueError, OSError, OverflowError):
+        logger.warning(
+            f"[ReservationService] Could not parse datetime value: {value!r}"
+        )
+        return None
+
+
+async def save_reservation_from_agent_async(
+    session: AsyncSession,
+    reservation_details: Any,
+    conversation_id: uuid.UUID,
+) -> Optional[uuid.UUID]:
+    """
+    Save a reservation/waitlist from pal-agents reservation_details.
+
+    Maps ReservationDetails (pal-agents) -> ReservationData (pal-mono),
+    persists to the reservations table, and triggers customer_converted update.
+
+    Args:
+        session: Async database session
+        reservation_details: ReservationDetails object from pal-agents Output
+        conversation_id: The conversation ID this reservation belongs to
+
+    Returns:
+        uuid.UUID: The created reservation ID, or None if failed
+    """
+    try:
+        # Convert vendor string to IntegrationProvider enum
+        try:
+            vendor_enum = IntegrationProvider(reservation_details.vendor.lower())
+        except ValueError:
+            logger.warning(
+                f"[ReservationService] Unknown vendor: {reservation_details.vendor}",
+                extra={"vendor": reservation_details.vendor},
+            )
+            return None
+
+        reservation_data = ReservationData(
+            conversation_id=conversation_id,
+            vendor=vendor_enum,
+            entry_type=reservation_details.entry_type,
+            reservation_id=reservation_details.reservation_id,
+            store_id=reservation_details.store_id,
+            status=reservation_details.status,
+            tracking_link=reservation_details.tracking_link,
+            table_size=reservation_details.party_size,
+            special_requests=reservation_details.notes,
+            reservation_time=_parse_datetime(reservation_details.reservation_time),
+            arrive_by_time=_parse_datetime(reservation_details.arrive_by_time),
+            expected_seating_time=_parse_datetime(
+                reservation_details.expected_seating_time
+            ),
+        )
+
+        def _save(sync_session: Session) -> Reservation:
+            repository = ReservationRepository(sync_session, auto_commit=False)
+            reservation = repository.create_reservation(
+                conversation_id=reservation_data.conversation_id,
+                entry_type=reservation_data.entry_type,
+                vendor=reservation_data.vendor,
+                reservation_id=reservation_data.reservation_id,
+                store_id=reservation_data.store_id,
+                tracking_link=reservation_data.tracking_link,
+                status=reservation_data.status,
+                table_size=reservation_data.table_size,
+                special_requests=reservation_data.special_requests,
+                reservation_time=reservation_data.reservation_time,
+                arrive_by_time=reservation_data.arrive_by_time,
+                expected_seating_time=reservation_data.expected_seating_time,
+            )
+
+            # Trigger customer_converted based on entry type + status
+            should_convert = (
+                reservation_data.entry_type == "reservation"
+                and reservation_data.status
+                and reservation_data.status.lower() == "confirmed"
+            ) or (
+                reservation_data.entry_type == "waitlist"
+                and reservation_data.status
+                and reservation_data.status.lower() == "queued"
+            )
+            if should_convert:
+                _update_customer_converted(
+                    session=sync_session,
+                    conversation_id=conversation_id,
+                    reservation_id=reservation.id,
+                )
+
+            return reservation
+
+        reservation = await session.run_sync(_save)
+        await session.commit()
+
+        logger.info(
+            f"[ReservationService] Saved {reservation_data.entry_type} "
+            f"{reservation.id} for {vendor_enum} "
+            f"(reservation_id={reservation_details.reservation_id})",
+            extra={
+                "conversation_id": str(conversation_id),
+                "entry_type": reservation_data.entry_type,
+                "vendor": str(vendor_enum),
+                "reservation_id": reservation_details.reservation_id,
+                "status": reservation_data.status,
+            },
+        )
+
+        return reservation.id
+
+    except Exception as e:
+        await session.rollback()
+        logger.error(
+            f"[ReservationService] Failed to persist reservation from agent: {e}",
+            extra={"conversation_id": str(conversation_id), "error": str(e)},
+            exc_info=True,
+        )
+        return None

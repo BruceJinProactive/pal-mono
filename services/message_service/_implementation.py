@@ -29,7 +29,13 @@ from api.schemas.chat.message import (
 )
 from db.session import AsyncSessionLocal
 from db.tables.types import Channel
-from services import agent_service, project_service, transaction_service, user_service
+from services import (
+    agent_service,
+    project_service,
+    reservation_service,
+    transaction_service,
+    user_service,
+)
 from utils.dd import is_testing_mode, send_dd_histogram_metrics, trace_async_block
 from utils.log import logger
 from utils.request_context import RequestContext
@@ -315,6 +321,33 @@ async def get_chat_response_async(
                 await transaction_service.create_order_from_agent_async(
                     session=session,
                     order_details=order_details,
+                    conversation_id=request_message.conversation_id,
+                )
+
+            # Persist reservation_details if present
+            if (
+                hasattr(pal_output, "reservation_details")
+                and pal_output.reservation_details
+            ):
+                rd = pal_output.reservation_details
+                logger.info(
+                    "[reservation_details]Reservation/waitlist placed",
+                    extra={
+                        "event_type": "reservation_placed",
+                        "conversation_id": str(request_message.conversation_id),
+                        "agent_id": str(agent_id),
+                        "account_name": account_name,
+                        "vendor": rd.vendor,
+                        "entry_type": rd.entry_type,
+                        "reservation_id": rd.reservation_id,
+                        "store_id": rd.store_id,
+                        "status": rd.status,
+                        "party_size": rd.party_size,
+                    },
+                )
+                await reservation_service.save_reservation_from_agent_async(
+                    session=session,
+                    reservation_details=rd,
                     conversation_id=request_message.conversation_id,
                 )
 
@@ -787,6 +820,33 @@ async def get_chat_response_stream(
                                 await transaction_service.create_order_from_agent_async(
                                     session=session,
                                     order_details=order_details,
+                                    conversation_id=request_conversation_id,
+                                )
+
+                            # Persist reservation_details if present in streaming response
+                            if (
+                                hasattr(chunk, "reservation_details")
+                                and chunk.reservation_details
+                            ):
+                                rd = chunk.reservation_details
+                                logger.info(
+                                    "[reservation_details]Reservation/waitlist received in stream",
+                                    extra={
+                                        "event_type": "reservation_placed_streamed",
+                                        "conversation_id": str(request_conversation_id),
+                                        "agent_id": str(agent_id),
+                                        "account_name": account_name,
+                                        "vendor": rd.vendor,
+                                        "entry_type": rd.entry_type,
+                                        "reservation_id": rd.reservation_id,
+                                        "store_id": rd.store_id,
+                                        "status": rd.status,
+                                        "party_size": rd.party_size,
+                                    },
+                                )
+                                await reservation_service.save_reservation_from_agent_async(
+                                    session=session,
+                                    reservation_details=rd,
                                     conversation_id=request_conversation_id,
                                 )
 
