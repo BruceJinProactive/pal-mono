@@ -90,7 +90,7 @@ class TestExtractContentFromRequest:
             ],
         )
         content = _extract_content_from_request(request)
-        assert content == "Hello there"
+        assert content == "Could you say it again?"
 
     def test_extract_raises_error_when_neither_field_provided(self) -> None:
         """Raise ValueError when neither message nor messages provided."""

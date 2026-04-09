@@ -73,15 +73,23 @@ def _extract_content_from_request(request: ChatCompletionRequest) -> str:
     """Extract content from the request object."""
     if request.messages:
         # Build a message from the messages array
-        user_messages = [
-            msg.get("content", "")
-            for msg in request.messages
-            if msg.get("role") == "user"
+        user_messages = []
+        for message in reversed(request.messages):
+            if message.get("role") != "user":
+                break
+            user_messages.append(message)
+
+        user_messages_content = [
+            msg.get("content", "") for msg in reversed(user_messages)
         ]
-        if not user_messages:
-            content = request.messages[-1].get("content", "")
+        if not user_messages_content:
+            logger.error(
+                f"[chat_completions] Missing user inputs for the current turn: {request.messages[-1]}"
+            )
+            # Sending a fake inputs, asking agent to repeat his last response so the conversation can continue
+            content = "Could you say it again?"
         else:
-            content = user_messages[-1]
+            content = " ".join(user_messages_content)
     elif request.message:
         content = request.message
     else:
