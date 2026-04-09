@@ -616,6 +616,59 @@ class TestMonitoringRunRepository:
         fail_runs = await repo.get_by_config(mc.id, result_filter="fail")
         assert len(fail_runs) == 1
 
+    async def test_run_repo_delete_runs_by_config_id(
+        self, async_session: AsyncSession
+    ) -> None:
+        """delete_runs_by_config_id bulk-deletes all runs for a config."""
+        account_id, project_id = await _async_make_world(async_session)
+        ss = await _async_make_signal_source(async_session, account_id=account_id)
+        mc1 = await _async_make_monitoring_config(
+            async_session, project_id=project_id, signal_source_id=ss.id
+        )
+        mc2 = await _async_make_monitoring_config(
+            async_session, project_id=project_id, signal_source_id=ss.id
+        )
+
+        now = datetime.now(UTC)
+        # Create 3 runs for mc1 and 1 run for mc2
+        r1 = await _async_make_monitoring_run(
+            async_session, monitoring_config_id=mc1.id, started_at=now
+        )
+        r2 = await _async_make_monitoring_run(
+            async_session,
+            monitoring_config_id=mc1.id,
+            started_at=now + timedelta(minutes=1),
+        )
+        r3 = await _async_make_monitoring_run(
+            async_session,
+            monitoring_config_id=mc1.id,
+            started_at=now + timedelta(minutes=2),
+        )
+        r4 = await _async_make_monitoring_run(
+            async_session, monitoring_config_id=mc2.id, started_at=now
+        )
+
+        repo = MonitoringRunRepositoryAsync(async_session)
+        deleted_count = await repo.delete_runs_by_config_id(mc1.id)
+
+        assert deleted_count == 3
+
+        # All mc1 runs gone
+        assert await repo.get_by_id(r1.id) is None
+        assert await repo.get_by_id(r2.id) is None
+        assert await repo.get_by_id(r3.id) is None
+
+        # mc2 run untouched
+        assert await repo.get_by_id(r4.id) is not None
+
+    async def test_run_repo_delete_runs_by_config_id_no_runs(
+        self, async_session: AsyncSession
+    ) -> None:
+        """delete_runs_by_config_id returns 0 when config has no runs."""
+        repo = MonitoringRunRepositoryAsync(async_session)
+        deleted_count = await repo.delete_runs_by_config_id(uuid.uuid4())
+        assert deleted_count == 0
+
     async def test_run_repo_delete_batch(self, async_session: AsyncSession) -> None:
         """delete_batch removes specified runs and reports counts."""
         account_id, project_id = await _async_make_world(async_session)

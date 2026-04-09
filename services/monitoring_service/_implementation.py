@@ -833,24 +833,23 @@ async def delete_config(
             f"Found {len(file_paths)} reference images to clean up for config {config_id}"
         )
 
-    # Delete associated monitoring runs before deleting config
+    # Bulk-delete associated monitoring runs (single SQL statement)
     run_repo = MonitoringRunRepositoryAsync(session)
-    runs = await run_repo.get_by_config(config_id)
-    if runs:
-        run_ids = [run.id for run in runs]
-        delete_result = await run_repo.delete_batch(run_ids)
-        logger.info(
-            f"Deleted {delete_result['deleted']} monitoring runs for config {config_id}"
-        )
+    deleted_runs = await run_repo.delete_runs_by_config_id(config_id)
+    if deleted_runs:
+        logger.info(f"Deleted {deleted_runs} monitoring runs for config {config_id}")
 
     # Delete config from database
     deleted = await config_repo.delete(config_id)
     if deleted:
         logger.info(f"Deleted monitoring config {config_id}")
 
-        # Clean up S3 storage after successful database deletion
+        # Clean up S3 storage in background to avoid blocking the response
         if file_paths:
-            await cleanup_reference_images(file_paths)
+            _schedule_background_task(
+                cleanup_reference_images(file_paths),
+                name=f"cleanup-images-config-{config_id}",
+            )
 
     return deleted
 
@@ -1430,27 +1429,37 @@ async def build_config_response(config: MonitoringConfig) -> MonitoringConfigRes
     # Deep copy rules to avoid modifying the original
     transformed_rules = copy.deepcopy(config.rules)
 
-    # Transform reference image URLs to presigned S3 URLs asynchronously
+    # Transform reference image URLs to presigned S3 URLs in parallel
     if "reference_images" in transformed_rules:
-        for image in transformed_rules["reference_images"]:
-            if image.get("url"):
+        images_to_presign = [
+            (i, image)
+            for i, image in enumerate(transformed_rules["reference_images"])
+            if image.get("url")
+        ]
+
+        if images_to_presign:
+
+            async def _presign(image: dict) -> str:
                 original_url = image["url"]
                 try:
-                    # Run synchronous S3 operations in thread pool to avoid blocking event loop
-                    image["url"] = await asyncio.to_thread(
-                        map_uri_to_s3_url, original_url
-                    )
-                    # Preserve original URL if transformation fails (returns empty string)
-                    if not image["url"]:
+                    result = await asyncio.to_thread(map_uri_to_s3_url, original_url)
+                    if not result:
                         logger.warning(
                             f"Failed to transform URL {original_url}, preserving original"
                         )
-                        image["url"] = original_url
+                        return original_url
+                    return result
                 except Exception as e:
                     logger.error(
                         f"Error transforming URL {original_url}: {e}, preserving original"
                     )
-                    image["url"] = original_url
+                    return original_url
+
+            presigned_urls = await asyncio.gather(
+                *[_presign(img) for _, img in images_to_presign]
+            )
+            for (idx, _), url in zip(images_to_presign, presigned_urls):
+                transformed_rules["reference_images"][idx]["url"] = url
 
     return MonitoringConfigResponse(
         id=config.id,

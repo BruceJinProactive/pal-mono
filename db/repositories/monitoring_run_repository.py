@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -169,6 +169,32 @@ class MonitoringRunRepositoryAsync:
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(f"Error deleting monitoring run: {e}")
+            raise
+
+    async def delete_runs_by_config_id(self, config_id: uuid.UUID) -> int:
+        """
+        Delete all monitoring runs for a given config using a bulk SQL delete.
+
+        Args:
+            config_id: UUID of the monitoring configuration.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            SQLAlchemyError: If there is a database error.
+        """
+        try:
+            result = await self.session.execute(
+                delete(MonitoringRun).where(
+                    MonitoringRun.monitoring_config_id == config_id
+                )
+            )
+            await self.session.flush()
+            return result.rowcount or 0
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error deleting monitoring runs by config: {e}")
             raise
 
     async def delete_batch(self, run_ids: list[uuid.UUID]) -> dict[str, int]:
