@@ -167,6 +167,7 @@ def _build_adora_v3_spec(
 _TOAST_SPEC_FIELDS = [
     "menu_data",
     "takeout_dining_option_guid",
+    "delivery_dining_option_guid",
     "base_url",
     "timeout",
     "submit_orders",
