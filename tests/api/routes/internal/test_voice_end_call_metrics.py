@@ -11,7 +11,12 @@ from api.schemas.internal.voice_init import (
     TurnLatency,
     VoiceEndCallRequest,
 )
-from api.schemas.internal.voice_metrics import compute_latency_averages
+from api.schemas.internal.voice_metrics import (
+    compute_latency_averages,
+    extract_interruption_dicts,
+    extract_turn_latency_totals,
+    extract_turn_timestamps,
+)
 
 # ---------------------------------------------------------------------------
 # Schema validation
@@ -208,3 +213,85 @@ class TestComputeLatencyAverages:
         assert result["voice_latency_avg"] == 0.0
         assert result["transcriber_latency_avg"] == 0.0
         assert result["endpointing_latency_avg"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Event preparation helpers (extract_* functions)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractTurnLatencyTotals:
+    """Unit tests for per-turn total latency extraction."""
+
+    def test_empty_report(self) -> None:
+        report = CallMetricsReport()
+        assert extract_turn_latency_totals(report) == []
+
+    def test_single_turn(self) -> None:
+        turn = TurnLatency(
+            turn_index=0,
+            timestamp=1000.0,
+            stt_duration_ms=100.0,
+            llm_duration_ms=300.0,
+            tts_duration_ms=200.0,
+        )
+        report = CallMetricsReport(turn_latencies_ms=[turn])
+        assert extract_turn_latency_totals(report) == [600.0]
+
+    def test_multi_turn(self) -> None:
+        turns = [
+            TurnLatency(
+                turn_index=0,
+                timestamp=1000.0,
+                stt_duration_ms=100.0,
+                llm_duration_ms=300.0,
+                tts_duration_ms=200.0,
+            ),
+            TurnLatency(
+                turn_index=1,
+                timestamp=1010.0,
+                stt_duration_ms=50.0,
+                llm_duration_ms=400.0,
+                tts_duration_ms=150.0,
+            ),
+        ]
+        report = CallMetricsReport(turn_latencies_ms=turns)
+        assert extract_turn_latency_totals(report) == [600.0, 600.0]
+
+
+class TestExtractInterruptionDicts:
+    """Unit tests for interruption event serialisation."""
+
+    def test_empty_report(self) -> None:
+        report = CallMetricsReport()
+        assert extract_interruption_dicts(report) == []
+
+    def test_serialises_interruptions(self) -> None:
+        report = CallMetricsReport(
+            interruption_events=[
+                InterruptionEvent(turn_index=0, timestamp=1001.0, source="tts"),
+                InterruptionEvent(turn_index=1, timestamp=1011.0, source="llm"),
+            ]
+        )
+        result = extract_interruption_dicts(report)
+        assert result == [
+            {"turn_index": 0, "timestamp": 1001.0, "source": "tts"},
+            {"turn_index": 1, "timestamp": 1011.0, "source": "llm"},
+        ]
+
+
+class TestExtractTurnTimestamps:
+    """Unit tests for timestamp extraction."""
+
+    def test_empty_report(self) -> None:
+        report = CallMetricsReport()
+        assert extract_turn_timestamps(report) == []
+
+    def test_extracts_timestamps_in_order(self) -> None:
+        turns = [
+            TurnLatency(turn_index=0, timestamp=1000.0),
+            TurnLatency(turn_index=1, timestamp=1010.0),
+            TurnLatency(turn_index=2, timestamp=1025.0),
+        ]
+        report = CallMetricsReport(turn_latencies_ms=turns)
+        assert extract_turn_timestamps(report) == [1000.0, 1010.0, 1025.0]

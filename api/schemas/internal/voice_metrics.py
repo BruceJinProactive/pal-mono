@@ -10,6 +10,33 @@ from __future__ import annotations
 from api.schemas.internal.voice_init import CallMetricsReport
 
 
+def extract_turn_latency_totals(report: CallMetricsReport) -> list[float]:
+    """Compute per-turn total latency (STT + LLM + TTS) in milliseconds."""
+    return [
+        t.stt_duration_ms + t.llm_duration_ms + t.tts_duration_ms
+        for t in report.turn_latencies_ms
+    ]
+
+
+def extract_interruption_dicts(
+    report: CallMetricsReport,
+) -> list[dict[str, object]]:
+    """Serialise interruption events into plain dicts for the evaluation event."""
+    return [
+        {
+            "turn_index": e.turn_index,
+            "timestamp": e.timestamp,
+            "source": e.source,
+        }
+        for e in report.interruption_events
+    ]
+
+
+def extract_turn_timestamps(report: CallMetricsReport) -> list[float]:
+    """Return ordered list of per-turn timestamps from the metrics report."""
+    return [t.timestamp for t in report.turn_latencies_ms]
+
+
 def compute_latency_averages(
     report: CallMetricsReport,
 ) -> dict[str, float | None]:

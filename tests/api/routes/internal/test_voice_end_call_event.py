@@ -11,6 +11,11 @@ from api.routes.internal._voice import (
     _extract_transcript_text,
     _publish_livekit_evaluation_event,
 )
+from api.schemas.internal.voice_init import (
+    CallMetricsReport,
+    InterruptionEvent,
+    TurnLatency,
+)
 from events.schema import (
     AudioRecordingReference,
     BaseEvent,
@@ -482,3 +487,160 @@ class TestEventSerialization:
             "s3_uri": "s3://bucket/test.wav",
             "duration_seconds": 10.0,
         }
+
+
+# ---------------------------------------------------------------------------
+# Metrics wiring into evaluation event
+# ---------------------------------------------------------------------------
+
+
+def _make_metrics(
+    turns: list[TurnLatency] | None = None,
+    interruptions: list[InterruptionEvent] | None = None,
+) -> CallMetricsReport:
+    return CallMetricsReport(
+        turn_latencies_ms=turns or [],
+        interruption_events=interruptions or [],
+    )
+
+
+async def _publish_with_metrics(
+    metrics: CallMetricsReport | None = None,
+    conversation_history: list[dict] | None = None,
+) -> ConversationEvaluationRequested:
+    """Helper: call _publish_livekit_evaluation_event and return the fired event."""
+    project = _make_project()
+    mock_session = AsyncMock()
+    mock_repo = AsyncMock()
+    mock_repo.get_project.return_value = project
+
+    with (
+        patch("db.session.AsyncSessionLocal") as mock_session_cls,
+        patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
+    ):
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_db.ProjectRepositoryAsync.return_value = mock_repo
+        mock_publish.return_value = True
+
+        kwargs = _common_kwargs(metrics=metrics)
+        if conversation_history is not None:
+            kwargs["conversation_history"] = conversation_history
+        await _publish_livekit_evaluation_event(**kwargs)
+
+        mock_publish.assert_called_once()
+        return mock_publish.call_args[0][0]
+
+
+class TestMetricsWiringIntoEvent:
+    """Tests that CallMetricsReport data flows into ConversationEvaluationRequested."""
+
+    @pytest.mark.asyncio
+    async def test_no_metrics_produces_empty_latencies(self) -> None:
+        event = await _publish_with_metrics(metrics=None)
+        assert event.turn_latencies_ms == []
+        assert event.interruption_events == []
+
+    @pytest.mark.asyncio
+    async def test_turn_latencies_computed_from_metrics(self) -> None:
+        turns = [
+            TurnLatency(
+                turn_index=0,
+                timestamp=1000.0,
+                stt_duration_ms=100.0,
+                llm_duration_ms=300.0,
+                tts_duration_ms=200.0,
+            ),
+            TurnLatency(
+                turn_index=1,
+                timestamp=1010.0,
+                stt_duration_ms=50.0,
+                llm_duration_ms=400.0,
+                tts_duration_ms=150.0,
+            ),
+        ]
+        event = await _publish_with_metrics(metrics=_make_metrics(turns=turns))
+        assert event.turn_latencies_ms == [600.0, 600.0]
+
+    @pytest.mark.asyncio
+    async def test_interruption_events_passed_through(self) -> None:
+        interruptions = [
+            InterruptionEvent(turn_index=0, timestamp=1001.0, source="tts"),
+            InterruptionEvent(turn_index=1, timestamp=1011.0, source="llm"),
+        ]
+        event = await _publish_with_metrics(
+            metrics=_make_metrics(interruptions=interruptions)
+        )
+        assert len(event.interruption_events) == 2
+        assert event.interruption_events[0] == {
+            "turn_index": 0,
+            "timestamp": 1001.0,
+            "source": "tts",
+        }
+        assert event.interruption_events[1] == {
+            "turn_index": 1,
+            "timestamp": 1011.0,
+            "source": "llm",
+        }
+
+    @pytest.mark.asyncio
+    async def test_transcript_timestamps_from_metrics(self) -> None:
+        """Agent greeting before first user msg gets 0.0; user msg advances turn."""
+        turns = [
+            TurnLatency(turn_index=0, timestamp=1000.0),
+            TurnLatency(turn_index=1, timestamp=1010.0),
+        ]
+        conversation_history = [
+            {"role": "assistant", "content": "Hello!"},
+            {"role": "user", "content": "Hi there"},
+            {"role": "assistant", "content": "How can I help?"},
+            {"role": "user", "content": "I'd like to order"},
+        ]
+        event = await _publish_with_metrics(
+            metrics=_make_metrics(turns=turns),
+            conversation_history=conversation_history,
+        )
+        # Greeting (before any user msg) → 0.0
+        assert event.transcript[0]["start_time"] == 0.0
+        assert event.transcript[0]["end_time"] == 0.0
+        # First user msg → turn 0
+        assert event.transcript[1]["start_time"] == 1000.0
+        assert event.transcript[1]["end_time"] == 1010.0
+        # Agent reply shares turn 0
+        assert event.transcript[2]["start_time"] == 1000.0
+        assert event.transcript[2]["end_time"] == 1010.0
+        # Second user msg → turn 1
+        assert event.transcript[3]["start_time"] == 1010.0
+        assert event.transcript[3]["end_time"] == 0.0  # no next turn
+
+    @pytest.mark.asyncio
+    async def test_transcript_timestamps_fallback_without_metrics(self) -> None:
+        event = await _publish_with_metrics(metrics=None)
+        for entry in event.transcript:
+            assert entry["start_time"] == 0.0
+            assert entry["end_time"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_more_user_messages_than_turns(self) -> None:
+        """When there are more user messages than metric turns, extras get 0.0."""
+        turns = [TurnLatency(turn_index=0, timestamp=1000.0)]
+        conversation_history = [
+            {"role": "assistant", "content": "Hello!"},
+            {"role": "user", "content": "Hi there"},
+            {"role": "assistant", "content": "How can I help?"},
+            {"role": "user", "content": "Never mind"},
+        ]
+        event = await _publish_with_metrics(
+            metrics=_make_metrics(turns=turns),
+            conversation_history=conversation_history,
+        )
+        assert len(event.transcript) == 4
+        # Greeting → 0.0 (before first user msg)
+        assert event.transcript[0]["start_time"] == 0.0
+        # First user msg → turn 0
+        assert event.transcript[1]["start_time"] == 1000.0
+        # Agent reply shares turn 0
+        assert event.transcript[2]["start_time"] == 1000.0
+        # Second user msg → turn 1, but no metric turn exists → 0.0
+        assert event.transcript[3]["start_time"] == 0.0

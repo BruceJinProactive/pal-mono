@@ -21,11 +21,17 @@ from api.schemas.chat.message import (
     Type,
 )
 from api.schemas.internal.voice_init import (
+    CallMetricsReport,
     VoiceEndCallRequest,
     VoiceInitRequest,
     VoiceInitResponse,
 )
-from api.schemas.internal.voice_metrics import compute_latency_averages
+from api.schemas.internal.voice_metrics import (
+    compute_latency_averages,
+    extract_interruption_dicts,
+    extract_turn_latency_totals,
+    extract_turn_timestamps,
+)
 from db.repositories.agent_repository import AgentRepositoryAsync
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.types import Channel, SpeechRate
@@ -819,6 +825,7 @@ async def end_voice_call(
             audio_recording=audio_recording,
             agent_fingerprint=agent_fingerprint_for_event,
             prompt_fingerprint=prompt_fingerprint_for_event,
+            metrics=request.metrics,
         )
     )
     _background_tasks.add(task)
@@ -1036,6 +1043,7 @@ async def _publish_livekit_evaluation_event(
     audio_recording: AudioRecordingReference | None,
     agent_fingerprint: str | None = None,
     prompt_fingerprint: str | None = None,
+    metrics: CallMetricsReport | None = None,
 ) -> None:
     """Publish ConversationEvaluationRequested for a LiveKit call. Fire-and-forget.
 
@@ -1059,17 +1067,44 @@ async def _publish_livekit_evaluation_event(
             await session.refresh(project, attribute_names=["account"])
             account_name = (project.account.name or "") if project.account else ""
 
-        # Build transcript from conversation history
-        transcript = [
-            {
-                "speaker": "agent" if msg.get("role") == "assistant" else "user",
-                "text": _extract_transcript_text(msg),
-                "start_time": 0.0,  # LiveKit agent doesn't send per-turn timestamps yet
-                "end_time": 0.0,
-            }
-            for msg in conversation_history
-            if msg.get("role") in ("assistant", "user")
-        ]
+        # Build per-turn latency totals, interruptions, and timestamps from metrics
+        if metrics:
+            turn_latencies_ms = extract_turn_latency_totals(metrics)
+            interruption_events = extract_interruption_dicts(metrics)
+            turn_timestamps = extract_turn_timestamps(metrics)
+        else:
+            turn_latencies_ms: list[float] = []
+            interruption_events: list[dict[str, object]] = []
+            turn_timestamps: list[float] = []
+
+        # Build transcript from conversation history with real timestamps.
+        # Each metric turn is keyed to a user STT event, so we advance the
+        # turn index only on user messages.  The assistant reply that follows
+        # shares the same turn's timestamps.
+        transcript: list[dict[str, object]] = []
+        ts_idx = -1  # incremented on first user message
+        for msg in conversation_history:
+            role = msg.get("role")
+            if role not in ("assistant", "user"):
+                continue
+            if role == "user":
+                ts_idx += 1
+            start_time = (
+                turn_timestamps[ts_idx] if 0 <= ts_idx < len(turn_timestamps) else 0.0
+            )
+            end_time = (
+                turn_timestamps[ts_idx + 1]
+                if 0 <= ts_idx and ts_idx + 1 < len(turn_timestamps)
+                else 0.0
+            )
+            transcript.append(
+                {
+                    "speaker": "agent" if role == "assistant" else "user",
+                    "text": _extract_transcript_text(msg),
+                    "start_time": start_time,
+                    "end_time": end_time,
+                }
+            )
 
         event = ConversationEvaluationRequested(
             conversation_id=conversation_id,
@@ -1101,7 +1136,8 @@ async def _publish_livekit_evaluation_event(
             },
             transcript=transcript,
             tool_calls=[],  # LiveKit tool call extraction not yet available here
-            turn_latencies_ms=[],  # Not available from LiveKit agent HTTP report
+            turn_latencies_ms=turn_latencies_ms,
+            interruption_events=interruption_events,
             audio_recording=audio_recording,
             agent_fingerprint=agent_fingerprint,
             prompt_fingerprint=prompt_fingerprint,

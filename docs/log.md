@@ -7,6 +7,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-04
 
 ### 2026-04-07
+- [P2-A2c] Wire real metrics into `ConversationEvaluationRequested` event: populate `turn_latencies_ms` with per-turn totals, add `interruption_events` field, derive transcript `start_time`/`end_time` from metrics timestamps; extract helpers into `api/schemas/internal/voice_metrics.py`
 - [P2-A2] Extend `VoiceEndCallRequest` to accept per-turn call metrics from LiveKit agent worker; wire latency averages into existing PhoneCall columns; extract `compute_latency_averages` into `api/schemas/internal/voice_metrics.py` for testability
 
 ### 2026-04-03
