@@ -18,10 +18,18 @@ from services.eval_service._scenario_loader import (
     validate_scenarios_from_yaml,
 )
 from services.eval_service._snapshot import upsert_agent_config_snapshot
+from services.eval_service._voice_result_collector import (
+    VoiceCallMetrics,
+    VoiceEvalResult,
+    VoiceResultCollector,
+)
 
 __all__ = [
     "ConversationRecord",
     "EvaluatorResult",
+    "VoiceCallMetrics",
+    "VoiceEvalResult",
+    "VoiceResultCollector",
     "create_eval_run",
     "evaluate_scenario",
     "get_eval_results",
