@@ -6,9 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04
 
-### 2026-04-07
-- [P2-A2c] Wire real metrics into `ConversationEvaluationRequested` event: populate `turn_latencies_ms` with per-turn totals, add `interruption_events` field, derive transcript `start_time`/`end_time` from metrics timestamps; extract helpers into `api/schemas/internal/voice_metrics.py`
-- [P2-A2] Extend `VoiceEndCallRequest` to accept per-turn call metrics from LiveKit agent worker; wire latency averages into existing PhoneCall columns; extract `compute_latency_averages` into `api/schemas/internal/voice_metrics.py` for testability
+### 2026-04-08
+- Add `tool_call_records` table for persistent tool execution tracking per conversation ([record](records/2026-04-08-tool-call-records-table.md))
+- Add `ToolCallRecordRepositoryAsync` with fire-and-forget recording and conversation query methods ([record](records/2026-04-08-tool-call-records-table.md))
 
 ### 2026-04-03
 - [PAL-9574] Make `store_messaging_tool` transport-aware: auto-detect PizzaCloud via `sip_provider` field, route SMS through PizzaCloud broker

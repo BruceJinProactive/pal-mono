@@ -17,6 +17,7 @@ from .types import Channel
 
 if TYPE_CHECKING:
     from .messages import Message
+    from .tool_call_records import ToolCallRecord
     from .users import User
 
 
@@ -115,4 +116,7 @@ class Conversation(Base):
     user: Mapped["User"] = relationship("User", back_populates="conversations")
     messages: Mapped[List["Message"]] = relationship(
         "Message", back_populates="conversation"
+    )
+    tool_call_records: Mapped[List["ToolCallRecord"]] = relationship(
+        "ToolCallRecord", back_populates="conversation"
     )
