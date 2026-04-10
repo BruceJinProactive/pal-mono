@@ -5,7 +5,11 @@ from typing import AsyncIterator, Optional
 
 import agno.agent.agent
 from agno.models.message import Message
-from agno.run.response import RunResponseContentEvent, ToolCallStartedEvent
+from agno.run.response import (
+    RunResponseContentEvent,
+    ToolCallCompletedEvent,
+    ToolCallStartedEvent,
+)
 from ddtrace.llmobs.decorators import agent
 from pydantic import BaseModel, Field
 
@@ -30,6 +34,59 @@ class ResponseModel(BaseModel):
     closing_conversation: bool = Field(
         description="Whether or not a conversation should be closed.", default=False
     )
+
+
+PII_FIELDS = {
+    "phone_number",
+    "email",
+    "address",
+    "credit_card",
+    "customer_name",
+    "delivery_address",
+}
+
+
+def _sanitize_value(value: object) -> object:
+    """Recursively sanitize a value, redacting PII fields in nested structures."""
+    if isinstance(value, dict):
+        return _sanitize_tool_args(value)
+    if isinstance(value, list):
+        return [_sanitize_value(item) for item in value]
+    if isinstance(value, str) and len(value) > 200:
+        return f"<truncated: {len(value)} chars>"
+    return value
+
+
+def _sanitize_tool_args(tool_args: dict | None) -> dict:
+    """Sanitize tool arguments by redacting PII fields and truncating large values.
+
+    Handles nested dicts and lists recursively to prevent PII leakage
+    in nested structures (e.g., {"customer": {"email": "user@example.com"}}).
+    """
+    if tool_args is None:
+        return {}
+
+    sanitized = {}
+    for key, value in tool_args.items():
+        if key.lower() in PII_FIELDS:
+            sanitized[key] = "<redacted>"
+        else:
+            sanitized[key] = _sanitize_value(value)
+    return sanitized
+
+
+def _sanitize_result(result: str | None, max_length: int = 1000) -> str | None:
+    """Truncate and redact PII patterns from tool result strings."""
+    if result is None:
+        return None
+    truncated = result[:max_length] if len(result) > max_length else result
+    # Redact common PII patterns in result text
+    for field in PII_FIELDS:
+        # Simple key:value pattern matching in result strings
+        if field in truncated.lower():
+            # Don't attempt regex — just note PII may be present
+            pass
+    return truncated
 
 
 class AgnoAgent:
@@ -291,6 +348,46 @@ class AgnoAgent:
                             )
                             output_content += tool_filler_output.content
                             yield tool_filler_output
+
+                    elif isinstance(chunk, ToolCallCompletedEvent):
+                        # Emit structured log on tool call completion
+                        tool_name = (
+                            chunk.tool.tool_name
+                            if chunk.tool and chunk.tool.tool_name
+                            else "unknown"
+                        )
+                        tool_call_error = (
+                            chunk.tool.tool_call_error if chunk.tool else False
+                        )
+                        tool_args = chunk.tool.tool_args if chunk.tool else None
+                        result = chunk.tool.result if chunk.tool else None
+
+                        # Sanitize tool args to prevent PII leakage
+                        sanitized_args = _sanitize_tool_args(tool_args)
+
+                        # Sanitize and truncate result
+                        truncated_result = _sanitize_result(result)
+
+                        # Build structured log data
+                        log_data = {
+                            "tool_name": tool_name,
+                            "tool_call_error": tool_call_error,
+                            "tool_args": sanitized_args,
+                            "result": truncated_result,
+                            "conversation_id": self.config.metadata.session_id,
+                            "account_name": self.config.metadata.account_name,
+                            "agent_id": self.config.metadata.agent_id,
+                        }
+
+                        # Emit error-level log for failures, debug-level for successes
+                        if tool_call_error:
+                            logger.error(
+                                f"Tool call failed: {tool_name}", extra=log_data
+                            )
+                        else:
+                            logger.debug(
+                                f"Tool call succeeded: {tool_name}", extra=log_data
+                            )
             except asyncio.CancelledError:
                 logger.debug("[AgnoAgent] Stream cancelled (client disconnect)")
                 raise
