@@ -12,7 +12,8 @@ from agent.config import AgentConfig
 from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
-from utils.dd import is_testing_mode, safe_annotate, send_dd_histogram_metrics, traced
+from utils.dd import is_testing_mode, safe_annotate, send_dd_histogram_metrics
+from utils.otel import traced
 
 
 class Agent:

@@ -22,6 +22,16 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.115.0
+    container_name: pal-mono-otel-collector
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "13133:13133"
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+
   api:
     build:
       context: .
@@ -40,15 +50,23 @@ services:
       DB_PASS: app
       DB_DATABASE: app
       MIGRATE_DB: "true"
+      OTEL_SERVICE_NAME: pal-mono
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=dev"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
     env_file:
       - local.env
     volumes:
       # Mount workspace to /app (matches Dockerfile WORKDIR)
       - .:/app
-    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["opentelemetry-instrument", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     depends_on:
       postgres:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
 
   mcp:
     build:

@@ -36,8 +36,9 @@ from services import (
     transaction_service,
     user_service,
 )
-from utils.dd import is_testing_mode, send_dd_histogram_metrics, trace_async_block
+from utils.dd import is_testing_mode, send_dd_histogram_metrics
 from utils.log import logger
+from utils.otel import trace_async_block
 from utils.request_context import RequestContext
 
 from . import _utils
@@ -1013,7 +1014,7 @@ async def get_chat_response_stream(
 
                                 # Update span tags with content (skip if span is None in testing mode)
                                 if span:
-                                    span.set_tag(
+                                    span.set_attribute(
                                         "content",
                                         (
                                             content[:100]

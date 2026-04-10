@@ -3,7 +3,7 @@ import os
 from contextvars import ContextVar
 
 from agno.utils.log import LOGGER_NAME
-from ddtrace import tracer  # pyright: ignore[reportPrivateImportUsage]
+from opentelemetry import trace
 from pythonjsonlogger import jsonlogger
 
 # Exclude noisy library logs (these produce ~2.2M logs/4h at INFO level)
@@ -14,6 +14,8 @@ logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("s3transfer").setLevel(logging.WARNING)
 # Datadog tracing internals: span finishing, trace completion, sampler init
 logging.getLogger("ddtrace").setLevel(logging.WARNING)
+# OpenTelemetry SDK internals: exporter lifecycle, batch processor
+logging.getLogger("opentelemetry").setLevel(logging.WARNING)
 # HTTP connection pool noise: acquire/release
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 # File watcher and HTTP client
@@ -32,23 +34,28 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
 
 
-class DatadogJsonFormatter(jsonlogger.JsonFormatter):
-    """Custom JSON formatter that adds Datadog reserved attributes at top level."""
+class OTelJsonFormatter(jsonlogger.JsonFormatter):
+    """Custom JSON formatter that adds OTel trace correlation and service attributes."""
 
     def add_fields(self, log_record, record, message_dict):
         super().add_fields(log_record, record, message_dict)
-        # Add Datadog reserved attributes as top-level fields for filtering
-        # Only set if not already present
+        # Add service attributes as top-level fields for filtering
         if "env" not in log_record:
             log_record["env"] = os.getenv("DD_ENV") or os.getenv("RUNTIME_ENV", "dev")
         if "service" not in log_record:
-            log_record["service"] = os.getenv("DD_SERVICE") or "pal-mono"
+            log_record["service"] = (
+                os.getenv("OTEL_SERVICE_NAME") or os.getenv("DD_SERVICE") or "pal-mono"
+            )
 
-        # Inject Datadog trace correlation IDs for log-trace linking
-        span = tracer.current_span()
-        if span:
-            log_record["dd.trace_id"] = str(span.trace_id)
-            log_record["dd.span_id"] = str(span.span_id)
+        # Inject OTel trace correlation IDs for log-trace linking
+        span = trace.get_current_span()
+        ctx = span.get_span_context()
+        if ctx and ctx.trace_id:
+            log_record["trace_id"] = format(ctx.trace_id, "032x")
+            log_record["span_id"] = format(ctx.span_id, "016x")
+            # Backward compat: DD log pipelines expect dd.* fields during transition
+            log_record["dd.trace_id"] = str(ctx.trace_id)
+            log_record["dd.span_id"] = str(ctx.span_id)
 
         # Inject request correlation ID if available
         rid = request_id_ctx.get()
@@ -66,9 +73,7 @@ def configure_global_logger():
         root_logger.removeHandler(handler)
 
     handler = logging.StreamHandler()
-    formatter = DatadogJsonFormatter(
-        fmt="%(asctime)s %(name)s %(levelname)s %(message)s"
-    )
+    formatter = OTelJsonFormatter(fmt="%(asctime)s %(name)s %(levelname)s %(message)s")
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
 

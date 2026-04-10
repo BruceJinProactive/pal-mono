@@ -9,7 +9,7 @@ import db
 from agent import AgentConfig
 from db.tables.types import Channel
 from services.auth_types import UserContext
-from utils.dd import traced
+from utils.otel import traced
 
 from . import _implementation
 from .schema import AgentParams

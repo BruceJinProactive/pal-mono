@@ -120,10 +120,12 @@ class TestChatFireAndForgetTaskLeak:
             patch("api.routes.chat.chat.send_messages", return_value=None),
             patch("api.routes.chat.chat.RequestContext", return_value=MagicMock()),
             patch("api.routes.chat.chat.set_testing_mode"),
-            patch("api.routes.chat.chat.tracer") as mock_tracer,
+            patch("api.routes.chat.chat.trace") as mock_trace,
             patch("api.routes.chat.chat.AsyncSessionLocal") as mock_session_factory,
         ):
-            mock_tracer.current_span.return_value = None
+            mock_span = MagicMock()
+            mock_span.is_recording.return_value = False
+            mock_trace.get_current_span.return_value = mock_span
             mock_async_session = AsyncMock()
             mock_async_session.commit = AsyncMock()
             mock_session_factory.return_value.__aenter__ = AsyncMock(

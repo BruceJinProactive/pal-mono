@@ -14,8 +14,10 @@ import uuid
 from datetime import datetime, timezone
 
 import boto3
-from ddtrace.trace import tracer
 from fastapi import HTTPException, status
+from opentelemetry import context as otel_context
+from opentelemetry import trace
+from opentelemetry.context import Context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories import (
@@ -39,6 +41,8 @@ from services.monitoring_service._video import (
 )
 from utils.dd import statsd
 from utils.log import logger
+
+tracer = trace.get_tracer("pal-mono-monitoring")
 
 # AWS Configuration
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
@@ -394,22 +398,23 @@ For invalid/problematic images:
 
         # Create a wrapper that isolates the LLM call into its own trace.
         # This breaks trace inheritance from the parent voice-agent request
-        # so monitoring LLM spans appear as a separate root trace in Datadog.
+        # so monitoring LLM spans appear as a separate root trace.
         def call_llm_with_isolated_trace() -> dict:
-            current_context = tracer.current_trace_context()
-            tracer.context_provider.activate(None)
+            token = otel_context.attach(Context())
 
             try:
-                with tracer.trace(
+                with tracer.start_as_current_span(
                     "monitoring.llm.analyze_image",
-                    service="pal-mono-monitoring",
                 ) as span:
-                    span.set_tag("monitoring.config_id", str(monitoring_config_id))
-                    span.set_tag(
+
+                    span.set_attribute(
+                        "monitoring.config_id", str(monitoring_config_id)
+                    )
+                    span.set_attribute(
                         "monitoring.llm_provider", provider.config.provider.value
                     )
-                    span.set_tag("monitoring.llm_model", provider.config.model)
-                    span.set_tag("monitoring.media_type", "image")
+                    span.set_attribute("monitoring.llm_model", provider.config.model)
+                    span.set_attribute("monitoring.media_type", "image")
 
                     logger.info(
                         "[LLM] Calling LLM provider for image analysis",
@@ -447,8 +452,7 @@ For invalid/problematic images:
 
                     return llm_response["result"]
             finally:
-                if current_context:
-                    tracer.context_provider.activate(current_context)
+                otel_context.detach(token)
 
         # Run blocking LLM call in thread pool with isolated trace context
         loop = asyncio.get_running_loop()
@@ -961,24 +965,29 @@ For invalid/problematic frames:
                 video_analysis_task_text += f"\n**Fail Criteria (conditions that indicate a FAIL):**\n{criteria_str}\n"
 
             def call_native_video_llm_with_isolated_trace() -> dict:
-                current_context = tracer.current_trace_context()
-                tracer.context_provider.activate(None)
+                token = otel_context.attach(Context())
 
                 try:
-                    with tracer.trace(
+                    with tracer.start_as_current_span(
                         "monitoring.llm.analyze_native_video",
-                        service="pal-mono-monitoring",
                     ) as span:
-                        span.set_tag("monitoring.config_id", str(monitoring_config_id))
-                        span.set_tag(
+
+                        span.set_attribute(
+                            "monitoring.config_id", str(monitoring_config_id)
+                        )
+                        span.set_attribute(
                             "monitoring.llm_provider", provider.config.provider.value
                         )
-                        span.set_tag("monitoring.llm_model", provider.config.model)
-                        span.set_tag("monitoring.media_type", "native_video")
-                        span.set_tag(
-                            "monitoring.video_size_bytes", str(len(video_bytes))
+                        span.set_attribute(
+                            "monitoring.llm_model", provider.config.model
                         )
-                        span.set_tag("monitoring.video_mime_type", video_mime_type)
+                        span.set_attribute("monitoring.media_type", "native_video")
+                        span.set_attribute(
+                            "monitoring.video_size_bytes", len(video_bytes)
+                        )
+                        span.set_attribute(
+                            "monitoring.video_mime_type", video_mime_type
+                        )
 
                         llm_response = provider.analyze_native_video(
                             system_instruction=system_instruction,
@@ -1006,8 +1015,7 @@ For invalid/problematic frames:
 
                         return llm_response["result"]
                 finally:
-                    if current_context:
-                        tracer.context_provider.activate(current_context)
+                    otel_context.detach(token)
 
             loop = asyncio.get_running_loop()
             analysis_result = await loop.run_in_executor(
@@ -1038,22 +1046,25 @@ For invalid/problematic frames:
                 frames_analysis_task_text += f"\n**Fail Criteria (conditions that indicate a FAIL):**\n{criteria_str}\n"
 
             def call_video_llm_with_isolated_trace() -> dict:
-                current_context = tracer.current_trace_context()
-                tracer.context_provider.activate(None)
+                token = otel_context.attach(Context())
 
                 try:
-                    with tracer.trace(
+                    with tracer.start_as_current_span(
                         "monitoring.llm.analyze_video_frames",
-                        service="pal-mono-monitoring",
                     ) as span:
-                        span.set_tag("monitoring.config_id", str(monitoring_config_id))
-                        span.set_tag(
+
+                        span.set_attribute(
+                            "monitoring.config_id", str(monitoring_config_id)
+                        )
+                        span.set_attribute(
                             "monitoring.llm_provider", provider.config.provider.value
                         )
-                        span.set_tag("monitoring.llm_model", provider.config.model)
-                        span.set_tag("monitoring.media_type", "video")
-                        span.set_tag(
-                            "monitoring.video_frames_count", str(len(video_frames))
+                        span.set_attribute(
+                            "monitoring.llm_model", provider.config.model
+                        )
+                        span.set_attribute("monitoring.media_type", "video")
+                        span.set_attribute(
+                            "monitoring.video_frames_count", len(video_frames)
                         )
 
                         llm_response = provider.analyze_video_frames(
@@ -1081,8 +1092,7 @@ For invalid/problematic frames:
 
                         return llm_response["result"]
                 finally:
-                    if current_context:
-                        tracer.context_provider.activate(current_context)
+                    otel_context.detach(token)
 
             loop = asyncio.get_running_loop()
             analysis_result = await loop.run_in_executor(

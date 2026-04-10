@@ -50,12 +50,20 @@ def _build_llm_mocks(mocker, rules: dict):
         return_value=mock_provider,
     )
 
-    # Mock tracer
+    # Mock OTel tracer
     mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-    mock_tracer.current_trace_context.return_value = MagicMock()
     mock_span = MagicMock()
-    mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-    mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+    mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+        return_value=mock_span
+    )
+    mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+        return_value=False
+    )
+
+    # Mock OTel context isolation
+    mock_otel_context = mocker.patch("services.monitoring_service._llm.otel_context")
+    mock_otel_context.attach.return_value = "mock-token"
+    mocker.patch("services.monitoring_service._llm.Context")
 
     # Mock statsd
     mocker.patch("services.monitoring_service._llm.statsd")
@@ -440,12 +448,20 @@ def _build_video_llm_mocks(mocker, rules: dict):
         return_value=mock_provider,
     )
 
-    # Mock tracer
+    # Mock OTel tracer
     mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-    mock_tracer.current_trace_context.return_value = MagicMock()
     mock_span = MagicMock()
-    mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-    mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+    mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+        return_value=mock_span
+    )
+    mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+        return_value=False
+    )
+
+    # Mock OTel context isolation
+    mock_otel_context = mocker.patch("services.monitoring_service._llm.otel_context")
+    mock_otel_context.attach.return_value = "mock-token"
+    mocker.patch("services.monitoring_service._llm.Context")
 
     # Mock statsd
     mocker.patch("services.monitoring_service._llm.statsd")
@@ -613,12 +629,22 @@ class TestNativeVideoLLMCriteria:
             return_value=mock_provider,
         )
 
-        # Mock tracer
+        # Mock OTel tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
+
+        # Mock OTel context isolation
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mock_otel_context.attach.return_value = "mock-token"
+        mocker.patch("services.monitoring_service._llm.Context")
 
         # Mock statsd
         mocker.patch("services.monitoring_service._llm.statsd")

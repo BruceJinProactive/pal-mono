@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 import db
 from api.schemas.chat.message import Message
 from db.tables.types import Channel
-from utils.dd import traced
+from utils.otel import traced
 from utils.request_context import RequestContext
 
 from . import _implementation

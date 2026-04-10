@@ -19,8 +19,9 @@ from agent.input_output import Input, Output
 from agent.model import ModelOptions, build_agno_model
 from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
-from utils.dd import safe_annotate, send_dd_histogram_metrics, trace_block
+from utils.dd import safe_annotate, send_dd_histogram_metrics
 from utils.log import logger
+from utils.otel import trace_block
 
 
 class ResponseModel(BaseModel):

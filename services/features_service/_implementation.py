@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
 from db.tables.types import IdentifierType
-from utils.dd import traced
 from utils.log import logger
+from utils.otel import traced
 
 # Simple TTL cache for feature flag checks
 # Key: (feature, identifier_type, identifier) -> Value: (result, timestamp)

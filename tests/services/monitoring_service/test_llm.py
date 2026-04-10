@@ -3,7 +3,7 @@
 import base64
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -711,20 +711,31 @@ class TestImageAnalysisTraceIsolation:
 
         _build_image_analysis_mocks(mocker, config_id)
 
-        # Track tracer calls
-        fake_parent_context = MagicMock(name="parent-context")
-        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = fake_parent_context
+        # Mock OTel context isolation
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mock_Context = mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock(name="context-token")
+        mock_otel_context.attach.return_value = mock_token
 
+        # Mock tracer
+        mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
 
-        # Verify context was cleared (activated with None)
-        activate_calls = mock_tracer.context_provider.activate.call_args_list
-        assert activate_calls[0] == call(None), "Should clear context before LLM call"
+        # Verify context was attached with a new Context()
+        mock_otel_context.attach.assert_called_once()
+        # Verify it was called with a Context instance
+        attach_arg = mock_otel_context.attach.call_args[0][0]
+        assert isinstance(attach_arg, type(mock_Context.return_value))
 
     @pytest.mark.asyncio
     async def test_creates_span_with_correct_operation_and_service(self, mocker):
@@ -736,17 +747,29 @@ class TestImageAnalysisTraceIsolation:
 
         _build_image_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
 
-        mock_tracer.trace.assert_called_once_with(
-            "monitoring.llm.analyze_image",
-            service="pal-mono-monitoring",
+        # Verify span was created with correct operation name
+        mock_tracer.start_as_current_span.assert_called_once_with(
+            "monitoring.llm.analyze_image"
         )
 
     @pytest.mark.asyncio
@@ -759,18 +782,31 @@ class TestImageAnalysisTraceIsolation:
 
         _build_image_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
 
-        mock_span.set_tag.assert_any_call("monitoring.config_id", str(config_id))
-        mock_span.set_tag.assert_any_call("monitoring.llm_provider", "azure")
-        mock_span.set_tag.assert_any_call("monitoring.llm_model", "gpt-4o")
-        mock_span.set_tag.assert_any_call("monitoring.media_type", "image")
+        # OTel uses set_attribute instead of set_tag
+        mock_span.set_attribute.assert_any_call("monitoring.config_id", str(config_id))
+        mock_span.set_attribute.assert_any_call("monitoring.llm_provider", "azure")
+        mock_span.set_attribute.assert_any_call("monitoring.llm_model", "gpt-4o")
+        mock_span.set_attribute.assert_any_call("monitoring.media_type", "image")
 
     @pytest.mark.asyncio
     async def test_restores_context_after_success(self, mocker):
@@ -782,20 +818,28 @@ class TestImageAnalysisTraceIsolation:
 
         _build_image_analysis_mocks(mocker, config_id)
 
-        fake_parent_context = MagicMock(name="parent-context")
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock(name="context-token")
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = fake_parent_context
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
 
-        # Last activate call should restore the parent context
-        activate_calls = mock_tracer.context_provider.activate.call_args_list
-        assert activate_calls[-1] == call(
-            fake_parent_context
-        ), "Should restore original context after LLM call"
+        # Verify context was detached with the token (restores original context)
+        mock_otel_context.detach.assert_called_once_with(mock_token)
 
     @pytest.mark.asyncio
     async def test_restores_context_on_provider_exception(self, mocker):
@@ -808,21 +852,29 @@ class TestImageAnalysisTraceIsolation:
         mock_provider = _build_image_analysis_mocks(mocker, config_id)
         mock_provider.analyze_image.side_effect = RuntimeError("LLM exploded")
 
-        fake_parent_context = MagicMock(name="parent-context")
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock(name="context-token")
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = fake_parent_context
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         with pytest.raises(HTTPException):
             await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
 
-        # Context should still be restored even on error
-        activate_calls = mock_tracer.context_provider.activate.call_args_list
-        assert activate_calls[-1] == call(
-            fake_parent_context
-        ), "Should restore context even when provider raises"
+        # Context should still be detached even on error (finally block)
+        mock_otel_context.detach.assert_called_once_with(mock_token)
 
 
 class TestVideoAnalysisTraceIsolation:
@@ -840,17 +892,30 @@ class TestVideoAnalysisTraceIsolation:
 
         _build_video_analysis_mocks(mocker, config_id)
 
-        fake_parent_context = MagicMock(name="parent-context")
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mock_Context = mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock(name="context-token")
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = fake_parent_context
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
 
-        activate_calls = mock_tracer.context_provider.activate.call_args_list
-        assert activate_calls[0] == call(None), "Should clear context before LLM call"
+        # Verify context was attached with a new Context()
+        mock_otel_context.attach.assert_called_once()
+        attach_arg = mock_otel_context.attach.call_args[0][0]
+        assert isinstance(attach_arg, type(mock_Context.return_value))
 
     @pytest.mark.asyncio
     async def test_creates_span_with_correct_operation_and_service(self, mocker):
@@ -864,17 +929,28 @@ class TestVideoAnalysisTraceIsolation:
 
         _build_video_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
 
-        mock_tracer.trace.assert_called_once_with(
-            "monitoring.llm.analyze_video_frames",
-            service="pal-mono-monitoring",
+        mock_tracer.start_as_current_span.assert_called_once_with(
+            "monitoring.llm.analyze_video_frames"
         )
 
     @pytest.mark.asyncio
@@ -889,19 +965,32 @@ class TestVideoAnalysisTraceIsolation:
 
         _build_video_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
 
-        mock_span.set_tag.assert_any_call("monitoring.config_id", str(config_id))
-        mock_span.set_tag.assert_any_call("monitoring.llm_provider", "azure")
-        mock_span.set_tag.assert_any_call("monitoring.llm_model", "gpt-4o")
-        mock_span.set_tag.assert_any_call("monitoring.media_type", "video")
-        mock_span.set_tag.assert_any_call("monitoring.video_frames_count", "2")
+        # OTel uses set_attribute, and video_frames_count is now an integer not string
+        mock_span.set_attribute.assert_any_call("monitoring.config_id", str(config_id))
+        mock_span.set_attribute.assert_any_call("monitoring.llm_provider", "azure")
+        mock_span.set_attribute.assert_any_call("monitoring.llm_model", "gpt-4o")
+        mock_span.set_attribute.assert_any_call("monitoring.media_type", "video")
+        mock_span.set_attribute.assert_any_call("monitoring.video_frames_count", 2)
 
     @pytest.mark.asyncio
     async def test_restores_context_after_success(self, mocker):
@@ -915,19 +1004,28 @@ class TestVideoAnalysisTraceIsolation:
 
         _build_video_analysis_mocks(mocker, config_id)
 
-        fake_parent_context = MagicMock(name="parent-context")
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock(name="context-token")
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = fake_parent_context
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
 
-        activate_calls = mock_tracer.context_provider.activate.call_args_list
-        assert activate_calls[-1] == call(
-            fake_parent_context
-        ), "Should restore original context after LLM call"
+        # Verify context was detached with the token
+        mock_otel_context.detach.assert_called_once_with(mock_token)
 
     @pytest.mark.asyncio
     async def test_restores_context_on_provider_exception(self, mocker):
@@ -942,20 +1040,29 @@ class TestVideoAnalysisTraceIsolation:
         mock_provider = _build_video_analysis_mocks(mocker, config_id)
         mock_provider.analyze_video_frames.side_effect = RuntimeError("LLM exploded")
 
-        fake_parent_context = MagicMock(name="parent-context")
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock(name="context-token")
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = fake_parent_context
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         with pytest.raises(HTTPException):
             await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
 
-        activate_calls = mock_tracer.context_provider.activate.call_args_list
-        assert activate_calls[-1] == call(
-            fake_parent_context
-        ), "Should restore context even when provider raises"
+        # Context should still be detached even on error (finally block)
+        mock_otel_context.detach.assert_called_once_with(mock_token)
 
 
 class TestNativeVideoAnalysis:
@@ -973,11 +1080,23 @@ class TestNativeVideoAnalysis:
 
         mock_provider = _build_native_video_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         result = await generate_monitoring_video_llm_prompt(
             session, config_id, "vid.mp4"
@@ -1008,11 +1127,23 @@ class TestNativeVideoAnalysis:
             "services.monitoring_service._llm.extract_video_frames",
         )
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
 
@@ -1031,11 +1162,23 @@ class TestNativeVideoAnalysis:
 
         _build_native_video_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         result = await generate_monitoring_video_llm_prompt(
             session, config_id, "vid.mp4"
@@ -1058,23 +1201,37 @@ class TestNativeVideoAnalysis:
 
         _build_native_video_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
 
-        mock_tracer.trace.assert_called_once_with(
-            "monitoring.llm.analyze_native_video",
-            service="pal-mono-monitoring",
+        mock_tracer.start_as_current_span.assert_called_once_with(
+            "monitoring.llm.analyze_native_video"
         )
-        mock_span.set_tag.assert_any_call("monitoring.media_type", "native_video")
-        mock_span.set_tag.assert_any_call(
-            "monitoring.video_size_bytes", str(len(b"fake-video-bytes"))
+        mock_span.set_attribute.assert_any_call("monitoring.media_type", "native_video")
+        # OTel sets video_size_bytes as integer, not string
+        mock_span.set_attribute.assert_any_call(
+            "monitoring.video_size_bytes", len(b"fake-video-bytes")
         )
-        mock_span.set_tag.assert_any_call("monitoring.video_mime_type", "video/mp4")
+        mock_span.set_attribute.assert_any_call(
+            "monitoring.video_mime_type", "video/mp4"
+        )
 
     @pytest.mark.asyncio
     async def test_falls_back_to_frames_when_not_supported(self, mocker):
@@ -1088,11 +1245,23 @@ class TestNativeVideoAnalysis:
 
         mock_provider = _build_video_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         result = await generate_monitoring_video_llm_prompt(
             session, config_id, "vid.mp4"
@@ -1116,11 +1285,23 @@ class TestTokenUsageMetricEmission:
 
         _build_image_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
 
@@ -1144,11 +1325,23 @@ class TestTokenUsageMetricEmission:
 
         _build_video_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
 
@@ -1172,11 +1365,23 @@ class TestTokenUsageMetricEmission:
 
         _build_native_video_analysis_mocks(mocker, config_id)
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
 
@@ -1206,11 +1411,23 @@ class TestTokenUsageMetricEmission:
             "token_usage": {},
         }
 
+        # Mock OTel context
+        mock_otel_context = mocker.patch(
+            "services.monitoring_service._llm.otel_context"
+        )
+        mocker.patch("services.monitoring_service._llm.Context")
+        mock_token = MagicMock()
+        mock_otel_context.attach.return_value = mock_token
+
+        # Mock tracer
         mock_tracer = mocker.patch("services.monitoring_service._llm.tracer")
-        mock_tracer.current_trace_context.return_value = MagicMock()
         mock_span = MagicMock()
-        mock_tracer.trace.return_value.__enter__ = MagicMock(return_value=mock_span)
-        mock_tracer.trace.return_value.__exit__ = MagicMock(return_value=False)
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+            return_value=mock_span
+        )
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+            return_value=False
+        )
 
         mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
 

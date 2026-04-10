@@ -6,8 +6,9 @@ from ddtrace.llmobs.decorators import task
 from openai import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
-from utils.dd import safe_annotate, traced
+from utils.dd import safe_annotate
 from utils.log import logger
+from utils.otel import traced
 
 from ._config import ModelOptions
 

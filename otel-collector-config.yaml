@@ -1,0 +1,36 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  # Filter out testing traces based on the attribute set in chat.py
+  filter/testing:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["sampling.priority"] == -1'
+
+exporters:
+  # Debug exporter for local development visibility
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/testing, batch]
+      exporters: [debug]

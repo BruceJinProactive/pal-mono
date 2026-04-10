@@ -1,13 +1,9 @@
-import asyncio
 import datetime
 import os
-from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
-from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from datadog import DogStatsd  # pyright: ignore[reportPrivateImportUsage]
-from ddtrace import tracer  # pyright: ignore[reportPrivateImportUsage]
 from ddtrace.llmobs import LLMObs
 
 from utils.log import logger
@@ -48,88 +44,6 @@ def safe_annotate(**kwargs: Any) -> None:
             raise
 
 
-def traced(name, tags=None):
-    def decorator(func):
-        is_async = asyncio.iscoroutinefunction(func)
-
-        def _apply_tags(span):
-            if tags:
-                if not isinstance(tags, dict):
-                    raise TypeError("tags must be a dictionary")
-                for key, value in tags.items():
-                    span.set_tag(key, value)
-
-        @wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            # Skip tracing for testing requests
-            if is_testing_mode():
-                return await func(*args, **kwargs)
-            with tracer.trace(name) as span:
-                _apply_tags(span)
-                return await func(*args, **kwargs)
-
-        @wraps(func)
-        def sync_wrapper(*args, **kwargs):
-            # Skip tracing for testing requests
-            if is_testing_mode():
-                return func(*args, **kwargs)
-            with tracer.trace(name) as span:
-                _apply_tags(span)
-                return func(*args, **kwargs)
-
-        return async_wrapper if is_async else sync_wrapper
-
-    return decorator
-
-
-def _setup_span(span, tags: Optional[Dict[str, Any]] = None):
-    """Common setup code for spans"""
-    if tags:
-        if not isinstance(tags, dict):
-            raise TypeError("tags must be a dictionary")
-        for key, value in tags.items():
-            span.set_tag(key, value)
-    return span
-
-
-def _handle_exception(span, e: Exception):
-    """Common exception handling for spans"""
-    span.set_tag("error", True)
-    span.set_tag("error.msg", str(e))
-    span.set_tag("error.type", e.__class__.__name__)  # Fix: was e.class.name
-    raise
-
-
-@contextmanager
-def trace_block(name, resource=None, service=None, tags=None):
-    """Synchronous trace block context manager"""
-    # Skip tracing for testing requests
-    if is_testing_mode():
-        yield None
-        return
-    with tracer.trace(name, resource=resource, service=service) as span:
-        _setup_span(span, tags)
-        try:
-            yield span
-        except Exception as e:
-            _handle_exception(span, e)
-
-
-@asynccontextmanager
-async def trace_async_block(name, resource=None, service=None, tags=None):
-    """Asynchronous trace block context manager"""
-    # Skip tracing for testing requests
-    if is_testing_mode():
-        yield None
-        return
-    with tracer.trace(name, resource=resource, service=service) as span:
-        _setup_span(span, tags)
-        try:
-            yield span
-        except Exception as e:
-            _handle_exception(span, e)
-
-
 # Initialize global DogStatsd client
 # Use environment variables with defaults for configuration
 statsd = DogStatsd(
@@ -143,7 +57,9 @@ statsd = DogStatsd(
 )
 
 
-def dd_histogram_duration(name: str, duration_ms: float, tags: Optional[list] = None):
+def dd_histogram_duration(
+    name: str, duration_ms: float, tags: Optional[list] = None
+) -> None:
     # Skip metrics for testing requests
     if is_testing_mode():
         return
@@ -156,7 +72,7 @@ def dd_histogram_duration(name: str, duration_ms: float, tags: Optional[list] = 
 
 def send_dd_histogram_metrics(
     metrics_name: str, start_time: datetime.datetime, tags: Optional[list[str]] = None
-):
+) -> None:
     # Skip metrics for testing requests
     if is_testing_mode():
         return

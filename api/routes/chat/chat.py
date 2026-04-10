@@ -3,9 +3,9 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 from agno.run.response import RunResponse
-from ddtrace.trace import tracer
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from opentelemetry import trace
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -84,10 +84,10 @@ async def chat(request: ChatRequest, session: AsyncSession | None = None):
         )
         set_testing_mode(testing)
 
-        # If testing, drop the APM trace to prevent DD logging
-        current_span = tracer.current_span()
-        if testing and current_span:
-            current_span.context.sampling_priority = -1  # USER_REJECT
+        # If testing, mark the span so the OTel collector drops the trace
+        current_span = trace.get_current_span()
+        if testing and current_span.is_recording():
+            current_span.set_attribute("sampling.priority", -1)
 
         # Process the message
         logger.info(
@@ -98,9 +98,9 @@ async def chat(request: ChatRequest, session: AsyncSession | None = None):
             },
         )
 
-        # Override the DD Trace to add request type facet (only for non-testing requests)
-        if not testing and current_span:
-            current_span.set_tag(
+        # Add request type facet to span (only for non-testing requests)
+        if not testing and current_span.is_recording():
+            current_span.set_attribute(
                 "http.params.chat_type", categorize_chat_request(request)
             )
 

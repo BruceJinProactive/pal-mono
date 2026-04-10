@@ -98,7 +98,9 @@ async def test_chat_stream_cancelled_error_returns_cleanly(monkeypatch):
         chat_module, "get_chat_response_stream", _fake_get_chat_response_stream
     )
     monkeypatch.setattr(chat_module, "set_testing_mode", lambda testing: None)
-    monkeypatch.setattr(chat_module.tracer, "current_span", lambda: None)
+    _mock_span = MagicMock()
+    _mock_span.is_recording.return_value = False
+    monkeypatch.setattr(chat_module.trace, "get_current_span", lambda: _mock_span)
 
     request = _make_chat_request(stream=True)
 
@@ -123,7 +125,9 @@ async def test_chat_stream_without_injected_session_closes_managed_session(monke
         chat_module, "get_chat_response_stream", _fake_get_chat_response_stream
     )
     monkeypatch.setattr(chat_module, "set_testing_mode", lambda testing: None)
-    monkeypatch.setattr(chat_module.tracer, "current_span", lambda: None)
+    _mock_span = MagicMock()
+    _mock_span.is_recording.return_value = False
+    monkeypatch.setattr(chat_module.trace, "get_current_span", lambda: _mock_span)
     monkeypatch.setattr(chat_module, "AsyncSessionLocal", lambda: session_ctx)
 
     request = _make_chat_request(stream=True)
@@ -192,7 +196,9 @@ async def test_chat_stream_formats_supported_chunks_and_done(monkeypatch):
     )
     monkeypatch.setattr(chat_module, "RunResponse", _FakeRunResponse)
     monkeypatch.setattr(chat_module, "set_testing_mode", lambda testing: None)
-    monkeypatch.setattr(chat_module.tracer, "current_span", lambda: None)
+    _mock_span = MagicMock()
+    _mock_span.is_recording.return_value = False
+    monkeypatch.setattr(chat_module.trace, "get_current_span", lambda: _mock_span)
     monkeypatch.setattr(chat_module.logger, "warning", mock_warning)
 
     response = await chat_module.chat(
@@ -221,7 +227,9 @@ async def test_chat_stream_without_upstream_stream_still_emits_done(monkeypatch)
         chat_module, "get_chat_response_stream", _fake_get_chat_response_stream
     )
     monkeypatch.setattr(chat_module, "set_testing_mode", lambda testing: None)
-    monkeypatch.setattr(chat_module.tracer, "current_span", lambda: None)
+    _mock_span = MagicMock()
+    _mock_span.is_recording.return_value = False
+    monkeypatch.setattr(chat_module.trace, "get_current_span", lambda: _mock_span)
 
     response = await chat_module.chat(
         request=_make_chat_request(stream=True), session=AsyncMock()
@@ -249,7 +257,9 @@ async def test_chat_stream_errors_yield_error_marker(monkeypatch):
         chat_module, "get_chat_response_stream", _fake_get_chat_response_stream
     )
     monkeypatch.setattr(chat_module, "set_testing_mode", lambda testing: None)
-    monkeypatch.setattr(chat_module.tracer, "current_span", lambda: None)
+    _mock_span = MagicMock()
+    _mock_span.is_recording.return_value = False
+    monkeypatch.setattr(chat_module.trace, "get_current_span", lambda: _mock_span)
     monkeypatch.setattr(chat_module.logger, "error", mock_error)
 
     response = await chat_module.chat(
@@ -285,7 +295,9 @@ async def test_chat_non_streaming_returns_messages_with_active_session(monkeypat
         chat_module, "get_chat_response_async", _fake_get_chat_response_async
     )
     monkeypatch.setattr(chat_module, "set_testing_mode", lambda testing: None)
-    monkeypatch.setattr(chat_module.tracer, "current_span", lambda: None)
+    _mock_span = MagicMock()
+    _mock_span.is_recording.return_value = False
+    monkeypatch.setattr(chat_module.trace, "get_current_span", lambda: _mock_span)
 
     response = await chat_module.chat(request=_make_chat_request(), session=session)
 

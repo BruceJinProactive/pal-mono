@@ -14,8 +14,10 @@ import uuid
 from decimal import Decimal
 
 import boto3
-from ddtrace.trace import tracer
 from fastapi import HTTPException, status
+from opentelemetry import context as otel_context
+from opentelemetry import trace
+from opentelemetry.context import Context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories import RoutineRepositoryAsync, RoutineSubmissionRepositoryAsync
@@ -27,6 +29,8 @@ from services.monitoring_service._providers import (
     create_monitoring_llm_provider,
 )
 from utils.log import logger
+
+tracer = trace.get_tracer("pal-mono-routine-verification")
 
 # AWS Configuration
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
@@ -242,14 +246,10 @@ For invalid/problematic images:
     try:
         # Create a wrapper function that runs LLM call in a new trace context
         # This breaks the trace inheritance from the parent request
-        # so routine verification appears as a separate trace in Datadog
+        # so routine verification appears as a separate root trace
         def call_llm_with_new_trace():
-            # Get the current context and clear it to start a fresh trace
-            # This prevents inheriting the parent trace from API requests
-            current_context = tracer.current_trace_context()
-
-            # Temporarily clear the trace context to create an independent trace
-            tracer.context_provider.activate(None)
+            # Attach an empty context to create an independent root trace
+            token = otel_context.attach(Context())
 
             try:
                 # Initialize provider with config-specific model settings
@@ -289,15 +289,15 @@ For invalid/problematic images:
                     f"[Routine Verification LLM] Provider initialized - Final config: Provider={provider.config.provider.value}, Model={provider.config.model}"
                 )
 
-                # Add tags to current span
-                with tracer.trace(
+                with tracer.start_as_current_span(
                     "routine.verification.llm_call",
-                    service="pal-mono-routine-verification",
                 ) as span:
-                    span.set_tag("routine.item_id", str(item.id))
-                    span.set_tag("routine.response_id", str(response_id))
-                    span.set_tag("routine.llm_provider", provider.config.provider.value)
-                    span.set_tag("routine.llm_model", provider.config.model)
+                    span.set_attribute("routine.item_id", str(item.id))
+                    span.set_attribute("routine.response_id", str(response_id))
+                    span.set_attribute(
+                        "routine.llm_provider", provider.config.provider.value
+                    )
+                    span.set_attribute("routine.llm_model", provider.config.model)
 
                     return provider.analyze_image(
                         system_instruction=system_instruction,
@@ -307,9 +307,7 @@ For invalid/problematic images:
                         response_format=response_format,
                     )
             finally:
-                # Restore the original context after the call
-                if current_context:
-                    tracer.context_provider.activate(current_context)
+                otel_context.detach(token)
 
         # Run blocking LLM call in thread pool with new trace context
         loop = asyncio.get_running_loop()
