@@ -5,6 +5,7 @@ from .project_integration import ProjectIntegrationRepository
 from .prompt import PromptRepository
 from .prompt_details import PromptDetailsRepository
 from .reservation import ReservationRepository
+from .tos_acceptance import TosAcceptanceRepository
 
 __all__ = [
     "PhoneCallRepository",
@@ -14,4 +15,5 @@ __all__ = [
     "PromptRepository",
     "PromptDetailsRepository",
     "ReservationRepository",
+    "TosAcceptanceRepository",
 ]
