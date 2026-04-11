@@ -5,6 +5,7 @@ from .project_integration import ProjectIntegrationData
 from .prompt import PromptData
 from .prompt_details import PromptDetailsData
 from .reservation import ReservationData
+from .role_permission import RolePermissionData
 from .tos_acceptance import TosAcceptanceData
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "PromptData",
     "PromptDetailsData",
     "ReservationData",
+    "RolePermissionData",
     "TosAcceptanceData",
 ]
