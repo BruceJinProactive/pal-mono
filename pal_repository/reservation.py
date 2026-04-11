@@ -83,7 +83,7 @@ class ReservationRepository:
         """
         try:
             row = Reservation(
-                id=uuid.uuid4(),
+                id=record.id,
                 conversation_id=record.conversation_id,
                 entry_type=record.entry_type,
                 reservation_id=record.reservation_id,

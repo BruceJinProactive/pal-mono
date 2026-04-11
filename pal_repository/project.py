@@ -138,7 +138,7 @@ class ProjectRepository:
         """
         try:
             row = Project(
-                id=uuid.uuid4(),
+                id=record.id,
                 name=record.name,
                 account_id=record.account_id,
                 agent_id=record.agent_id,

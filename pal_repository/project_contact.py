@@ -100,7 +100,7 @@ class ProjectContactRepository:
         """
         try:
             row = ProjectContact(
-                id=uuid.uuid4(),
+                id=record.id,
                 project_id=record.project_id,
                 contact_id=record.contact_id,
             )

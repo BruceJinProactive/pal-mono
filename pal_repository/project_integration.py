@@ -107,7 +107,7 @@ class ProjectIntegrationRepository:
         """
         try:
             row = ProjectIntegration(
-                id=uuid.uuid4(),
+                id=record.id,
                 project_id=record.project_id,
                 integration_id=record.integration_id,
                 store_identifier=record.store_identifier,
