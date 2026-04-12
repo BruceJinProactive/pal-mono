@@ -3,7 +3,7 @@ import os
 from contextvars import ContextVar
 
 from agno.utils.log import LOGGER_NAME
-from opentelemetry import trace
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from pythonjsonlogger import jsonlogger
 
 # Exclude noisy library logs (these produce ~2.2M logs/4h at INFO level)
@@ -47,15 +47,13 @@ class OTelJsonFormatter(jsonlogger.JsonFormatter):
                 os.getenv("OTEL_SERVICE_NAME") or os.getenv("DD_SERVICE") or "pal-mono"
             )
 
-        # Inject OTel trace correlation IDs for log-trace linking
-        span = trace.get_current_span()
-        ctx = span.get_span_context()
-        if ctx and ctx.trace_id:
-            log_record["trace_id"] = format(ctx.trace_id, "032x")
-            log_record["span_id"] = format(ctx.span_id, "016x")
-            # Backward compat: DD log pipelines expect dd.* fields during transition
-            log_record["dd.trace_id"] = str(ctx.trace_id)
-            log_record["dd.span_id"] = str(ctx.span_id)
+        # LoggingInstrumentor auto-injects otelTraceID/otelSpanID on each LogRecord.
+        # Map them to our standard field names for log-trace linking.
+        otel_trace_id = getattr(record, "otelTraceID", "0")
+        otel_span_id = getattr(record, "otelSpanID", "0")
+        if otel_trace_id != "0":
+            log_record["trace_id"] = otel_trace_id
+            log_record["span_id"] = otel_span_id
 
         # Inject request correlation ID if available
         rid = request_id_ctx.get()
@@ -76,6 +74,13 @@ def configure_global_logger():
     formatter = OTelJsonFormatter(fmt="%(asctime)s %(name)s %(levelname)s %(message)s")
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
+
+    # Activate OTel logging instrumentation — auto-injects trace/span IDs
+    # into every LogRecord (otelTraceID, otelSpanID, otelTraceSampled, etc.)
+    # Guard against repeated calls — instrument() is not idempotent.
+    instrumentor = LoggingInstrumentor()
+    if not instrumentor.is_instrumented_by_opentelemetry:
+        instrumentor.instrument()
 
 
 def patch_agno_logger_to_use_root():
