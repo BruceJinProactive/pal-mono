@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+from agent.framework.agno import wait_for_all_background_tasks
 from api.middleware import RequestLoggingMiddleware
 from api.routes.v1_router import v1_router
 from api.settings import api_settings
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
 
     # Runs on shutdown
     logger.info("App is shutting down")
+    await wait_for_all_background_tasks()
 
 
 def create_app(lifespan=lifespan) -> FastAPI:

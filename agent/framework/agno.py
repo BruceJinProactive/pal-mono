@@ -19,9 +19,28 @@ from agent.input_output import Input, Output
 from agent.model import ModelOptions, build_agno_model
 from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
+from db.repositories.tool_call_record_repository import ToolCallRecordRepositoryAsync
+from db.session import AsyncSessionLocal
 from utils.dd import safe_annotate, send_dd_histogram_metrics
 from utils.log import logger
 from utils.otel import trace_block
+
+# Module-level registry for tracking background tasks across all agent instances
+_ALL_BACKGROUND_TASKS: set[asyncio.Task[None]] = set()
+
+
+async def wait_for_all_background_tasks() -> None:
+    """Wait for all background tasks from all AgnoAgent instances to complete.
+
+    Call this during application shutdown to ensure all database writes
+    complete before exit. Safe to call multiple times or when no tasks exist.
+    """
+    if _ALL_BACKGROUND_TASKS:
+        logger.info(
+            f"Waiting for {len(_ALL_BACKGROUND_TASKS)} background tasks to complete"
+        )
+        await asyncio.gather(*_ALL_BACKGROUND_TASKS, return_exceptions=True)
+        logger.info("All background tasks completed")
 
 
 class ResponseModel(BaseModel):
@@ -92,6 +111,10 @@ def _sanitize_result(result: str | None, max_length: int = 1000) -> str | None:
 
 class AgnoAgent:
     def __init__(self, config: AgentConfig):
+        # Track background tasks to ensure completion on shutdown
+        self._background_tasks: set[asyncio.Task[None]] = set()
+        # Limit concurrent DB writes to prevent session pool exhaustion
+        self._tool_call_record_write_limiter = asyncio.Semaphore(8)
 
         tools = [
             tool
@@ -357,8 +380,8 @@ class AgnoAgent:
                             if chunk.tool and chunk.tool.tool_name
                             else "unknown"
                         )
-                        tool_call_error = (
-                            chunk.tool.tool_call_error if chunk.tool else False
+                        tool_call_error: bool = (
+                            bool(chunk.tool.tool_call_error) if chunk.tool else False
                         )
                         tool_args = chunk.tool.tool_args if chunk.tool else None
                         result = chunk.tool.result if chunk.tool else None
@@ -389,6 +412,32 @@ class AgnoAgent:
                             logger.debug(
                                 f"Tool call succeeded: {tool_name}", extra=log_data
                             )
+
+                        # Persist tool call to database (fire-and-forget)
+                        # TODO(PAL-9250): Add proper PII redaction before persisting result/error_type
+                        # For now, omit these fields to comply with "no PII" contract
+                        # Track task to ensure completion on shutdown
+                        task = asyncio.create_task(
+                            self._persist_tool_call_record(
+                                conversation_id=uuid.UUID(
+                                    self.config.metadata.session_id
+                                ),
+                                tool_name=tool_name,
+                                is_error=tool_call_error,
+                                error_type=None,  # Omit until proper redaction exists
+                                result=None,  # Omit until proper redaction exists
+                            )
+                        )
+                        # Register in both instance and module-level registries
+                        self._background_tasks.add(task)
+                        _ALL_BACKGROUND_TASKS.add(task)
+
+                        # Remove from both registries when complete
+                        def _cleanup_task(t: asyncio.Task[None]) -> None:
+                            self._background_tasks.discard(t)
+                            _ALL_BACKGROUND_TASKS.discard(t)
+
+                        task.add_done_callback(_cleanup_task)
             except asyncio.CancelledError:
                 logger.debug("[AgnoAgent] Stream cancelled (client disconnect)")
                 raise
@@ -458,3 +507,46 @@ class AgnoAgent:
                 messages = messages[:-1]
         messages.append(Message(role="user", content=input.get_prompt()))
         return messages
+
+    async def _persist_tool_call_record(
+        self,
+        conversation_id: uuid.UUID,
+        tool_name: str,
+        is_error: bool,
+        error_type: str | None,
+        result: str | None,
+    ) -> None:
+        """Persist a tool call record to the database (fire-and-forget).
+
+        This is called asynchronously and failures are logged but do not
+        interrupt the streaming response.
+        """
+        try:
+            # Limit concurrent DB writes to prevent session pool exhaustion
+            async with self._tool_call_record_write_limiter:
+                # Create a new session outside the FastAPI request scope
+                async with AsyncSessionLocal() as session:
+                    repo = ToolCallRecordRepositoryAsync(session)
+                    await repo.add_tool_call_record(
+                        conversation_id=conversation_id,
+                        tool_name=tool_name,
+                        is_error=is_error,
+                        error_type=error_type,
+                        result=result[:1000] if result else None,  # Truncate per schema
+                    )
+                    # Note: repo.add_tool_call_record() commits internally
+        except Exception as e:
+            logger.error(
+                f"Failed to persist tool call record for conversation {conversation_id}: {e}",
+                exc_info=True,
+            )
+            # Do NOT raise — streaming must continue even if DB write fails
+
+    async def wait_for_background_tasks(self) -> None:
+        """Wait for all background tasks to complete.
+
+        Call this during application shutdown to ensure all database writes
+        complete before exit.
+        """
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
