@@ -10,6 +10,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 - Add `GET /v1/snapshots/{fingerprint}` endpoint for retrieving agent config snapshots by fingerprint — enables prompt traceability for chat and eval conversations
 
 ### 2026-04-08
+- [P2-B1b] Add E14 Interruption and E15 Latency/silence metric-based evaluators in `services/eval_service/evaluators/`; E14 detects overlapping speech from transcript timestamps and explicit interruption events; E15 computes p50/p95 turn latency against SLA thresholds and detects awkward silence gaps (>3s)
+
+### 2026-04-07
+- [P2-A2] Extend `VoiceEndCallRequest` to accept per-turn call metrics from LiveKit agent worker; wire latency averages into existing PhoneCall columns; extract `compute_latency_averages` into `api/schemas/internal/voice_metrics.py` for testability
 - Add `tool_call_records` table for persistent tool execution tracking per conversation ([record](records/2026-04-08-tool-call-records-table.md))
 - Add `ToolCallRecordRepositoryAsync` with fire-and-forget recording and conversation query methods ([record](records/2026-04-08-tool-call-records-table.md))
 
