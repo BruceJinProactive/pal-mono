@@ -5,8 +5,8 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.pal_repository.data_classes.project_integration import ProjectIntegrationData
 from db.tables.integration import ProjectIntegration
-from pal_repository.data_classes.project_integration import ProjectIntegrationData
 from utils.log import logger
 
 

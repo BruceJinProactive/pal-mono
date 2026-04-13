@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.pal_repository.data_classes.role_permission import RolePermissionData
 from db.tables.role_permission import RolePermission
-from pal_repository.data_classes.role_permission import RolePermissionData
 from utils.log import logger
 
 

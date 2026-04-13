@@ -1,4 +1,8 @@
-"""Tests for pal_repository.RoutineExecutionRepository."""
+"""Tests for db.pal_repository.RolePermissionRepository.
+
+Validates the async repository: ORM objects stay inside the
+repository layer and only RolePermissionData instances are returned.
+"""
 
 import uuid
 from datetime import datetime, timezone
@@ -7,13 +11,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from db.tables.routine_executions import RoutineExecution
-from db.tables.types import ExecutionStatus
-from pal_repository.data_classes.routine_execution import (
-    RoutineExecutionData,
-    RoutineExecutionUpdateData,
-)
-from pal_repository.routine_execution import RoutineExecutionRepository
+from db.pal_repository.data_classes.role_permission import RolePermissionData
+from db.pal_repository.role_permission import RolePermissionRepository
+from db.tables.role_permission import RolePermission
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -26,41 +26,30 @@ def mock_session() -> AsyncMock:
 
 
 @pytest.fixture
-def repo(mock_session: AsyncMock) -> RoutineExecutionRepository:
-    return RoutineExecutionRepository(mock_session)
+def repo(mock_session: AsyncMock) -> RolePermissionRepository:
+    return RolePermissionRepository(mock_session)
 
 
 @pytest.fixture
-def sample_execution_id() -> uuid.UUID:
+def sample_rp_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
 @pytest.fixture
-def sample_routine_id() -> uuid.UUID:
-    return uuid.uuid4()
-
-
-@pytest.fixture
-def sample_schedule_id() -> uuid.UUID:
+def sample_permission_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
 @pytest.fixture
 def sample_orm_row(
-    sample_execution_id: uuid.UUID,
-    sample_routine_id: uuid.UUID,
-    sample_schedule_id: uuid.UUID,
+    sample_rp_id: uuid.UUID,
+    sample_permission_id: uuid.UUID,
 ) -> MagicMock:
-    row = MagicMock(spec=RoutineExecution)
-    row.id = sample_execution_id
-    row.routine_id = sample_routine_id
-    row.schedule_id = sample_schedule_id
-    row.scheduled_start = datetime(2025, 6, 1, 9, 0, tzinfo=timezone.utc)
-    row.scheduled_end = datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc)
-    row.status = ExecutionStatus.pending
-    row.assigned_user_id = None
+    row = MagicMock(spec=RolePermission)
+    row.id = sample_rp_id
+    row.role = "owner"
+    row.permission_id = sample_permission_id
     row.created_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
-    row.updated_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
     return row
 
 
@@ -70,56 +59,61 @@ def sample_orm_row(
 
 
 class TestGetById:
+    """Lookup by primary key."""
+
     @pytest.mark.asyncio
     async def test_returns_data_when_found(
         self,
-        repo: RoutineExecutionRepository,
+        repo: RolePermissionRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_execution_id: uuid.UUID,
+        sample_rp_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_orm_row
         mock_session.execute.return_value = mock_result
 
-        data = await repo.get_by_id(sample_execution_id)
+        data = await repo.get_by_id(sample_rp_id)
 
-        assert isinstance(data, RoutineExecutionData)
-        assert data.id == sample_execution_id
-        assert data.status == ExecutionStatus.pending
+        assert isinstance(data, RolePermissionData)
+        assert data.id == sample_rp_id
+        assert data.role == "owner"
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(
-        self, repo: RoutineExecutionRepository, mock_session: AsyncMock
+        self, repo: RolePermissionRepository, mock_session: AsyncMock
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        assert await repo.get_by_id(uuid.uuid4()) is None
+        data = await repo.get_by_id(uuid.uuid4())
+        assert data is None
 
     @pytest.mark.asyncio
     async def test_raises_on_db_error(
-        self, repo: RoutineExecutionRepository, mock_session: AsyncMock
+        self, repo: RolePermissionRepository, mock_session: AsyncMock
     ) -> None:
-        mock_session.execute.side_effect = SQLAlchemyError("error")
+        mock_session.execute.side_effect = SQLAlchemyError("connection lost")
+
         with pytest.raises(SQLAlchemyError):
             await repo.get_by_id(uuid.uuid4())
 
 
 # ---------------------------------------------------------------------------
-# TestListByRoutineId
+# TestListByRole
 # ---------------------------------------------------------------------------
 
 
-class TestListByRoutineId:
+class TestListByRole:
+    """List all permission mappings for a role."""
+
     @pytest.mark.asyncio
-    async def test_returns_list(
+    async def test_returns_list_of_data(
         self,
-        repo: RoutineExecutionRepository,
+        repo: RolePermissionRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_routine_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -127,14 +121,15 @@ class TestListByRoutineId:
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
 
-        results = await repo.list_by_routine_id(sample_routine_id)
+        results = await repo.list_by_role("owner")
 
         assert len(results) == 1
-        assert results[0].routine_id == sample_routine_id
+        assert isinstance(results[0], RolePermissionData)
+        assert results[0].role == "owner"
 
     @pytest.mark.asyncio
-    async def test_returns_empty_list(
-        self, repo: RoutineExecutionRepository, mock_session: AsyncMock
+    async def test_returns_empty_list_when_no_results(
+        self, repo: RolePermissionRepository, mock_session: AsyncMock
     ) -> None:
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -142,30 +137,34 @@ class TestListByRoutineId:
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
 
-        assert await repo.list_by_routine_id(uuid.uuid4()) == []
+        results = await repo.list_by_role("nonexistent")
+        assert results == []
 
     @pytest.mark.asyncio
     async def test_raises_on_db_error(
-        self, repo: RoutineExecutionRepository, mock_session: AsyncMock
+        self, repo: RolePermissionRepository, mock_session: AsyncMock
     ) -> None:
-        mock_session.execute.side_effect = SQLAlchemyError("error")
+        mock_session.execute.side_effect = SQLAlchemyError("timeout")
+
         with pytest.raises(SQLAlchemyError):
-            await repo.list_by_routine_id(uuid.uuid4())
+            await repo.list_by_role("owner")
 
 
 # ---------------------------------------------------------------------------
-# TestListByScheduleId
+# TestListByPermissionId
 # ---------------------------------------------------------------------------
 
 
-class TestListByScheduleId:
+class TestListByPermissionId:
+    """Reverse lookup — find all roles linked to a permission."""
+
     @pytest.mark.asyncio
-    async def test_returns_list(
+    async def test_returns_list_of_data(
         self,
-        repo: RoutineExecutionRepository,
+        repo: RolePermissionRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_schedule_id: uuid.UUID,
+        sample_permission_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -173,18 +172,66 @@ class TestListByScheduleId:
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
 
-        results = await repo.list_by_schedule_id(sample_schedule_id)
+        results = await repo.list_by_permission_id(sample_permission_id)
 
         assert len(results) == 1
-        assert results[0].schedule_id == sample_schedule_id
+        assert results[0].permission_id == sample_permission_id
 
     @pytest.mark.asyncio
     async def test_raises_on_db_error(
-        self, repo: RoutineExecutionRepository, mock_session: AsyncMock
+        self, repo: RolePermissionRepository, mock_session: AsyncMock
     ) -> None:
         mock_session.execute.side_effect = SQLAlchemyError("error")
+
         with pytest.raises(SQLAlchemyError):
-            await repo.list_by_schedule_id(uuid.uuid4())
+            await repo.list_by_permission_id(uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# TestGetByRoleAndPermission
+# ---------------------------------------------------------------------------
+
+
+class TestGetByRoleAndPermission:
+    """Exact lookup by both role and permission ID."""
+
+    @pytest.mark.asyncio
+    async def test_returns_data_when_found(
+        self,
+        repo: RolePermissionRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_permission_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.get_by_role_and_permission("owner", sample_permission_id)
+
+        assert isinstance(data, RolePermissionData)
+        assert data.role == "owner"
+        assert data.permission_id == sample_permission_id
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found(
+        self, repo: RolePermissionRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.get_by_role_and_permission("viewer", uuid.uuid4())
+        assert data is None
+
+    @pytest.mark.asyncio
+    async def test_raises_on_db_error(
+        self, repo: RolePermissionRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = SQLAlchemyError("error")
+
+        with pytest.raises(SQLAlchemyError):
+            await repo.get_by_role_and_permission("owner", uuid.uuid4())
 
 
 # ---------------------------------------------------------------------------
@@ -193,22 +240,19 @@ class TestListByScheduleId:
 
 
 class TestCreate:
+    """Creating a new role-permission mapping."""
+
     @pytest.mark.asyncio
     async def test_create_commits(
         self,
-        repo: RoutineExecutionRepository,
+        repo: RolePermissionRepository,
         mock_session: AsyncMock,
-        sample_routine_id: uuid.UUID,
-        sample_schedule_id: uuid.UUID,
+        sample_permission_id: uuid.UUID,
     ) -> None:
-        input_data = RoutineExecutionData(
+        input_data = RolePermissionData(
             id=uuid.uuid4(),
-            routine_id=sample_routine_id,
-            schedule_id=sample_schedule_id,
-            scheduled_start=datetime(2025, 6, 1, 9, 0, tzinfo=timezone.utc),
-            scheduled_end=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
-            status=ExecutionStatus.pending,
-            created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            role="manager",
+            permission_id=sample_permission_id,
         )
 
         await repo.create(input_data)
@@ -219,107 +263,20 @@ class TestCreate:
     @pytest.mark.asyncio
     async def test_create_raises_on_db_error(
         self,
-        repo: RoutineExecutionRepository,
+        repo: RolePermissionRepository,
         mock_session: AsyncMock,
-        sample_routine_id: uuid.UUID,
-        sample_schedule_id: uuid.UUID,
+        sample_permission_id: uuid.UUID,
     ) -> None:
         mock_session.commit.side_effect = SQLAlchemyError("insert failed")
 
-        input_data = RoutineExecutionData(
+        input_data = RolePermissionData(
             id=uuid.uuid4(),
-            routine_id=sample_routine_id,
-            schedule_id=sample_schedule_id,
-            scheduled_start=datetime(2025, 6, 1, 9, 0, tzinfo=timezone.utc),
-            scheduled_end=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
-            status=ExecutionStatus.pending,
-            created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            role="manager",
+            permission_id=sample_permission_id,
         )
 
         with pytest.raises(SQLAlchemyError):
             await repo.create(input_data)
-        mock_session.rollback.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# TestUpdate
-# ---------------------------------------------------------------------------
-
-
-class TestUpdate:
-    @pytest.mark.asyncio
-    async def test_update_commits(
-        self,
-        repo: RoutineExecutionRepository,
-        mock_session: AsyncMock,
-        sample_orm_row: MagicMock,
-        sample_execution_id: uuid.UUID,
-    ) -> None:
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_orm_row
-        mock_session.execute.return_value = mock_result
-
-        update_data = RoutineExecutionUpdateData(
-            status=ExecutionStatus.completed,
-        )
-
-        await repo.update(sample_execution_id, update_data)
-
-        mock_session.commit.assert_awaited_once()
-        assert sample_orm_row.status == ExecutionStatus.completed
-
-    @pytest.mark.asyncio
-    async def test_update_skips_when_not_found(
-        self,
-        repo: RoutineExecutionRepository,
-        mock_session: AsyncMock,
-    ) -> None:
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
-
-        update_data = RoutineExecutionUpdateData(status=ExecutionStatus.pending)
-
-        await repo.update(uuid.uuid4(), update_data)
-        mock_session.commit.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_update_can_unassign_user(
-        self,
-        repo: RoutineExecutionRepository,
-        mock_session: AsyncMock,
-        sample_orm_row: MagicMock,
-        sample_execution_id: uuid.UUID,
-    ) -> None:
-        sample_orm_row.assigned_user_id = uuid.uuid4()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_orm_row
-        mock_session.execute.return_value = mock_result
-
-        update_data = RoutineExecutionUpdateData(assigned_user_id=None)
-
-        await repo.update(sample_execution_id, update_data)
-
-        assert sample_orm_row.assigned_user_id is None
-        mock_session.commit.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_update_raises_on_db_error(
-        self,
-        repo: RoutineExecutionRepository,
-        mock_session: AsyncMock,
-        sample_orm_row: MagicMock,
-        sample_execution_id: uuid.UUID,
-    ) -> None:
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_orm_row
-        mock_session.execute.return_value = mock_result
-        mock_session.commit.side_effect = SQLAlchemyError("update failed")
-
-        update_data = RoutineExecutionUpdateData(status=ExecutionStatus.pending)
-
-        with pytest.raises(SQLAlchemyError):
-            await repo.update(sample_execution_id, update_data)
         mock_session.rollback.assert_awaited_once()
 
 
@@ -329,42 +286,45 @@ class TestUpdate:
 
 
 class TestDelete:
+    """Deleting a role-permission mapping by ID."""
+
     @pytest.mark.asyncio
     async def test_delete_returns_data(
         self,
-        repo: RoutineExecutionRepository,
+        repo: RolePermissionRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_execution_id: uuid.UUID,
+        sample_rp_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_orm_row
         mock_session.execute.return_value = mock_result
 
-        data = await repo.delete(sample_execution_id)
+        data = await repo.delete(sample_rp_id)
 
-        assert isinstance(data, RoutineExecutionData)
-        assert data.id == sample_execution_id
+        assert isinstance(data, RolePermissionData)
+        assert data.id == sample_rp_id
         mock_session.delete.assert_awaited_once_with(sample_orm_row)
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_delete_returns_none_when_not_found(
-        self, repo: RoutineExecutionRepository, mock_session: AsyncMock
+        self, repo: RolePermissionRepository, mock_session: AsyncMock
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        assert await repo.delete(uuid.uuid4()) is None
+        data = await repo.delete(uuid.uuid4())
+        assert data is None
 
     @pytest.mark.asyncio
     async def test_delete_raises_on_db_error(
         self,
-        repo: RoutineExecutionRepository,
+        repo: RolePermissionRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_execution_id: uuid.UUID,
+        sample_rp_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_orm_row
@@ -372,7 +332,64 @@ class TestDelete:
         mock_session.commit.side_effect = SQLAlchemyError("delete failed")
 
         with pytest.raises(SQLAlchemyError):
-            await repo.delete(sample_execution_id)
+            await repo.delete(sample_rp_id)
+        mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# TestDeleteByRoleAndPermission
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteByRoleAndPermission:
+    """Deleting a role-permission mapping by role and permission ID."""
+
+    @pytest.mark.asyncio
+    async def test_delete_returns_data(
+        self,
+        repo: RolePermissionRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_permission_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.delete_by_role_and_permission("owner", sample_permission_id)
+
+        assert isinstance(data, RolePermissionData)
+        assert data.role == "owner"
+        assert data.permission_id == sample_permission_id
+        mock_session.delete.assert_awaited_once_with(sample_orm_row)
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_returns_none_when_not_found(
+        self, repo: RolePermissionRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.delete_by_role_and_permission("viewer", uuid.uuid4())
+        assert data is None
+
+    @pytest.mark.asyncio
+    async def test_delete_raises_on_db_error(
+        self,
+        repo: RolePermissionRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_permission_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+        mock_session.commit.side_effect = SQLAlchemyError("delete failed")
+
+        with pytest.raises(SQLAlchemyError):
+            await repo.delete_by_role_and_permission("owner", sample_permission_id)
         mock_session.rollback.assert_awaited_once()
 
 
@@ -382,15 +399,13 @@ class TestDelete:
 
 
 class TestDataImmutability:
+    """RolePermissionData is a frozen dataclass — mutations are disallowed."""
+
     def test_data_is_immutable(self) -> None:
-        data = RoutineExecutionData(
+        data = RolePermissionData(
             id=uuid.uuid4(),
-            routine_id=uuid.uuid4(),
-            schedule_id=uuid.uuid4(),
-            scheduled_start=datetime(2025, 6, 1, 9, 0, tzinfo=timezone.utc),
-            scheduled_end=datetime(2025, 6, 1, 10, 0, tzinfo=timezone.utc),
-            status=ExecutionStatus.pending,
-            created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            role="owner",
+            permission_id=uuid.uuid4(),
         )
         with pytest.raises(AttributeError):
-            data.status = ExecutionStatus.completed  # type: ignore[misc]
+            data.role = "changed"  # type: ignore[misc]

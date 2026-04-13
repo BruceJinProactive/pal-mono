@@ -1,7 +1,7 @@
-"""Tests for pal_repository.RolePermissionRepository.
+"""Tests for db.pal_repository.ProjectContactRepository.
 
 Validates the async repository: ORM objects stay inside the
-repository layer and only RolePermissionData instances are returned.
+repository layer and only ProjectContactData instances are returned.
 """
 
 import uuid
@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from db.tables.role_permission import RolePermission
-from pal_repository.data_classes.role_permission import RolePermissionData
-from pal_repository.role_permission import RolePermissionRepository
+from db.pal_repository.data_classes.project_contact import ProjectContactData
+from db.pal_repository.project_contact import ProjectContactRepository
+from db.tables.project_contacts import ProjectContact
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -26,30 +26,37 @@ def mock_session() -> AsyncMock:
 
 
 @pytest.fixture
-def repo(mock_session: AsyncMock) -> RolePermissionRepository:
-    return RolePermissionRepository(mock_session)
+def repo(mock_session: AsyncMock) -> ProjectContactRepository:
+    return ProjectContactRepository(mock_session)
 
 
 @pytest.fixture
-def sample_rp_id() -> uuid.UUID:
+def sample_pc_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
 @pytest.fixture
-def sample_permission_id() -> uuid.UUID:
+def sample_project_id() -> uuid.UUID:
+    return uuid.uuid4()
+
+
+@pytest.fixture
+def sample_contact_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
 @pytest.fixture
 def sample_orm_row(
-    sample_rp_id: uuid.UUID,
-    sample_permission_id: uuid.UUID,
+    sample_pc_id: uuid.UUID,
+    sample_project_id: uuid.UUID,
+    sample_contact_id: uuid.UUID,
 ) -> MagicMock:
-    row = MagicMock(spec=RolePermission)
-    row.id = sample_rp_id
-    row.role = "owner"
-    row.permission_id = sample_permission_id
+    row = MagicMock(spec=ProjectContact)
+    row.id = sample_pc_id
+    row.project_id = sample_project_id
+    row.contact_id = sample_contact_id
     row.created_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    row.updated_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
     return row
 
 
@@ -59,29 +66,28 @@ def sample_orm_row(
 
 
 class TestGetById:
-    """Lookup by primary key."""
+    """Lookup by primary key — used when loading a specific project contact."""
 
     @pytest.mark.asyncio
     async def test_returns_data_when_found(
         self,
-        repo: RolePermissionRepository,
+        repo: ProjectContactRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_rp_id: uuid.UUID,
+        sample_pc_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_orm_row
         mock_session.execute.return_value = mock_result
 
-        data = await repo.get_by_id(sample_rp_id)
+        data = await repo.get_by_id(sample_pc_id)
 
-        assert isinstance(data, RolePermissionData)
-        assert data.id == sample_rp_id
-        assert data.role == "owner"
+        assert isinstance(data, ProjectContactData)
+        assert data.id == sample_pc_id
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(
-        self, repo: RolePermissionRepository, mock_session: AsyncMock
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -92,7 +98,7 @@ class TestGetById:
 
     @pytest.mark.asyncio
     async def test_raises_on_db_error(
-        self, repo: RolePermissionRepository, mock_session: AsyncMock
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
     ) -> None:
         mock_session.execute.side_effect = SQLAlchemyError("connection lost")
 
@@ -101,19 +107,20 @@ class TestGetById:
 
 
 # ---------------------------------------------------------------------------
-# TestListByRole
+# TestGetByProjectId
 # ---------------------------------------------------------------------------
 
 
-class TestListByRole:
-    """List all permission mappings for a role."""
+class TestGetByProjectId:
+    """List all contacts for a project."""
 
     @pytest.mark.asyncio
     async def test_returns_list_of_data(
         self,
-        repo: RolePermissionRepository,
+        repo: ProjectContactRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
+        sample_project_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -121,15 +128,15 @@ class TestListByRole:
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
 
-        results = await repo.list_by_role("owner")
+        results = await repo.get_by_project_id(sample_project_id)
 
         assert len(results) == 1
-        assert isinstance(results[0], RolePermissionData)
-        assert results[0].role == "owner"
+        assert isinstance(results[0], ProjectContactData)
+        assert results[0].project_id == sample_project_id
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_when_no_results(
-        self, repo: RolePermissionRepository, mock_session: AsyncMock
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
     ) -> None:
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -137,34 +144,34 @@ class TestListByRole:
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
 
-        results = await repo.list_by_role("nonexistent")
+        results = await repo.get_by_project_id(uuid.uuid4())
         assert results == []
 
     @pytest.mark.asyncio
     async def test_raises_on_db_error(
-        self, repo: RolePermissionRepository, mock_session: AsyncMock
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
     ) -> None:
         mock_session.execute.side_effect = SQLAlchemyError("timeout")
 
         with pytest.raises(SQLAlchemyError):
-            await repo.list_by_role("owner")
+            await repo.get_by_project_id(uuid.uuid4())
 
 
 # ---------------------------------------------------------------------------
-# TestListByPermissionId
+# TestGetByContactId
 # ---------------------------------------------------------------------------
 
 
-class TestListByPermissionId:
-    """Reverse lookup — find all roles linked to a permission."""
+class TestGetByContactId:
+    """Reverse lookup — find all projects linked to a contact."""
 
     @pytest.mark.asyncio
     async def test_returns_list_of_data(
         self,
-        repo: RolePermissionRepository,
+        repo: ProjectContactRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_permission_id: uuid.UUID,
+        sample_contact_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_scalars = MagicMock()
@@ -172,66 +179,69 @@ class TestListByPermissionId:
         mock_result.scalars.return_value = mock_scalars
         mock_session.execute.return_value = mock_result
 
-        results = await repo.list_by_permission_id(sample_permission_id)
+        results = await repo.get_by_contact_id(sample_contact_id)
 
         assert len(results) == 1
-        assert results[0].permission_id == sample_permission_id
+        assert results[0].contact_id == sample_contact_id
 
     @pytest.mark.asyncio
     async def test_raises_on_db_error(
-        self, repo: RolePermissionRepository, mock_session: AsyncMock
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
     ) -> None:
         mock_session.execute.side_effect = SQLAlchemyError("error")
 
         with pytest.raises(SQLAlchemyError):
-            await repo.list_by_permission_id(uuid.uuid4())
+            await repo.get_by_contact_id(uuid.uuid4())
 
 
 # ---------------------------------------------------------------------------
-# TestGetByRoleAndPermission
+# TestGetByProjectAndContact
 # ---------------------------------------------------------------------------
 
 
-class TestGetByRoleAndPermission:
-    """Exact lookup by both role and permission ID."""
+class TestGetByProjectAndContact:
+    """Exact lookup by both project and contact IDs."""
 
     @pytest.mark.asyncio
     async def test_returns_data_when_found(
         self,
-        repo: RolePermissionRepository,
+        repo: ProjectContactRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_permission_id: uuid.UUID,
+        sample_project_id: uuid.UUID,
+        sample_contact_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_orm_row
         mock_session.execute.return_value = mock_result
 
-        data = await repo.get_by_role_and_permission("owner", sample_permission_id)
+        data = await repo.get_by_project_and_contact(
+            sample_project_id, sample_contact_id
+        )
 
-        assert isinstance(data, RolePermissionData)
-        assert data.role == "owner"
-        assert data.permission_id == sample_permission_id
+        assert isinstance(data, ProjectContactData)
+        assert data.project_id == sample_project_id
+        assert data.contact_id == sample_contact_id
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(
-        self, repo: RolePermissionRepository, mock_session: AsyncMock
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        data = await repo.get_by_role_and_permission("viewer", uuid.uuid4())
+        data = await repo.get_by_project_and_contact(uuid.uuid4(), uuid.uuid4())
         assert data is None
 
     @pytest.mark.asyncio
     async def test_raises_on_db_error(
-        self, repo: RolePermissionRepository, mock_session: AsyncMock
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
     ) -> None:
         mock_session.execute.side_effect = SQLAlchemyError("error")
 
         with pytest.raises(SQLAlchemyError):
-            await repo.get_by_role_and_permission("owner", uuid.uuid4())
+            await repo.get_by_project_and_contact(uuid.uuid4(), uuid.uuid4())
 
 
 # ---------------------------------------------------------------------------
@@ -240,39 +250,42 @@ class TestGetByRoleAndPermission:
 
 
 class TestCreate:
-    """Creating a new role-permission mapping."""
+    """Creating a new project-contact link."""
 
     @pytest.mark.asyncio
     async def test_create_commits(
         self,
-        repo: RolePermissionRepository,
+        repo: ProjectContactRepository,
         mock_session: AsyncMock,
-        sample_permission_id: uuid.UUID,
+        sample_project_id: uuid.UUID,
+        sample_contact_id: uuid.UUID,
     ) -> None:
-        input_data = RolePermissionData(
+        input_data = ProjectContactData(
             id=uuid.uuid4(),
-            role="manager",
-            permission_id=sample_permission_id,
+            project_id=sample_project_id,
+            contact_id=sample_contact_id,
         )
 
-        await repo.create(input_data)
+        result = await repo.create(input_data)
 
+        assert result is None
         mock_session.add.assert_called_once()
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_create_raises_on_db_error(
         self,
-        repo: RolePermissionRepository,
+        repo: ProjectContactRepository,
         mock_session: AsyncMock,
-        sample_permission_id: uuid.UUID,
+        sample_project_id: uuid.UUID,
+        sample_contact_id: uuid.UUID,
     ) -> None:
         mock_session.commit.side_effect = SQLAlchemyError("insert failed")
 
-        input_data = RolePermissionData(
+        input_data = ProjectContactData(
             id=uuid.uuid4(),
-            role="manager",
-            permission_id=sample_permission_id,
+            project_id=sample_project_id,
+            contact_id=sample_contact_id,
         )
 
         with pytest.raises(SQLAlchemyError):
@@ -286,30 +299,30 @@ class TestCreate:
 
 
 class TestDelete:
-    """Deleting a role-permission mapping by ID."""
+    """Deleting a project-contact link."""
 
     @pytest.mark.asyncio
     async def test_delete_returns_data(
         self,
-        repo: RolePermissionRepository,
+        repo: ProjectContactRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_rp_id: uuid.UUID,
+        sample_pc_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_orm_row
         mock_session.execute.return_value = mock_result
 
-        data = await repo.delete(sample_rp_id)
+        data = await repo.delete(sample_pc_id)
 
-        assert isinstance(data, RolePermissionData)
-        assert data.id == sample_rp_id
+        assert isinstance(data, ProjectContactData)
+        assert data.id == sample_pc_id
         mock_session.delete.assert_awaited_once_with(sample_orm_row)
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_delete_returns_none_when_not_found(
-        self, repo: RolePermissionRepository, mock_session: AsyncMock
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -321,10 +334,10 @@ class TestDelete:
     @pytest.mark.asyncio
     async def test_delete_raises_on_db_error(
         self,
-        repo: RolePermissionRepository,
+        repo: ProjectContactRepository,
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
-        sample_rp_id: uuid.UUID,
+        sample_pc_id: uuid.UUID,
     ) -> None:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = sample_orm_row
@@ -332,64 +345,7 @@ class TestDelete:
         mock_session.commit.side_effect = SQLAlchemyError("delete failed")
 
         with pytest.raises(SQLAlchemyError):
-            await repo.delete(sample_rp_id)
-        mock_session.rollback.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# TestDeleteByRoleAndPermission
-# ---------------------------------------------------------------------------
-
-
-class TestDeleteByRoleAndPermission:
-    """Deleting a role-permission mapping by role and permission ID."""
-
-    @pytest.mark.asyncio
-    async def test_delete_returns_data(
-        self,
-        repo: RolePermissionRepository,
-        mock_session: AsyncMock,
-        sample_orm_row: MagicMock,
-        sample_permission_id: uuid.UUID,
-    ) -> None:
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_orm_row
-        mock_session.execute.return_value = mock_result
-
-        data = await repo.delete_by_role_and_permission("owner", sample_permission_id)
-
-        assert isinstance(data, RolePermissionData)
-        assert data.role == "owner"
-        assert data.permission_id == sample_permission_id
-        mock_session.delete.assert_awaited_once_with(sample_orm_row)
-        mock_session.commit.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_delete_returns_none_when_not_found(
-        self, repo: RolePermissionRepository, mock_session: AsyncMock
-    ) -> None:
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
-
-        data = await repo.delete_by_role_and_permission("viewer", uuid.uuid4())
-        assert data is None
-
-    @pytest.mark.asyncio
-    async def test_delete_raises_on_db_error(
-        self,
-        repo: RolePermissionRepository,
-        mock_session: AsyncMock,
-        sample_orm_row: MagicMock,
-        sample_permission_id: uuid.UUID,
-    ) -> None:
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_orm_row
-        mock_session.execute.return_value = mock_result
-        mock_session.commit.side_effect = SQLAlchemyError("delete failed")
-
-        with pytest.raises(SQLAlchemyError):
-            await repo.delete_by_role_and_permission("owner", sample_permission_id)
+            await repo.delete(sample_pc_id)
         mock_session.rollback.assert_awaited_once()
 
 
@@ -399,13 +355,13 @@ class TestDeleteByRoleAndPermission:
 
 
 class TestDataImmutability:
-    """RolePermissionData is a frozen dataclass — mutations are disallowed."""
+    """ProjectContactData is a frozen dataclass — mutations are disallowed."""
 
     def test_data_is_immutable(self) -> None:
-        data = RolePermissionData(
+        data = ProjectContactData(
             id=uuid.uuid4(),
-            role="owner",
-            permission_id=uuid.uuid4(),
+            project_id=uuid.uuid4(),
+            contact_id=uuid.uuid4(),
         )
         with pytest.raises(AttributeError):
-            data.role = "changed"  # type: ignore[misc]
+            data.contact_id = uuid.uuid4()  # type: ignore[misc]

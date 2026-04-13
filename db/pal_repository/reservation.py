@@ -6,9 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.pal_repository.data_classes.reservation import ReservationData
 from db.tables.reservations import Reservation
 from db.tables.types import IntegrationProvider
-from pal_repository.data_classes.reservation import ReservationData
 from utils.log import logger
 
 

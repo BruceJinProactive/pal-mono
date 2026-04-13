@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.pal_repository.data_classes.project_contact import ProjectContactData
 from db.tables.project_contacts import ProjectContact
-from pal_repository.data_classes.project_contact import ProjectContactData
 from utils.log import logger
 
 

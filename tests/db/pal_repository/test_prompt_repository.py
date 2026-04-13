@@ -1,4 +1,4 @@
-"""Tests for pal_repository.PromptRepository.
+"""Tests for db.pal_repository.PromptRepository.
 
 Validates the async repository: ORM objects stay inside the
 repository layer and only PromptData instances are returned.
@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from db.pal_repository.data_classes.prompt import PromptData
+from db.pal_repository.prompt import PromptRepository
 from db.tables.prompts import Prompt
 from db.tables.types import Channel
-from pal_repository.data_classes.prompt import PromptData
-from pal_repository.prompt import PromptRepository
 
 # ---------------------------------------------------------------------------
 # Fixtures

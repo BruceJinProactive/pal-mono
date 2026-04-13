@@ -4,9 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.pal_repository.data_classes.phone_call import PhoneCallData
 from db.tables.phonecalls import PhoneCall
 from db.tables.types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
-from pal_repository.data_classes.phone_call import PhoneCallData
 from utils.log import logger
 
 

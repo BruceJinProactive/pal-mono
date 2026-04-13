@@ -5,9 +5,9 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.pal_repository.data_classes.prompt import PromptData
 from db.tables.prompts import Prompt
 from db.tables.types import Channel
-from pal_repository.data_classes.prompt import PromptData
 from utils.log import logger
 
 

@@ -3,14 +3,15 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.tables.routine_executions import RoutineExecution
-from pal_repository.data_classes.routine_execution import (
+from db.pal_repository.data_classes.routine_execution import (
     RoutineExecutionData,
     RoutineExecutionUpdateData,
     _Unset,
 )
+from db.tables.routine_executions import RoutineExecution
 from utils.log import logger
 
 
@@ -47,8 +48,7 @@ class RoutineExecutionRepository:
             )
             row = result.scalar_one_or_none()
             return _to_data(row) if row else None
-        except Exception:
-            await self.session.rollback()
+        except SQLAlchemyError:
             logger.exception("Error retrieving routine execution by ID")
             raise
 
@@ -64,8 +64,7 @@ class RoutineExecutionRepository:
             )
             rows = result.scalars().all()
             return [_to_data(row) for row in rows]
-        except Exception:
-            await self.session.rollback()
+        except SQLAlchemyError:
             logger.exception("Error listing routine executions by routine ID")
             raise
 
@@ -81,8 +80,7 @@ class RoutineExecutionRepository:
             )
             rows = result.scalars().all()
             return [_to_data(row) for row in rows]
-        except Exception:
-            await self.session.rollback()
+        except SQLAlchemyError:
             logger.exception("Error listing routine executions by schedule ID")
             raise
 

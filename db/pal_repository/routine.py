@@ -5,11 +5,11 @@ import uuid
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.pal_repository.data_classes.routine import RoutineData, RoutineUpdateData
 from db.tables.routine_executions import RoutineExecution
 from db.tables.routine_items import RoutineItem
 from db.tables.routine_schedules import RoutineSchedule
 from db.tables.routines import Routine
-from pal_repository.data_classes.routine import RoutineData, RoutineUpdateData
 from utils.log import logger
 
 

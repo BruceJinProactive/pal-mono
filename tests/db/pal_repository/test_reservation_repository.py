@@ -1,4 +1,4 @@
-"""Tests for pal_repository.ReservationRepository.
+"""Tests for db.pal_repository.ReservationRepository.
 
 Validates the async repository: ORM objects stay inside the
 repository layer and only ReservationData instances are returned.
@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
+from db.pal_repository.data_classes.reservation import ReservationData
+from db.pal_repository.reservation import ReservationRepository
 from db.tables.reservations import Reservation
-from pal_repository.data_classes.reservation import ReservationData
-from pal_repository.reservation import ReservationRepository
 
 # ---------------------------------------------------------------------------
 # Fixtures

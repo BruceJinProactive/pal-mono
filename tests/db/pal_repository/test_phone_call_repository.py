@@ -1,4 +1,4 @@
-"""Tests for pal_repository.PhoneCallRepository.
+"""Tests for db.pal_repository.PhoneCallRepository.
 
 Validates the async DTO-based repository: ORM objects stay inside the
 repository layer and only PhoneCallData instances are returned to callers.
@@ -11,10 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import MultipleResultsFound, SQLAlchemyError
 
+from db.pal_repository.data_classes.phone_call import PhoneCallData
+from db.pal_repository.phone_call import PhoneCallRepository
 from db.tables.phonecalls import PhoneCall
 from db.tables.types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
-from pal_repository.data_classes.phone_call import PhoneCallData
-from pal_repository.phone_call import PhoneCallRepository
 
 # ---------------------------------------------------------------------------
 # Fixtures

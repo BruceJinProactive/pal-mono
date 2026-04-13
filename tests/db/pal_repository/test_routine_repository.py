@@ -1,4 +1,4 @@
-"""Tests for pal_repository.RoutineRepository."""
+"""Tests for db.pal_repository.RoutineRepository."""
 
 import uuid
 from datetime import datetime, timezone
@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
+from db.pal_repository.data_classes.routine import RoutineData, RoutineUpdateData
+from db.pal_repository.routine import RoutineRepository
 from db.tables.routines import Routine
 from db.tables.types import RoutineCategory
-from pal_repository.data_classes.routine import RoutineData, RoutineUpdateData
-from pal_repository.routine import RoutineRepository
 
 # ---------------------------------------------------------------------------
 # Fixtures
