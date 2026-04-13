@@ -56,3 +56,31 @@ class ScorecardResponse(BaseModel):
 
     project_id: str
     runs: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SnapshotResponse(BaseModel):
+    """Agent config snapshot for a given fingerprint."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    fingerprint: str = Field(
+        ..., description="SHA-256 hex fingerprint of the agent config"
+    )
+    agent_id: uuid.UUID = Field(..., description="Agent this snapshot belongs to")
+    project_id: uuid.UUID = Field(..., description="Project this snapshot belongs to")
+    system_prompt_hash: str = Field(
+        ..., description="SHA-256 hash of the system prompt text alone"
+    )
+    system_prompt_text: str = Field(
+        ..., description="Full system prompt text at time of snapshot"
+    )
+    config_snapshot: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Complete agent configuration dictionary at time of snapshot",
+    )
+    first_seen_at: datetime.datetime = Field(
+        ..., description="When this fingerprint was first recorded"
+    )
+    last_seen_at: datetime.datetime = Field(
+        ..., description="When this fingerprint was last seen in use"
+    )

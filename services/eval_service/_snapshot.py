@@ -9,6 +9,8 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from db.repositories.agent_config_snapshot_repository import (
     AgentConfigSnapshotRepositoryAsync,
 )
@@ -73,3 +75,12 @@ async def upsert_agent_config_snapshot(
             "Failed to upsert agent config snapshot",
             extra={"fingerprint": fingerprint[:8] if fingerprint else "N/A"},
         )
+
+
+async def get_snapshot_by_fingerprint(
+    fingerprint: str,
+    session: AsyncSession,
+) -> AgentConfigSnapshot | None:
+    """Retrieve an agent config snapshot by fingerprint."""
+    repo = AgentConfigSnapshotRepositoryAsync(session)
+    return await repo.get_by_fingerprint(fingerprint)

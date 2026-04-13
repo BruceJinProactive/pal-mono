@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04
 
+### 2026-04-13
+- Add `GET /v1/snapshots/{fingerprint}` endpoint for retrieving agent config snapshots by fingerprint — enables prompt traceability for chat and eval conversations
+
 ### 2026-04-08
 - Add `tool_call_records` table for persistent tool execution tracking per conversation ([record](records/2026-04-08-tool-call-records-table.md))
 - Add `ToolCallRecordRepositoryAsync` with fire-and-forget recording and conversation query methods ([record](records/2026-04-08-tool-call-records-table.md))

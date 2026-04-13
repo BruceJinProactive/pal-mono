@@ -17,7 +17,10 @@ from services.eval_service._scenario_loader import (
     load_scenarios,
     validate_scenarios_from_yaml,
 )
-from services.eval_service._snapshot import upsert_agent_config_snapshot
+from services.eval_service._snapshot import (
+    get_snapshot_by_fingerprint,
+    upsert_agent_config_snapshot,
+)
 from services.eval_service._voice_result_collector import (
     VoiceCallMetrics,
     VoiceEvalResult,
@@ -38,6 +41,7 @@ __all__ = [
     "load_scenarios",
     "mark_stale_runs_failed",
     "get_conversation_history_with_prompts",
+    "get_snapshot_by_fingerprint",
     "upsert_agent_config_snapshot",
     "validate_scenarios_from_yaml",
 ]
