@@ -7,6 +7,12 @@ from .prompt_details import PromptDetailsData
 from .reservation import ReservationData
 from .role_permission import RolePermissionData
 from .routine import RoutineData, RoutineUpdateData
+from .routine_execution import (
+    UNSET,
+    RoutineExecutionData,
+    RoutineExecutionUpdateData,
+    _Unset,
+)
 from .tos_acceptance import TosAcceptanceData
 
 __all__ = [
@@ -19,6 +25,10 @@ __all__ = [
     "ReservationData",
     "RolePermissionData",
     "RoutineData",
+    "RoutineExecutionData",
+    "RoutineExecutionUpdateData",
     "RoutineUpdateData",
+    "UNSET",
+    "_Unset",
     "TosAcceptanceData",
 ]

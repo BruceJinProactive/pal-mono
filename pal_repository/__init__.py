@@ -7,6 +7,7 @@ from .prompt_details import PromptDetailsRepository
 from .reservation import ReservationRepository
 from .role_permission import RolePermissionRepository
 from .routine import RoutineRepository
+from .routine_execution import RoutineExecutionRepository
 from .tos_acceptance import TosAcceptanceRepository
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "PromptDetailsRepository",
     "ReservationRepository",
     "RolePermissionRepository",
+    "RoutineExecutionRepository",
     "RoutineRepository",
     "TosAcceptanceRepository",
 ]
