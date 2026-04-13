@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, Text
+from sqlalchemy.types import DateTime, Integer, Text
 
 from .base import Base
 
@@ -44,6 +44,9 @@ class MonitoringRun(Base):
     )
 
     # Results
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[int | None] = mapped_column(Integer, nullable=True)
     evaluation_result: Mapped[Dict] = mapped_column(
         MutableDict.as_mutable(JSONB()),
         nullable=False,
@@ -59,4 +62,6 @@ class MonitoringRun(Base):
             "monitoring_config_id",
             text("started_at DESC"),
         ),
+        Index("ix_monitoring_runs_result", "result"),
+        Index("ix_monitoring_runs_started_at", text("started_at DESC")),
     )
