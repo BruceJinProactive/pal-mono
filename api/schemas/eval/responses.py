@@ -84,3 +84,24 @@ class SnapshotResponse(BaseModel):
     last_seen_at: datetime.datetime = Field(
         ..., description="When this fingerprint was last seen in use"
     )
+
+
+class SnapshotDiffResponse(BaseModel):
+    """Diff result between two agent config snapshots."""
+
+    from_fingerprint: str = Field(
+        ..., description="Fingerprint of the baseline snapshot"
+    )
+    to_fingerprint: str = Field(..., description="Fingerprint of the target snapshot")
+    prompt_changed: bool = Field(
+        ..., description="Whether the system prompt text differs"
+    )
+    config_changed: bool = Field(..., description="Whether the config snapshot differs")
+    prompt_diff: str = Field(
+        ...,
+        description="Unified text diff of system_prompt_text (empty string if unchanged)",
+    )
+    config_diff: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="List of JSON path changes in config_snapshot: {path, from, to}",
+    )

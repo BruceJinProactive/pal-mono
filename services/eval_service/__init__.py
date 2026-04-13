@@ -18,6 +18,7 @@ from services.eval_service._scenario_loader import (
     validate_scenarios_from_yaml,
 )
 from services.eval_service._snapshot import (
+    compute_snapshot_diff,
     get_snapshot_by_fingerprint,
     upsert_agent_config_snapshot,
 )
@@ -30,6 +31,7 @@ from services.eval_service._voice_result_collector import (
 __all__ = [
     "ConversationRecord",
     "EvaluatorResult",
+    "compute_snapshot_diff",
     "VoiceCallMetrics",
     "VoiceEvalResult",
     "VoiceResultCollector",

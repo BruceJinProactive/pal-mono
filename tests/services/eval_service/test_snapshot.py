@@ -1,9 +1,18 @@
 """Tests for services/eval_service/_snapshot.py."""
 
+from __future__ import annotations
+
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from services.eval_service._snapshot import (
+    _compute_config_diff,
+    _compute_prompt_diff,
+    compute_snapshot_diff,
+)
 
 SNAPSHOT_MODULE = "services.eval_service._snapshot"
 
@@ -124,3 +133,148 @@ class TestUpsertAgentConfigSnapshot:
             await upsert_agent_config_snapshot(**snapshot_kwargs)
 
         mock_logger.exception.assert_called_once()
+
+
+class TestComputePromptDiff:
+    def test_identical_text_returns_empty(self) -> None:
+        assert _compute_prompt_diff("hello", "hello") == ""
+
+    def test_different_text_returns_unified_diff(self) -> None:
+        result = _compute_prompt_diff("old prompt\n", "new prompt\n")
+        assert "--- from_prompt" in result
+        assert "+++ to_prompt" in result
+        assert "-old prompt" in result
+        assert "+new prompt" in result
+
+    def test_multiline_diff(self) -> None:
+        from_text = "line1\nline2\nline3\n"
+        to_text = "line1\nchanged\nline3\n"
+        result = _compute_prompt_diff(from_text, to_text)
+        assert "-line2" in result
+        assert "+changed" in result
+
+
+class TestComputeConfigDiff:
+    def test_identical_config_returns_empty(self) -> None:
+        config: dict[str, Any] = {"model": "gpt-4", "temperature": 0.7}
+        assert _compute_config_diff(config, config) == []
+
+    def test_changed_value(self) -> None:
+        old: dict[str, Any] = {"model": "gpt-4"}
+        new: dict[str, Any] = {"model": "gpt-4o"}
+        result = _compute_config_diff(old, new)
+        assert len(result) == 1
+        assert result[0] == {"path": "model", "from": "gpt-4", "to": "gpt-4o"}
+
+    def test_added_key(self) -> None:
+        old: dict[str, Any] = {"model": "gpt-4"}
+        new: dict[str, Any] = {"model": "gpt-4", "temperature": 0.7}
+        result = _compute_config_diff(old, new)
+        assert len(result) == 1
+        assert result[0] == {"path": "temperature", "from": None, "to": 0.7}
+
+    def test_removed_key(self) -> None:
+        old: dict[str, Any] = {"model": "gpt-4", "temperature": 0.7}
+        new: dict[str, Any] = {"model": "gpt-4"}
+        result = _compute_config_diff(old, new)
+        assert len(result) == 1
+        assert result[0] == {"path": "temperature", "from": 0.7, "to": None}
+
+    def test_nested_change_uses_dot_path(self) -> None:
+        old: dict[str, Any] = {"persona": {"name": "Bot", "tone": "friendly"}}
+        new: dict[str, Any] = {"persona": {"name": "Agent", "tone": "friendly"}}
+        result = _compute_config_diff(old, new)
+        assert len(result) == 1
+        assert result[0] == {"path": "persona.name", "from": "Bot", "to": "Agent"}
+
+    def test_multiple_changes_sorted_by_path(self) -> None:
+        old: dict[str, Any] = {"b": 1, "a": 2}
+        new: dict[str, Any] = {"b": 10, "a": 20}
+        result = _compute_config_diff(old, new)
+        assert len(result) == 2
+        assert result[0]["path"] == "a"
+        assert result[1]["path"] == "b"
+
+
+class TestComputeSnapshotDiff:
+    @pytest.mark.asyncio
+    async def test_raises_when_from_fingerprint_not_found(self) -> None:
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_by_fingerprint.return_value = None
+
+        with patch(
+            f"{SNAPSHOT_MODULE}.AgentConfigSnapshotRepositoryAsync",
+            return_value=mock_repo,
+        ):
+            with pytest.raises(ValueError, match="from_fingerprint"):
+                await compute_snapshot_diff("from_fingerprint", "bbb", mock_session)
+
+    @pytest.mark.asyncio
+    async def test_raises_when_to_fingerprint_not_found(self) -> None:
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        from_snap = MagicMock()
+        mock_repo.get_by_fingerprint.side_effect = [from_snap, None]
+
+        with patch(
+            f"{SNAPSHOT_MODULE}.AgentConfigSnapshotRepositoryAsync",
+            return_value=mock_repo,
+        ):
+            with pytest.raises(ValueError, match="to_fingerprint"):
+                await compute_snapshot_diff("aaa", "to_fingerprint", mock_session)
+
+    @pytest.mark.asyncio
+    async def test_returns_correct_structure(self) -> None:
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+
+        from_snap = MagicMock()
+        from_snap.system_prompt_hash = "hash_a"
+        from_snap.system_prompt_text = "old prompt"
+        from_snap.config_snapshot = {"model": "gpt-4"}
+
+        to_snap = MagicMock()
+        to_snap.system_prompt_hash = "hash_b"
+        to_snap.system_prompt_text = "new prompt"
+        to_snap.config_snapshot = {"model": "gpt-4o"}
+
+        mock_repo.get_by_fingerprint.side_effect = [from_snap, to_snap]
+
+        with patch(
+            f"{SNAPSHOT_MODULE}.AgentConfigSnapshotRepositoryAsync",
+            return_value=mock_repo,
+        ):
+            result = await compute_snapshot_diff("fp_a", "fp_b", mock_session)
+
+        assert result["from_fingerprint"] == "fp_a"
+        assert result["to_fingerprint"] == "fp_b"
+        assert result["prompt_changed"] is True
+        assert result["config_changed"] is True
+        assert "--- from_prompt" in result["prompt_diff"]
+        assert result["config_diff"] == [
+            {"path": "model", "from": "gpt-4", "to": "gpt-4o"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_identical_snapshots_returns_no_changes(self) -> None:
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+
+        snap = MagicMock()
+        snap.system_prompt_hash = "same_hash"
+        snap.system_prompt_text = "same prompt"
+        snap.config_snapshot = {"model": "gpt-4"}
+
+        mock_repo.get_by_fingerprint.side_effect = [snap, snap]
+
+        with patch(
+            f"{SNAPSHOT_MODULE}.AgentConfigSnapshotRepositoryAsync",
+            return_value=mock_repo,
+        ):
+            result = await compute_snapshot_diff("fp_a", "fp_a", mock_session)
+
+        assert result["prompt_changed"] is False
+        assert result["config_changed"] is False
+        assert result["prompt_diff"] == ""
+        assert result["config_diff"] == []

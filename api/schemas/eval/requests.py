@@ -44,3 +44,14 @@ class RunEvalRequest(BaseModel):
         max_length=20,
         description="Who triggered the run",
     )
+
+
+class ComputeSnapshotDiffRequest(BaseModel):
+    """Request body for computing a diff between two agent config snapshots."""
+
+    from_fingerprint: str = Field(
+        ..., description="Fingerprint of the baseline (older) snapshot"
+    )
+    to_fingerprint: str = Field(
+        ..., description="Fingerprint of the target (newer) snapshot"
+    )
