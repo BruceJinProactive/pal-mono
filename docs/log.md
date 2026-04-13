@@ -9,6 +9,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ### 2026-04-13
 - [P2-B1c] Add E16 STT accuracy / WER evaluator in `services/eval_service/evaluators/stt_accuracy.py`; compares primary STT transcript (Deepgram/Gladia) against Whisper reference transcription via word-level edit distance; includes S3 audio download, ffmpeg right-channel extraction, and OpenAI Whisper API integration; passes at ≤8% WER
 - [P2-C1f] Wire voice eval into runner: add `_run_scenario_for_mode()` dispatcher in `_runner.py` that routes `driver: "voice"` to `run_voice_scenario`; add `"voice"` to `RunEvalRequest.driver` Literal; fix cleanup to be best-effort, add `asyncio.wait_for` timeout on caller factory
+- [P2-B1d] Add E17 speech rate and E17b audio quality evaluators in `services/eval_service/evaluators/`; E17 computes per-turn WPM from transcript word count and duration, flags turns outside 120-180 WPM range; E17b estimates SNR from frame-level RMS and detects clipping (≥99% of 16-bit max); both metric-based, no LLM
 - Add `GET /v1/snapshots/{fingerprint}` endpoint for retrieving agent config snapshots by fingerprint — enables prompt traceability for chat and eval conversations
 
 ### 2026-04-08
