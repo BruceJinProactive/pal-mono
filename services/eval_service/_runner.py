@@ -122,16 +122,14 @@ async def _run_eval_background(
             # Parse caller-provided channel identifier into channel + recipient_id
             channel, recipient_id = _parse_channel_identifier(channel_identifier)
 
-            # Create driver and simulator
-            driver = create_driver(driver_mode, recipient_id, channel=channel)
-            simulator = UserSimulator()
-
             passed_count = 0
             failed_count = 0
 
             for scenario in scenarios:
                 try:
-                    record = await _run_conversation(driver, scenario, simulator)
+                    record = await _run_scenario_for_mode(
+                        driver_mode, scenario, session, recipient_id, channel
+                    )
                     eval_results = await evaluate_scenario(record)
 
                     # Write results
@@ -236,6 +234,32 @@ def _parse_channel_identifier(channel_identifier: str) -> tuple[str, str]:
             "Both channel and identifier must be non-empty."
         )
     return channel, recipient_id
+
+
+async def _run_scenario_for_mode(
+    driver_mode: str,
+    scenario: EvalScenario,
+    session: AsyncSession,
+    recipient_id: str,
+    channel: str,
+) -> ConversationRecord:
+    """Dispatch a scenario to the appropriate runner based on driver mode.
+
+    Voice mode uses the dedicated voice eval pipeline (room injection).
+    All other modes use the standard text-based driver + simulator loop.
+    """
+    if driver_mode == "voice":
+        from services.eval_service._voice_eval_runner import (
+            VoiceEvalConfig,
+            run_voice_scenario,
+        )
+
+        voice_config = VoiceEvalConfig.from_env()
+        return await run_voice_scenario(scenario, voice_config, session)
+
+    driver = create_driver(driver_mode, recipient_id, channel=channel)
+    simulator = UserSimulator()
+    return await _run_conversation(driver, scenario, simulator)
 
 
 async def _run_conversation(

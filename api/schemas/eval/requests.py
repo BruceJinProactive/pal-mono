@@ -35,9 +35,9 @@ class RunEvalRequest(BaseModel):
             )
         return v
 
-    driver: Literal["http", "direct"] = Field(
+    driver: Literal["http", "direct", "voice"] = Field(
         default="http",
-        description="Driver mode: http (real system) or direct (in-process)",
+        description="Driver mode: http (real system), direct (in-process, not yet implemented), or voice (LiveKit room injection)",
     )
     triggered_by: str = Field(
         default="api",

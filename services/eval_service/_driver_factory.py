@@ -44,5 +44,6 @@ def create_driver(
         )
 
     raise ValueError(
-        f"Unknown driver_mode: {driver_mode!r}. Expected 'http' or 'direct'."
+        f"Unknown driver_mode: {driver_mode!r}. "
+        "Expected 'http' or 'direct'. Voice mode is handled by _run_scenario_for_mode."
     )

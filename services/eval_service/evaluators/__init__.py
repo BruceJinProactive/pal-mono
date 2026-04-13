@@ -3,6 +3,7 @@
 - tool_call: Deterministic tool call verification (local)
 - interruption: E14 interruption detection from transcript timestamps
 - latency_silence: E15 latency/silence scoring from turn metrics
+- stt_accuracy: E16 STT accuracy / WER via Whisper reference transcription
 - deepeval_adapter: pal-agents DeepEval metrics (faithfulness, responsive,
   voice_appropriate, task_completion)
 """
@@ -15,14 +16,22 @@ from services.eval_service.evaluators.deepeval_adapter import (
 )
 from services.eval_service.evaluators.interruption import evaluate_interruptions
 from services.eval_service.evaluators.latency_silence import evaluate_latency_silence
+from services.eval_service.evaluators.stt_accuracy import (
+    compute_wer,
+    evaluate_stt_accuracy,
+    extract_primary_transcript,
+)
 from services.eval_service.evaluators.tool_call import evaluate_tool_calls
 
 __all__ = [
+    "compute_wer",
     "evaluate_faithfulness",
     "evaluate_interruptions",
     "evaluate_latency_silence",
     "evaluate_responsive",
+    "evaluate_stt_accuracy",
     "evaluate_task_completion",
     "evaluate_tool_calls",
     "evaluate_voice_appropriate",
+    "extract_primary_transcript",
 ]
