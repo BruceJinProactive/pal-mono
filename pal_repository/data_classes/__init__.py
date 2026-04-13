@@ -6,6 +6,7 @@ from .prompt import PromptData
 from .prompt_details import PromptDetailsData
 from .reservation import ReservationData
 from .role_permission import RolePermissionData
+from .routine import RoutineData, RoutineUpdateData
 from .tos_acceptance import TosAcceptanceData
 
 __all__ = [
@@ -17,5 +18,7 @@ __all__ = [
     "PromptDetailsData",
     "ReservationData",
     "RolePermissionData",
+    "RoutineData",
+    "RoutineUpdateData",
     "TosAcceptanceData",
 ]
