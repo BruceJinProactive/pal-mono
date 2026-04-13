@@ -88,9 +88,12 @@ async def _fingerprint_conversation(
                 conversation_id=conversation_id,
                 channel=channel,
             )
-            config, agent_fp, prompt_fp, config_dict = (
-                await raw_config.build_with_fingerprint(session)
-            )
+            (
+                config,
+                agent_fp,
+                prompt_fp,
+                config_dict,
+            ) = await raw_config.build_with_fingerprint(session)
 
             conversation.agent_fingerprint = agent_fp
             conversation.prompt_fingerprint = prompt_fp
@@ -196,6 +199,7 @@ async def get_chat_response_async(
 
         # **************** Step 2: Construct agent, get input, and generate output ****************
         current_message = ""
+        collected_events_sync: list[dict] = []
         if use_pal_agents:
             # NEW FLOW: Use pal-agents
 
@@ -352,6 +356,19 @@ async def get_chat_response_async(
                     conversation_id=request_message.conversation_id,
                 )
 
+            # Collect generic tool call events from pal-agents output
+            # (guarded by hasattr — field added in pal-agents feat/generic-tool-call-events)
+            if hasattr(pal_output, "events") and pal_output.events:  # type: ignore[reportAttributeAccessIssue]
+                collected_events_sync = pal_output.events  # type: ignore[reportAttributeAccessIssue]
+                logger.info(
+                    "[tool_call_events] Collected %d events from pal-agents output",
+                    len(collected_events_sync),
+                    extra={
+                        "event_count": len(collected_events_sync),
+                        "conversation_id": str(request_message.conversation_id),
+                    },
+                )
+
             # Use pal-agents Output fields directly (v0.2.1+)
             output = Output(
                 content=pal_output.content,
@@ -448,14 +465,25 @@ async def get_chat_response_async(
                 final_output_messages.append(sub_message)
 
         user_id = user.id
-        for message in final_output_messages:
+        for i, message in enumerate(final_output_messages):
             # Append response message to list of response messages
             response_messages.append(message)
             # Save response message to database
+            message_body = message.to_dict()
+            if i == 0 and collected_events_sync:
+                message_body["tool_calls"] = collected_events_sync
+                logger.info(
+                    "[tool_call_events] Attached %d events to message body",
+                    len(collected_events_sync),
+                    extra={
+                        "event_count": len(collected_events_sync),
+                        "conversation_id": str(request_message.conversation_id),
+                    },
+                )
             await message_repo.create_message(
                 user_id=user_id,
                 project_id=project_id,
-                message_body=message.to_dict(),
+                message_body=message_body,
                 channel=message.channel.value if message.channel else "unknown",
             )
 
@@ -579,6 +607,7 @@ async def get_chat_response_stream(
                 raise ValueError("Agent ID not found")
 
             collected_content: list[str] = []
+            collected_events: list[dict] = []
             current_message = ""
 
             # ========== CHUNK GENERATION (if/else by project config) ==========
@@ -851,6 +880,20 @@ async def get_chat_response_stream(
                                     conversation_id=request_conversation_id,
                                 )
 
+                            # Collect generic tool call events
+                            # (guarded by hasattr — field added in pal-agents feat/generic-tool-call-events)
+                            if hasattr(chunk, "events") and chunk.events:  # type: ignore[reportAttributeAccessIssue]
+                                collected_events.extend(chunk.events)  # type: ignore[reportAttributeAccessIssue]
+                                logger.info(
+                                    "[tool_call_events] Collected %d events from stream chunk",
+                                    len(chunk.events),  # type: ignore[reportAttributeAccessIssue]
+                                    extra={
+                                        "event_count": len(chunk.events),  # type: ignore[reportAttributeAccessIssue]
+                                        "total_events": len(collected_events),
+                                        "conversation_id": str(request_conversation_id),
+                                    },
+                                )
+
                             if not chunk.content:
                                 continue
 
@@ -1076,9 +1119,21 @@ async def get_chat_response_stream(
                 # Use add_message_to_conversation with the known conversation_id
                 # instead of create_message which does a lookup that can find
                 # the wrong conversation when multiple active conversations exist
+                response_message_body = response_message.to_dict()
+                if collected_events:
+                    response_message_body["tool_calls"] = collected_events
+                    logger.info(
+                        "[tool_call_events] Attached %d events to streaming message body",
+                        len(collected_events),
+                        extra={
+                            "event_count": len(collected_events),
+                            "conversation_id": str(request_conversation_id),
+                        },
+                    )
+
                 await message_repo.add_message_to_conversation(
                     conversation_id=request_conversation_id,
-                    message_body=response_message.to_dict(),
+                    message_body=response_message_body,
                 )
 
                 await session.refresh(user, attribute_names=["id"])
