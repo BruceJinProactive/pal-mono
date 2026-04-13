@@ -13,6 +13,7 @@ class ApiEndpoints:
     CATERING: str = "/catering"
     TELEPHONY: str = "/telephony"
     EVAL: str = "/eval"
+    SNAPSHOTS: str = "/snapshots"
 
 
 endpoints = ApiEndpoints()
