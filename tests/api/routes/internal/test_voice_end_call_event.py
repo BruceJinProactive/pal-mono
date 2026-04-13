@@ -159,14 +159,21 @@ async def test_publish_event_success():
     mock_repo = AsyncMock()
     mock_repo.get_project.return_value = project
 
+    mock_tool_call_repo = AsyncMock()
+    mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
     with (
         patch("db.session.AsyncSessionLocal") as mock_session_cls,
         patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(
+            f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+        ) as mock_tool_call_repo_cls,
         patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
     ):
         mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
         mock_db.ProjectRepositoryAsync.return_value = mock_repo
+        mock_tool_call_repo_cls.return_value = mock_tool_call_repo
         mock_publish.return_value = True
 
         kwargs = _common_kwargs()
@@ -192,14 +199,21 @@ async def test_publish_event_no_analytics_uses_close_reason():
     mock_repo = AsyncMock()
     mock_repo.get_project.return_value = project
 
+    mock_tool_call_repo = AsyncMock()
+    mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
     with (
         patch("db.session.AsyncSessionLocal") as mock_session_cls,
         patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(
+            f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+        ) as mock_tool_call_repo_cls,
         patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
     ):
         mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
         mock_db.ProjectRepositoryAsync.return_value = mock_repo
+        mock_tool_call_repo_cls.return_value = mock_tool_call_repo
         mock_publish.return_value = True
 
         # LiveKit sends hyphenated strings; the fallback path must normalise them.
@@ -290,14 +304,21 @@ async def test_publish_event_content_list_format():
     mock_repo = AsyncMock()
     mock_repo.get_project.return_value = project
 
+    mock_tool_call_repo = AsyncMock()
+    mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
     with (
         patch("db.session.AsyncSessionLocal") as mock_session_cls,
         patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(
+            f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+        ) as mock_tool_call_repo_cls,
         patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
     ):
         mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
         mock_db.ProjectRepositoryAsync.return_value = mock_repo
+        mock_tool_call_repo_cls.return_value = mock_tool_call_repo
         mock_publish.return_value = True
 
         kwargs = _common_kwargs(
@@ -323,14 +344,21 @@ async def test_publish_event_no_analytics_unknown_close_reason_defaults_to_other
     mock_repo = AsyncMock()
     mock_repo.get_project.return_value = project
 
+    mock_tool_call_repo = AsyncMock()
+    mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
     with (
         patch("db.session.AsyncSessionLocal") as mock_session_cls,
         patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(
+            f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+        ) as mock_tool_call_repo_cls,
         patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
     ):
         mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
         mock_db.ProjectRepositoryAsync.return_value = mock_repo
+        mock_tool_call_repo_cls.return_value = mock_tool_call_repo
         mock_publish.return_value = True
 
         kwargs = _common_kwargs(
@@ -345,12 +373,117 @@ async def test_publish_event_no_analytics_unknown_close_reason_defaults_to_other
 
 
 @pytest.mark.asyncio
+async def test_publish_event_with_tool_calls():
+    """Test that tool_calls are populated from database records."""
+    project = _make_project()
+    conversation_id = uuid.uuid4()
+    mock_session = AsyncMock()
+    mock_project_repo = AsyncMock()
+    mock_project_repo.get_project.return_value = project
+
+    # Mock tool call records
+    mock_tool_call_1 = MagicMock()
+    mock_tool_call_1.tool_name = "get_menu"
+    mock_tool_call_1.is_error = False
+    mock_tool_call_1.error_type = None
+
+    mock_tool_call_2 = MagicMock()
+    mock_tool_call_2.tool_name = "place_order"
+    mock_tool_call_2.is_error = True
+    mock_tool_call_2.error_type = "APIError"
+
+    mock_tool_call_repo = AsyncMock()
+    mock_tool_call_repo.get_tool_calls_by_conversation.return_value = [
+        mock_tool_call_1,
+        mock_tool_call_2,
+    ]
+
+    with (
+        patch("db.session.AsyncSessionLocal") as mock_session_cls,
+        patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(
+            f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+        ) as mock_tool_call_repo_cls,
+        patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
+    ):
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_db.ProjectRepositoryAsync.return_value = mock_project_repo
+        mock_tool_call_repo_cls.return_value = mock_tool_call_repo
+        mock_publish.return_value = True
+
+        kwargs = _common_kwargs(conversation_id=conversation_id)
+        await _publish_livekit_evaluation_event(**kwargs)
+
+        # Verify tool call repo was called with correct conversation_id
+        mock_tool_call_repo.get_tool_calls_by_conversation.assert_called_once_with(
+            conversation_id
+        )
+
+        # Verify event contains mapped tool calls
+        mock_publish.assert_called_once()
+        event = mock_publish.call_args[0][0]
+        assert isinstance(event, ConversationEvaluationRequested)
+        assert len(event.tool_calls) == 2
+        assert event.tool_calls[0] == {
+            "function_name": "get_menu",
+            "is_error": False,
+            "error_type": None,
+        }
+        assert event.tool_calls[1] == {
+            "function_name": "place_order",
+            "is_error": True,
+            "error_type": "APIError",
+        }
+
+
+@pytest.mark.asyncio
+async def test_publish_event_with_no_tool_calls():
+    """Test that tool_calls is empty list when no records exist."""
+    project = _make_project()
+    conversation_id = uuid.uuid4()
+    mock_session = AsyncMock()
+    mock_project_repo = AsyncMock()
+    mock_project_repo.get_project.return_value = project
+
+    # Mock empty tool call records
+    mock_tool_call_repo = AsyncMock()
+    mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
+    with (
+        patch("db.session.AsyncSessionLocal") as mock_session_cls,
+        patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(
+            f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+        ) as mock_tool_call_repo_cls,
+        patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
+    ):
+        mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_db.ProjectRepositoryAsync.return_value = mock_project_repo
+        mock_tool_call_repo_cls.return_value = mock_tool_call_repo
+        mock_publish.return_value = True
+
+        kwargs = _common_kwargs(conversation_id=conversation_id)
+        await _publish_livekit_evaluation_event(**kwargs)
+
+        # Verify event contains empty tool_calls list
+        mock_publish.assert_called_once()
+        event = mock_publish.call_args[0][0]
+        assert isinstance(event, ConversationEvaluationRequested)
+        assert event.tool_calls == []
+
+
+@pytest.mark.asyncio
 async def test_publish_event_with_audio_recording():
     """Test that audio_recording is included in event when provided."""
     project = _make_project()
     mock_session = AsyncMock()
     mock_repo = AsyncMock()
     mock_repo.get_project.return_value = project
+
+    mock_tool_call_repo = AsyncMock()
+    mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
 
     audio_recording = AudioRecordingReference(
         s3_uri="s3://test-bucket/recordings/call-123.wav",
@@ -360,11 +493,15 @@ async def test_publish_event_with_audio_recording():
     with (
         patch("db.session.AsyncSessionLocal") as mock_session_cls,
         patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(
+            f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+        ) as mock_tool_call_repo_cls,
         patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
     ):
         mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
         mock_db.ProjectRepositoryAsync.return_value = mock_repo
+        mock_tool_call_repo_cls.return_value = mock_tool_call_repo
         mock_publish.return_value = True
 
         kwargs = _common_kwargs(audio_recording=audio_recording)
@@ -388,14 +525,21 @@ async def test_publish_event_without_audio_recording():
     mock_repo = AsyncMock()
     mock_repo.get_project.return_value = project
 
+    mock_tool_call_repo = AsyncMock()
+    mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
     with (
         patch("db.session.AsyncSessionLocal") as mock_session_cls,
         patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(
+            f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+        ) as mock_tool_call_repo_cls,
         patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
     ):
         mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
         mock_db.ProjectRepositoryAsync.return_value = mock_repo
+        mock_tool_call_repo_cls.return_value = mock_tool_call_repo
         mock_publish.return_value = True
 
         kwargs = _common_kwargs(audio_recording=None)
@@ -514,14 +658,21 @@ async def _publish_with_metrics(
     mock_repo = AsyncMock()
     mock_repo.get_project.return_value = project
 
+    mock_tool_call_repo = AsyncMock()
+    mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
     with (
         patch("db.session.AsyncSessionLocal") as mock_session_cls,
         patch(f"{VOICE_MODULE}.db") as mock_db,
+        patch(
+            f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+        ) as mock_tool_call_repo_cls,
         patch(f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock) as mock_publish,
     ):
         mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
         mock_db.ProjectRepositoryAsync.return_value = mock_repo
+        mock_tool_call_repo_cls.return_value = mock_tool_call_repo
         mock_publish.return_value = True
 
         kwargs = _common_kwargs(metrics=metrics)

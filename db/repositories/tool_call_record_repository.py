@@ -30,7 +30,8 @@ class ToolCallRecordRepositoryAsync:
             is_error: Whether the tool call resulted in an error.
             error_type: Optional error type (e.g., "TypeError", "APIError").
             duration_ms: Optional duration in milliseconds for performance analysis.
-            result: Optional capped output/error message (max 1000 chars, no PII).
+            result: Optional output/error message. Truncated to 1000 chars if longer.
+                    CALLER MUST sanitize PII before passing - this method stores verbatim.
 
         Returns:
             ToolCallRecord | None: The created record if successful, None if an error occurs.

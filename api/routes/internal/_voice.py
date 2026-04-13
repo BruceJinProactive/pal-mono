@@ -33,6 +33,7 @@ from api.schemas.internal.voice_metrics import (
     extract_turn_timestamps,
 )
 from db.repositories.agent_repository import AgentRepositoryAsync
+from db.repositories.tool_call_record_repository import ToolCallRecordRepositoryAsync
 from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.types import Channel, SpeechRate
 from events import (
@@ -1067,6 +1068,26 @@ async def _publish_livekit_evaluation_event(
             await session.refresh(project, attribute_names=["account"])
             account_name = (project.account.name or "") if project.account else ""
 
+            # Fetch tool call records for this conversation.
+            # NOTE: Tool call writes are fire-and-forget, so there's a potential race
+            # where the last in-flight write hasn't landed yet. This is acceptable for
+            # evaluation purposes as eventual consistency is fine - the evaluator can
+            # re-query or tolerate missing the last tool call in rare edge cases.
+            tool_call_repo = ToolCallRecordRepositoryAsync(session)
+            tool_call_records = await tool_call_repo.get_tool_calls_by_conversation(
+                conversation_id
+            )
+
+            # Map to evaluator schema: function_name ← tool_name
+            tool_calls_payload = [
+                {
+                    "function_name": record.tool_name,
+                    "is_error": record.is_error,
+                    "error_type": record.error_type,
+                }
+                for record in tool_call_records
+            ]
+
         # Build per-turn latency totals, interruptions, and timestamps from metrics
         if metrics:
             turn_latencies_ms = extract_turn_latency_totals(metrics)
@@ -1135,7 +1156,7 @@ async def _publish_livekit_evaluation_event(
                 "room_name": None,
             },
             transcript=transcript,
-            tool_calls=[],  # LiveKit tool call extraction not yet available here
+            tool_calls=tool_calls_payload,
             turn_latencies_ms=turn_latencies_ms,
             interruption_events=interruption_events,
             audio_recording=audio_recording,

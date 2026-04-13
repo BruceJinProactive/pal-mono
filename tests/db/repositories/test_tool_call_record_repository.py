@@ -17,7 +17,10 @@ from db.tables import ToolCallRecord
 
 @pytest.fixture
 def mock_async_session():
-    return AsyncMock()
+    session = AsyncMock()
+    # AsyncSession.add() is synchronous, not async
+    session.add = MagicMock()
+    return session
 
 
 @pytest.fixture
@@ -267,3 +270,73 @@ class TestMultipleToolCallsPerConversation:
         assert len(result) == 5
         for i, record in enumerate(result):
             assert record.tool_name == f"tool_{i}"
+
+
+class TestResultTruncation:
+    """Test that result strings longer than 1000 characters are truncated."""
+
+    @pytest.mark.asyncio
+    async def test_result_truncated_to_1000_chars(
+        self, async_repo, mock_async_session, sample_conversation_id
+    ):
+        """Result strings longer than 1000 characters are truncated."""
+        mock_record = MagicMock(spec=ToolCallRecord)
+        mock_record.id = uuid.uuid4()
+        mock_async_session.commit.return_value = None
+        mock_async_session.refresh.return_value = None
+
+        long_result = "x" * 1500  # 1500 characters
+
+        def capture_add(record):
+            mock_record.conversation_id = record.conversation_id
+            mock_record.tool_name = record.tool_name
+            mock_record.result = record.result
+
+        mock_async_session.add.side_effect = capture_add
+        mock_async_session.refresh.side_effect = lambda r: setattr(
+            r, "id", mock_record.id
+        )
+
+        result = await async_repo.add_tool_call_record(
+            conversation_id=sample_conversation_id,
+            tool_name="long_output_tool",
+            is_error=False,
+            result=long_result,
+        )
+
+        assert result is not None
+        assert len(result.result) == 1000
+        assert result.result == "x" * 1000
+
+    @pytest.mark.asyncio
+    async def test_result_under_1000_chars_unchanged(
+        self, async_repo, mock_async_session, sample_conversation_id
+    ):
+        """Result strings shorter than 1000 characters pass through unchanged."""
+        mock_record = MagicMock(spec=ToolCallRecord)
+        mock_record.id = uuid.uuid4()
+        mock_async_session.commit.return_value = None
+        mock_async_session.refresh.return_value = None
+
+        short_result = "x" * 500  # 500 characters
+
+        def capture_add(record):
+            mock_record.conversation_id = record.conversation_id
+            mock_record.tool_name = record.tool_name
+            mock_record.result = record.result
+
+        mock_async_session.add.side_effect = capture_add
+        mock_async_session.refresh.side_effect = lambda r: setattr(
+            r, "id", mock_record.id
+        )
+
+        result = await async_repo.add_tool_call_record(
+            conversation_id=sample_conversation_id,
+            tool_name="short_output_tool",
+            is_error=False,
+            result=short_result,
+        )
+
+        assert result is not None
+        assert len(result.result) == 500
+        assert result.result == short_result

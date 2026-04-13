@@ -379,9 +379,15 @@ class TestPublishEventWithFingerprints:
         mock_repo = AsyncMock()
         mock_repo.get_project.return_value = project
 
+        mock_tool_call_repo = AsyncMock()
+        mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
         with (
             patch("db.session.AsyncSessionLocal") as mock_session_cls,
             patch(f"{VOICE_MODULE}.db") as mock_db,
+            patch(
+                f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+            ) as mock_tool_call_repo_cls,
             patch(
                 f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock
             ) as mock_publish,
@@ -391,6 +397,7 @@ class TestPublishEventWithFingerprints:
             )
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_db.ProjectRepositoryAsync.return_value = mock_repo
+            mock_tool_call_repo_cls.return_value = mock_tool_call_repo
             mock_publish.return_value = True
 
             kwargs = _common_publish_kwargs(
@@ -413,9 +420,15 @@ class TestPublishEventWithFingerprints:
         mock_repo = AsyncMock()
         mock_repo.get_project.return_value = project
 
+        mock_tool_call_repo = AsyncMock()
+        mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
         with (
             patch("db.session.AsyncSessionLocal") as mock_session_cls,
             patch(f"{VOICE_MODULE}.db") as mock_db,
+            patch(
+                f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+            ) as mock_tool_call_repo_cls,
             patch(
                 f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock
             ) as mock_publish,
@@ -425,6 +438,7 @@ class TestPublishEventWithFingerprints:
             )
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_db.ProjectRepositoryAsync.return_value = mock_repo
+            mock_tool_call_repo_cls.return_value = mock_tool_call_repo
             mock_publish.return_value = True
 
             kwargs = _common_publish_kwargs(
@@ -451,9 +465,15 @@ class TestPublishEventWithFingerprints:
         mock_repo = AsyncMock()
         mock_repo.get_project.return_value = project
 
+        mock_tool_call_repo = AsyncMock()
+        mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
+
         with (
             patch("db.session.AsyncSessionLocal") as mock_session_cls,
             patch(f"{VOICE_MODULE}.db") as mock_db,
+            patch(
+                f"{VOICE_MODULE}.ToolCallRecordRepositoryAsync"
+            ) as mock_tool_call_repo_cls,
             patch(
                 f"{VOICE_MODULE}.publish_event", new_callable=AsyncMock
             ) as mock_publish,
@@ -463,6 +483,7 @@ class TestPublishEventWithFingerprints:
             )
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_db.ProjectRepositoryAsync.return_value = mock_repo
+            mock_tool_call_repo_cls.return_value = mock_tool_call_repo
             mock_publish.return_value = True
 
             kwargs = _common_publish_kwargs(
