@@ -14,6 +14,7 @@ from .routine_schedule import RoutineScheduleRepository
 from .routine_submission import RoutineSubmissionRepository
 from .signal_source import SignalSourceRepository
 from .tos_acceptance import TosAcceptanceRepository
+from .user_invitation import UserInvitationRepository
 
 __all__ = [
     "PermissionRepository",
@@ -32,4 +33,5 @@ __all__ = [
     "RoutineSubmissionRepository",
     "SignalSourceRepository",
     "TosAcceptanceRepository",
+    "UserInvitationRepository",
 ]

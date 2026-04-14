@@ -19,6 +19,7 @@ from .routine_schedule import RoutineScheduleData
 from .routine_submission import RoutineSubmissionData
 from .signal_source import SignalSourceData
 from .tos_acceptance import TosAcceptanceData
+from .user_invitation import UserInvitationData
 
 __all__ = [
     "PermissionData",
@@ -39,6 +40,7 @@ __all__ = [
     "RoutineUpdateData",
     "SignalSourceData",
     "TosAcceptanceData",
+    "UserInvitationData",
     "UNSET",
     "_Unset",
 ]
