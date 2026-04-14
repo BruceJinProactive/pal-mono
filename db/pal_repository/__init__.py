@@ -12,6 +12,7 @@ from .routine import RoutineRepository
 from .routine_execution import RoutineExecutionRepository
 from .routine_schedule import RoutineScheduleRepository
 from .routine_submission import RoutineSubmissionRepository
+from .signal_feed import SignalFeedRepository
 from .signal_source import SignalSourceRepository
 from .tos_acceptance import TosAcceptanceRepository
 from .user_invitation import UserInvitationRepository
@@ -31,6 +32,7 @@ __all__ = [
     "RoutineRepository",
     "RoutineScheduleRepository",
     "RoutineSubmissionRepository",
+    "SignalFeedRepository",
     "SignalSourceRepository",
     "TosAcceptanceRepository",
     "UserInvitationRepository",
