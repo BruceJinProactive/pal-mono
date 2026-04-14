@@ -20,6 +20,7 @@ from .routine_submission import RoutineSubmissionData
 from .signal_feed import SignalFeedData
 from .signal_source import SignalSourceData
 from .tos_acceptance import TosAcceptanceData
+from .user import UserData
 from .user_invitation import UserInvitationData
 
 __all__ = [
@@ -42,6 +43,7 @@ __all__ = [
     "SignalFeedData",
     "SignalSourceData",
     "TosAcceptanceData",
+    "UserData",
     "UserInvitationData",
     "UNSET",
     "_Unset",

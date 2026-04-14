@@ -15,6 +15,7 @@ from .routine_submission import RoutineSubmissionRepository
 from .signal_feed import SignalFeedRepository
 from .signal_source import SignalSourceRepository
 from .tos_acceptance import TosAcceptanceRepository
+from .user import UserRepository
 from .user_invitation import UserInvitationRepository
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "SignalSourceRepository",
     "TosAcceptanceRepository",
     "UserInvitationRepository",
+    "UserRepository",
 ]
