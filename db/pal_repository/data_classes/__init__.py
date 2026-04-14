@@ -1,3 +1,4 @@
+from .permission import PermissionData
 from .phone_call import PhoneCallData
 from .project import ProjectData
 from .project_contact import ProjectContactData
@@ -17,6 +18,7 @@ from .routine_execution import (
 from .tos_acceptance import TosAcceptanceData
 
 __all__ = [
+    "PermissionData",
     "PhoneCallData",
     "ProjectContactData",
     "ProjectData",

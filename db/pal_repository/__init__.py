@@ -1,3 +1,4 @@
+from .permission import PermissionRepository
 from .phone_call import PhoneCallRepository
 from .project import ProjectRepository
 from .project_contact import ProjectContactRepository
@@ -12,6 +13,7 @@ from .routine_execution import RoutineExecutionRepository
 from .tos_acceptance import TosAcceptanceRepository
 
 __all__ = [
+    "PermissionRepository",
     "PhoneCallRepository",
     "ProjectContactRepository",
     "ProjectIntegrationRepository",
