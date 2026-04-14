@@ -15,6 +15,7 @@ from .routine_execution import (
     RoutineExecutionUpdateData,
     _Unset,
 )
+from .routine_schedule import RoutineScheduleData
 from .signal_source import SignalSourceData
 from .tos_acceptance import TosAcceptanceData
 
@@ -32,6 +33,7 @@ __all__ = [
     "RoutineData",
     "RoutineExecutionData",
     "RoutineExecutionUpdateData",
+    "RoutineScheduleData",
     "RoutineUpdateData",
     "SignalSourceData",
     "TosAcceptanceData",
