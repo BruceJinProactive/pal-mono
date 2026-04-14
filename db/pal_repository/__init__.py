@@ -17,6 +17,7 @@ from .signal_source import SignalSourceRepository
 from .tos_acceptance import TosAcceptanceRepository
 from .user import UserRepository
 from .user_invitation import UserInvitationRepository
+from .voice_config import VoiceConfigRepository
 
 __all__ = [
     "PermissionRepository",
@@ -37,5 +38,6 @@ __all__ = [
     "SignalSourceRepository",
     "TosAcceptanceRepository",
     "UserInvitationRepository",
+    "VoiceConfigRepository",
     "UserRepository",
 ]

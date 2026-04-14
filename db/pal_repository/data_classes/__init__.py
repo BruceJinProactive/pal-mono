@@ -22,6 +22,7 @@ from .signal_source import SignalSourceData
 from .tos_acceptance import TosAcceptanceData
 from .user import UserData
 from .user_invitation import UserInvitationData
+from .voice_config import VoiceConfigData
 
 __all__ = [
     "PermissionData",
@@ -45,6 +46,7 @@ __all__ = [
     "TosAcceptanceData",
     "UserData",
     "UserInvitationData",
+    "VoiceConfigData",
     "UNSET",
     "_Unset",
 ]
