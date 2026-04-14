@@ -5,6 +5,7 @@ from .project_integration import ProjectIntegrationData
 from .prompt import PromptData
 from .prompt_details import PromptDetailsData
 from .reservation import ReservationData
+from .resource_role_assignment import ResourceRoleAssignmentData
 from .role_permission import RolePermissionData
 from .routine import RoutineData, RoutineUpdateData
 from .routine_execution import (
@@ -23,12 +24,13 @@ __all__ = [
     "PromptData",
     "PromptDetailsData",
     "ReservationData",
+    "ResourceRoleAssignmentData",
     "RolePermissionData",
     "RoutineData",
     "RoutineExecutionData",
     "RoutineExecutionUpdateData",
     "RoutineUpdateData",
+    "TosAcceptanceData",
     "UNSET",
     "_Unset",
-    "TosAcceptanceData",
 ]

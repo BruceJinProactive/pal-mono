@@ -5,6 +5,7 @@ from .project_integration import ProjectIntegrationRepository
 from .prompt import PromptRepository
 from .prompt_details import PromptDetailsRepository
 from .reservation import ReservationRepository
+from .resource_role_assignment import ResourceRoleAssignmentRepository
 from .role_permission import RolePermissionRepository
 from .routine import RoutineRepository
 from .routine_execution import RoutineExecutionRepository
@@ -18,6 +19,7 @@ __all__ = [
     "PromptRepository",
     "PromptDetailsRepository",
     "ReservationRepository",
+    "ResourceRoleAssignmentRepository",
     "RolePermissionRepository",
     "RoutineExecutionRepository",
     "RoutineRepository",
