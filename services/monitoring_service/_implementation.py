@@ -911,6 +911,9 @@ async def trigger_run(
         trigger_metadata=trigger_metadata,
         started_at=datetime.utcnow(),
         evaluation_result={},  # Will be populated by processing worker
+        result=None,
+        details=None,
+        confidence=None,
     )
 
     created_run = await run_repo.create(run)
@@ -1653,19 +1656,24 @@ async def _rerun_monitoring_analysis_background(
 
                 analysis_result = llm_result.get("analysis_result", {})
                 result_status = analysis_result.get("result")
+                result_details = analysis_result.get("details")
+                result_confidence = analysis_result.get("confidence")
 
                 # Extract error_message if result is "error"
                 error_message = None
                 if result_status == "error":
-                    error_message = analysis_result.get(
-                        "details",
-                        f"{'Video' if is_video else 'Image'} validation failed",
+                    error_message = (
+                        result_details
+                        or f"{'Video' if is_video else 'Image'} validation failed"
                     )
 
                 # Update the run with new results (keeping completed_at unchanged)
                 await run_repo.update(
                     run_id,
                     evaluation_result=analysis_result,
+                    result=result_status,
+                    details=result_details,
+                    confidence=result_confidence,
                     error_message=error_message,
                 )
 
@@ -1740,6 +1748,9 @@ async def _rerun_monitoring_analysis_background(
                             "details": f"Rerun failed: {str(e)}",
                             "status": "failed",
                         },
+                        result="error",
+                        details=f"Rerun failed: {str(e)}",
+                        confidence=None,
                         error_message=f"Rerun failed: {str(e)}",
                     )
                     await session.commit()
@@ -1905,6 +1916,9 @@ async def rerun_monitoring_run(
         "details": "Analysis is being rerun. Results will be updated when complete.",
         "rerun_started_at": datetime.now(timezone.utc).isoformat(),
     }
+    processing_result_val = processing_result.get("result")
+    processing_details_val = processing_result.get("details")
+    processing_confidence_val = processing_result.get("confidence")
 
     # Store monitoring_config_id before commit to avoid MissingGreenlet error
     # After commit, the run object is detached and accessing its attributes causes greenlet_spawn error
@@ -1913,6 +1927,9 @@ async def rerun_monitoring_run(
     await run_repo.update(
         run_id,
         evaluation_result=processing_result,
+        result=processing_result_val,
+        details=processing_details_val,
+        confidence=processing_confidence_val,
         error_message=None,
     )
 

@@ -131,6 +131,14 @@ async def test_rerun_with_s3_key_extracts_media_url(
         assert evaluation_result["status"] == "rerunning"
         assert "rerun_started_at" in evaluation_result
 
+        # Verify result/details/confidence columns are set
+        assert update_args[1]["result"] == "processing"
+        assert (
+            update_args[1]["details"]
+            == "Analysis is being rerun. Results will be updated when complete."
+        )
+        assert update_args[1]["confidence"] is None
+
         # Verify background task was spawned
         mock_create_task.assert_called_once()
 
@@ -315,6 +323,10 @@ async def test_background_rerun_image_success():
         assert update_args[1]["error_message"] is None
         # Verify completed_at was NOT updated
         assert "completed_at" not in update_args[1]
+        # Verify result/details/confidence columns are set
+        assert update_args[1]["result"] == "pass"
+        assert update_args[1]["details"] == "Analysis passed"
+        assert update_args[1]["confidence"] == 0.95
 
 
 @pytest.mark.asyncio
@@ -362,6 +374,10 @@ async def test_background_rerun_handles_llm_exception():
         assert "Rerun failed" in evaluation_result["details"]
         assert evaluation_result["status"] == "failed"
         assert "Rerun failed" in error_update[1]["error_message"]
+        # Verify result/details/confidence columns are set
+        assert error_update[1]["result"] == "error"
+        assert "Rerun failed" in error_update[1]["details"]
+        assert error_update[1]["confidence"] is None
 
 
 @pytest.mark.asyncio
@@ -413,3 +429,7 @@ async def test_background_rerun_preserves_completed_at():
         assert "completed_at" not in update_kwargs
         assert "evaluation_result" in update_kwargs
         assert "error_message" in update_kwargs
+        # Verify result/details/confidence columns are included in update
+        assert "result" in update_kwargs
+        assert "details" in update_kwargs
+        assert "confidence" in update_kwargs

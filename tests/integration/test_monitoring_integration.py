@@ -168,12 +168,16 @@ async def _async_make_monitoring_run(
 ) -> MonitoringRun:
     """Create a MonitoringRun within async session."""
     now = datetime.now(UTC)
+    eval_result = evaluation_result or {"result": "pass"}
     mr = MonitoringRun(
         id=uuid.uuid4(),
         monitoring_config_id=monitoring_config_id,
         trigger_metadata=trigger_metadata or {"source": "test"},
         started_at=started_at or now,
-        evaluation_result=evaluation_result or {"result": "pass"},
+        evaluation_result=eval_result,
+        result=eval_result.get("result"),
+        details=eval_result.get("details"),
+        confidence=eval_result.get("confidence"),
     )
     session.add(mr)
     await session.flush()

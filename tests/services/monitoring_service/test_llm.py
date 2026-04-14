@@ -96,6 +96,11 @@ class TestCreateMonitoringRunWithAnalysis:
         assert details["analysis_result"]["reason"] == "outside_business_hours"
         assert details["skipped"] is True
 
+        # Verify result/details/confidence columns are set
+        create_call = mock_run_repo.return_value.create.call_args[0][0]
+        assert create_call.result == "skipped"
+        assert create_call.confidence is None
+
     @pytest.mark.asyncio
     async def test_time_window_skip(self, mocker):
         """Should create skipped run when outside time window."""
@@ -141,6 +146,11 @@ class TestCreateMonitoringRunWithAnalysis:
         assert run == mock_created_run
         assert details["analysis_result"]["result"] == "skipped"
         assert details["analysis_result"]["reason"] == "outside_time_window"
+
+        # Verify result/details columns are set
+        create_call = mock_run_repo.return_value.create.call_args[0][0]
+        assert create_call.result == "skipped"
+        assert create_call.details == "Outside monitoring time window"
 
     @pytest.mark.asyncio
     async def test_successful_analysis(self, mocker):
@@ -192,6 +202,10 @@ class TestCreateMonitoringRunWithAnalysis:
             "details": "All clear",
         }
         assert create_call.error_message is None
+        # Verify result/details/confidence columns are set
+        assert create_call.result == "pass"
+        assert create_call.details == "All clear"
+        assert create_call.confidence is None
 
     @pytest.mark.asyncio
     async def test_llm_error_result_sets_error_message(self, mocker):
@@ -238,6 +252,9 @@ class TestCreateMonitoringRunWithAnalysis:
 
         create_call = mock_run_repo.return_value.create.call_args[0][0]
         assert create_call.error_message == "Image is completely black"
+        # Verify result/details columns are set
+        assert create_call.result == "error"
+        assert create_call.details == "Image is completely black"
 
     @pytest.mark.asyncio
     async def test_llm_api_failure_creates_error_run(self, mocker):
@@ -281,6 +298,9 @@ class TestCreateMonitoringRunWithAnalysis:
         mock_run_repo.return_value.create.assert_called_once()
         error_run_arg = mock_run_repo.return_value.create.call_args[0][0]
         assert error_run_arg.error_message == "LLM analysis failed"
+        # Verify result/details columns are set on error run
+        assert error_run_arg.result == "error"
+        assert error_run_arg.details == "LLM analysis failed"
 
     @pytest.mark.asyncio
     async def test_default_trigger_metadata_populated(self, mocker):
@@ -409,6 +429,11 @@ class TestCreateMonitoringVideoRunWithAnalysis:
         assert details["analysis_result"]["result"] == "skipped"
         assert details["analysis_result"]["reason"] == "outside_business_hours"
 
+        # Verify result/details/confidence columns are set
+        create_call = mock_run_repo.return_value.create.call_args[0][0]
+        assert create_call.result == "skipped"
+        assert create_call.confidence is None
+
     @pytest.mark.asyncio
     async def test_time_window_skip(self, mocker):
         """Should create skipped run when outside time window."""
@@ -455,6 +480,11 @@ class TestCreateMonitoringVideoRunWithAnalysis:
         assert details["analysis_result"]["result"] == "skipped"
         assert details["analysis_result"]["reason"] == "outside_time_window"
 
+        # Verify result/details columns are set
+        create_call = mock_run_repo.return_value.create.call_args[0][0]
+        assert create_call.result == "skipped"
+        assert create_call.details == "Outside monitoring time window"
+
     @pytest.mark.asyncio
     async def test_successful_video_analysis(self, mocker):
         """Should create run with evaluation_result on successful video analysis."""
@@ -500,6 +530,11 @@ class TestCreateMonitoringVideoRunWithAnalysis:
         assert run == mock_created_run
         assert details["analysis_result"]["result"] == "fail"
 
+        # Verify result/details columns are set
+        create_call = mock_run_repo.return_value.create.call_args[0][0]
+        assert create_call.result == "fail"
+        assert create_call.details == "Anomaly detected"
+
     @pytest.mark.asyncio
     async def test_llm_failure_creates_error_run(self, mocker):
         """Should create error run and re-raise when LLM video analysis fails."""
@@ -543,6 +578,9 @@ class TestCreateMonitoringVideoRunWithAnalysis:
         # Verify error run was created
         error_run_arg = mock_run_repo.return_value.create.call_args[0][0]
         assert error_run_arg.error_message == "LLM video analysis failed"
+        # Verify result/details columns are set on error run
+        assert error_run_arg.result == "error"
+        assert error_run_arg.details == "LLM video analysis failed"
 
 
 def _build_image_analysis_mocks(mocker, config_id):

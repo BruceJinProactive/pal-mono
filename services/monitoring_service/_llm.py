@@ -593,12 +593,19 @@ async def create_monitoring_run_with_analysis(
                         },
                     }
 
+                    skipped_result_val = skipped_result.get("result")
+                    skipped_details_val = skipped_result.get("details")
+                    skipped_confidence_val = skipped_result.get("confidence")
+
                     skipped_run = MonitoringRun(
                         monitoring_config_id=monitoring_config_id,
                         trigger_metadata=trigger_metadata,
                         started_at=datetime.now(timezone.utc),
                         completed_at=datetime.now(timezone.utc),
                         evaluation_result=skipped_result,
+                        result=skipped_result_val,
+                        details=skipped_details_val,
+                        confidence=skipped_confidence_val,
                         error_message=None,
                     )
 
@@ -635,12 +642,19 @@ async def create_monitoring_run_with_analysis(
                 "details": skip_reason,
             }
 
+            skipped_result_val = skipped_result.get("result")
+            skipped_details_val = skipped_result.get("details")
+            skipped_confidence_val = skipped_result.get("confidence")
+
             skipped_run = MonitoringRun(
                 monitoring_config_id=monitoring_config_id,
                 trigger_metadata=trigger_metadata,
                 started_at=datetime.now(timezone.utc),
                 completed_at=datetime.now(timezone.utc),
                 evaluation_result=skipped_result,
+                result=skipped_result_val,
+                details=skipped_details_val,
+                confidence=skipped_confidence_val,
                 error_message=None,
             )
 
@@ -674,6 +688,8 @@ async def create_monitoring_run_with_analysis(
             started_at=started_at,
             completed_at=datetime.now(timezone.utc),
             evaluation_result={},
+            result="error",
+            details="LLM analysis failed",
             error_message="LLM analysis failed",
         )
         created_run = await run_repo.create(error_run)
@@ -683,11 +699,13 @@ async def create_monitoring_run_with_analysis(
     completed_at = datetime.now(timezone.utc)
     analysis_result = analysis_details.get("analysis_result", {})
     result_status = analysis_result.get("result")
+    result_details = analysis_result.get("details")
+    result_confidence = analysis_result.get("confidence")
 
     # Extract error message if result is "error"
     error_message = None
     if result_status == "error":
-        error_message = analysis_result.get("details", "Image validation failed")
+        error_message = result_details or "Image validation failed"
 
     # Create monitoring run and add to session
     run = MonitoringRun(
@@ -696,6 +714,9 @@ async def create_monitoring_run_with_analysis(
         started_at=started_at,
         completed_at=completed_at,
         evaluation_result=analysis_result,
+        result=result_status,
+        details=result_details,
+        confidence=result_confidence,
         error_message=error_message,
     )
 
@@ -1218,12 +1239,19 @@ async def create_monitoring_video_run_with_analysis(
                         },
                     }
 
+                    skipped_result_val = skipped_result.get("result")
+                    skipped_details_val = skipped_result.get("details")
+                    skipped_confidence_val = skipped_result.get("confidence")
+
                     skipped_run = MonitoringRun(
                         monitoring_config_id=monitoring_config_id,
                         trigger_metadata=trigger_metadata,
                         started_at=datetime.now(timezone.utc),
                         completed_at=datetime.now(timezone.utc),
                         evaluation_result=skipped_result,
+                        result=skipped_result_val,
+                        details=skipped_details_val,
+                        confidence=skipped_confidence_val,
                         error_message=None,
                     )
 
@@ -1259,12 +1287,19 @@ async def create_monitoring_video_run_with_analysis(
                 "details": skip_reason,
             }
 
+            skipped_result_val = skipped_result.get("result")
+            skipped_details_val = skipped_result.get("details")
+            skipped_confidence_val = skipped_result.get("confidence")
+
             skipped_run = MonitoringRun(
                 monitoring_config_id=monitoring_config_id,
                 trigger_metadata=trigger_metadata,
                 started_at=datetime.now(timezone.utc),
                 completed_at=datetime.now(timezone.utc),
                 evaluation_result=skipped_result,
+                result=skipped_result_val,
+                details=skipped_details_val,
+                confidence=skipped_confidence_val,
                 error_message=None,
             )
 
@@ -1296,6 +1331,8 @@ async def create_monitoring_video_run_with_analysis(
             started_at=started_at,
             completed_at=datetime.now(timezone.utc),
             evaluation_result={},
+            result="error",
+            details="LLM video analysis failed",
             error_message="LLM video analysis failed",
         )
         await run_repo.create(error_run)
@@ -1304,10 +1341,12 @@ async def create_monitoring_video_run_with_analysis(
     completed_at = datetime.now(timezone.utc)
     analysis_result = analysis_details.get("analysis_result", {})
     result_status = analysis_result.get("result")
+    result_details = analysis_result.get("details")
+    result_confidence = analysis_result.get("confidence")
 
     error_message = None
     if result_status == "error":
-        error_message = analysis_result.get("details", "Video validation failed")
+        error_message = result_details or "Video validation failed"
 
     run = MonitoringRun(
         monitoring_config_id=monitoring_config_id,
@@ -1315,6 +1354,9 @@ async def create_monitoring_video_run_with_analysis(
         started_at=started_at,
         completed_at=completed_at,
         evaluation_result=analysis_result,
+        result=result_status,
+        details=result_details,
+        confidence=result_confidence,
         error_message=error_message,
     )
 

@@ -16,7 +16,184 @@ def mock_session() -> AsyncMock:
     session.flush = AsyncMock()
     session.execute = AsyncMock()
     session.rollback = AsyncMock()
+    session.refresh = AsyncMock()
     return session
+
+
+class TestCreateSetsResultColumns:
+    """Tests that create() persists result/details/confidence from the MonitoringRun object."""
+
+    @pytest.mark.asyncio
+    async def test_create_preserves_result_columns(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """create() should flush and refresh a run that carries result/details/confidence."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+
+        run = MagicMock()
+        run.result = "pass"
+        run.details = "All clear"
+        run.confidence = 95
+
+        mock_session.refresh = AsyncMock()
+        result = await repo.create(run)
+
+        mock_session.add.assert_called_once_with(run)
+        mock_session.flush.assert_awaited_once()
+        mock_session.refresh.assert_awaited_once_with(run)
+        assert result is run
+
+    @pytest.mark.asyncio
+    async def test_create_preserves_none_result_columns(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """create() should work when result/details/confidence are None."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+
+        run = MagicMock()
+        run.result = None
+        run.details = None
+        run.confidence = None
+
+        result = await repo.create(run)
+
+        mock_session.add.assert_called_once_with(run)
+        assert result is run
+
+
+class TestUpdateSetsResultColumns:
+    """Tests that update() correctly applies result/details/confidence kwargs."""
+
+    @pytest.mark.asyncio
+    async def test_update_sets_result_details_confidence(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """update() should set result, details, and confidence via setattr."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+        run_id = uuid.uuid4()
+
+        mock_run = MagicMock()
+        mock_run.result = None
+        mock_run.details = None
+        mock_run.confidence = None
+
+        with patch.object(
+            repo, "get_by_id", new_callable=AsyncMock, return_value=mock_run
+        ):
+            updated = await repo.update(
+                run_id,
+                result="fail",
+                details="Anomaly detected",
+                confidence=87,
+                evaluation_result={"result": "fail"},
+            )
+
+        assert updated is mock_run
+        assert mock_run.result == "fail"
+        assert mock_run.details == "Anomaly detected"
+        assert mock_run.confidence == 87
+
+    @pytest.mark.asyncio
+    async def test_update_clears_confidence_on_error(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """update() should set confidence to None when updating to error status."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+        run_id = uuid.uuid4()
+
+        mock_run = MagicMock()
+        mock_run.result = "pass"
+        mock_run.details = "All clear"
+        mock_run.confidence = 95
+
+        with patch.object(
+            repo, "get_by_id", new_callable=AsyncMock, return_value=mock_run
+        ):
+            await repo.update(
+                run_id,
+                result="error",
+                details="Rerun failed: timeout",
+                confidence=None,
+            )
+
+        assert mock_run.result == "error"
+        assert mock_run.details == "Rerun failed: timeout"
+        assert mock_run.confidence is None
+
+    @pytest.mark.asyncio
+    async def test_update_returns_none_for_missing_run(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """update() should return None when run does not exist."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+
+        with patch.object(repo, "get_by_id", new_callable=AsyncMock, return_value=None):
+            result = await repo.update(
+                uuid.uuid4(), result="pass", details="ok", confidence=90
+            )
+
+        assert result is None
+
+
+class TestGetByConfigResultFilter:
+    """Tests that get_by_config filters by the result column in SQL."""
+
+    @pytest.mark.asyncio
+    async def test_result_filter_is_applied(self, mock_session: AsyncMock) -> None:
+        """get_by_config() should include result filter in the SQL query."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+        config_id = uuid.uuid4()
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        runs = await repo.get_by_config(config_id, result_filter="pass")
+
+        assert runs == []
+        mock_session.execute.assert_awaited_once()
+
+        # Verify the compiled query contains a coalesce fallback to JSONB
+        executed_query = mock_session.execute.call_args[0][0]
+        compiled = str(executed_query.compile(compile_kwargs={"literal_binds": True}))
+        assert "coalesce" in compiled.lower()
+        assert "monitoring_runs.result" in compiled
+        assert "evaluation_result" in compiled
+
+    @pytest.mark.asyncio
+    async def test_no_result_filter_omits_clause(self, mock_session: AsyncMock) -> None:
+        """get_by_config() should not filter by result when result_filter is None."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+        config_id = uuid.uuid4()
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        await repo.get_by_config(config_id, result_filter=None)
+
+        executed_query = mock_session.execute.call_args[0][0]
+        compiled = str(executed_query.compile(compile_kwargs={"literal_binds": True}))
+        # result column appears in SELECT but should NOT appear in WHERE
+        where_clause = compiled.split("WHERE", 1)[1] if "WHERE" in compiled else ""
+        assert "monitoring_runs.result" not in where_clause
+
+    @pytest.mark.asyncio
+    async def test_get_by_config_error_returns_empty_list(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """get_by_config() should return empty list on SQLAlchemyError."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+        mock_session.execute.side_effect = SQLAlchemyError("query failed")
+
+        runs = await repo.get_by_config(uuid.uuid4(), result_filter="pass")
+
+        assert runs == []
+        mock_session.rollback.assert_awaited_once()
 
 
 class TestDeleteRunsByConfigIdSuccess:

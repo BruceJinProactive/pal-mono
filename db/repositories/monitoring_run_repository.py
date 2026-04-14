@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,21 +94,21 @@ class MonitoringRunRepositoryAsync:
             if end_date is not None:
                 query = query.filter(MonitoringRun.started_at <= end_date)
 
+            if result_filter is not None:
+                # Coalesce with JSONB field so pre-migration rows (result IS NULL) still match
+                query = query.filter(
+                    func.coalesce(
+                        MonitoringRun.result,
+                        MonitoringRun.evaluation_result["result"].astext,
+                    )
+                    == result_filter
+                )
+
             # Order by started_at descending (most recent first)
             query = query.order_by(MonitoringRun.started_at.desc())
 
             result = await self.session.execute(query)
-            runs = list(result.scalars().all())
-
-            # Apply result filter in Python since it's stored in JSONB
-            if result_filter and runs:
-                runs = [
-                    run
-                    for run in runs
-                    if run.evaluation_result.get("result") == result_filter
-                ]
-
-            return runs
+            return list(result.scalars().all())
         except SQLAlchemyError as e:
             await self.session.rollback()
             logger.error(f"Error getting monitoring runs by config: {e}")
