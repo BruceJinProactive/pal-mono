@@ -2,14 +2,32 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from api.routes.endpoints import endpoints
 from api.schemas.error.error import ErrorResponse
 
 from ._implementation import compute_diff, get_snapshot
 
-snapshots_router = APIRouter(prefix=endpoints.SNAPSHOTS, tags=["snapshots"])
+
+class PrettyJSONResponse(JSONResponse):
+    """JSONResponse with indented output for readability."""
+
+    def render(self, content: Any) -> bytes:
+        return json.dumps(content, indent=2, default=str, ensure_ascii=False).encode(
+            "utf-8"
+        )
+
+
+snapshots_router = APIRouter(
+    prefix=endpoints.SNAPSHOTS,
+    tags=["snapshots"],
+    default_response_class=PrettyJSONResponse,
+)
 
 snapshots_router.add_api_route(
     "/{fingerprint}",

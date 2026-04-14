@@ -7,6 +7,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-04
 
 ### 2026-04-13
+- Add `POST /v1/snapshots:computeDiff` endpoint for computing unified text diff of system prompts and structured JSON diff of config between two fingerprinted snapshots
 - [PAL-9811] Add `result`, `details`, `confidence` denormalized columns to `monitoring_runs` with indexes on `result` and `started_at DESC`; JSONB `evaluation_result` preserved for backward compatibility
 - [P2-B1c] Add E16 STT accuracy / WER evaluator in `services/eval_service/evaluators/stt_accuracy.py`; compares primary STT transcript (Deepgram/Gladia) against Whisper reference transcription via word-level edit distance; includes S3 audio download, ffmpeg right-channel extraction, and OpenAI Whisper API integration; passes at ≤8% WER
 - [P2-C1f] Wire voice eval into runner: add `_run_scenario_for_mode()` dispatcher in `_runner.py` that routes `driver: "voice"` to `run_voice_scenario`; add `"voice"` to `RunEvalRequest.driver` Literal; fix cleanup to be best-effort, add `asyncio.wait_for` timeout on caller factory
