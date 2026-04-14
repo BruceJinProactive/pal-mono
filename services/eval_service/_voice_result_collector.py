@@ -79,7 +79,8 @@ class VoiceEvalResult:
         """Convert to the evaluator-consumable ConversationRecord format.
 
         Maps the voice transcript into the ``turns`` / ``agent_responses``
-        structure that ``evaluate_scenario()`` expects.
+        structure that ``evaluate_scenario()`` expects, and populates
+        voice-specific metadata for the audio evaluators.
         """
         turns: list[dict[str, str]] = []
         agent_responses: list[str] = []
@@ -96,11 +97,20 @@ class VoiceEvalResult:
                     turns.append({"user": current_user, "assistant": content})
                     current_user = None
 
+        # Build per-turn latency list from metrics (if available)
+        turn_latencies_ms: list[float] = []
+        if self.metrics.turn_latency_avg is not None and len(turns) > 0:
+            turn_latencies_ms = [self.metrics.turn_latency_avg] * len(turns)
+
         return ConversationRecord(
             scenario=scenario,
             turns=turns,
             tool_calls=self.tool_calls,
             agent_responses=agent_responses,
+            voice_transcript=self.transcript,
+            turn_latencies_ms=turn_latencies_ms,
+            audio_recording_s3_uri=self.audio_recording_s3_uri,
+            is_voice=True,
         )
 
 
@@ -211,11 +221,18 @@ class VoiceResultCollector:
         )
 
     async def _extract_transcript(self, conversation_id: Any) -> list[dict[str, str]]:
-        """Read messages for the conversation and build a transcript."""
+        """Read messages for the conversation and build a transcript.
+
+        Each entry contains ``role``, ``content``, and ``speaker`` (mapped
+        from role for evaluator compatibility: ``user`` → ``user``,
+        ``assistant`` → ``agent``).
+        """
         msg_repo = MessageRepositoryAsync(self._session)
         messages = await msg_repo.get_messages_by_conversation(
             conversation_id, limit=_MAX_TRANSCRIPT_MESSAGES
         )
+
+        _speaker_map = {"user": "user", "assistant": "agent"}
 
         transcript: list[dict[str, str]] = []
         for msg in messages:
@@ -227,6 +244,7 @@ class VoiceResultCollector:
                 {
                     "role": role,
                     "content": _extract_message_text(body),
+                    "speaker": _speaker_map.get(role, role),
                 }
             )
 

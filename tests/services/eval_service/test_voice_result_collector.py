@@ -255,7 +255,11 @@ class TestVoiceResultCollectorCollect:
         assert result.call_id == "call-123"
         assert result.room_name == "eval-voice-abc"
         assert len(result.transcript) == 2
-        assert result.transcript[0] == {"role": "user", "content": "Hello"}
+        assert result.transcript[0] == {
+            "role": "user",
+            "content": "Hello",
+            "speaker": "user",
+        }
         assert result.metrics.duration_seconds == 30.0
         assert result.metrics.turn_latency_avg == 0.3
         assert result.close_reason == "customer_ended"
