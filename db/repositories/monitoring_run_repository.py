@@ -8,11 +8,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Row, case, delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.tables import MonitoringRun
+from db.tables import MonitoringConfig, MonitoringRun
 from utils.log import logger
 
 
@@ -228,3 +228,67 @@ class MonitoringRunRepositoryAsync:
             await self.session.rollback()
             logger.error(f"Error deleting monitoring runs in batch: {e}")
             raise
+
+    async def get_summary_by_tags(
+        self,
+        project_id: uuid.UUID,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> list[Row[tuple[str, int, int, int, int]]]:
+        """
+        Aggregate monitoring run results grouped by tag.
+
+        Unnests the tags array from enabled configs, joins with runs,
+        and returns per-tag counts of pass/fail/error results.
+
+        Args:
+            project_id: Project UUID to filter configs.
+            start_date: Optional start of time range (inclusive).
+            end_date: Optional end of time range (exclusive).
+
+        Returns:
+            List of rows with (tag, total_runs, pass_count, fail_count, error_count).
+        """
+        try:
+            tag = func.unnest(MonitoringConfig.tags).label("tag")
+
+            result_col = func.coalesce(
+                MonitoringRun.result,
+                MonitoringRun.evaluation_result["result"].astext,
+            )
+
+            query = (
+                select(
+                    tag,
+                    func.count().label("total_runs"),
+                    func.count(case((result_col == "pass", 1))).label("pass_count"),
+                    func.count(case((result_col == "fail", 1))).label("fail_count"),
+                    func.count(case((result_col == "error", 1))).label("error_count"),
+                )
+                .select_from(MonitoringConfig)
+                .join(
+                    MonitoringRun,
+                    MonitoringRun.monitoring_config_id == MonitoringConfig.id,
+                )
+                .where(
+                    MonitoringConfig.project_id == project_id,
+                    MonitoringConfig.enabled.is_(True),
+                    func.cardinality(MonitoringConfig.tags) > 0,
+                    result_col != "skipped",
+                )
+                .group_by(tag)
+                .order_by(func.count(case((result_col == "fail", 1))).desc())
+            )
+
+            if start_date is not None:
+                query = query.where(MonitoringRun.started_at >= start_date)
+
+            if end_date is not None:
+                query = query.where(MonitoringRun.started_at < end_date)
+
+            result = await self.session.execute(query)
+            return list(result.all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error getting monitoring summary by tags: {e}")
+            return []

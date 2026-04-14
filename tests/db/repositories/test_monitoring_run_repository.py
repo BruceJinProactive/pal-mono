@@ -273,6 +273,100 @@ class TestDeleteErrorHandling:
         mock_session.rollback.assert_awaited_once()
 
 
+class TestGetSummaryByTags:
+    """Tests for get_summary_by_tags() query construction and error handling."""
+
+    @pytest.mark.asyncio
+    async def test_returns_rows_on_success(self, mock_session: AsyncMock) -> None:
+        """get_summary_by_tags() executes query and returns all rows."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+        project_id = uuid.uuid4()
+
+        mock_row = MagicMock()
+        mock_row.tag = "Food"
+        mock_row.total_runs = 10
+        mock_row.pass_count = 5
+        mock_row.fail_count = 3
+        mock_row.error_count = 2
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = [mock_row]
+        mock_session.execute.return_value = mock_result
+
+        rows = await repo.get_summary_by_tags(project_id=project_id)
+
+        assert len(rows) == 1
+        assert rows[0].tag == "Food"
+        mock_session.execute.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_query_contains_unnest_and_cardinality(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """Query uses unnest for tags and cardinality > 0 filter."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repo.get_summary_by_tags(project_id=uuid.uuid4())
+
+        executed_query = mock_session.execute.call_args[0][0]
+        compiled = str(executed_query.compile(compile_kwargs={"literal_binds": True}))
+        assert "unnest" in compiled.lower()
+        assert "cardinality" in compiled.lower()
+
+    @pytest.mark.asyncio
+    async def test_date_filters_applied(self, mock_session: AsyncMock) -> None:
+        """Query includes started_at filters when dates provided."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+        from datetime import datetime, timezone
+
+        start = datetime(2026, 4, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 4, 14, tzinfo=timezone.utc)
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repo.get_summary_by_tags(
+            project_id=uuid.uuid4(), start_date=start, end_date=end
+        )
+
+        executed_query = mock_session.execute.call_args[0][0]
+        compiled = str(executed_query.compile(compile_kwargs={"literal_binds": True}))
+        assert "started_at" in compiled
+
+    @pytest.mark.asyncio
+    async def test_skipped_excluded(self, mock_session: AsyncMock) -> None:
+        """Query filters out skipped results."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repo.get_summary_by_tags(project_id=uuid.uuid4())
+
+        executed_query = mock_session.execute.call_args[0][0]
+        compiled = str(executed_query.compile(compile_kwargs={"literal_binds": True}))
+        assert "skipped" in compiled.lower()
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_sqlalchemy_error(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """get_summary_by_tags() returns empty list on SQLAlchemyError."""
+        repo = MonitoringRunRepositoryAsync(mock_session)
+        mock_session.execute.side_effect = SQLAlchemyError("query failed")
+
+        rows = await repo.get_summary_by_tags(project_id=uuid.uuid4())
+
+        assert rows == []
+        mock_session.rollback.assert_awaited_once()
+
+
 class TestDeleteRunsByConfigIdErrorHandling:
     """Tests for delete_runs_by_config_id() SQLAlchemyError handling (lines 195-197)."""
 

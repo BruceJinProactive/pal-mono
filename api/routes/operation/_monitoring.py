@@ -22,6 +22,7 @@ from api.schemas.operations.monitoring import (
     ListMonitoringRunsResponse,
     MonitoringConfigResponse,
     MonitoringRunResponse,
+    MonitoringSummaryResponse,
     RerunMonitoringRunResponse,
     TestMonitoringConfigResponse,
     TriggerRunRequest,
@@ -894,5 +895,51 @@ async def rerun_monitoring_run(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to rerun monitoring run",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+async def get_monitoring_summary(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> MonitoringSummaryResponse:
+    """
+    Get monitoring health summary for a project, grouped by tags.
+
+    Returns per-tag health status (critical/warning/healthy) based on fail rate
+    within the specified time range.
+
+    Args:
+        session: Async database session.
+        project_id: Project UUID.
+        start_date: Optional start of time range (inclusive).
+        end_date: Optional end of time range (inclusive).
+
+    Returns:
+        MonitoringSummaryResponse with per-tag health summaries.
+
+    Raises:
+        HTTPException: If project not found or query fails.
+    """
+    try:
+        return await monitoring_service.get_monitoring_summary(
+            session=session,
+            project_id=project_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception as e:
+        logger.error(f"Error getting monitoring summary: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get monitoring summary",
             headers={"Content-Type": "application/json"},
         )

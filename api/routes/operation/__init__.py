@@ -36,6 +36,7 @@ from api.schemas.operations.monitoring import (
     ListMonitoringRunsResponse,
     MonitoringConfigResponse,
     MonitoringRunResponse,
+    MonitoringSummaryResponse,
     MonitoringTimeWindow,
     RerunMonitoringRunResponse,
     TestMonitoringConfigResponse,
@@ -1551,6 +1552,42 @@ async def rerun_monitoring_run(
         run_id=run_id,
         session=session,
         project_id=project_id,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/monitoring/summary",
+    response_model=MonitoringSummaryResponse,
+    responses={
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_monitoring_summary(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> MonitoringSummaryResponse:
+    """Get monitoring health summary for a project, grouped by tags.
+
+    Returns per-tag health status (critical/warning/healthy) based on fail rate
+    within the specified time range. Used by the dashboard to render project
+    location cards with tag-level health indicators.
+
+    Query Parameters:
+    - start_date: Optional start of time range (inclusive)
+    - end_date: Optional end of time range (inclusive)
+    """
+    _ = context  # Used by require_project_permission
+    return await _monitoring.get_monitoring_summary(
+        session=session,
+        project_id=project_id,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 

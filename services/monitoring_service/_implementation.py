@@ -9,7 +9,7 @@ import asyncio
 import copy
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,7 @@ from api.schemas.operations.monitoring import (
     MonitoringConfigResponse,
     MonitoringRunListResponse,
     MonitoringRunResponse,
+    MonitoringSummaryResponse,
     UpdateMonitoringConfigRequest,
 )
 from db.repositories import (
@@ -1960,3 +1961,71 @@ async def rerun_monitoring_run(
         "monitoring_config_id": monitoring_config_id,
         "status": "processing",
     }
+
+
+async def get_monitoring_summary(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> MonitoringSummaryResponse:
+    """
+    Get monitoring health summary for a project, grouped by tags.
+
+    Args:
+        session: Async database session.
+        project_id: Project UUID.
+        start_date: Optional start of time range (inclusive).
+        end_date: Optional end of time range (exclusive).
+
+    Returns:
+        MonitoringSummaryResponse with per-tag health summaries.
+
+    Raises:
+        ValueError: If project not found.
+    """
+    project_repo = ProjectRepositoryAsync(session)
+    run_repo = MonitoringRunRepositoryAsync(session)
+
+    # Default to today if no time range provided
+    if start_date is None and end_date is None:
+        today = datetime.now(timezone.utc).date()
+        start_date = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+        end_date = start_date + timedelta(days=1)
+
+    project = await project_repo.get_project(project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+
+    from api.schemas.operations.monitoring import TagSummary
+
+    tag_rows = await run_repo.get_summary_by_tags(
+        project_id=project_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    tags: list[TagSummary] = []
+    for row in tag_rows:
+        total = row.total_runs
+        fail_rate = row.fail_count / total if total > 0 else 0.0
+
+        tags.append(
+            TagSummary(
+                tag=row.tag,
+                total_runs=row.total_runs,
+                pass_count=row.pass_count,
+                fail_count=row.fail_count,
+                error_count=row.error_count,
+                fail_rate=round(fail_rate, 4),
+            )
+        )
+
+    return MonitoringSummaryResponse(
+        project_id=project_id,
+        project_name=project.name,
+        total_tags=len(tags),
+        start_date=start_date,
+        end_date=end_date,
+        tags=tags,
+    )

@@ -19,6 +19,7 @@ from ._implementation import (
     delete_runs_batch,
     get_config,
     get_configs,
+    get_monitoring_summary,
     get_run,
     get_runs,
     rerun_monitoring_run,
@@ -60,4 +61,5 @@ __all__ = [
     "is_within_time_window",
     "should_skip_monitoring",
     "test_monitoring_config",
+    "get_monitoring_summary",
 ]

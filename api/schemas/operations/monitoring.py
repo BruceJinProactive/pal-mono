@@ -515,3 +515,43 @@ class RerunMonitoringRunResponse(BaseModel):
     monitoring_config_id: uuid.UUID
     status: Literal["processing"]
     message: str
+
+
+# ============================================================================
+# MONITORING SUMMARY SCHEMAS
+# ============================================================================
+
+
+class TagSummary(BaseModel):
+    """Aggregated monitoring health for a single tag."""
+
+    tag: str = Field(..., description="Tag name from monitoring configs")
+    total_runs: int = Field(..., description="Total monitoring runs in the time range")
+    pass_count: int = Field(..., description="Number of runs with pass result")
+    fail_count: int = Field(..., description="Number of runs with fail result")
+    error_count: int = Field(..., description="Number of runs with error result")
+    fail_rate: float = Field(
+        ..., description="Ratio of fail runs to total runs (0.0 to 1.0)"
+    )
+
+
+class MonitoringSummaryResponse(BaseModel):
+    """Monitoring health summary for a project, grouped by tags.
+
+    Powers the dashboard location card showing per-tag health statuses.
+    """
+
+    project_id: uuid.UUID = Field(..., description="Project UUID")
+    project_name: str = Field(..., description="Project display name for the card")
+    total_tags: int = Field(
+        ..., description="Number of unique tags (standards) detected"
+    )
+    start_date: datetime | None = Field(
+        None, description="Start of queried time range (null if unbounded)"
+    )
+    end_date: datetime | None = Field(
+        None, description="End of queried time range (null if unbounded)"
+    )
+    tags: list[TagSummary] = Field(
+        ..., description="Per-tag health summaries sorted by fail count descending"
+    )
