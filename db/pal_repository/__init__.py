@@ -10,6 +10,7 @@ from .resource_role_assignment import ResourceRoleAssignmentRepository
 from .role_permission import RolePermissionRepository
 from .routine import RoutineRepository
 from .routine_execution import RoutineExecutionRepository
+from .signal_source import SignalSourceRepository
 from .tos_acceptance import TosAcceptanceRepository
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "RolePermissionRepository",
     "RoutineExecutionRepository",
     "RoutineRepository",
+    "SignalSourceRepository",
     "TosAcceptanceRepository",
 ]
