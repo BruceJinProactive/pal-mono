@@ -501,6 +501,130 @@ class TestExtractTranscriptTimestamps:
         assert record.is_voice is True
 
 
+class TestCollectAudioRecordingUri:
+    """Tests for audio_recording_s3_uri propagation through collect()."""
+
+    async def test_caller_supplied_uri_is_used(self) -> None:
+        session = AsyncMock()
+        collector = VoiceResultCollector(session)
+
+        conv = _make_conversation()
+
+        with (
+            patch(
+                "services.eval_service._voice_result_collector.ConversationRepositoryAsync"
+            ) as mock_conv_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.MessageRepositoryAsync"
+            ) as mock_msg_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+            ) as mock_pc_repo_cls,
+        ):
+            mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
+                return_value=conv
+            )
+            mock_msg_repo_cls.return_value.get_messages_by_conversation = AsyncMock(
+                return_value=[]
+            )
+            mock_pc_repo_cls.return_value.get_by_call_id = AsyncMock(return_value=None)
+
+            result = await collector.collect(
+                call_id="call-123",
+                room_name="room-1",
+                audio_recording_s3_uri="s3://eval-bucket/recordings/room/call.ogg",
+            )
+
+        assert (
+            result.audio_recording_s3_uri == "s3://eval-bucket/recordings/room/call.ogg"
+        )
+
+    async def test_caller_uri_takes_precedence_over_db(self) -> None:
+        """When both caller URI and DB URI exist, caller wins."""
+        session = AsyncMock()
+        collector = VoiceResultCollector(session)
+
+        conv = _make_conversation()
+        phone_call = _make_phone_call()
+
+        with (
+            patch(
+                "services.eval_service._voice_result_collector.ConversationRepositoryAsync"
+            ) as mock_conv_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.MessageRepositoryAsync"
+            ) as mock_msg_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+            ) as mock_pc_repo_cls,
+        ):
+            mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
+                return_value=conv
+            )
+            mock_msg_repo_cls.return_value.get_messages_by_conversation = AsyncMock(
+                return_value=[]
+            )
+            mock_pc_repo_cls.return_value.get_by_call_id = AsyncMock(
+                return_value=phone_call
+            )
+
+            result = await collector.collect(
+                call_id="call-123",
+                room_name="room-1",
+                audio_recording_s3_uri="s3://egress-bucket/eval/call.ogg",
+            )
+
+        assert result.audio_recording_s3_uri == "s3://egress-bucket/eval/call.ogg"
+
+    async def test_no_uri_returns_none(self) -> None:
+        session = AsyncMock()
+        collector = VoiceResultCollector(session)
+
+        conv = _make_conversation()
+
+        with (
+            patch(
+                "services.eval_service._voice_result_collector.ConversationRepositoryAsync"
+            ) as mock_conv_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.MessageRepositoryAsync"
+            ) as mock_msg_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+            ) as mock_pc_repo_cls,
+        ):
+            mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
+                return_value=conv
+            )
+            mock_msg_repo_cls.return_value.get_messages_by_conversation = AsyncMock(
+                return_value=[]
+            )
+            mock_pc_repo_cls.return_value.get_by_call_id = AsyncMock(return_value=None)
+
+            result = await collector.collect(
+                call_id="call-123",
+                room_name="room-1",
+            )
+
+        assert result.audio_recording_s3_uri is None
+
+    async def test_audio_uri_flows_to_conversation_record(self) -> None:
+        r = VoiceEvalResult(
+            call_id="c",
+            room_name="r",
+            audio_recording_s3_uri="s3://bucket/eval/call.ogg",
+        )
+        scenario = EvalScenario(
+            scenario_id="s1",
+            scenario="test",
+            test_category="general",
+            user_turns=["hi"],
+        )
+
+        record = r.to_conversation_record(scenario)
+        assert record.audio_recording_s3_uri == "s3://bucket/eval/call.ogg"
+
+
 class TestVoiceResultCollectorTimeout:
     async def test_timeout_raises(self) -> None:
         session = AsyncMock()

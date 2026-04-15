@@ -144,6 +144,7 @@ class VoiceResultCollector:
         room_name: str,
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         poll_interval_s: float = _DEFAULT_POLL_INTERVAL_S,
+        audio_recording_s3_uri: str | None = None,
     ) -> VoiceEvalResult:
         """Wait for call results and return a structured VoiceEvalResult.
 
@@ -155,6 +156,9 @@ class VoiceResultCollector:
             room_name: The LiveKit room name (included in the result).
             timeout_s: Maximum seconds to wait before raising TimeoutError.
             poll_interval_s: Seconds between poll attempts.
+            audio_recording_s3_uri: Pre-resolved S3 URI of the call recording
+                (e.g. from LiveKit Egress).  Takes precedence over any URI
+                found on the PhoneCall record.
 
         Returns:
             VoiceEvalResult with transcript, metrics, and audio URI.
@@ -170,7 +174,10 @@ class VoiceResultCollector:
         ended_reason = conversation.ended_reason or ""
 
         transcript = await self._extract_transcript(conversation_id)
-        metrics, audio_uri = await self._extract_phone_call_data(call_id)
+        metrics, db_audio_uri = await self._extract_phone_call_data(call_id)
+
+        # Prefer the caller-supplied URI (from egress) over the DB value.
+        resolved_audio_uri = audio_recording_s3_uri or db_audio_uri
 
         return VoiceEvalResult(
             call_id=call_id,
@@ -178,7 +185,7 @@ class VoiceResultCollector:
             transcript=transcript,
             tool_calls=[],
             metrics=metrics,
-            audio_recording_s3_uri=audio_uri,
+            audio_recording_s3_uri=resolved_audio_uri,
             close_reason=ended_reason,
         )
 

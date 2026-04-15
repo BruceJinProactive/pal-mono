@@ -11,6 +11,8 @@ from services.eval_service._voice_eval_runner import (
     VoiceEvalConfig,
     _extract_turn_texts,
     _generate_caller_token,
+    _start_room_egress,
+    _stop_and_collect_egress,
     run_voice_scenario,
 )
 from services.eval_service.schema import EvalScenario, TurnType, UserTurn
@@ -73,6 +75,23 @@ class TestVoiceEvalConfig:
         )
         assert config.call_timeout_s == 120.0
         assert config.room_empty_timeout_s == 300
+        assert config.recording_s3_bucket == ""
+        assert config.recording_s3_region == "us-east-1"
+
+    def test_from_env_with_recording_config(self) -> None:
+        env = {
+            "LIVEKIT_URL": "wss://lk.example.com",
+            "LIVEKIT_API_KEY": "APIkey",
+            "LIVEKIT_API_SECRET": "APIsecret",
+            "CARTESIA_API_KEY": "cart-key",
+            "VOICE_EVAL_RECORDING_BUCKET": "my-eval-bucket",
+            "VOICE_EVAL_RECORDING_REGION": "us-west-2",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            config = VoiceEvalConfig.from_env()
+
+        assert config.recording_s3_bucket == "my-eval-bucket"
+        assert config.recording_s3_region == "us-west-2"
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +409,7 @@ class TestRunVoiceScenarioWithCallerFactory:
             call_id="call-123",
             room_name="eval-voice-abc",
             timeout_s=120.0,
+            audio_recording_s3_uri=None,
         )
 
         # Converted to conversation record
@@ -563,3 +583,367 @@ class TestRunEvalRequestVoiceDriver:
                 channel_identifier="api:test",
                 driver="invalid",  # type: ignore[arg-type]
             )
+
+
+# ---------------------------------------------------------------------------
+# _start_room_egress / _stop_and_collect_egress
+# ---------------------------------------------------------------------------
+
+RUNNER_MODULE = "services.eval_service._voice_eval_runner"
+
+
+class TestStartRoomEgress:
+    """Tests for _start_room_egress helper."""
+
+    async def test_returns_none_when_no_bucket(self) -> None:
+        config = _make_config()
+        assert config.recording_s3_bucket == ""
+
+        result = await _start_room_egress(
+            MagicMock(), "eval-voice-room", "eval-abc", config
+        )
+        assert result is None
+
+    async def test_starts_egress_and_returns_id(self) -> None:
+        config = VoiceEvalConfig(
+            livekit_url="wss://test",
+            livekit_api_key="k",
+            livekit_api_secret="s",
+            cartesia_api_key="c",
+            recording_s3_bucket="eval-bucket",
+        )
+
+        mock_egress_info = MagicMock()
+        mock_egress_info.egress_id = "eg-123"
+
+        lk_api = MagicMock()
+        lk_api.egress.start_room_composite_egress = AsyncMock(
+            return_value=mock_egress_info
+        )
+
+        result = await _start_room_egress(lk_api, "eval-voice-room", "eval-abc", config)
+
+        assert result == "eg-123"
+        lk_api.egress.start_room_composite_egress.assert_awaited_once()
+        request = lk_api.egress.start_room_composite_egress.call_args[0][0]
+        assert request.room_name == "eval-voice-room"
+        assert request.audio_only is True
+
+    async def test_returns_none_on_exception(self) -> None:
+        config = VoiceEvalConfig(
+            livekit_url="wss://test",
+            livekit_api_key="k",
+            livekit_api_secret="s",
+            cartesia_api_key="c",
+            recording_s3_bucket="eval-bucket",
+        )
+
+        lk_api = MagicMock()
+        lk_api.egress.start_room_composite_egress = AsyncMock(
+            side_effect=RuntimeError("egress unavailable")
+        )
+
+        result = await _start_room_egress(lk_api, "eval-voice-room", "eval-abc", config)
+        assert result is None
+
+
+class TestStopAndCollectEgress:
+    """Tests for _stop_and_collect_egress helper."""
+
+    async def test_returns_s3_uri_on_success_full_uri(self) -> None:
+        """When location is a full S3 URI, return it as-is (no double prefix)."""
+        lk_api = MagicMock()
+        lk_api.egress.stop_egress = AsyncMock()
+
+        mock_file_result = MagicMock()
+        mock_file_result.location = "s3://eval-bucket/eval-recordings/room/call.ogg"
+
+        mock_egress_info = MagicMock()
+        mock_egress_info.status = 3  # EGRESS_COMPLETE
+        mock_egress_info.file_results = [mock_file_result]
+
+        mock_response = MagicMock()
+        mock_response.items = [mock_egress_info]
+        lk_api.egress.list_egress = AsyncMock(return_value=mock_response)
+
+        result = await _stop_and_collect_egress(lk_api, "eg-123", "eval-bucket")
+
+        assert result == "s3://eval-bucket/eval-recordings/room/call.ogg"
+        lk_api.egress.stop_egress.assert_awaited_once()
+
+    async def test_returns_s3_uri_on_success_bare_path(self) -> None:
+        """When location is a bare path, prefix with s3://bucket/."""
+        lk_api = MagicMock()
+        lk_api.egress.stop_egress = AsyncMock()
+
+        mock_file_result = MagicMock()
+        mock_file_result.location = "eval-recordings/room/call.ogg"
+
+        mock_egress_info = MagicMock()
+        mock_egress_info.status = 3  # EGRESS_COMPLETE
+        mock_egress_info.file_results = [mock_file_result]
+
+        mock_response = MagicMock()
+        mock_response.items = [mock_egress_info]
+        lk_api.egress.list_egress = AsyncMock(return_value=mock_response)
+
+        result = await _stop_and_collect_egress(lk_api, "eg-123", "eval-bucket")
+
+        assert result == "s3://eval-bucket/eval-recordings/room/call.ogg"
+        lk_api.egress.stop_egress.assert_awaited_once()
+
+    async def test_still_polls_after_stop_failure(self) -> None:
+        """If stop_egress fails, we still poll — egress may already be complete."""
+        lk_api = MagicMock()
+        lk_api.egress.stop_egress = AsyncMock(side_effect=RuntimeError("stop failed"))
+
+        mock_file_result = MagicMock()
+        mock_file_result.location = "s3://eval-bucket/eval-recordings/room/call.ogg"
+
+        mock_egress_info = MagicMock()
+        mock_egress_info.status = 3  # EGRESS_COMPLETE
+        mock_egress_info.file_results = [mock_file_result]
+
+        mock_response = MagicMock()
+        mock_response.items = [mock_egress_info]
+        lk_api.egress.list_egress = AsyncMock(return_value=mock_response)
+
+        result = await _stop_and_collect_egress(lk_api, "eg-123", "eval-bucket")
+
+        assert result == "s3://eval-bucket/eval-recordings/room/call.ogg"
+        lk_api.egress.list_egress.assert_awaited_once()
+
+    async def test_returns_none_on_egress_failed(self) -> None:
+        lk_api = MagicMock()
+        lk_api.egress.stop_egress = AsyncMock()
+
+        mock_egress_info = MagicMock()
+        mock_egress_info.status = 4  # EGRESS_FAILED
+        mock_egress_info.file_results = []
+
+        mock_response = MagicMock()
+        mock_response.items = [mock_egress_info]
+        lk_api.egress.list_egress = AsyncMock(return_value=mock_response)
+
+        result = await _stop_and_collect_egress(lk_api, "eg-123", "eval-bucket")
+        assert result is None
+
+    async def test_returns_none_on_egress_failed_with_file_results(self) -> None:
+        """Failed egress should not return a URI even if file_results exist."""
+        lk_api = MagicMock()
+        lk_api.egress.stop_egress = AsyncMock()
+
+        mock_file_result = MagicMock()
+        mock_file_result.location = "s3://eval-bucket/partial-recording.ogg"
+
+        mock_egress_info = MagicMock()
+        mock_egress_info.status = 4  # EGRESS_FAILED
+        mock_egress_info.file_results = [mock_file_result]
+
+        mock_response = MagicMock()
+        mock_response.items = [mock_egress_info]
+        lk_api.egress.list_egress = AsyncMock(return_value=mock_response)
+
+        result = await _stop_and_collect_egress(lk_api, "eg-123", "eval-bucket")
+        assert result is None
+
+    async def test_returns_none_on_limit_reached(self) -> None:
+        """EGRESS_LIMIT_REACHED (6) is treated as terminal failure."""
+        lk_api = MagicMock()
+        lk_api.egress.stop_egress = AsyncMock()
+
+        mock_egress_info = MagicMock()
+        mock_egress_info.status = 6  # EGRESS_LIMIT_REACHED
+        mock_egress_info.file_results = []
+
+        mock_response = MagicMock()
+        mock_response.items = [mock_egress_info]
+        lk_api.egress.list_egress = AsyncMock(return_value=mock_response)
+
+        result = await _stop_and_collect_egress(lk_api, "eg-123", "eval-bucket")
+        assert result is None
+
+    async def test_returns_none_when_no_file_location(self) -> None:
+        lk_api = MagicMock()
+        lk_api.egress.stop_egress = AsyncMock()
+
+        mock_file_result = MagicMock()
+        mock_file_result.location = ""
+
+        mock_egress_info = MagicMock()
+        mock_egress_info.status = 3  # EGRESS_COMPLETE
+        mock_egress_info.file_results = [mock_file_result]
+
+        mock_response = MagicMock()
+        mock_response.items = [mock_egress_info]
+        lk_api.egress.list_egress = AsyncMock(return_value=mock_response)
+
+        result = await _stop_and_collect_egress(lk_api, "eg-123", "eval-bucket")
+        assert result is None
+
+
+class TestRunVoiceScenarioWithEgress:
+    """Tests for egress integration in run_voice_scenario."""
+
+    async def test_egress_started_when_bucket_configured(self) -> None:
+        session = AsyncMock()
+        config = VoiceEvalConfig(
+            livekit_url="wss://test.livekit.cloud",
+            livekit_api_key="APItest",
+            livekit_api_secret="secret",
+            cartesia_api_key="cart-key",
+            recording_s3_bucket="eval-bucket",
+        )
+        scenario = _make_scenario()
+
+        mock_voice_result = MagicMock()
+        mock_voice_result.transcript = []
+        mock_voice_result.metrics.duration_seconds = 0.0
+        mock_voice_result.audio_recording_s3_uri = (
+            "s3://eval-bucket/eval-recordings/room/call.ogg"
+        )
+        mock_conversation_record = MagicMock()
+        mock_voice_result.to_conversation_record.return_value = mock_conversation_record
+
+        mock_caller_factory = AsyncMock()
+        mock_caller_factory.run_call = AsyncMock(return_value="call-123")
+
+        with (
+            patch(f"{RUNNER_MODULE}.LiveKitRoomOrchestrator") as mock_orch_cls,
+            patch(f"{RUNNER_MODULE}.TTSEngine") as mock_tts_cls,
+            patch(f"{RUNNER_MODULE}.VoiceResultCollector") as mock_collector_cls,
+            patch(f"{RUNNER_MODULE}._generate_caller_token") as mock_gen_token,
+            patch(f"{RUNNER_MODULE}._start_room_egress") as mock_start_egress,
+            patch(f"{RUNNER_MODULE}._stop_and_collect_egress") as mock_stop_egress,
+            patch("livekit.api.LiveKitAPI") as mock_lk_api_cls,
+        ):
+            mock_orch = mock_orch_cls.return_value
+            mock_orch.create_room = AsyncMock(
+                return_value=MagicMock(room_name="eval-voice-abc")
+            )
+            mock_orch.teardown = AsyncMock()
+            mock_orch.close = AsyncMock()
+            mock_gen_token.return_value = MagicMock(token="jwt")
+            mock_tts = mock_tts_cls.return_value
+            mock_tts.close = AsyncMock()
+
+            mock_lk_api = mock_lk_api_cls.return_value
+            mock_lk_api.aclose = AsyncMock()
+
+            mock_start_egress.return_value = "eg-456"
+            mock_stop_egress.return_value = (
+                "s3://eval-bucket/eval-recordings/room/call.ogg"
+            )
+
+            mock_collector = mock_collector_cls.return_value
+            mock_collector.collect = AsyncMock(return_value=mock_voice_result)
+
+            await run_voice_scenario(
+                scenario, config, session, caller_factory=mock_caller_factory
+            )
+
+        mock_start_egress.assert_awaited_once()
+        mock_stop_egress.assert_awaited_once_with(mock_lk_api, "eg-456", "eval-bucket")
+        mock_collector.collect.assert_awaited_once()
+        collect_kwargs = mock_collector.collect.call_args.kwargs
+        assert (
+            collect_kwargs["audio_recording_s3_uri"]
+            == "s3://eval-bucket/eval-recordings/room/call.ogg"
+        )
+        mock_lk_api.aclose.assert_awaited_once()
+
+    async def test_egress_stopped_in_finally_on_call_failure(self) -> None:
+        """Egress is stopped even if run_call() raises, via the finally block."""
+        session = AsyncMock()
+        config = VoiceEvalConfig(
+            livekit_url="wss://test.livekit.cloud",
+            livekit_api_key="APItest",
+            livekit_api_secret="secret",
+            cartesia_api_key="cart-key",
+            recording_s3_bucket="eval-bucket",
+        )
+        scenario = _make_scenario()
+
+        mock_caller_factory = AsyncMock()
+        mock_caller_factory.run_call = AsyncMock(
+            side_effect=RuntimeError("Call exploded")
+        )
+
+        with (
+            patch(f"{RUNNER_MODULE}.LiveKitRoomOrchestrator") as mock_orch_cls,
+            patch(f"{RUNNER_MODULE}.TTSEngine") as mock_tts_cls,
+            patch(f"{RUNNER_MODULE}._generate_caller_token") as mock_gen_token,
+            patch(f"{RUNNER_MODULE}._start_room_egress") as mock_start_egress,
+            patch(f"{RUNNER_MODULE}._stop_and_collect_egress") as mock_stop_egress,
+            patch("livekit.api.LiveKitAPI") as mock_lk_api_cls,
+        ):
+            mock_orch = mock_orch_cls.return_value
+            mock_orch.create_room = AsyncMock(
+                return_value=MagicMock(room_name="eval-voice-fail")
+            )
+            mock_orch.teardown = AsyncMock()
+            mock_orch.close = AsyncMock()
+            mock_gen_token.return_value = MagicMock(token="jwt")
+            mock_tts = mock_tts_cls.return_value
+            mock_tts.close = AsyncMock()
+
+            mock_lk_api = mock_lk_api_cls.return_value
+            mock_lk_api.aclose = AsyncMock()
+
+            mock_start_egress.return_value = "eg-789"
+            mock_stop_egress.return_value = None
+
+            with pytest.raises(RuntimeError, match="Call exploded"):
+                await run_voice_scenario(
+                    scenario, config, session, caller_factory=mock_caller_factory
+                )
+
+        # Egress was started and then stopped in the finally block
+        mock_start_egress.assert_awaited_once()
+        mock_stop_egress.assert_awaited_once_with(mock_lk_api, "eg-789", "eval-bucket")
+        # LiveKit API client was closed
+        mock_lk_api.aclose.assert_awaited_once()
+        # Room teardown still happened
+        mock_orch.teardown.assert_awaited_once_with("eval-voice-fail")
+
+    async def test_no_egress_when_bucket_empty(self) -> None:
+        session = AsyncMock()
+        config = _make_config()  # no recording_s3_bucket
+        scenario = _make_scenario()
+
+        mock_voice_result = MagicMock()
+        mock_voice_result.transcript = []
+        mock_voice_result.metrics.duration_seconds = 0.0
+        mock_conversation_record = MagicMock()
+        mock_voice_result.to_conversation_record.return_value = mock_conversation_record
+
+        mock_caller_factory = AsyncMock()
+        mock_caller_factory.run_call = AsyncMock(return_value="call-123")
+
+        with (
+            patch(f"{RUNNER_MODULE}.LiveKitRoomOrchestrator") as mock_orch_cls,
+            patch(f"{RUNNER_MODULE}.TTSEngine") as mock_tts_cls,
+            patch(f"{RUNNER_MODULE}.VoiceResultCollector") as mock_collector_cls,
+            patch(f"{RUNNER_MODULE}._generate_caller_token") as mock_gen_token,
+            patch(f"{RUNNER_MODULE}._start_room_egress") as mock_start_egress,
+        ):
+            mock_orch = mock_orch_cls.return_value
+            mock_orch.create_room = AsyncMock(
+                return_value=MagicMock(room_name="eval-voice-abc")
+            )
+            mock_orch.teardown = AsyncMock()
+            mock_orch.close = AsyncMock()
+            mock_gen_token.return_value = MagicMock(token="jwt")
+            mock_tts = mock_tts_cls.return_value
+            mock_tts.close = AsyncMock()
+
+            mock_collector = mock_collector_cls.return_value
+            mock_collector.collect = AsyncMock(return_value=mock_voice_result)
+
+            await run_voice_scenario(
+                scenario, config, session, caller_factory=mock_caller_factory
+            )
+
+        mock_start_egress.assert_not_called()
+        collect_kwargs = mock_collector.collect.call_args.kwargs
+        assert collect_kwargs["audio_recording_s3_uri"] is None

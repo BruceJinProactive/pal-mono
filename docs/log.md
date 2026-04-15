@@ -7,6 +7,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-04
 
 ### 2026-04-15
+- [P2-D1c] Audio recording URI propagation: start LiveKit Room Composite Egress to record eval call audio to S3; add `recording_s3_bucket`/`recording_s3_region` to `VoiceEvalConfig`; add `_start_room_egress()`/`_stop_and_collect_egress()` helpers in eval runner; add `audio_recording_s3_uri` param to `VoiceResultCollector.collect()` (caller-supplied URI takes precedence over DB); enables E16 (STT accuracy) and E17b (audio quality) evaluators to access actual call recordings
 - [P2-D1b] Voice transcript timestamp enrichment: persist conversation turns as Message records in `end_voice_call()` handler (previously ephemeral); update `VoiceResultCollector._extract_transcript()` to include `start_time`/`end_time`/`text`/`speaker` keys from message body; enables E14/E15/E17 evaluators to produce meaningful timestamp-based results
 
 ### 2026-04-14
