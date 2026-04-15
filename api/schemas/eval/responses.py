@@ -86,6 +86,20 @@ class SnapshotResponse(BaseModel):
     )
 
 
+class PromptChangeBlock(BaseModel):
+    """A single contiguous change region in the prompt diff."""
+
+    type: str = Field(..., description="Change type: 'added', 'removed', or 'replaced'")
+    removed: list[str] = Field(
+        default_factory=list,
+        description="Lines removed from the baseline prompt (empty for 'added' blocks)",
+    )
+    added: list[str] = Field(
+        default_factory=list,
+        description="Lines added in the target prompt (empty for 'removed' blocks)",
+    )
+
+
 class SnapshotDiffResponse(BaseModel):
     """Diff result between two agent config snapshots."""
 
@@ -97,9 +111,9 @@ class SnapshotDiffResponse(BaseModel):
         ..., description="Whether the system prompt text differs"
     )
     config_changed: bool = Field(..., description="Whether the config snapshot differs")
-    prompt_diff: str = Field(
-        ...,
-        description="Unified text diff of system_prompt_text (empty string if unchanged)",
+    prompt_diff: list[PromptChangeBlock] = Field(
+        default_factory=list,
+        description="List of change blocks in the system prompt, grouped by contiguous region",
     )
     config_diff: list[dict[str, Any]] = Field(
         default_factory=list,

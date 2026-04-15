@@ -9,6 +9,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ### 2026-04-14
 - [PAL-9838] Add `GET /projects/{project_id}/monitoring/summary` endpoint returning per-tag health summaries (fail_rate, pass/fail/error counts) for dashboard location cards; single SQL with unnest/group-by; defaults to today; excludes skipped runs
 - Add `tags` column (`ARRAY(Text)`, NOT NULL, default `{}`) to `monitoring_configs` table with GIN index for efficient tag-based filtering and grouping of monitoring configurations
+- Change `SnapshotDiffResponse.prompt_diff` from raw unified diff string to structured `list[PromptChangeBlock]` with typed change blocks (`replace`, `delete`, `insert`), each containing correlated `added`/`removed` line lists
 
 ### 2026-04-13
 - Add `POST /v1/snapshots:computeDiff` endpoint for computing unified text diff of system prompts and structured JSON diff of config between two fingerprinted snapshots

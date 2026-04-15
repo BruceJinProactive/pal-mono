@@ -126,16 +126,24 @@ async def compute_snapshot_diff(
     }
 
 
-def _compute_prompt_diff(from_text: str, to_text: str) -> str:
-    """Return unified diff of two prompt texts."""
+def _compute_prompt_diff(from_text: str, to_text: str) -> list[dict[str, Any]]:
+    """Return list of change blocks with type, added, and removed lines."""
     if from_text == to_text:
-        return ""
-    from_lines = from_text.splitlines(keepends=True)
-    to_lines = to_text.splitlines(keepends=True)
-    diff = difflib.unified_diff(
-        from_lines, to_lines, fromfile="from_prompt", tofile="to_prompt"
-    )
-    return "".join(diff)
+        return []
+    from_lines = from_text.splitlines()
+    to_lines = to_text.splitlines()
+    matcher = difflib.SequenceMatcher(None, from_lines, to_lines)
+    blocks: list[dict[str, Any]] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        block: dict[str, Any] = {"type": tag, "removed": [], "added": []}
+        if tag in ("replace", "delete"):
+            block["removed"] = from_lines[i1:i2]
+        if tag in ("replace", "insert"):
+            block["added"] = to_lines[j1:j2]
+        blocks.append(block)
+    return blocks
 
 
 def _compute_config_diff(

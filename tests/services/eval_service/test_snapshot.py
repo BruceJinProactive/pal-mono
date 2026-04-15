@@ -137,21 +137,41 @@ class TestUpsertAgentConfigSnapshot:
 
 class TestComputePromptDiff:
     def test_identical_text_returns_empty(self) -> None:
-        assert _compute_prompt_diff("hello", "hello") == ""
+        assert _compute_prompt_diff("hello", "hello") == []
 
-    def test_different_text_returns_unified_diff(self) -> None:
-        result = _compute_prompt_diff("old prompt\n", "new prompt\n")
-        assert "--- from_prompt" in result
-        assert "+++ to_prompt" in result
-        assert "-old prompt" in result
-        assert "+new prompt" in result
+    def test_different_text_returns_replace_block(self) -> None:
+        result = _compute_prompt_diff("old prompt", "new prompt")
+        assert len(result) == 1
+        assert result[0]["type"] == "replace"
+        assert result[0]["removed"] == ["old prompt"]
+        assert result[0]["added"] == ["new prompt"]
 
-    def test_multiline_diff(self) -> None:
-        from_text = "line1\nline2\nline3\n"
-        to_text = "line1\nchanged\nline3\n"
+    def test_multiline_diff_groups_changes(self) -> None:
+        from_text = "line1\nline2\nline3"
+        to_text = "line1\nchanged\nline3"
         result = _compute_prompt_diff(from_text, to_text)
-        assert "-line2" in result
-        assert "+changed" in result
+        assert len(result) == 1
+        assert result[0]["type"] == "replace"
+        assert result[0]["removed"] == ["line2"]
+        assert result[0]["added"] == ["changed"]
+
+    def test_deleted_lines_produce_delete_block(self) -> None:
+        from_text = "line1\nline2\nline3"
+        to_text = "line1\nline3"
+        result = _compute_prompt_diff(from_text, to_text)
+        assert len(result) == 1
+        assert result[0]["type"] == "delete"
+        assert result[0]["removed"] == ["line2"]
+        assert result[0]["added"] == []
+
+    def test_inserted_lines_produce_insert_block(self) -> None:
+        from_text = "line1\nline3"
+        to_text = "line1\nline2\nline3"
+        result = _compute_prompt_diff(from_text, to_text)
+        assert len(result) == 1
+        assert result[0]["type"] == "insert"
+        assert result[0]["removed"] == []
+        assert result[0]["added"] == ["line2"]
 
 
 class TestComputeConfigDiff:
@@ -251,7 +271,10 @@ class TestComputeSnapshotDiff:
         assert result["to_fingerprint"] == "fp_b"
         assert result["prompt_changed"] is True
         assert result["config_changed"] is True
-        assert "--- from_prompt" in result["prompt_diff"]
+        assert len(result["prompt_diff"]) == 1
+        assert result["prompt_diff"][0]["type"] == "replace"
+        assert result["prompt_diff"][0]["removed"] == ["old prompt"]
+        assert result["prompt_diff"][0]["added"] == ["new prompt"]
         assert result["config_diff"] == [
             {"path": "model", "from": "gpt-4", "to": "gpt-4o"}
         ]
@@ -276,5 +299,5 @@ class TestComputeSnapshotDiff:
 
         assert result["prompt_changed"] is False
         assert result["config_changed"] is False
-        assert result["prompt_diff"] == ""
+        assert result["prompt_diff"] == []
         assert result["config_diff"] == []

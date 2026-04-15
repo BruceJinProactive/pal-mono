@@ -110,7 +110,7 @@ class TestComputeDiff:
             "to_fingerprint": to_fp,
             "prompt_changed": True,
             "config_changed": True,
-            "prompt_diff": "--- from_prompt\n+++ to_prompt\n@@ -1 +1 @@\n-old\n+new\n",
+            "prompt_diff": [{"type": "replace", "removed": ["old"], "added": ["new"]}],
             "config_diff": [{"path": "model", "from": "gpt-4", "to": "gpt-4o"}],
         }
 
@@ -125,7 +125,10 @@ class TestComputeDiff:
         assert data["to_fingerprint"] == to_fp
         assert data["prompt_changed"] is True
         assert data["config_changed"] is True
-        assert "--- from_prompt" in data["prompt_diff"]
+        assert len(data["prompt_diff"]) == 1
+        assert data["prompt_diff"][0]["type"] == "replace"
+        assert data["prompt_diff"][0]["removed"] == ["old"]
+        assert data["prompt_diff"][0]["added"] == ["new"]
         assert len(data["config_diff"]) == 1
         assert data["config_diff"][0]["path"] == "model"
 
@@ -140,7 +143,7 @@ class TestComputeDiff:
             "to_fingerprint": fp,
             "prompt_changed": False,
             "config_changed": False,
-            "prompt_diff": "",
+            "prompt_diff": [],
             "config_diff": [],
         }
 
@@ -153,7 +156,7 @@ class TestComputeDiff:
         data = response.json()
         assert data["prompt_changed"] is False
         assert data["config_changed"] is False
-        assert data["prompt_diff"] == ""
+        assert data["prompt_diff"] == []
         assert data["config_diff"] == []
 
     @patch(
@@ -204,7 +207,7 @@ class TestComputeDiff:
             "to_fingerprint": "b" * 64,
             "prompt_changed": False,
             "config_changed": False,
-            "prompt_diff": "",
+            "prompt_diff": [],
             "config_diff": [],
         }
 
