@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.repositories.eval_result_repository import EvalResultRepositoryAsync
 from db.repositories.eval_run_repository import EvalRunRepositoryAsync
+from db.repositories.message_repository import MessageRepositoryAsync
 from db.session import AsyncSessionLocal
 from db.tables import EvalResult, EvalRun
 from services.eval_service._driver_factory import create_driver
@@ -262,6 +263,26 @@ async def _run_scenario_for_mode(
     return await _run_conversation(driver, scenario, simulator)
 
 
+async def _extract_tool_calls_from_db(
+    conversation_id: uuid.UUID,
+) -> list[dict[str, Any]]:
+    """Query all tool_calls from messages in a conversation.
+
+    Reads ``messages.body["tool_calls"]`` for every message in the
+    conversation and returns a flat list of tool-call event dicts.
+    """
+    async with AsyncSessionLocal() as session:
+        repo = MessageRepositoryAsync(session)
+        db_messages = await repo.get_messages_by_conversation(conversation_id)
+
+    tool_calls: list[dict[str, Any]] = []
+    for msg in db_messages:
+        if msg.body and isinstance(msg.body, dict):
+            tc = msg.body.get("tool_calls", [])
+            tool_calls.extend(tc)
+    return tool_calls
+
+
 async def _run_conversation(
     driver: Any,
     scenario: EvalScenario,
@@ -311,7 +332,12 @@ async def _run_conversation(
 
         record.turns.append({"user": message, "assistant": result.content})
         record.agent_responses.append(result.content)
-        record.tool_calls.extend(result.tool_calls)
+
+    # After all turns complete, read tool_calls from DB
+    if hasattr(driver, "last_conversation_id") and driver.last_conversation_id:
+        record.tool_calls = await _extract_tool_calls_from_db(
+            uuid.UUID(driver.last_conversation_id)
+        )
 
     return record
 

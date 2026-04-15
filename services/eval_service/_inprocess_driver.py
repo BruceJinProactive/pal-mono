@@ -31,6 +31,7 @@ class InProcessDriver:
         self.recipient_identifier = recipient_identifier
         self.sender_identifier = sender_identifier
         self.channel = Channel(channel)
+        self.last_conversation_id: str | None = None
 
     async def send_turn(
         self,
@@ -66,6 +67,7 @@ class InProcessDriver:
                 )
                 raise
 
+        self.last_conversation_id = self._get_conversation_id(response_messages)
         content = self._extract_response_text(response_messages)
         return TurnResult(content=content)
 
@@ -80,6 +82,14 @@ class InProcessDriver:
             text=TextObject(body=text),
             metadata=Metadata(testing=True),
         )
+
+    @staticmethod
+    def _get_conversation_id(response_messages: list[Message]) -> str | None:
+        """Extract conversation_id from response metadata.session_id."""
+        for msg in response_messages:
+            if msg.metadata and msg.metadata.session_id:
+                return msg.metadata.session_id
+        return None
 
     @staticmethod
     def _extract_response_text(response_messages: list[Message]) -> str:

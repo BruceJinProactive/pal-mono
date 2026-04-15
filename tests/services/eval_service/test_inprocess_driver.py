@@ -6,17 +6,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from api.schemas.chat.message import AuthorType, Message, TextObject
+from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject
 from services.eval_service._inprocess_driver import InProcessDriver
 
 MODULE = "services.eval_service._inprocess_driver"
 
 
-def _make_agent_message(body: str) -> Message:
+def _make_agent_message(body: str, session_id: str = "") -> Message:
     """Create a mock agent response message."""
     msg = MagicMock(spec=Message)
     msg.author_type = AuthorType.AGENT
     msg.text = TextObject(body=body)
+    msg.metadata = Metadata(session_id=session_id) if session_id else None
     return msg
 
 
@@ -25,6 +26,7 @@ def _make_user_message(body: str) -> Message:
     msg = MagicMock(spec=Message)
     msg.author_type = AuthorType.USER
     msg.text = TextObject(body=body)
+    msg.metadata = None
     return msg
 
 
@@ -61,8 +63,8 @@ class TestSendTurn:
     async def test_extracts_last_agent_message(self, driver: InProcessDriver) -> None:
         """When multiple messages, extract last agent message."""
         user_msg = _make_user_message("Hi")
-        agent_msg1 = _make_agent_message("First response")
-        agent_msg2 = _make_agent_message("Second response")
+        agent_msg1 = _make_agent_message("First response", session_id="conv-1")
+        agent_msg2 = _make_agent_message("Second response", session_id="conv-1")
         mock_get_chat = AsyncMock(return_value=[user_msg, agent_msg1, agent_msg2])
         mock_session = AsyncMock()
 
@@ -155,3 +157,80 @@ class TestExtractResponseText:
 
     def test_empty_list_returns_placeholder(self) -> None:
         assert InProcessDriver._extract_response_text([]) == "[No response content]"
+
+
+class TestGetConversationId:
+    def test_extracts_session_id_from_metadata(self) -> None:
+        msg = _make_agent_message("Hi", session_id="conv-abc-123")
+        assert InProcessDriver._get_conversation_id([msg]) == "conv-abc-123"
+
+    def test_returns_none_when_no_metadata(self) -> None:
+        msg = MagicMock(spec=Message)
+        msg.metadata = None
+        assert InProcessDriver._get_conversation_id([msg]) is None
+
+    def test_returns_none_for_empty_session_id(self) -> None:
+        msg = _make_agent_message("Hi", session_id="")
+        assert InProcessDriver._get_conversation_id([msg]) is None
+
+    def test_returns_none_for_empty_list(self) -> None:
+        assert InProcessDriver._get_conversation_id([]) is None
+
+    def test_skips_messages_without_metadata(self) -> None:
+        msg_no_meta = MagicMock(spec=Message)
+        msg_no_meta.metadata = None
+        msg_with_meta = _make_agent_message("Hi", session_id="conv-456")
+        assert (
+            InProcessDriver._get_conversation_id([msg_no_meta, msg_with_meta])
+            == "conv-456"
+        )
+
+
+class TestSendTurnConversationId:
+    @pytest.fixture
+    def driver(self) -> InProcessDriver:
+        return InProcessDriver(
+            recipient_identifier="project-123",
+            sender_identifier="test@eval.com",
+        )
+
+    @pytest.mark.asyncio
+    async def test_sets_last_conversation_id(self, driver: InProcessDriver) -> None:
+        agent_msg = _make_agent_message("Hello!", session_id="conv-xyz-789")
+        mock_get_chat = AsyncMock(return_value=[agent_msg])
+        mock_session = AsyncMock()
+
+        with (
+            patch(f"{MODULE}.get_chat_response_async", mock_get_chat),
+            patch(f"{MODULE}.AsyncSessionLocal") as mock_session_factory,
+        ):
+            mock_session_factory.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
+            mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            assert driver.last_conversation_id is None
+            await driver.send_turn("Hi", [])
+
+        assert driver.last_conversation_id == "conv-xyz-789"
+
+    @pytest.mark.asyncio
+    async def test_last_conversation_id_none_when_no_metadata(
+        self, driver: InProcessDriver
+    ) -> None:
+        agent_msg = _make_agent_message("Hello!")
+        mock_get_chat = AsyncMock(return_value=[agent_msg])
+        mock_session = AsyncMock()
+
+        with (
+            patch(f"{MODULE}.get_chat_response_async", mock_get_chat),
+            patch(f"{MODULE}.AsyncSessionLocal") as mock_session_factory,
+        ):
+            mock_session_factory.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
+            mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await driver.send_turn("Hi", [])
+
+        assert driver.last_conversation_id is None

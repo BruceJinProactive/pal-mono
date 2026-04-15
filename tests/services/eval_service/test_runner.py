@@ -700,9 +700,9 @@ class TestRunConversation:
         simulator = self._make_simulator()
 
         driver = AsyncMock()
+        driver.last_conversation_id = None
         turn_result = MagicMock()
         turn_result.content = "We have pizza and pasta."
-        turn_result.tool_calls = []
         driver.send_turn = AsyncMock(return_value=turn_result)
 
         with patch(f"{RUNNER_MODULE}.ConversationTurn") as mock_conv_turn:
@@ -737,11 +737,11 @@ class TestRunConversation:
             nonlocal call_idx
             tr = MagicMock()
             tr.content = responses[call_idx]
-            tr.tool_calls = []
             call_idx += 1
             return tr
 
         driver = AsyncMock()
+        driver.last_conversation_id = None
         driver.send_turn = AsyncMock(side_effect=_send_turn)
 
         from services.eval_service._runner import _run_conversation
@@ -764,9 +764,9 @@ class TestRunConversation:
         simulator = self._make_simulator()
 
         driver = AsyncMock()
+        driver.last_conversation_id = None
         turn_result = MagicMock()
         turn_result.content = "Booked!"
-        turn_result.tool_calls = [{"tool": "reserve_table", "args": {"party_size": 2}}]
         driver.send_turn = AsyncMock(return_value=turn_result)
 
         from services.eval_service._runner import _run_conversation
@@ -774,9 +774,6 @@ class TestRunConversation:
         record = await _run_conversation(driver, scenario, simulator)
 
         assert record.turns[0]["user"] == "book a table for 2"
-        assert record.tool_calls == [
-            {"tool": "reserve_table", "args": {"party_size": 2}}
-        ]
 
     @pytest.mark.asyncio
     async def test_goal_used_when_text_is_none(self) -> None:
@@ -786,9 +783,9 @@ class TestRunConversation:
         simulator = self._make_simulator()
 
         driver = AsyncMock()
+        driver.last_conversation_id = None
         turn_result = MagicMock()
         turn_result.content = "Sure!"
-        turn_result.tool_calls = []
         driver.send_turn = AsyncMock(return_value=turn_result)
 
         from services.eval_service._runner import _run_conversation
@@ -802,33 +799,118 @@ class TestRunConversation:
         assert driver.send_turn.call_args[0][0] == "order a coffee"
 
     @pytest.mark.asyncio
-    async def test_tool_calls_are_accumulated(self) -> None:
+    async def test_tool_calls_read_from_db_after_conversation(self) -> None:
+        """Tool calls are queried from the DB after all turns complete."""
         from services.eval_service.schema import UserTurn
 
         scenario = self._make_scenario(
             [UserTurn(text="Reserve"), UserTurn(text="Confirm")]
         )
         simulator = self._make_simulator()
-
-        tool_call_a = {"tool": "reserve", "args": {}}
-        tool_call_b = {"tool": "confirm", "args": {}}
+        conversation_id = uuid.uuid4()
 
         async def _send(message: str, history: list[object]) -> MagicMock:
             tr = MagicMock()
             tr.content = "done"
-            tr.tool_calls = [tool_call_a] if message == "Reserve" else [tool_call_b]
             return tr
 
         driver = AsyncMock()
+        driver.last_conversation_id = str(conversation_id)
         driver.send_turn = AsyncMock(side_effect=_send)
+
+        db_tool_calls = [
+            {
+                "type": "tool_call",
+                "payload": {"tool_name": "reserve", "arguments": {}, "result": "ok"},
+            },
+            {
+                "type": "tool_call",
+                "payload": {"tool_name": "confirm", "arguments": {}, "result": "ok"},
+            },
+        ]
+
+        # Mock DB message with tool_calls in body
+        mock_db_msg = MagicMock()
+        mock_db_msg.body = {"tool_calls": db_tool_calls, "author_type": "agent"}
+
+        mock_repo = AsyncMock()
+        mock_repo.get_messages_by_conversation.return_value = [mock_db_msg]
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal") as mock_session_factory,
+            patch(f"{RUNNER_MODULE}.MessageRepositoryAsync", return_value=mock_repo),
+        ):
+            mock_session = AsyncMock()
+            ctx = MagicMock()
+            ctx.__aenter__ = AsyncMock(return_value=mock_session)
+            ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_session_factory.return_value = ctx
+
+            from services.eval_service._runner import _run_conversation
+
+            record = await _run_conversation(driver, scenario, simulator)
+
+        assert len(record.tool_calls) == 2
+        assert record.tool_calls[0]["payload"]["tool_name"] == "reserve"
+        assert record.tool_calls[1]["payload"]["tool_name"] == "confirm"
+        mock_repo.get_messages_by_conversation.assert_awaited_once_with(conversation_id)
+
+    @pytest.mark.asyncio
+    async def test_no_tool_calls_when_no_conversation_id(self) -> None:
+        """When driver has no conversation_id, tool_calls stays empty."""
+        from services.eval_service.schema import UserTurn
+
+        scenario = self._make_scenario([UserTurn(text="Hello")])
+        simulator = self._make_simulator()
+
+        driver = AsyncMock()
+        driver.last_conversation_id = None
+        turn_result = MagicMock()
+        turn_result.content = "Hi!"
+        driver.send_turn = AsyncMock(return_value=turn_result)
 
         from services.eval_service._runner import _run_conversation
 
         record = await _run_conversation(driver, scenario, simulator)
 
-        assert tool_call_a in record.tool_calls
-        assert tool_call_b in record.tool_calls
-        assert len(record.tool_calls) == 2
+        assert record.tool_calls == []
+
+    @pytest.mark.asyncio
+    async def test_tool_calls_empty_when_db_messages_have_no_tool_calls(self) -> None:
+        """DB messages without tool_calls key produce empty list."""
+        from services.eval_service.schema import UserTurn
+
+        scenario = self._make_scenario([UserTurn(text="Hello")])
+        simulator = self._make_simulator()
+        conversation_id = uuid.uuid4()
+
+        driver = AsyncMock()
+        driver.last_conversation_id = str(conversation_id)
+        turn_result = MagicMock()
+        turn_result.content = "Hi!"
+        driver.send_turn = AsyncMock(return_value=turn_result)
+
+        mock_db_msg = MagicMock()
+        mock_db_msg.body = {"author_type": "agent", "text": {"body": "Hi!"}}
+
+        mock_repo = AsyncMock()
+        mock_repo.get_messages_by_conversation.return_value = [mock_db_msg]
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal") as mock_session_factory,
+            patch(f"{RUNNER_MODULE}.MessageRepositoryAsync", return_value=mock_repo),
+        ):
+            mock_session = AsyncMock()
+            ctx = MagicMock()
+            ctx.__aenter__ = AsyncMock(return_value=mock_session)
+            ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_session_factory.return_value = ctx
+
+            from services.eval_service._runner import _run_conversation
+
+            record = await _run_conversation(driver, scenario, simulator)
+
+        assert record.tool_calls == []
 
     @pytest.mark.asyncio
     async def test_ai_driven_turn_calls_simulator(self) -> None:
@@ -843,9 +925,9 @@ class TestRunConversation:
         simulator.generate_user_message = AsyncMock(return_value="What are your hours?")
 
         driver = AsyncMock()
+        driver.last_conversation_id = None
         turn_result = MagicMock()
         turn_result.content = "We're open 9-5."
-        turn_result.tool_calls = []
         driver.send_turn = AsyncMock(return_value=turn_result)
 
         from services.eval_service._runner import _run_conversation
@@ -876,9 +958,9 @@ class TestRunConversation:
         simulator.generate_user_message = AsyncMock(return_value=END_SENTINEL)
 
         driver = AsyncMock()
+        driver.last_conversation_id = None
         turn_result = MagicMock()
         turn_result.content = "Hello!"
-        turn_result.tool_calls = []
         driver.send_turn = AsyncMock(return_value=turn_result)
 
         from services.eval_service._runner import _run_conversation
@@ -914,11 +996,11 @@ class TestRunConversation:
             nonlocal call_idx
             tr = MagicMock()
             tr.content = responses[call_idx]
-            tr.tool_calls = []
             call_idx += 1
             return tr
 
         driver = AsyncMock()
+        driver.last_conversation_id = None
         driver.send_turn = AsyncMock(side_effect=_send)
 
         from services.eval_service._runner import _run_conversation
@@ -990,7 +1072,6 @@ class TestMarkStaleRunsFailed:
 
     @pytest.mark.asyncio
     async def test_marks_multiple_stale_runs(self) -> None:
-
         stale_run_a = MagicMock()
         stale_run_a.id = uuid.uuid4()
         stale_run_b = MagicMock()
