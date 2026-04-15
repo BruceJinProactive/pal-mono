@@ -68,14 +68,14 @@ async def _mock_populate(tool_args: dict, session: object = None) -> dict:
 
 
 def _mock_contact_repo(has_contacts: bool = True):
-    """Return a mock ProjectContactRepositoryAsync class."""
+    """Return a mock ProjectContactRepository class."""
     mock_repo_instance = MagicMock()
     if has_contacts:
-        mock_repo_instance.list_contacts_by_project = AsyncMock(
+        mock_repo_instance.list_contact_ids_by_project = AsyncMock(
             return_value=[uuid.uuid4()]
         )
     else:
-        mock_repo_instance.list_contacts_by_project = AsyncMock(return_value=[])
+        mock_repo_instance.list_contact_ids_by_project = AsyncMock(return_value=[])
     mock_repo_class = MagicMock(return_value=mock_repo_instance)
     return mock_repo_class
 
@@ -87,7 +87,7 @@ def _patch_helpers(rc: RawConfig, has_contacts: bool = True):
         patch.object(rc, "_get_project_tools_override", return_value={}),
         patch.object(rc, "_get_project_integration_tools", return_value=[]),
         patch(
-            "services.agent_service._raw_config.ProjectContactRepositoryAsync",
+            "services.agent_service._raw_config.ProjectContactRepository",
             _mock_contact_repo(has_contacts),
         ),
     )

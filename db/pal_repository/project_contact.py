@@ -92,6 +92,51 @@ class ProjectContactRepository:
             )
             raise
 
+    async def list_contact_ids_by_project(
+        self, project_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """List all contact IDs for a given project.
+
+        Convenience method that returns only the contact UUIDs rather than
+        full ``ProjectContactData`` records.
+        """
+        try:
+            result = await self.session.execute(
+                select(ProjectContact.contact_id).filter(
+                    ProjectContact.project_id == project_id
+                )
+            )
+            return list(result.scalars().all())
+        except Exception:
+            logger.exception("Error listing contact IDs by project")
+            raise
+
+    async def delete_by_project_and_contact(
+        self, project_id: uuid.UUID, contact_id: uuid.UUID
+    ) -> ProjectContactData | None:
+        """Delete a project contact by project and contact IDs.
+
+        Returns the deleted record, or None if no match was found.
+        """
+        try:
+            result = await self.session.execute(
+                select(ProjectContact)
+                .filter(ProjectContact.project_id == project_id)
+                .filter(ProjectContact.contact_id == contact_id)
+            )
+            row = result.scalar_one_or_none()
+            if not row:
+                return None
+
+            data = _to_data(row)
+            await self.session.delete(row)
+            await self.session.commit()
+            return data
+        except Exception as e:
+            await self.session.rollback()
+            logger.error(f"Error deleting project contact by project and contact: {e}")
+            raise
+
     async def create(self, record: ProjectContactData) -> None:
         """Create a new project contact.
 

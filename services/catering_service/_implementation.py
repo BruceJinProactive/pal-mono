@@ -13,12 +13,13 @@ from api.schemas.catering.catering import Contact as ContactSchema
 from api.schemas.chat.message import AuthorType, Broker, Extras
 from api.schemas.chat.message import Message as RelayMessage
 from api.schemas.chat.message import Metadata, TextObject, Type
+from db.pal_repository.data_classes.project_contact import ProjectContactData
+from db.pal_repository.project_contact import ProjectContactRepository
 from db.repositories.catering_request_repository import (
     CateringRequestRepository,
     CateringRequestRepositoryAsync,
 )
 from db.repositories.contact_repository import ContactRepositoryAsync
-from db.repositories.project_contact_repository import ProjectContactRepositoryAsync
 from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
 from db.session import SyncSessionLocal
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
@@ -214,9 +215,13 @@ async def create_contact(
     created_contact = await contact_repo.create_contact(contact)
 
     # Create the project-contact relation
-    project_contact_repo = ProjectContactRepositoryAsync(session)
-    await project_contact_repo.create_project_contact_relation(
-        project_id, created_contact.id
+    project_contact_repo = ProjectContactRepository(session)
+    await project_contact_repo.create(
+        ProjectContactData(
+            id=uuid.uuid4(),
+            project_id=project_id,
+            contact_id=created_contact.id,
+        )
     )
 
     return created_contact
@@ -237,8 +242,8 @@ async def list_contacts(
         List[ContactSchema]: List of contact Pydantic models associated with the project
     """
     # Get contact IDs for the project
-    project_contact_repo = ProjectContactRepositoryAsync(session)
-    contact_ids = await project_contact_repo.list_contacts_by_project(project_id)
+    project_contact_repo = ProjectContactRepository(session)
+    contact_ids = await project_contact_repo.list_contact_ids_by_project(project_id)
 
     if not contact_ids:
         return []
@@ -267,8 +272,8 @@ async def delete_contact(
         Contact: The deleted contact, or None if not found
     """
     # First delete the project-contact relation
-    project_contact_repo = ProjectContactRepositoryAsync(session)
-    await project_contact_repo.delete_project_contact_relation(project_id, contact_id)
+    project_contact_repo = ProjectContactRepository(session)
+    await project_contact_repo.delete_by_project_and_contact(project_id, contact_id)
 
     # Then delete the contact itself
     contact_repo = ContactRepositoryAsync(session)
@@ -302,8 +307,8 @@ async def update_contact(
         ContactSchema: The updated contact as a Pydantic model, or None if not found
     """
     # Verify the contact is linked to this project
-    project_contact_repo = ProjectContactRepositoryAsync(session)
-    contact_ids = await project_contact_repo.list_contacts_by_project(project_id)
+    project_contact_repo = ProjectContactRepository(session)
+    contact_ids = await project_contact_repo.list_contact_ids_by_project(project_id)
 
     if contact_id not in contact_ids:
         return None
@@ -577,9 +582,9 @@ async def _find_and_assign_catering_manager(
             )
             return catering_manager
 
-    project_contact_repo = ProjectContactRepositoryAsync(session)
+    project_contact_repo = ProjectContactRepository(session)
 
-    contact_ids = await project_contact_repo.list_contacts_by_project(
+    contact_ids = await project_contact_repo.list_contact_ids_by_project(
         catering_request.project_id
     )
 
@@ -852,10 +857,10 @@ async def _find_catering_manager_for_project(
     Returns:
         The catering manager contact if found, None otherwise.
     """
-    project_contact_repo = ProjectContactRepositoryAsync(session)
+    project_contact_repo = ProjectContactRepository(session)
     contact_repo = ContactRepositoryAsync(session)
 
-    contact_ids = await project_contact_repo.list_contacts_by_project(project_id)
+    contact_ids = await project_contact_repo.list_contact_ids_by_project(project_id)
     if not contact_ids:
         return None
 

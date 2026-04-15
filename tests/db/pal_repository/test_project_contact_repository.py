@@ -354,6 +354,122 @@ class TestDelete:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# TestListContactIdsByProject
+# ---------------------------------------------------------------------------
+
+
+class TestListContactIdsByProject:
+    """List only the contact UUIDs for a project."""
+
+    @pytest.mark.asyncio
+    async def test_returns_list_of_uuids(
+        self,
+        repo: ProjectContactRepository,
+        mock_session: AsyncMock,
+        sample_contact_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [sample_contact_id]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.list_contact_ids_by_project(uuid.uuid4())
+
+        assert result == [sample_contact_id]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list(
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.list_contact_ids_by_project(uuid.uuid4())
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_raises_on_db_error(
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = RuntimeError("error")
+
+        with pytest.raises(RuntimeError, match="error"):
+            await repo.list_contact_ids_by_project(uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# TestDeleteByProjectAndContact
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteByProjectAndContact:
+    """Delete by composite project + contact key."""
+
+    @pytest.mark.asyncio
+    async def test_returns_data_when_found(
+        self,
+        repo: ProjectContactRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_project_id: uuid.UUID,
+        sample_contact_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.delete_by_project_and_contact(
+            sample_project_id, sample_contact_id
+        )
+
+        assert isinstance(data, ProjectContactData)
+        assert data.project_id == sample_project_id
+        assert data.contact_id == sample_contact_id
+        mock_session.delete.assert_awaited_once_with(sample_orm_row)
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found(
+        self, repo: ProjectContactRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.delete_by_project_and_contact(uuid.uuid4(), uuid.uuid4())
+        assert data is None
+
+    @pytest.mark.asyncio
+    async def test_raises_on_db_error(
+        self,
+        repo: ProjectContactRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_project_id: uuid.UUID,
+        sample_contact_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+        mock_session.commit.side_effect = RuntimeError("delete failed")
+
+        with pytest.raises(RuntimeError, match="delete failed"):
+            await repo.delete_by_project_and_contact(
+                sample_project_id, sample_contact_id
+            )
+        mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# TestDataImmutability
+# ---------------------------------------------------------------------------
+
+
 class TestDataImmutability:
     """ProjectContactData is a frozen dataclass — mutations are disallowed."""
 

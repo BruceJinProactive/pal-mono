@@ -25,8 +25,8 @@ from agent import (
     ToolMetadata,
 )
 from agent.model import ModelProvider
+from db.pal_repository.project_contact import ProjectContactRepository
 from db.repositories.contact_repository import ContactRepositoryAsync
-from db.repositories.project_contact_repository import ProjectContactRepositoryAsync
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, IdentifierType, TargetTier
 from services import features_service
@@ -297,8 +297,8 @@ class RawConfig:
         # Primary: Build transfer_destinations from contacts table
         if session:
             try:
-                project_contact_repo = ProjectContactRepositoryAsync(session)
-                contact_ids = await project_contact_repo.list_contacts_by_project(
+                project_contact_repo = ProjectContactRepository(session)
+                contact_ids = await project_contact_repo.list_contact_ids_by_project(
                     self.project.id
                 )
 
@@ -470,8 +470,8 @@ class RawConfig:
         if self.channel == Channel.VOICE and not has_livekit_tool and session:
             has_transfer_destination = False
             try:
-                project_contact_repo = ProjectContactRepositoryAsync(session)
-                contact_ids = await project_contact_repo.list_contacts_by_project(
+                project_contact_repo = ProjectContactRepository(session)
+                contact_ids = await project_contact_repo.list_contact_ids_by_project(
                     self.project.id
                 )
                 if contact_ids:
