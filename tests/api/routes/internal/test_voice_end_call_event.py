@@ -9,6 +9,7 @@ import pytest
 from api.routes.internal._voice import (
     _build_audio_recording_reference,
     _extract_transcript_text,
+    _persist_conversation_messages,
     _publish_livekit_evaluation_event,
 )
 from api.schemas.internal.voice_init import (
@@ -795,3 +796,69 @@ class TestMetricsWiringIntoEvent:
         assert event.transcript[2]["start_time"] == 1000.0
         # Second user msg → turn 1, but no metric turn exists → 0.0
         assert event.transcript[3]["start_time"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _persist_conversation_messages tests
+# ---------------------------------------------------------------------------
+
+
+class TestPersistConversationMessages:
+    """Tests for the message persistence helper used in end_voice_call."""
+
+    def test_persists_user_and_assistant_messages(self) -> None:
+        session = MagicMock()
+        conv_id = uuid.uuid4()
+        history = [
+            {
+                "role": "assistant",
+                "content": "Hello!",
+                "start_time": 1.0,
+                "end_time": 2.0,
+            },
+            {"role": "user", "content": "Hi there", "start_time": 2.5, "end_time": 3.5},
+            {"role": "system", "content": "ignored"},
+        ]
+
+        _persist_conversation_messages(
+            session, conv_id, MagicMock(value="ACTIVE"), history
+        )
+
+        assert session.add.call_count == 2
+        added_msgs = [call.args[0] for call in session.add.call_args_list]
+        assert added_msgs[0].conversation_id == conv_id
+        assert added_msgs[0].body["role"] == "assistant"
+        assert added_msgs[1].body["role"] == "user"
+
+    def test_skips_when_conversation_already_closed(self) -> None:
+        from db.tables.conversations import ConversationStatus
+
+        session = MagicMock()
+        history = [{"role": "user", "content": "Hi"}]
+
+        _persist_conversation_messages(
+            session, uuid.uuid4(), ConversationStatus.CLOSED, history
+        )
+
+        session.add.assert_not_called()
+
+    def test_skips_when_conversation_closing(self) -> None:
+        from db.tables.conversations import ConversationStatus
+
+        session = MagicMock()
+        history = [{"role": "user", "content": "Hi"}]
+
+        _persist_conversation_messages(
+            session, uuid.uuid4(), ConversationStatus.CLOSING, history
+        )
+
+        session.add.assert_not_called()
+
+    def test_empty_conversation_history(self) -> None:
+        session = MagicMock()
+
+        _persist_conversation_messages(
+            session, uuid.uuid4(), MagicMock(value="ACTIVE"), []
+        )
+
+        session.add.assert_not_called()

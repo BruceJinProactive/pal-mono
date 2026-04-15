@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04
 
+### 2026-04-15
+- [P2-D1b] Voice transcript timestamp enrichment: persist conversation turns as Message records in `end_voice_call()` handler (previously ephemeral); update `VoiceResultCollector._extract_transcript()` to include `start_time`/`end_time`/`text`/`speaker` keys from message body; enables E14/E15/E17 evaluators to produce meaningful timestamp-based results
+
 ### 2026-04-14
 - [PAL-9838] Add `GET /projects/{project_id}/monitoring/summary` endpoint returning per-tag health summaries (fail_rate, pass/fail/error counts) for dashboard location cards; single SQL with unnest/group-by; defaults to today; excludes skipped runs
 - Add `tags` column (`ARRAY(Text)`, NOT NULL, default `{}`) to `monitoring_configs` table with GIN index for efficient tag-based filtering and grouping of monitoring configurations

@@ -193,10 +193,20 @@ def _make_conversation(
     return conv
 
 
-def _make_message(role: str, content: str) -> MagicMock:
+def _make_message(
+    role: str,
+    content: str,
+    start_time: float = 0.0,
+    end_time: float = 0.0,
+) -> MagicMock:
     """Create a mock Message ORM object."""
     msg = MagicMock()
-    msg.body = {"role": role, "content": content}
+    msg.body = {
+        "role": role,
+        "content": content,
+        "start_time": start_time,
+        "end_time": end_time,
+    }
     return msg
 
 
@@ -259,6 +269,9 @@ class TestVoiceResultCollectorCollect:
             "role": "user",
             "content": "Hello",
             "speaker": "user",
+            "text": "Hello",
+            "start_time": 0.0,
+            "end_time": 0.0,
         }
         assert result.metrics.duration_seconds == 30.0
         assert result.metrics.turn_latency_avg == 0.3
@@ -329,6 +342,163 @@ class TestVoiceResultCollectorCollect:
         # System message should be filtered out
         assert len(result.transcript) == 2
         assert result.transcript[0]["role"] == "user"
+
+
+class TestExtractTranscriptTimestamps:
+    async def test_timestamps_from_message_body(self) -> None:
+        """start_time and end_time are read from message body."""
+        session = AsyncMock()
+        collector = VoiceResultCollector(session)
+
+        conv = _make_conversation()
+        messages = [
+            _make_message("user", "Hello", start_time=100.0, end_time=102.5),
+            _make_message("assistant", "Hi there", start_time=103.0, end_time=106.0),
+        ]
+
+        with (
+            patch(
+                "services.eval_service._voice_result_collector.ConversationRepositoryAsync"
+            ) as mock_conv_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.MessageRepositoryAsync"
+            ) as mock_msg_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+            ) as mock_pc_repo_cls,
+        ):
+            mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
+                return_value=conv
+            )
+            mock_msg_repo_cls.return_value.get_messages_by_conversation = AsyncMock(
+                return_value=messages
+            )
+            mock_pc_repo_cls.return_value.get_by_call_id = AsyncMock(return_value=None)
+
+            result = await collector.collect(call_id="call-123", room_name="room-1")
+
+        assert result.transcript[0]["start_time"] == 100.0
+        assert result.transcript[0]["end_time"] == 102.5
+        assert result.transcript[0]["text"] == "Hello"
+        assert result.transcript[0]["speaker"] == "user"
+
+        assert result.transcript[1]["start_time"] == 103.0
+        assert result.transcript[1]["end_time"] == 106.0
+        assert result.transcript[1]["text"] == "Hi there"
+        assert result.transcript[1]["speaker"] == "agent"
+
+    async def test_missing_timestamps_default_to_zero(self) -> None:
+        """Messages without start_time/end_time default to 0.0."""
+        session = AsyncMock()
+        collector = VoiceResultCollector(session)
+
+        conv = _make_conversation()
+        # Message without timestamps in body
+        msg = MagicMock()
+        msg.body = {"role": "user", "content": "Hello"}
+
+        with (
+            patch(
+                "services.eval_service._voice_result_collector.ConversationRepositoryAsync"
+            ) as mock_conv_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.MessageRepositoryAsync"
+            ) as mock_msg_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+            ) as mock_pc_repo_cls,
+        ):
+            mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
+                return_value=conv
+            )
+            mock_msg_repo_cls.return_value.get_messages_by_conversation = AsyncMock(
+                return_value=[msg]
+            )
+            mock_pc_repo_cls.return_value.get_by_call_id = AsyncMock(return_value=None)
+
+            result = await collector.collect(call_id="call-123", room_name="room-1")
+
+        assert result.transcript[0]["start_time"] == 0.0
+        assert result.transcript[0]["end_time"] == 0.0
+
+    async def test_list_content_format_with_timestamps(self) -> None:
+        """Content in list format [{"text": ...}] is extracted alongside timestamps."""
+        session = AsyncMock()
+        collector = VoiceResultCollector(session)
+
+        conv = _make_conversation()
+        msg = MagicMock()
+        msg.body = {
+            "role": "assistant",
+            "content": [{"text": "Welcome!"}],
+            "start_time": 50.0,
+            "end_time": 53.0,
+        }
+
+        with (
+            patch(
+                "services.eval_service._voice_result_collector.ConversationRepositoryAsync"
+            ) as mock_conv_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.MessageRepositoryAsync"
+            ) as mock_msg_repo_cls,
+            patch(
+                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+            ) as mock_pc_repo_cls,
+        ):
+            mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
+                return_value=conv
+            )
+            mock_msg_repo_cls.return_value.get_messages_by_conversation = AsyncMock(
+                return_value=[msg]
+            )
+            mock_pc_repo_cls.return_value.get_by_call_id = AsyncMock(return_value=None)
+
+            result = await collector.collect(call_id="call-123", room_name="room-1")
+
+        assert result.transcript[0]["text"] == "Welcome!"
+        assert result.transcript[0]["content"] == "Welcome!"
+        assert result.transcript[0]["start_time"] == 50.0
+        assert result.transcript[0]["speaker"] == "agent"
+
+    async def test_voice_transcript_flows_to_conversation_record(self) -> None:
+        """Timestamps in transcript propagate to ConversationRecord.voice_transcript."""
+        r = VoiceEvalResult(
+            call_id="c",
+            room_name="r",
+            transcript=[
+                {
+                    "role": "user",
+                    "content": "Hi",
+                    "speaker": "user",
+                    "text": "Hi",
+                    "start_time": 10.0,
+                    "end_time": 11.5,
+                },
+                {
+                    "role": "assistant",
+                    "content": "Hello!",
+                    "speaker": "agent",
+                    "text": "Hello!",
+                    "start_time": 12.0,
+                    "end_time": 14.0,
+                },
+            ],
+        )
+        scenario = EvalScenario(
+            scenario_id="s1",
+            scenario="test",
+            test_category="general",
+            user_turns=["Hi"],
+        )
+
+        record = r.to_conversation_record(scenario)
+        assert len(record.voice_transcript) == 2
+        assert record.voice_transcript[0]["start_time"] == 10.0
+        assert record.voice_transcript[0]["speaker"] == "user"
+        assert record.voice_transcript[1]["start_time"] == 12.0
+        assert record.voice_transcript[1]["speaker"] == "agent"
+        assert record.is_voice is True
 
 
 class TestVoiceResultCollectorTimeout:

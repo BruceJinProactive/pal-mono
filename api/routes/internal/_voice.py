@@ -537,6 +537,14 @@ async def end_voice_call(
         )
         analytics["ended_reason"] = ended_reason_override
 
+    # --- Step 2b: Persist conversation turns as Message records ---
+    # The LiveKit agent's conversation_history is ephemeral — persist each
+    # user/assistant turn so VoiceResultCollector can read them later.
+    # Messages include start_time/end_time for evaluator timestamp analysis.
+    _persist_conversation_messages(
+        session, conversation_id, conversation.status, conversation_history
+    )
+
     # --- Step 3: Close conversation and create phone call record in a single transaction ---
     try:
         # Convert call_purpose list to comma-separated string for storage
@@ -992,6 +1000,28 @@ def _get_default_analytics() -> dict:
         "user_satisfaction": UserSatisfaction.neutral,
         "language": CallLanguage.english,
     }
+
+
+def _persist_conversation_messages(
+    session: AsyncSession,
+    conversation_id: uuid.UUID,
+    conversation_status: object,
+    conversation_history: list[dict],
+) -> None:
+    """Persist user/assistant turns as Message records for later retrieval.
+
+    Skips insertion when the conversation is already in a terminal state
+    (CLOSED / CLOSING) to avoid duplicates on retried end-call requests.
+    """
+    from db.tables.conversations import ConversationStatus as _ConvStatus
+    from db.tables.messages import Message as MessageModel
+
+    if conversation_status in {_ConvStatus.CLOSED, _ConvStatus.CLOSING}:
+        return
+
+    for msg in conversation_history:
+        if msg.get("role") in ("user", "assistant"):
+            session.add(MessageModel(conversation_id=conversation_id, body=msg))
 
 
 def _extract_transcript_text(msg: dict) -> str:

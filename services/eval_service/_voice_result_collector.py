@@ -67,7 +67,7 @@ class VoiceEvalResult:
 
     call_id: str
     room_name: str
-    transcript: list[dict[str, str]] = field(default_factory=list)
+    transcript: list[dict[str, Any]] = field(default_factory=list)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     metrics: VoiceCallMetrics = field(
         default_factory=lambda: VoiceCallMetrics(duration_seconds=0.0)
@@ -220,12 +220,15 @@ class VoiceResultCollector:
             f"did not close within {timeout_s}s"
         )
 
-    async def _extract_transcript(self, conversation_id: Any) -> list[dict[str, str]]:
+    async def _extract_transcript(self, conversation_id: Any) -> list[dict[str, Any]]:
         """Read messages for the conversation and build a transcript.
 
-        Each entry contains ``role``, ``content``, and ``speaker`` (mapped
-        from role for evaluator compatibility: ``user`` → ``user``,
-        ``assistant`` → ``agent``).
+        Each entry contains:
+        - role / content — original message fields
+        - speaker — evaluator-compatible (user → user,
+          assistant → agent)
+        - text — alias for content (evaluators read text)
+        - start_time / end_time — speech timestamps (float, 0.0 if absent)
         """
         msg_repo = MessageRepositoryAsync(self._session)
         messages = await msg_repo.get_messages_by_conversation(
@@ -234,17 +237,21 @@ class VoiceResultCollector:
 
         _speaker_map = {"user": "user", "assistant": "agent"}
 
-        transcript: list[dict[str, str]] = []
+        transcript: list[dict[str, Any]] = []
         for msg in messages:
             body = msg.body if isinstance(msg.body, dict) else {}
             role = body.get("role", "")
             if role not in ("user", "assistant"):
                 continue
+            text = _extract_message_text(body)
             transcript.append(
                 {
                     "role": role,
-                    "content": _extract_message_text(body),
+                    "content": text,
                     "speaker": _speaker_map.get(role, role),
+                    "text": text,
+                    "start_time": float(body.get("start_time", 0.0)),
+                    "end_time": float(body.get("end_time", 0.0)),
                 }
             )
 
