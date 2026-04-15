@@ -15,6 +15,7 @@ Tests cover:
 import asyncio
 import datetime
 import json
+import os
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -33,6 +34,7 @@ from api.routes.chat.chat_completions import (
     chat_completions,
     chat_completions_agno,
     is_invalid_url,
+    resolve_outbound_tn,
 )
 from api.schemas.chat.message import Broker
 from db.tables.types import Channel
@@ -1100,3 +1102,60 @@ class TestChatCompletionsIntegration:
                         mock_send.assert_called_once()
                         sms_message = mock_send.call_args[0][0]
                         assert "https://example.com/order/123" in sms_message.text.body
+
+
+# ---------------------------------------------------------------------------
+# Outbound TN Mapping Tests
+# ---------------------------------------------------------------------------
+
+TN_MAP_JSON = json.dumps(
+    {"+19921001001": "+19254641000", "+19921001009": "+19254641000"}
+)
+
+
+class TestResolveOutboundTn:
+    """Test resolve_outbound_tn()."""
+
+    def test_passthrough_for_twilio(self) -> None:
+        assert resolve_outbound_tn("+19921001001", Broker.TWILIO) == "+19921001001"
+
+    def test_passthrough_for_meta(self) -> None:
+        assert resolve_outbound_tn("+19921001001", Broker.META) == "+19921001001"
+
+    @patch.dict(os.environ, {"PIZZACLOUD_OUTBOUND_TN_MAP": TN_MAP_JSON})
+    def test_resolves_pizzacloud_tn(self) -> None:
+        assert resolve_outbound_tn("+19921001001", Broker.PIZZACLOUD) == "+19254641000"
+
+    @patch.dict(os.environ, {"PIZZACLOUD_OUTBOUND_TN_MAP": TN_MAP_JSON})
+    def test_multiple_routing_tns_to_same_store(self) -> None:
+        assert resolve_outbound_tn("+19921001001", Broker.PIZZACLOUD) == "+19254641000"
+        assert resolve_outbound_tn("+19921001009", Broker.PIZZACLOUD) == "+19254641000"
+
+    @patch.dict(os.environ, {"PIZZACLOUD_OUTBOUND_TN_MAP": TN_MAP_JSON})
+    def test_raises_when_tn_not_in_mapping(self) -> None:
+        with pytest.raises(ValueError, match="No outbound TN mapping found"):
+            resolve_outbound_tn("+19999999999", Broker.PIZZACLOUD)
+
+    @patch.dict(os.environ, {}, clear=False)
+    def test_raises_when_env_unset(self) -> None:
+        os.environ.pop("PIZZACLOUD_OUTBOUND_TN_MAP", None)
+        with pytest.raises(ValueError, match="not set"):
+            resolve_outbound_tn("+19921001001", Broker.PIZZACLOUD)
+
+    @patch.dict(os.environ, {"PIZZACLOUD_OUTBOUND_TN_MAP": "not json"})
+    def test_raises_on_invalid_json(self) -> None:
+        with pytest.raises(ValueError, match="not valid JSON"):
+            resolve_outbound_tn("+19921001001", Broker.PIZZACLOUD)
+
+    @patch.dict(os.environ, {"PIZZACLOUD_OUTBOUND_TN_MAP": "[1, 2, 3]"})
+    def test_raises_on_non_object_json(self) -> None:
+        with pytest.raises(ValueError, match="must be a JSON object"):
+            resolve_outbound_tn("+19921001001", Broker.PIZZACLOUD)
+
+    @patch.dict(
+        os.environ,
+        {"PIZZACLOUD_OUTBOUND_TN_MAP": json.dumps({"+19921001001": 12345})},
+    )
+    def test_raises_on_non_string_value(self) -> None:
+        with pytest.raises(ValueError, match="not a string"):
+            resolve_outbound_tn("+19921001001", Broker.PIZZACLOUD)
