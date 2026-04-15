@@ -54,8 +54,8 @@ dependencies = [
   "opentelemetry-distro>=0.60b1",
   "opentelemetry-exporter-otlp-proto-grpc>=1.39.1",
   "opentelemetry-instrumentation-logging>=0.60b1",
-  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.252", # Pal-agents AI agent framework (production)
-  "pal-agents[eval] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.252", # Pal-agents eval metrics extra (deepeval)
+  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.253", # Pal-agents AI agent framework (production)
+  "pal-agents[eval] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.253", # Pal-agents eval metrics extra (deepeval)
   "pgvector==0.3.2", # PostgreSQL extension for vector similarity search
   "pinecone==7.3.0", # Managed vector database for AI applications
   "polyline==2.0.2", # Google polyline encoding/decoding for GPS coordinates
