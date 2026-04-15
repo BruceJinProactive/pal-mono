@@ -9,6 +9,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ### 2026-04-14
 - [PAL-9838] Add `GET /projects/{project_id}/monitoring/summary` endpoint returning per-tag health summaries (fail_rate, pass/fail/error counts) for dashboard location cards; single SQL with unnest/group-by; defaults to today; excludes skipped runs
 - Add `tags` column (`ARRAY(Text)`, NOT NULL, default `{}`) to `monitoring_configs` table with GIN index for efficient tag-based filtering and grouping of monitoring configurations
+- [P2-D1a] Add `SyntheticCaller` implementation in `services/eval_service/_synthetic_caller.py`; joins LiveKit room via livekit-rtc, publishes TTS audio for each eval turn, waits for agent responses via active-speaker detection; implements `SyntheticCallerFactory` protocol; update `run_voice_scenario` to create default `SyntheticCaller` when no `caller_factory` provided; embed `sip.callID` in participant token attributes via `_generate_caller_token()` so agent reads the eval call ID
 - Change `SnapshotDiffResponse.prompt_diff` from raw unified diff string to structured `list[PromptChangeBlock]` with typed change blocks (`replace`, `delete`, `insert`), each containing correlated `added`/`removed` line lists
 
 ### 2026-04-13

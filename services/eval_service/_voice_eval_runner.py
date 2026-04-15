@@ -24,12 +24,14 @@ from __future__ import annotations
 
 import asyncio
 import os
+import uuid
 from dataclasses import dataclass
 from typing import Protocol
 
 from pal_agents.evals.voice.personas import resolve_persona
 from pal_agents.evals.voice.room_orchestrator import (
     LiveKitRoomOrchestrator,
+    ParticipantToken,
     RoomConfig,
     RoomInfo,
 )
@@ -52,8 +54,8 @@ class SyntheticCallerFactory(Protocol):
     """Factory protocol for creating synthetic callers.
 
     Implementations connect to a LiveKit room as an RTC participant,
-    publish TTS audio for each turn, and return the call_id assigned
-    by the agent's end-call callback.
+    publish TTS audio for each turn, and return the call_id used
+    to collect results from the database.
     """
 
     async def run_call(
@@ -63,18 +65,22 @@ class SyntheticCallerFactory(Protocol):
         turns: list[str],
         voice_profile: VoiceProfile,
         tts_engine: TTSEngine,
+        call_id: str,
     ) -> str:
         """Run a synthetic call in the given room.
 
         Args:
             room_info: LiveKit room to connect to.
             caller_token: JWT token for the synthetic caller participant.
+                The token includes ``sip.callID`` in participant attributes
+                so the agent can read it.
             turns: List of user turn texts to speak.
             voice_profile: TTS voice configuration for this persona.
             tts_engine: TTS engine instance for speech synthesis.
+            call_id: Pre-generated call ID embedded in the caller token.
 
         Returns:
-            The call_id assigned to this conversation (used to collect results).
+            The call_id (same as input, for protocol consistency).
         """
         ...
 
@@ -140,6 +146,43 @@ class VoiceEvalConfig:
         )
 
 
+def _generate_caller_token(
+    orchestrator: LiveKitRoomOrchestrator,
+    room_name: str,
+    call_id: str,
+) -> ParticipantToken:
+    """Generate a participant token with ``sip.callID`` in attributes.
+
+    The LiveKit agent reads ``participant.attributes["sip.callID"]`` to
+    identify calls.  For eval calls there is no SIP bridge, so we embed
+    the generated ``call_id`` in the JWT attributes directly.
+    """
+    from datetime import timedelta
+
+    from livekit.api import AccessToken, VideoGrants
+
+    token = (
+        AccessToken(orchestrator.api_key, orchestrator.api_secret)
+        .with_identity("eval-synthetic-caller")
+        .with_ttl(timedelta(seconds=600))
+        .with_grants(
+            VideoGrants(
+                room_join=True,
+                room=room_name,
+                can_publish=True,
+                can_subscribe=True,
+            )
+        )
+        .with_attributes({"sip.callID": call_id})
+    )
+
+    return ParticipantToken(
+        token=token.to_jwt(),
+        identity="eval-synthetic-caller",
+        room_name=room_name,
+    )
+
+
 def _extract_turn_texts(scenario: EvalScenario) -> list[str]:
     """Extract plain-text user turns from a scenario.
 
@@ -176,7 +219,7 @@ async def run_voice_scenario(
     Orchestrates the full Option B flow:
         1. Resolve persona → VoiceProfile
         2. Create LiveKit room
-        3. Generate participant tokens
+        3. Generate call_id and participant token (with sip.callID attribute)
         4. Run synthetic call (TTS turns → agent responds)
         5. Collect results from DB via VoiceResultCollector
         6. Convert to ConversationRecord for evaluators
@@ -186,8 +229,8 @@ async def run_voice_scenario(
         config: Voice eval configuration (credentials, timeouts).
         session: Database session for result collection.
         caller_factory: Factory for creating synthetic callers. If None,
-            the call setup is performed but no audio is published (useful
-            for integration testing the wiring without livekit-rtc).
+            a default ``SyntheticCaller`` is created that connects via
+            livekit-rtc and publishes TTS audio into the room.
 
     Returns:
         ConversationRecord ready for the evaluator pipeline.
@@ -225,39 +268,38 @@ async def run_voice_scenario(
             },
         )
 
-        # 2. Generate tokens
-        caller_token = orchestrator.generate_token(
-            created_room_name,
-            identity="eval-synthetic-caller",
-            can_publish=True,
-            can_subscribe=True,
+        # 2. Generate call_id and participant token.
+        # The call_id is embedded in participant attributes so the LiveKit
+        # agent reads it from attrs["sip.callID"] (same key as real SIP calls).
+        call_id = f"eval-{uuid.uuid4().hex[:16]}"
+        caller_token = _generate_caller_token(
+            orchestrator,
+            room_name=created_room_name,
+            call_id=call_id,
         )
-        # 3. Run synthetic call (bounded by call_timeout_s)
-        if caller_factory is not None:
-            call_id = await asyncio.wait_for(
-                caller_factory.run_call(
-                    room_info=room_info,
-                    caller_token=caller_token.token,
-                    turns=turn_texts,
-                    voice_profile=voice_profile,
-                    tts_engine=tts_engine,
-                ),
-                timeout=config.call_timeout_s,
-            )
-        else:
-            # No caller factory — return empty record for wiring tests.
-            # In production, a SyntheticCaller implementation is required.
-            logger.warning(
-                "No caller_factory provided — voice eval room created but "
-                "no synthetic call placed. Returning empty ConversationRecord.",
-                extra={
-                    "room_name": created_room_name,
-                    "scenario_id": scenario.scenario_id,
-                },
-            )
-            return ConversationRecord(scenario=scenario)
 
-        # 4. Collect results
+        # 3. Resolve caller factory (use default SyntheticCaller if none)
+        if caller_factory is None:
+            from services.eval_service._synthetic_caller import SyntheticCaller
+
+            caller_factory = SyntheticCaller(
+                livekit_url=config.livekit_url,
+            )
+
+        # 4. Run synthetic call (bounded by call_timeout_s)
+        call_id = await asyncio.wait_for(
+            caller_factory.run_call(
+                room_info=room_info,
+                caller_token=caller_token.token,
+                turns=turn_texts,
+                voice_profile=voice_profile,
+                tts_engine=tts_engine,
+                call_id=call_id,
+            ),
+            timeout=config.call_timeout_s,
+        )
+
+        # 5. Collect results
         assert isinstance(created_room_name, str)
         room_name = created_room_name
         collector = VoiceResultCollector(session)
@@ -277,7 +319,7 @@ async def run_voice_scenario(
             },
         )
 
-        # 5. Convert to ConversationRecord
+        # 6. Convert to ConversationRecord
         return voice_result.to_conversation_record(scenario)
 
     finally:

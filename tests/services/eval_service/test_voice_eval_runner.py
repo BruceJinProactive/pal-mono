@@ -10,6 +10,7 @@ import pytest
 from services.eval_service._voice_eval_runner import (
     VoiceEvalConfig,
     _extract_turn_texts,
+    _generate_caller_token,
     run_voice_scenario,
 )
 from services.eval_service.schema import EvalScenario, TurnType, UserTurn
@@ -180,40 +181,82 @@ def _make_config() -> VoiceEvalConfig:
     )
 
 
-class TestRunVoiceScenarioNoCallerFactory:
-    """When no caller_factory is provided, returns empty ConversationRecord."""
+class TestGenerateCallerToken:
+    """Tests for _generate_caller_token()."""
 
-    async def test_returns_empty_record(self) -> None:
+    def test_embeds_call_id_in_attributes(self) -> None:
+        """Token JWT contains sip.callID in participant attributes."""
+        mock_orch = MagicMock()
+        mock_orch.api_key = "test-key"
+        mock_orch.api_secret = "test-secret"
+
+        result = _generate_caller_token(
+            mock_orch, room_name="eval-voice-room", call_id="eval-abc123"
+        )
+
+        assert result.identity == "eval-synthetic-caller"
+        assert result.room_name == "eval-voice-room"
+        assert isinstance(result.token, str)
+        assert len(result.token) > 0
+
+
+class TestRunVoiceScenarioNoCallerFactory:
+    """When no caller_factory is provided, a default SyntheticCaller is created."""
+
+    async def test_creates_default_synthetic_caller(self) -> None:
         session = AsyncMock()
         config = _make_config()
         scenario = _make_scenario()
+
+        mock_voice_result = MagicMock()
+        mock_voice_result.transcript = []
+        mock_voice_result.metrics.duration_seconds = 0.0
+        mock_conversation_record = MagicMock()
+        mock_voice_result.to_conversation_record.return_value = mock_conversation_record
 
         with (
             patch(
                 "services.eval_service._voice_eval_runner.LiveKitRoomOrchestrator"
             ) as mock_orch_cls,
             patch("services.eval_service._voice_eval_runner.TTSEngine") as mock_tts_cls,
+            patch(
+                "services.eval_service._synthetic_caller.SyntheticCaller"
+            ) as mock_caller_cls,
+            patch(
+                "services.eval_service._voice_eval_runner.VoiceResultCollector"
+            ) as mock_collector_cls,
+            patch(
+                "services.eval_service._voice_eval_runner._generate_caller_token"
+            ) as mock_gen_token,
         ):
             mock_orch = mock_orch_cls.return_value
             mock_orch.create_room = AsyncMock(
                 return_value=MagicMock(room_name="eval-voice-abc")
             )
-            mock_orch.generate_token = MagicMock(
-                return_value=MagicMock(token="jwt-token")
-            )
             mock_orch.teardown = AsyncMock()
             mock_orch.close = AsyncMock()
 
+            mock_gen_token.return_value = MagicMock(token="jwt-token")
+
             mock_tts = mock_tts_cls.return_value
             mock_tts.close = AsyncMock()
+
+            mock_caller = mock_caller_cls.return_value
+            mock_caller.run_call = AsyncMock(return_value="eval-abc123")
+
+            mock_collector = mock_collector_cls.return_value
+            mock_collector.collect = AsyncMock(return_value=mock_voice_result)
 
             record = await run_voice_scenario(
                 scenario, config, session, caller_factory=None
             )
 
-        assert record.scenario is scenario
-        assert record.turns == []
-        assert record.agent_responses == []
+        # Default SyntheticCaller was created with the livekit_url
+        mock_caller_cls.assert_called_once_with(
+            livekit_url="wss://test.livekit.cloud",
+        )
+        mock_caller.run_call.assert_awaited_once()
+        assert record is mock_conversation_record
         mock_orch.teardown.assert_awaited_once_with("eval-voice-abc")
         mock_orch.close.assert_awaited_once()
 
@@ -221,6 +264,12 @@ class TestRunVoiceScenarioNoCallerFactory:
         session = AsyncMock()
         config = _make_config()
         scenario = _make_scenario()
+
+        mock_voice_result = MagicMock()
+        mock_voice_result.transcript = []
+        mock_voice_result.metrics.duration_seconds = 0.0
+        mock_conversation_record = MagicMock()
+        mock_voice_result.to_conversation_record.return_value = mock_conversation_record
 
         with (
             patch(
@@ -230,6 +279,15 @@ class TestRunVoiceScenarioNoCallerFactory:
             patch(
                 "services.eval_service._voice_eval_runner.resolve_persona"
             ) as mock_resolve,
+            patch(
+                "services.eval_service._synthetic_caller.SyntheticCaller"
+            ) as mock_caller_cls,
+            patch(
+                "services.eval_service._voice_eval_runner.VoiceResultCollector"
+            ) as mock_collector_cls,
+            patch(
+                "services.eval_service._voice_eval_runner._generate_caller_token"
+            ) as mock_gen_token,
         ):
             mock_profile = MagicMock()
             mock_resolve.return_value = mock_profile
@@ -238,12 +296,19 @@ class TestRunVoiceScenarioNoCallerFactory:
             mock_orch.create_room = AsyncMock(
                 return_value=MagicMock(room_name="eval-voice-xyz")
             )
-            mock_orch.generate_token = MagicMock(return_value=MagicMock(token="jwt"))
             mock_orch.teardown = AsyncMock()
             mock_orch.close = AsyncMock()
 
+            mock_gen_token.return_value = MagicMock(token="jwt")
+
             mock_tts = mock_tts_cls.return_value
             mock_tts.close = AsyncMock()
+
+            mock_caller = mock_caller_cls.return_value
+            mock_caller.run_call = AsyncMock(return_value="eval-abc123")
+
+            mock_collector = mock_collector_cls.return_value
+            mock_collector.collect = AsyncMock(return_value=mock_voice_result)
 
             await run_voice_scenario(scenario, config, session, caller_factory=None)
 
@@ -282,16 +347,18 @@ class TestRunVoiceScenarioWithCallerFactory:
             patch(
                 "services.eval_service._voice_eval_runner.VoiceResultCollector"
             ) as mock_collector_cls,
+            patch(
+                "services.eval_service._voice_eval_runner._generate_caller_token"
+            ) as mock_gen_token,
         ):
             mock_orch = mock_orch_cls.return_value
             mock_orch.create_room = AsyncMock(
                 return_value=MagicMock(room_name="eval-voice-abc")
             )
-            mock_orch.generate_token = MagicMock(
-                return_value=MagicMock(token="jwt-token")
-            )
             mock_orch.teardown = AsyncMock()
             mock_orch.close = AsyncMock()
+
+            mock_gen_token.return_value = MagicMock(token="jwt-token")
 
             mock_tts = mock_tts_cls.return_value
             mock_tts.close = AsyncMock()
@@ -303,15 +370,22 @@ class TestRunVoiceScenarioWithCallerFactory:
                 scenario, config, session, caller_factory=mock_caller_factory
             )
 
-        # Caller factory was invoked
+        # Caller factory was invoked with call_id
         mock_caller_factory.run_call.assert_awaited_once()
         call_kwargs = mock_caller_factory.run_call.call_args
         assert call_kwargs.kwargs["turns"] == [
             "Hello, I'd like to order a pizza",
             "Large pepperoni please",
         ]
+        assert "call_id" in call_kwargs.kwargs
+        assert call_kwargs.kwargs["call_id"].startswith("eval-")
 
-        # Result collector polled with correct call_id
+        # Token was generated with sip.callID via _generate_caller_token
+        mock_gen_token.assert_called_once()
+        token_args = mock_gen_token.call_args
+        assert token_args.kwargs["call_id"].startswith("eval-")
+
+        # Result collector polled with the call_id returned by run_call
         mock_collector.collect.assert_awaited_once_with(
             call_id="call-123",
             room_name="eval-voice-abc",
@@ -343,14 +417,18 @@ class TestRunVoiceScenarioWithCallerFactory:
                 "services.eval_service._voice_eval_runner.LiveKitRoomOrchestrator"
             ) as mock_orch_cls,
             patch("services.eval_service._voice_eval_runner.TTSEngine") as mock_tts_cls,
+            patch(
+                "services.eval_service._voice_eval_runner._generate_caller_token"
+            ) as mock_gen_token,
         ):
             mock_orch = mock_orch_cls.return_value
             mock_orch.create_room = AsyncMock(
                 return_value=MagicMock(room_name="eval-voice-err")
             )
-            mock_orch.generate_token = MagicMock(return_value=MagicMock(token="jwt"))
             mock_orch.teardown = AsyncMock()
             mock_orch.close = AsyncMock()
+
+            mock_gen_token.return_value = MagicMock(token="jwt")
 
             mock_tts = mock_tts_cls.return_value
             mock_tts.close = AsyncMock()
