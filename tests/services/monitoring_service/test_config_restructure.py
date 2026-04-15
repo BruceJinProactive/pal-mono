@@ -5,6 +5,7 @@ and that update_config handles context, pass_criteria, fail_criteria.
 """
 
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -119,6 +120,7 @@ class TestUpdateConfigContextField:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
         )
 
         await update_config(
@@ -173,6 +175,7 @@ class TestUpdateConfigContextField:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
         )
 
         await update_config(
@@ -235,6 +238,7 @@ class TestUpdateConfigCriteria:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
         )
 
         await update_config(
@@ -292,6 +296,7 @@ class TestUpdateConfigCriteria:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
         )
 
         await update_config(
@@ -357,6 +362,7 @@ class TestUpdateConfigReferenceImageMetadata:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
         )
 
         await update_config(
@@ -419,3 +425,477 @@ class TestUploadReferenceImagesFlagValidation:
             )
         assert exc_info.value.status_code == 400
         assert "invalid" in str(exc_info.value.detail).lower()
+
+
+class TestCreateConfigWithTags:
+    """Test that create_config stores tags on the monitoring config."""
+
+    @pytest.mark.asyncio
+    async def test_create_with_tags(self, mocker) -> None:
+        """Tags provided at creation should be stored on the config."""
+        from services.monitoring_service._implementation import create_config
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+
+        mock_project = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._implementation.ProjectRepositoryAsync"
+        ).return_value.get_project = AsyncMock(return_value=mock_project)
+
+        mock_source = MagicMock()
+        mock_source.project_id = project_id
+        mocker.patch(
+            "services.monitoring_service._implementation.SignalSourceRepositoryAsync"
+        ).return_value.get_by_id = AsyncMock(return_value=mock_source)
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_name = AsyncMock(return_value=None)
+        created = MagicMock()
+        created.id = uuid.uuid4()
+        mock_config_repo.return_value.create = AsyncMock(return_value=created)
+
+        from api.schemas.operations.monitoring import (
+            CreateMonitoringConfigRequest,
+            MonitoringRules,
+        )
+
+        request = CreateMonitoringConfigRequest(
+            signal_source_id=uuid.uuid4(),
+            name="Kitchen Check",
+            description=None,
+            rules=MonitoringRules(
+                context="Kitchen area",
+                prompt=None,
+                structured_output=None,
+                monitoring_time_window=None,
+            ),
+            model=None,
+            enabled=True,
+            tags=["Food consistency", "Cleanliness"],
+        )
+
+        await create_config(session=session, project_id=project_id, request=request)
+
+        create_call = mock_config_repo.return_value.create.call_args
+        config_obj = create_call[0][0]
+        assert config_obj.tags == ["Food consistency", "Cleanliness"]
+
+    @pytest.mark.asyncio
+    async def test_create_with_empty_tags(self, mocker) -> None:
+        """Empty tags list should be stored as empty list."""
+        from services.monitoring_service._implementation import create_config
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+
+        mock_project = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._implementation.ProjectRepositoryAsync"
+        ).return_value.get_project = AsyncMock(return_value=mock_project)
+
+        mock_source = MagicMock()
+        mock_source.project_id = project_id
+        mocker.patch(
+            "services.monitoring_service._implementation.SignalSourceRepositoryAsync"
+        ).return_value.get_by_id = AsyncMock(return_value=mock_source)
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_name = AsyncMock(return_value=None)
+        created = MagicMock()
+        created.id = uuid.uuid4()
+        mock_config_repo.return_value.create = AsyncMock(return_value=created)
+
+        from api.schemas.operations.monitoring import (
+            CreateMonitoringConfigRequest,
+            MonitoringRules,
+        )
+
+        request = CreateMonitoringConfigRequest(
+            signal_source_id=uuid.uuid4(),
+            name="No Tags Config",
+            description=None,
+            rules=MonitoringRules(
+                context="Test",
+                prompt=None,
+                structured_output=None,
+                monitoring_time_window=None,
+            ),
+            model=None,
+            enabled=True,
+            tags=[],
+        )
+
+        await create_config(session=session, project_id=project_id, request=request)
+
+        create_call = mock_config_repo.return_value.create.call_args
+        config_obj = create_call[0][0]
+        assert config_obj.tags == []
+
+
+class TestUpdateConfigTags:
+    """Test that update_config handles tags correctly."""
+
+    @pytest.mark.asyncio
+    async def test_add_tags_to_config_with_no_tags(self, mocker) -> None:
+        """Adding tags to a config that has empty tags list."""
+        from services.monitoring_service._implementation import update_config
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        config_id = uuid.uuid4()
+
+        mock_project = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._implementation.ProjectRepositoryAsync"
+        ).return_value.get_project = AsyncMock(return_value=mock_project)
+
+        mock_config = MagicMock()
+        mock_config.project_id = project_id
+        mock_config.name = "Test"
+        mock_config.tags = []
+        mock_config.rules = {"context": "test"}
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+        mock_config_repo.return_value.get_by_name = AsyncMock(return_value=None)
+        mock_config_repo.return_value.update = AsyncMock(return_value=MagicMock())
+
+        request = UpdateMonitoringConfigRequest(
+            tags=["Food consistency", "Cleanliness"],
+            name=None,
+            description=None,
+            context=None,
+            prompt=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+        )
+
+        await update_config(
+            session=session,
+            project_id=project_id,
+            config_id=config_id,
+            request=request,
+        )
+
+        update_call = mock_config_repo.return_value.update.call_args
+        assert update_call.kwargs.get("tags") == ["Food consistency", "Cleanliness"]
+
+    @pytest.mark.asyncio
+    async def test_add_tags_to_config_with_existing_tags(self, mocker) -> None:
+        """Replacing tags on a config that already has tags (full list replacement)."""
+        from services.monitoring_service._implementation import update_config
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        config_id = uuid.uuid4()
+
+        mock_project = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._implementation.ProjectRepositoryAsync"
+        ).return_value.get_project = AsyncMock(return_value=mock_project)
+
+        mock_config = MagicMock()
+        mock_config.project_id = project_id
+        mock_config.name = "Test"
+        mock_config.tags = ["Old tag"]
+        mock_config.rules = {"context": "test"}
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+        mock_config_repo.return_value.get_by_name = AsyncMock(return_value=None)
+        mock_config_repo.return_value.update = AsyncMock(return_value=MagicMock())
+
+        # Replace entire list: old tag + new tags
+        request = UpdateMonitoringConfigRequest(
+            tags=["Old tag", "New tag 1", "New tag 2"],
+            name=None,
+            description=None,
+            context=None,
+            prompt=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+        )
+
+        await update_config(
+            session=session,
+            project_id=project_id,
+            config_id=config_id,
+            request=request,
+        )
+
+        update_call = mock_config_repo.return_value.update.call_args
+        assert update_call.kwargs.get("tags") == ["Old tag", "New tag 1", "New tag 2"]
+
+    @pytest.mark.asyncio
+    async def test_update_one_tag_in_list(self, mocker) -> None:
+        """Updating one tag means sending the full list with the changed item."""
+        from services.monitoring_service._implementation import update_config
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        config_id = uuid.uuid4()
+
+        mock_project = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._implementation.ProjectRepositoryAsync"
+        ).return_value.get_project = AsyncMock(return_value=mock_project)
+
+        mock_config = MagicMock()
+        mock_config.project_id = project_id
+        mock_config.name = "Test"
+        mock_config.tags = ["Food consistency", "Cleanliness", "Wait time"]
+        mock_config.rules = {"context": "test"}
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+        mock_config_repo.return_value.get_by_name = AsyncMock(return_value=None)
+        mock_config_repo.return_value.update = AsyncMock(return_value=MagicMock())
+
+        # "Cleanliness" → "Kitchen cleanliness" (send full updated list)
+        request = UpdateMonitoringConfigRequest(
+            tags=["Food consistency", "Kitchen cleanliness", "Wait time"],
+            name=None,
+            description=None,
+            context=None,
+            prompt=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+        )
+
+        await update_config(
+            session=session,
+            project_id=project_id,
+            config_id=config_id,
+            request=request,
+        )
+
+        update_call = mock_config_repo.return_value.update.call_args
+        assert update_call.kwargs.get("tags") == [
+            "Food consistency",
+            "Kitchen cleanliness",
+            "Wait time",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_remove_one_tag_from_list(self, mocker) -> None:
+        """Removing one tag means sending the list without that item."""
+        from services.monitoring_service._implementation import update_config
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        config_id = uuid.uuid4()
+
+        mock_project = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._implementation.ProjectRepositoryAsync"
+        ).return_value.get_project = AsyncMock(return_value=mock_project)
+
+        mock_config = MagicMock()
+        mock_config.project_id = project_id
+        mock_config.name = "Test"
+        mock_config.tags = ["Food consistency", "Cleanliness", "Wait time"]
+        mock_config.rules = {"context": "test"}
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+        mock_config_repo.return_value.get_by_name = AsyncMock(return_value=None)
+        mock_config_repo.return_value.update = AsyncMock(return_value=MagicMock())
+
+        # Remove "Cleanliness" — send list without it
+        request = UpdateMonitoringConfigRequest(
+            tags=["Food consistency", "Wait time"],
+            name=None,
+            description=None,
+            context=None,
+            prompt=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+        )
+
+        await update_config(
+            session=session,
+            project_id=project_id,
+            config_id=config_id,
+            request=request,
+        )
+
+        update_call = mock_config_repo.return_value.update.call_args
+        assert update_call.kwargs.get("tags") == ["Food consistency", "Wait time"]
+
+    @pytest.mark.asyncio
+    async def test_clear_all_tags(self, mocker) -> None:
+        """Passing empty list should clear all tags."""
+        from services.monitoring_service._implementation import update_config
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        config_id = uuid.uuid4()
+
+        mock_project = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._implementation.ProjectRepositoryAsync"
+        ).return_value.get_project = AsyncMock(return_value=mock_project)
+
+        mock_config = MagicMock()
+        mock_config.project_id = project_id
+        mock_config.name = "Test"
+        mock_config.tags = ["Food consistency", "Cleanliness"]
+        mock_config.rules = {"context": "test"}
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+        mock_config_repo.return_value.get_by_name = AsyncMock(return_value=None)
+        mock_config_repo.return_value.update = AsyncMock(return_value=MagicMock())
+
+        request = UpdateMonitoringConfigRequest(
+            tags=[],
+            name=None,
+            description=None,
+            context=None,
+            prompt=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+        )
+
+        await update_config(
+            session=session,
+            project_id=project_id,
+            config_id=config_id,
+            request=request,
+        )
+
+        update_call = mock_config_repo.return_value.update.call_args
+        assert update_call.kwargs.get("tags") == []
+
+    @pytest.mark.asyncio
+    async def test_tags_none_leaves_unchanged(self, mocker) -> None:
+        """When tags is None (omitted), no update should be made at all."""
+        from services.monitoring_service._implementation import update_config
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        config_id = uuid.uuid4()
+
+        mock_project = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._implementation.ProjectRepositoryAsync"
+        ).return_value.get_project = AsyncMock(return_value=mock_project)
+
+        mock_config = MagicMock()
+        mock_config.project_id = project_id
+        mock_config.name = "Test"
+        mock_config.tags = ["Existing tag"]
+        mock_config.rules = {"context": "test"}
+
+        mock_config_repo = mocker.patch(
+            "services.monitoring_service._implementation.MonitoringConfigRepositoryAsync"
+        )
+        mock_config_repo.return_value.get_by_id = AsyncMock(return_value=mock_config)
+        mock_config_repo.return_value.get_by_name = AsyncMock(return_value=None)
+        mock_config_repo.return_value.update = AsyncMock(return_value=MagicMock())
+
+        request = UpdateMonitoringConfigRequest(
+            tags=None,
+            name=None,
+            description=None,
+            context=None,
+            prompt=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+        )
+
+        result = await update_config(
+            session=session,
+            project_id=project_id,
+            config_id=config_id,
+            request=request,
+        )
+
+        # No fields changed → update should NOT be called, returns original config
+        mock_config_repo.return_value.update.assert_not_called()
+        assert result[0] == mock_config
+
+
+class TestBuildConfigResponseTags:
+    """Test that build_config_response includes tags."""
+
+    @pytest.mark.asyncio
+    async def test_tags_included_in_response(self) -> None:
+        """Tags from the config should appear in the response."""
+        from services.monitoring_service._implementation import build_config_response
+
+        now = datetime.now(tz=timezone.utc)
+        mock_config = MagicMock()
+        mock_config.id = uuid.uuid4()
+        mock_config.project_id = uuid.uuid4()
+        mock_config.signal_source_id = uuid.uuid4()
+        mock_config.name = "Test"
+        mock_config.description = None
+        mock_config.rules = {"context": "test", "reference_images": []}
+        mock_config.tags = ["Food consistency", "Cleanliness"]
+        mock_config.enabled = True
+        mock_config.created_at = now
+        mock_config.updated_at = now
+
+        response = await build_config_response(mock_config)
+        assert response.tags == ["Food consistency", "Cleanliness"]
+
+    @pytest.mark.asyncio
+    async def test_none_tags_returns_empty_list(self) -> None:
+        """When config.tags is None, response should return empty list."""
+        from services.monitoring_service._implementation import build_config_response
+
+        now = datetime.now(tz=timezone.utc)
+        mock_config = MagicMock()
+        mock_config.id = uuid.uuid4()
+        mock_config.project_id = uuid.uuid4()
+        mock_config.signal_source_id = uuid.uuid4()
+        mock_config.name = "Test"
+        mock_config.description = None
+        mock_config.rules = {"context": "test", "reference_images": []}
+        mock_config.tags = None
+        mock_config.enabled = True
+        mock_config.created_at = now
+        mock_config.updated_at = now
+
+        response = await build_config_response(mock_config)
+        assert response.tags == []

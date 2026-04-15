@@ -36,6 +36,7 @@ class TestCreateMonitoringConfigValidation:
                 structured_output=None,
                 model=None,
                 enabled=True,
+                tags=None,
                 monitoring_time_window=None,
                 reference_images=[],
                 reference_image_descriptions=[],
@@ -67,6 +68,7 @@ class TestCreateMonitoringConfigValidation:
                 structured_output=None,
                 model=None,
                 enabled=True,
+                tags=None,
                 monitoring_time_window=None,
                 reference_images=[],
                 reference_image_descriptions=[],
@@ -95,6 +97,7 @@ class TestCreateMonitoringConfigValidation:
                 structured_output=None,
                 model=None,
                 enabled=True,
+                tags=None,
                 monitoring_time_window=None,
                 reference_images=[],
                 reference_image_descriptions=[],
@@ -126,6 +129,7 @@ class TestCreateMonitoringConfigValidation:
                 structured_output=None,
                 model=None,
                 enabled=True,
+                tags=None,
                 monitoring_time_window=None,
                 reference_images=[mock_image],
                 reference_image_descriptions=["desc1"],
@@ -155,6 +159,7 @@ class TestCreateMonitoringConfigValidation:
                 structured_output=None,
                 model=None,
                 enabled=True,
+                tags=None,
                 monitoring_time_window=None,
                 reference_images=[mock_image],
                 reference_image_descriptions=["desc1"],
@@ -183,6 +188,7 @@ class TestCreateMonitoringConfigValidation:
                 structured_output=None,
                 model=None,
                 enabled=True,
+                tags=None,
                 monitoring_time_window=None,
                 reference_images=[],
                 reference_image_descriptions=[],
@@ -211,6 +217,7 @@ class TestCreateMonitoringConfigValidation:
                 structured_output=None,
                 model=None,
                 enabled=True,
+                tags=None,
                 monitoring_time_window=None,
                 reference_images=[],
                 reference_image_descriptions=[],
@@ -250,6 +257,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[mock_image],
                 add_descriptions=["desc1"],
                 add_image_flags=["pass", "fail"],  # 2 flags, 1 image
@@ -280,6 +288,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[MagicMock()],
                 add_descriptions=["desc1"],
                 add_image_flags=["bad_value"],
@@ -310,6 +319,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[],
                 add_descriptions=[],
                 add_image_flags=[],
@@ -340,6 +350,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[],
                 add_descriptions=[],
                 add_image_flags=[],
@@ -376,6 +387,7 @@ class TestUpdateMonitoringConfigValidation:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
             add_images=[],
             add_descriptions=[],
             add_image_flags=[],
@@ -405,6 +417,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[],
                 add_descriptions=[],
                 add_image_flags=[],
@@ -435,6 +448,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[],
                 add_descriptions=[],
                 add_image_flags=[],
@@ -473,6 +487,7 @@ class TestUpdateMonitoringConfigValidation:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
             add_images=[],
             add_descriptions=[],
             add_image_flags=[],
@@ -508,6 +523,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[],
                 add_descriptions=[],
                 add_image_flags=[],
@@ -540,6 +556,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[],
                 add_descriptions=[],
                 add_image_flags=[],
@@ -572,6 +589,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[],
                 add_descriptions=[],
                 add_image_flags=[],
@@ -604,6 +622,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[],
                 add_descriptions=[],
                 add_image_flags=[],
@@ -636,6 +655,7 @@ class TestUpdateMonitoringConfigValidation:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
                 add_images=[],
                 add_descriptions=[],
                 add_image_flags=[],
@@ -676,6 +696,7 @@ class TestUpdateMonitoringConfigValidation:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
             add_images=[],
             add_descriptions=[],
             add_image_flags=[],
@@ -719,6 +740,7 @@ class TestUpdateMonitoringConfigValidation:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
             add_images=[],
             add_descriptions=[],
             add_image_flags=[],
@@ -730,3 +752,208 @@ class TestUpdateMonitoringConfigValidation:
         assert result == mock_result
         call_kwargs = mock_update.call_args.kwargs
         assert call_kwargs["update_image_metadata"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Tags validation tests (create + update)
+# ---------------------------------------------------------------------------
+
+
+class TestCreateTagsValidation:
+    """Tags JSON parsing validation in create_monitoring_config."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_tags_json_raises_400(self) -> None:
+        """Should raise 400 when tags is not valid JSON."""
+        from api.routes.operation import create_monitoring_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            await create_monitoring_config(
+                project_id=uuid.uuid4(),
+                signal_source_id=uuid.uuid4(),
+                name="test",
+                description=None,
+                monitoring_context="test context",
+                prompt=None,
+                pass_criteria=None,
+                fail_criteria=None,
+                structured_output=None,
+                model=None,
+                enabled=True,
+                tags="not-valid-json{",
+                monitoring_time_window=None,
+                reference_images=[],
+                reference_image_descriptions=[],
+                reference_image_flags=[],
+                user_context=MagicMock(),
+                session=AsyncMock(),
+            )
+        assert exc_info.value.status_code == 400
+        assert "tags" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_tags_not_list_of_strings_raises_400(self) -> None:
+        """Should raise 400 when tags is valid JSON but not a list of strings."""
+        from api.routes.operation import create_monitoring_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            await create_monitoring_config(
+                project_id=uuid.uuid4(),
+                signal_source_id=uuid.uuid4(),
+                name="test",
+                description=None,
+                monitoring_context="test context",
+                prompt=None,
+                pass_criteria=None,
+                fail_criteria=None,
+                structured_output=None,
+                model=None,
+                enabled=True,
+                tags='{"key": "value"}',
+                monitoring_time_window=None,
+                reference_images=[],
+                reference_image_descriptions=[],
+                reference_image_flags=[],
+                user_context=MagicMock(),
+                session=AsyncMock(),
+            )
+        assert exc_info.value.status_code == 400
+        assert "tags" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_valid_tags_parsed_successfully(self, mocker) -> None:
+        """Valid tags JSON should parse and reach service layer."""
+        from api.routes.operation import create_monitoring_config
+
+        mock_result = MagicMock()
+        mock_create = mocker.patch(
+            "api.routes.operation._monitoring.create_monitoring_config",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        )
+
+        result = await create_monitoring_config(
+            project_id=uuid.uuid4(),
+            signal_source_id=uuid.uuid4(),
+            name="test",
+            description=None,
+            monitoring_context="test context",
+            prompt=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=True,
+            tags='["Food consistency", "Cleanliness"]',
+            monitoring_time_window=None,
+            reference_images=[],
+            reference_image_descriptions=[],
+            reference_image_flags=[],
+            user_context=MagicMock(),
+            session=AsyncMock(),
+        )
+        assert result == mock_result
+        call_kwargs = mock_create.call_args.kwargs
+        assert call_kwargs["request"].tags == ["Food consistency", "Cleanliness"]
+
+
+class TestUpdateTagsValidation:
+    """Tags JSON parsing validation in update_monitoring_config."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_tags_json_raises_400(self) -> None:
+        """Should raise 400 when tags is not valid JSON."""
+        from api.routes.operation import update_monitoring_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_monitoring_config(
+                project_id=uuid.uuid4(),
+                config_id=uuid.uuid4(),
+                name=None,
+                description=None,
+                prompt=None,
+                monitoring_context=None,
+                pass_criteria=None,
+                fail_criteria=None,
+                structured_output=None,
+                model=None,
+                enabled=None,
+                monitoring_time_window=None,
+                tags="bad-json!",
+                add_images=[],
+                add_descriptions=[],
+                add_image_flags=[],
+                remove_image_ids=[],
+                update_descriptions=[],
+                user_context=MagicMock(),
+                session=AsyncMock(),
+            )
+        assert exc_info.value.status_code == 400
+        assert "tags" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_tags_not_list_of_strings_raises_400(self) -> None:
+        """Should raise 400 when tags is valid JSON but not a list of strings."""
+        from api.routes.operation import update_monitoring_config
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_monitoring_config(
+                project_id=uuid.uuid4(),
+                config_id=uuid.uuid4(),
+                name=None,
+                description=None,
+                prompt=None,
+                monitoring_context=None,
+                pass_criteria=None,
+                fail_criteria=None,
+                structured_output=None,
+                model=None,
+                enabled=None,
+                monitoring_time_window=None,
+                tags="42",
+                add_images=[],
+                add_descriptions=[],
+                add_image_flags=[],
+                remove_image_ids=[],
+                update_descriptions=[],
+                user_context=MagicMock(),
+                session=AsyncMock(),
+            )
+        assert exc_info.value.status_code == 400
+        assert "tags" in str(exc_info.value.detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_valid_tags_parsed_successfully(self, mocker) -> None:
+        """Valid tags JSON should parse and reach service layer."""
+        from api.routes.operation import update_monitoring_config
+
+        mock_result = MagicMock()
+        mocker.patch(
+            "api.routes.operation._monitoring.update_monitoring_config",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        )
+
+        result = await update_monitoring_config(
+            project_id=uuid.uuid4(),
+            config_id=uuid.uuid4(),
+            name=None,
+            description=None,
+            prompt=None,
+            monitoring_context=None,
+            pass_criteria=None,
+            fail_criteria=None,
+            structured_output=None,
+            model=None,
+            enabled=None,
+            monitoring_time_window=None,
+            tags='["Food consistency"]',
+            add_images=[],
+            add_descriptions=[],
+            add_image_flags=[],
+            remove_image_ids=[],
+            update_descriptions=[],
+            user_context=MagicMock(),
+            session=AsyncMock(),
+        )
+        assert result == mock_result

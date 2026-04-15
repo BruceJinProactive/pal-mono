@@ -280,6 +280,16 @@ class CreateMonitoringConfigRequest(BaseModel):
         description="LLM model configuration override (provider and model)",
     )
     enabled: bool = Field(True, description="Whether monitoring is enabled")
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Tags for grouping configs (e.g. 'Food consistency', 'Wait time')",
+    )
+
+    @field_validator("tags")
+    @classmethod
+    def strip_tags(cls, v: list[str]) -> list[str]:
+        """Strip leading/trailing whitespace from each tag."""
+        return [t.strip() for t in v]
 
 
 class UpdateMonitoringConfigRequest(BaseModel):
@@ -328,6 +338,18 @@ class UpdateMonitoringConfigRequest(BaseModel):
         None,
         description="Updated time window configuration to restrict when monitoring runs execute",
     )
+    tags: list[str] | None = Field(
+        None,
+        description="Updated tags list. Pass [] to clear all tags. Omit to leave unchanged.",
+    )
+
+    @field_validator("tags")
+    @classmethod
+    def strip_tags(cls, v: list[str] | None) -> list[str] | None:
+        """Strip leading/trailing whitespace from each tag."""
+        if v is None:
+            return v
+        return [t.strip() for t in v]
 
     @field_validator("context", "prompt", mode="before")
     @classmethod
@@ -396,6 +418,7 @@ class MonitoringConfigResponse(BaseModel):
     name: str
     description: str | None
     rules: dict
+    tags: list[str]
     enabled: bool
     created_at: datetime
     updated_at: datetime | None

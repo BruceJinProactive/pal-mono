@@ -388,6 +388,7 @@ async def create_config(
         name=request.name,
         description=request.description,
         rules=rules_dict,
+        tags=request.tags,
         enabled=request.enabled,
     )
 
@@ -569,6 +570,8 @@ async def update_config(
         updates["description"] = request.description
     if request.enabled is not None:
         updates["enabled"] = request.enabled
+    if request.tags is not None:
+        updates["tags"] = request.tags
 
     # Handle prompt update (part of rules)
     if request.prompt is not None:
@@ -1472,6 +1475,7 @@ async def build_config_response(config: MonitoringConfig) -> MonitoringConfigRes
         name=config.name,
         description=config.description,
         rules=transformed_rules,
+        tags=config.tags or [],
         enabled=config.enabled,
         created_at=config.created_at,
         updated_at=config.updated_at,

@@ -610,6 +610,7 @@ async def create_monitoring_config(
     structured_output: str | None = Form(None),
     model: str | None = Form(None),
     enabled: bool = Form(True),
+    tags: str | None = Form(None, description="JSON array of tag strings"),
     monitoring_time_window: str | None = Form(None),
     reference_images: list[UploadFile] = File(default=[]),
     reference_image_descriptions: list[str] = Form(default=[]),
@@ -733,6 +734,24 @@ async def create_monitoring_config(
                 detail=f"Invalid monitoring_time_window format: {str(e)}",
             )
 
+    # Parse tags if provided
+    parsed_tags: list[str] = []
+    if tags:
+        try:
+            parsed_tags = json.loads(tags)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid tags format: {e!s}",
+            ) from e
+        if not isinstance(parsed_tags, list) or not all(
+            isinstance(t, str) for t in parsed_tags
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="tags must be a JSON array of strings",
+            )
+
     # Build the request object from form fields
     rules = AIAnalysisRules(
         context=resolved_context,
@@ -751,6 +770,7 @@ async def create_monitoring_config(
         rules=rules,
         model=parsed_model,
         enabled=enabled,
+        tags=parsed_tags,
     )
 
     return await _monitoring.create_monitoring_config(
@@ -872,6 +892,9 @@ async def update_monitoring_config(
     structured_output: str | None = Form(None),
     model: str | None = Form(None),
     enabled: bool | None = Form(None),
+    tags: str | None = Form(
+        None, description="JSON array of tag strings. Pass '[]' to clear."
+    ),
     monitoring_time_window: str | None = Form(None),
     # Reference image operations (send only what changes)
     add_images: list[UploadFile] = File(default=[]),
@@ -1171,6 +1194,24 @@ async def update_monitoring_config(
                 detail=f"Invalid monitoring_time_window format: {str(e)}",
             )
 
+    # Parse tags if provided
+    parsed_tags: list[str] | None = None
+    if tags is not None:
+        try:
+            parsed_tags = json.loads(tags)
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid tags format: {e!s}",
+            ) from e
+        if not isinstance(parsed_tags, list) or not all(
+            isinstance(t, str) for t in parsed_tags
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="tags must be a JSON array of strings",
+            )
+
     # Build request object
     request = UpdateMonitoringConfigRequest(
         name=name,
@@ -1183,6 +1224,7 @@ async def update_monitoring_config(
         model=parsed_model,
         enabled=enabled,
         monitoring_time_window=parsed_time_window,
+        tags=parsed_tags,
     )
 
     return await _monitoring.update_monitoring_config(

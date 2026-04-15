@@ -250,6 +250,7 @@ class TestUpdateMonitoringConfigRequest:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
         )
         assert req.context == "Updated context"
 
@@ -266,6 +267,7 @@ class TestUpdateMonitoringConfigRequest:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
         )
         assert req.pass_criteria == ["New criterion"]
 
@@ -282,6 +284,7 @@ class TestUpdateMonitoringConfigRequest:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
         )
         assert req.fail_criteria == ["New fail criterion"]
 
@@ -298,6 +301,7 @@ class TestUpdateMonitoringConfigRequest:
             model=None,
             enabled=None,
             monitoring_time_window=None,
+            tags=None,
         )
         assert req.context is None
         assert req.prompt is None
@@ -318,6 +322,7 @@ class TestUpdateMonitoringConfigRequest:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
             )
 
     def test_empty_criteria_item_rejected_on_update(self) -> None:
@@ -334,6 +339,7 @@ class TestUpdateMonitoringConfigRequest:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
             )
 
     def test_context_whitespace_only_rejected_on_update(self) -> None:
@@ -350,6 +356,7 @@ class TestUpdateMonitoringConfigRequest:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
             )
 
     def test_pass_criteria_whitespace_only_rejected_on_update(self) -> None:
@@ -366,6 +373,7 @@ class TestUpdateMonitoringConfigRequest:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
             )
 
     def test_fail_criteria_whitespace_only_rejected_on_update(self) -> None:
@@ -382,4 +390,5 @@ class TestUpdateMonitoringConfigRequest:
                 model=None,
                 enabled=None,
                 monitoring_time_window=None,
+                tags=None,
             )
