@@ -346,6 +346,58 @@ class MessageRepositoryAsync:
             logger.error(f"Error retrieving messages: {e}")
             return []
 
+    async def get_all_messages_by_conversation(
+        self, conversation_id: uuid.UUID, batch_size: int = 100
+    ):
+        """
+        Retrieves ALL messages associated with a specific conversation id by paging.
+        Sorts them in chronological order.
+
+        This method pages through the entire conversation history to avoid truncating
+        long conversations, which is important for evaluation/analytics that need
+        complete tool call records.
+
+        Args:
+            conversation_id (uuid.UUID): The unique identifier for the conversation.
+            batch_size (int): Number of messages to fetch per page (default 100).
+
+        Returns:
+            List[Message]: A list of all messages in chronological order, empty if an error occurs.
+        """
+        try:
+            all_messages = []
+            offset = 0
+
+            while True:
+                result = await self.session.execute(
+                    select(Message)
+                    .filter(Message.conversation_id == conversation_id)
+                    .order_by(Message.created_at.asc(), Message.id.asc())
+                    .limit(batch_size)
+                    .offset(offset)
+                )
+                batch = result.scalars().all()
+
+                if not batch:
+                    break
+
+                all_messages.extend(batch)
+
+                # If we got fewer than batch_size, we've reached the end
+                if len(batch) < batch_size:
+                    break
+
+                offset += batch_size
+
+            return all_messages
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(
+                f"Error retrieving all messages for conversation: {e}",
+                extra={"conversation_id": str(conversation_id)},
+            )
+            return []
+
     async def add_message_to_conversation(
         self,
         conversation_id: uuid.UUID,

@@ -382,6 +382,9 @@ class TestPublishEventWithFingerprints:
         mock_tool_call_repo = AsyncMock()
         mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
 
+        mock_message_repo = AsyncMock()
+        mock_message_repo.get_messages_by_conversation.return_value = []
+
         with (
             patch("db.session.AsyncSessionLocal") as mock_session_cls,
             patch(f"{VOICE_MODULE}.db") as mock_db,
@@ -397,6 +400,7 @@ class TestPublishEventWithFingerprints:
             )
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_db.ProjectRepositoryAsync.return_value = mock_repo
+            mock_db.MessageRepositoryAsync.return_value = mock_message_repo
             mock_tool_call_repo_cls.return_value = mock_tool_call_repo
             mock_publish.return_value = True
 
@@ -423,6 +427,9 @@ class TestPublishEventWithFingerprints:
         mock_tool_call_repo = AsyncMock()
         mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
 
+        mock_message_repo = AsyncMock()
+        mock_message_repo.get_messages_by_conversation.return_value = []
+
         with (
             patch("db.session.AsyncSessionLocal") as mock_session_cls,
             patch(f"{VOICE_MODULE}.db") as mock_db,
@@ -438,6 +445,7 @@ class TestPublishEventWithFingerprints:
             )
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_db.ProjectRepositoryAsync.return_value = mock_repo
+            mock_db.MessageRepositoryAsync.return_value = mock_message_repo
             mock_tool_call_repo_cls.return_value = mock_tool_call_repo
             mock_publish.return_value = True
 
@@ -468,6 +476,9 @@ class TestPublishEventWithFingerprints:
         mock_tool_call_repo = AsyncMock()
         mock_tool_call_repo.get_tool_calls_by_conversation.return_value = []
 
+        mock_message_repo = AsyncMock()
+        mock_message_repo.get_messages_by_conversation.return_value = []
+
         with (
             patch("db.session.AsyncSessionLocal") as mock_session_cls,
             patch(f"{VOICE_MODULE}.db") as mock_db,
@@ -483,6 +494,7 @@ class TestPublishEventWithFingerprints:
             )
             mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_db.ProjectRepositoryAsync.return_value = mock_repo
+            mock_db.MessageRepositoryAsync.return_value = mock_message_repo
             mock_tool_call_repo_cls.return_value = mock_tool_call_repo
             mock_publish.return_value = True
 

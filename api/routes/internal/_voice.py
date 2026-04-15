@@ -1118,6 +1118,48 @@ async def _publish_livekit_evaluation_event(
                 for record in tool_call_records
             ]
 
+            # Fallback: if tool_call_records is empty, read from messages.body (PAL-9828)
+            # This handles pal-agents conversations where tool calls are stored in message bodies
+            # as generic events (PAL-9713) rather than tool_call_records table (PAL-9252).
+            # Fetch ALL messages to avoid truncating long conversations (PAL-9828 review fix).
+            if not tool_calls_payload:
+                message_repo = db.MessageRepositoryAsync(session)
+                messages = await message_repo.get_all_messages_by_conversation(
+                    conversation_id
+                )
+                for msg in messages:
+                    body = msg.body or {}
+                    tool_calls_from_body = body.get("tool_calls", [])
+                    for tc in tool_calls_from_body:
+                        if not isinstance(tc, dict):
+                            continue
+                        payload = tc.get("payload")
+                        if not isinstance(payload, dict):
+                            continue
+                        tool_name = payload.get("tool_name", "")
+                        # Skip entries without a tool name
+                        if not tool_name:
+                            continue
+                        result = payload.get("result", "")
+
+                        # Infer error status from result string (same pattern as tool_call_record writes)
+                        is_error = False
+                        error_type = None
+                        if isinstance(result, str) and result.startswith("Error:"):
+                            is_error = True
+                            # Extract error type from "Error: <type>: <message>"
+                            error_parts = result.split(":", 2)
+                            if len(error_parts) >= 2:
+                                error_type = error_parts[1].strip()
+
+                        tool_calls_payload.append(
+                            {
+                                "function_name": tool_name,
+                                "is_error": is_error,
+                                "error_type": error_type,
+                            }
+                        )
+
         # Build per-turn latency totals, interruptions, and timestamps from metrics
         if metrics:
             turn_latencies_ms = extract_turn_latency_totals(metrics)
