@@ -108,6 +108,9 @@ class VoiceEvalConfig:
     call_timeout_s: float = _DEFAULT_CALL_TIMEOUT_S
     room_empty_timeout_s: int = _DEFAULT_ROOM_EMPTY_TIMEOUT_S
 
+    # LiveKit agent name for explicit dispatch into eval rooms.
+    agent_name: str = "palona-voice"
+
     # Optional S3 recording config — leave bucket empty to skip recording.
     recording_s3_bucket: str = ""
     recording_s3_region: str = "us-east-1"
@@ -432,7 +435,10 @@ async def run_voice_scenario(
     audio_recording_s3_uri: str | None = None
     try:
         # 1. Create room
-        room_config = RoomConfig(empty_timeout_s=config.room_empty_timeout_s)
+        room_config = RoomConfig(
+            empty_timeout_s=config.room_empty_timeout_s,
+            agent_name=config.agent_name,
+        )
         room_info = await orchestrator.create_room(room_config)
         created_room_name = room_info.room_name
 
