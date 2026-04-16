@@ -99,9 +99,7 @@ class TestEvaluateScenario:
             results = await evaluate_scenario(record)
 
         assert len(results) >= 1
-        tool_result = next(
-            r for r in results if r.metric_name == "tool_call_verification"
-        )
+        tool_result = next(r for r in results if r.metric_name == "tool_call_accuracy")
         assert tool_result.passed is True
 
     @pytest.mark.asyncio
@@ -159,14 +157,11 @@ class TestEvaluateScenario:
             results = await evaluate_scenario(record)
 
         metric_names = {r.metric_name for r in results}
-        assert "tool_call_verification" in metric_names
-        assert "tool_call_arg_accuracy" in metric_names
+        assert "tool_call_accuracy" in metric_names
 
-        args_result = next(
-            r for r in results if r.metric_name == "tool_call_arg_accuracy"
-        )
-        assert args_result.passed is True
-        assert args_result.score == 1.0
+        tool_result = next(r for r in results if r.metric_name == "tool_call_accuracy")
+        assert tool_result.passed is True
+        assert tool_result.score == 1.0
 
     @pytest.mark.asyncio
     async def test_skips_all_when_no_triggers(self) -> None:

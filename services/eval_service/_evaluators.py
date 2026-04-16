@@ -4,7 +4,7 @@ Coordinates running individual evaluators against a conversation record
 and aggregating their results.
 
 Evaluation sources:
-- E1 tool_call: deterministic, local (services/eval_service/evaluators/tool_call.py)
+- Tool call: deterministic, local (services/eval_service/evaluators/tool_call_args.py)
 - All others: pal-agents DeepEval metrics via deepeval_adapter.py
 """
 
@@ -97,7 +97,6 @@ async def evaluate_scenario(
         evaluate_task_completion,
         evaluate_voice_appropriate,
     )
-    from services.eval_service.evaluators.tool_call import evaluate_tool_calls
     from services.eval_service.evaluators.tool_call_args import evaluate_tool_call_args
 
     results: list[EvaluatorResult] = []
@@ -111,16 +110,10 @@ async def evaluate_scenario(
             {"tool": tc.tool, "args": tc.args}
             for tc in record.scenario.expected_tool_calls
         ]
-        result = evaluate_tool_calls(expected, record.tool_calls)
+        result = evaluate_tool_call_args(expected, record.tool_calls)
         results.append(result)
-        logger.debug("E1 tool_call: score=%s passed=%s", result.score, result.passed)
-
-        args_result = evaluate_tool_call_args(expected, record.tool_calls)
-        results.append(args_result)
         logger.debug(
-            "tool_call_args: score=%s passed=%s",
-            args_result.score,
-            args_result.passed,
+            "tool_call_accuracy: score=%s passed=%s", result.score, result.passed
         )
 
     # Phase 2: LLM + metric-based evaluators in parallel

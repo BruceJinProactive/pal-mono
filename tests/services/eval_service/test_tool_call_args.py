@@ -352,7 +352,7 @@ class TestEvaluateToolCallArgs:
         result = evaluate_tool_call_args(expected, actual)
         assert result.passed is True
         assert result.score == 1.0
-        assert result.metric_name == "tool_call_arg_accuracy"
+        assert result.metric_name == "tool_call_accuracy"
 
     def test_partial_match(self) -> None:
         expected = [
@@ -387,19 +387,63 @@ class TestEvaluateToolCallArgs:
         assert result.passed is False
         assert result.score == 0.0
         assert result.raw_output is not None
-        assert "not found" in result.raw_output["match_details"][0]["detail"]
+        assert "not called" in result.raw_output["match_details"][0]["detail"]
 
-    def test_empty_args_skipped(self) -> None:
-        expected = [{"tool": "some_tool", "args": {}}]
-        actual = []
+    def test_checkout_order_with_args_verifies_args(self) -> None:
+        """checkout_order with args goes through ToastArgumentEvaluator."""
+        expected = [
+            {
+                "tool": "checkout_order",
+                "args": {
+                    "customer": {
+                        "first_name": "Sarah",
+                        "last_name": "Miller",
+                        "phone": "5551234567",
+                    },
+                    "items": [{"item_name": "Frozen Cheese", "quantity": 1}],
+                },
+            }
+        ]
+        actual = [
+            {
+                "type": "tool_call",
+                "payload": {
+                    "tool_name": "checkout_order",
+                    "arguments": {
+                        "customer": {
+                            "firstName": "Sarah",
+                            "lastName": "Miller",
+                            "phone": "(555) 123-4567",
+                        },
+                        "items": [{"item_name": "Frozen Cheese", "quantity": 1}],
+                    },
+                },
+            }
+        ]
         result = evaluate_tool_call_args(expected, actual)
         assert result.passed is True
         assert result.score == 1.0
-        assert result.reason == "No argument checks required"
+
+    def test_no_args_verifies_tool_name_only(self) -> None:
+        """When expected has no args, just verify the tool was called."""
+        expected = [{"tool": "checkout_order", "args": {}}]
+        actual = [{"tool_name": "checkout_order"}]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.score == 1.0
+
+    def test_no_args_tool_missing_fails(self) -> None:
+        """When expected has no args but tool wasn't called, it fails."""
+        expected = [{"tool": "checkout_order", "args": {}}]
+        actual: list[dict[str, object]] = []
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is False
+        assert result.score == 0.0
 
     def test_no_expected_returns_pass(self) -> None:
         result = evaluate_tool_call_args([], [])
         assert result.passed is True
+        assert result.reason == "No tool calls expected"
 
     def test_raw_output_contains_match_details(self) -> None:
         expected = [
@@ -955,6 +999,10 @@ class TestEvaluatorRegistry:
         evaluator = _get_evaluator("toast.submit_order")
         assert isinstance(evaluator, ToastArgumentEvaluator)
 
+    def test_checkout_order_returns_toast_evaluator(self) -> None:
+        evaluator = _get_evaluator("checkout_order")
+        assert isinstance(evaluator, ToastArgumentEvaluator)
+
     def test_unknown_tool_returns_none(self) -> None:
         assert _get_evaluator("unknown.some_tool") is None
 
@@ -1037,3 +1085,73 @@ class TestDispatchInEvaluateToolCallArgs:
         result = evaluate_tool_call_args(expected, actual)
         assert result.passed is True
         assert result.score == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Payload-wrapped tool calls (DB event structure)
+# ---------------------------------------------------------------------------
+
+
+class TestPayloadWrappedToolCalls:
+    """Tool calls stored as {type, payload: {tool_name}} are unwrapped."""
+
+    def test_payload_wrapped_name_only(self) -> None:
+        expected = [{"tool": "checkout_order", "args": {}}]
+        actual = [
+            {
+                "type": "tool_call",
+                "payload": {
+                    "tool_name": "checkout_order",
+                    "arguments": {"customer": {"first_name": "John"}},
+                },
+            }
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.score == 1.0
+
+    def test_payload_wrapped_with_unexpected(self) -> None:
+        expected = [{"tool": "checkout_order", "args": {}}]
+        actual = [
+            {
+                "type": "tool_call",
+                "payload": {"tool_name": "checkout_order", "arguments": {}},
+            },
+            {
+                "type": "tool_call",
+                "payload": {
+                    "tool_name": "get_toast_item_details_v3",
+                    "arguments": {},
+                },
+            },
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.raw_output is not None
+        assert "get_toast_item_details_v3" in result.raw_output["unexpected_tools"]
+
+
+# ---------------------------------------------------------------------------
+# Unexpected tools reporting
+# ---------------------------------------------------------------------------
+
+
+class TestUnexpectedTools:
+    def test_unexpected_tools_reported_in_raw_output(self) -> None:
+        expected = [{"tool": "checkout_order", "args": {}}]
+        actual = [
+            {"tool_name": "checkout_order"},
+            {"tool_name": "get_menu_inventory_tool"},
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.raw_output is not None
+        assert "get_menu_inventory_tool" in result.raw_output["unexpected_tools"]
+        assert "Unexpected tools" in result.reason
+
+    def test_no_unexpected_when_all_matched(self) -> None:
+        expected = [{"tool": "checkout_order", "args": {}}]
+        actual = [{"tool_name": "checkout_order"}]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.raw_output is not None
+        assert result.raw_output["unexpected_tools"] == []

@@ -1,13 +1,14 @@
-"""Tool call argument-level validation evaluator.
+"""Unified tool call evaluator: name verification + argument validation.
 
-Deterministic comparison of expected vs actual tool call arguments.
+Deterministic comparison of expected vs actual tool calls.
 
-Uses a class-based dispatch model:
+Uses a class-based dispatch model for argument matching:
     ToolArgumentEvaluator (ABC)
     └── ToastArgumentEvaluator  — customer/items/selection_paths matching
 
-Produces metric ``tool_call_arg_accuracy`` with per-field ``MatchDetail`` in
-``raw_output`` for debugging.
+Produces metric ``tool_call_accuracy`` with per-field ``MatchDetail`` in
+``raw_output`` for debugging.  Missing/unexpected tool names are reported
+alongside argument-level details.
 """
 
 from __future__ import annotations
@@ -375,11 +376,17 @@ class ToastArgumentEvaluator(ToolArgumentEvaluator):
 
 _EVALUATOR_REGISTRY: dict[str, type[ToolArgumentEvaluator]] = {
     "toast.": ToastArgumentEvaluator,
+    "checkout_order": ToastArgumentEvaluator,
 }
 
 
 def _get_evaluator(tool_name: str) -> ToolArgumentEvaluator | None:
-    """Return an evaluator instance for the given tool name, or None if unsupported."""
+    """Return an evaluator instance for the given tool name, or None if unsupported.
+
+    Matches by exact name first, then by prefix.
+    """
+    if tool_name in _EVALUATOR_REGISTRY:
+        return _EVALUATOR_REGISTRY[tool_name]()
     for prefix, cls in _EVALUATOR_REGISTRY.items():
         if tool_name.startswith(prefix):
             return cls()
@@ -417,17 +424,53 @@ def evaluate_tool_call_args(
     expected_tool_calls: Sequence[Mapping[str, Any]],
     actual_tool_calls: Sequence[Mapping[str, Any]],
 ) -> EvaluatorResult:
-    """Argument-level validation of tool calls.
+    """Unified tool call verification: name matching + argument validation.
+
+    For each expected tool call:
+    1. Verify the tool was actually called (name match).
+    2. If args are specified and a matching evaluator exists, compare arguments.
+
+    Also reports unexpected tool calls (called but not expected).
 
     Score = matched_fields / total_fields, passed when score >= 1.0.
     Per-field details are returned in ``raw_output["match_details"]``.
     """
+    if not expected_tool_calls:
+        return EvaluatorResult(
+            metric_name="tool_call_accuracy",
+            score=1.0,
+            passed=True,
+            reason="No tool calls expected",
+        )
+
     all_details: list[MatchDetail] = []
+    actual_names = [_extract_tool_name(tc) for tc in actual_tool_calls]
+    matched_actual_indices: set[int] = set()
 
     for exp_tc in expected_tool_calls:
         tool_name = str(exp_tc.get("tool", ""))
         exp_args = exp_tc.get("args", {})
+
+        # Find the first unmatched actual call with the same tool name
+        found_idx: int | None = None
+        for i, name in enumerate(actual_names):
+            if name == tool_name and i not in matched_actual_indices:
+                found_idx = i
+                break
+
+        if found_idx is None:
+            all_details.append(
+                MatchDetail(tool_name, False, "expected tool not called")
+            )
+            continue
+
+        matched_actual_indices.add(found_idx)
+
+        # Tool name matched
         if not exp_args:
+            all_details.append(
+                MatchDetail(tool_name, True, "tool called (no arg check)")
+            )
             continue
 
         evaluator = _get_evaluator(tool_name)
@@ -435,43 +478,35 @@ def evaluate_tool_call_args(
             all_details.append(MatchDetail(tool_name, False, "unsupported tool family"))
             continue
 
-        # Find the first actual call with the same tool name
-        act_args: dict[str, Any] | None = None
-        for tc in actual_tool_calls:
-            if _extract_tool_name(tc) == tool_name:
-                act_args = _extract_args(tc)
-                break
-
-        if act_args is None:
-            all_details.append(
-                MatchDetail(tool_name, False, "tool not found in actual calls")
-            )
-            continue
-
+        act_args = _extract_args(actual_tool_calls[found_idx])
         all_details.extend(evaluator.evaluate(exp_args, act_args))
 
-    if not all_details:
-        return EvaluatorResult(
-            metric_name="tool_call_arg_accuracy",
-            score=1.0,
-            passed=True,
-            reason="No argument checks required",
-        )
+    # Report unexpected tool calls
+    unexpected_names = [
+        actual_names[i]
+        for i in range(len(actual_names))
+        if i not in matched_actual_indices and actual_names[i]
+    ]
 
     matched = sum(1 for d in all_details if d.matched)
     total = len(all_details)
     score = matched / total if total > 0 else 1.0
 
+    parts: list[str] = [f"Matched {matched}/{total} fields."]
+    if unexpected_names:
+        parts.append(f"Unexpected tools: {unexpected_names}")
+
     return EvaluatorResult(
-        metric_name="tool_call_arg_accuracy",
+        metric_name="tool_call_accuracy",
         score=score,
         passed=score >= 1.0,
-        reason=f"Matched {matched}/{total} fields",
+        reason=" ".join(parts),
         raw_output={
             "match_details": [
                 {"field": d.field_path, "matched": d.matched, "detail": d.detail}
                 for d in all_details
             ],
+            "unexpected_tools": unexpected_names,
             "score": score,
         },
     )

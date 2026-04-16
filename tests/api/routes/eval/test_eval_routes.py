@@ -41,7 +41,7 @@ def _make_mock_run(
 
 def _make_mock_result(
     eval_run_id: uuid.UUID,
-    metric_name: str = "tool_call_verification",
+    metric_name: str = "tool_call_accuracy",
     score: float = 1.0,
     passed: bool = True,
 ) -> MagicMock:
@@ -133,7 +133,7 @@ class TestGetEvalRun:
         assert data["run"]["id"] == str(run_id)
         assert data["run"]["status"] == "completed"
         assert len(data["results"]) == 1
-        assert data["results"][0]["metric_name"] == "tool_call_verification"
+        assert data["results"][0]["metric_name"] == "tool_call_accuracy"
 
     @patch("api.routes.eval._implementation.get_eval_run", new_callable=AsyncMock)
     def test_get_run_not_found(self, mock_get_run: AsyncMock) -> None:
@@ -163,7 +163,7 @@ class TestGetScorecard:
                     "failed_count": 1,
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "metrics": {
-                        "tool_call_verification": {
+                        "tool_call_accuracy": {
                             "avg_score": 0.95,
                             "pass_rate": 0.9,
                         }

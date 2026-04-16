@@ -114,7 +114,7 @@ class TestGetScorecard:
         )
 
         mock_result = MagicMock()
-        mock_result.metric_name = "tool_call_verification"
+        mock_result.metric_name = "tool_call_accuracy"
         mock_result.score = 1.0
         mock_result.passed = True
 
@@ -267,7 +267,7 @@ class TestRunEvalBackground:
         mock_result_repo = AsyncMock()
 
         eval_result = MagicMock()
-        eval_result.metric_name = "tool_call_verification"
+        eval_result.metric_name = "tool_call_accuracy"
         eval_result.score = 1.0
         eval_result.passed = True
         eval_result.reason = "ok"
@@ -340,7 +340,7 @@ class TestRunEvalBackground:
         mock_result_repo = AsyncMock()
 
         eval_result = MagicMock()
-        eval_result.metric_name = "tool_call_verification"
+        eval_result.metric_name = "tool_call_accuracy"
         eval_result.score = 1.0
         eval_result.passed = True
         eval_result.reason = "ok"
@@ -433,7 +433,7 @@ class TestRunEvalBackground:
         mock_result_repo = AsyncMock()
 
         passing_result = MagicMock()
-        passing_result.metric_name = "tool_call_verification"
+        passing_result.metric_name = "tool_call_accuracy"
         passing_result.score = 1.0
         passing_result.passed = True
         passing_result.reason = "ok"
@@ -506,7 +506,7 @@ class TestRunEvalBackground:
         mock_result_repo = AsyncMock()
 
         eval_result = MagicMock()
-        eval_result.metric_name = "tool_call_verification"
+        eval_result.metric_name = "tool_call_accuracy"
         eval_result.score = 0.5
         eval_result.passed = False
         eval_result.reason = "missing"
@@ -550,7 +550,7 @@ class TestRunEvalBackground:
         # Must use eval_run_id, not run_id
         assert hasattr(db_result, "eval_run_id")
         assert db_result.eval_run_id == eval_run_id
-        assert db_result.metric_name == "tool_call_verification"
+        assert db_result.metric_name == "tool_call_accuracy"
         assert db_result.score == 0.5
         assert db_result.passed is False
 
@@ -609,7 +609,7 @@ class TestRunEvalBackground:
 
         results = [
             MagicMock(
-                metric_name="tool_call_verification",
+                metric_name="tool_call_accuracy",
                 score=1.0,
                 passed=True,
                 reason="ok",

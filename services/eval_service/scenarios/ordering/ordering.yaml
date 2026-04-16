@@ -1,5 +1,5 @@
 # Ordering accuracy scenarios — adapted from pal-agents Toast tool intent datasets.
-# Each scenario validates that toast.validate_order_intent is called with
+# Each scenario validates that checkout_order is called with
 # the correct customer info, items, quantities, and selection_paths.
 
 # ---------------------------------------------------------------------------
@@ -18,7 +18,7 @@
     - "No, that's all"
     - "Yes, place the order"
   expected_tool_calls:
-    - tool: toast.validate_order_intent
+    - tool: checkout_order
       args:
         customer:
           first_name: "Sarah"
@@ -43,7 +43,7 @@
     - "Nope"
     - "Yes, submit it"
   expected_tool_calls:
-    - tool: toast.validate_order_intent
+    - tool: checkout_order
       args:
         customer:
           first_name: "Tom"
@@ -68,7 +68,7 @@
     - "That's it"
     - "Yes, checkout"
   expected_tool_calls:
-    - tool: toast.validate_order_intent
+    - tool: checkout_order
       args:
         customer:
           first_name: "Emma"
@@ -97,7 +97,7 @@
     - "That's all"
     - "Yes, place the order"
   expected_tool_calls:
-    - tool: toast.validate_order_intent
+    - tool: checkout_order
       args:
         customer:
           first_name: "Alex"
@@ -126,7 +126,7 @@
     - "No"
     - "Yes, checkout"
   expected_tool_calls:
-    - tool: toast.validate_order_intent
+    - tool: checkout_order
       args:
         customer:
           first_name: "Jordan"
@@ -159,7 +159,7 @@
     - "That's it"
     - "Yes, place it"
   expected_tool_calls:
-    - tool: toast.validate_order_intent
+    - tool: checkout_order
       args:
         customer:
           first_name: "Sam"
@@ -191,7 +191,7 @@
     - "No"
     - "Yes, submit"
   expected_tool_calls:
-    - tool: toast.validate_order_intent
+    - tool: checkout_order
       args:
         customer:
           first_name: "Casey"
@@ -227,7 +227,7 @@
     - "That's all"
     - "Yes, place the order"
   expected_tool_calls:
-    - tool: toast.validate_order_intent
+    - tool: checkout_order
       args:
         customer:
           first_name: "Chris"
@@ -259,7 +259,7 @@
     - "That's it"
     - "Yes"
   expected_tool_calls:
-    - tool: toast.validate_order_intent
+    - tool: checkout_order
       args:
         customer:
           first_name: "Dana"
