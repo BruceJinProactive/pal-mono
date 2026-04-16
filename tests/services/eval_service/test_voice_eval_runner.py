@@ -24,13 +24,16 @@ from services.eval_service.schema import EvalScenario, TurnType, UserTurn
 
 class TestVoiceEvalConfig:
     def test_from_env_success(self) -> None:
-        env = {
+        secrets = {
             "LIVEKIT_URL": "wss://lk.example.com",
             "LIVEKIT_API_KEY": "APIkey",
             "LIVEKIT_API_SECRET": "APIsecret",
             "CARTESIA_API_KEY": "cart-key",
         }
-        with patch.dict(os.environ, env, clear=False):
+        with patch(
+            "services.eval_service._voice_eval_runner.get_server_secret_with_fallback",
+            side_effect=lambda k: secrets[k],
+        ):
             config = VoiceEvalConfig.from_env()
 
         assert config.livekit_url == "wss://lk.example.com"
@@ -39,16 +42,25 @@ class TestVoiceEvalConfig:
         assert config.cartesia_api_key == "cart-key"
 
     def test_from_env_missing_vars(self) -> None:
-        env = {
-            "LIVEKIT_URL": "wss://lk.example.com",
-            # Missing: LIVEKIT_API_KEY, LIVEKIT_API_SECRET, CARTESIA_API_KEY
-        }
-        with patch.dict(os.environ, env, clear=True):
+        secrets = {"LIVEKIT_URL": "wss://lk.example.com"}
+
+        def _lookup(key: str) -> str:
+            if key in secrets:
+                return secrets[key]
+            raise ValueError(f"not found: {key}")
+
+        with patch(
+            "services.eval_service._voice_eval_runner.get_server_secret_with_fallback",
+            side_effect=_lookup,
+        ):
             with pytest.raises(ValueError, match="LIVEKIT_API_KEY"):
                 VoiceEvalConfig.from_env()
 
     def test_from_env_all_missing(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
+        with patch(
+            "services.eval_service._voice_eval_runner.get_server_secret_with_fallback",
+            side_effect=ValueError("not found"),
+        ):
             with pytest.raises(ValueError, match="LIVEKIT_URL"):
                 VoiceEvalConfig.from_env()
 
@@ -79,15 +91,23 @@ class TestVoiceEvalConfig:
         assert config.recording_s3_region == "us-east-1"
 
     def test_from_env_with_recording_config(self) -> None:
-        env = {
+        secrets = {
             "LIVEKIT_URL": "wss://lk.example.com",
             "LIVEKIT_API_KEY": "APIkey",
             "LIVEKIT_API_SECRET": "APIsecret",
             "CARTESIA_API_KEY": "cart-key",
+        }
+        env = {
             "VOICE_EVAL_RECORDING_BUCKET": "my-eval-bucket",
             "VOICE_EVAL_RECORDING_REGION": "us-west-2",
         }
-        with patch.dict(os.environ, env, clear=False):
+        with (
+            patch(
+                "services.eval_service._voice_eval_runner.get_server_secret_with_fallback",
+                side_effect=lambda k: secrets[k],
+            ),
+            patch.dict(os.environ, env, clear=False),
+        ):
             config = VoiceEvalConfig.from_env()
 
         assert config.recording_s3_bucket == "my-eval-bucket"

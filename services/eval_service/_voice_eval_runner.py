@@ -45,6 +45,7 @@ from services.eval_service._voice_result_collector import (
 )
 from services.eval_service.schema import EvalScenario, TurnType, UserTurn
 from utils.log import logger
+from utils.secret import get_server_secret_with_fallback
 
 _DEFAULT_CALL_TIMEOUT_S = 120.0
 _DEFAULT_ROOM_EMPTY_TIMEOUT_S = 300
@@ -135,26 +136,26 @@ class VoiceEvalConfig:
             VOICE_EVAL_RECORDING_REGION — AWS region (default ``us-east-1``).
 
         Raises:
-            ValueError: If any required env var is missing.
+            ValueError: If any required secret is missing from both
+                AWS Secrets Manager and environment variables.
         """
         missing: list[str] = []
-        livekit_url = os.environ.get("LIVEKIT_URL", "")
-        livekit_api_key = os.environ.get("LIVEKIT_API_KEY", "")
-        livekit_api_secret = os.environ.get("LIVEKIT_API_SECRET", "")
-        cartesia_api_key = os.environ.get("CARTESIA_API_KEY", "")
 
-        if not livekit_url:
-            missing.append("LIVEKIT_URL")
-        if not livekit_api_key:
-            missing.append("LIVEKIT_API_KEY")
-        if not livekit_api_secret:
-            missing.append("LIVEKIT_API_SECRET")
-        if not cartesia_api_key:
-            missing.append("CARTESIA_API_KEY")
+        def _get(key: str) -> str:
+            try:
+                return get_server_secret_with_fallback(key)
+            except ValueError:
+                missing.append(key)
+                return ""
+
+        livekit_url = _get("LIVEKIT_URL")
+        livekit_api_key = _get("LIVEKIT_API_KEY")
+        livekit_api_secret = _get("LIVEKIT_API_SECRET")
+        cartesia_api_key = _get("CARTESIA_API_KEY")
 
         if missing:
             raise ValueError(
-                f"Missing required environment variables for voice eval: {', '.join(missing)}"
+                f"Missing required secrets for voice eval: {', '.join(missing)}"
             )
 
         return cls(
