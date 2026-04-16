@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Literal
 
@@ -39,6 +40,24 @@ class RunEvalRequest(BaseModel):
         default="http",
         description="Driver mode: http (real system), direct (in-process, not yet implemented), or voice (LiveKit room injection)",
     )
+    scenario_category: str | None = Field(
+        default=None,
+        description="Scenario subdirectory to run (e.g. 'generic', 'ordering'). If omitted, all scenarios are run.",
+    )
+
+    @field_validator("scenario_category")
+    @classmethod
+    def validate_scenario_category(cls, v: str | None) -> str | None:
+        """Reject path traversal: only allow simple directory names."""
+        if v is None:
+            return v
+        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
+            raise ValueError(
+                "scenario_category must be a simple directory name "
+                "(letters, digits, hyphens, underscores only)"
+            )
+        return v
+
     triggered_by: str = Field(
         default="api",
         max_length=20,

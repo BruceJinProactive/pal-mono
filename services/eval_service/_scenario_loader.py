@@ -48,7 +48,10 @@ def validate_scenarios_from_yaml(yaml_path: str | Path) -> list[EvalScenario]:
     return scenarios
 
 
-def load_scenarios(project_id: str | None = None) -> list[EvalScenario]:
+def load_scenarios(
+    project_id: str | None = None,
+    scenario_category: str | None = None,
+) -> list[EvalScenario]:
     """Load all EvalScenario objects from the scenarios directory.
 
     Recursively discovers every ``*.yaml`` and ``*.yml`` file under
@@ -56,9 +59,14 @@ def load_scenarios(project_id: str | None = None) -> list[EvalScenario]:
     sub-directory whose name matches the project_id are loaded; otherwise
     every YAML file in the tree is loaded.
 
+    If *scenario_category* is provided (e.g. ``"generic"``, ``"ordering"``),
+    only scenarios under that subdirectory are loaded.
+
     Args:
         project_id: Optional project identifier used to filter scenarios to a
             specific sub-directory.
+        scenario_category: Optional category subdirectory name to restrict
+            which scenarios are loaded.
 
     Returns:
         A deduplicated (by file) list of EvalScenario objects.
@@ -66,9 +74,12 @@ def load_scenarios(project_id: str | None = None) -> list[EvalScenario]:
     if not SCENARIOS_DIR.exists():
         return []
 
-    search_root = (
-        SCENARIOS_DIR / project_id if project_id is not None else SCENARIOS_DIR
-    )
+    if project_id is not None:
+        search_root = SCENARIOS_DIR / project_id
+    elif scenario_category is not None:
+        search_root = SCENARIOS_DIR / scenario_category
+    else:
+        search_root = SCENARIOS_DIR
 
     if not search_root.exists():
         return []

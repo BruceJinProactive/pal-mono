@@ -171,7 +171,7 @@ class TestScheduleEvalBackground:
             # Task should have been added to the set (may already be removed if it
             # completed synchronously, but the add+discard callback must have fired)
             mock_bg.assert_called_once_with(
-                eval_run_id, project_id, "api:test-project", "http"
+                eval_run_id, project_id, "api:test-project", "http", None
             )
 
             # Let the event loop tick so the task runs and the done callback fires

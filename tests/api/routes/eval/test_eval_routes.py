@@ -84,6 +84,65 @@ class TestTriggerEvalRun:
         assert data["status"] == "pending"
 
     @patch("api.routes.eval._implementation.create_eval_run", new_callable=AsyncMock)
+    def test_trigger_with_scenario_category(self, mock_create: AsyncMock) -> None:
+        project_id = uuid.uuid4()
+        account_id = uuid.uuid4()
+        mock_run = _make_mock_run(project_id=project_id)
+        mock_create.return_value = mock_run
+
+        response = client.post(
+            f"{EVAL_PREFIX}/run",
+            json={
+                "project_id": str(project_id),
+                "account_id": str(account_id),
+                "channel_identifier": "api:test-project",
+                "scenario_category": "ordering",
+            },
+        )
+
+        assert response.status_code == status.HTTP_202_ACCEPTED
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["scenario_category"] == "ordering"
+
+    @patch("api.routes.eval._implementation.create_eval_run", new_callable=AsyncMock)
+    def test_trigger_without_scenario_category_defaults_to_none(
+        self, mock_create: AsyncMock
+    ) -> None:
+        project_id = uuid.uuid4()
+        account_id = uuid.uuid4()
+        mock_run = _make_mock_run(project_id=project_id)
+        mock_create.return_value = mock_run
+
+        response = client.post(
+            f"{EVAL_PREFIX}/run",
+            json={
+                "project_id": str(project_id),
+                "account_id": str(account_id),
+                "channel_identifier": "api:test-project",
+            },
+        )
+
+        assert response.status_code == status.HTTP_202_ACCEPTED
+        assert mock_create.call_args.kwargs["scenario_category"] is None
+
+    def test_trigger_rejects_path_traversal_in_scenario_category(self) -> None:
+        project_id = uuid.uuid4()
+        account_id = uuid.uuid4()
+        for bad_value in ["../etc", "foo/bar", "..\\windows", "ordering.yaml"]:
+            response = client.post(
+                f"{EVAL_PREFIX}/run",
+                json={
+                    "project_id": str(project_id),
+                    "account_id": str(account_id),
+                    "channel_identifier": "api:test-project",
+                    "scenario_category": bad_value,
+                },
+            )
+            assert (
+                response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+            ), f"Expected 422 for scenario_category={bad_value!r}"
+
+    @patch("api.routes.eval._implementation.create_eval_run", new_callable=AsyncMock)
     def test_trigger_with_direct_driver(self, mock_create: AsyncMock) -> None:
         project_id = uuid.uuid4()
         account_id = uuid.uuid4()

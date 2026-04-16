@@ -38,6 +38,7 @@ async def trigger_eval_run(
         driver_mode=request.driver,
         triggered_by=request.triggered_by,
         session=session,
+        scenario_category=request.scenario_category,
     )
     return EvalRunResponse.model_validate(run)
 
