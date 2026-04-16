@@ -32,9 +32,9 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.pal_repository.phone_call import PhoneCallRepository
 from db.repositories.conversation_repository import ConversationRepositoryAsync
 from db.repositories.message_repository import MessageRepositoryAsync
-from db.repositories.phone_call_repository import PhoneCallRepositoryAsync
 from db.tables.conversations import ConversationStatus
 from services.eval_service._evaluators import ConversationRecord
 from services.eval_service.schema import EvalScenario
@@ -272,7 +272,7 @@ class VoiceResultCollector:
         Returns a tuple of (metrics, audio_s3_uri).  If no PhoneCall
         record exists yet, returns default metrics and None.
         """
-        pc_repo = PhoneCallRepositoryAsync(self._session)
+        pc_repo = PhoneCallRepository(self._session)
         phone_call = await pc_repo.get_by_call_id(call_id)
 
         if phone_call is None:

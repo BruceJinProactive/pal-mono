@@ -245,7 +245,7 @@ class TestVoiceResultCollectorCollect:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -291,7 +291,7 @@ class TestVoiceResultCollectorCollect:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -326,7 +326,7 @@ class TestVoiceResultCollectorCollect:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -364,7 +364,7 @@ class TestExtractTranscriptTimestamps:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -405,7 +405,7 @@ class TestExtractTranscriptTimestamps:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -443,7 +443,7 @@ class TestExtractTranscriptTimestamps:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -518,7 +518,7 @@ class TestCollectAudioRecordingUri:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -555,7 +555,7 @@ class TestCollectAudioRecordingUri:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -590,7 +590,7 @@ class TestCollectAudioRecordingUri:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -693,7 +693,7 @@ class TestVoiceResultCollectorPolling:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
@@ -728,7 +728,7 @@ class TestVoiceResultCollectorPolling:
                 "services.eval_service._voice_result_collector.MessageRepositoryAsync"
             ) as mock_msg_repo_cls,
             patch(
-                "services.eval_service._voice_result_collector.PhoneCallRepositoryAsync"
+                "services.eval_service._voice_result_collector.PhoneCallRepository"
             ) as mock_pc_repo_cls,
         ):
             mock_conv_repo_cls.return_value.get_conversation_by_call_id = AsyncMock(
