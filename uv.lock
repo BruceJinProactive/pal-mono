@@ -2598,8 +2598,8 @@ wheels = [
 
 [[package]]
 name = "pal-agents"
-version = "0.2.253"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.253#4c47e7f21200f0a0d3bb4f1620c1141f28842099" }
+version = "0.2.254"
+source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.254#5ba12d7799ccf84ab6a39525cab6b8fcf363095e" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2772,8 +2772,8 @@ requires-dist = [
     { name = "opentelemetry-distro", specifier = ">=0.60b1" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.1" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.60b1" },
-    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.253" },
-    { name = "pal-agents", extras = ["eval"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.253" },
+    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.254" },
+    { name = "pal-agents", extras = ["eval"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.254" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
     { name = "polyline", specifier = "==2.0.2" },
