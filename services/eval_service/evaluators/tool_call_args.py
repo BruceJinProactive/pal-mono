@@ -377,6 +377,7 @@ class ToastArgumentEvaluator(ToolArgumentEvaluator):
 _EVALUATOR_REGISTRY: dict[str, type[ToolArgumentEvaluator]] = {
     "toast.": ToastArgumentEvaluator,
     "checkout_order": ToastArgumentEvaluator,
+    "toast_takeout_create_order_v1": ToastArgumentEvaluator,
 }
 
 
