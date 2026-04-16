@@ -9,23 +9,20 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.schemas.catering.catering import Contact as ContactSchema
 from api.schemas.chat.message import AuthorType, Broker, Extras
 from api.schemas.chat.message import Message as RelayMessage
 from api.schemas.chat.message import Metadata, TextObject, Type
-from db.pal_repository.data_classes.project_contact import ProjectContactData
-from db.pal_repository.project_contact import ProjectContactRepository
+from db.pal_repository.data_classes.contact import ContactData
 from db.repositories.catering_request_repository import (
     CateringRequestRepository,
     CateringRequestRepositoryAsync,
 )
-from db.repositories.contact_repository import ContactRepositoryAsync
 from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
 from db.session import SyncSessionLocal
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
-from db.tables.contacts import Contact
 from db.tables.types import Channel
 from events import CateringRequestCreated, publish_event
+from services import contact_service
 from services.relay_service import send_message
 from utils.log import logger
 
@@ -189,7 +186,7 @@ async def create_contact(
     phone_number: str,
     role: str,
     email: Optional[str] = None,
-) -> ContactSchema:
+) -> ContactData:
     """
     Create a new contact and associate it with a project asynchronously.
 
@@ -202,35 +199,22 @@ async def create_contact(
         email: Contact's email address (optional)
 
     Returns:
-        ContactSchema: The created contact as a Pydantic model
+        ContactData: The created contact
     """
-    contact = Contact(
+    return await contact_service.create_for_project(
+        session,
+        project_id=project_id,
         name=name,
         phone_number=phone_number,
         role=role,
         email=email,
     )
 
-    contact_repo = ContactRepositoryAsync(session)
-    created_contact = await contact_repo.create_contact(contact)
-
-    # Create the project-contact relation
-    project_contact_repo = ProjectContactRepository(session)
-    await project_contact_repo.create(
-        ProjectContactData(
-            id=uuid.uuid4(),
-            project_id=project_id,
-            contact_id=created_contact.id,
-        )
-    )
-
-    return created_contact
-
 
 async def list_contacts(
     session: AsyncSession,
     project_id: uuid.UUID,
-) -> List[ContactSchema]:
+) -> List[ContactData]:
     """
     List all contacts for a specific project asynchronously.
 
@@ -239,27 +223,16 @@ async def list_contacts(
         project_id: ID of the project to list contacts for
 
     Returns:
-        List[ContactSchema]: List of contact Pydantic models associated with the project
+        List[ContactData]: List of contacts associated with the project
     """
-    # Get contact IDs for the project
-    project_contact_repo = ProjectContactRepository(session)
-    contact_ids = await project_contact_repo.list_contact_ids_by_project(project_id)
-
-    if not contact_ids:
-        return []
-
-    # Get the actual contact objects
-    contact_repo = ContactRepositoryAsync(session)
-    contacts = await contact_repo.batch_list_contacts(contact_ids)
-
-    return contacts
+    return await contact_service.list_by_project(session, project_id)
 
 
 async def delete_contact(
     session: AsyncSession,
     project_id: uuid.UUID,
     contact_id: uuid.UUID,
-) -> Contact | None:
+) -> ContactData | None:
     """
     Delete a contact and its project relation asynchronously.
 
@@ -269,17 +242,9 @@ async def delete_contact(
         contact_id: ID of the contact to delete
 
     Returns:
-        Contact: The deleted contact, or None if not found
+        ContactData | None: The deleted contact, or None if not found
     """
-    # First delete the project-contact relation
-    project_contact_repo = ProjectContactRepository(session)
-    await project_contact_repo.delete_by_project_and_contact(project_id, contact_id)
-
-    # Then delete the contact itself
-    contact_repo = ContactRepositoryAsync(session)
-    deleted_contact = await contact_repo.delete_contact(contact_id)
-
-    return deleted_contact
+    return await contact_service.delete_from_project(session, project_id, contact_id)
 
 
 async def update_contact(
@@ -290,7 +255,7 @@ async def update_contact(
     phone_number: Optional[str] = None,
     role: Optional[str] = None,
     email: Optional[str] = None,
-) -> ContactSchema | None:
+) -> ContactData | None:
     """
     Update an existing contact for a project asynchronously.
 
@@ -304,26 +269,17 @@ async def update_contact(
         email: New email address (optional)
 
     Returns:
-        ContactSchema: The updated contact as a Pydantic model, or None if not found
+        ContactData | None: The updated contact, or None if not found
     """
-    # Verify the contact is linked to this project
-    project_contact_repo = ProjectContactRepository(session)
-    contact_ids = await project_contact_repo.list_contact_ids_by_project(project_id)
-
-    if contact_id not in contact_ids:
-        return None
-
-    # Update the contact
-    contact_repo = ContactRepositoryAsync(session)
-    updated_contact = await contact_repo.update_contact(
+    return await contact_service.update_for_project(
+        session,
+        project_id=project_id,
         contact_id=contact_id,
         name=name,
         phone_number=phone_number,
         role=role,
         email=email,
     )
-
-    return updated_contact
 
 
 async def update_catering_request(
@@ -557,7 +513,7 @@ async def _find_and_assign_catering_manager(
     session: AsyncSession,
     catering_request,
     catering_request_id: str,
-) -> ContactSchema | None:
+) -> ContactData | None:
     """
     Find a catering manager for the request and assign it if needed.
 
@@ -567,14 +523,17 @@ async def _find_and_assign_catering_manager(
         catering_request_id: ID of the catering request (for logging)
 
     Returns:
-        ContactSchema | None: The catering manager contact if found, None otherwise
+        ContactData | None: The catering manager contact if found, None otherwise
     """
-    contact_repo = ContactRepositoryAsync(session)
+    contacts = await contact_service.list_by_project(
+        session, catering_request.project_id
+    )
 
-    # Try to get the direct contact first
+    # Try to get the direct contact first, but only if it is still linked
     if catering_request.contact_id:
-        catering_manager = await contact_repo.get_contact_by_id(
-            catering_request.contact_id
+        catering_manager = next(
+            (c for c in contacts if c.id == catering_request.contact_id),
+            None,
         )
         if catering_manager:
             logger.debug(
@@ -582,23 +541,9 @@ async def _find_and_assign_catering_manager(
             )
             return catering_manager
 
-    project_contact_repo = ProjectContactRepository(session)
-
-    contact_ids = await project_contact_repo.list_contact_ids_by_project(
-        catering_request.project_id
-    )
-
-    if not contact_ids:
-        logger.warning(
-            f"[catering] No contacts found for project {catering_request.project_id}"
-        )
-        return None
-
-    contacts = await contact_repo.batch_list_contacts(contact_ids)
-
     if not contacts:
         logger.warning(
-            f"[catering] No valid contacts found for project {catering_request.project_id}"
+            f"[catering] No contacts found for project {catering_request.project_id}"
         )
         return None
 
@@ -846,7 +791,7 @@ class CateringReminderResult:
 async def _find_catering_manager_for_project(
     session: AsyncSession,
     project_id: uuid.UUID,
-) -> ContactSchema | None:
+) -> ContactData | None:
     """
     Find the catering manager contact for a project (without assignment side effects).
 
@@ -857,14 +802,7 @@ async def _find_catering_manager_for_project(
     Returns:
         The catering manager contact if found, None otherwise.
     """
-    project_contact_repo = ProjectContactRepository(session)
-    contact_repo = ContactRepositoryAsync(session)
-
-    contact_ids = await project_contact_repo.list_contact_ids_by_project(project_id)
-    if not contact_ids:
-        return None
-
-    contacts = await contact_repo.batch_list_contacts(contact_ids)
+    contacts = await contact_service.list_by_project(session, project_id)
     if not contacts:
         return None
 

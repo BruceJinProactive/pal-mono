@@ -25,11 +25,9 @@ from agent import (
     ToolMetadata,
 )
 from agent.model import ModelProvider
-from db.pal_repository.project_contact import ProjectContactRepository
-from db.repositories.contact_repository import ContactRepositoryAsync
 from db.tables.accounts import BusinessIndustry
 from db.tables.types import AgentType, Channel, IdentifierType, TargetTier
-from services import features_service
+from services import contact_service, features_service
 from services.agent_service._fingerprint import compute_agent_fingerprint
 from services.agent_service._pal_agent_tool_registry import PAL_AGENT_TOOL_REGISTRY
 from services.integration_service.schema import IntegrationDetail
@@ -297,14 +295,11 @@ class RawConfig:
         # Primary: Build transfer_destinations from contacts table
         if session:
             try:
-                project_contact_repo = ProjectContactRepository(session)
-                contact_ids = await project_contact_repo.list_contact_ids_by_project(
-                    self.project.id
+                contacts = await contact_service.list_by_project(
+                    session, self.project.id
                 )
 
-                if contact_ids:
-                    contact_repo = ContactRepositoryAsync(session)
-                    contacts = await contact_repo.batch_list_contacts(contact_ids)
+                if contacts:
                     # Frontend enforces one contact per role; defensive check for duplicates
                     transfer_destinations = {}
                     for contact in contacts:
@@ -470,11 +465,10 @@ class RawConfig:
         if self.channel == Channel.VOICE and not has_livekit_tool and session:
             has_transfer_destination = False
             try:
-                project_contact_repo = ProjectContactRepository(session)
-                contact_ids = await project_contact_repo.list_contact_ids_by_project(
-                    self.project.id
+                contacts = await contact_service.list_by_project(
+                    session, self.project.id
                 )
-                if contact_ids:
+                if any(c.role and c.phone_number for c in contacts):
                     has_transfer_destination = True
             except (DBTimeoutError, SQLAlchemyError):
                 logger.exception(
