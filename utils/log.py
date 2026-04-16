@@ -4,6 +4,7 @@ from contextvars import ContextVar
 
 from agno.utils.log import LOGGER_NAME
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from opentelemetry.sdk._logs import LoggingHandler
 from pythonjsonlogger import jsonlogger
 
 # Exclude noisy library logs (these produce ~2.2M logs/4h at INFO level)
@@ -66,9 +67,12 @@ def configure_global_logger():
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, log_level, logging.INFO))
 
-    # Remove any default handlers to avoid duplicates
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
+    # Remove non-OTel handlers to avoid duplicates, but preserve LoggingHandler
+    # which bridges Python logging → OTel SDK → OTLP export (set up by
+    # `opentelemetry-instrument` bootstrap when OTEL_LOGS_EXPORTER=otlp).
+    for h in root_logger.handlers[:]:
+        if not isinstance(h, LoggingHandler):
+            root_logger.removeHandler(h)
 
     handler = logging.StreamHandler()
     formatter = OTelJsonFormatter(fmt="%(asctime)s %(name)s %(levelname)s %(message)s")

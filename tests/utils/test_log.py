@@ -129,7 +129,8 @@ class TestConfigureGlobalLogger:
         with patch("utils.log.LoggingInstrumentor"):
             configure_global_logger()
         root = logging.getLogger()
-        assert len(root.handlers) == 1
-        handler = root.handlers[0]
-        assert isinstance(handler, logging.StreamHandler)
-        assert isinstance(handler.formatter, OTelJsonFormatter)
+        assert any(
+            isinstance(h, logging.StreamHandler)
+            and isinstance(h.formatter, OTelJsonFormatter)
+            for h in root.handlers
+        )
