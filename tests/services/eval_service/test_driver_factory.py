@@ -20,11 +20,24 @@ class TestCreateDriverHttp:
         assert isinstance(result, InProcessDriver)
         assert result.recipient_identifier == "proj-123"
 
-    def test_default_sender_identifier(self) -> None:
+    def test_sender_identifier_is_unique_per_call(self) -> None:
         with patch(f"{FACTORY_MODULE}.logger"):
-            result = create_driver(driver_mode="http", project_identifier="proj-123")
+            a = create_driver(driver_mode="http", project_identifier="proj-123")
+            b = create_driver(driver_mode="http", project_identifier="proj-123")
 
-        assert result.sender_identifier == "eval-user@test.com"
+        assert a.sender_identifier != b.sender_identifier
+        assert a.sender_identifier.endswith("@test.com")
+        assert b.sender_identifier.endswith("@test.com")
+
+    def test_sender_includes_scenario_id(self) -> None:
+        with patch(f"{FACTORY_MODULE}.logger"):
+            result = create_driver(
+                driver_mode="http",
+                project_identifier="proj-123",
+                scenario_id="order-simple-001",
+            )
+
+        assert "order-simple-001" in result.sender_identifier
 
 
 class TestCreateDriverDirect:

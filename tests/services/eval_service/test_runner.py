@@ -310,7 +310,7 @@ class TestRunEvalBackground:
 
         # Verify channel_identifier is parsed and forwarded to driver factory
         mock_create_driver.assert_called_once_with(
-            "http", "test-project", channel="api"
+            "http", "test-project", channel="api", scenario_id="sc-1"
         )
         mock_run_repo.update_status.assert_any_await(
             eval_run_id, "running", started_at=unittest_mock_any

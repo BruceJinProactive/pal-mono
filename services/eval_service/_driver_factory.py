@@ -5,6 +5,8 @@ Creates the appropriate driver based on driver_mode configuration.
 
 from __future__ import annotations
 
+import uuid
+
 from services.eval_service._inprocess_driver import InProcessDriver
 from utils.log import logger
 
@@ -13,13 +15,19 @@ def create_driver(
     driver_mode: str,
     project_identifier: str,
     channel: str = "api",
+    scenario_id: str | None = None,
 ) -> InProcessDriver:
     """Create an AgentDriver for the given mode.
+
+    Each call generates a unique ``sender_identifier`` so the chat service
+    creates a fresh conversation (user + conversation) per scenario,
+    preventing tool-call bleed between scenarios.
 
     Args:
         driver_mode: One of "http" or "direct".
         project_identifier: Channel-specific identifier for routing messages.
         channel: Channel type (e.g. "api", "voice"). Defaults to "api".
+        scenario_id: Optional scenario ID included in the sender for traceability.
 
     Returns:
         An AgentDriver instance.
@@ -28,12 +36,19 @@ def create_driver(
         ValueError: If driver_mode is not recognized.
     """
     if driver_mode == "http":
+        unique_id = uuid.uuid4().hex[:12]
+        sender = f"eval-{scenario_id or 'anon'}-{unique_id}@test.com"
         logger.info(
             "Creating InProcessDriver",
-            extra={"project": project_identifier, "channel": channel},
+            extra={
+                "project": project_identifier,
+                "channel": channel,
+                "sender": sender,
+            },
         )
         return InProcessDriver(
             recipient_identifier=project_identifier,
+            sender_identifier=sender,
             channel=channel,
         )
 
