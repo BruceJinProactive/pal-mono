@@ -28,7 +28,7 @@ class TestVoiceEvalConfig:
             "LIVEKIT_URL": "wss://lk.example.com",
             "LIVEKIT_API_KEY": "APIkey",
             "LIVEKIT_API_SECRET": "APIsecret",
-            "CARTESIA_API_KEY": "cart-key",
+            "CARTESIA_VOICE_EVAL_API_KEY": "cart-key",
         }
         with patch(
             "services.eval_service._voice_eval_runner.get_server_secret_with_fallback",
@@ -95,7 +95,7 @@ class TestVoiceEvalConfig:
             "LIVEKIT_URL": "wss://lk.example.com",
             "LIVEKIT_API_KEY": "APIkey",
             "LIVEKIT_API_SECRET": "APIsecret",
-            "CARTESIA_API_KEY": "cart-key",
+            "CARTESIA_VOICE_EVAL_API_KEY": "cart-key",
         }
         env = {
             "VOICE_EVAL_RECORDING_BUCKET": "my-eval-bucket",

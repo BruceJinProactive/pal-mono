@@ -126,7 +126,8 @@ class VoiceEvalConfig:
         """Create config from environment variables.
 
         Required env vars:
-            LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, CARTESIA_API_KEY
+            LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
+            CARTESIA_VOICE_EVAL_API_KEY
 
         Optional env vars:
             VOICE_EVAL_RECORDING_BUCKET — S3 bucket for call recordings.
@@ -151,7 +152,7 @@ class VoiceEvalConfig:
         livekit_url = _get("LIVEKIT_URL")
         livekit_api_key = _get("LIVEKIT_API_KEY")
         livekit_api_secret = _get("LIVEKIT_API_SECRET")
-        cartesia_api_key = _get("CARTESIA_API_KEY")
+        cartesia_api_key = _get("CARTESIA_VOICE_EVAL_API_KEY")
 
         if missing:
             raise ValueError(
