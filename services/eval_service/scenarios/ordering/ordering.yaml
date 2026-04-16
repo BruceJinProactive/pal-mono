@@ -1,0 +1,274 @@
+# Ordering accuracy scenarios — adapted from pal-agents Toast tool intent datasets.
+# Each scenario validates that toast.validate_order_intent is called with
+# the correct customer info, items, quantities, and selection_paths.
+
+# ---------------------------------------------------------------------------
+# Simple orders (no modifiers)
+# ---------------------------------------------------------------------------
+
+- scenario_id: order-simple-001
+  scenario: "Customer orders a single item with no modifiers"
+  test_category: simple_order
+  persona: standard_customer
+  user_turns:
+    - "I'd like to place an order for pickup"
+    - "Sarah Miller"
+    - "5551234567"
+    - "A Frozen Cheese pizza please"
+    - "No, that's all"
+    - "Yes, place the order"
+  expected_tool_calls:
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Sarah"
+          last_name: "Miller"
+          phone: "5551234567"
+        items:
+          - item_name: "Frozen Cheese"
+            quantity: 1
+  expected_outcomes:
+    task_completed: true
+  context:
+    - "Menu includes Frozen Cheese pizza"
+
+- scenario_id: order-simple-002
+  scenario: "Customer orders a single item, providing name and phone together"
+  test_category: simple_order
+  persona: standard_customer
+  user_turns:
+    - "Pickup order please"
+    - "Tom Johnson, 5559876543"
+    - "A Frozen Pepperoni pizza"
+    - "Nope"
+    - "Yes, submit it"
+  expected_tool_calls:
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Tom"
+          last_name: "Johnson"
+          phone: "5559876543"
+        items:
+          - item_name: "Frozen Pepperoni"
+            quantity: 1
+  expected_outcomes:
+    task_completed: true
+  context:
+    - "Menu includes Frozen Pepperoni pizza"
+
+- scenario_id: order-simple-003
+  scenario: "Customer orders a dessert item"
+  test_category: simple_order
+  persona: standard_customer
+  user_turns:
+    - "Hi, I'd like to order something for pickup"
+    - "Emma Wilson, 5556667777"
+    - "A Tiramisu please"
+    - "That's it"
+    - "Yes, checkout"
+  expected_tool_calls:
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Emma"
+          last_name: "Wilson"
+          phone: "5556667777"
+        items:
+          - item_name: "Tiramisu"
+            quantity: 1
+  expected_outcomes:
+    task_completed: true
+  context:
+    - "Menu includes Tiramisu"
+
+# ---------------------------------------------------------------------------
+# Orders with selection paths (modifiers / add-ons)
+# ---------------------------------------------------------------------------
+
+- scenario_id: order-addon-001
+  scenario: "Customer orders wings with a sauce selection"
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+    - "I'd like to place a pickup order"
+    - "Alex Turner, 5551112222"
+    - "Traditional Chicken Wings with Plain sauce"
+    - "That's all"
+    - "Yes, place the order"
+  expected_tool_calls:
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Alex"
+          last_name: "Turner"
+          phone: "5551112222"
+        items:
+          - item_name: "Traditional Chicken Wings"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Wing Sauce"
+                    option_name: "Plain"
+  expected_outcomes:
+    task_completed: true
+  context:
+    - "Menu includes Traditional Chicken Wings with Wing Sauce options: Plain, Buffalo, BBQ"
+
+- scenario_id: order-addon-002
+  scenario: "Customer orders nuggets with Buffalo sauce"
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+    - "Pickup order"
+    - "Jordan Blake, 5553334444"
+    - "Boneless Chicken Nuggets with Buffalo sauce"
+    - "No"
+    - "Yes, checkout"
+  expected_tool_calls:
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Jordan"
+          last_name: "Blake"
+          phone: "5553334444"
+        items:
+          - item_name: "Boneless Chicken Nuggets"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Wing Sauce"
+                    option_name: "Buffalo"
+  expected_outcomes:
+    task_completed: true
+  context:
+    - "Menu includes Boneless Chicken Nuggets with Wing Sauce options: Plain, Buffalo, BBQ"
+
+# ---------------------------------------------------------------------------
+# Orders with multiple required selections
+# ---------------------------------------------------------------------------
+
+- scenario_id: order-multi-select-001
+  scenario: "Customer orders a pizza with size and cheese modification"
+  test_category: nested_modifiers
+  persona: standard_customer
+  user_turns:
+    - "I want to place a pickup order"
+    - "Sam Rivera, 5557778888"
+    - "A medium Stuffed DD Chicago Classic with light cheese"
+    - "That's it"
+    - "Yes, place it"
+  expected_tool_calls:
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Sam"
+          last_name: "Rivera"
+          phone: "5557778888"
+        items:
+          - item_name: "Stuffed DD Chicago Classic"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Size"
+                    option_name: "Medium"
+              - path:
+                  - group_name: "Sauce/Cheese Options"
+                    option_name: "Light Cheese"
+  expected_outcomes:
+    task_completed: true
+  context:
+    - "Menu includes Stuffed DD Chicago Classic with Size (Small, Medium, Large) and Sauce/Cheese Options"
+
+- scenario_id: order-removal-001
+  scenario: "Customer orders a pizza with size and a removal modification"
+  test_category: nested_modifiers
+  persona: standard_customer
+  user_turns:
+    - "Pickup order please"
+    - "Casey Morgan, 5559990000"
+    - "A large Super Veggie Thin with no sauce"
+    - "No"
+    - "Yes, submit"
+  expected_tool_calls:
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Casey"
+          last_name: "Morgan"
+          phone: "5559990000"
+        items:
+          - item_name: "Super Veggie (Thin)"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Size"
+                    option_name: "Large"
+              - path:
+                  - group_name: "Sauce/Cheese Options"
+                    option_name: "No Sauce"
+  expected_outcomes:
+    task_completed: true
+  context:
+    - "Menu includes Super Veggie (Thin) with Size options and Sauce/Cheese Options"
+
+# ---------------------------------------------------------------------------
+# Multi-item orders
+# ---------------------------------------------------------------------------
+
+- scenario_id: order-multi-item-001
+  scenario: "Customer orders two different items in one order"
+  test_category: multi_item
+  persona: standard_customer
+  user_turns:
+    - "I'd like to place a pickup order"
+    - "Chris Lee, 5552223333"
+    - "A Frozen Cheese pizza and a Tiramisu"
+    - "That's all"
+    - "Yes, place the order"
+  expected_tool_calls:
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Chris"
+          last_name: "Lee"
+          phone: "5552223333"
+        items:
+          - item_name: "Frozen Cheese"
+            quantity: 1
+          - item_name: "Tiramisu"
+            quantity: 1
+  expected_outcomes:
+    task_completed: true
+  context:
+    - "Menu includes Frozen Cheese pizza and Tiramisu"
+
+# ---------------------------------------------------------------------------
+# Customer field validation (phone normalization)
+# ---------------------------------------------------------------------------
+
+- scenario_id: order-phone-norm-001
+  scenario: "Customer provides phone with dashes and parentheses"
+  test_category: customer_fields
+  persona: standard_customer
+  user_turns:
+    - "I want to order for pickup"
+    - "Dana Kim"
+    - "(555) 444-5555"
+    - "One Cornbread please"
+    - "That's it"
+    - "Yes"
+  expected_tool_calls:
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Dana"
+          last_name: "Kim"
+          phone: "5554445555"
+        items:
+          - item_name: "Cornbread"
+            quantity: 1
+  expected_outcomes:
+    task_completed: true
+  context:
+    - "Menu includes Cornbread"

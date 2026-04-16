@@ -105,6 +105,70 @@ class TestEvaluateScenario:
         assert tool_result.passed is True
 
     @pytest.mark.asyncio
+    async def test_returns_tool_call_args_result_when_args_present(self) -> None:
+        scenario = _make_scenario(
+            expected_tool_calls=[
+                ExpectedToolCall(
+                    tool="toast.validate_order_intent",
+                    args={
+                        "customer": {"first_name": "John"},
+                        "items": [{"item_name": "Pizza", "quantity": 1}],
+                    },
+                )
+            ]
+        )
+        record = ConversationRecord(
+            scenario=scenario,
+            agent_responses=["Order confirmed"],
+            tool_calls=[
+                {
+                    "type": "tool_call",
+                    "payload": {
+                        "tool_name": "toast.validate_order_intent",
+                        "arguments": {
+                            "customer": {"first_name": "John"},
+                            "items": [{"item_name": "Pizza", "quantity": 1}],
+                        },
+                    },
+                }
+            ],
+        )
+
+        with (
+            patch(
+                f"{ADAPTER_MODULE}.evaluate_responsive",
+                new_callable=AsyncMock,
+                return_value=EvaluatorResult(
+                    metric_name="responsive",
+                    score=1.0,
+                    passed=True,
+                    reason="OK",
+                ),
+            ),
+            patch(
+                f"{ADAPTER_MODULE}.evaluate_voice_appropriate",
+                new_callable=AsyncMock,
+                return_value=EvaluatorResult(
+                    metric_name="voice_appropriate",
+                    score=1.0,
+                    passed=True,
+                    reason="OK",
+                ),
+            ),
+        ):
+            results = await evaluate_scenario(record)
+
+        metric_names = {r.metric_name for r in results}
+        assert "tool_call_verification" in metric_names
+        assert "tool_call_arg_accuracy" in metric_names
+
+        args_result = next(
+            r for r in results if r.metric_name == "tool_call_arg_accuracy"
+        )
+        assert args_result.passed is True
+        assert args_result.score == 1.0
+
+    @pytest.mark.asyncio
     async def test_skips_all_when_no_triggers(self) -> None:
         scenario = _make_scenario(
             expected_tool_calls=[],

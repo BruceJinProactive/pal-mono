@@ -1,6 +1,7 @@
 """Evaluators for the eval service.
 
-- tool_call: Deterministic tool call verification (local)
+- tool_call: Deterministic tool call verification (local, name-only)
+- tool_call_args: Argument-level validation with Toast normalization
 - interruption: E14 interruption detection from transcript timestamps
 - latency_silence: E15 latency/silence scoring from turn metrics
 - stt_accuracy: E16 STT accuracy / WER via Whisper reference transcription
@@ -28,6 +29,11 @@ from services.eval_service.evaluators.stt_accuracy import (
     extract_primary_transcript,
 )
 from services.eval_service.evaluators.tool_call import evaluate_tool_calls
+from services.eval_service.evaluators.tool_call_args import (
+    ToastArgumentEvaluator,
+    ToolArgumentEvaluator,
+    evaluate_tool_call_args,
+)
 
 __all__ = [
     "compute_wer",
@@ -40,7 +46,10 @@ __all__ = [
     "evaluate_speech_rate",
     "evaluate_stt_accuracy",
     "evaluate_task_completion",
+    "evaluate_tool_call_args",
     "evaluate_tool_calls",
+    "ToastArgumentEvaluator",
+    "ToolArgumentEvaluator",
     "evaluate_voice_appropriate",
     "extract_primary_transcript",
 ]

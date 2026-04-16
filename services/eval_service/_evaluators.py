@@ -98,6 +98,7 @@ async def evaluate_scenario(
         evaluate_voice_appropriate,
     )
     from services.eval_service.evaluators.tool_call import evaluate_tool_calls
+    from services.eval_service.evaluators.tool_call_args import evaluate_tool_call_args
 
     results: list[EvaluatorResult] = []
 
@@ -113,6 +114,14 @@ async def evaluate_scenario(
         result = evaluate_tool_calls(expected, record.tool_calls)
         results.append(result)
         logger.debug("E1 tool_call: score=%s passed=%s", result.score, result.passed)
+
+        args_result = evaluate_tool_call_args(expected, record.tool_calls)
+        results.append(args_result)
+        logger.debug(
+            "tool_call_args: score=%s passed=%s",
+            args_result.score,
+            args_result.passed,
+        )
 
     # Phase 2: LLM + metric-based evaluators in parallel
     metric_tasks: list[asyncio.Task[EvaluatorResult]] = []
