@@ -439,6 +439,23 @@ wheels = [
 ]
 
 [[package]]
+name = "cartesia"
+version = "3.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/41/65/5c2085821842b334a43025becbb70c52d02a458c0b24f9c1a0912d7e7e13/cartesia-3.0.2.tar.gz", hash = "sha256:beeff16cd5a36d30d908984e84591e6e7c20429e54c5822fca5c16bf26dd805a", size = 584593, upload-time = "2026-02-26T01:34:46.41Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/db/4e7ddf0a31c4c94fa5badd6b1b4fc52733f8bb8b98e4c53293a467b95149/cartesia-3.0.2-py3-none-any.whl", hash = "sha256:ec19decf77cac350a1e38872d50213daecd51839afb522011d68a49dcae6f1b5", size = 170183, upload-time = "2026-02-26T01:34:45.011Z" },
+]
+
+[[package]]
 name = "certifi"
 version = "2025.10.5"
 source = { registry = "https://pypi.org/simple" }
@@ -2635,6 +2652,10 @@ eval = [
     { name = "httpx" },
     { name = "openai" },
 ]
+voice = [
+    { name = "cartesia" },
+    { name = "livekit-api" },
+]
 
 [[package]]
 name = "pal-mono"
@@ -2686,7 +2707,7 @@ dependencies = [
     { name = "opentelemetry-distro" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-instrumentation-logging" },
-    { name = "pal-agents", extra = ["eval"] },
+    { name = "pal-agents", extra = ["eval", "voice"] },
     { name = "pgvector" },
     { name = "pinecone" },
     { name = "polyline" },
@@ -2774,6 +2795,7 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.60b1" },
     { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.254" },
     { name = "pal-agents", extras = ["eval"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.254" },
+    { name = "pal-agents", extras = ["voice"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.254" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
     { name = "polyline", specifier = "==2.0.2" },
