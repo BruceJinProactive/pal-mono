@@ -50,22 +50,22 @@
     - "Menu includes Cheese (Tavern) pizza with size selection"
 
 - scenario_id: order-simple-002
-  scenario: "Customer orders a large pepperoni pizza for pickup"
+  scenario: "Customer orders a large thin-crust pepperoni pizza for pickup"
   test_category: simple_order
   max_turns: 14
   persona: >-
     A direct phone customer named Tom Johnson (phone 5559876543).
-    He wants one large pepperoni pizza for pickup. Brief and to the point.
+    He wants one large thin-crust pepperoni pizza for pickup. Brief and to the point.
   user_turns:
     - "Pickup order please"
     - type: ai_driven
       goal: >-
-        Complete the order for one large pepperoni pizza for pickup.
+        Complete the order for one large thin-crust pepperoni pizza for pickup.
         Your name is Tom Johnson, phone 5559876543.
 
         Hard rules:
         - Only provide name and phone when the agent asks for them.
-        - You want a large size.
+        - You want a large size, thin crust.
         - Never add toppings, sides, sauces, modifiers, or extras not in the order.
         - Never invent details. If unsure, ask for the default.
         - Keep replies to one or two short sentences.
