@@ -32,9 +32,9 @@ from api.schemas.internal.voice_metrics import (
     extract_turn_latency_totals,
     extract_turn_timestamps,
 )
+from db.pal_repository.voice_config import VoiceConfigRepository
 from db.repositories.agent_repository import AgentRepositoryAsync
 from db.repositories.tool_call_record_repository import ToolCallRecordRepositoryAsync
-from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.types import Channel, SpeechRate
 from events import (
     AudioRecordingReference,
@@ -286,8 +286,8 @@ async def init_voice_call(
     }
 
     # --- Step 6: Fetch voice configs ---
-    voice_repo = VoiceConfigRepositoryAsync(session)
-    voice_configs = await voice_repo.get_voice_configs_by_project(project_id)
+    voice_repo = VoiceConfigRepository(session)
+    voice_configs = await voice_repo.list_by_project_id(project_id)
     if not voice_configs:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -336,7 +336,7 @@ async def init_voice_call(
     )
 
     # --- Step 8: Map speech rate to float ---
-    speech_rate = _SPEECH_RATE_TO_FLOAT.get(vc.speech_rate, 1.0)
+    speech_rate = _SPEECH_RATE_TO_FLOAT.get(SpeechRate(vc.speech_rate), 1.0)
 
     # Capture ORM attributes into locals before any commit expires them (MissingGreenlet guard)
     voice_id = vc.voice_id

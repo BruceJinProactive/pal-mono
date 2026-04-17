@@ -92,7 +92,7 @@ class TestSnapshotTaskFired:
                 return_value=user,
             ),
             patch(f"{VOICE_MODULE}.db.MessageRepositoryAsync") as mock_msg_cls,
-            patch(f"{VOICE_MODULE}.VoiceConfigRepositoryAsync") as mock_vc_cls,
+            patch(f"{VOICE_MODULE}.VoiceConfigRepository") as mock_vc_cls,
             patch(f"{VOICE_MODULE}.AgentRepositoryAsync") as mock_agent_repo_cls,
             patch(f"{VOICE_MODULE}.RawConfig") as mock_raw_config_cls,
             patch(
@@ -107,7 +107,7 @@ class TestSnapshotTaskFired:
             mock_msg_cls.return_value = AsyncMock()
 
             vc_repo = AsyncMock()
-            vc_repo.get_voice_configs_by_project.return_value = [vc]
+            vc_repo.list_by_project_id.return_value = [vc]
             mock_vc_cls.return_value = vc_repo
 
             agent_repo = AsyncMock()
@@ -178,7 +178,7 @@ class TestSnapshotTaskFired:
                 return_value=user,
             ),
             patch(f"{VOICE_MODULE}.db.MessageRepositoryAsync") as mock_msg_cls,
-            patch(f"{VOICE_MODULE}.VoiceConfigRepositoryAsync") as mock_vc_cls,
+            patch(f"{VOICE_MODULE}.VoiceConfigRepository") as mock_vc_cls,
             patch(f"{VOICE_MODULE}.AgentRepositoryAsync") as mock_agent_repo_cls,
             patch(f"{VOICE_MODULE}.RawConfig") as mock_raw_config_cls,
             patch(
@@ -193,7 +193,7 @@ class TestSnapshotTaskFired:
             mock_msg_cls.return_value = AsyncMock()
 
             vc_repo = AsyncMock()
-            vc_repo.get_voice_configs_by_project.return_value = [vc]
+            vc_repo.list_by_project_id.return_value = [vc]
             mock_vc_cls.return_value = vc_repo
 
             agent_repo = AsyncMock()
@@ -245,7 +245,7 @@ class TestSnapshotTaskFired:
                 return_value=user,
             ),
             patch(f"{VOICE_MODULE}.db.MessageRepositoryAsync") as mock_msg_cls,
-            patch(f"{VOICE_MODULE}.VoiceConfigRepositoryAsync") as mock_vc_cls,
+            patch(f"{VOICE_MODULE}.VoiceConfigRepository") as mock_vc_cls,
             patch(f"{VOICE_MODULE}.AgentRepositoryAsync") as mock_agent_repo_cls,
             patch(
                 f"{VOICE_MODULE}.upsert_agent_config_snapshot",
@@ -255,7 +255,7 @@ class TestSnapshotTaskFired:
             mock_msg_cls.return_value = AsyncMock()
 
             vc_repo = AsyncMock()
-            vc_repo.get_voice_configs_by_project.return_value = [vc]
+            vc_repo.list_by_project_id.return_value = [vc]
             mock_vc_cls.return_value = vc_repo
 
             agent_repo = AsyncMock()

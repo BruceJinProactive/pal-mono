@@ -76,7 +76,7 @@ def _patch_deps(
             return_value=user,
         ),
         patch("api.routes.internal._voice.db.MessageRepositoryAsync"),
-        patch("api.routes.internal._voice.VoiceConfigRepositoryAsync"),
+        patch("api.routes.internal._voice.VoiceConfigRepository"),
     )
 
 
@@ -100,7 +100,7 @@ async def _run(
     with p[0], p[1], p[2], p[3] as msg_cls, p[4] as vc_cls:
         msg_cls.return_value = AsyncMock()
         vc_repo = AsyncMock()
-        vc_repo.get_voice_configs_by_project.return_value = voice_configs
+        vc_repo.list_by_project_id.return_value = voice_configs
         vc_cls.return_value = vc_repo
         return await init_voice_call(request, session)
 
@@ -119,7 +119,7 @@ async def _run_expecting_error(
     with p[0], p[1], p[2], p[3] as msg_cls, p[4] as vc_cls:
         msg_cls.return_value = AsyncMock()
         vc_repo = AsyncMock()
-        vc_repo.get_voice_configs_by_project.return_value = voice_configs
+        vc_repo.list_by_project_id.return_value = voice_configs
         vc_cls.return_value = vc_repo
         with pytest.raises(HTTPException) as exc_info:
             await init_voice_call(request, session)
@@ -325,7 +325,7 @@ class TestInitVoiceCallSuccess:
         ):
             msg_cls.return_value = AsyncMock()
             vc_repo = AsyncMock()
-            vc_repo.get_voice_configs_by_project.return_value = [vc]
+            vc_repo.list_by_project_id.return_value = [vc]
             vc_cls.return_value = vc_repo
 
             result = await init_voice_call(_make_request(), session)
