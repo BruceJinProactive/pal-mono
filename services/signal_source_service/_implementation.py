@@ -15,11 +15,8 @@ from api.schemas.operations.signal_source import (
     SignalSourceResponse,
     UpdateSignalSourceRequest,
 )
-from db.repositories import (
-    ProjectRepositoryAsync,
-    SignalFeedRepositoryAsync,
-    SignalSourceRepositoryAsync,
-)
+from db.pal_repository.project import ProjectRepository
+from db.repositories import SignalFeedRepositoryAsync, SignalSourceRepositoryAsync
 from db.tables import SignalFeed, SignalSource
 from db.tables.types import CaptureMode, FeedType, SignalSourceStatus, SignalType
 from utils.log import logger
@@ -47,12 +44,12 @@ async def create_source(
     Raises:
         ValueError: If project not found.
     """
-    project_repo = ProjectRepositoryAsync(session)
+    project_repo = ProjectRepository(session)
     source_repo = SignalSourceRepositoryAsync(session)
     feed_repo = SignalFeedRepositoryAsync(session)
 
     # Get project to derive account_id
-    project = await project_repo.get_project(project_id)
+    project = await project_repo.get_by_id(project_id)
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
@@ -107,11 +104,11 @@ async def get_sources(
     Raises:
         ValueError: If project not found.
     """
-    project_repo = ProjectRepositoryAsync(session)
+    project_repo = ProjectRepository(session)
     source_repo = SignalSourceRepositoryAsync(session)
 
     # Get project to derive account_id
-    project = await project_repo.get_project(project_id)
+    project = await project_repo.get_by_id(project_id)
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
@@ -136,11 +133,11 @@ async def get_source(
     Returns:
         SignalSource if found and belongs to project, None otherwise.
     """
-    project_repo = ProjectRepositoryAsync(session)
+    project_repo = ProjectRepository(session)
     source_repo = SignalSourceRepositoryAsync(session)
 
     # Get project to derive account_id
-    project = await project_repo.get_project(project_id)
+    project = await project_repo.get_by_id(project_id)
     if not project:
         return None
 
@@ -197,11 +194,11 @@ async def update_source(
     Returns:
         Updated SignalSource if found, None otherwise.
     """
-    project_repo = ProjectRepositoryAsync(session)
+    project_repo = ProjectRepository(session)
     source_repo = SignalSourceRepositoryAsync(session)
 
     # Get project to derive account_id
-    project = await project_repo.get_project(project_id)
+    project = await project_repo.get_by_id(project_id)
     if not project:
         return None
 
@@ -259,12 +256,12 @@ async def delete_source(
     Returns:
         True if deleted, False if not found.
     """
-    project_repo = ProjectRepositoryAsync(session)
+    project_repo = ProjectRepository(session)
     source_repo = SignalSourceRepositoryAsync(session)
     feed_repo = SignalFeedRepositoryAsync(session)
 
     # Get project to derive account_id
-    project = await project_repo.get_project(project_id)
+    project = await project_repo.get_by_id(project_id)
     if not project:
         return False
 
