@@ -73,7 +73,7 @@ from api.schemas.operations.signal_source import (
     SignalSourceResponse,
     UpdateSignalSourceRequest,
 )
-from db.repositories.project_repository import ProjectRepositoryAsync
+from db.pal_repository.project import ProjectRepository
 from db.tables.types import ExecutionStatus
 from services import signal_source_service
 from services.auth_service.authorization import check_permission
@@ -2155,8 +2155,8 @@ async def _get_project_timezone(project_id: uuid.UUID, session: AsyncSession) ->
     Raises:
         HTTPException: If project not found
     """
-    project_repo = ProjectRepositoryAsync(session)
-    project = await project_repo.get_project(project_id)
+    project_repo = ProjectRepository(session)
+    project = await project_repo.get_by_id(project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
