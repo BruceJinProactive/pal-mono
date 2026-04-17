@@ -318,22 +318,67 @@ async def _run_conversation(
     record = ConversationRecord(scenario=scenario)
     history: list[ConversationTurn] = []
 
+    is_last_turn = False
     for turn_number, turn in enumerate(scenario.user_turns):
+        is_last_turn = turn_number == len(scenario.user_turns) - 1
+
         if isinstance(turn, UserTurn) and turn.type == TurnType.AI_DRIVEN:
-            message = await simulator.generate_user_message(
-                persona=scenario.persona,
-                scenario=scenario.scenario,
-                goal=turn.goal or "",
-                conversation_history=history,
-                turn_number=turn_number,
-            )
-            if message == END_SENTINEL:
-                logger.info(
-                    "Simulator ended conversation at turn %d for scenario %s",
-                    turn_number,
-                    scenario.scenario_id,
+            goal = turn.goal or ""
+
+            if is_last_turn:
+                # Last entry: loop the simulator until [END] or max_turns
+                remaining = scenario.max_turns - len(history) // 2
+                if remaining <= 0:
+                    logger.warning(
+                        "No turn budget remaining for ai_driven loop in "
+                        "scenario %s (max_turns=%d, turns_used=%d). "
+                        "Granting 1 turn.",
+                        scenario.scenario_id,
+                        scenario.max_turns,
+                        len(history) // 2,
+                    )
+                    remaining = 1
+                for _ai_turn in range(remaining):
+                    message = await simulator.generate_user_message(
+                        persona=scenario.persona,
+                        scenario=scenario.scenario,
+                        goal=goal,
+                        conversation_history=history,
+                        turn_number=len(history) // 2,
+                        max_turns=scenario.max_turns,
+                    )
+                    if message == END_SENTINEL:
+                        logger.info(
+                            "Simulator ended conversation at turn %d "
+                            "for scenario %s",
+                            len(history) // 2,
+                            scenario.scenario_id,
+                        )
+                        break
+                    result: TurnResult = await driver.send_turn(message, history)
+                    history.append(ConversationTurn(role="user", content=message))
+                    history.append(
+                        ConversationTurn(role="assistant", content=result.content)
+                    )
+                    record.turns.append({"user": message, "assistant": result.content})
+                    record.agent_responses.append(result.content)
+                break  # loop consumed remaining turns
+            else:
+                # Not last entry: single call (backwards compat)
+                message = await simulator.generate_user_message(
+                    persona=scenario.persona,
+                    scenario=scenario.scenario,
+                    goal=goal,
+                    conversation_history=history,
+                    turn_number=turn_number,
                 )
-                break
+                if message == END_SENTINEL:
+                    logger.info(
+                        "Simulator ended conversation at turn %d for scenario %s",
+                        turn_number,
+                        scenario.scenario_id,
+                    )
+                    break
         elif isinstance(turn, UserTurn):
             message = turn.text or turn.goal or ""
         else:

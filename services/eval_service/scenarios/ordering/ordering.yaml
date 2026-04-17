@@ -1,18 +1,33 @@
 # Ordering accuracy scenarios for Giordano's (Toast integration).
 # Tool names match pal-agents spec: toast_takeout_create_order_v1 (order),
 # get_toast_item_details_v3 (item lookup).
+#
+# Scenarios 001/002 use ai_driven turns so the simulated customer can
+# adapt to agent clarifying questions (size, sides, etc.).
+# Scenario 003 keeps static turns — Tiramisu is simple enough.
 
 - scenario_id: order-simple-001
-  scenario: "Customer orders a single item with no modifiers"
+  scenario: "Customer orders a single Frozen Cheese pizza for pickup"
   test_category: simple_order
-  persona: standard_customer
+  max_turns: 14
+  persona: >-
+    A straightforward phone customer named Sarah Miller (phone 5551234567).
+    She wants one Frozen Cheese pizza for pickup. Friendly and concise.
   user_turns:
-    - "I'd like to place an order for pickup"
-    - "Sarah Miller"
-    - "5551234567"
-    - "A Frozen Cheese pizza please"
-    - "No, that's all"
-    - "Yes, place the order"
+    - "Hi, I'd like to place an order for pickup"
+    - type: ai_driven
+      goal: >-
+        Complete the order for one Frozen Cheese pizza for pickup.
+        Your name is Sarah Miller, phone 5551234567.
+
+        Hard rules:
+        - Only provide name and phone when the agent asks for them.
+        - If asked about size or any detail not specified, say "standard" or "no preference".
+        - Never add toppings, sides, sauces, modifiers, or extras not in the order.
+        - Never invent details. If unsure, ask for the default.
+        - Keep replies to one or two short sentences.
+        - When the agent confirms the order or asks to place it, say yes.
+        - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
     - tool: get_toast_item_details_v3
       optional: true
@@ -31,15 +46,27 @@
     - "Menu includes Frozen Cheese pizza"
 
 - scenario_id: order-simple-002
-  scenario: "Customer orders a single item, providing name and phone together"
+  scenario: "Customer orders a single Frozen Pepperoni pizza for pickup"
   test_category: simple_order
-  persona: standard_customer
+  max_turns: 14
+  persona: >-
+    A direct phone customer named Tom Johnson (phone 5559876543).
+    He wants one Frozen Pepperoni pizza for pickup. Brief and to the point.
   user_turns:
     - "Pickup order please"
-    - "Tom Johnson, 5559876543"
-    - "A Frozen Pepperoni pizza"
-    - "Nope"
-    - "Yes, submit it"
+    - type: ai_driven
+      goal: >-
+        Complete the order for one Frozen Pepperoni pizza for pickup.
+        Your name is Tom Johnson, phone 5559876543.
+
+        Hard rules:
+        - Only provide name and phone when the agent asks for them.
+        - If asked about size or any detail not specified, say "standard" or "no preference".
+        - Never add toppings, sides, sauces, modifiers, or extras not in the order.
+        - Never invent details. If unsure, ask for the default.
+        - Keep replies to one or two short sentences.
+        - When the agent confirms the order or asks to place it, say yes.
+        - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
     - tool: get_toast_item_details_v3
       optional: true

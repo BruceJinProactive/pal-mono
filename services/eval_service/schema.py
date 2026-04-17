@@ -33,6 +33,7 @@ class EvalScenario(BaseModel):
     scenario: str
     test_category: str
     persona: str = "standard_customer"
+    max_turns: int = Field(default=14, ge=1)
     user_turns: list[str | UserTurn]
     expected_tool_calls: list[ExpectedToolCall] = Field(default_factory=list)
     expected_outcomes: ExpectedOutcomes = Field(default_factory=ExpectedOutcomes)

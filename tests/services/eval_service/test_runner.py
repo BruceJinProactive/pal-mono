@@ -682,6 +682,7 @@ class TestRunConversation:
         scenario.scenario_id = "sc-conv-1"
         scenario.persona = persona
         scenario.scenario = scenario_text
+        scenario.max_turns = 14
         if turns is None:
             t = UserTurn(text="Hello there")
             scenario.user_turns = [t]
@@ -914,6 +915,7 @@ class TestRunConversation:
 
     @pytest.mark.asyncio
     async def test_ai_driven_turn_calls_simulator(self) -> None:
+        from services.eval_service._user_simulator import END_SENTINEL
         from services.eval_service.schema import TurnType, UserTurn
 
         ai_turn = UserTurn(type=TurnType.AI_DRIVEN, goal="ask about hours")
@@ -922,7 +924,9 @@ class TestRunConversation:
         )
 
         simulator = self._make_simulator()
-        simulator.generate_user_message = AsyncMock(return_value="What are your hours?")
+        simulator.generate_user_message = AsyncMock(
+            side_effect=["What are your hours?", END_SENTINEL]
+        )
 
         driver = AsyncMock()
         driver.last_conversation_id = None
@@ -934,12 +938,13 @@ class TestRunConversation:
 
         record = await _run_conversation(driver, scenario, simulator)
 
-        simulator.generate_user_message.assert_awaited_once()
-        call_kwargs = simulator.generate_user_message.call_args[1]
-        assert call_kwargs["persona"] == "curious_customer"
-        assert call_kwargs["scenario"] == "hours inquiry"
-        assert call_kwargs["goal"] == "ask about hours"
-        assert call_kwargs["turn_number"] == 0
+        # First simulator call produces a message, second returns END
+        assert simulator.generate_user_message.await_count == 2
+        first_call_kwargs = simulator.generate_user_message.call_args_list[0][1]
+        assert first_call_kwargs["persona"] == "curious_customer"
+        assert first_call_kwargs["scenario"] == "hours inquiry"
+        assert first_call_kwargs["goal"] == "ask about hours"
+        assert first_call_kwargs["turn_number"] == 0
         assert record.turns[0]["user"] == "What are your hours?"
         assert record.turns[0]["assistant"] == "We're open 9-5."
 
@@ -1011,6 +1016,166 @@ class TestRunConversation:
         assert record.turns[0]["user"] == "Hello"
         assert record.turns[1]["user"] == "What's on the menu today?"
         assert record.turns[2]["user"] == "Thanks, bye!"
+
+    @pytest.mark.asyncio
+    async def test_ai_driven_loops_until_end_sentinel(self) -> None:
+        """Last ai_driven turn loops the simulator until [END]."""
+        from services.eval_service._user_simulator import END_SENTINEL
+        from services.eval_service.schema import TurnType, UserTurn
+
+        ai_turn = UserTurn(type=TurnType.AI_DRIVEN, goal="order a pizza")
+        scenario = self._make_scenario([ai_turn])
+        scenario.max_turns = 14
+
+        simulator = self._make_simulator()
+        replies = ["I'd like a cheese pizza", "Yes, that's all", END_SENTINEL]
+        simulator.generate_user_message = AsyncMock(side_effect=replies)
+
+        responses = ["What size?", "Order placed!"]
+        resp_idx = 0
+
+        async def _send(message: str, history: list[object]) -> MagicMock:
+            nonlocal resp_idx
+            tr = MagicMock()
+            tr.content = responses[resp_idx]
+            resp_idx += 1
+            return tr
+
+        driver = AsyncMock()
+        driver.last_conversation_id = None
+        driver.send_turn = AsyncMock(side_effect=_send)
+
+        from services.eval_service._runner import _run_conversation
+
+        record = await _run_conversation(driver, scenario, simulator)
+
+        assert len(record.turns) == 2
+        assert record.turns[0]["user"] == "I'd like a cheese pizza"
+        assert record.turns[1]["user"] == "Yes, that's all"
+        assert simulator.generate_user_message.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_ai_driven_loops_respects_max_turns(self) -> None:
+        """Loop stops at max_turns even if simulator never returns [END]."""
+        from services.eval_service.schema import TurnType, UserTurn
+
+        ai_turn = UserTurn(type=TurnType.AI_DRIVEN, goal="keep chatting")
+        scenario = self._make_scenario([ai_turn])
+        scenario.max_turns = 3
+
+        simulator = self._make_simulator()
+        simulator.generate_user_message = AsyncMock(return_value="Tell me more")
+
+        driver = AsyncMock()
+        driver.last_conversation_id = None
+        turn_result = MagicMock()
+        turn_result.content = "Sure, here's more info."
+        driver.send_turn = AsyncMock(return_value=turn_result)
+
+        from services.eval_service._runner import _run_conversation
+
+        record = await _run_conversation(driver, scenario, simulator)
+
+        assert len(record.turns) == 3
+        assert simulator.generate_user_message.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_static_then_ai_driven_loop(self) -> None:
+        """Static opening turn followed by ai_driven loop."""
+        from services.eval_service._user_simulator import END_SENTINEL
+        from services.eval_service.schema import TurnType, UserTurn
+
+        turns = [
+            UserTurn(text="Hi, I want to order"),
+            UserTurn(type=TurnType.AI_DRIVEN, goal="complete the order"),
+        ]
+        scenario = self._make_scenario(turns)
+        scenario.max_turns = 14
+
+        simulator = self._make_simulator()
+        simulator.generate_user_message = AsyncMock(
+            side_effect=["A cheese pizza please", END_SENTINEL]
+        )
+
+        responses = ["Welcome! What would you like?", "Got it, one cheese pizza."]
+        resp_idx = 0
+
+        async def _send(message: str, history: list[object]) -> MagicMock:
+            nonlocal resp_idx
+            tr = MagicMock()
+            tr.content = responses[resp_idx]
+            resp_idx += 1
+            return tr
+
+        driver = AsyncMock()
+        driver.last_conversation_id = None
+        driver.send_turn = AsyncMock(side_effect=_send)
+
+        from services.eval_service._runner import _run_conversation
+
+        record = await _run_conversation(driver, scenario, simulator)
+
+        assert len(record.turns) == 2
+        assert record.turns[0]["user"] == "Hi, I want to order"
+        assert record.turns[1]["user"] == "A cheese pizza please"
+
+    @pytest.mark.asyncio
+    async def test_ai_driven_loop_passes_max_turns_to_simulator(self) -> None:
+        """Verify max_turns kwarg is forwarded to the simulator."""
+        from services.eval_service._user_simulator import END_SENTINEL
+        from services.eval_service.schema import TurnType, UserTurn
+
+        ai_turn = UserTurn(type=TurnType.AI_DRIVEN, goal="test goal")
+        scenario = self._make_scenario([ai_turn])
+        scenario.max_turns = 10
+
+        simulator = self._make_simulator()
+        simulator.generate_user_message = AsyncMock(return_value=END_SENTINEL)
+
+        driver = AsyncMock()
+        driver.last_conversation_id = None
+
+        from services.eval_service._runner import _run_conversation
+
+        await _run_conversation(driver, scenario, simulator)
+
+        call_kwargs = simulator.generate_user_message.call_args[1]
+        assert call_kwargs["max_turns"] == 10
+
+    @pytest.mark.asyncio
+    async def test_ai_driven_loop_grants_one_turn_when_budget_exhausted(self) -> None:
+        """When static turns already consumed max_turns, ai_driven still gets 1 turn."""
+        from services.eval_service.schema import TurnType, UserTurn
+
+        static_turns = [UserTurn(text=f"msg-{i}") for i in range(5)]
+        ai_turn = UserTurn(type=TurnType.AI_DRIVEN, goal="finish up")
+        scenario = self._make_scenario([*static_turns, ai_turn])
+        scenario.max_turns = 3  # budget already exceeded by 5 static turns
+
+        simulator = self._make_simulator()
+        simulator.generate_user_message = AsyncMock(return_value="One last thing")
+
+        responses = [f"resp-{i}" for i in range(6)]
+        resp_idx = 0
+
+        async def _send(message: str, history: list[object]) -> MagicMock:
+            nonlocal resp_idx
+            tr = MagicMock()
+            tr.content = responses[resp_idx]
+            resp_idx += 1
+            return tr
+
+        driver = AsyncMock()
+        driver.last_conversation_id = None
+        driver.send_turn = AsyncMock(side_effect=_send)
+
+        from services.eval_service._runner import _run_conversation
+
+        record = await _run_conversation(driver, scenario, simulator)
+
+        # 5 static turns + 1 ai_driven turn (granted despite exhausted budget)
+        assert len(record.turns) == 6
+        assert record.turns[5]["user"] == "One last thing"
 
 
 class TestMarkStaleRunsFailed:
