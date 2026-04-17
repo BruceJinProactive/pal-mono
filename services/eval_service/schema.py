@@ -20,6 +20,7 @@ class UserTurn(BaseModel):
 class ExpectedToolCall(BaseModel):
     tool: str
     args: dict[str, Any] = Field(default_factory=dict)
+    optional: bool = False
 
 
 class ExpectedOutcomes(BaseModel):

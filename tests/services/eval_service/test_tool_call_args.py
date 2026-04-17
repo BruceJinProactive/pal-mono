@@ -1155,3 +1155,54 @@ class TestUnexpectedTools:
         result = evaluate_tool_call_args(expected, actual)
         assert result.raw_output is not None
         assert result.raw_output["unexpected_tools"] == []
+
+
+class TestOptionalToolCalls:
+    """Tests for optional: true flag on expected tool calls."""
+
+    def test_optional_missing_not_counted(self) -> None:
+        """Optional tool not called → skipped entirely, no failure."""
+        expected = [
+            {"tool": "get_toast_item_details_v3", "optional": True},
+            {"tool": "toast_takeout_create_order_v1"},
+        ]
+        actual = [{"tool_name": "toast_takeout_create_order_v1"}]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.score == 1.0
+        assert result.raw_output is not None
+        fields = [d["field"] for d in result.raw_output["match_details"]]
+        assert "get_toast_item_details_v3" not in fields
+
+    def test_optional_present_counted_as_match(self) -> None:
+        """Optional tool called → counted as a matched field."""
+        expected = [
+            {"tool": "get_toast_item_details_v3", "optional": True},
+            {"tool": "toast_takeout_create_order_v1"},
+        ]
+        actual = [
+            {"tool_name": "get_toast_item_details_v3"},
+            {"tool_name": "toast_takeout_create_order_v1"},
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.score == 1.0
+        assert result.raw_output is not None
+        fields = [d["field"] for d in result.raw_output["match_details"]]
+        assert "get_toast_item_details_v3" in fields
+
+    def test_non_optional_missing_still_fails(self) -> None:
+        """Non-optional tool not called → still fails as before."""
+        expected = [
+            {"tool": "get_toast_item_details_v3"},
+            {"tool": "toast_takeout_create_order_v1"},
+        ]
+        actual = [{"tool_name": "toast_takeout_create_order_v1"}]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is False
+        assert result.raw_output is not None
+        details = result.raw_output["match_details"]
+        lookup_detail = next(
+            d for d in details if d["field"] == "get_toast_item_details_v3"
+        )
+        assert lookup_detail["matched"] is False

@@ -107,7 +107,7 @@ async def evaluate_scenario(
     # Phase 1: Deterministic evaluators
     if _should_run_tool_call(record.scenario):
         expected = [
-            {"tool": tc.tool, "args": tc.args}
+            {"tool": tc.tool, "args": tc.args, "optional": tc.optional}
             for tc in record.scenario.expected_tool_calls
         ]
         result = evaluate_tool_call_args(expected, record.tool_calls)

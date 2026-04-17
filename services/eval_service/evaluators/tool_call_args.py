@@ -460,6 +460,8 @@ def evaluate_tool_call_args(
                 break
 
         if found_idx is None:
+            if exp_tc.get("optional", False):
+                continue
             all_details.append(
                 MatchDetail(tool_name, False, "expected tool not called")
             )

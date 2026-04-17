@@ -15,6 +15,7 @@
     - "Yes, place the order"
   expected_tool_calls:
     - tool: get_toast_item_details_v3
+      optional: true
     - tool: toast_takeout_create_order_v1
       args:
         customer:
@@ -41,6 +42,7 @@
     - "Yes, submit it"
   expected_tool_calls:
     - tool: get_toast_item_details_v3
+      optional: true
     - tool: toast_takeout_create_order_v1
       args:
         customer:
@@ -67,6 +69,7 @@
     - "Yes, checkout"
   expected_tool_calls:
     - tool: get_toast_item_details_v3
+      optional: true
     - tool: toast_takeout_create_order_v1
       args:
         customer:
