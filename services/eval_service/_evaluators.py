@@ -5,7 +5,7 @@ and aggregating their results.
 
 Evaluation sources:
 - Tool call: deterministic, local (services/eval_service/evaluators/tool_call_args.py)
-- All others: pal-agents DeepEval metrics via deepeval_adapter.py
+- Conversation judge: pal-agents LLM judge via judge_adapter.py
 """
 
 from __future__ import annotations
@@ -60,49 +60,27 @@ def _should_run_tool_call(scenario: EvalScenario) -> bool:
     return len(scenario.expected_tool_calls) > 0
 
 
-def _should_run_faithfulness(scenario: EvalScenario) -> bool:
-    """Faithfulness runs when context is provided."""
-    return len(scenario.context) > 0
-
-
-def _should_run_task_completion(scenario: EvalScenario) -> bool:
-    """Task completion runs on multi-turn conversations."""
-    return len(scenario.user_turns) > 1
-
-
 async def evaluate_scenario(
     record: ConversationRecord,
-    project_context: list[str] | None = None,
 ) -> list[EvaluatorResult]:
     """Run all applicable evaluators against a conversation record.
 
     Execution order:
     - Phase 1: Deterministic (E1 tool call)
-    - Phase 2: LLM + metric-based evaluators in parallel
-      - Text-based: faithfulness, responsive, voice_appropriate, task_completion
+    - Phase 2: LLM judge (task_completion — always runs)
       - Voice-specific (when ``record.is_voice``): interruption, latency_silence,
-        speech_rate, speech_fidelity, stt_accuracy
+        speech_rate, speech_fidelity
 
     Args:
         record: The completed conversation record to evaluate.
-        project_context: Optional additional project-level context
-            (overrides scenario context for faithfulness).
 
     Returns:
         List of EvaluatorResult from all evaluators that ran.
     """
-    from services.eval_service.evaluators.deepeval_adapter import (
-        evaluate_faithfulness,
-        evaluate_responsive,
-        evaluate_task_completion,
-        evaluate_voice_appropriate,
-    )
+    from services.eval_service.evaluators.judge_adapter import evaluate_task_completion
     from services.eval_service.evaluators.tool_call_args import evaluate_tool_call_args
 
     results: list[EvaluatorResult] = []
-
-    # Use project_context if provided, without mutating the original record
-    effective_context = project_context if project_context else record.scenario.context
 
     # Phase 1: Deterministic evaluators
     if _should_run_tool_call(record.scenario):
@@ -116,39 +94,15 @@ async def evaluate_scenario(
             "tool_call_accuracy: score=%s passed=%s", result.score, result.passed
         )
 
-    # Phase 2: LLM + metric-based evaluators in parallel
+    # Phase 2: LLM judge + voice-specific evaluators in parallel
     metric_tasks: list[asyncio.Task[EvaluatorResult]] = []
 
-    if effective_context:
-        metric_tasks.append(
-            asyncio.create_task(
-                evaluate_faithfulness(record, context_override=effective_context),
-                name="faithfulness",
-            )
+    metric_tasks.append(
+        asyncio.create_task(
+            evaluate_task_completion(record),
+            name="task_completion",
         )
-
-    # Responsive and voice_appropriate always run (only need input + output)
-    if record.agent_responses:
-        metric_tasks.append(
-            asyncio.create_task(
-                evaluate_responsive(record),
-                name="responsive",
-            )
-        )
-        metric_tasks.append(
-            asyncio.create_task(
-                evaluate_voice_appropriate(record),
-                name="voice_appropriate",
-            )
-        )
-
-    if _should_run_task_completion(record.scenario):
-        metric_tasks.append(
-            asyncio.create_task(
-                evaluate_task_completion(record),
-                name="task_completion",
-            )
-        )
+    )
 
     # Phase 2b: Voice-specific evaluators (only when is_voice=True)
     if record.is_voice:

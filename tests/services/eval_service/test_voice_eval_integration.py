@@ -175,11 +175,11 @@ class TestVoiceEvalResultConversion:
 # evaluate_scenario — voice happy path
 # ---------------------------------------------------------------------------
 
-DEEPEVAL_MODULE = "services.eval_service.evaluators.deepeval_adapter"
+JUDGE_MODULE = "services.eval_service.evaluators.judge_adapter"
 FIDELITY_MODULE = "services.eval_service.evaluators.speech_fidelity"
 
 
-def _mock_deepeval_evaluator(metric_name: str, score: float = 0.9) -> AsyncMock:
+def _mock_evaluator(metric_name: str, score: float = 0.9) -> AsyncMock:
     return AsyncMock(
         return_value=EvaluatorResult(
             metric_name=metric_name,
@@ -199,20 +199,8 @@ class TestEvaluateScenarioVoiceHappyPath:
 
         with (
             patch(
-                f"{DEEPEVAL_MODULE}.evaluate_faithfulness",
-                _mock_deepeval_evaluator("faithfulness"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_responsive",
-                _mock_deepeval_evaluator("responsive"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_voice_appropriate",
-                _mock_deepeval_evaluator("voice_appropriate"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_task_completion",
-                _mock_deepeval_evaluator("task_completion"),
+                f"{JUDGE_MODULE}.evaluate_task_completion",
+                _mock_evaluator("task_completion"),
             ),
             patch(
                 f"{FIDELITY_MODULE}._create_speech_fidelity_metric"
@@ -229,10 +217,7 @@ class TestEvaluateScenarioVoiceHappyPath:
 
         metric_names = {r.metric_name for r in results}
 
-        # Text-based evaluators
-        assert "faithfulness" in metric_names
-        assert "responsive" in metric_names
-        assert "voice_appropriate" in metric_names
+        # Judge evaluator
         assert "task_completion" in metric_names
 
         # Voice-specific evaluators
@@ -247,20 +232,8 @@ class TestEvaluateScenarioVoiceHappyPath:
 
         with (
             patch(
-                f"{DEEPEVAL_MODULE}.evaluate_faithfulness",
-                _mock_deepeval_evaluator("faithfulness"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_responsive",
-                _mock_deepeval_evaluator("responsive"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_voice_appropriate",
-                _mock_deepeval_evaluator("voice_appropriate"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_task_completion",
-                _mock_deepeval_evaluator("task_completion"),
+                f"{JUDGE_MODULE}.evaluate_task_completion",
+                _mock_evaluator("task_completion"),
             ),
             patch(
                 f"{FIDELITY_MODULE}._create_speech_fidelity_metric"
@@ -320,20 +293,8 @@ class TestEvaluateScenarioInterruption:
 
         with (
             patch(
-                f"{DEEPEVAL_MODULE}.evaluate_faithfulness",
-                _mock_deepeval_evaluator("faithfulness"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_responsive",
-                _mock_deepeval_evaluator("responsive"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_voice_appropriate",
-                _mock_deepeval_evaluator("voice_appropriate"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_task_completion",
-                _mock_deepeval_evaluator("task_completion"),
+                f"{JUDGE_MODULE}.evaluate_task_completion",
+                _mock_evaluator("task_completion"),
             ),
             patch(f"{FIDELITY_MODULE}._create_speech_fidelity_metric") as mock_fm,
         ):
@@ -393,20 +354,8 @@ class TestEvaluateScenarioLongSilence:
 
         with (
             patch(
-                f"{DEEPEVAL_MODULE}.evaluate_faithfulness",
-                _mock_deepeval_evaluator("faithfulness"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_responsive",
-                _mock_deepeval_evaluator("responsive"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_voice_appropriate",
-                _mock_deepeval_evaluator("voice_appropriate"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_task_completion",
-                _mock_deepeval_evaluator("task_completion"),
+                f"{JUDGE_MODULE}.evaluate_task_completion",
+                _mock_evaluator("task_completion"),
             ),
             patch(f"{FIDELITY_MODULE}._create_speech_fidelity_metric") as mock_fm,
         ):
@@ -446,23 +395,9 @@ class TestEvaluateScenarioNonVoice:
             is_voice=False,
         )
 
-        with (
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_faithfulness",
-                _mock_deepeval_evaluator("faithfulness"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_responsive",
-                _mock_deepeval_evaluator("responsive"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_voice_appropriate",
-                _mock_deepeval_evaluator("voice_appropriate"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_task_completion",
-                _mock_deepeval_evaluator("task_completion"),
-            ),
+        with patch(
+            f"{JUDGE_MODULE}.evaluate_task_completion",
+            _mock_evaluator("task_completion"),
         ):
             results = await evaluate_scenario(record)
 
@@ -488,20 +423,8 @@ class TestEvaluateScenarioNoAudio:
 
         with (
             patch(
-                f"{DEEPEVAL_MODULE}.evaluate_faithfulness",
-                _mock_deepeval_evaluator("faithfulness"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_responsive",
-                _mock_deepeval_evaluator("responsive"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_voice_appropriate",
-                _mock_deepeval_evaluator("voice_appropriate"),
-            ),
-            patch(
-                f"{DEEPEVAL_MODULE}.evaluate_task_completion",
-                _mock_deepeval_evaluator("task_completion"),
+                f"{JUDGE_MODULE}.evaluate_task_completion",
+                _mock_evaluator("task_completion"),
             ),
             patch(f"{FIDELITY_MODULE}._create_speech_fidelity_metric") as mock_fm,
         ):
@@ -541,9 +464,15 @@ class TestEvaluateScenarioEmptyTranscript:
             is_voice=True,
         )
 
-        results = await evaluate_scenario(record)
+        with patch(
+            f"{JUDGE_MODULE}.evaluate_task_completion",
+            _mock_evaluator("task_completion"),
+        ):
+            results = await evaluate_scenario(record)
 
         metric_names = {r.metric_name for r in results}
+        # task_completion always runs
+        assert "task_completion" in metric_names
         # No data to evaluate — voice evaluators should be skipped
         assert "interruption" not in metric_names
         assert "latency_silence" not in metric_names
