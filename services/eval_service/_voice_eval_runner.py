@@ -178,16 +178,28 @@ def _generate_caller_token(
     orchestrator: LiveKitRoomOrchestrator,
     room_name: str,
     call_id: str,
+    dialed_number: str = "",
 ) -> ParticipantToken:
-    """Generate a participant token with ``sip.callID`` in attributes.
+    """Generate a participant token with SIP-compatible attributes.
 
     The LiveKit agent reads ``participant.attributes["sip.callID"]`` to
-    identify calls.  For eval calls there is no SIP bridge, so we embed
-    the generated ``call_id`` in the JWT attributes directly.
+    identify calls, and ``sip.phoneNumber`` / ``sip.trunkPhoneNumber``
+    to resolve the project via the pal-mono init endpoint.
+
+    For eval calls there is no SIP bridge, so we embed these values
+    in the JWT attributes directly.
     """
     from datetime import timedelta
 
     from livekit.api import AccessToken, VideoGrants
+
+    attrs: dict[str, str] = {"sip.callID": call_id}
+    normalized = dialed_number.strip()
+    if normalized:
+        # sip.phoneNumber = caller's number (synthetic caller)
+        # sip.trunkPhoneNumber = dialed number (project's phone number)
+        attrs["sip.phoneNumber"] = "+10000000000"
+        attrs["sip.trunkPhoneNumber"] = normalized
 
     token = (
         AccessToken(orchestrator.api_key, orchestrator.api_secret)
@@ -201,7 +213,7 @@ def _generate_caller_token(
                 can_subscribe=True,
             )
         )
-        .with_attributes({"sip.callID": call_id})
+        .with_attributes(attrs)
     )
 
     return ParticipantToken(
@@ -390,6 +402,7 @@ async def run_voice_scenario(
     config: VoiceEvalConfig,
     session: AsyncSession,
     caller_factory: SyntheticCallerFactory | None = None,
+    dialed_number: str = "",
 ) -> ConversationRecord:
     """Run a single voice eval scenario end-to-end.
 
@@ -459,6 +472,7 @@ async def run_voice_scenario(
             orchestrator,
             room_name=created_room_name,
             call_id=call_id,
+            dialed_number=dialed_number,
         )
 
         # 2b. Start room egress to record audio (if configured).

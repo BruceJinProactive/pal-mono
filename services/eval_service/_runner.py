@@ -268,7 +268,9 @@ async def _run_scenario_for_mode(
         )
 
         voice_config = VoiceEvalConfig.from_env()
-        return await run_voice_scenario(scenario, voice_config, session)
+        return await run_voice_scenario(
+            scenario, voice_config, session, dialed_number=recipient_id
+        )
 
     driver = create_driver(
         driver_mode, recipient_id, channel=channel, scenario_id=scenario.scenario_id

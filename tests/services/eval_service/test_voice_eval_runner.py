@@ -238,6 +238,67 @@ class TestGenerateCallerToken:
         assert isinstance(result.token, str)
         assert len(result.token) > 0
 
+    def test_embeds_phone_numbers_when_dialed_number_provided(self) -> None:
+        """Token includes sip.phoneNumber and sip.trunkPhoneNumber when dialed_number is set."""
+        import jwt
+
+        mock_orch = MagicMock()
+        mock_orch.api_key = "test-key"
+        mock_orch.api_secret = "test-secret"
+
+        result = _generate_caller_token(
+            mock_orch,
+            room_name="eval-voice-room",
+            call_id="eval-abc123",
+            dialed_number="+18001234567",
+        )
+
+        decoded = jwt.decode(result.token, options={"verify_signature": False})
+        attrs = decoded.get("attributes", {})
+        assert attrs["sip.callID"] == "eval-abc123"
+        assert attrs["sip.phoneNumber"] == "+10000000000"
+        assert attrs["sip.trunkPhoneNumber"] == "+18001234567"
+
+    def test_no_phone_numbers_when_dialed_number_empty(self) -> None:
+        """Token omits phone number attributes when dialed_number is empty."""
+        import jwt
+
+        mock_orch = MagicMock()
+        mock_orch.api_key = "test-key"
+        mock_orch.api_secret = "test-secret"
+
+        result = _generate_caller_token(
+            mock_orch,
+            room_name="eval-voice-room",
+            call_id="eval-abc123",
+            dialed_number="",
+        )
+
+        decoded = jwt.decode(result.token, options={"verify_signature": False})
+        attrs = decoded.get("attributes", {})
+        assert attrs["sip.callID"] == "eval-abc123"
+        assert "sip.phoneNumber" not in attrs
+        assert "sip.trunkPhoneNumber" not in attrs
+
+    def test_strips_whitespace_from_dialed_number(self) -> None:
+        """Whitespace-only dialed_number is treated as empty."""
+        import jwt
+
+        mock_orch = MagicMock()
+        mock_orch.api_key = "test-key"
+        mock_orch.api_secret = "test-secret"
+
+        result = _generate_caller_token(
+            mock_orch,
+            room_name="eval-voice-room",
+            call_id="eval-abc123",
+            dialed_number="  ",
+        )
+
+        decoded = jwt.decode(result.token, options={"verify_signature": False})
+        attrs = decoded.get("attributes", {})
+        assert "sip.trunkPhoneNumber" not in attrs
+
 
 class TestRunVoiceScenarioNoCallerFactory:
     """When no caller_factory is provided, a default SyntheticCaller is created."""
