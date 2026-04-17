@@ -1,6 +1,6 @@
 import uuid
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import (
@@ -36,7 +36,6 @@ from api.schemas.operations.monitoring import (
     ListMonitoringRunsResponse,
     MonitoringConfigResponse,
     MonitoringRunResponse,
-    MonitoringSummaryResponse,
     MonitoringTimeWindow,
     RerunMonitoringRunResponse,
     TestMonitoringConfigResponse,
@@ -1599,7 +1598,7 @@ async def rerun_monitoring_run(
 
 @operation_router.get(
     "/projects/{project_id}/monitoring/summary",
-    response_model=MonitoringSummaryResponse,
+    response_model=None,
     responses={
         404: {"model": ErrorResponse},
         500: {"model": ErrorResponse},
@@ -1613,7 +1612,7 @@ async def get_monitoring_summary(
     session: AsyncSession = Depends(db.get_db_async),
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-) -> MonitoringSummaryResponse:
+) -> dict[str, Any]:
     """Get monitoring health summary for a project, grouped by tags.
 
     Returns per-tag health status (critical/warning/healthy) based on fail rate

@@ -10,6 +10,7 @@ import copy
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,6 @@ from api.schemas.operations.monitoring import (
     MonitoringConfigResponse,
     MonitoringRunListResponse,
     MonitoringRunResponse,
-    MonitoringSummaryResponse,
     UpdateMonitoringConfigRequest,
 )
 from db.repositories import (
@@ -1972,9 +1972,13 @@ async def get_monitoring_summary(
     project_id: uuid.UUID,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-) -> MonitoringSummaryResponse:
+) -> dict[str, Any]:
     """
     Get monitoring health summary for a project, grouped by tags.
+
+    Builds the base response via Pydantic (MonitoringSummaryResponse /
+    TagSummary) so that UUID and datetime serialization is identical to
+    the original endpoint, then enriches each tag with a ``configs`` list.
 
     Args:
         session: Async database session.
@@ -1983,7 +1987,8 @@ async def get_monitoring_summary(
         end_date: Optional end of time range (exclusive).
 
     Returns:
-        MonitoringSummaryResponse with per-tag health summaries.
+        Dict with project info, time range, and per-tag health summaries
+        including per-config breakdown.
 
     Raises:
         ValueError: If project not found.
@@ -2001,7 +2006,9 @@ async def get_monitoring_summary(
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
-    from api.schemas.operations.monitoring import TagSummary
+    from collections import OrderedDict
+
+    from api.schemas.operations.monitoring import MonitoringSummaryResponse, TagSummary
 
     tag_rows = await run_repo.get_summary_by_tags(
         project_id=project_id,
@@ -2009,27 +2016,59 @@ async def get_monitoring_summary(
         end_date=end_date,
     )
 
-    tags: list[TagSummary] = []
+    # Group rows by tag, preserving order from the query
+    tag_map: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
     for row in tag_rows:
         total = row.total_runs
         fail_rate = row.fail_count / total if total > 0 else 0.0
 
-        tags.append(
-            TagSummary(
-                tag=row.tag,
-                total_runs=row.total_runs,
-                pass_count=row.pass_count,
-                fail_count=row.fail_count,
-                error_count=row.error_count,
-                fail_rate=round(fail_rate, 4),
-            )
-        )
+        config_summary: dict[str, Any] = {
+            "config_id": str(row.config_id),
+            "config_name": row.config_name,
+            "total_runs": row.total_runs,
+            "pass_count": row.pass_count,
+            "fail_count": row.fail_count,
+            "error_count": row.error_count,
+            "fail_rate": round(fail_rate, 4),
+        }
 
-    return MonitoringSummaryResponse(
+        if row.tag not in tag_map:
+            tag_map[row.tag] = []
+        tag_map[row.tag].append(config_summary)
+
+    # Build TagSummary via Pydantic, then enrich with configs
+    tags: list[dict[str, Any]] = []
+    for tag_name, configs in tag_map.items():
+        total_runs = sum(c["total_runs"] for c in configs)
+        pass_count = sum(c["pass_count"] for c in configs)
+        fail_count = sum(c["fail_count"] for c in configs)
+        error_count = sum(c["error_count"] for c in configs)
+        fail_rate = fail_count / total_runs if total_runs > 0 else 0.0
+
+        tag_model = TagSummary(
+            tag=tag_name,
+            total_runs=total_runs,
+            pass_count=pass_count,
+            fail_count=fail_count,
+            error_count=error_count,
+            fail_rate=round(fail_rate, 4),
+        )
+        tag_dict = tag_model.model_dump()
+        tag_dict["configs"] = configs
+        tags.append(tag_dict)
+
+    # Sort tags by fail count descending
+    tags.sort(key=lambda t: t["fail_count"], reverse=True)
+
+    # Serialize envelope via Pydantic for identical UUID/datetime format
+    envelope = MonitoringSummaryResponse(
         project_id=project_id,
         project_name=project.name,
         total_tags=len(tags),
         start_date=start_date,
         end_date=end_date,
-        tags=tags,
+        tags=[],  # placeholder — replaced below
     )
+    result: dict[str, Any] = envelope.model_dump(mode="json")
+    result["tags"] = tags
+    return result

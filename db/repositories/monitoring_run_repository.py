@@ -234,12 +234,12 @@ class MonitoringRunRepositoryAsync:
         project_id: uuid.UUID,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
-    ) -> list[Row[tuple[str, int, int, int, int]]]:
+    ) -> list[Row[tuple[str, uuid.UUID, str, int, int, int, int]]]:
         """
-        Aggregate monitoring run results grouped by tag.
+        Aggregate monitoring run results grouped by tag and config.
 
         Unnests the tags array from enabled configs, joins with runs,
-        and returns per-tag counts of pass/fail/error results.
+        and returns per-tag-per-config counts of pass/fail/error results.
 
         Args:
             project_id: Project UUID to filter configs.
@@ -247,7 +247,8 @@ class MonitoringRunRepositoryAsync:
             end_date: Optional end of time range (exclusive).
 
         Returns:
-            List of rows with (tag, total_runs, pass_count, fail_count, error_count).
+            List of rows with (tag, config_id, config_name, total_runs,
+            pass_count, fail_count, error_count).
         """
         try:
             tag = func.unnest(MonitoringConfig.tags).label("tag")
@@ -260,6 +261,8 @@ class MonitoringRunRepositoryAsync:
             query = (
                 select(
                     tag,
+                    MonitoringConfig.id.label("config_id"),
+                    MonitoringConfig.name.label("config_name"),
                     func.count().label("total_runs"),
                     func.count(case((result_col == "pass", 1))).label("pass_count"),
                     func.count(case((result_col == "fail", 1))).label("fail_count"),
@@ -276,8 +279,11 @@ class MonitoringRunRepositoryAsync:
                     func.cardinality(MonitoringConfig.tags) > 0,
                     result_col != "skipped",
                 )
-                .group_by(tag)
-                .order_by(func.count(case((result_col == "fail", 1))).desc())
+                .group_by(tag, MonitoringConfig.id, MonitoringConfig.name)
+                .order_by(
+                    tag,
+                    func.count(case((result_col == "fail", 1))).desc(),
+                )
             )
 
             if start_date is not None:

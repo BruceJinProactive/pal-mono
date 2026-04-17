@@ -9,6 +9,7 @@ import asyncio
 import math
 import uuid
 from datetime import datetime
+from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +23,6 @@ from api.schemas.operations.monitoring import (
     ListMonitoringRunsResponse,
     MonitoringConfigResponse,
     MonitoringRunResponse,
-    MonitoringSummaryResponse,
     RerunMonitoringRunResponse,
     TestMonitoringConfigResponse,
     TriggerRunRequest,
@@ -904,7 +904,7 @@ async def get_monitoring_summary(
     project_id: uuid.UUID,
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-) -> MonitoringSummaryResponse:
+) -> dict[str, Any]:
     """
     Get monitoring health summary for a project, grouped by tags.
 

@@ -5,6 +5,7 @@ Covers get_monitoring_summary handler error mapping and success path.
 
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +14,23 @@ from fastapi import HTTPException
 # Import the router-level function for coverage of __init__.py lines
 from api.routes.operation import get_monitoring_summary as router_get_monitoring_summary
 from api.routes.operation._monitoring import get_monitoring_summary
-from api.schemas.operations.monitoring import MonitoringSummaryResponse
+
+
+def _make_summary_dict(
+    project_id: uuid.UUID,
+    project_name: str = "Test",
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> dict[str, Any]:
+    """Create a summary dict matching the service return shape."""
+    return {
+        "project_id": str(project_id),
+        "project_name": project_name,
+        "total_tags": 0,
+        "start_date": start_date.isoformat() if start_date else None,
+        "end_date": end_date.isoformat() if end_date else None,
+        "tags": [],
+    }
 
 
 class TestGetMonitoringSummaryHandler:
@@ -21,16 +38,9 @@ class TestGetMonitoringSummaryHandler:
 
     @pytest.mark.asyncio
     async def test_success_returns_response(self) -> None:
-        """Handler returns MonitoringSummaryResponse on success."""
+        """Handler returns dict on success."""
         project_id = uuid.uuid4()
-        expected = MonitoringSummaryResponse(
-            project_id=project_id,
-            project_name="Test",
-            total_tags=0,
-            start_date=None,
-            end_date=None,
-            tags=[],
-        )
+        expected = _make_summary_dict(project_id)
 
         with patch(
             "api.routes.operation._monitoring.monitoring_service"
@@ -88,14 +98,7 @@ class TestGetMonitoringSummaryHandler:
         end = datetime(2026, 4, 14, tzinfo=timezone.utc)
         session = AsyncMock()
 
-        expected = MonitoringSummaryResponse(
-            project_id=project_id,
-            project_name="Test",
-            total_tags=0,
-            start_date=start,
-            end_date=end,
-            tags=[],
-        )
+        expected = _make_summary_dict(project_id, start_date=start, end_date=end)
 
         with patch(
             "api.routes.operation._monitoring.monitoring_service"
@@ -120,14 +123,7 @@ class TestGetMonitoringSummaryHandler:
     async def test_router_endpoint_delegates_to_handler(self) -> None:
         """Router-level function delegates to _monitoring handler."""
         project_id = uuid.uuid4()
-        expected = MonitoringSummaryResponse(
-            project_id=project_id,
-            project_name="Router Test",
-            total_tags=0,
-            start_date=None,
-            end_date=None,
-            tags=[],
-        )
+        expected = _make_summary_dict(project_id, project_name="Router Test")
 
         with patch(
             "api.routes.operation._monitoring.monitoring_service"
