@@ -2070,5 +2070,6 @@ async def get_monitoring_summary(
         tags=[],  # placeholder — replaced below
     )
     result: dict[str, Any] = envelope.model_dump(mode="json")
+    result["display_name"] = project.display_name
     result["tags"] = tags
     return result

@@ -181,10 +181,11 @@ class TestShouldSkipMonitoring:
     @pytest.mark.asyncio
     async def test_within_time_window_no_skip(self, mocker):
         """Should not skip when current time is within the configured window."""
+        from datetime import datetime
 
         session = AsyncMock()
         project_id = UUID("12345678-1234-5678-1234-567812345678")
-        config = {"enabled": True, "start_time": "00:00", "end_time": "23:59"}
+        config = {"enabled": True, "start_time": "06:00", "end_time": "22:00"}
 
         mock_project = MagicMock()
         mock_project.timezone = "UTC"
@@ -193,6 +194,17 @@ class TestShouldSkipMonitoring:
             "services.monitoring_service._time_window.ProjectRepositoryAsync"
         )
         mock_repo.return_value.get_project = AsyncMock(return_value=mock_project)
+
+        # Mock datetime.now to return a time inside the window
+        fixed_now = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        mocker.patch(
+            "services.monitoring_service._time_window.datetime",
+            wraps=datetime,
+        )
+        mocker.patch(
+            "services.monitoring_service._time_window.datetime.now",
+            return_value=fixed_now,
+        )
 
         should_skip, reason = await should_skip_monitoring(session, project_id, config)
         assert should_skip is False

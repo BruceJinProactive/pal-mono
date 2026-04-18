@@ -62,6 +62,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "Irvine Downtown"
+        mock_project.display_name = "Irvine Downtown Store"
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -100,6 +101,7 @@ class TestGetMonitoringSummary:
 
         assert result["project_id"] == str(project_id)
         assert result["project_name"] == "Irvine Downtown"
+        assert result["display_name"] == "Irvine Downtown Store"
         assert result["total_tags"] == 3
         assert len(result["tags"]) == 3
 
@@ -122,6 +124,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "Test Location"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -162,6 +165,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "Empty Location"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -225,6 +229,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "Test Location"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -271,6 +276,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "Zero Runs"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -310,6 +316,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "Default Date"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -356,6 +363,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "Single Run"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -408,6 +416,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "All Errors"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -449,6 +458,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "High Volume Location"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -497,6 +507,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "Rounding Test"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
@@ -539,6 +550,7 @@ class TestGetMonitoringSummary:
 
         mock_project = MagicMock()
         mock_project.name = "Multi Config"
+        mock_project.display_name = None
 
         mock_project_repo = MagicMock()
         mock_project_repo.get_project = AsyncMock(return_value=mock_project)
