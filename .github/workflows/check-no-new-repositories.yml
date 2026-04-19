@@ -1,0 +1,42 @@
+name: Check No New Repository Files
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+    branches:
+      - "main"
+
+jobs:
+  check-no-new-repositories:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Block new files in db/repositories/
+        run: |
+          git fetch origin main
+
+          # Find new files added in db/repositories/
+          NEW_REPOS=$(git diff --name-only --diff-filter=A origin/main...HEAD \
+            | grep '^db/repositories/.*\.py$' \
+            | grep -v '^db/repositories/__init__\.py$' \
+            | sort)
+
+          if [ -n "$NEW_REPOS" ]; then
+            echo "::error::New repository files detected in db/repositories/. No new repositories should be added."
+            echo ""
+            echo "New repository files:"
+            echo "$NEW_REPOS" | sed 's/^/  /'
+            echo ""
+            echo "RATIONALE: The repository pattern is being phased out or frozen."
+            echo "Please add to pal-repository instead."
+            exit 1
+          fi
+
+          echo "No new repository files detected — check passed."
