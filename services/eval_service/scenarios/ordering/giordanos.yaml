@@ -1,0 +1,593 @@
+- scenario_id: cheese_tavern_large
+  scenario: Large tavern-style cheese pizza.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Cheese (Tavern) with Large
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Cheese (Tavern)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Large
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Large tavern-style cheese pizza.
+- scenario_id: cheese_tavern_large_bbq_dipping_sauce
+  scenario: Large tavern-style cheese pizza with a side of BBQ dipping sauce.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Cheese (Tavern) with Large, BBQ
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Cheese (Tavern)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Large
+        - path:
+          - group_name: Add Dipping Sauces ($)
+            option_name: BBQ
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Large tavern-style cheese pizza with a side of BBQ dipping sauce.
+- scenario_id: double_pepperoni_thin_large
+  scenario: Large thin-crust Double Pepperoni pizza.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Double Pepperoni (Thin) with Large
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Double Pepperoni (Thin)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Large
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Large thin-crust Double Pepperoni pizza.
+- scenario_id: half_and_half_tavern_large
+  scenario: Large tavern half-and-half pizza with Margherita on the first half and The Special on the second half.
+  test_category: nested_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 1/2 & 1/2 Specialty (Tavern) with Large, --- 1st Half ---, Margherita, Large, --- 2nd Half ---, The Special, Large
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: 1/2 & 1/2 Specialty (Tavern)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Large
+        - path:
+          - group_name: Half Toppings (Tavern Spec)
+            option_name: '--- 1st Half ---'
+          - group_name: 1st Half
+            option_name: Margherita
+          - group_name: Size
+            option_name: Large
+        - path:
+          - group_name: Half Toppings (Tavern Spec)
+            option_name: '--- 2nd Half ---'
+          - group_name: 2nd Half
+            option_name: The Special
+          - group_name: Size
+            option_name: Large
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Large tavern half-and-half pizza with Margherita on the first half and The Special on the second half.
+- scenario_id: cheesy_garlic_bread_plain
+  scenario: Plain cheesy garlic bread.
+  test_category: simple_no_modifiers
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Cheesy Garlic Bread
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Cheesy Garlic Bread
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Plain cheesy garlic bread.
+- scenario_id: cheesy_garlic_bread_marinara
+  scenario: Cheesy garlic bread with a side of marinara.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Cheesy Garlic Bread with Marinara
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Cheesy Garlic Bread
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Add Dipping Sauces ($)
+            option_name: Marinara
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Cheesy garlic bread with a side of marinara.
+- scenario_id: chicken_parmesan_entree
+  scenario: Chicken Parmesan in the entree size.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Chicken Parmesan with Entree
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Chicken Parmesan
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Entree
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Chicken Parmesan in the entree size.
+- scenario_id: chicken_parmesan_with_caesar_salad_no_dressing
+  scenario: Chicken Parmesan entree with a side Caesar salad and no dressing.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Chicken Parmesan with Entree, Side Caesar Salad, No Dressing
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Chicken Parmesan
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Entree
+        - path:
+          - group_name: Add Salad or Soup
+            option_name: Side Caesar Salad
+          - group_name: Choose Salad Dressing^^^
+            option_name: No Dressing
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Chicken Parmesan entree with a side Caesar salad and no dressing.
+- scenario_id: classic_italian_beef_caesar_no_dressing_no_peppers
+  scenario: Classic Italian Beef with a Caesar salad, no dressing, and no peppers.
+  test_category: with_removal_or_qualifier
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Classic Italian Beef with Caesar Salad, None, No Peppers
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Classic Italian Beef
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Sandwich Sides
+            option_name: Caesar Salad
+          - group_name: Dressing
+            option_name: None
+        - path:
+          - group_name: Italian Beef Options
+            option_name: No Peppers
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Classic Italian Beef with a Caesar salad, no dressing, and no peppers.
+- scenario_id: double_pepperoni_and_cheesy_garlic_bread
+  scenario: One large thin-crust Double Pepperoni pizza and one cheesy garlic bread.
+  test_category: multi_item
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Double Pepperoni (Thin) with Large and Cheesy Garlic Bread
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Double Pepperoni (Thin)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Large
+      - item_name: Cheesy Garlic Bread
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - One large thin-crust Double Pepperoni pizza and one cheesy garlic bread.
+- scenario_id: personal_thin_basic
+  scenario: Personal Thin Crust combo with cheese pizza and plain fries.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Personal Thin Crust with Cheese, Plain French Fries
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Personal Thin Crust
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Combo Pizza Choice
+            option_name: Cheese
+        - path:
+          - group_name: Choose Your Side
+            option_name: Plain French Fries
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Personal Thin Crust combo with cheese pizza and plain fries.
+- scenario_id: caprese_combo
+  scenario: Chicken Caprese Melt lunch combo with pesto, soup of the day, and marked to go.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Chicken Caprese Melt (Lunch Combo) with Pesto, Soup of the Day, TO GO
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Chicken Caprese Melt (Lunch Combo)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Chicken Caprese Adds
+            option_name: Pesto
+        - path:
+          - group_name: Choose Your Side
+            option_name: Soup of the Day
+        - path:
+          - group_name: General Mods
+            option_name: TO GO
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Chicken Caprese Melt lunch combo with pesto, soup of the day, and marked to go.
+- scenario_id: double_pepperoni_small_gluten_free
+  scenario: Small gluten-free Double Pepperoni thin-crust pizza.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Double Pepperoni (Thin) with Small Gluten Free
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Double Pepperoni (Thin)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Small Gluten Free
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Small gluten-free Double Pepperoni thin-crust pizza.
+- scenario_id: myo_stuffed_dd
+  scenario: Make Your Own stuffed deep dish pizza in medium size with light cheese and marinara.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - MYO Stuffed DD with Medium, Light Cheese, Marinara
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: MYO Stuffed DD
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Medium
+        - path:
+          - group_name: Sauce/Cheese Options
+            option_name: Light Cheese
+        - path:
+          - group_name: Add Dipping Sauces ($)
+            option_name: Marinara
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Make Your Own stuffed deep dish pizza in medium size with light cheese and marinara.
+- scenario_id: chicken_parmesan_entree_gluten_free_extra_sauce
+  scenario: Chicken Parmesan entree with gluten-free pasta and extra sauce.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Chicken Parmesan with Entree, GLUTEN FREE, Extra Sauce
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Chicken Parmesan
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Entree
+        - path:
+          - group_name: Pasta Options
+            option_name: GLUTEN FREE
+        - path:
+          - group_name: Pasta Options
+            option_name: Extra Sauce
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Chicken Parmesan entree with gluten-free pasta and extra sauce.
+- scenario_id: lasagna_family
+  scenario: Family platter lasagna with meat sauce and a cup of soup.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Lasagna with Family Platter, Meat Sauce, Cup Soup
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Lasagna
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Size
+            option_name: Family Platter
+        - path:
+          - group_name: Lasagna Options
+            option_name: Meat Sauce
+        - path:
+          - group_name: Add Salad or Soup
+            option_name: Cup Soup
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Family platter lasagna with meat sauce and a cup of soup.
+- scenario_id: classic_italian_beef_fries_sweet_peppers
+  scenario: Classic Italian Beef with crispy fries and sweet peppers.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Classic Italian Beef with Crispy Fries, Sweet Peppers
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Classic Italian Beef
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Sandwich Sides
+            option_name: Crispy Fries
+        - path:
+          - group_name: Italian Beef Options
+            option_name: Sweet Peppers
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Classic Italian Beef with crispy fries and sweet peppers.
+- scenario_id: meal_deal_full
+  scenario: Large thin-crust Giordano meal deal with Pepsi, bottled water, half BBQ and half Buffalo wings, plus mushrooms
+    and bacon on the pizza.
+  test_category: complex_build
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - '#1 GD - LG THN/2xWING/COOKIE/SODA with Pepsi, Bottle Aquafina 20oz, 1/2 BBQ & 1/2 Buffalo, Mushrooms, Bacon'
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: '#1 GD - LG THN/2xWING/COOKIE/SODA'
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Meal Deal Bottled Drinks
+            option_name: Pepsi
+        - path:
+          - group_name: Meal Deal Bottled Drinks
+            option_name: Bottle Aquafina 20oz
+        - path:
+          - group_name: Wing Sauce^
+            option_name: 1/2 BBQ & 1/2 Buffalo
+        - path:
+          - group_name: Meal Deal Pizza Toppings
+            option_name: Mushrooms
+        - path:
+          - group_name: Meal Deal Pizza Toppings
+            option_name: Bacon
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Large thin-crust Giordano meal deal with Pepsi, bottled water, half BBQ and half Buffalo wings, plus mushrooms and bacon
+    on the pizza.

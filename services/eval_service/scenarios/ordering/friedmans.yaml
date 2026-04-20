@@ -1,0 +1,511 @@
+- scenario_id: avocado_toast_gluten_free_toast
+  scenario: Avocado Toast on gluten free toast.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Avocado Toast with Gluten Free Toast
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Avocado Toast
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Toast Choice*
+            option_name: Gluten Free Toast
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Avocado Toast on gluten free toast.
+- scenario_id: belt_plain
+  scenario: Plain B.E.L.T. sandwich with the standard build.
+  test_category: simple_no_modifiers
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - B.E.L.T.
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: B.E.L.T.
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Plain B.E.L.T. sandwich with the standard build.
+- scenario_id: french_toast_plain
+  scenario: Plain French Toast with no requested changes.
+  test_category: simple_no_modifiers
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - French Toast
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: French Toast
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Plain French Toast with no requested changes.
+- scenario_id: shakshuka_add_avocado
+  scenario: Shakshuka with avocado added.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Shakshuka with Add Avocado
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Shakshuka
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Add-Ons & Modifiers
+            option_name: Add Avocado
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Shakshuka with avocado added.
+- scenario_id: bagel_and_lox_everything_gluten_free
+  scenario: Bagel and Lox on an everything bagel with the gluten free substitution.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Bagel and Lox with Everything, Sub Gluten-Free
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Bagel and Lox
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Bagel Choice*
+            option_name: Everything
+        - path:
+          - group_name: Make It Gluten-Free?
+            option_name: Sub Gluten-Free
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Bagel and Lox on an everything bagel with the gluten free substitution.
+- scenario_id: breakfast_bowl_extra_egg
+  scenario: Breakfast Bowl with an extra egg.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Breakfast Bowl with Add Extra Egg
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Breakfast Bowl
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Egg Style Options
+            option_name: Add Extra Egg
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Breakfast Bowl with an extra egg.
+- scenario_id: breakfast_burger_medium
+  scenario: Breakfast Burger cooked medium.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Breakfast Burger with Medium
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Breakfast Burger
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Temperature Options
+            option_name: Medium
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Breakfast Burger cooked medium.
+- scenario_id: breakfast_burger_medium_american_cheese
+  scenario: Breakfast Burger cooked medium with American cheese.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Breakfast Burger with Medium, Add American Cheese
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Breakfast Burger
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Temperature Options
+            option_name: Medium
+        - path:
+          - group_name: Burger Add-Ons & Modifiers
+            option_name: Add American Cheese
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Breakfast Burger cooked medium with American cheese.
+- scenario_id: chicken_chilaquiles_plain
+  scenario: Plain Chicken Chilaquiles with no requested changes.
+  test_category: simple_no_modifiers
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Chicken Chilaquiles
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Chicken Chilaquiles
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Plain Chicken Chilaquiles with no requested changes.
+- scenario_id: belt_and_french_toast
+  scenario: One plain B.E.L.T. and one plain French Toast.
+  test_category: multi_item
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - B.E.L.T. and French Toast
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: B.E.L.T.
+        quantity: 1
+        selection_paths: []
+      - item_name: French Toast
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - One plain B.E.L.T. and one plain French Toast.
+- scenario_id: avocado_toast_sourdough_poached_egg
+  scenario: Avocado Toast on sourdough with a poached egg.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Avocado Toast with Sourdough, Poached
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Avocado Toast
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Toast Choice*
+            option_name: Sourdough
+        - path:
+          - group_name: Egg Style Options
+            option_name: Poached
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Avocado Toast on sourdough with a poached egg.
+- scenario_id: belt_gluten_free_add_avocado
+  scenario: B.E.L.T. on gluten-free toast with avocado added.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - B.E.L.T. with Sub Gluten-Free Toast, Add Avocado
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: B.E.L.T.
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Egg Style Options
+            option_name: Sub Gluten-Free Toast
+        - path:
+          - group_name: Add-Ons & Modifiers
+            option_name: Add Avocado
+  expected_outcomes:
+    task_completed: true
+  context:
+  - B.E.L.T. on gluten-free toast with avocado added.
+- scenario_id: bagel_and_lox_plain_bagel
+  scenario: Bagel and Lox on a plain bagel.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Bagel and Lox with Plain
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Bagel and Lox
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Bagel Choice*
+            option_name: Plain
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Bagel and Lox on a plain bagel.
+- scenario_id: breakfast_bowl_gluten_free_egg_whites
+  scenario: Breakfast Bowl made gluten-free with egg whites.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Breakfast Bowl with Sub Egg Whites, Sub Gluten-Free
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Breakfast Bowl
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Egg Style Options
+            option_name: Sub Egg Whites
+        - path:
+          - group_name: Make It Gluten-Free?
+            option_name: Sub Gluten-Free
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Breakfast Bowl made gluten-free with egg whites.
+- scenario_id: breakfast_burger_medium_well_add_avocado_gluten_free_bun
+  scenario: Breakfast Burger cooked medium well with avocado on a gluten-free bun.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Breakfast Burger with Medium Well, Add Avocado, Sub Gluten-Free Bun
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Breakfast Burger
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Temperature Options
+            option_name: Medium Well
+        - path:
+          - group_name: Burger Add-Ons & Modifiers
+            option_name: Add Avocado
+        - path:
+          - group_name: Burger Add-Ons & Modifiers
+            option_name: Sub Gluten-Free Bun
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Breakfast Burger cooked medium well with avocado on a gluten-free bun.
+- scenario_id: chicken_chilaquiles_omelette_avocado
+  scenario: Chicken Chilaquiles made omelette style with avocado added.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Chicken Chilaquiles with Omelette, Add Avocado
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Chicken Chilaquiles
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Egg Style Options
+            option_name: Omelette
+        - path:
+          - group_name: Add-Ons & Modifiers
+            option_name: Add Avocado
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Chicken Chilaquiles made omelette style with avocado added.
+- scenario_id: belt_gluten_free_add_avocado_repeat
+  scenario: Two B.E.L.T. sandwiches on gluten-free toast with avocado added.
+  test_category: multi_item_complex
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 2 B.E.L.T. with Sub Gluten-Free Toast, Add Avocado
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: B.E.L.T.
+        quantity: 2
+        selection_paths:
+        - path:
+          - group_name: Egg Style Options
+            option_name: Sub Gluten-Free Toast
+        - path:
+          - group_name: Add-Ons & Modifiers
+            option_name: Add Avocado
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Two B.E.L.T. sandwiches on gluten-free toast with avocado added.

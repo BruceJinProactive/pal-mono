@@ -6,6 +6,11 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04
 
+### 2026-04-17
+- Add `scenario_files` field to `EvalRunResponse` schema; trigger endpoint resolves which YAML files will execute via `project_map.json` and returns them in the response so callers can confirm only the intended scenarios run
+- Restructure eval scenarios: move per-client ordering YAML files into `scenarios/ordering/` directory; update `project_map.json` to map project IDs to file paths (e.g. `"ordering/friedmans.yaml"`) instead of directory names; runner uses `_resolve_scenario_files()` + `validate_scenarios_from_yaml()` to load specific files
+- Default fallback when project not in `project_map.json` now loads only `scenarios/generic/` instead of all scenarios
+
 ### 2026-04-16
 - Add optional `scenario_category` field to `POST /v1/eval/run` request; allows filtering eval scenarios by subdirectory (e.g. `"generic"`, `"ordering"`); threads through runner to `load_scenarios()`; omitting runs all scenarios (existing behavior)
 

@@ -27,6 +27,10 @@ class EvalRunResponse(BaseModel):
     started_at: datetime.datetime | None = None
     completed_at: datetime.datetime | None = None
     created_at: datetime.datetime | None = None
+    scenario_files: list[str] = Field(
+        default_factory=list,
+        description="Scenario YAML files that will be executed (e.g. 'ordering/marcos_lookup.yaml')",
+    )
 
 
 class EvalResultResponse(BaseModel):

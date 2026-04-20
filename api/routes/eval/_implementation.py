@@ -20,6 +20,7 @@ from services.eval_service._runner import (
     get_eval_results,
     get_eval_run,
     get_scorecard,
+    resolve_scenario_info,
 )
 
 
@@ -29,8 +30,12 @@ async def trigger_eval_run(
 ) -> EvalRunResponse:
     """Trigger an evaluation run for a project.
 
-    Creates the run row, kicks off background execution, and returns 202 immediately.
+    Creates a run row, kicks off background execution, and returns 202
+    immediately with the resolved scenario directories and files.
+    Poll GET /v1/eval/runs/{run_id} for results.
     """
+    scenario_info = resolve_scenario_info(request.project_id)
+
     run = await create_eval_run(
         project_id=request.project_id,
         account_id=request.account_id,
@@ -40,7 +45,9 @@ async def trigger_eval_run(
         session=session,
         scenario_category=request.scenario_category,
     )
-    return EvalRunResponse.model_validate(run)
+    response = EvalRunResponse.model_validate(run)
+    response.scenario_files = scenario_info["scenario_files"]
+    return response
 
 
 async def get_eval_run_with_results(

@@ -10,9 +10,16 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class RunEvalRequest(BaseModel):
-    """Request to trigger an evaluation run for a project."""
+    """Request to trigger an evaluation run for a project.
 
-    project_id: uuid.UUID = Field(..., description="Project to evaluate")
+    The ``project_id`` is looked up in ``project_map.json`` to find the
+    matching scenario directory name for loading test scenarios.
+    """
+
+    project_id: uuid.UUID = Field(
+        ...,
+        description="Project UUID to evaluate",
+    )
     account_id: uuid.UUID = Field(..., description="Account that owns the project")
     channel_identifier: str = Field(
         ...,

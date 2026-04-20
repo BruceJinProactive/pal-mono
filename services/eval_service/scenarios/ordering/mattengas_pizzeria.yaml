@@ -1,0 +1,570 @@
+- scenario_id: big_matt_plain
+  scenario: Plain 16 inch Big Matt pizza with no requested changes.
+  test_category: simple_no_modifiers
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 16" Big Matt Pizza.
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: 16" Big Matt Pizza.
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Plain 16 inch Big Matt pizza with no requested changes.
+- scenario_id: big_matt_left_artichokes
+  scenario: 16 inch Big Matt pizza with artichokes on the left half.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 16" Big Matt Pizza. with Topping Options 16", LEFT Artichokes - 16"
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: 16" Big Matt Pizza.
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: '*Toppings Choice 16"'
+            option_name: Topping Options 16"
+          - group_name: Artichokes - 16"
+            option_name: LEFT Artichokes - 16"
+  expected_outcomes:
+    task_completed: true
+  context:
+  - 16 inch Big Matt pizza with artichokes on the left half.
+- scenario_id: margherita_specialty_plain
+  scenario: Plain 16 inch Mattenga's Margherita Specialty pizza.
+  test_category: simple_no_modifiers
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 16" Mattenga's Margherita Specialty.
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: 16" Mattenga's Margherita Specialty.
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Plain 16 inch Mattenga's Margherita Specialty pizza.
+- scenario_id: supreme_plain
+  scenario: 16 inch Mattenga's Supreme pizza with the standard pizza sauce base.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - '16" Mattenga''s Supreme. with BASE: Pizza Sauce'
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: 16" Mattenga's Supreme.
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+            option_name: 'BASE: Pizza Sauce'
+  expected_outcomes:
+    task_completed: true
+  context:
+  - 16 inch Mattenga's Supreme pizza with the standard pizza sauce base.
+- scenario_id: molto_meat_extra_sauce
+  scenario: 16 inch Mattenga's Molto Meat pizza with extra pizza sauce.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - '16" Mattenga''s Molto Meat. with BASE: Pizza Sauce, Extra'
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: 16" Mattenga's Molto Meat.
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+            option_name: 'BASE: Pizza Sauce'
+          - group_name: Sauce Amount?
+            option_name: Extra
+  expected_outcomes:
+    task_completed: true
+  context:
+  - 16 inch Mattenga's Molto Meat pizza with extra pizza sauce.
+- scenario_id: buffalo_wings_hot
+  scenario: Buffalo wings with hot sauce.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - WINGS Buffalo (Mild, Medium, Hot) with Hot
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: WINGS Buffalo (Mild, Medium, Hot)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Buffalo
+            option_name: Hot
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Buffalo wings with hot sauce.
+- scenario_id: buffalo_wings_hot_beer_cheese
+  scenario: Buffalo wings with hot sauce and a beer cheese dip.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - WINGS Buffalo (Mild, Medium, Hot) with Hot, Beer Cheese Dip
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: WINGS Buffalo (Mild, Medium, Hot)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Buffalo
+            option_name: Hot
+        - path:
+          - group_name: Mattenga's DIP (2 OZ) Mods.
+            option_name: Beer Cheese Dip
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Buffalo wings with hot sauce and a beer cheese dip.
+- scenario_id: cheesy_garlic_bread_plain
+  scenario: Plain cheesy garlic bread.
+  test_category: simple_no_modifiers
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Cheesy Garlic Bread
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Cheesy Garlic Bread
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Plain cheesy garlic bread.
+- scenario_id: half_and_half_supreme_margherita
+  scenario: 16 inch half-and-half pizza with Supreme on the left and Margherita on the right.
+  test_category: nested_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - '16" Mattenga''s 1/2 & 1/2. with BASE: Pizza Sauce, LEFT Supreme, RIGHT Margherita'
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: 16" Mattenga's 1/2 & 1/2.
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+            option_name: 'BASE: Pizza Sauce'
+        - path:
+          - group_name: LEFT Specialties
+            option_name: LEFT Supreme
+        - path:
+          - group_name: RIGHT Specialties
+            option_name: RIGHT Margherita
+  expected_outcomes:
+    task_completed: true
+  context:
+  - 16 inch half-and-half pizza with Supreme on the left and Margherita on the right.
+- scenario_id: big_matt_and_cheesy_garlic_bread
+  scenario: One plain 16 inch Big Matt pizza and one cheesy garlic bread.
+  test_category: multi_item
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 16" Big Matt Pizza. and Cheesy Garlic Bread
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: 16" Big Matt Pizza.
+        quantity: 1
+        selection_paths: []
+      - item_name: Cheesy Garlic Bread
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - One plain 16 inch Big Matt pizza and one cheesy garlic bread.
+- scenario_id: big_matt_well_done_square_cut
+  scenario: 16 inch Big Matt pizza baked well done and cut into squares.
+  test_category: single_operation
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 16" Big Matt Pizza. with Well Done, Cut in SQUARES
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: 16" Big Matt Pizza.
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Bake (deselect to change).
+            option_name: Well Done
+        - path:
+          - group_name: Cut (deselect to change).
+            option_name: Cut in SQUARES
+  expected_outcomes:
+    task_completed: true
+  context:
+  - 16 inch Big Matt pizza baked well done and cut into squares.
+- scenario_id: family_basic
+  scenario: Family 16 inch pizza with the standard pizza sauce base.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 'Family (16"). with BASE: Pizza Sauce'
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Family (16").
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+            option_name: 'BASE: Pizza Sauce'
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Family 16 inch pizza with the standard pizza sauce base.
+- scenario_id: family_half_toppings
+  scenario: Family 16 inch pizza with artichokes on the left half, Italian sausage on the right half, and cut into squares.
+  test_category: nested_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 'Family (16"). with BASE: Pizza Sauce, Topping Options 16", LEFT Artichokes - 16", Topping Options 16", RIGHT  Italian
+    Sausage - 16", Cut in SQUARES'
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Family (16").
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+            option_name: 'BASE: Pizza Sauce'
+        - path:
+          - group_name: '*Toppings Choice 16"'
+            option_name: Topping Options 16"
+          - group_name: Artichokes - 16"
+            option_name: LEFT Artichokes - 16"
+        - path:
+          - group_name: '*Toppings Choice 16"'
+            option_name: Topping Options 16"
+          - group_name: Sliced Italian Sausage - 16"
+            option_name: RIGHT  Italian Sausage - 16"
+        - path:
+          - group_name: Cut (deselect to change).
+            option_name: Cut in SQUARES
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Family 16 inch pizza with artichokes on the left half, Italian sausage on the right half, and cut into squares.
+- scenario_id: party_bbq_base
+  scenario: Party 20 inch pizza with a BBQ sauce base, paper plates, and red pepper packets.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - 'Party (20"). with BASE: BBQ Sauce, Include Paper Plates, Include Red Pepper Flake Packets'
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Party (20").
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: 20" Base (Default is ALL PIZZA SAUCE)
+            option_name: 'BASE: BBQ Sauce'
+        - path:
+          - group_name: Please include.
+            option_name: Include Paper Plates
+        - path:
+          - group_name: Please include.
+            option_name: Include Red Pepper Flake Packets
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Party 20 inch pizza with a BBQ sauce base, paper plates, and red pepper packets.
+- scenario_id: calzone_three_toppings
+  scenario: Calzone with pepperoni, mushrooms, and onions.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Calzone (includes Mozz and Ricotta Cheese) with Pepperoni - 10", Mushrooms - 10", Onions - 10"
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Calzone (includes Mozz and Ricotta Cheese)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: 3 Included Toppings
+            option_name: Pepperoni - 10"
+        - path:
+          - group_name: 3 Included Toppings
+            option_name: Mushrooms - 10"
+        - path:
+          - group_name: 3 Included Toppings
+            option_name: Onions - 10"
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Calzone with pepperoni, mushrooms, and onions.
+- scenario_id: small_caesar_chicken
+  scenario: Small Caesar salad with Caesar dressing and added chicken.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Sm Caesar Salad with Caesar Dressing Dip, Add Chicken To Salad
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Sm Caesar Salad
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Small Salad Dressings/
+            option_name: Caesar Dressing Dip
+        - path:
+          - group_name: Small Salad Changes
+            option_name: Add Chicken To Salad
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Small Caesar salad with Caesar dressing and added chicken.
+- scenario_id: party_wings_combo
+  scenario: Party wings with BBQ and garlic parmesan plus ranch, bleu cheese, and beer cheese dips.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Party Wings (30) with BBQ, Garlic Parmesan, The Ranch Dip, Bleu Cheese Dip, 2 Oz. Craft Beer Cheese Dip
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Party Wings (30)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Wing Flavors
+            option_name: BBQ
+        - path:
+          - group_name: Wing Flavors
+            option_name: Garlic Parmesan
+        - path:
+          - group_name: 3 Included Mattenga's Dips
+            option_name: The Ranch Dip
+        - path:
+          - group_name: 3 Included Mattenga's Dips
+            option_name: Bleu Cheese Dip
+        - path:
+          - group_name: 3 Included Mattenga's Dips
+            option_name: 2 Oz. Craft Beer Cheese Dip
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Party wings with BBQ and garlic parmesan plus ranch, bleu cheese, and beer cheese dips.
+- scenario_id: tiramisu_timing
+  scenario: Tiramisu marked for phone order or delivery timing.
+  test_category: required_selection
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Tiramisu with Phone Order/Delivery
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Tiramisu
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Now or Later?
+            option_name: Phone Order/Delivery
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Tiramisu marked for phone order or delivery timing.

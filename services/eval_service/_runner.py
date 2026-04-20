@@ -7,8 +7,10 @@ evaluator invocation, and result storage.
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from pal_agents.evals.drivers import ConversationTurn, TurnResult
@@ -21,13 +23,69 @@ from db.session import AsyncSessionLocal
 from db.tables import EvalResult, EvalRun
 from services.eval_service._driver_factory import create_driver
 from services.eval_service._evaluators import ConversationRecord, evaluate_scenario
-from services.eval_service._scenario_loader import load_scenarios
+from services.eval_service._scenario_loader import (
+    load_scenarios,
+    validate_scenarios_from_yaml,
+)
 from services.eval_service._user_simulator import END_SENTINEL, UserSimulator
 from services.eval_service.schema import EvalScenario, TurnType, UserTurn
 from utils.log import logger
 
 # GC prevention for background tasks
 _background_tasks: set[asyncio.Task[object]] = set()
+
+_PROJECT_MAP_PATH = Path(__file__).parent / "scenarios" / "project_map.json"
+
+
+_SCENARIOS_DIR = Path(__file__).parent / "scenarios"
+
+
+def _resolve_scenario_files(project_id: uuid.UUID) -> list[str]:
+    """Look up scenario file paths for a project_id via project_map.json.
+
+    The map is keyed by project_id (UUID string) and the value is either a
+    single file path (str) or a list of file paths, relative to the
+    ``scenarios/`` directory (e.g. ``"ordering/marcos_lookup.yaml"``).
+
+    Returns:
+        List of file path strings relative to scenarios/, or empty list if
+        not found.
+    """
+    if not _PROJECT_MAP_PATH.exists():
+        return []
+    with _PROJECT_MAP_PATH.open("r", encoding="utf-8") as fh:
+        project_map: dict[str, str | list[str]] = json.load(fh)
+    value = project_map.get(str(project_id))
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def resolve_scenario_info(
+    project_id: uuid.UUID,
+) -> dict[str, list[str]]:
+    """Resolve which scenario files will run for a project.
+
+    Returns:
+        Dict with "scenario_files" list (paths relative to scenarios/).
+    """
+    scenario_files = _resolve_scenario_files(project_id)
+
+    if not scenario_files:
+        # Fallback: only generic scenarios
+        generic_dir = _SCENARIOS_DIR / "generic"
+        if generic_dir.exists():
+            scenario_files = [
+                str(f.relative_to(_SCENARIOS_DIR))
+                for f in sorted(generic_dir.rglob("*.yaml"))
+                + sorted(generic_dir.rglob("*.yml"))
+            ]
+
+    return {
+        "scenario_files": scenario_files,
+    }
 
 
 async def create_eval_run(
@@ -117,10 +175,30 @@ async def _run_eval_background(
             )
             await session.commit()
 
-            # Load scenarios — try project-specific first, then fall back
-            scenarios = load_scenarios(str(project_id))
-            if not scenarios:
-                scenarios = load_scenarios(scenario_category=scenario_category)
+            # Look up scenario file paths from project_map.json
+            scenario_file_paths = _resolve_scenario_files(project_id)
+            scenarios: list[EvalScenario] = []
+            if scenario_file_paths:
+                for file_path in scenario_file_paths:
+                    abs_path = _SCENARIOS_DIR / file_path
+                    scenarios.extend(validate_scenarios_from_yaml(abs_path))
+                logger.info(
+                    "Loaded %d scenarios for project %s (files: %s)",
+                    len(scenarios),
+                    project_id,
+                    scenario_file_paths,
+                    extra={
+                        "project_id": str(project_id),
+                        "scenario_files": scenario_file_paths,
+                        "scenario_ids": [s.scenario_id for s in scenarios],
+                    },
+                )
+            else:
+                logger.warning(
+                    "Project %s not found in project_map.json, falling back to generic",
+                    project_id,
+                )
+                scenarios = load_scenarios("generic")
 
             if not scenarios:
                 await run_repo.update_status(

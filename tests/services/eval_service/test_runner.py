@@ -4,6 +4,7 @@ import asyncio
 import uuid
 from collections.abc import Sequence
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import ANY as unittest_mock_any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -351,9 +352,8 @@ class TestRunEvalBackground:
         record.agent_responses = []
         record.tool_calls = []
 
-        # First call (project-specific) returns empty; second (generic) returns one scenario
-        load_side_effects = [[], [scenario]]
-
+        # Project not in project_map -> _resolve_scenario_files returns [];
+        # fallback calls load_scenarios("generic") which returns one scenario.
         with (
             patch(f"{RUNNER_MODULE}.AsyncSessionLocal", return_value=ctx),
             patch(
@@ -363,7 +363,8 @@ class TestRunEvalBackground:
                 f"{RUNNER_MODULE}.EvalResultRepositoryAsync",
                 return_value=mock_result_repo,
             ),
-            patch(f"{RUNNER_MODULE}.load_scenarios", side_effect=load_side_effects),
+            patch(f"{RUNNER_MODULE}._resolve_scenario_files", return_value=[]),
+            patch(f"{RUNNER_MODULE}.load_scenarios", return_value=[scenario]),
             patch(f"{RUNNER_MODULE}.create_driver", return_value=AsyncMock()),
             patch(
                 f"{RUNNER_MODULE}._run_conversation",
@@ -667,6 +668,118 @@ class TestRunEvalBackground:
         assert mock_result_repo.create.call_count == 3
         for call in mock_result_repo.create.call_args_list:
             assert call[0][0].eval_run_id == eval_run_id
+
+
+class TestResolveScenarioFiles:
+    def test_returns_empty_when_no_map_file(self) -> None:
+        with patch(f"{RUNNER_MODULE}._PROJECT_MAP_PATH") as mock_path:
+            mock_path.exists.return_value = False
+            from services.eval_service._runner import _resolve_scenario_files
+
+            result = _resolve_scenario_files(uuid.uuid4())
+        assert result == []
+
+    def test_returns_list_value_from_map(self, tmp_path: object) -> None:
+        import json
+
+        project_id = uuid.uuid4()
+        map_file = Path(str(tmp_path)) / "project_map.json"
+        map_file.write_text(
+            json.dumps({str(project_id): ["ordering/foo.yaml", "ordering/bar.yaml"]})
+        )
+        with patch(f"{RUNNER_MODULE}._PROJECT_MAP_PATH", map_file):
+            from services.eval_service._runner import _resolve_scenario_files
+
+            result = _resolve_scenario_files(project_id)
+        assert result == ["ordering/foo.yaml", "ordering/bar.yaml"]
+
+    def test_returns_single_string_as_list(self, tmp_path: object) -> None:
+        import json
+
+        project_id = uuid.uuid4()
+        map_file = Path(str(tmp_path)) / "project_map.json"
+        map_file.write_text(json.dumps({str(project_id): "ordering/single.yaml"}))
+        with patch(f"{RUNNER_MODULE}._PROJECT_MAP_PATH", map_file):
+            from services.eval_service._runner import _resolve_scenario_files
+
+            result = _resolve_scenario_files(project_id)
+        assert result == ["ordering/single.yaml"]
+
+    def test_returns_empty_for_unknown_project(self, tmp_path: object) -> None:
+        import json
+
+        map_file = Path(str(tmp_path)) / "project_map.json"
+        map_file.write_text(json.dumps({"some-other-id": ["ordering/x.yaml"]}))
+        with patch(f"{RUNNER_MODULE}._PROJECT_MAP_PATH", map_file):
+            from services.eval_service._runner import _resolve_scenario_files
+
+            result = _resolve_scenario_files(uuid.uuid4())
+        assert result == []
+
+
+class TestRunEvalBackgroundWithFileResolution(TestRunEvalBackground):
+    """Test the file-based scenario resolution path in _run_eval_background."""
+
+    @pytest.mark.asyncio
+    async def test_loads_scenarios_from_resolved_files(self) -> None:
+        eval_run_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        scenario = self._make_scenario()
+        ctx, session = self._make_session_ctx()
+
+        mock_run_repo = AsyncMock()
+        mock_result_repo = AsyncMock()
+
+        eval_result = MagicMock()
+        eval_result.metric_name = "tool_call_accuracy"
+        eval_result.score = 1.0
+        eval_result.passed = True
+        eval_result.reason = "ok"
+        eval_result.raw_output = None
+
+        record = MagicMock()
+        record.turns = []
+        record.agent_responses = []
+        record.tool_calls = []
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal", return_value=ctx),
+            patch(
+                f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_run_repo
+            ),
+            patch(
+                f"{RUNNER_MODULE}.EvalResultRepositoryAsync",
+                return_value=mock_result_repo,
+            ),
+            patch(
+                f"{RUNNER_MODULE}._resolve_scenario_files",
+                return_value=["ordering/test_client.yaml"],
+            ),
+            patch(
+                f"{RUNNER_MODULE}.validate_scenarios_from_yaml",
+                return_value=[scenario],
+            ),
+            patch(f"{RUNNER_MODULE}.create_driver", return_value=AsyncMock()),
+            patch(
+                f"{RUNNER_MODULE}._run_conversation",
+                new_callable=AsyncMock,
+                return_value=record,
+            ),
+            patch(
+                f"{RUNNER_MODULE}.evaluate_scenario",
+                new_callable=AsyncMock,
+                return_value=[eval_result],
+            ),
+        ):
+            from services.eval_service._runner import _run_eval_background
+
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
+
+        mock_run_repo.update_status.assert_any_await(
+            eval_run_id, "completed", completed_at=unittest_mock_any
+        )
 
 
 class TestRunConversation:

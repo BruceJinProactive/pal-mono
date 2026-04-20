@@ -1,0 +1,543 @@
+- scenario_id: large_cheese_pizza_plain
+  scenario: Plain large cheese pizza.
+  test_category: simple_no_modifiers
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - LG Cheese Pizza
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: LG Cheese Pizza
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Plain large cheese pizza.
+- scenario_id: large_cheese_pizza_add_brisket
+  scenario: Large cheese pizza with brisket added.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - LG Cheese Pizza with BRISKET
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: LG Cheese Pizza
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: LG PIZZA ADD SAUCE
+            option_name: BRISKET
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Large cheese pizza with brisket added.
+- scenario_id: large_pepperoni_pizza_plain
+  scenario: Plain large pepperoni pizza.
+  test_category: simple_no_modifiers
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - LG Pepperoni Pizza
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: LG Pepperoni Pizza
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Plain large pepperoni pizza.
+- scenario_id: large_margherita_pizza_char_pepperoni
+  scenario: Large Margherita pizza with cup and char pepperoni.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - LG Margherita Pizza with CUP & CHAR PEPPERONI
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: LG Margherita Pizza
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: LG PIZZA ADD SAUCE
+            option_name: CUP & CHAR PEPPERONI
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Large Margherita pizza with cup and char pepperoni.
+- scenario_id: build_your_own_large_pizza_add_bacon
+  scenario: Create your own large pizza with bacon.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Create your own LARGE Pizza with Bacon
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Create your own LARGE Pizza
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: ADD MEATS
+            option_name: Bacon
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Create your own large pizza with bacon.
+- scenario_id: classic_chicken_sandwich_no_bacon
+  scenario: Classic Chicken Sandwich with no bacon.
+  test_category: with_removal_or_qualifier
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Classic Chicken Sandwich with No Bacon
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Classic Chicken Sandwich
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: No Sandwich
+            option_name: No Bacon
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Classic Chicken Sandwich with no bacon.
+- scenario_id: classic_chicken_tenders_ranch
+  scenario: Four-piece chicken tenders with ranch for dipping.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Classic Chicken Tenders (4PC) with Creamy Ranch for Dipping!
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Classic Chicken Tenders (4PC)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Chicken Tender Dipping Sauce
+            option_name: Creamy Ranch for Dipping!
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Four-piece chicken tenders with ranch for dipping.
+- scenario_id: caesar_salad_no_croutons
+  scenario: Caesar salad with no croutons.
+  test_category: with_removal_or_qualifier
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Caesar Salad with NO Croutons
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Caesar Salad
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: No Requests
+            option_name: NO Croutons
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Caesar salad with no croutons.
+- scenario_id: caesar_salad_extra_parmesan
+  scenario: Caesar salad with extra parmesan cheese.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Caesar Salad with Extra Parmesan Cheese
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Caesar Salad
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: salad modifier
+            option_name: Extra Parmesan Cheese
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Caesar salad with extra parmesan cheese.
+- scenario_id: large_cheese_pizza_and_large_fries
+  scenario: One large cheese pizza and one large order of fries.
+  test_category: multi_item
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - LG Cheese Pizza and LARGE French Fries
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: LG Cheese Pizza
+        quantity: 1
+        selection_paths: []
+      - item_name: LARGE French Fries
+        quantity: 1
+        selection_paths: []
+  expected_outcomes:
+    task_completed: true
+  context:
+  - One large cheese pizza and one large order of fries.
+- scenario_id: sm_cheese_hot_honey
+  scenario: Small cheese pizza with hot honey drizzle.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - SM Cheese Pizza with Hot Honey Drizzle over pizza
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: SM Cheese Pizza
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: SM Pizza ADD Sauce
+            option_name: Hot Honey Drizzle over pizza
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Small cheese pizza with hot honey drizzle.
+- scenario_id: create_your_own_large_full_build
+  scenario: Create your own large pizza with BBQ sauce, fresh mozzarella, bacon, brisket, banana peppers, white onion, and
+    hot honey.
+  test_category: complex_build
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Create your own LARGE Pizza with BBQ SAUCE, FRESH Mozzarella, Bacon, Brisket, BANANA PEPPERS, WHITE ONION, Hot Honey drizzle
+    over pizza
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Create your own LARGE Pizza
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: CHOOSE A SAUCE
+            option_name: BBQ SAUCE
+        - path:
+          - group_name: CHOOSE A CHEESE
+            option_name: FRESH Mozzarella
+        - path:
+          - group_name: ADD MEATS
+            option_name: Bacon
+        - path:
+          - group_name: ADD MEATS
+            option_name: Brisket
+        - path:
+          - group_name: ADD VEGETABLES
+            option_name: BANANA PEPPERS
+        - path:
+          - group_name: ADD VEGETABLES
+            option_name: WHITE ONION
+        - path:
+          - group_name: Dipping Sauces
+            option_name: Hot Honey drizzle over pizza
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Create your own large pizza with BBQ sauce, fresh mozzarella, bacon, brisket, banana peppers, white onion, and hot honey.
+- scenario_id: create_your_own_small_vegan
+  scenario: Create your own small pizza with basil pesto, vegan cheese, and mushrooms.
+  test_category: complex_build
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Create your own SMALL Pizza with BASIL-PESTO, **VEGAN CHEESE AVAILABLE**, MUSHROOMS
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Create your own SMALL Pizza
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: CHOOSE A SAUCE
+            option_name: BASIL-PESTO
+        - path:
+          - group_name: CHOOSE A CHEESE
+            option_name: '**VEGAN CHEESE AVAILABLE**'
+        - path:
+          - group_name: ADD VEGETABLES
+            option_name: MUSHROOMS
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Create your own small pizza with basil pesto, vegan cheese, and mushrooms.
+- scenario_id: slice_combo
+  scenario: Pepperoni slice combo with a Coke, potato chips, and hot honey.
+  test_category: complex_build
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Pepperoni Slice with Combo Coke, Combo Potato Chip, Hot Honey SLICE
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Pepperoni Slice
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Pizza Slice Combo
+            option_name: Combo Coke
+        - path:
+          - group_name: Pizza Slice Combo
+            option_name: Combo Potato Chip
+        - path:
+          - group_name: Extra Dipping Sauces
+            option_name: Hot Honey SLICE
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Pepperoni slice combo with a Coke, potato chips, and hot honey.
+- scenario_id: tender_meal_mods
+  scenario: Classic chicken tender meal with hot honey dipping sauce and no coleslaw.
+  test_category: with_removal_or_qualifier
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Classic Chicken Tender Meal (4PC) with Hot Honey Dipping, No Coleslaw
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Classic Chicken Tender Meal (4PC)
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Chicken Tender Dipping Sauce
+            option_name: Hot Honey Dipping
+        - path:
+          - group_name: No Request
+            option_name: No Coleslaw
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Classic chicken tender meal with hot honey dipping sauce and no coleslaw.
+- scenario_id: side_chix_loaded
+  scenario: Box of Side Chix with extra ranch and pickles.
+  test_category: with_addon
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Box of Side Chix! with Xtra Ranch Dressing, Add Side Pickles
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Box of Side Chix!
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Side Chix Sauce!
+            option_name: Xtra Ranch Dressing
+        - path:
+          - group_name: Side Chix Sauce!
+            option_name: Add Side Pickles
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Box of Side Chix with extra ranch and pickles.
+- scenario_id: three_item_snack_order
+  scenario: One create your own large pizza with pizza sauce, pizza cheese, and pepperoni, plus a fountain Coke and a chocolate
+    milkshake with no whipped cream.
+  test_category: multi_item_complex
+  persona: standard_customer
+  user_turns:
+  - I'd like to place a pickup order
+  - Taylor Parker
+  - '5551234567'
+  - Create your own LARGE Pizza with PIZZA SAUCE, Pizza Cheese, Pepperoni, Coca-Cola, Fountain, Chocolate Milkshake with No
+    Whipped Cream
+  - No, that's all
+  - Yes, place the order
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Create your own LARGE Pizza
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: CHOOSE A SAUCE
+            option_name: PIZZA SAUCE
+        - path:
+          - group_name: CHOOSE A CHEESE
+            option_name: Pizza Cheese
+        - path:
+          - group_name: ADD MEATS
+            option_name: Pepperoni
+      - item_name: Coca-Cola, Fountain
+        quantity: 1
+        selection_paths: []
+      - item_name: Chocolate Milkshake
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: ADD Whipped Cream!
+            option_name: No Whipped Cream
+  expected_outcomes:
+    task_completed: true
+  context:
+  - One create your own large pizza with pizza sauce, pizza cheese, and pepperoni, plus a fountain Coke and a chocolate milkshake
+    with no whipped cream.
