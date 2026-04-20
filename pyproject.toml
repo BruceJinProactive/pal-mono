@@ -51,9 +51,9 @@ dependencies = [
   "nltk>=3.9.3", # Security floor for transitive NLP utilities
   "notion-client==2.2.1",
   "openai[realtime]==2.20.0", # Official OpenAI API client for GPT models with realtime WebSocket support
-  "opentelemetry-distro>=0.60b1",
-  "opentelemetry-exporter-otlp-proto-grpc>=1.39.1",
-  "opentelemetry-instrumentation-logging>=0.60b1",
+  "opentelemetry-distro>=0.61b0,<0.63b0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.40.0,<1.42.0",
+  "opentelemetry-instrumentation-logging>=0.61b0,<0.63b0",
   "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.258", # Pal-agents AI agent framework (production)
   "pal-agents[eval] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.258", # Pal-agents eval metrics extra (deepeval)
   "pal-agents[voice] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.258", # Pal-agents voice eval extra (cartesia, livekit-api)
