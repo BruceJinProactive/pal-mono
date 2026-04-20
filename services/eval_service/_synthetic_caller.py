@@ -83,6 +83,7 @@ class SyntheticCaller:
             The call_id (same as input).
         """
 
+        greeting_done: asyncio.Task[None] | None = None
         try:
             await self._room.connect(room_info.livekit_url, caller_token)
             logger.info(
@@ -93,13 +94,15 @@ class SyntheticCaller:
                 },
             )
 
+            # Start listening for the greeting IMMEDIATELY after connect,
+            # before waiting for the agent or publishing tracks. The agent
+            # may already be in the room and start its greeting as soon as
+            # we connect — registering the listener first ensures we don't
+            # miss the active_speakers_changed events.
+            greeting_done = self._create_agent_speech_waiter()
+
             # Wait for the agent to join before speaking
             await self._wait_for_agent()
-
-            # Start listening for the greeting BEFORE publishing the track,
-            # so we don't miss the active_speakers_changed events while the
-            # track is being set up.
-            greeting_done = self._create_agent_speech_waiter()
 
             # Create audio source and track for publishing TTS audio
             audio_source = rtc.AudioSource(
@@ -155,6 +158,8 @@ class SyntheticCaller:
             )
 
         finally:
+            if greeting_done is not None and not greeting_done.done():
+                greeting_done.cancel()
             await self._disconnect()
 
         return call_id

@@ -58,6 +58,13 @@ def _make_mock_room() -> MagicMock:
     return mock_room
 
 
+def _resolved_future() -> asyncio.Future[None]:
+    """Create a Future that is already resolved (no unawaited coroutine warnings)."""
+    fut: asyncio.Future[None] = asyncio.get_event_loop().create_future()
+    fut.set_result(None)
+    return fut
+
+
 # ---------------------------------------------------------------------------
 # run_call — full flow
 # ---------------------------------------------------------------------------
@@ -73,6 +80,11 @@ class TestSyntheticCallerRunCall:
                 patch.object(caller, "_speak_turn", new_callable=AsyncMock),
                 patch.object(
                     caller, "_wait_for_agent_response", new_callable=AsyncMock
+                ),
+                patch.object(
+                    caller,
+                    "_create_agent_speech_waiter",
+                    MagicMock(return_value=_resolved_future()),
                 ),
             ):
                 call_id = await caller.run_call(
@@ -97,6 +109,11 @@ class TestSyntheticCallerRunCall:
                 patch.object(
                     caller, "_wait_for_agent_response", new_callable=AsyncMock
                 ),
+                patch.object(
+                    caller,
+                    "_create_agent_speech_waiter",
+                    MagicMock(return_value=_resolved_future()),
+                ),
             ):
                 await caller.run_call(
                     room_info=_make_room_info(),
@@ -119,8 +136,7 @@ class TestSyntheticCallerRunCall:
         )
 
         mock_wait = AsyncMock()
-        mock_greeting_task = AsyncMock()
-        mock_create_waiter = MagicMock(return_value=mock_greeting_task())
+        mock_create_waiter = MagicMock(return_value=_resolved_future())
 
         with patch.object(caller, "_room", _make_mock_room()):
             with (
@@ -151,17 +167,51 @@ class TestSyntheticCallerRunCall:
         )
 
         with patch.object(caller, "_room", mock_room):
-            with pytest.raises(RuntimeError, match="publish failed"):
-                await caller.run_call(
-                    room_info=_make_room_info(),
-                    caller_token=_FAKE_TOKEN,
-                    turns=["Hello"],
-                    voice_profile=_make_voice_profile(),
-                    tts_engine=_make_tts_engine(),
-                    call_id="eval-err",
-                )
+            with patch.object(
+                caller,
+                "_create_agent_speech_waiter",
+                MagicMock(return_value=_resolved_future()),
+            ):
+                with pytest.raises(RuntimeError, match="publish failed"):
+                    await caller.run_call(
+                        room_info=_make_room_info(),
+                        caller_token=_FAKE_TOKEN,
+                        turns=["Hello"],
+                        voice_profile=_make_voice_profile(),
+                        tts_engine=_make_tts_engine(),
+                        call_id="eval-err",
+                    )
 
         mock_room.disconnect.assert_awaited_once()
+
+    async def test_greeting_task_cancelled_on_error(self) -> None:
+        """Pending greeting task is cancelled when an error occurs mid-flow."""
+        caller = SyntheticCaller(livekit_url="wss://test")
+        mock_room = _make_mock_room()
+        mock_room.local_participant.publish_track = AsyncMock(
+            side_effect=RuntimeError("publish failed")
+        )
+
+        pending_task = MagicMock()
+        pending_task.done.return_value = False
+
+        with patch.object(caller, "_room", mock_room):
+            with patch.object(
+                caller,
+                "_create_agent_speech_waiter",
+                MagicMock(return_value=pending_task),
+            ):
+                with pytest.raises(RuntimeError, match="publish failed"):
+                    await caller.run_call(
+                        room_info=_make_room_info(),
+                        caller_token=_FAKE_TOKEN,
+                        turns=["Hello"],
+                        voice_profile=_make_voice_profile(),
+                        tts_engine=_make_tts_engine(),
+                        call_id="eval-cancel",
+                    )
+
+        pending_task.cancel.assert_called_once()
 
     async def test_disconnect_exception_is_swallowed(self) -> None:
         """If disconnect raises, the error is logged but not re-raised."""
@@ -173,15 +223,20 @@ class TestSyntheticCallerRunCall:
         mock_room.disconnect = AsyncMock(side_effect=OSError("socket closed"))
 
         with patch.object(caller, "_room", mock_room):
-            with pytest.raises(RuntimeError, match="publish failed"):
-                await caller.run_call(
-                    room_info=_make_room_info(),
-                    caller_token=_FAKE_TOKEN,
-                    turns=["Hello"],
-                    voice_profile=_make_voice_profile(),
-                    tts_engine=_make_tts_engine(),
-                    call_id="eval-disc-err",
-                )
+            with patch.object(
+                caller,
+                "_create_agent_speech_waiter",
+                MagicMock(return_value=_resolved_future()),
+            ):
+                with pytest.raises(RuntimeError, match="publish failed"):
+                    await caller.run_call(
+                        room_info=_make_room_info(),
+                        caller_token=_FAKE_TOKEN,
+                        turns=["Hello"],
+                        voice_profile=_make_voice_profile(),
+                        tts_engine=_make_tts_engine(),
+                        call_id="eval-disc-err",
+                    )
 
         mock_room.disconnect.assert_awaited_once()
 
