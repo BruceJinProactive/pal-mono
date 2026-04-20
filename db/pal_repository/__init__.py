@@ -1,3 +1,4 @@
+from .account import AccountRepository
 from .account_subscription import AccountSubscriptionRepository
 from .contact import ContactRepository
 from .permission import PermissionRepository
@@ -24,6 +25,7 @@ from .user_invitation import UserInvitationRepository
 from .voice_config import VoiceConfigRepository
 
 __all__ = [
+    "AccountRepository",
     "AccountSubscriptionRepository",
     "ContactRepository",
     "PermissionRepository",

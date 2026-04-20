@@ -1,3 +1,4 @@
+from .account import AccountData
 from .account_subscription import AccountSubscriptionData
 from .contact import ContactData
 from .permission import PermissionData
@@ -29,6 +30,7 @@ from .user_invitation import UserInvitationData
 from .voice_config import VoiceConfigData
 
 __all__ = [
+    "AccountData",
     "AccountSubscriptionData",
     "ContactData",
     "PermissionData",
