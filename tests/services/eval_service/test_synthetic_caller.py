@@ -134,8 +134,8 @@ class TestSyntheticCallerRunCall:
                     call_id="eval-multi",
                 )
 
-        # wait_for_agent_response called: once between turns + once after last
-        assert mock_wait.await_count == 2
+        # wait_for_agent_response called: once for greeting + once between turns + once after last
+        assert mock_wait.await_count == 3
 
     async def test_disconnects_on_error(self) -> None:
         """Room.disconnect is called even when the call fails."""

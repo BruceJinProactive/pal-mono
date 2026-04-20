@@ -114,6 +114,11 @@ class SyntheticCaller:
                 },
             )
 
+            # Wait for the agent's greeting to finish before speaking
+            logger.debug("Waiting for agent greeting to finish")
+            await self._wait_for_agent_response()
+            await asyncio.sleep(self.pause_between_turns_s)
+
             # Run each turn: synthesize → publish audio → wait for agent
             for i, turn_text in enumerate(turns):
                 logger.debug(
