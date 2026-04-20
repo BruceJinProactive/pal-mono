@@ -119,11 +119,14 @@ class TestSyntheticCallerRunCall:
         )
 
         mock_wait = AsyncMock()
+        mock_greeting_task = AsyncMock()
+        mock_create_waiter = MagicMock(return_value=mock_greeting_task())
 
         with patch.object(caller, "_room", _make_mock_room()):
             with (
                 patch.object(caller, "_speak_turn", new_callable=AsyncMock),
                 patch.object(caller, "_wait_for_agent_response", mock_wait),
+                patch.object(caller, "_create_agent_speech_waiter", mock_create_waiter),
             ):
                 await caller.run_call(
                     room_info=_make_room_info(),
@@ -134,8 +137,10 @@ class TestSyntheticCallerRunCall:
                     call_id="eval-multi",
                 )
 
-        # wait_for_agent_response called: once for greeting + once between turns + once after last
-        assert mock_wait.await_count == 3
+        # _create_agent_speech_waiter called once for the greeting
+        mock_create_waiter.assert_called_once()
+        # wait_for_agent_response called: once between turns + once after last
+        assert mock_wait.await_count == 2
 
     async def test_disconnects_on_error(self) -> None:
         """Room.disconnect is called even when the call fails."""

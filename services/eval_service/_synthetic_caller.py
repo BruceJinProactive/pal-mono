@@ -96,6 +96,11 @@ class SyntheticCaller:
             # Wait for the agent to join before speaking
             await self._wait_for_agent()
 
+            # Start listening for the greeting BEFORE publishing the track,
+            # so we don't miss the active_speakers_changed events while the
+            # track is being set up.
+            greeting_done = self._create_agent_speech_waiter()
+
             # Create audio source and track for publishing TTS audio
             audio_source = rtc.AudioSource(
                 sample_rate=_AUDIO_SAMPLE_RATE,
@@ -116,7 +121,7 @@ class SyntheticCaller:
 
             # Wait for the agent's greeting to finish before speaking
             logger.debug("Waiting for agent greeting to finish")
-            await self._wait_for_agent_response()
+            await greeting_done
             await asyncio.sleep(self.pause_between_turns_s)
 
             # Run each turn: synthesize → publish audio → wait for agent
@@ -202,12 +207,13 @@ class SyntheticCaller:
             )
             await audio_source.capture_frame(frame)
 
-    async def _wait_for_agent_response(self) -> None:
-        """Wait for the agent to finish speaking.
+    def _create_agent_speech_waiter(self) -> "asyncio.Task[None]":
+        """Start listening for agent speech and return a task that completes when done.
 
-        Detects agent speech by monitoring active speakers. When the agent
-        appears in the active speakers list and then disappears (or the
-        timeout is reached), this method returns.
+        Registers the active_speakers_changed handler immediately so events
+        are not missed during other async setup (e.g. publishing tracks).
+        The returned task resolves once the agent starts and then stops speaking,
+        or after the timeout.
         """
         agent_started_speaking = asyncio.Event()
         agent_stopped_speaking = asyncio.Event()
@@ -229,27 +235,40 @@ class SyntheticCaller:
                 agent_is_speaking = False
                 agent_stopped_speaking.set()
 
-        try:
-            # Wait for agent to start speaking (or timeout)
+        async def _wait() -> None:
             try:
-                await asyncio.wait_for(
-                    agent_started_speaking.wait(),
-                    timeout=self.agent_response_timeout_s,
-                )
-            except asyncio.TimeoutError:
-                logger.debug("Agent did not start speaking within timeout")
-                return
+                # Wait for agent to start speaking (or timeout)
+                try:
+                    await asyncio.wait_for(
+                        agent_started_speaking.wait(),
+                        timeout=self.agent_response_timeout_s,
+                    )
+                except asyncio.TimeoutError:
+                    logger.debug("Agent did not start speaking within timeout")
+                    return
 
-            # Wait for agent to stop speaking (or timeout)
-            try:
-                await asyncio.wait_for(
-                    agent_stopped_speaking.wait(),
-                    timeout=self.agent_response_timeout_s,
-                )
-            except asyncio.TimeoutError:
-                logger.debug("Agent did not stop speaking within timeout")
-        finally:
-            self._room.off("active_speakers_changed", _on_speakers_changed)
+                # Wait for agent to stop speaking (or timeout)
+                try:
+                    await asyncio.wait_for(
+                        agent_stopped_speaking.wait(),
+                        timeout=self.agent_response_timeout_s,
+                    )
+                except asyncio.TimeoutError:
+                    logger.debug("Agent did not stop speaking within timeout")
+            finally:
+                self._room.off("active_speakers_changed", _on_speakers_changed)
+
+        return asyncio.create_task(_wait())
+
+    async def _wait_for_agent_response(self) -> None:
+        """Wait for the agent to finish speaking.
+
+        Detects agent speech by monitoring active speakers. When the agent
+        appears in the active speakers list and then disappears (or the
+        timeout is reached), this method returns.
+        """
+        task = self._create_agent_speech_waiter()
+        await task
 
     async def _disconnect(self) -> None:
         """Disconnect from the room gracefully."""
