@@ -37,6 +37,7 @@ from utils.log import logger
 
 _DEFAULT_PAUSE_BETWEEN_TURNS_S = 1.5
 _DEFAULT_AGENT_RESPONSE_TIMEOUT_S = 30.0
+_DEFAULT_GREETING_SILENCE_THRESHOLD_S = 1.5
 _AUDIO_SAMPLE_RATE = 48000
 _AUDIO_NUM_CHANNELS = 1
 _FRAME_DURATION_MS = 20.0
@@ -98,8 +99,9 @@ class SyntheticCaller:
             # before waiting for the agent or publishing tracks. The agent
             # may already be in the room and start its greeting as soon as
             # we connect — registering the listener first ensures we don't
-            # miss the active_speakers_changed events.
-            greeting_done = self._create_agent_speech_waiter()
+            # miss events. Uses transcription_received which fires reliably
+            # for agent speech (active_speakers_changed does not).
+            greeting_done = self._create_greeting_waiter()
 
             # Wait for the agent to join before speaking
             await self._wait_for_agent()
@@ -212,68 +214,113 @@ class SyntheticCaller:
             )
             await audio_source.capture_frame(frame)
 
-    def _create_agent_speech_waiter(self) -> "asyncio.Task[None]":
-        """Start listening for agent speech and return a task that completes when done.
+    def _create_greeting_waiter(self) -> "asyncio.Task[None]":
+        """Wait for the agent's greeting to complete using transcription events.
 
-        Registers the active_speakers_changed handler immediately so events
-        are not missed during other async setup (e.g. publishing tracks).
-        The returned task resolves once the agent starts and then stops speaking,
-        or after the timeout.
+        Listens for ``transcription_received`` events (which fire reliably for
+        agent TTS output, unlike ``active_speakers_changed`` which may not
+        trigger for synthesized audio). Once a transcription segment with
+        ``final=True`` is received and no new segments arrive within
+        the silence threshold, the greeting is considered complete.
         """
-        agent_started_speaking = asyncio.Event()
-        agent_stopped_speaking = asyncio.Event()
-        agent_is_speaking = False
+        first_transcription = asyncio.Event()
+        greeting_complete = asyncio.Event()
 
-        @self._room.on("active_speakers_changed")
-        def _on_speakers_changed(
-            speakers: list[rtc.Participant],
+        @self._room.on("transcription_received")
+        def _on_transcription(
+            segments: list[rtc.TranscriptionSegment],
+            participant: rtc.Participant,
+            publication: rtc.TrackPublication,
         ) -> None:
-            nonlocal agent_is_speaking
-
+            # Only listen for agent transcription (remote participants)
             local_sid = self._room.local_participant.sid
-            agent_speaking_now = any(s.sid != local_sid for s in speakers)
+            if hasattr(participant, "sid") and participant.sid == local_sid:
+                return
 
-            if agent_speaking_now and not agent_is_speaking:
-                agent_is_speaking = True
-                agent_started_speaking.set()
-            elif not agent_speaking_now and agent_is_speaking:
-                agent_is_speaking = False
-                agent_stopped_speaking.set()
+            first_transcription.set()
+
+            # Check if any segment is final (greeting complete)
+            if any(getattr(seg, "final", False) for seg in segments):
+                greeting_complete.set()
 
         async def _wait() -> None:
             try:
-                # Wait for agent to start speaking (or timeout)
+                # Wait for agent to start speaking (first transcription)
                 try:
                     await asyncio.wait_for(
-                        agent_started_speaking.wait(),
+                        first_transcription.wait(),
                         timeout=self.agent_response_timeout_s,
                     )
                 except asyncio.TimeoutError:
-                    logger.debug("Agent did not start speaking within timeout")
+                    logger.debug("No agent transcription received within timeout")
                     return
 
-                # Wait for agent to stop speaking (or timeout)
+                # Wait for the final segment or silence gap
                 try:
                     await asyncio.wait_for(
-                        agent_stopped_speaking.wait(),
+                        greeting_complete.wait(),
                         timeout=self.agent_response_timeout_s,
                     )
                 except asyncio.TimeoutError:
-                    logger.debug("Agent did not stop speaking within timeout")
+                    logger.debug("Agent greeting did not finalize within timeout")
+
+                # Brief pause to ensure the greeting audio has fully played out
+                await asyncio.sleep(_DEFAULT_GREETING_SILENCE_THRESHOLD_S)
             finally:
-                self._room.off("active_speakers_changed", _on_speakers_changed)
+                self._room.off("transcription_received", _on_transcription)
 
         return asyncio.create_task(_wait())
 
     async def _wait_for_agent_response(self) -> None:
-        """Wait for the agent to finish speaking.
+        """Wait for the agent to finish speaking using transcription events.
 
-        Detects agent speech by monitoring active speakers. When the agent
-        appears in the active speakers list and then disappears (or the
-        timeout is reached), this method returns.
+        Listens for ``transcription_received`` events from remote participants.
+        Once the agent starts speaking (first transcription) and then sends a
+        final segment, the method returns. Falls back to timeout if no
+        transcription is received.
         """
-        task = self._create_agent_speech_waiter()
-        await task
+        first_transcription = asyncio.Event()
+        response_complete = asyncio.Event()
+
+        @self._room.on("transcription_received")
+        def _on_transcription(
+            segments: list[rtc.TranscriptionSegment],
+            participant: rtc.Participant,
+            publication: rtc.TrackPublication,
+        ) -> None:
+            local_sid = self._room.local_participant.sid
+            if hasattr(participant, "sid") and participant.sid == local_sid:
+                return
+
+            first_transcription.set()
+
+            if any(getattr(seg, "final", False) for seg in segments):
+                response_complete.set()
+
+        try:
+            # Wait for agent to start responding (or timeout)
+            try:
+                await asyncio.wait_for(
+                    first_transcription.wait(),
+                    timeout=self.agent_response_timeout_s,
+                )
+            except asyncio.TimeoutError:
+                logger.debug("Agent did not respond within timeout")
+                return
+
+            # Wait for agent to finish responding (final segment)
+            try:
+                await asyncio.wait_for(
+                    response_complete.wait(),
+                    timeout=self.agent_response_timeout_s,
+                )
+            except asyncio.TimeoutError:
+                logger.debug("Agent response did not finalize within timeout")
+
+            # Brief pause to let the TTS audio finish playing out
+            await asyncio.sleep(_DEFAULT_GREETING_SILENCE_THRESHOLD_S)
+        finally:
+            self._room.off("transcription_received", _on_transcription)
 
     async def _disconnect(self) -> None:
         """Disconnect from the room gracefully."""
