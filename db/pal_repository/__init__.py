@@ -13,6 +13,7 @@ from .eval_result import EvalResultRepository
 from .eval_run import EvalRunRepository
 from .faq import FAQRepository
 from .feature import FeatureRepository
+from .feedback import FeedbackRepository
 from .permission import PermissionRepository
 from .phone_call import PhoneCallRepository
 from .project import ProjectRepository
@@ -52,6 +53,7 @@ __all__ = [
     "EvalRunRepository",
     "FAQRepository",
     "FeatureRepository",
+    "FeedbackRepository",
     "PermissionRepository",
     "PhoneCallRepository",
     "ProjectContactRepository",
