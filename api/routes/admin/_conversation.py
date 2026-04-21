@@ -114,6 +114,14 @@ async def list_conversation_messages(
         session, account.id, conversation_id, sort_desc=(sort_order == SortOrder.desc)
     )
 
+    # Filter out messages without displayable content (no text body and no media)
+    all_messages = [
+        msg
+        for msg in all_messages
+        if ((msg.body.get("text") or {}).get("body") or "").strip()
+        or msg.body.get("media")
+    ]
+
     # Paginate response
     total_messages = len(all_messages)
     total_pages = math.ceil(total_messages / page_size)
