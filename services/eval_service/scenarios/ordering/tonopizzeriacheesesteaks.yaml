@@ -21,7 +21,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -58,7 +60,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -97,7 +101,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -134,7 +140,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -177,7 +185,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -217,7 +227,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -257,7 +269,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -297,7 +311,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -340,7 +356,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -380,7 +398,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -420,7 +440,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -463,7 +485,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -509,7 +533,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -555,7 +581,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -603,7 +631,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -646,7 +676,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -695,7 +727,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
@@ -735,7 +769,9 @@
       - When the agent confirms the order or asks to place it, say yes.
       - When the order is placed and the agent says goodbye, end the conversation.
   expected_tool_calls:
-  - tool: toast.validate_order_intent
+  - tool: get_toast_item_details_v3
+    optional: true
+  - tool: toast_takeout_create_order_v1
     args:
       customer:
         first_name: Taylor
