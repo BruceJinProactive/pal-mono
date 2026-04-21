@@ -2,6 +2,7 @@ from .account import AccountRepository
 from .account_subscription import AccountSubscriptionRepository
 from .account_user import AccountUserRepository
 from .affiliate import AffiliateRepository
+from .agent import AgentRepository
 from .contact import ContactRepository
 from .permission import PermissionRepository
 from .phone_call import PhoneCallRepository
@@ -29,6 +30,7 @@ from .voice_config import VoiceConfigRepository
 __all__ = [
     "AccountRepository",
     "AccountSubscriptionRepository",
+    "AgentRepository",
     "AccountUserRepository",
     "AffiliateRepository",
     "ContactRepository",
