@@ -4,7 +4,7 @@ from contextvars import ContextVar
 
 from agno.utils.log import LOGGER_NAME
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
-from opentelemetry.sdk._logs import LoggingHandler
+from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from pythonjsonlogger import jsonlogger
 
 # Exclude noisy library logs (these produce ~2.2M logs/4h at INFO level)
