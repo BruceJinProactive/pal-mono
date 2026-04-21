@@ -175,6 +175,7 @@ _TOAST_SPEC_FIELDS = [
     "customer_email",
     "tool_name",
     "enable_hosted_checkout",
+    "revenue_center_id",
 ]
 
 _TOAST_DEFAULT_TOKEN_URL = (

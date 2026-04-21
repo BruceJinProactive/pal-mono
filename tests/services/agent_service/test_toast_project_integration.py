@@ -202,6 +202,39 @@ class TestBuildToastV3Spec:
 
         assert result.enable_hosted_checkout is True
 
+    def test_revenue_center_id_is_passed_through(self):
+        config = {
+            "menu_data": {"version": "v2"},
+            "takeout_dining_option_guid": "takeout-guid-1",
+            "revenue_center_id": "abc12345-def6-7890-abcd-ef1234567890",
+        }
+
+        result = _build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "cid",
+            "csecret",
+            None,
+        )
+
+        assert result.revenue_center_id == "abc12345-def6-7890-abcd-ef1234567890"
+
+    def test_revenue_center_id_defaults_to_none(self):
+        config = {
+            "menu_data": {"version": "v2"},
+            "takeout_dining_option_guid": "takeout-guid-1",
+        }
+
+        result = _build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "cid",
+            "csecret",
+            None,
+        )
+
+        assert result.revenue_center_id is None
+
     def test_hosted_checkout_builds_without_embedding_credentials(self):
         config = {
             "menu_data": {"version": "v2"},
