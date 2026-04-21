@@ -14,6 +14,7 @@ from .eval_run import EvalRunData
 from .faq import FAQData
 from .feature import FeatureData
 from .feedback import FeedbackData
+from .integration import IntegrationData
 from .permission import PermissionData
 from .phone_call import PhoneCallData
 from .project import ProjectData
@@ -60,6 +61,7 @@ __all__ = [
     "FAQData",
     "FeatureData",
     "FeedbackData",
+    "IntegrationData",
     "PermissionData",
     "PhoneCallData",
     "ProjectContactData",
