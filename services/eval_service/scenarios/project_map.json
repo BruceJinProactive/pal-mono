@@ -1,9 +1,10 @@
 {
-    "60210aee-273f-48d4-933d-7424a374ee0a": ["ordering/cali_bbq_jeff.yaml"],
-    "fcf8a6b1-ed7c-4c54-bffc-763fc9c6a83f": ["ordering/marcos_lookup.yaml", "ordering/marcospizza.yaml"],
+    "60210aee-273f-48d4-933d-7424a374ee0a": ["ordering/calibbq.yaml"],
+    "fcf8a6b1-ed7c-4c54-bffc-763fc9c6a83f": ["ordering/marcospizza.yaml"],
     "1b59cc38-e355-4eda-8e74-84768dbfdb85": ["ordering/friedmans.yaml"],
-    "b4fd479c-0dd9-4306-bbe7-63468aae9b92": ["ordering/ordering.yaml"],
     "d24ca630-c41f-4035-8905-b90cf2adc10d": ["ordering/mattengas_pizzeria.yaml"],
-    "f9bc5335-1c5b-4450-a0c4-aca259741f51": ["ordering/spread_bagelry.yaml"],
-    "bf4a04ba-12d6-44f2-b405-e14dbe64a5c3": ["ordering/tonopizzeriacheesesteaks.yaml"]
+    "f9bc5335-1c5b-4450-a0c4-aca259741f51": ["ordering/spread_bagels.yaml"],
+    "bf4a04ba-12d6-44f2-b405-e14dbe64a5c3": ["ordering/tonopizzeriacheesesteaks.yaml"],
+    "b4fd479c-0dd9-4306-bbe7-63468aae9b92": ["ordering/giordanos.yaml"]
+
 }
