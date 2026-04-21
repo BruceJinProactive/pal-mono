@@ -3,6 +3,7 @@ from .account_subscription import AccountSubscriptionData
 from .account_user import AccountUserData
 from .affiliate import AffiliateData
 from .agent import AgentData
+from .agent_capability import AgentCapabilityData
 from .contact import ContactData
 from .permission import PermissionData
 from .phone_call import PhoneCallData
@@ -35,6 +36,7 @@ from .voice_config import VoiceConfigData
 __all__ = [
     "AccountData",
     "AccountSubscriptionData",
+    "AgentCapabilityData",
     "AgentData",
     "AccountUserData",
     "AffiliateData",
