@@ -52,8 +52,13 @@ def _make_mock_room() -> MagicMock:
     mock_room.disconnect = AsyncMock()
     mock_room.remote_participants = {"agent-1": MagicMock()}
     mock_room.local_participant = MagicMock()
-    mock_room.local_participant.publish_track = AsyncMock()
+    mock_publication = MagicMock()
+    mock_publication.sid = "track-sid"
+    mock_publication.muted = False
+    mock_room.local_participant.publish_track = AsyncMock(return_value=mock_publication)
     mock_room.local_participant.sid = "local-sid"
+    mock_room.local_participant.identity = "synthetic-caller"
+    mock_room.connection_state = "connected"
     mock_room.on = MagicMock(return_value=lambda fn: fn)
     mock_room.off = MagicMock()
     return mock_room
@@ -291,6 +296,8 @@ class TestSpeakTurn:
 
         mock_audio_source = MagicMock()
         mock_audio_source.capture_frame = AsyncMock()
+        mock_audio_source.wait_for_playout = AsyncMock()
+        mock_audio_source.queued_duration = 0.0
 
         profile = _make_voice_profile()
         chunks = [b"\x00" * 1920, b"\x00" * 1920]  # 2 frames of 20ms
@@ -305,6 +312,7 @@ class TestSpeakTurn:
             )
 
         assert mock_audio_source.capture_frame.await_count == 2
+        mock_audio_source.wait_for_playout.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

@@ -84,11 +84,15 @@ class SyntheticCaller:
 
         try:
             await self._room.connect(room_info.livekit_url, caller_token)
+            local_participant = self._room.local_participant
             logger.info(
                 "Synthetic caller connected to room",
                 extra={
                     "room_name": room_info.room_name,
                     "call_id": call_id,
+                    "local_participant_sid": local_participant.sid,
+                    "local_participant_identity": local_participant.identity,
+                    "remote_participants": len(self._room.remote_participants),
                 },
             )
 
@@ -106,13 +110,21 @@ class SyntheticCaller:
             track = rtc.LocalAudioTrack.create_audio_track(
                 "synthetic-caller-audio", audio_source
             )
-            await self._room.local_participant.publish_track(track)
+            options = rtc.TrackPublishOptions(
+                source=rtc.TrackSource.SOURCE_MICROPHONE,
+            )
+            publication = await local_participant.publish_track(track, options)
 
             logger.info(
                 "Synthetic caller audio track published",
                 extra={
                     "room_name": room_info.room_name,
+                    "call_id": call_id,
                     "num_turns": len(turns),
+                    "track_sid": publication.sid,
+                    "track_name": track.name,
+                    "track_muted": publication.muted,
+                    "sample_rate": sample_rate,
                 },
             )
 
@@ -204,12 +216,39 @@ class SyntheticCaller:
     ) -> None:
         """Synthesize text via TTS and publish audio frames to the room."""
         samples_per_frame = int(sample_rate * _FRAME_DURATION_MS / 1000.0)
+        expected_chunk_bytes = samples_per_frame * _AUDIO_NUM_CHANNELS * 2  # 16-bit
         frame_count = 0
         total_bytes = 0
+        non_silent_frames = 0
+
+        logger.info(
+            "Speak turn starting TTS synthesis",
+            extra={
+                "text": text[:100],
+                "sample_rate": sample_rate,
+                "samples_per_frame": samples_per_frame,
+                "expected_chunk_bytes": expected_chunk_bytes,
+                "voice_id": voice_profile.voice_id,
+                "queued_duration_before": audio_source.queued_duration,
+            },
+        )
 
         async for chunk in tts_engine.synthesize_streaming(
             text, profile=voice_profile, frame_duration_ms=_FRAME_DURATION_MS
         ):
+            if frame_count == 0:
+                # Log details of the first chunk for debugging
+                has_nonzero = any(b != 0 for b in chunk)
+                logger.info(
+                    "First TTS chunk received",
+                    extra={
+                        "chunk_size": len(chunk),
+                        "expected_size": expected_chunk_bytes,
+                        "has_nonzero_data": has_nonzero,
+                        "first_16_bytes": chunk[:16].hex() if chunk else "",
+                    },
+                )
+
             frame = rtc.AudioFrame(
                 data=chunk,
                 sample_rate=sample_rate,
@@ -219,12 +258,38 @@ class SyntheticCaller:
             await audio_source.capture_frame(frame)
             frame_count += 1
             total_bytes += len(chunk)
+            if any(b != 0 for b in chunk):
+                non_silent_frames += 1
 
+        queued_before_playout = audio_source.queued_duration
+        logger.info(
+            "All frames captured, waiting for playout",
+            extra={
+                "frame_count": frame_count,
+                "queued_duration_s": queued_before_playout,
+            },
+        )
+
+        # Wait for all queued frames to be fully transmitted to the room.
+        # Without this, capture_frame only queues internally and the caller
+        # may proceed before audio reaches other participants.
         duration_ms = (frame_count * _FRAME_DURATION_MS) if frame_count else 0
+        playout_timeout = max(duration_ms / 1000.0 * 2, 5.0)
+        try:
+            await asyncio.wait_for(
+                audio_source.wait_for_playout(), timeout=playout_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "wait_for_playout timed out",
+                extra={"timeout_s": playout_timeout, "frame_count": frame_count},
+            )
+
         logger.info(
             "Speak turn audio published",
             extra={
                 "frame_count": frame_count,
+                "non_silent_frames": non_silent_frames,
                 "total_bytes": total_bytes,
                 "duration_ms": duration_ms,
                 "sample_rate": sample_rate,
@@ -235,6 +300,13 @@ class SyntheticCaller:
     async def _disconnect(self) -> None:
         """Disconnect from the room gracefully."""
         try:
+            logger.info(
+                "Synthetic caller disconnecting",
+                extra={
+                    "remote_participants": len(self._room.remote_participants),
+                    "connection_state": str(self._room.connection_state),
+                },
+            )
             await self._room.disconnect()
         except Exception:
             logger.exception("Error disconnecting synthetic caller from room")
