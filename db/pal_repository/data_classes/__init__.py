@@ -10,6 +10,7 @@ from .capability_action import CapabilityActionData
 from .contact import ContactData
 from .conversation import ConversationData
 from .eval_result import EvalResultData
+from .eval_run import EvalRunData
 from .permission import PermissionData
 from .phone_call import PhoneCallData
 from .project import ProjectData
@@ -52,6 +53,7 @@ __all__ = [
     "ContactData",
     "ConversationData",
     "EvalResultData",
+    "EvalRunData",
     "PermissionData",
     "PhoneCallData",
     "ProjectContactData",

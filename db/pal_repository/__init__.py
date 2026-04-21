@@ -10,6 +10,7 @@ from .capability_action import CapabilityActionRepository
 from .contact import ContactRepository
 from .conversation import ConversationRepository
 from .eval_result import EvalResultRepository
+from .eval_run import EvalRunRepository
 from .permission import PermissionRepository
 from .phone_call import PhoneCallRepository
 from .project import ProjectRepository
@@ -46,6 +47,7 @@ __all__ = [
     "ContactRepository",
     "ConversationRepository",
     "EvalResultRepository",
+    "EvalRunRepository",
     "PermissionRepository",
     "PhoneCallRepository",
     "ProjectContactRepository",
