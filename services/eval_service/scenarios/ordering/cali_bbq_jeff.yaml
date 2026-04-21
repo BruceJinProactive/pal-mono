@@ -1,1232 +1,1260 @@
 - scenario_id: wings_10pc_jalapeno_bbq_ranch_cornbread
-  scenario: Can I get 10 wings with jalapeño BBQ sauce, ranch, and a cheesy jalapeño cornbread basket?
+  scenario: "Can I get 10 wings with jalapeño BBQ sauce, ranch, and a cheesy jalapeño cornbread basket?"
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Wings (10pc) with Jalapeño BBQ(medium), Ranch, Cheesy Jalapeño Cornbread Basket (4)
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Wings (10pc) with Jalapeño BBQ(medium), Ranch, Cheesy Jalapeño Cornbread Basket (4)"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Wings (10pc)
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Wing Sauce (10 & 20)
-            option_name: Jalapeño BBQ(medium)
-        - path:
-          - group_name: Wing Dressings
-            option_name: Ranch
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Cheesy Jalapeño Cornbread Basket (4)
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Wings (10pc)"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Wing Sauce (10 & 20)"
+                    option_name: "Jalapeño BBQ(medium)"
+              - path:
+                  - group_name: "Wing Dressings"
+                    option_name: "Ranch"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Cheesy Jalapeño Cornbread Basket (4)"
   expected_outcomes:
     task_completed: true
   context:
-  - Can I get 10 wings with jalapeño BBQ sauce, ranch, and a cheesy jalapeño cornbread basket?
+    - "Can I get 10 wings with jalapeño BBQ sauce, ranch, and a cheesy jalapeño cornbread basket?"
+
 - scenario_id: og_combo_ribs_tri_tip_fries_slaw_jalapenos
-  scenario: I want the OG Combo Ribs with tri-tip, seasoned fries, coleslaw, and jalapeños.
+  scenario: "I want the OG Combo Ribs with tri-tip, seasoned fries, coleslaw, and jalapeños."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - OG Combo Ribs with Tri-Tip, Seasoned Fries, Cole Slaw, Jalapenos
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "OG Combo Ribs with Tri-Tip, Seasoned Fries, Cole Slaw, Jalapenos"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: OG Combo Ribs
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: OG Choice
-            option_name: Tri-Tip
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Jalapenos
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "OG Combo Ribs"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "OG Choice"
+                    option_name: "Tri-Tip"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Jalapenos"
   expected_outcomes:
     task_completed: true
   context:
-  - I want the OG Combo Ribs with tri-tip, seasoned fries, coleslaw, and jalapeños.
+    - "I want the OG Combo Ribs with tri-tip, seasoned fries, coleslaw, and jalapeños."
+
 - scenario_id: combo_1_chicken_ribs_half_fries_slaw_hot_link
-  scenario: 'Can I do Combo #1 Chicken with half-rack ribs, fries, coleslaw, jalapeños, and add a hot link?'
+  scenario: "Can I do Combo #1 Chicken with half-rack ribs, fries, coleslaw, jalapeños, and add a hot link?"
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - 'Combo #1 Chicken with Ribs Half, Seasoned Fries, Cole Slaw, Jalapenos, Hot link'
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Combo #1 Chicken with Ribs Half, Seasoned Fries, Cole Slaw, Jalapenos, Hot link"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: 'Combo #1 Chicken'
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: '#1 Choice'
-            option_name: Ribs Half
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Jalapenos
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Hot link
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Combo #1 Chicken"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "#1 Choice"
+                    option_name: "Ribs Half"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Jalapenos"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Hot link"
   expected_outcomes:
     task_completed: true
   context:
-  - 'Can I do Combo #1 Chicken with half-rack ribs, fries, coleslaw, jalapeños, and add a hot link?'
+    - "Can I do Combo #1 Chicken with half-rack ribs, fries, coleslaw, jalapeños, and add a hot link?"
+
 - scenario_id: combo_2_pork_rib_tips_fries_slaw_onions_bun
-  scenario: 'Combo #2 Pork with rib tips, fries, coleslaw, grilled onions, and a brioche bun.'
+  scenario: "Combo #2 Pork with rib tips, fries, coleslaw, grilled onions, and a brioche bun."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - 'Combo #2 Pork with Rib Tips, Seasoned Fries, Cole Slaw, Grilled Onions, Brioche Bun'
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Combo #2 Pork with Rib Tips, Seasoned Fries, Cole Slaw, Grilled Onions, Brioche Bun"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: 'Combo #2 Pork'
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: '#2 Choice'
-            option_name: Rib Tips
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Onions
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Brioche Bun
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Combo #2 Pork"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "#2 Choice"
+                    option_name: "Rib Tips"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Onions"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Brioche Bun"
   expected_outcomes:
     task_completed: true
   context:
-  - 'Combo #2 Pork with rib tips, fries, coleslaw, grilled onions, and a brioche bun.'
+    - "Combo #2 Pork with rib tips, fries, coleslaw, grilled onions, and a brioche bun."
+
 - scenario_id: combo_3_rib_tips_ribs_half_fries_slaw_grilled_jalapenos
-  scenario: 'I''ll take Combo #3 Rib Tips with half ribs, fries, coleslaw, and grilled jalapeños.'
+  scenario: "I'll take Combo #3 Rib Tips with half ribs, fries, coleslaw, and grilled jalapeños."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - 'Combo #3 Rib Tips with Ribs Half, Seasoned Fries, Cole Slaw, Grilled Jalapenos'
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Combo #3 Rib Tips with Ribs Half, Seasoned Fries, Cole Slaw, Grilled Jalapenos"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: 'Combo #3 Rib Tips'
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: '#3 Choice'
-            option_name: Ribs Half
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Jalapenos
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Combo #3 Rib Tips"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "#3 Choice"
+                    option_name: "Ribs Half"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Jalapenos"
   expected_outcomes:
     task_completed: true
   context:
-  - 'I''ll take Combo #3 Rib Tips with half ribs, fries, coleslaw, and grilled jalapeños.'
+    - "I'll take Combo #3 Rib Tips with half ribs, fries, coleslaw, and grilled jalapeños."
+
 - scenario_id: combo_4_brisket_tri_tip_fries_slaw_onions_hot_link_cornbread
-  scenario: 'Combo #4 with fries and coleslaw, plus grilled onions, a hot link, and a Cheesy Jalapeño Cornbread Basket (4)
-    basket.'
+  scenario: "Combo #4 with fries and coleslaw, plus grilled onions, a hot link, and a Cheesy Jalapeño Cornbread Basket (4) basket."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - 'Combo #4 Brisket/Tri Tip with Seasoned Fries, Cole Slaw, Grilled Onions, Hot link, Cheesy Jalapeño Cornbread Basket (4)'
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Combo #4 Brisket/Tri Tip with Seasoned Fries, Cole Slaw, Grilled Onions, Hot link, Cheesy Jalapeño Cornbread Basket (4)"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: 'Combo #4 Brisket/Tri Tip'
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Onions
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Hot link
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Cheesy Jalapeño Cornbread Basket (4)
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Combo #4 Brisket/Tri Tip"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Onions"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Hot link"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Cheesy Jalapeño Cornbread Basket (4)"
   expected_outcomes:
     task_completed: true
   context:
-  - 'Combo #4 with fries and coleslaw, plus grilled onions, a hot link, and a Cheesy Jalapeño Cornbread Basket (4) basket.'
+    - "Combo #4 with fries and coleslaw, plus grilled onions, a hot link, and a Cheesy Jalapeño Cornbread Basket (4) basket."
+
 - scenario_id: rib_tip_plate_fries_slaw_jalapenos_mac
-  scenario: Rib Tip Plate with fries, coleslaw, jalapeños, and add mac and cheese.
+  scenario: "Rib Tip Plate with fries, coleslaw, jalapeños, and add mac and cheese."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Rib Tip Plate with Seasoned Fries, Cole Slaw, Jalapenos, Mac & Chz
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Rib Tip Plate with Seasoned Fries, Cole Slaw, Jalapenos, Mac & Chz"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Rib Tip Plate
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Jalapenos
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Mac & Chz
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Rib Tip Plate"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Jalapenos"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Mac & Chz"
   expected_outcomes:
     task_completed: true
   context:
-  - Rib Tip Plate with fries, coleslaw, jalapeños, and add mac and cheese.
+    - "Rib Tip Plate with fries, coleslaw, jalapeños, and add mac and cheese."
+
 - scenario_id: brisket_plate_fries_slaw_onions
-  scenario: Brisket Plate with fries, coleslaw, and grilled onions.
+  scenario: "Brisket Plate with fries, coleslaw, and grilled onions."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Brisket Plate with Seasoned Fries, Cole Slaw, Grilled Onions
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Brisket Plate with Seasoned Fries, Cole Slaw, Grilled Onions"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Brisket Plate
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Onions
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Brisket Plate"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Onions"
   expected_outcomes:
     task_completed: true
   context:
-  - Brisket Plate with fries, coleslaw, and grilled onions.
+    - "Brisket Plate with fries, coleslaw, and grilled onions."
+
 - scenario_id: tri_tip_plate_fries_slaw_grilled_jalapenos_bun_mac
-  scenario: Tri-Tip Plate with fries, coleslaw, grilled jalapeños, plus a brioche bun and mac and cheese.
+  scenario: "Tri-Tip Plate with fries, coleslaw, grilled jalapeños, plus a brioche bun and mac and cheese."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Tri-Tip Plate with Seasoned Fries, Cole Slaw, Grilled Jalapenos, Brioche Bun, Mac & Chz
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Tri-Tip Plate with Seasoned Fries, Cole Slaw, Grilled Jalapenos, Brioche Bun, Mac & Chz"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Tri-Tip Plate
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Jalapenos
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Brioche Bun
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Mac & Chz
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Tri-Tip Plate"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Jalapenos"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Brioche Bun"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Mac & Chz"
   expected_outcomes:
     task_completed: true
   context:
-  - Tri-Tip Plate with fries, coleslaw, grilled jalapeños, plus a brioche bun and mac and cheese.
+    - "Tri-Tip Plate with fries, coleslaw, grilled jalapeños, plus a brioche bun and mac and cheese."
+
 - scenario_id: chicken_plate_half_fries_slaw_jalapenos_hot_link
-  scenario: Chicken Plate, half chicken, with fries, coleslaw, jalapeños, and a hot link.
+  scenario: "Chicken Plate, half chicken, with fries, coleslaw, jalapeños, and a hot link."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Chicken Plate with Half, Seasoned Fries, Cole Slaw, Jalapenos, Hot link
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Chicken Plate with Half, Seasoned Fries, Cole Slaw, Jalapenos, Hot link"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Chicken Plate
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Chicken Size
-            option_name: Half
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Jalapenos
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Hot link
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Chicken Plate"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Chicken Size"
+                    option_name: "Half"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Jalapenos"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Hot link"
   expected_outcomes:
     task_completed: true
   context:
-  - Chicken Plate, half chicken, with fries, coleslaw, jalapeños, and a hot link.
+    - "Chicken Plate, half chicken, with fries, coleslaw, jalapeños, and a hot link."
+
 - scenario_id: pulled_pork_plate_fries_slaw_onions_cornbread
-  scenario: Pulled Pork Plate with fries, coleslaw, grilled onions, and a cheesy jalapeño cornbread basket.
+  scenario: "Pulled Pork Plate with fries, coleslaw, grilled onions, and a cheesy jalapeño cornbread basket."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Pulled Pork Plate with Seasoned Fries, Cole Slaw, Grilled Onions, Cheesy Jalapeño Cornbread Basket (4)
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Pulled Pork Plate with Seasoned Fries, Cole Slaw, Grilled Onions, Cheesy Jalapeño Cornbread Basket (4)"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Pulled Pork Plate
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Onions
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Cheesy Jalapeño Cornbread Basket (4)
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Pulled Pork Plate"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Onions"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Cheesy Jalapeño Cornbread Basket (4)"
   expected_outcomes:
     task_completed: true
   context:
-  - Pulled Pork Plate with fries, coleslaw, grilled onions, and a cheesy jalapeño cornbread basket.
+    - "Pulled Pork Plate with fries, coleslaw, grilled onions, and a cheesy jalapeño cornbread basket."
+
 - scenario_id: hot_link_plate_fries_slaw_grilled_jalapenos
-  scenario: Hot Link Plate with fries, coleslaw, and grilled jalapeños.
+  scenario: "Hot Link Plate with fries, coleslaw, and grilled jalapeños."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Hot Link Plate with Seasoned Fries, Cole Slaw, Grilled Jalapenos
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Hot Link Plate with Seasoned Fries, Cole Slaw, Grilled Jalapenos"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Hot Link Plate
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Plate Sides*
-            option_name: Seasoned Fries
-        - path:
-          - group_name: Plate Sides*
-            option_name: Cole Slaw
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Jalapenos
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Hot Link Plate"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Seasoned Fries"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Cole Slaw"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Jalapenos"
   expected_outcomes:
     task_completed: true
   context:
-  - Hot Link Plate with fries, coleslaw, and grilled jalapeños.
+    - "Hot Link Plate with fries, coleslaw, and grilled jalapeños."
+
 - scenario_id: wings_20pc_split_sauces_blue_chz_2l_pepsi
-  scenario: Can I get 20 wings with buffalo and North Carolina sauce, blue cheese, and a 2-liter Pepsi?
+  scenario: "Can I get 20 wings with buffalo and North Carolina sauce, blue cheese, and a 2-liter Pepsi?"
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Wings (20pc) with Buffalo(medium), North Carolina, Blue Chz, Pepsi - 2L Bottle
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Wings (20pc) with Buffalo(medium), North Carolina, Blue Chz, Pepsi - 2L Bottle"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Wings (20pc)
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Wing Sauce (10 & 20)
-            option_name: Buffalo(medium)
-        - path:
-          - group_name: Wing Sauce (10 & 20)
-            option_name: North Carolina
-        - path:
-          - group_name: Wing Dressings
-            option_name: Blue Chz
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Pepsi - 2L Bottle
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Wings (20pc)"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Wing Sauce (10 & 20)"
+                    option_name: "Buffalo(medium)"
+              - path:
+                  - group_name: "Wing Sauce (10 & 20)"
+                    option_name: "North Carolina"
+              - path:
+                  - group_name: "Wing Dressings"
+                    option_name: "Blue Chz"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Pepsi - 2L Bottle"
   expected_outcomes:
     task_completed: true
   context:
-  - Can I get 20 wings with buffalo and North Carolina sauce, blue cheese, and a 2-liter Pepsi?
+    - "Can I get 20 wings with buffalo and North Carolina sauce, blue cheese, and a 2-liter Pepsi?"
+
 - scenario_id: wings_5pc_no_sauce_12oz_blue_chz
-  scenario: I'll do 5 wings with no sauce and a 12 oz. blue cheese dressing.
+  scenario: "I'll do 5 wings with no sauce and a 12 oz. blue cheese dressing."
   test_category: with_removal_or_qualifier
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Wings (5pc) with No Sauce, 12 oz. Blue Cheese Dressing
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Wings (5pc) with No Sauce, 12 oz. Blue Cheese Dressing"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Wings (5pc)
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Wing Sauce (5pc)
-            option_name: No Sauce
-        - path:
-          - group_name: Wing Dressings
-            option_name: 12 oz. Blue Cheese Dressing
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Wings (5pc)"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Wing Sauce (5pc)"
+                    option_name: "No Sauce"
+              - path:
+                  - group_name: "Wing Dressings"
+                    option_name: "12 oz. Blue Cheese Dressing"
   expected_outcomes:
     task_completed: true
   context:
-  - I'll do 5 wings with no sauce and a 12 oz. blue cheese dressing.
+    - "I'll do 5 wings with no sauce and a 12 oz. blue cheese dressing."
+
 - scenario_id: bbq_rib_plate_half_side_salad_balsamic_bacon_mac_onions
-  scenario: BBQ rib plate, half rack, with a side salad with balsamic, bacon jalapeño mac and cheese, and grilled onions.
+  scenario: "BBQ rib plate, half rack, with a side salad with balsamic, bacon jalapeño mac and cheese, and grilled onions."
   test_category: required_selection
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - BBQ Rib Plate with Half, Side Salad, Balsamic, Bacon Jalapeño Mac-n-Cheese, Grilled Onions
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "BBQ Rib Plate with Half, Side Salad, Balsamic, Bacon Jalapeño Mac-n-Cheese, Grilled Onions"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: BBQ Rib Plate
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Rib Size
-            option_name: Half
-        - path:
-          - group_name: Plate Sides*
-            option_name: Side Salad
-          - group_name: Dressing
-            option_name: Balsamic
-        - path:
-          - group_name: Plate Sides*
-            option_name: Bacon Jalapeño Mac-n-Cheese
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Onions
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "BBQ Rib Plate"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Rib Size"
+                    option_name: "Half"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Side Salad"
+                  - group_name: "Dressing"
+                    option_name: "Balsamic"
+              - path:
+                  - group_name: "Plate Sides*"
+                    option_name: "Bacon Jalapeño Mac-n-Cheese"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Onions"
   expected_outcomes:
     task_completed: true
   context:
-  - BBQ rib plate, half rack, with a side salad with balsamic, bacon jalapeño mac and cheese, and grilled onions.
+    - "BBQ rib plate, half rack, with a side salad with balsamic, bacon jalapeño mac and cheese, and grilled onions."
+
 - scenario_id: county_fair_sub_brisket_no_cheddar_side_salad_ranch_bottle
-  scenario: I want the County Fair with brisket instead, no cheddar, a side salad with ranch, and a Diet Pepsi bottle.
+  scenario: "I want the County Fair with brisket instead, no cheddar, a side salad with ranch, and a Diet Pepsi bottle."
   test_category: with_removal_or_qualifier
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - County Fair with Side Salad, Ranch, SUB Brisket, No cheddar cheese, 20oz Soda BOTTLE, Diet Pepsi - 20oz Bottle
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "County Fair with Side Salad, Ranch, SUB Brisket, No cheddar cheese, 20oz Soda BOTTLE, Diet Pepsi - 20oz Bottle"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: County Fair
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Sandwich Sides*
-            option_name: Side Salad
-          - group_name: Dressing
-            option_name: Ranch
-        - path:
-          - group_name: Fair Mod
-            option_name: SUB Brisket
-        - path:
-          - group_name: Fair Mod
-            option_name: No cheddar cheese
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: 20oz Soda BOTTLE
-          - group_name: Choose your bottle
-            option_name: Diet Pepsi - 20oz Bottle
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "County Fair"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Sandwich Sides*"
+                    option_name: "Side Salad"
+                  - group_name: "Dressing"
+                    option_name: "Ranch"
+              - path:
+                  - group_name: "Fair Mod"
+                    option_name: "SUB Brisket"
+              - path:
+                  - group_name: "Fair Mod"
+                    option_name: "No cheddar cheese"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "20oz Soda BOTTLE"
+                  - group_name: "Choose your bottle"
+                    option_name: "Diet Pepsi - 20oz Bottle"
   expected_outcomes:
     task_completed: true
   context:
-  - I want the County Fair with brisket instead, no cheddar, a side salad with ranch, and a Diet Pepsi bottle.
+    - "I want the County Fair with brisket instead, no cheddar, a side salad with ranch, and a Diet Pepsi bottle."
+
 - scenario_id: brisket_sandwich_no_side_grilled_onions_fountain_lemonade
-  scenario: Brisket sandwich with no side, grilled onions, and a fountain Tropicana lemonade.
+  scenario: "Brisket sandwich with no side, grilled onions, and a fountain Tropicana lemonade."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Brisket Sandwich with No Side, Grilled Onions, FOUNTAIN Soda, Tropicana Lemonade - Fountain, Regular
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Brisket Sandwich with No Side, Grilled Onions, FOUNTAIN Soda, Tropicana Lemonade - Fountain, Regular"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Brisket Sandwich
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Sandwich Sides*
-            option_name: No Side
-        - path:
-          - group_name: Sandwich add on
-            option_name: Grilled Onions
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: FOUNTAIN Soda
-          - group_name: Choose your soda
-            option_name: Tropicana Lemonade - Fountain
-          - group_name: Fountain Size
-            option_name: Regular
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Brisket Sandwich"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Sandwich Sides*"
+                    option_name: "No Side"
+              - path:
+                  - group_name: "Sandwich add on"
+                    option_name: "Grilled Onions"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "FOUNTAIN Soda"
+                  - group_name: "Choose your soda"
+                    option_name: "Tropicana Lemonade - Fountain"
+                  - group_name: "Fountain Size"
+                    option_name: "Regular"
   expected_outcomes:
     task_completed: true
   context:
-  - Brisket sandwich with no side, grilled onions, and a fountain Tropicana lemonade.
+    - "Brisket sandwich with no side, grilled onions, and a fountain Tropicana lemonade."
+
 - scenario_id: tri_tip_salad_balsamic_no_onions_no_feta
-  scenario: Tri-tip salad with balsamic, no onions, and no feta.
+  scenario: "Tri-tip salad with balsamic, no onions, and no feta."
   test_category: with_removal_or_qualifier
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Tri-Tip Salad with Balsamic, No onions, No Feta
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Tri-Tip Salad with Balsamic, No onions, No Feta"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Tri-Tip Salad
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Dressing
-            option_name: Balsamic
-        - path:
-          - group_name: Tri Tip Ingredients
-            option_name: No onions
-        - path:
-          - group_name: Tri Tip Ingredients
-            option_name: No Feta
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Tri-Tip Salad"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Dressing"
+                    option_name: "Balsamic"
+              - path:
+                  - group_name: "Tri Tip Ingredients"
+                    option_name: "No onions"
+              - path:
+                  - group_name: "Tri Tip Ingredients"
+                    option_name: "No Feta"
   expected_outcomes:
     task_completed: true
   context:
-  - Tri-tip salad with balsamic, no onions, and no feta.
+    - "Tri-tip salad with balsamic, no onions, and no feta."
+
 - scenario_id: kids_mac_veggie_sticks_no_bacon
-  scenario: Kid's mac and cheesy with veggie sticks and no bacon.
+  scenario: "Kid's mac and cheesy with veggie sticks and no bacon."
   test_category: with_removal_or_qualifier
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Kid's Mac & Cheesy with Veggie Sticks, No bacon
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Kid's Mac & Cheesy with Veggie Sticks, No bacon"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Kid's Mac & Cheesy
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Kids Side
-            option_name: Veggie Sticks
-        - path:
-          - group_name: Kids Mac Mod
-            option_name: No bacon
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Kid's Mac & Cheesy"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Kids Side"
+                    option_name: "Veggie Sticks"
+              - path:
+                  - group_name: "Kids Mac Mod"
+                    option_name: "No bacon"
   expected_outcomes:
     task_completed: true
   context:
-  - Kid's mac and cheesy with veggie sticks and no bacon.
+    - "Kid's mac and cheesy with veggie sticks and no bacon."
+
 - scenario_id: fountain_lemonade_and_cobbler_no_ice_cream
-  scenario: Can I get a fountain Tropicana lemonade and a peach cobbler with no ice cream?
+  scenario: "Can I get a fountain Tropicana lemonade and a peach cobbler with no ice cream?"
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - FOUNTAIN Soda with Tropicana Lemonade - Fountain, Regular and Wicked Peach Cobbler with No Ice Cream
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "FOUNTAIN Soda with Tropicana Lemonade - Fountain, Regular and Wicked Peach Cobbler with No Ice Cream"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: FOUNTAIN Soda
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Choose your soda
-            option_name: Tropicana Lemonade - Fountain
-          - group_name: Fountain Size
-            option_name: Regular
-      - item_name: Wicked Peach Cobbler
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Cobbler Ice Cream
-            option_name: No Ice Cream
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "FOUNTAIN Soda"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Choose your soda"
+                    option_name: "Tropicana Lemonade - Fountain"
+                  - group_name: "Fountain Size"
+                    option_name: "Regular"
+          - item_name: "Wicked Peach Cobbler"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Cobbler Ice Cream"
+                    option_name: "No Ice Cream"
   expected_outcomes:
     task_completed: true
   context:
-  - Can I get a fountain Tropicana lemonade and a peach cobbler with no ice cream?
+    - "Can I get a fountain Tropicana lemonade and a peach cobbler with no ice cream?"
+
 - scenario_id: full_rib_rack_grilled_jalapenos_bun_cornbread
-  scenario: Full rib rack with grilled jalapeños, a brioche bun, and cheesy jalapeño cornbread.
+  scenario: "Full rib rack with grilled jalapeños, a brioche bun, and cheesy jalapeño cornbread."
   test_category: with_addon
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Full Rib Rack with Grilled Jalapenos, Brioche Bun, Cheesy Jalapeño Cornbread Basket (4)
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Full Rib Rack with Grilled Jalapenos, Brioche Bun, Cheesy Jalapeño Cornbread Basket (4)"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Full Rib Rack
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Jalapenos
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Brioche Bun
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Cheesy Jalapeño Cornbread Basket (4)
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Full Rib Rack"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Jalapenos"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Brioche Bun"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Cheesy Jalapeño Cornbread Basket (4)"
   expected_outcomes:
     task_completed: true
   context:
-  - Full rib rack with grilled jalapeños, a brioche bun, and cheesy jalapeño cornbread.
+    - "Full rib rack with grilled jalapeños, a brioche bun, and cheesy jalapeño cornbread."
+
 - scenario_id: tailgater_10_all_included_items
-  scenario: I'll take the Tailgater BBQ Feast for 10.
+  scenario: "I'll take the Tailgater BBQ Feast for 10."
   test_category: required_selection
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Tailgater BBQ Feast (for 10) with 16oz of Pulled Pork & 16oz of Tri-Tip, 1.5 Whole Chickens & 2 Rib Tips, 1.5 Rib Racks
-    & 24oz of Brisket, 2 Mac N Cheese & 2 Wedding Beans, 2 Potato Salads & 2 Cole Slaws, 10 Jalapeño Cheddar Cornbread, 3
-    Peach Cobblers w/ Ice Cream
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Tailgater BBQ Feast (for 10) with 16oz of Pulled Pork & 16oz of Tri-Tip, 1.5 Whole Chickens & 2 Rib Tips, 1.5 Rib Racks & 24oz of Brisket, 2 Mac N Cheese & 2 Wedding Beans, 2 Potato Salads & 2 Cole Slaws, 10 Jalapeño Cheddar Cornbread, 3 Peach Cobblers w/ Ice Cream"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Tailgater BBQ Feast (for 10)
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: 'Included Items(no substitutions):'
-            option_name: 16oz of Pulled Pork & 16oz of Tri-Tip
-        - path:
-          - group_name: 'Included Items(no substitutions):'
-            option_name: 1.5 Whole Chickens & 2 Rib Tips
-        - path:
-          - group_name: 'Included Items(no substitutions):'
-            option_name: 1.5 Rib Racks & 24oz of Brisket
-        - path:
-          - group_name: 'Included Items(no substitutions):'
-            option_name: 2 Mac N Cheese & 2 Wedding Beans
-        - path:
-          - group_name: 'Included Items(no substitutions):'
-            option_name: 2 Potato Salads & 2 Cole Slaws
-        - path:
-          - group_name: 'Included Items(no substitutions):'
-            option_name: 10 Jalapeño Cheddar Cornbread
-        - path:
-          - group_name: 'Included Items(no substitutions):'
-            option_name: 3 Peach Cobblers w/ Ice Cream
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Tailgater BBQ Feast (for 10)"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Included Items(no substitutions):"
+                    option_name: "16oz of Pulled Pork & 16oz of Tri-Tip"
+              - path:
+                  - group_name: "Included Items(no substitutions):"
+                    option_name: "1.5 Whole Chickens & 2 Rib Tips"
+              - path:
+                  - group_name: "Included Items(no substitutions):"
+                    option_name: "1.5 Rib Racks & 24oz of Brisket"
+              - path:
+                  - group_name: "Included Items(no substitutions):"
+                    option_name: "2 Mac N Cheese & 2 Wedding Beans"
+              - path:
+                  - group_name: "Included Items(no substitutions):"
+                    option_name: "2 Potato Salads & 2 Cole Slaws"
+              - path:
+                  - group_name: "Included Items(no substitutions):"
+                    option_name: "10 Jalapeño Cheddar Cornbread"
+              - path:
+                  - group_name: "Included Items(no substitutions):"
+                    option_name: "3 Peach Cobblers w/ Ice Cream"
   expected_outcomes:
     task_completed: true
   context:
-  - I'll take the Tailgater BBQ Feast for 10.
+    - "I'll take the Tailgater BBQ Feast for 10."
+
 - scenario_id: hot_link_hoagie_jalapenos_side_salad_no_dressing_drpepper_bottle
-  scenario: Hot Link Hoagie with grilled jalapenos, a side salad with no dressing, and a Dr Pepper bottle.
+  scenario: "Hot Link Hoagie with grilled jalapenos, a side salad with no dressing, and a Dr Pepper bottle."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Hot Link Hoagie with Grilled Jalapenos, Side Salad, No Dressing and 20oz Soda BOTTLE with Dr Pepper 20oz bottle
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Hot Link Hoagie with Grilled Jalapenos, Side Salad, No Dressing and 20oz Soda BOTTLE with Dr Pepper 20oz bottle"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Hot Link Hoagie
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Add Jalapeños?
-            option_name: Grilled Jalapenos
-        - path:
-          - group_name: Sandwich Sides*
-            option_name: Side Salad
-          - group_name: Dressing
-            option_name: No Dressing
-      - item_name: 20oz Soda BOTTLE
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Choose your bottle
-            option_name: Dr Pepper 20oz bottle
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Hot Link Hoagie"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Add Jalapeños?"
+                    option_name: "Grilled Jalapenos"
+              - path:
+                  - group_name: "Sandwich Sides*"
+                    option_name: "Side Salad"
+                  - group_name: "Dressing"
+                    option_name: "No Dressing"
+          - item_name: "20oz Soda BOTTLE"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Choose your bottle"
+                    option_name: "Dr Pepper 20oz bottle"
   expected_outcomes:
     task_completed: true
   context:
-  - Hot Link Hoagie with grilled jalapenos, a side salad with no dressing, and a Dr Pepper bottle.
+    - "Hot Link Hoagie with grilled jalapenos, a side salad with no dressing, and a Dr Pepper bottle."
+
 - scenario_id: brisket_pound_brioche_grilled_jalapenos_side_caesar_no_croutons_no_dressing
-  scenario: A pound of brisket with a brioche bun and grilled jalapenos, plus a side Caesar with no croutons and no dressing.
+  scenario: "A pound of brisket with a brioche bun and grilled jalapenos, plus a side Caesar with no croutons and no dressing."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Brisket Pound with Brioche Bun, Grilled Jalapenos and Side Caesar with No croutons, No dressing
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Brisket Pound with Brioche Bun, Grilled Jalapenos and Side Caesar with No croutons, No dressing"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Brisket Pound
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Brioche Bun
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Jalapenos
-      - item_name: Side Caesar
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Caesar Mods
-            option_name: No croutons
-        - path:
-          - group_name: Caesar Mods
-            option_name: No dressing
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Brisket Pound"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Brioche Bun"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Jalapenos"
+          - item_name: "Side Caesar"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Caesar Mods"
+                    option_name: "No croutons"
+              - path:
+                  - group_name: "Caesar Mods"
+                    option_name: "No dressing"
   expected_outcomes:
     task_completed: true
   context:
-  - A pound of brisket with a brioche bun and grilled jalapenos, plus a side Caesar with no croutons and no dressing.
+    - "A pound of brisket with a brioche bun and grilled jalapenos, plus a side Caesar with no croutons and no dressing."
+
 - scenario_id: house_salad_ranch_no_onions_no_tomato_no_cheese_fries_no_seasoning
-  scenario: Large house salad with ranch, no onions, no tomato, and no cheese, plus seasoned fries with no seasoning.
+  scenario: "Large house salad with ranch, no onions, no tomato, and no cheese, plus seasoned fries with no seasoning."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Lrg House Salad with Ranch, No onions, No tomato, No cheese and Seasoned Fries with No seasoning
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Lrg House Salad with Ranch, No onions, No tomato, No cheese and Seasoned Fries with No seasoning"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Lrg House Salad
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Dressing
-            option_name: Ranch
-        - path:
-          - group_name: Sd salad mods
-            option_name: No onions
-        - path:
-          - group_name: Sd salad mods
-            option_name: No tomato
-        - path:
-          - group_name: Sd salad mods
-            option_name: No cheese
-      - item_name: Seasoned Fries
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Fry Seasoning
-            option_name: No seasoning
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Lrg House Salad"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Dressing"
+                    option_name: "Ranch"
+              - path:
+                  - group_name: "Sd salad mods"
+                    option_name: "No onions"
+              - path:
+                  - group_name: "Sd salad mods"
+                    option_name: "No tomato"
+              - path:
+                  - group_name: "Sd salad mods"
+                    option_name: "No cheese"
+          - item_name: "Seasoned Fries"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Fry Seasoning"
+                    option_name: "No seasoning"
   expected_outcomes:
     task_completed: true
   context:
-  - Large house salad with ranch, no onions, no tomato, and no cheese, plus seasoned fries with no seasoning.
+    - "Large house salad with ranch, no onions, no tomato, and no cheese, plus seasoned fries with no seasoning."
+
 - scenario_id: kids_family_bundle_two_cheeseburgers_one_wings_yes_disposables
-  scenario: Two kid's cheeseburgers with side salads and ranch, one kids 3 pc naked wings with veggie sticks, and yes disposables.
+  scenario: "Two kid's cheeseburgers with side salads and ranch, one kids 3 pc naked wings with veggie sticks, and yes disposables."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - 2 Kid's Cheese Burger with Side Salad, Ranch, Kids 3 pc Naked wings with Veggie Sticks, YES DISPOSABLES
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "2 Kid's Cheese Burger with Side Salad, Ranch, Kids 3 pc Naked wings with Veggie Sticks, YES DISPOSABLES"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Kid's Cheese Burger
-        quantity: 2
-        selection_paths:
-        - path:
-          - group_name: Kids Side
-            option_name: Side Salad
-          - group_name: Dressing
-            option_name: Ranch
-      - item_name: Kids 3 pc Naked wings
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Kids Side
-            option_name: Veggie Sticks
-      - item_name: YES DISPOSABLES
-        quantity: 1
-        selection_paths: []
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Kid's Cheese Burger"
+            quantity: 2
+            selection_paths:
+              - path:
+                  - group_name: "Kids Side"
+                    option_name: "Side Salad"
+                  - group_name: "Dressing"
+                    option_name: "Ranch"
+          - item_name: "Kids 3 pc Naked wings"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Kids Side"
+                    option_name: "Veggie Sticks"
+          - item_name: "YES DISPOSABLES"
+            quantity: 1
+            selection_paths: []
   expected_outcomes:
     task_completed: true
   context:
-  - Two kid's cheeseburgers with side salads and ranch, one kids 3 pc naked wings with veggie sticks, and yes disposables.
+    - "Two kid's cheeseburgers with side salads and ranch, one kids 3 pc naked wings with veggie sticks, and yes disposables."
+
 - scenario_id: tailgater_8_pepsi_2l_cornbread_no_disposables
-  scenario: Tailgater BBQ Feast for 8 with a 2-liter Pepsi, a cheesy jalapeño cornbread basket, and no disposables.
+  scenario: "Tailgater BBQ Feast for 8 with a 2-liter Pepsi, a cheesy jalapeño cornbread basket, and no disposables."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Tailgater BBQ Feast (for 8) with Pepsi - 2L Bottle, Cheesy Jalapeño Cornbread Basket (4) and NO DISPOSIBLES
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Tailgater BBQ Feast (for 8) with Pepsi - 2L Bottle, Cheesy Jalapeño Cornbread Basket (4) and NO DISPOSIBLES"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Tailgater BBQ Feast (for 8)
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Pepsi - 2L Bottle
-        - path:
-          - group_name: Extras & Add Ons
-            option_name: Cheesy Jalapeño Cornbread Basket (4)
-      - item_name: NO DISPOSIBLES
-        quantity: 1
-        selection_paths: []
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Tailgater BBQ Feast (for 8)"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Pepsi - 2L Bottle"
+              - path:
+                  - group_name: "Extras & Add Ons"
+                    option_name: "Cheesy Jalapeño Cornbread Basket (4)"
+          - item_name: "NO DISPOSIBLES"
+            quantity: 1
+            selection_paths: []
   expected_outcomes:
     task_completed: true
   context:
-  - Tailgater BBQ Feast for 8 with a 2-liter Pepsi, a cheesy jalapeño cornbread basket, and no disposables.
+    - "Tailgater BBQ Feast for 8 with a 2-liter Pepsi, a cheesy jalapeño cornbread basket, and no disposables."
+
 - scenario_id: apps_sampler_double_poppers_nachos_loaded_fries_redbull
-  scenario: Two bacon wrapped jalapeño poppers, one brisket nachos, one loaded pulled pork fries, and a Red Bull.
+  scenario: "Two bacon wrapped jalapeño poppers, one brisket nachos, one loaded pulled pork fries, and a Red Bull."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - 2 Bacon Wrapped Jalapeño Poppers (4), Brisket Nachos, Loaded Pulled Pork Fries, Red Bull Original- 8.4oz can
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "2 Bacon Wrapped Jalapeño Poppers (4), Brisket Nachos, Loaded Pulled Pork Fries, Red Bull Original- 8.4oz can"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Bacon Wrapped Jalapeño Poppers (4)
-        quantity: 2
-        selection_paths: []
-      - item_name: Brisket Nachos
-        quantity: 1
-        selection_paths: []
-      - item_name: Loaded Pulled Pork Fries
-        quantity: 1
-        selection_paths: []
-      - item_name: Red Bull Original- 8.4oz can
-        quantity: 1
-        selection_paths: []
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Bacon Wrapped Jalapeño Poppers (4)"
+            quantity: 2
+            selection_paths: []
+          - item_name: "Brisket Nachos"
+            quantity: 1
+            selection_paths: []
+          - item_name: "Loaded Pulled Pork Fries"
+            quantity: 1
+            selection_paths: []
+          - item_name: "Red Bull Original- 8.4oz can"
+            quantity: 1
+            selection_paths: []
   expected_outcomes:
     task_completed: true
   context:
-  - Two bacon wrapped jalapeño poppers, one brisket nachos, one loaded pulled pork fries, and a Red Bull.
+    - "Two bacon wrapped jalapeño poppers, one brisket nachos, one loaded pulled pork fries, and a Red Bull."
+
 - scenario_id: two_real_smokehouse_provolone_jalapenos_mac_salad_drpepper_fountain
-  scenario: Two Real Smokehouse sandwiches with macaroni salad, provolone, jalapenos, and a Dr Pepper fountain.
+  scenario: "Two Real Smokehouse sandwiches with macaroni salad, provolone, jalapenos, and a Dr Pepper fountain."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - 2 The Real Smokehouse Sandwich with Macaroni Salad, Provolone Cheese, Jalapenos and FOUNTAIN Soda with Dr Pepper FOUNTAIN
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "2 The Real Smokehouse Sandwich with Macaroni Salad, Provolone Cheese, Jalapenos and FOUNTAIN Soda with Dr Pepper FOUNTAIN"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: The Real Smokehouse Sandwich
-        quantity: 2
-        selection_paths:
-        - path:
-          - group_name: Sandwich Sides*
-            option_name: Macaroni Salad
-        - path:
-          - group_name: Sandwich add on
-            option_name: Provolone Cheese
-        - path:
-          - group_name: Sandwich add on
-            option_name: Jalapenos
-      - item_name: FOUNTAIN Soda
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Choose your soda
-            option_name: Dr Pepper FOUNTAIN
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "The Real Smokehouse Sandwich"
+            quantity: 2
+            selection_paths:
+              - path:
+                  - group_name: "Sandwich Sides*"
+                    option_name: "Macaroni Salad"
+              - path:
+                  - group_name: "Sandwich add on"
+                    option_name: "Provolone Cheese"
+              - path:
+                  - group_name: "Sandwich add on"
+                    option_name: "Jalapenos"
+          - item_name: "FOUNTAIN Soda"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Choose your soda"
+                    option_name: "Dr Pepper FOUNTAIN"
   expected_outcomes:
     task_completed: true
   context:
-  - Two Real Smokehouse sandwiches with macaroni salad, provolone, jalapenos, and a Dr Pepper fountain.
+    - "Two Real Smokehouse sandwiches with macaroni salad, provolone, jalapenos, and a Dr Pepper fountain."
+
 - scenario_id: sides_party_cart_two_cornbread_baskets_mac_tater_tots
-  scenario: Two cornbread baskets, one mac and cheesy, and one tater tots.
+  scenario: "Two cornbread baskets, one mac and cheesy, and one tater tots."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - 2 Cornbread Basket (4), Mac N Cheesy, Tater Tots
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "2 Cornbread Basket (4), Mac N Cheesy, Tater Tots"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Cornbread Basket (4)
-        quantity: 2
-        selection_paths: []
-      - item_name: Mac N Cheesy
-        quantity: 1
-        selection_paths: []
-      - item_name: Tater Tots
-        quantity: 1
-        selection_paths: []
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Cornbread Basket (4)"
+            quantity: 2
+            selection_paths: []
+          - item_name: "Mac N Cheesy"
+            quantity: 1
+            selection_paths: []
+          - item_name: "Tater Tots"
+            quantity: 1
+            selection_paths: []
   expected_outcomes:
     task_completed: true
   context:
-  - Two cornbread baskets, one mac and cheesy, and one tater tots.
+    - "Two cornbread baskets, one mac and cheesy, and one tater tots."
+
 - scenario_id: full_chicken_family_meal_onions_jalapenos_mac_slaw_strawberry_lemonade
-  scenario: A full chicken with grilled onions and jalapenos, plus mac and cheese, coleslaw, and a strawberry lemonade.
+  scenario: "A full chicken with grilled onions and jalapenos, plus mac and cheese, coleslaw, and a strawberry lemonade."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - Full Chicken with Grilled Onions, Jalapenos, Mac N Cheesy, Cole Slaw, Strawberry Lemonade
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "Full Chicken with Grilled Onions, Jalapenos, Mac N Cheesy, Cole Slaw, Strawberry Lemonade"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Full Chicken
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Grilled Onions
-        - path:
-          - group_name: Meat Add Ons
-            option_name: Jalapenos
-      - item_name: Mac N Cheesy
-        quantity: 1
-        selection_paths: []
-      - item_name: Cole Slaw
-        quantity: 1
-        selection_paths: []
-      - item_name: Strawberry Lemonade
-        quantity: 1
-        selection_paths: []
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "Full Chicken"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Grilled Onions"
+              - path:
+                  - group_name: "Meat Add Ons"
+                    option_name: "Jalapenos"
+          - item_name: "Mac N Cheesy"
+            quantity: 1
+            selection_paths: []
+          - item_name: "Cole Slaw"
+            quantity: 1
+            selection_paths: []
+          - item_name: "Strawberry Lemonade"
+            quantity: 1
+            selection_paths: []
   expected_outcomes:
     task_completed: true
   context:
-  - A full chicken with grilled onions and jalapenos, plus mac and cheese, coleslaw, and a strawberry lemonade.
+    - "A full chicken with grilled onions and jalapenos, plus mac and cheese, coleslaw, and a strawberry lemonade."
+
 - scenario_id: drink_triplet_drpepper_fountain_diet_pepsi_fountain_starry_bottle
-  scenario: One Dr Pepper fountain, one Diet Pepsi fountain, and one Starry bottle.
+  scenario: "One Dr Pepper fountain, one Diet Pepsi fountain, and one Starry bottle."
   test_category: multi_item_complex
   persona: standard_customer
   user_turns:
-  - I'd like to place a pickup order
-  - Taylor Parker
-  - '5551234567'
-  - FOUNTAIN Soda with Dr Pepper FOUNTAIN, Diet Pepsi - Fountain with Regular, 20oz Soda BOTTLE with Starry - 20oz Bottle
-  - No, that's all
-  - Yes, place the order
+    - "I'd like to place a pickup order"
+    - "Taylor Parker"
+    - "5551234567"
+    - "FOUNTAIN Soda with Dr Pepper FOUNTAIN, Diet Pepsi - Fountain with Regular, 20oz Soda BOTTLE with Starry - 20oz Bottle"
+    - "No, that's all"
+    - "Yes, place the order"
   expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: FOUNTAIN Soda
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Choose your soda
-            option_name: Dr Pepper FOUNTAIN
-      - item_name: Diet Pepsi - Fountain
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Fountain Size
-            option_name: Regular
-      - item_name: 20oz Soda BOTTLE
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Choose your bottle
-            option_name: Starry - 20oz Bottle
+    - tool: toast.validate_order_intent
+      args:
+        customer:
+          first_name: "Taylor"
+          last_name: "Parker"
+          phone: "5551234567"
+        items:
+          - item_name: "FOUNTAIN Soda"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Choose your soda"
+                    option_name: "Dr Pepper FOUNTAIN"
+          - item_name: "Diet Pepsi - Fountain"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Fountain Size"
+                    option_name: "Regular"
+          - item_name: "20oz Soda BOTTLE"
+            quantity: 1
+            selection_paths:
+              - path:
+                  - group_name: "Choose your bottle"
+                    option_name: "Starry - 20oz Bottle"
   expected_outcomes:
     task_completed: true
   context:
-  - One Dr Pepper fountain, one Diet Pepsi fountain, and one Starry bottle.
+    - "One Dr Pepper fountain, one Diet Pepsi fountain, and one Starry bottle."

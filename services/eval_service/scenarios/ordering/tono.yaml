@@ -1,91 +1,15 @@
-- scenario_id: avocado_toast_gluten_free_toast
-  scenario: Avocado Toast on gluten free toast.
-  test_category: required_selection
-  max_turns: 14
-  persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Avocado Toast with Gluten Free Toast
-    for pickup. Friendly and concise.
-  user_turns:
-  - Hi, I'd like to place an order for pickup
-  - type: ai_driven
-    goal: |-
-      Complete the order for Avocado Toast with Gluten Free Toast for pickup. Your name is Taylor Parker, phone 5551234567.
-
-      Hard rules:
-      - Only provide name and phone when the agent asks for them.
-      - Do not use exact Toast group or option labels unless the agent says them first.
-      - Do not volunteer your phone number until asked.
-      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
-      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
-      - Keep replies to one or two short sentences.
-      - When the agent confirms the order or asks to place it, say yes.
-      - When the order is placed and the agent says goodbye, end the conversation.
-  expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Avocado Toast
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Toast Choice*
-            option_name: Gluten Free Toast
-  expected_outcomes:
-    task_completed: true
-  context:
-  - Avocado Toast on gluten free toast.
-- scenario_id: belt_plain
-  scenario: Plain B.E.L.T. sandwich with the standard build.
+- scenario_id: margherita_plain
+  scenario: Plain Margherita pizza with no requested changes.
   test_category: simple_no_modifiers
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want B.E.L.T. for pickup. Friendly and concise.
-  user_turns:
-  - Hi, I'd like to place an order for pickup
-  - type: ai_driven
-    goal: |-
-      Complete the order for B.E.L.T. for pickup. Your name is Taylor Parker, phone 5551234567.
-
-      Hard rules:
-      - Only provide name and phone when the agent asks for them.
-      - Do not use exact Toast group or option labels unless the agent says them first.
-      - Do not volunteer your phone number until asked.
-      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
-      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
-      - Keep replies to one or two short sentences.
-      - When the agent confirms the order or asks to place it, say yes.
-      - When the order is placed and the agent says goodbye, end the conversation.
-  expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: B.E.L.T.
-        quantity: 1
-        selection_paths: []
-  expected_outcomes:
-    task_completed: true
-  context:
-  - Plain B.E.L.T. sandwich with the standard build.
-- scenario_id: french_toast_plain
-  scenario: Plain French Toast with no requested changes.
-  test_category: simple_no_modifiers
-  max_turns: 14
-  persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want French Toast for pickup. Friendly and
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Margherita for pickup. Friendly and
     concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for French Toast for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for Margherita for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -104,25 +28,25 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: French Toast
+      - item_name: Margherita
         quantity: 1
         selection_paths: []
   expected_outcomes:
     task_completed: true
   context:
-  - Plain French Toast with no requested changes.
-- scenario_id: shakshuka_add_avocado
-  scenario: Shakshuka with avocado added.
-  test_category: with_addon
+  - Plain Margherita pizza with no requested changes.
+- scenario_id: margherita_no_basil
+  scenario: Margherita pizza with basil removed.
+  test_category: with_removal_or_qualifier
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Shakshuka with Add Avocado for pickup.
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Margherita with No Basil for pickup.
     Friendly and concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for Shakshuka with Add Avocado for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for Margherita with No Basil for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -141,194 +65,27 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: Shakshuka
+      - item_name: Margherita
         quantity: 1
         selection_paths:
         - path:
-          - group_name: Add-Ons & Modifiers
-            option_name: Add Avocado
+          - group_name: Margherita Removals
+            option_name: No Basil
   expected_outcomes:
     task_completed: true
   context:
-  - Shakshuka with avocado added.
-- scenario_id: bagel_and_lox_everything_gluten_free
-  scenario: Bagel and Lox on an everything bagel with the gluten free substitution.
-  test_category: required_selection
-  max_turns: 14
-  persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Bagel and Lox with Everything, Sub
-    Gluten-Free for pickup. Friendly and concise.
-  user_turns:
-  - Hi, I'd like to place an order for pickup
-  - type: ai_driven
-    goal: |-
-      Complete the order for Bagel and Lox with Everything, Sub Gluten-Free for pickup. Your name is Taylor Parker, phone 5551234567.
-
-      Hard rules:
-      - Only provide name and phone when the agent asks for them.
-      - Do not use exact Toast group or option labels unless the agent says them first.
-      - Do not volunteer your phone number until asked.
-      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
-      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
-      - Keep replies to one or two short sentences.
-      - When the agent confirms the order or asks to place it, say yes.
-      - When the order is placed and the agent says goodbye, end the conversation.
-  expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Bagel and Lox
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Bagel Choice*
-            option_name: Everything
-        - path:
-          - group_name: Make It Gluten-Free?
-            option_name: Sub Gluten-Free
-  expected_outcomes:
-    task_completed: true
-  context:
-  - Bagel and Lox on an everything bagel with the gluten free substitution.
-- scenario_id: breakfast_bowl_extra_egg
-  scenario: Breakfast Bowl with an extra egg.
-  test_category: with_addon
-  max_turns: 14
-  persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Breakfast Bowl with Add Extra Egg for
-    pickup. Friendly and concise.
-  user_turns:
-  - Hi, I'd like to place an order for pickup
-  - type: ai_driven
-    goal: |-
-      Complete the order for Breakfast Bowl with Add Extra Egg for pickup. Your name is Taylor Parker, phone 5551234567.
-
-      Hard rules:
-      - Only provide name and phone when the agent asks for them.
-      - Do not use exact Toast group or option labels unless the agent says them first.
-      - Do not volunteer your phone number until asked.
-      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
-      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
-      - Keep replies to one or two short sentences.
-      - When the agent confirms the order or asks to place it, say yes.
-      - When the order is placed and the agent says goodbye, end the conversation.
-  expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Breakfast Bowl
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Egg Style Options
-            option_name: Add Extra Egg
-  expected_outcomes:
-    task_completed: true
-  context:
-  - Breakfast Bowl with an extra egg.
-- scenario_id: breakfast_burger_medium
-  scenario: Breakfast Burger cooked medium.
-  test_category: required_selection
-  max_turns: 14
-  persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Breakfast Burger with Medium for pickup.
-    Friendly and concise.
-  user_turns:
-  - Hi, I'd like to place an order for pickup
-  - type: ai_driven
-    goal: |-
-      Complete the order for Breakfast Burger with Medium for pickup. Your name is Taylor Parker, phone 5551234567.
-
-      Hard rules:
-      - Only provide name and phone when the agent asks for them.
-      - Do not use exact Toast group or option labels unless the agent says them first.
-      - Do not volunteer your phone number until asked.
-      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
-      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
-      - Keep replies to one or two short sentences.
-      - When the agent confirms the order or asks to place it, say yes.
-      - When the order is placed and the agent says goodbye, end the conversation.
-  expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Breakfast Burger
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Temperature Options
-            option_name: Medium
-  expected_outcomes:
-    task_completed: true
-  context:
-  - Breakfast Burger cooked medium.
-- scenario_id: breakfast_burger_medium_american_cheese
-  scenario: Breakfast Burger cooked medium with American cheese.
-  test_category: with_addon
-  max_turns: 14
-  persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Breakfast Burger with Medium, Add American
-    Cheese for pickup. Friendly and concise.
-  user_turns:
-  - Hi, I'd like to place an order for pickup
-  - type: ai_driven
-    goal: |-
-      Complete the order for Breakfast Burger with Medium, Add American Cheese for pickup. Your name is Taylor Parker, phone 5551234567.
-
-      Hard rules:
-      - Only provide name and phone when the agent asks for them.
-      - Do not use exact Toast group or option labels unless the agent says them first.
-      - Do not volunteer your phone number until asked.
-      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
-      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
-      - Keep replies to one or two short sentences.
-      - When the agent confirms the order or asks to place it, say yes.
-      - When the order is placed and the agent says goodbye, end the conversation.
-  expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: Breakfast Burger
-        quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Temperature Options
-            option_name: Medium
-        - path:
-          - group_name: Burger Add-Ons & Modifiers
-            option_name: Add American Cheese
-  expected_outcomes:
-    task_completed: true
-  context:
-  - Breakfast Burger cooked medium with American cheese.
-- scenario_id: chicken_chilaquiles_plain
-  scenario: Plain Chicken Chilaquiles with no requested changes.
+  - Margherita pizza with basil removed.
+- scenario_id: classico_plain
+  scenario: Plain Classico pizza with the standard build.
   test_category: simple_no_modifiers
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Chicken Chilaquiles for pickup. Friendly
-    and concise.
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Classico for pickup. Friendly and concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for Chicken Chilaquiles for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for Classico for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -347,65 +104,25 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: Chicken Chilaquiles
+      - item_name: Classico
         quantity: 1
         selection_paths: []
   expected_outcomes:
     task_completed: true
   context:
-  - Plain Chicken Chilaquiles with no requested changes.
-- scenario_id: belt_and_french_toast
-  scenario: One plain B.E.L.T. and one plain French Toast.
-  test_category: multi_item
+  - Plain Classico pizza with the standard build.
+- scenario_id: classico_bacon_no_fresh_mozzarella
+  scenario: Classico pizza with bacon added and fresh mozzarella removed.
+  test_category: with_addon
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want B.E.L.T. and French Toast for pickup.
-    Friendly and concise.
-  user_turns:
-  - Hi, I'd like to place an order for pickup
-  - type: ai_driven
-    goal: |-
-      Complete the order for B.E.L.T. and French Toast for pickup. Your name is Taylor Parker, phone 5551234567.
-
-      Hard rules:
-      - Only provide name and phone when the agent asks for them.
-      - Do not use exact Toast group or option labels unless the agent says them first.
-      - Do not volunteer your phone number until asked.
-      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
-      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
-      - Keep replies to one or two short sentences.
-      - When the agent confirms the order or asks to place it, say yes.
-      - When the order is placed and the agent says goodbye, end the conversation.
-  expected_tool_calls:
-  - tool: toast.validate_order_intent
-    args:
-      customer:
-        first_name: Taylor
-        last_name: Parker
-        phone: '5551234567'
-      items:
-      - item_name: B.E.L.T.
-        quantity: 1
-        selection_paths: []
-      - item_name: French Toast
-        quantity: 1
-        selection_paths: []
-  expected_outcomes:
-    task_completed: true
-  context:
-  - One plain B.E.L.T. and one plain French Toast.
-- scenario_id: avocado_toast_sourdough_poached_egg
-  scenario: Avocado Toast on sourdough with a poached egg.
-  test_category: required_selection
-  max_turns: 14
-  persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Avocado Toast with Sourdough, Poached
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Classico with Bacon, No Fresh Mozzarella
     for pickup. Friendly and concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for Avocado Toast with Sourdough, Poached for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for Classico with Bacon, No Fresh Mozzarella for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -424,31 +141,31 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: Avocado Toast
+      - item_name: Classico
         quantity: 1
         selection_paths:
         - path:
-          - group_name: Toast Choice*
-            option_name: Sourdough
+          - group_name: Additional Toppings
+            option_name: Bacon
         - path:
-          - group_name: Egg Style Options
-            option_name: Poached
+          - group_name: Classico Removals
+            option_name: No Fresh Mozzarella
   expected_outcomes:
     task_completed: true
   context:
-  - Avocado Toast on sourdough with a poached egg.
-- scenario_id: belt_gluten_free_add_avocado
-  scenario: B.E.L.T. on gluten-free toast with avocado added.
-  test_category: with_addon
+  - Classico pizza with bacon added and fresh mozzarella removed.
+- scenario_id: pepperoni_bianco_no_hot_honey
+  scenario: Pepperoni Bianco with the hot honey removed.
+  test_category: with_removal_or_qualifier
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want B.E.L.T. with Sub Gluten-Free Toast,
-    Add Avocado for pickup. Friendly and concise.
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Pepperoni Bianco with No Hot Honey
+    for pickup. Friendly and concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for B.E.L.T. with Sub Gluten-Free Toast, Add Avocado for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for Pepperoni Bianco with No Hot Honey for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -467,31 +184,68 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: B.E.L.T.
+      - item_name: Pepperoni Bianco
         quantity: 1
         selection_paths:
         - path:
-          - group_name: Egg Style Options
-            option_name: Sub Gluten-Free Toast
-        - path:
-          - group_name: Add-Ons & Modifiers
-            option_name: Add Avocado
+          - group_name: Pepperoni Bianco Removals
+            option_name: No Hot Honey
   expected_outcomes:
     task_completed: true
   context:
-  - B.E.L.T. on gluten-free toast with avocado added.
-- scenario_id: bagel_and_lox_plain_bagel
-  scenario: Bagel and Lox on a plain bagel.
+  - Pepperoni Bianco with the hot honey removed.
+- scenario_id: sweet_buffalo_chicken_pizza_no_buffalo_sauce
+  scenario: Sweet Buffalo Chicken Pizza without the buffalo sauce.
+  test_category: with_removal_or_qualifier
+  max_turns: 14
+  persona: >-
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Sweet Buffalo Chicken Pizza with No
+    Buffalo Sauce for pickup. Friendly and concise.
+  user_turns:
+  - Hi, I'd like to place an order for pickup
+  - type: ai_driven
+    goal: |-
+      Complete the order for Sweet Buffalo Chicken Pizza with No Buffalo Sauce for pickup. Your name is Taylor Parker, phone 5551234567.
+
+      Hard rules:
+      - Only provide name and phone when the agent asks for them.
+      - Do not use exact Toast group or option labels unless the agent says them first.
+      - Do not volunteer your phone number until asked.
+      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
+      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
+      - Keep replies to one or two short sentences.
+      - When the agent confirms the order or asks to place it, say yes.
+      - When the order is placed and the agent says goodbye, end the conversation.
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Sweet Buffalo Chicken Pizza
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Sweet Buffalo Chicken Pizza Removals
+            option_name: No Buffalo Sauce
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Sweet Buffalo Chicken Pizza without the buffalo sauce.
+- scenario_id: caesar_salad_large
+  scenario: Large Caesar salad with the standard toppings.
   test_category: required_selection
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Bagel and Lox with Plain for pickup.
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Caesar Salad with Large for pickup.
     Friendly and concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for Bagel and Lox with Plain for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for Caesar Salad with Large for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -510,28 +264,28 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: Bagel and Lox
+      - item_name: Caesar Salad
         quantity: 1
         selection_paths:
         - path:
-          - group_name: Bagel Choice*
-            option_name: Plain
+          - group_name: Size
+            option_name: Large
   expected_outcomes:
     task_completed: true
   context:
-  - Bagel and Lox on a plain bagel.
-- scenario_id: breakfast_bowl_gluten_free_egg_whites
-  scenario: Breakfast Bowl made gluten-free with egg whites.
-  test_category: with_addon
+  - Large Caesar salad with the standard toppings.
+- scenario_id: caesar_salad_large_no_croutons
+  scenario: Large Caesar salad with no croutons.
+  test_category: with_removal_or_qualifier
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Breakfast Bowl with Sub Egg Whites,
-    Sub Gluten-Free for pickup. Friendly and concise.
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Caesar Salad with Large, No Croutons
+    for pickup. Friendly and concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for Breakfast Bowl with Sub Egg Whites, Sub Gluten-Free for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for Caesar Salad with Large, No Croutons for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -550,31 +304,31 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: Breakfast Bowl
+      - item_name: Caesar Salad
         quantity: 1
         selection_paths:
         - path:
-          - group_name: Egg Style Options
-            option_name: Sub Egg Whites
+          - group_name: Size
+            option_name: Large
         - path:
-          - group_name: Make It Gluten-Free?
-            option_name: Sub Gluten-Free
+          - group_name: Caesar Salad Removals
+            option_name: No Croutons
   expected_outcomes:
     task_completed: true
   context:
-  - Breakfast Bowl made gluten-free with egg whites.
-- scenario_id: breakfast_burger_medium_well_add_avocado_gluten_free_bun
-  scenario: Breakfast Burger cooked medium well with avocado on a gluten-free bun.
+  - Large Caesar salad with no croutons.
+- scenario_id: truffle_parmesan_fries_add_bacon
+  scenario: Truffle Parmesan fries with bacon added.
   test_category: with_addon
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Breakfast Burger with Medium Well,
-    Add Avocado, Sub Gluten-Free Bun for pickup. Friendly and concise.
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Truffle Parmesan Fries with Add Bacon
+    for pickup. Friendly and concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for Breakfast Burger with Medium Well, Add Avocado, Sub Gluten-Free Bun for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for Truffle Parmesan Fries with Add Bacon for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -593,34 +347,28 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: Breakfast Burger
+      - item_name: Truffle Parmesan Fries
         quantity: 1
         selection_paths:
         - path:
-          - group_name: Temperature Options
-            option_name: Medium Well
-        - path:
-          - group_name: Burger Add-Ons & Modifiers
-            option_name: Add Avocado
-        - path:
-          - group_name: Burger Add-Ons & Modifiers
-            option_name: Sub Gluten-Free Bun
+          - group_name: Side Add-Ons
+            option_name: Add Bacon
   expected_outcomes:
     task_completed: true
   context:
-  - Breakfast Burger cooked medium well with avocado on a gluten-free bun.
-- scenario_id: chicken_chilaquiles_omelette_avocado
-  scenario: Chicken Chilaquiles made omelette style with avocado added.
-  test_category: with_addon
+  - Truffle Parmesan fries with bacon added.
+- scenario_id: margherita_and_fries
+  scenario: One plain Margherita pizza and one order of Truffle Parmesan fries.
+  test_category: multi_item
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Chicken Chilaquiles with Omelette,
-    Add Avocado for pickup. Friendly and concise.
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Margherita and Truffle Parmesan Fries
+    for pickup. Friendly and concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for Chicken Chilaquiles with Omelette, Add Avocado for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for Margherita and Truffle Parmesan Fries for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -639,31 +387,343 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: Chicken Chilaquiles
+      - item_name: Margherita
         quantity: 1
-        selection_paths:
-        - path:
-          - group_name: Egg Style Options
-            option_name: Omelette
-        - path:
-          - group_name: Add-Ons & Modifiers
-            option_name: Add Avocado
+        selection_paths: []
+      - item_name: Truffle Parmesan Fries
+        quantity: 1
+        selection_paths: []
   expected_outcomes:
     task_completed: true
   context:
-  - Chicken Chilaquiles made omelette style with avocado added.
-- scenario_id: belt_gluten_free_add_avocado_repeat
-  scenario: Two B.E.L.T. sandwiches on gluten-free toast with avocado added.
+  - One plain Margherita pizza and one order of Truffle Parmesan fries.
+- scenario_id: crafted_by_you_red_sauce_pepperoni
+  scenario: Crafted By You pizza with red sauce and pepperoni.
+  test_category: required_selection
+  max_turns: 14
+  persona: >-
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Crafted By You with Red Sauce, Pepperoni
+    for pickup. Friendly and concise.
+  user_turns:
+  - Hi, I'd like to place an order for pickup
+  - type: ai_driven
+    goal: |-
+      Complete the order for Crafted By You with Red Sauce, Pepperoni for pickup. Your name is Taylor Parker, phone 5551234567.
+
+      Hard rules:
+      - Only provide name and phone when the agent asks for them.
+      - Do not use exact Toast group or option labels unless the agent says them first.
+      - Do not volunteer your phone number until asked.
+      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
+      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
+      - Keep replies to one or two short sentences.
+      - When the agent confirms the order or asks to place it, say yes.
+      - When the order is placed and the agent says goodbye, end the conversation.
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Crafted By You
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Sauce Choice
+            option_name: Red Sauce
+        - path:
+          - group_name: Additional Toppings
+            option_name: Pepperoni
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Crafted By You pizza with red sauce and pepperoni.
+- scenario_id: crafted_by_you_pesto_chicken_mushrooms
+  scenario: Crafted By You pizza with pesto cream sauce, chicken, and mushrooms.
+  test_category: required_selection
+  max_turns: 14
+  persona: >-
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Crafted By You with Pesto Cream Sauce,
+    Chicken, Mushrooms for pickup. Friendly and concise.
+  user_turns:
+  - Hi, I'd like to place an order for pickup
+  - type: ai_driven
+    goal: |-
+      Complete the order for Crafted By You with Pesto Cream Sauce, Chicken, Mushrooms for pickup. Your name is Taylor Parker, phone 5551234567.
+
+      Hard rules:
+      - Only provide name and phone when the agent asks for them.
+      - Do not use exact Toast group or option labels unless the agent says them first.
+      - Do not volunteer your phone number until asked.
+      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
+      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
+      - Keep replies to one or two short sentences.
+      - When the agent confirms the order or asks to place it, say yes.
+      - When the order is placed and the agent says goodbye, end the conversation.
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Crafted By You
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Sauce Choice
+            option_name: Pesto Cream Sauce
+        - path:
+          - group_name: Additional Toppings
+            option_name: Chicken
+        - path:
+          - group_name: Additional Toppings
+            option_name: Mushrooms
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Crafted By You pizza with pesto cream sauce, chicken, and mushrooms.
+- scenario_id: tono_meal_deal_basic
+  scenario: Fifteen dollar pizza meal deal with a Margherita pizza, Pepsi, and the included Caesar salad.
+  test_category: required_selection
+  max_turns: 14
+  persona: >-
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want $15 Pizza Meal Deal with Margherita,
+    Pepsi, Caesar Salad for pickup. Friendly and concise.
+  user_turns:
+  - Hi, I'd like to place an order for pickup
+  - type: ai_driven
+    goal: |-
+      Complete the order for $15 Pizza Meal Deal with Margherita, Pepsi, Caesar Salad for pickup. Your name is Taylor Parker, phone 5551234567.
+
+      Hard rules:
+      - Only provide name and phone when the agent asks for them.
+      - Do not use exact Toast group or option labels unless the agent says them first.
+      - Do not volunteer your phone number until asked.
+      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
+      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
+      - Keep replies to one or two short sentences.
+      - When the agent confirms the order or asks to place it, say yes.
+      - When the order is placed and the agent says goodbye, end the conversation.
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: $15 Pizza Meal Deal
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Pizza Choice
+            option_name: Margherita
+        - path:
+          - group_name: Soda Choice
+            option_name: Pepsi
+        - path:
+          - group_name: Salad Choice
+            option_name: Caesar Salad
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Fifteen dollar pizza meal deal with a Margherita pizza, Pepsi, and the included Caesar salad.
+- scenario_id: tono_meal_deal_salad_mod
+  scenario: Fifteen dollar pizza meal deal with a Pepperoni pizza, Starry, and the Caesar salad dressing on the side.
+  test_category: required_selection
+  max_turns: 14
+  persona: >-
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want $15 Pizza Meal Deal with Pepperoni,
+    Starry, Caesar Salad, Dressing On Side for pickup. Friendly and concise.
+  user_turns:
+  - Hi, I'd like to place an order for pickup
+  - type: ai_driven
+    goal: |-
+      Complete the order for $15 Pizza Meal Deal with Pepperoni, Starry, Caesar Salad, Dressing On Side for pickup. Your name is Taylor Parker, phone 5551234567.
+
+      Hard rules:
+      - Only provide name and phone when the agent asks for them.
+      - Do not use exact Toast group or option labels unless the agent says them first.
+      - Do not volunteer your phone number until asked.
+      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
+      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
+      - Keep replies to one or two short sentences.
+      - When the agent confirms the order or asks to place it, say yes.
+      - When the order is placed and the agent says goodbye, end the conversation.
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: $15 Pizza Meal Deal
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Pizza Choice
+            option_name: Pepperoni
+        - path:
+          - group_name: Soda Choice
+            option_name: Starry
+        - path:
+          - group_name: Salad Choice
+            option_name: Caesar Salad
+          - group_name: Caesar Salad Removals
+            option_name: Dressing On Side
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Fifteen dollar pizza meal deal with a Pepperoni pizza, Starry, and the Caesar salad dressing on the side.
+- scenario_id: fresh_prince_provolone_steak
+  scenario: Fresh Prince cheesesteak with provolone and steak.
+  test_category: required_selection
+  max_turns: 14
+  persona: >-
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Fresh Prince with Provolone, Steak
+    for pickup. Friendly and concise.
+  user_turns:
+  - Hi, I'd like to place an order for pickup
+  - type: ai_driven
+    goal: |-
+      Complete the order for Fresh Prince with Provolone, Steak for pickup. Your name is Taylor Parker, phone 5551234567.
+
+      Hard rules:
+      - Only provide name and phone when the agent asks for them.
+      - Do not use exact Toast group or option labels unless the agent says them first.
+      - Do not volunteer your phone number until asked.
+      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
+      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
+      - Keep replies to one or two short sentences.
+      - When the agent confirms the order or asks to place it, say yes.
+      - When the order is placed and the agent says goodbye, end the conversation.
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Fresh Prince
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Cheese Choice
+            option_name: Provolone
+        - path:
+          - group_name: Meat Choice
+            option_name: Steak
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Fresh Prince cheesesteak with provolone and steak.
+- scenario_id: fresh_prince_mozzarella_chicken_no_garlic_aioli_cut_in_half
+  scenario: Fresh Prince cheesesteak with mozzarella and chicken, no garlic aioli, cut in half.
+  test_category: with_removal_or_qualifier
+  max_turns: 14
+  persona: >-
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want Fresh Prince with Mozzarella, Chicken,
+    No Garlic Aioli, Cut in Half for pickup. Friendly and concise.
+  user_turns:
+  - Hi, I'd like to place an order for pickup
+  - type: ai_driven
+    goal: |-
+      Complete the order for Fresh Prince with Mozzarella, Chicken, No Garlic Aioli, Cut in Half for pickup. Your name is Taylor Parker, phone 5551234567.
+
+      Hard rules:
+      - Only provide name and phone when the agent asks for them.
+      - Do not use exact Toast group or option labels unless the agent says them first.
+      - Do not volunteer your phone number until asked.
+      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
+      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
+      - Keep replies to one or two short sentences.
+      - When the agent confirms the order or asks to place it, say yes.
+      - When the order is placed and the agent says goodbye, end the conversation.
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: Fresh Prince
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Cheese Choice
+            option_name: Mozzarella
+        - path:
+          - group_name: Meat Choice
+            option_name: Chicken
+        - path:
+          - group_name: Fresh Prince Removals
+            option_name: No Garlic Aioli
+        - path:
+          - group_name: Other Options
+            option_name: Cut in Half
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Fresh Prince cheesesteak with mozzarella and chicken, no garlic aioli, cut in half.
+- scenario_id: fountain_soda_mountain_dew
+  scenario: Fountain soda with Mountain Dew.
+  test_category: required_selection
+  max_turns: 14
+  persona: >-
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want *Fountain Soda with Mountain Dew for
+    pickup. Friendly and concise.
+  user_turns:
+  - Hi, I'd like to place an order for pickup
+  - type: ai_driven
+    goal: |-
+      Complete the order for *Fountain Soda with Mountain Dew for pickup. Your name is Taylor Parker, phone 5551234567.
+
+      Hard rules:
+      - Only provide name and phone when the agent asks for them.
+      - Do not use exact Toast group or option labels unless the agent says them first.
+      - Do not volunteer your phone number until asked.
+      - Never add toppings, halves, sauces, sides, timing, or modifiers that are not in the expected order.
+      - If the agent asks for a detail that is not in the expected order, ask for the standard or default version instead of inventing one.
+      - Keep replies to one or two short sentences.
+      - When the agent confirms the order or asks to place it, say yes.
+      - When the order is placed and the agent says goodbye, end the conversation.
+  expected_tool_calls:
+  - tool: toast.validate_order_intent
+    args:
+      customer:
+        first_name: Taylor
+        last_name: Parker
+        phone: '5551234567'
+      items:
+      - item_name: '*Fountain Soda'
+        quantity: 1
+        selection_paths:
+        - path:
+          - group_name: Soda Choice
+            option_name: Mountain Dew
+  expected_outcomes:
+    task_completed: true
+  context:
+  - Fountain soda with Mountain Dew.
+- scenario_id: two_margheritas_and_large_caesar_no_croutons
+  scenario: Two plain Margherita pizzas and one large Caesar salad with no croutons.
   test_category: multi_item_complex
   max_turns: 14
   persona: >-
-    A straightforward phone customer named Taylor Parker (phone 5551234567). They want 2 B.E.L.T. with Sub Gluten-Free Toast,
-    Add Avocado for pickup. Friendly and concise.
+    A straightforward phone customer named Taylor Parker (phone 5551234567). They want 2 Margherita and Caesar Salad with
+    Large, No Croutons for pickup. Friendly and concise.
   user_turns:
   - Hi, I'd like to place an order for pickup
   - type: ai_driven
     goal: |-
-      Complete the order for 2 B.E.L.T. with Sub Gluten-Free Toast, Add Avocado for pickup. Your name is Taylor Parker, phone 5551234567.
+      Complete the order for 2 Margherita and Caesar Salad with Large, No Croutons for pickup. Your name is Taylor Parker, phone 5551234567.
 
       Hard rules:
       - Only provide name and phone when the agent asks for them.
@@ -682,16 +742,19 @@
         last_name: Parker
         phone: '5551234567'
       items:
-      - item_name: B.E.L.T.
+      - item_name: Margherita
         quantity: 2
+        selection_paths: []
+      - item_name: Caesar Salad
+        quantity: 1
         selection_paths:
         - path:
-          - group_name: Egg Style Options
-            option_name: Sub Gluten-Free Toast
+          - group_name: Size
+            option_name: Large
         - path:
-          - group_name: Add-Ons & Modifiers
-            option_name: Add Avocado
+          - group_name: Caesar Salad Removals
+            option_name: No Croutons
   expected_outcomes:
     task_completed: true
   context:
-  - Two B.E.L.T. sandwiches on gluten-free toast with avocado added.
+  - Two plain Margherita pizzas and one large Caesar salad with no croutons.
