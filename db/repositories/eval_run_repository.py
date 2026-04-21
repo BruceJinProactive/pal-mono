@@ -62,6 +62,40 @@ class EvalRunRepositoryAsync:
             logger.error(f"Error getting eval run by id: {e}")
             return None
 
+    async def get_all(
+        self,
+        *,
+        status: str | None = None,
+        project_id: uuid.UUID | None = None,
+        limit: int = 50,
+    ) -> list[EvalRun]:
+        """Get eval runs with optional filters.
+
+        Args:
+            status: Optional filter by run status (e.g. 'running', 'pending').
+            project_id: Optional filter by project UUID.
+            limit: Maximum number of runs to return.
+
+        Returns:
+            List of EvalRun objects ordered by created_at descending.
+        """
+        try:
+            query = select(EvalRun)
+
+            if status is not None:
+                query = query.filter(EvalRun.status == status)
+            if project_id is not None:
+                query = query.filter(EvalRun.project_id == project_id)
+
+            query = query.order_by(EvalRun.created_at.desc()).limit(limit)
+
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error getting eval runs: {e}")
+            return []
+
     async def get_by_project(
         self,
         project_id: uuid.UUID,

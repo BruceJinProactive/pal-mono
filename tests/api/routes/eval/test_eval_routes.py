@@ -204,3 +204,125 @@ class TestGetScorecard:
         project_id = uuid.uuid4()
         response = client.get(f"{EVAL_PREFIX}/scorecard/{project_id}?limit=-1")
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+class TestListEvalRuns:
+    """Tests for GET /v1/eval/runs."""
+
+    @patch("api.routes.eval._implementation.list_eval_runs", new_callable=AsyncMock)
+    def test_list_runs_no_filters(self, mock_list: AsyncMock) -> None:
+        mock_list.return_value = [_make_mock_run(), _make_mock_run()]
+
+        response = client.get(f"{EVAL_PREFIX}/runs")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert len(data) == 2
+        mock_list.assert_called_once()
+        assert mock_list.call_args.kwargs["status"] is None
+        assert mock_list.call_args.kwargs["project_id"] is None
+
+    @patch("api.routes.eval._implementation.list_eval_runs", new_callable=AsyncMock)
+    def test_list_runs_with_status_filter(self, mock_list: AsyncMock) -> None:
+        mock_list.return_value = [_make_mock_run(run_status="running")]
+
+        response = client.get(f"{EVAL_PREFIX}/runs?status=running")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert mock_list.call_args.kwargs["status"] == "running"
+
+    @patch("api.routes.eval._implementation.list_eval_runs", new_callable=AsyncMock)
+    def test_list_runs_with_project_filter(self, mock_list: AsyncMock) -> None:
+        project_id = uuid.uuid4()
+        mock_list.return_value = []
+
+        response = client.get(f"{EVAL_PREFIX}/runs?project_id={project_id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert mock_list.call_args.kwargs["project_id"] == project_id
+
+    @patch("api.routes.eval._implementation.list_eval_runs", new_callable=AsyncMock)
+    def test_list_runs_with_limit(self, mock_list: AsyncMock) -> None:
+        mock_list.return_value = []
+
+        response = client.get(f"{EVAL_PREFIX}/runs?limit=10")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert mock_list.call_args.kwargs["limit"] == 10
+
+    @patch("api.routes.eval._implementation.list_eval_runs", new_callable=AsyncMock)
+    def test_list_runs_empty(self, mock_list: AsyncMock) -> None:
+        mock_list.return_value = []
+
+        response = client.get(f"{EVAL_PREFIX}/runs")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == []
+
+    @patch("api.routes.eval._implementation.list_eval_runs", new_callable=AsyncMock)
+    def test_list_runs_with_both_filters(self, mock_list: AsyncMock) -> None:
+        project_id = uuid.uuid4()
+        mock_list.return_value = [_make_mock_run(run_status="running")]
+
+        response = client.get(
+            f"{EVAL_PREFIX}/runs?status=running&project_id={project_id}"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert mock_list.call_args.kwargs["status"] == "running"
+        assert mock_list.call_args.kwargs["project_id"] == project_id
+
+    def test_list_runs_rejects_invalid_project_id(self) -> None:
+        response = client.get(f"{EVAL_PREFIX}/runs?project_id=not-a-uuid")
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+class TestCancelEvalRun:
+    """Tests for POST /v1/eval/runs/{run_id}/cancel."""
+
+    @patch("api.routes.eval._implementation.cancel_eval_run", new_callable=AsyncMock)
+    def test_cancel_running_run(self, mock_cancel: AsyncMock) -> None:
+        run_id = uuid.uuid4()
+        mock_run = _make_mock_run(run_id=run_id, run_status="failed")
+        mock_run.error_message = "Cancelled by user"
+        mock_cancel.return_value = mock_run
+
+        response = client.post(f"{EVAL_PREFIX}/runs/{run_id}/cancel")
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["id"] == str(run_id)
+        assert data["status"] == "failed"
+        assert data["error_message"] == "Cancelled by user"
+
+    @patch("api.routes.eval._implementation.cancel_eval_run", new_callable=AsyncMock)
+    def test_cancel_not_found(self, mock_cancel: AsyncMock) -> None:
+        run_id = uuid.uuid4()
+        mock_cancel.side_effect = ValueError(f"Eval run {run_id} not found")
+
+        response = client.post(f"{EVAL_PREFIX}/runs/{run_id}/cancel")
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    @patch("api.routes.eval._implementation.cancel_eval_run", new_callable=AsyncMock)
+    def test_cancel_already_completed(self, mock_cancel: AsyncMock) -> None:
+        run_id = uuid.uuid4()
+        mock_cancel.side_effect = ValueError(
+            f"Eval run {run_id} is already completed and cannot be cancelled"
+        )
+
+        response = client.post(f"{EVAL_PREFIX}/runs/{run_id}/cancel")
+
+        assert response.status_code == status.HTTP_409_CONFLICT
+
+    @patch("api.routes.eval._implementation.cancel_eval_run", new_callable=AsyncMock)
+    def test_cancel_already_failed(self, mock_cancel: AsyncMock) -> None:
+        run_id = uuid.uuid4()
+        mock_cancel.side_effect = ValueError(
+            f"Eval run {run_id} is already failed and cannot be cancelled"
+        )
+
+        response = client.post(f"{EVAL_PREFIX}/runs/{run_id}/cancel")
+
+        assert response.status_code == status.HTTP_409_CONFLICT

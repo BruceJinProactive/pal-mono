@@ -120,6 +120,115 @@ class TestGetById:
 
 
 # ---------------------------------------------------------------------------
+# get_all
+# ---------------------------------------------------------------------------
+
+
+class TestGetAll:
+    @pytest.mark.asyncio
+    async def test_no_filters_returns_all(
+        self, repo: EvalRunRepositoryAsync, mock_session: AsyncMock
+    ) -> None:
+        run1 = make_eval_run()
+        run2 = make_eval_run()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [run1, run2]
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.get_all()
+
+        assert result == [run1, run2]
+        mock_session.execute.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_status_filter_applied(
+        self, repo: EvalRunRepositoryAsync, mock_session: AsyncMock
+    ) -> None:
+        run = make_eval_run(status="running")
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [run]
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.get_all(status="running")
+
+        assert result == [run]
+        executed_stmt = mock_session.execute.call_args[0][0]
+        compiled = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "running" in compiled
+
+    @pytest.mark.asyncio
+    async def test_project_id_filter_applied(
+        self, repo: EvalRunRepositoryAsync, mock_session: AsyncMock
+    ) -> None:
+        project_id = uuid.uuid4()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.get_all(project_id=project_id)
+
+        assert result == []
+        executed_stmt = mock_session.execute.call_args[0][0]
+        compiled = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert project_id.hex in compiled
+
+    @pytest.mark.asyncio
+    async def test_both_filters_applied(
+        self, repo: EvalRunRepositoryAsync, mock_session: AsyncMock
+    ) -> None:
+        project_id = uuid.uuid4()
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repo.get_all(status="running", project_id=project_id)
+
+        executed_stmt = mock_session.execute.call_args[0][0]
+        compiled = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "running" in compiled
+        assert project_id.hex in compiled
+
+    @pytest.mark.asyncio
+    async def test_limit_applied(
+        self, repo: EvalRunRepositoryAsync, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repo.get_all(limit=10)
+
+        executed_stmt = mock_session.execute.call_args[0][0]
+        compiled = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "10" in compiled
+
+    @pytest.mark.asyncio
+    async def test_orders_by_created_at_desc(
+        self, repo: EvalRunRepositoryAsync, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repo.get_all()
+
+        executed_stmt = mock_session.execute.call_args[0][0]
+        compiled = str(executed_stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "desc" in compiled.lower()
+
+    @pytest.mark.asyncio
+    async def test_sqlalchemy_error_rolls_back_and_returns_empty(
+        self, repo: EvalRunRepositoryAsync, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = SQLAlchemyError("db error")
+
+        result = await repo.get_all()
+
+        assert result == []
+        mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
 # get_by_project
 # ---------------------------------------------------------------------------
 

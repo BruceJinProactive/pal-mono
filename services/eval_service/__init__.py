@@ -7,10 +7,12 @@ from services.eval_service._prompt_traceability import (
     get_conversation_history_with_prompts,
 )
 from services.eval_service._runner import (
+    cancel_eval_run,
     create_eval_run,
     get_eval_results,
     get_eval_run,
     get_scorecard,
+    list_eval_runs,
     mark_stale_runs_failed,
 )
 from services.eval_service._scenario_loader import (
@@ -35,11 +37,13 @@ __all__ = [
     "VoiceCallMetrics",
     "VoiceEvalResult",
     "VoiceResultCollector",
+    "cancel_eval_run",
     "create_eval_run",
     "evaluate_scenario",
     "get_eval_results",
     "get_eval_run",
     "get_scorecard",
+    "list_eval_runs",
     "load_scenarios",
     "mark_stale_runs_failed",
     "get_conversation_history_with_prompts",

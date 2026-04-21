@@ -1440,3 +1440,266 @@ class TestGetEvalResults:
             results = await get_eval_results(run_id, mock_session)
 
         assert results == []
+
+
+class TestCancelEvalRun:
+    """Tests for cancel_eval_run service function."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_running_run(self) -> None:
+        run_id = uuid.uuid4()
+        mock_run = _make_eval_run(id=run_id, status="running")
+        updated_run = _make_eval_run(id=run_id, status="failed")
+        updated_run.error_message = "Cancelled by user"
+
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_run
+        mock_repo.update_status.return_value = updated_run
+
+        with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
+            from services.eval_service._runner import cancel_eval_run
+
+            result = await cancel_eval_run(run_id, mock_session)
+
+        assert result.status == "failed"
+        mock_repo.update_status.assert_awaited_once_with(
+            run_id,
+            "failed",
+            completed_at=unittest_mock_any,
+            error_message="Cancelled by user",
+        )
+
+    @pytest.mark.asyncio
+    async def test_cancel_not_found_raises(self) -> None:
+        run_id = uuid.uuid4()
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = None
+
+        with (
+            patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo),
+            pytest.raises(ValueError, match="not found"),
+        ):
+            from services.eval_service._runner import cancel_eval_run
+
+            await cancel_eval_run(run_id, mock_session)
+
+    @pytest.mark.asyncio
+    async def test_cancel_completed_run_raises(self) -> None:
+        run_id = uuid.uuid4()
+        mock_run = _make_eval_run(id=run_id, status="completed")
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_run
+
+        with (
+            patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo),
+            pytest.raises(ValueError, match="already completed"),
+        ):
+            from services.eval_service._runner import cancel_eval_run
+
+            await cancel_eval_run(run_id, mock_session)
+
+    @pytest.mark.asyncio
+    async def test_cancel_cancels_background_task(self) -> None:
+        run_id = uuid.uuid4()
+        mock_run = _make_eval_run(id=run_id, status="running")
+        updated_run = _make_eval_run(id=run_id, status="failed")
+
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_run
+        mock_repo.update_status.return_value = updated_run
+
+        # Create a fake task in _background_tasks
+        mock_task = MagicMock()
+        mock_task.get_name.return_value = f"eval-run-{run_id}"
+        mock_task.cancel = MagicMock()
+
+        with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
+            from services.eval_service._runner import _background_tasks, cancel_eval_run
+
+            _background_tasks.add(mock_task)
+            try:
+                await cancel_eval_run(run_id, mock_session)
+                mock_task.cancel.assert_called_once()
+            finally:
+                _background_tasks.discard(mock_task)
+
+    @pytest.mark.asyncio
+    async def test_cancel_pending_run(self) -> None:
+        run_id = uuid.uuid4()
+        mock_run = _make_eval_run(id=run_id, status="pending")
+        updated_run = _make_eval_run(id=run_id, status="failed")
+        updated_run.error_message = "Cancelled by user"
+
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_run
+        mock_repo.update_status.return_value = updated_run
+
+        with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
+            from services.eval_service._runner import cancel_eval_run
+
+            result = await cancel_eval_run(run_id, mock_session)
+
+        assert result.status == "failed"
+
+    @pytest.mark.asyncio
+    async def test_cancel_failed_run_raises(self) -> None:
+        run_id = uuid.uuid4()
+        mock_run = _make_eval_run(id=run_id, status="failed")
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_run
+
+        with (
+            patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo),
+            pytest.raises(ValueError, match="already failed"),
+        ):
+            from services.eval_service._runner import cancel_eval_run
+
+            await cancel_eval_run(run_id, mock_session)
+
+    @pytest.mark.asyncio
+    async def test_cancel_without_background_task_still_updates_db(self) -> None:
+        """Cancel when task is on a different instance — no task in set."""
+        run_id = uuid.uuid4()
+        mock_run = _make_eval_run(id=run_id, status="running")
+        updated_run = _make_eval_run(id=run_id, status="failed")
+
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_run
+        mock_repo.update_status.return_value = updated_run
+
+        with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
+            from services.eval_service._runner import cancel_eval_run
+
+            result = await cancel_eval_run(run_id, mock_session)
+
+        assert result.status == "failed"
+        mock_repo.update_status.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cancel_update_status_returns_none_raises(self) -> None:
+        """Race condition: run deleted between get and update."""
+        run_id = uuid.uuid4()
+        mock_run = _make_eval_run(id=run_id, status="running")
+
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_run
+        mock_repo.update_status.return_value = None
+
+        with (
+            patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo),
+            pytest.raises(ValueError, match="Failed to update"),
+        ):
+            from services.eval_service._runner import cancel_eval_run
+
+            await cancel_eval_run(run_id, mock_session)
+
+
+class TestCancelledErrorHandling:
+    """Tests for CancelledError handling in _run_eval_background."""
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_does_not_overwrite_db_status(self) -> None:
+        """When a task is cancelled, the runner should NOT call update_status."""
+        eval_run_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+
+        mock_session = AsyncMock()
+        mock_run_repo = AsyncMock()
+
+        # Make scenario loading raise CancelledError to simulate cancellation
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal") as mock_session_local,
+            patch(
+                f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_run_repo
+            ),
+            patch(
+                f"{RUNNER_MODULE}._resolve_scenario_files",
+                side_effect=asyncio.CancelledError,
+            ),
+        ):
+            mock_session_local.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
+            mock_session_local.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from services.eval_service._runner import _run_eval_background
+
+            await _run_eval_background(eval_run_id, project_id, "api:test", "http")
+
+        # update_status should have been called once for "running" but NOT
+        # again for "failed" — the CancelledError handler skips the DB write.
+        status_calls = [
+            c
+            for c in mock_run_repo.update_status.call_args_list
+            if c.args[1] == "failed" or c.kwargs.get("status") == "failed"
+        ]
+        assert len(status_calls) == 0
+
+
+class TestListEvalRuns:
+    """Tests for list_eval_runs service function."""
+
+    @pytest.mark.asyncio
+    async def test_list_runs_delegates_to_repo(self) -> None:
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_runs = [_make_eval_run(), _make_eval_run()]
+        mock_repo.get_all.return_value = mock_runs
+
+        with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
+            from services.eval_service._runner import list_eval_runs
+
+            result = await list_eval_runs(
+                mock_session, status="running", project_id=None, limit=50
+            )
+
+        assert result == mock_runs
+        mock_repo.get_all.assert_awaited_once_with(
+            status="running", project_id=None, limit=50
+        )
+
+    @pytest.mark.asyncio
+    async def test_list_runs_with_both_filters(self) -> None:
+        project_id = uuid.uuid4()
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_all.return_value = []
+
+        with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
+            from services.eval_service._runner import list_eval_runs
+
+            result = await list_eval_runs(
+                mock_session, status="running", project_id=project_id, limit=10
+            )
+
+        assert result == []
+        mock_repo.get_all.assert_awaited_once_with(
+            status="running", project_id=project_id, limit=10
+        )
+
+    @pytest.mark.asyncio
+    async def test_list_runs_with_project_id_only(self) -> None:
+        project_id = uuid.uuid4()
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.get_all.return_value = [_make_eval_run()]
+
+        with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
+            from services.eval_service._runner import list_eval_runs
+
+            result = await list_eval_runs(
+                mock_session, status=None, project_id=project_id, limit=50
+            )
+
+        assert len(result) == 1
+        mock_repo.get_all.assert_awaited_once_with(
+            status=None, project_id=project_id, limit=50
+        )

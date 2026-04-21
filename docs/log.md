@@ -6,6 +6,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04
 
+### 2026-04-21
+- Add `GET /v1/eval/runs` endpoint to list eval runs with optional `status`, `project_id`, and `limit` query params
+- Add `POST /v1/eval/runs/{run_id}/cancel` endpoint to cancel running/pending eval runs; cancels the asyncio background task and marks DB row as failed
+- Handle `asyncio.CancelledError` in eval background runner to avoid overwriting cancellation message
 ### 2026-04-20
 - Remove `scenario_category` field from `POST /v1/eval/run` request; parameter was never used in runner — scenario selection is driven entirely by `project_map.json` lookup with generic fallback
 - Remove `scenario_category` param from `load_scenarios()` in scenario loader
