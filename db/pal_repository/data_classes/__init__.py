@@ -11,6 +11,7 @@ from .contact import ContactData
 from .conversation import ConversationData
 from .eval_result import EvalResultData
 from .eval_run import EvalRunData
+from .faq import FAQData
 from .permission import PermissionData
 from .phone_call import PhoneCallData
 from .project import ProjectData
@@ -54,6 +55,7 @@ __all__ = [
     "ConversationData",
     "EvalResultData",
     "EvalRunData",
+    "FAQData",
     "PermissionData",
     "PhoneCallData",
     "ProjectContactData",
