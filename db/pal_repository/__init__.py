@@ -5,6 +5,7 @@ from .affiliate import AffiliateRepository
 from .agent import AgentRepository
 from .agent_capability import AgentCapabilityRepository
 from .agent_config_snapshot import AgentConfigSnapshotRepository
+from .campaign import CampaignRepository
 from .contact import ContactRepository
 from .permission import PermissionRepository
 from .phone_call import PhoneCallRepository
@@ -37,6 +38,7 @@ __all__ = [
     "AgentCapabilityRepository",
     "AgentConfigSnapshotRepository",
     "AgentRepository",
+    "CampaignRepository",
     "ContactRepository",
     "PermissionRepository",
     "PhoneCallRepository",
