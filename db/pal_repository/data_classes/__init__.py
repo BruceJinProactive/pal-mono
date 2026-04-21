@@ -8,6 +8,7 @@ from .agent_config_snapshot import AgentConfigSnapshotData
 from .campaign import CampaignData, CampaignMessageData
 from .capability_action import CapabilityActionData
 from .contact import ContactData
+from .conversation import ConversationData
 from .permission import PermissionData
 from .phone_call import PhoneCallData
 from .project import ProjectData
@@ -48,6 +49,7 @@ __all__ = [
     "CampaignMessageData",
     "CapabilityActionData",
     "ContactData",
+    "ConversationData",
     "PermissionData",
     "PhoneCallData",
     "ProjectContactData",

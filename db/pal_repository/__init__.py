@@ -8,6 +8,7 @@ from .agent_config_snapshot import AgentConfigSnapshotRepository
 from .campaign import CampaignRepository
 from .capability_action import CapabilityActionRepository
 from .contact import ContactRepository
+from .conversation import ConversationRepository
 from .permission import PermissionRepository
 from .phone_call import PhoneCallRepository
 from .project import ProjectRepository
@@ -42,6 +43,7 @@ __all__ = [
     "CampaignRepository",
     "CapabilityActionRepository",
     "ContactRepository",
+    "ConversationRepository",
     "PermissionRepository",
     "PhoneCallRepository",
     "ProjectContactRepository",
