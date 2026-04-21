@@ -6,6 +6,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04
 
+### 2026-04-20
+- Remove `scenario_category` field from `POST /v1/eval/run` request; parameter was never used in runner — scenario selection is driven entirely by `project_map.json` lookup with generic fallback
+- Remove `scenario_category` param from `load_scenarios()` in scenario loader
+
 ### 2026-04-17
 - Add `scenario_files` field to `EvalRunResponse` schema; trigger endpoint resolves which YAML files will execute via `project_map.json` and returns them in the response so callers can confirm only the intended scenarios run
 - Restructure eval scenarios: move per-client ordering YAML files into `scenarios/ordering/` directory; update `project_map.json` to map project IDs to file paths (e.g. `"ordering/friedmans.yaml"`) instead of directory names; runner uses `_resolve_scenario_files()` + `validate_scenarios_from_yaml()` to load specific files

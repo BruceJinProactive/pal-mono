@@ -50,7 +50,6 @@ def validate_scenarios_from_yaml(yaml_path: str | Path) -> list[EvalScenario]:
 
 def load_scenarios(
     project_id: str | None = None,
-    scenario_category: str | None = None,
 ) -> list[EvalScenario]:
     """Load all EvalScenario objects from the scenarios directory.
 
@@ -59,14 +58,9 @@ def load_scenarios(
     sub-directory whose name matches the project_id are loaded; otherwise
     every YAML file in the tree is loaded.
 
-    If *scenario_category* is provided (e.g. ``"generic"``, ``"ordering"``),
-    only scenarios under that subdirectory are loaded.
-
     Args:
         project_id: Optional project identifier used to filter scenarios to a
             specific sub-directory.
-        scenario_category: Optional category subdirectory name to restrict
-            which scenarios are loaded.
 
     Returns:
         A deduplicated (by file) list of EvalScenario objects.
@@ -76,8 +70,6 @@ def load_scenarios(
 
     if project_id is not None:
         search_root = SCENARIOS_DIR / project_id
-    elif scenario_category is not None:
-        search_root = SCENARIOS_DIR / scenario_category
     else:
         search_root = SCENARIOS_DIR
 

@@ -95,7 +95,6 @@ async def create_eval_run(
     driver_mode: str,
     triggered_by: str,
     session: AsyncSession,
-    scenario_category: str | None = None,
 ) -> EvalRun:
     """Create a new eval run and schedule its background execution.
 
@@ -106,7 +105,6 @@ async def create_eval_run(
         driver_mode: "http" or "direct".
         triggered_by: Who triggered the run (e.g. "api", "schedule").
         session: Database session for creating the run row.
-        scenario_category: Optional scenario subdirectory to restrict which scenarios run.
 
     Returns:
         The created EvalRun in "pending" status.
@@ -124,9 +122,7 @@ async def create_eval_run(
     await session.commit()
     await session.refresh(run)
 
-    _schedule_eval_background(
-        run.id, project_id, channel_identifier, driver_mode, scenario_category
-    )
+    _schedule_eval_background(run.id, project_id, channel_identifier, driver_mode)
     return run
 
 
@@ -135,7 +131,6 @@ def _schedule_eval_background(
     project_id: uuid.UUID,
     channel_identifier: str,
     driver_mode: str,
-    scenario_category: str | None = None,
 ) -> None:
     """Fire-and-forget background task for running evaluation."""
     task = asyncio.create_task(
@@ -144,7 +139,6 @@ def _schedule_eval_background(
             project_id,
             channel_identifier,
             driver_mode,
-            scenario_category,
         ),
         name=f"eval-run-{eval_run_id}",
     )
@@ -157,7 +151,6 @@ async def _run_eval_background(
     project_id: uuid.UUID,
     channel_identifier: str,
     driver_mode: str,
-    scenario_category: str | None = None,
 ) -> None:
     """Execute an evaluation run in the background.
 

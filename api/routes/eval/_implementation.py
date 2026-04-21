@@ -43,7 +43,6 @@ async def trigger_eval_run(
         driver_mode=request.driver,
         triggered_by=request.triggered_by,
         session=session,
-        scenario_category=request.scenario_category,
     )
     response = EvalRunResponse.model_validate(run)
     response.scenario_files = scenario_info["scenario_files"]
