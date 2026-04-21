@@ -6,6 +6,7 @@ from .agent import AgentData
 from .agent_capability import AgentCapabilityData
 from .agent_config_snapshot import AgentConfigSnapshotData
 from .campaign import CampaignData, CampaignMessageData
+from .capability_action import CapabilityActionData
 from .contact import ContactData
 from .permission import PermissionData
 from .phone_call import PhoneCallData
@@ -45,6 +46,7 @@ __all__ = [
     "AgentData",
     "CampaignData",
     "CampaignMessageData",
+    "CapabilityActionData",
     "ContactData",
     "PermissionData",
     "PhoneCallData",
