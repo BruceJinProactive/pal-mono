@@ -1,6 +1,7 @@
 from .account import AccountData
 from .account_subscription import AccountSubscriptionData
 from .account_user import AccountUserData
+from .affiliate import AffiliateData
 from .contact import ContactData
 from .permission import PermissionData
 from .phone_call import PhoneCallData
@@ -34,6 +35,7 @@ __all__ = [
     "AccountData",
     "AccountSubscriptionData",
     "AccountUserData",
+    "AffiliateData",
     "ContactData",
     "PermissionData",
     "PhoneCallData",
