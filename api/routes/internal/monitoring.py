@@ -561,6 +561,9 @@ async def create_monitoring_run(
                 started_at=datetime.now(timezone.utc),
                 completed_at=datetime.now(timezone.utc),
                 evaluation_result={"result": "skipped", "reason": skip_reason},
+                result="skipped",
+                details=skip_reason,
+                confidence=None,
             )
             created_run = await run_repo.create(skipped_run)
 
@@ -744,6 +747,9 @@ async def create_video_monitoring_run(
                 started_at=datetime.now(timezone.utc),
                 completed_at=datetime.now(timezone.utc),
                 evaluation_result={"result": "skipped", "reason": skip_reason},
+                result="skipped",
+                details=skip_reason,
+                confidence=None,
             )
             created_run = await run_repo.create(skipped_run)
 
