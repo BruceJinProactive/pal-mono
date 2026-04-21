@@ -26,6 +26,7 @@ def _make_voice_profile() -> MagicMock:
     vp = MagicMock()
     vp.voice_id = "voice-123"
     vp.speed = 1.0
+    vp.sample_rate = 48000
     return vp
 
 
@@ -299,7 +300,9 @@ class TestSpeakTurn:
             mock_frame = MagicMock()
             mock_rtc.AudioFrame.return_value = mock_frame
 
-            await caller._speak_turn("Hello", mock_audio_source, tts_engine, profile)
+            await caller._speak_turn(
+                "Hello", mock_audio_source, tts_engine, profile, 48000
+            )
 
         assert mock_audio_source.capture_frame.await_count == 2
 

@@ -201,6 +201,9 @@ class VoiceResultCollector:
         elapsed = 0.0
 
         while elapsed < timeout_s:
+            # Expire cached ORM state so we see changes committed by other
+            # transactions (e.g. the end-call endpoint setting status=CLOSED).
+            self._session.expire_all()
             conversation = await conv_repo.get_conversation_by_call_id(call_id)
             if conversation is not None and conversation.status in terminal_statuses:
                 logger.info(

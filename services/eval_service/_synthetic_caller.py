@@ -38,7 +38,6 @@ from utils.log import logger
 _DEFAULT_AGENT_RESPONSE_TIMEOUT_S = 30.0
 _DEFAULT_GREETING_WAIT_S = 8.0
 _DEFAULT_AGENT_RESPONSE_WAIT_S = 10.0
-_AUDIO_SAMPLE_RATE = 48000
 _AUDIO_NUM_CHANNELS = 1
 _FRAME_DURATION_MS = 20.0
 
@@ -96,9 +95,12 @@ class SyntheticCaller:
             # Wait for the agent to join before speaking
             await self._wait_for_agent()
 
-            # Create audio source and track for publishing TTS audio
+            # Create audio source and track for publishing TTS audio.
+            # Use the voice profile's sample rate so the published audio
+            # matches what Cartesia TTS produces.
+            sample_rate = voice_profile.sample_rate
             audio_source = rtc.AudioSource(
-                sample_rate=_AUDIO_SAMPLE_RATE,
+                sample_rate=sample_rate,
                 num_channels=_AUDIO_NUM_CHANNELS,
             )
             track = rtc.LocalAudioTrack.create_audio_track(
@@ -133,7 +135,7 @@ class SyntheticCaller:
                 )
 
                 await self._speak_turn(
-                    turn_text, audio_source, tts_engine, voice_profile
+                    turn_text, audio_source, tts_engine, voice_profile, sample_rate
                 )
 
                 # Fixed delay for agent to process and respond before next turn
@@ -198,20 +200,37 @@ class SyntheticCaller:
         audio_source: rtc.AudioSource,
         tts_engine: TTSEngine,
         voice_profile: VoiceProfile,
+        sample_rate: int,
     ) -> None:
         """Synthesize text via TTS and publish audio frames to the room."""
-        samples_per_frame = int(_AUDIO_SAMPLE_RATE * _FRAME_DURATION_MS / 1000.0)
+        samples_per_frame = int(sample_rate * _FRAME_DURATION_MS / 1000.0)
+        frame_count = 0
+        total_bytes = 0
 
         async for chunk in tts_engine.synthesize_streaming(
             text, profile=voice_profile, frame_duration_ms=_FRAME_DURATION_MS
         ):
             frame = rtc.AudioFrame(
                 data=chunk,
-                sample_rate=_AUDIO_SAMPLE_RATE,
+                sample_rate=sample_rate,
                 num_channels=_AUDIO_NUM_CHANNELS,
                 samples_per_channel=samples_per_frame,
             )
             await audio_source.capture_frame(frame)
+            frame_count += 1
+            total_bytes += len(chunk)
+
+        duration_ms = (frame_count * _FRAME_DURATION_MS) if frame_count else 0
+        logger.info(
+            "Speak turn audio published",
+            extra={
+                "frame_count": frame_count,
+                "total_bytes": total_bytes,
+                "duration_ms": duration_ms,
+                "sample_rate": sample_rate,
+                "text_length": len(text),
+            },
+        )
 
     async def _disconnect(self) -> None:
         """Disconnect from the room gracefully."""

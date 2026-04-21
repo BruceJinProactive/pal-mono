@@ -430,6 +430,10 @@ async def run_voice_scenario(
         TimeoutError: If the call does not complete within the timeout.
     """
     voice_profile = resolve_persona(scenario.persona)
+    # Use 16kHz to match the agent's audio input sample rate (SAMPLE_RATE=16000).
+    # The agent's Silero VAD is trained on 16kHz audio, and mismatched rates
+    # cause the VAD to miss synthetic caller speech entirely.
+    voice_profile.sample_rate = 16000
     turn_texts = _extract_turn_texts(scenario)
 
     orchestrator = LiveKitRoomOrchestrator(
