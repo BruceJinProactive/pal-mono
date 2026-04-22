@@ -64,8 +64,12 @@ async def get_eval_run_with_results(
             detail=f"Eval run {run_id} not found",
         )
     results = await get_eval_results(run_id, session)
+    run_response = EvalRunResponse.model_validate(run)
+    run_response.scenario_files = resolve_scenario_info(run.project_id)[
+        "scenario_files"
+    ]
     return EvalRunWithResultsResponse(
-        run=EvalRunResponse.model_validate(run),
+        run=run_response,
         results=[EvalResultResponse.model_validate(r) for r in results],
     )
 

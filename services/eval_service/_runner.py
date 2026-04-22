@@ -216,8 +216,11 @@ async def _run_eval_background(
                     )
                     eval_results = await evaluate_scenario(record)
 
-                    # Write results
+                    # Write results — embed raw conversation in each result's raw_output
+                    conversation_turns = record.turns
                     for er in eval_results:
+                        raw = dict(er.raw_output) if er.raw_output else {}
+                        raw["conversation"] = conversation_turns
                         db_result = EvalResult(
                             id=uuid.uuid4(),
                             eval_run_id=eval_run_id,
@@ -226,7 +229,7 @@ async def _run_eval_background(
                             score=er.score,
                             passed=er.passed,
                             reason=er.reason,
-                            raw_output=er.raw_output,
+                            raw_output=raw,
                         )
                         await result_repo.create(db_result)
 
