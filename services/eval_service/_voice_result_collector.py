@@ -119,11 +119,18 @@ def _extract_message_text(body: dict[str, Any]) -> str:
 
     Handles both ``{"content": "text"}`` and
     ``{"content": [{"text": "..."}]}`` formats.
+
+    Newlines are replaced with spaces because LLM responses sometimes
+    contain ``\\n`` which is TTS-hostile formatting.  The TTS engine
+    treats them as natural pauses, so stripping here keeps the evaluator
+    aligned with actual spoken output.
     """
     content = body.get("content")
     if isinstance(content, list) and content and isinstance(content[0], dict):
-        return content[0].get("text", "")
-    return str(content or "")
+        raw = content[0].get("text", "")
+    else:
+        raw = str(content or "")
+    return " ".join(raw.split())
 
 
 class VoiceResultCollector:
