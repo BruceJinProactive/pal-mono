@@ -18,6 +18,7 @@ from .integration import IntegrationRepository
 from .lead import LeadRepository
 from .message import MessageRepository
 from .monitoring_config import MonitoringConfigRepository
+from .monitoring_run import MonitoringRunRepository
 from .permission import PermissionRepository
 from .phone_call import PhoneCallRepository
 from .project import ProjectRepository
@@ -62,6 +63,7 @@ __all__ = [
     "LeadRepository",
     "MessageRepository",
     "MonitoringConfigRepository",
+    "MonitoringRunRepository",
     "PermissionRepository",
     "PhoneCallRepository",
     "ProjectContactRepository",
