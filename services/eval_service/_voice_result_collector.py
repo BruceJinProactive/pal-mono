@@ -126,8 +126,12 @@ def _extract_message_text(body: dict[str, Any]) -> str:
     aligned with actual spoken output.
     """
     content = body.get("content")
-    if isinstance(content, list) and content and isinstance(content[0], dict):
-        raw = content[0].get("text", "")
+    if isinstance(content, list) and content:
+        if isinstance(content[0], dict):
+            raw = content[0].get("text", "")
+        else:
+            # LiveKit agent sends content as a list of strings
+            raw = " ".join(str(c) for c in content)
     else:
         raw = str(content or "")
     return " ".join(raw.split())

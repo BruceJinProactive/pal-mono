@@ -171,6 +171,21 @@ class TestExtractMessageText:
         body = {"content": [{"type": "image"}]}
         assert _extract_message_text(body) == ""
 
+    def test_list_of_strings(self) -> None:
+        """LiveKit agent sends content as a list of plain strings."""
+        body = {"content": ["Got it. One moment"]}
+        assert _extract_message_text(body) == "Got it. One moment"
+
+    def test_list_of_strings_with_newlines(self) -> None:
+        """Newlines inside list-of-strings content are collapsed to spaces."""
+        body = {"content": ["Got it.\nSure — transferring now."]}
+        assert _extract_message_text(body) == "Got it. Sure — transferring now."
+
+    def test_string_content_with_newlines(self) -> None:
+        """Newlines in plain string content are collapsed to spaces."""
+        body = {"content": "Hello\nHow can I help?"}
+        assert _extract_message_text(body) == "Hello How can I help?"
+
 
 # ---------------------------------------------------------------------------
 # VoiceResultCollector
