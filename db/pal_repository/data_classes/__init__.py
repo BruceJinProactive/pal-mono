@@ -16,6 +16,7 @@ from .feature import FeatureData
 from .feedback import FeedbackData
 from .integration import IntegrationData
 from .lead import LeadData
+from .message import MessageData
 from .permission import PermissionData
 from .phone_call import PhoneCallData
 from .project import ProjectData
@@ -64,6 +65,7 @@ __all__ = [
     "FeedbackData",
     "IntegrationData",
     "LeadData",
+    "MessageData",
     "PermissionData",
     "PhoneCallData",
     "ProjectContactData",

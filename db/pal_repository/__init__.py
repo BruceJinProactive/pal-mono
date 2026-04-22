@@ -16,6 +16,7 @@ from .feature import FeatureRepository
 from .feedback import FeedbackRepository
 from .integration import IntegrationRepository
 from .lead import LeadRepository
+from .message import MessageRepository
 from .permission import PermissionRepository
 from .phone_call import PhoneCallRepository
 from .project import ProjectRepository
@@ -58,6 +59,7 @@ __all__ = [
     "FeedbackRepository",
     "IntegrationRepository",
     "LeadRepository",
+    "MessageRepository",
     "PermissionRepository",
     "PhoneCallRepository",
     "ProjectContactRepository",
