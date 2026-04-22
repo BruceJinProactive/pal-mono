@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import db
 from api.schemas.eval.requests import RunEvalRequest
 from api.schemas.eval.responses import (
+    CancelEvalRunResponse,
     EvalResultResponse,
     EvalRunResponse,
     EvalRunWithResultsResponse,
@@ -104,10 +105,10 @@ async def list_eval_runs_handler(
 async def cancel_eval_run_handler(
     run_id: uuid.UUID,
     session: AsyncSession = Depends(db.get_db_async),
-) -> EvalRunResponse:
+) -> CancelEvalRunResponse:
     """Cancel a running or pending eval run."""
     try:
-        run = await cancel_eval_run(run_id, session)
+        await cancel_eval_run(run_id, session)
     except ValueError as exc:
         msg = str(exc)
         if "not found" in msg:
@@ -119,4 +120,4 @@ async def cancel_eval_run_handler(
             status_code=status.HTTP_409_CONFLICT,
             detail=msg,
         )
-    return EvalRunResponse.model_validate(run)
+    return CancelEvalRunResponse(run_id=run_id)

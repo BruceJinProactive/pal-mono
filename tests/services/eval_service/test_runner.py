@@ -1449,26 +1449,23 @@ class TestCancelEvalRun:
     async def test_cancel_running_run(self) -> None:
         run_id = uuid.uuid4()
         mock_run = _make_eval_run(id=run_id, status="running")
-        updated_run = _make_eval_run(id=run_id, status="failed")
-        updated_run.error_message = "Cancelled by user"
 
         mock_session = AsyncMock()
         mock_repo = AsyncMock()
         mock_repo.get_by_id.return_value = mock_run
-        mock_repo.update_status.return_value = updated_run
 
         with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
             from services.eval_service._runner import cancel_eval_run
 
-            result = await cancel_eval_run(run_id, mock_session)
+            await cancel_eval_run(run_id, mock_session)
 
-        assert result.status == "failed"
         mock_repo.update_status.assert_awaited_once_with(
             run_id,
             "failed",
             completed_at=unittest_mock_any,
             error_message="Cancelled by user",
         )
+        mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_cancel_not_found_raises(self) -> None:
@@ -1505,12 +1502,10 @@ class TestCancelEvalRun:
     async def test_cancel_cancels_background_task(self) -> None:
         run_id = uuid.uuid4()
         mock_run = _make_eval_run(id=run_id, status="running")
-        updated_run = _make_eval_run(id=run_id, status="failed")
 
         mock_session = AsyncMock()
         mock_repo = AsyncMock()
         mock_repo.get_by_id.return_value = mock_run
-        mock_repo.update_status.return_value = updated_run
 
         # Create a fake task in _background_tasks
         mock_task = MagicMock()
@@ -1531,20 +1526,18 @@ class TestCancelEvalRun:
     async def test_cancel_pending_run(self) -> None:
         run_id = uuid.uuid4()
         mock_run = _make_eval_run(id=run_id, status="pending")
-        updated_run = _make_eval_run(id=run_id, status="failed")
-        updated_run.error_message = "Cancelled by user"
 
         mock_session = AsyncMock()
         mock_repo = AsyncMock()
         mock_repo.get_by_id.return_value = mock_run
-        mock_repo.update_status.return_value = updated_run
 
         with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
             from services.eval_service._runner import cancel_eval_run
 
-            result = await cancel_eval_run(run_id, mock_session)
+            await cancel_eval_run(run_id, mock_session)
 
-        assert result.status == "failed"
+        mock_repo.update_status.assert_awaited_once()
+        mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_cancel_failed_run_raises(self) -> None:
@@ -1567,39 +1560,18 @@ class TestCancelEvalRun:
         """Cancel when task is on a different instance — no task in set."""
         run_id = uuid.uuid4()
         mock_run = _make_eval_run(id=run_id, status="running")
-        updated_run = _make_eval_run(id=run_id, status="failed")
 
         mock_session = AsyncMock()
         mock_repo = AsyncMock()
         mock_repo.get_by_id.return_value = mock_run
-        mock_repo.update_status.return_value = updated_run
 
         with patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo):
             from services.eval_service._runner import cancel_eval_run
 
-            result = await cancel_eval_run(run_id, mock_session)
-
-        assert result.status == "failed"
-        mock_repo.update_status.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_cancel_update_status_returns_none_raises(self) -> None:
-        """Race condition: run deleted between get and update."""
-        run_id = uuid.uuid4()
-        mock_run = _make_eval_run(id=run_id, status="running")
-
-        mock_session = AsyncMock()
-        mock_repo = AsyncMock()
-        mock_repo.get_by_id.return_value = mock_run
-        mock_repo.update_status.return_value = None
-
-        with (
-            patch(f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_repo),
-            pytest.raises(ValueError, match="Failed to update"),
-        ):
-            from services.eval_service._runner import cancel_eval_run
-
             await cancel_eval_run(run_id, mock_session)
+
+        mock_repo.update_status.assert_awaited_once()
+        mock_session.commit.assert_awaited_once()
 
 
 class TestCancelledErrorHandling:

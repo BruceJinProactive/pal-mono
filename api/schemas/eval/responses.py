@@ -9,6 +9,13 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class CancelEvalRunResponse(BaseModel):
+    """Response for a cancelled eval run."""
+
+    run_id: uuid.UUID
+    status: str = "cancelled"
+
+
 class EvalRunResponse(BaseModel):
     """Response for a single eval run."""
 

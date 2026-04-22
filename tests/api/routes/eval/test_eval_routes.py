@@ -284,17 +284,14 @@ class TestCancelEvalRun:
     @patch("api.routes.eval._implementation.cancel_eval_run", new_callable=AsyncMock)
     def test_cancel_running_run(self, mock_cancel: AsyncMock) -> None:
         run_id = uuid.uuid4()
-        mock_run = _make_mock_run(run_id=run_id, run_status="failed")
-        mock_run.error_message = "Cancelled by user"
-        mock_cancel.return_value = mock_run
+        mock_cancel.return_value = None
 
         response = client.post(f"{EVAL_PREFIX}/runs/{run_id}/cancel")
 
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert data["id"] == str(run_id)
-        assert data["status"] == "failed"
-        assert data["error_message"] == "Cancelled by user"
+        assert data["run_id"] == str(run_id)
+        assert data["status"] == "cancelled"
 
     @patch("api.routes.eval._implementation.cancel_eval_run", new_callable=AsyncMock)
     def test_cancel_not_found(self, mock_cancel: AsyncMock) -> None:

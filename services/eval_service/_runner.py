@@ -610,7 +610,7 @@ async def list_eval_runs(
 async def cancel_eval_run(
     run_id: uuid.UUID,
     session: AsyncSession,
-) -> EvalRun:
+) -> None:
     """Cancel a running or pending eval run.
 
     Marks the run as failed in the DB and cancels the background asyncio task
@@ -619,9 +619,6 @@ async def cancel_eval_run(
     Args:
         run_id: UUID of the eval run to cancel.
         session: Database session.
-
-    Returns:
-        The updated EvalRun.
 
     Raises:
         ValueError: If the run is not found or is already in a terminal state.
@@ -646,18 +643,13 @@ async def cancel_eval_run(
         target.cancel()
 
     # Mark as failed in DB
-    updated = await repo.update_status(
+    await repo.update_status(
         run_id,
         "failed",
         completed_at=datetime.now(timezone.utc),
         error_message="Cancelled by user",
     )
     await session.commit()
-
-    if updated is None:
-        raise ValueError(f"Failed to update eval run {run_id}")
-
-    return updated
 
 
 async def mark_stale_runs_failed(
