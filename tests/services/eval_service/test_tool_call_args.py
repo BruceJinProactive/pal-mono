@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from services.eval_service.evaluators.tool_call_args import (
+    LookupArgumentEvaluator,
     ToastArgumentEvaluator,
     _extract_args,
     _extract_tool_name,
@@ -1206,3 +1207,599 @@ class TestOptionalToolCalls:
             d for d in details if d["field"] == "get_toast_item_details_v3"
         )
         assert lookup_detail["matched"] is False
+
+
+# ---------------------------------------------------------------------------
+# LookupArgumentEvaluator
+# ---------------------------------------------------------------------------
+
+_lookup = LookupArgumentEvaluator()
+
+
+class TestLookupEvaluatorRegistry:
+    def test_get_evaluator_returns_lookup(self) -> None:
+        evaluator = _get_evaluator("get_toast_item_details_v3")
+        assert isinstance(evaluator, LookupArgumentEvaluator)
+
+
+class TestLookupExactMatch:
+    def test_single_item_single_target(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": '16" Big Matt Pizza.',
+                    "targets": [
+                        {"group_name": '*Toppings Choice 16"', "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": '16" Big Matt Pizza.',
+                    "targets": [
+                        {"group_name": '*Toppings Choice 16"', "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        assert all(r.matched for r in results)
+
+    def test_multiple_items(self) -> None:
+        expected = {
+            "items": [
+                {"item_name": '16" Big Matt Pizza.', "targets": []},
+                {"item_name": "Cheesy Garlic Bread", "targets": []},
+            ]
+        }
+        actual = {
+            "items": [
+                {"item_name": '16" Big Matt Pizza.', "targets": []},
+                {"item_name": "Cheesy Garlic Bread", "targets": []},
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        assert all(r.matched for r in results)
+
+    def test_multiple_targets(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": 'Family (16").',
+                    "targets": [
+                        {
+                            "group_name": '16" Base (DEFAULT is ALL PIZZA SAUCE)',
+                            "path_prefix": [],
+                        },
+                        {
+                            "group_name": '*Toppings Choice 16"',
+                            "path_prefix": [],
+                        },
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": 'Family (16").',
+                    "targets": [
+                        {
+                            "group_name": '16" Base (DEFAULT is ALL PIZZA SAUCE)',
+                            "path_prefix": [],
+                        },
+                        {
+                            "group_name": '*Toppings Choice 16"',
+                            "path_prefix": [],
+                        },
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        assert all(r.matched for r in results)
+
+
+class TestLookupItemNameMismatch:
+    def test_wrong_item_name(self) -> None:
+        expected = {"items": [{"item_name": '16" Big Matt Pizza.', "targets": []}]}
+        actual = {"items": [{"item_name": "Cheesy Garlic Bread", "targets": []}]}
+        results = _lookup.evaluate(expected, actual)
+        failed = [r for r in results if not r.matched]
+        assert len(failed) >= 1
+        assert "item_name" in failed[0].field_path
+
+
+class TestLookupItemCountMismatch:
+    def test_fewer_actual_items(self) -> None:
+        expected = {
+            "items": [
+                {"item_name": "Item A", "targets": []},
+                {"item_name": "Item B", "targets": []},
+            ]
+        }
+        actual = {"items": [{"item_name": "Item A", "targets": []}]}
+        results = _lookup.evaluate(expected, actual)
+        failed = [r for r in results if not r.matched]
+        assert len(failed) >= 1
+        assert "count mismatch" in failed[0].detail
+
+    def test_more_actual_items(self) -> None:
+        expected = {"items": [{"item_name": "Item A", "targets": []}]}
+        actual = {
+            "items": [
+                {"item_name": "Item A", "targets": []},
+                {"item_name": "Item B", "targets": []},
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        failed = [r for r in results if not r.matched]
+        assert len(failed) >= 1
+
+
+class TestLookupTargetMismatch:
+    def test_missing_target(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Toppings", "path_prefix": []},
+                        {"group_name": "Base", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Toppings", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        failed = [r for r in results if not r.matched]
+        assert len(failed) >= 1
+        assert "targets" in failed[0].field_path
+
+    def test_extra_target(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Toppings", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Toppings", "path_prefix": []},
+                        {"group_name": "Base", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        failed = [r for r in results if not r.matched]
+        assert len(failed) >= 1
+
+    def test_wrong_group_name(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Toppings", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Sauces", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        failed = [r for r in results if not r.matched]
+        assert len(failed) >= 1
+        assert "group_name" in failed[0].field_path
+
+
+class TestLookupTargetsOrderIndependent:
+    def test_different_order_still_matches(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Base", "path_prefix": []},
+                        {"group_name": "Toppings", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Toppings", "path_prefix": []},
+                        {"group_name": "Base", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        assert all(r.matched for r in results)
+
+
+class TestLookupItemsOrderIndependent:
+    def test_different_order_still_matches(self) -> None:
+        expected = {
+            "items": [
+                {"item_name": "Pizza", "targets": []},
+                {"item_name": "Bread", "targets": []},
+            ]
+        }
+        actual = {
+            "items": [
+                {"item_name": "Bread", "targets": []},
+                {"item_name": "Pizza", "targets": []},
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        assert all(r.matched for r in results)
+
+
+class TestLookupPathPrefix:
+    def test_path_prefix_exact_match(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {
+                            "group_name": 'Artichokes - 16"',
+                            "path_prefix": [
+                                {
+                                    "group_name": '*Toppings Choice 16"',
+                                    "option_name": 'Topping Options 16"',
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {
+                            "group_name": 'Artichokes - 16"',
+                            "path_prefix": [
+                                {
+                                    "group_name": '*Toppings Choice 16"',
+                                    "option_name": 'Topping Options 16"',
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        assert all(r.matched for r in results)
+
+    def test_path_prefix_mismatch(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {
+                            "group_name": "Artichokes",
+                            "path_prefix": [
+                                {
+                                    "group_name": "Toppings",
+                                    "option_name": "Topping Options",
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {
+                            "group_name": "Artichokes",
+                            "path_prefix": [
+                                {
+                                    "group_name": "Toppings",
+                                    "option_name": "Wrong Option",
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        failed = [r for r in results if not r.matched]
+        assert len(failed) >= 1
+        assert "option_name" in failed[0].field_path
+
+    def test_path_prefix_count_mismatch(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {
+                            "group_name": "Sub",
+                            "path_prefix": [
+                                {"group_name": "A", "option_name": "B"},
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {
+                            "group_name": "Sub",
+                            "path_prefix": [],
+                        },
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        failed = [r for r in results if not r.matched]
+        assert len(failed) >= 1
+        assert "path_prefix" in failed[0].field_path
+
+
+class TestLookupWhitespaceNormalization:
+    def test_extra_whitespace_in_group_name(self) -> None:
+        expected = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Toppings  Choice", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "items": [
+                {
+                    "item_name": "Pizza",
+                    "targets": [
+                        {"group_name": "Toppings Choice", "path_prefix": []},
+                    ],
+                }
+            ]
+        }
+        results = _lookup.evaluate(expected, actual)
+        assert all(r.matched for r in results)
+
+
+class TestLookupEmptyItems:
+    def test_both_empty(self) -> None:
+        results = _lookup.evaluate({"items": []}, {"items": []})
+        assert results == []
+
+    def test_no_items_key(self) -> None:
+        results = _lookup.evaluate({}, {})
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# LookupArgumentEvaluator integration with evaluate_tool_call_args
+# ---------------------------------------------------------------------------
+
+
+class TestLookupIntegration:
+    def test_lookup_optional_missing_passes(self) -> None:
+        """Optional lookup not called, order tool called → passes."""
+        expected = [
+            {
+                "tool": "get_toast_item_details_v3",
+                "optional": True,
+                "args": {
+                    "items": [{"item_name": "Pizza", "targets": []}],
+                },
+            },
+            {"tool": "toast_takeout_create_order_v1"},
+        ]
+        actual = [{"tool_name": "toast_takeout_create_order_v1"}]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+
+    def test_lookup_optional_present_correct_args(self) -> None:
+        """Optional lookup called with correct args → passes with details."""
+        expected = [
+            {
+                "tool": "get_toast_item_details_v3",
+                "optional": True,
+                "args": {
+                    "items": [{"item_name": "Pizza", "targets": []}],
+                },
+            },
+            {"tool": "toast_takeout_create_order_v1"},
+        ]
+        actual = [
+            {
+                "payload": {
+                    "tool_name": "get_toast_item_details_v3",
+                    "arguments": {
+                        "items": [{"item_name": "Pizza", "targets": []}],
+                    },
+                },
+            },
+            {"tool_name": "toast_takeout_create_order_v1"},
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.raw_output is not None
+        fields = [d["field"] for d in result.raw_output["match_details"]]
+        assert "items[0].item_name" in fields
+
+    def test_lookup_optional_present_wrong_args(self) -> None:
+        """Optional lookup called with wrong args → fails on arg mismatch."""
+        expected = [
+            {
+                "tool": "get_toast_item_details_v3",
+                "optional": True,
+                "args": {
+                    "items": [{"item_name": "Pizza", "targets": []}],
+                },
+            },
+            {"tool": "toast_takeout_create_order_v1"},
+        ]
+        actual = [
+            {
+                "payload": {
+                    "tool_name": "get_toast_item_details_v3",
+                    "arguments": {
+                        "items": [{"item_name": "Salad", "targets": []}],
+                    },
+                },
+            },
+            {"tool_name": "toast_takeout_create_order_v1"},
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is False
+
+    def test_full_scenario_both_tools_pass(self) -> None:
+        """Both lookup and order tools called correctly → full pass."""
+        expected = [
+            {
+                "tool": "get_toast_item_details_v3",
+                "optional": True,
+                "args": {
+                    "items": [
+                        {
+                            "item_name": '16" Big Matt Pizza.',
+                            "targets": [
+                                {
+                                    "group_name": '*Toppings Choice 16"',
+                                    "path_prefix": [],
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+            {
+                "tool": "toast_takeout_create_order_v1",
+                "args": {
+                    "customer": {
+                        "first_name": "Taylor",
+                        "last_name": "Parker",
+                        "phone": "5551234567",
+                    },
+                    "items": [
+                        {
+                            "item_name": '16" Big Matt Pizza.',
+                            "quantity": 1,
+                            "selection_paths": [
+                                {
+                                    "path": [
+                                        {
+                                            "group_name": '*Toppings Choice 16"',
+                                            "option_name": 'Topping Options 16"',
+                                        },
+                                        {
+                                            "group_name": 'Artichokes - 16"',
+                                            "option_name": 'LEFT Artichokes - 16"',
+                                        },
+                                    ]
+                                }
+                            ],
+                        }
+                    ],
+                },
+            },
+        ]
+        actual = [
+            {
+                "payload": {
+                    "tool_name": "get_toast_item_details_v3",
+                    "arguments": {
+                        "items": [
+                            {
+                                "item_name": '16" Big Matt Pizza.',
+                                "targets": [
+                                    {
+                                        "group_name": '*Toppings Choice 16"',
+                                        "path_prefix": [],
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                },
+            },
+            {
+                "payload": {
+                    "tool_name": "toast_takeout_create_order_v1",
+                    "arguments": {
+                        "customer": {
+                            "firstName": "Taylor",
+                            "lastName": "Parker",
+                            "phone": "5551234567",
+                        },
+                        "items": [
+                            {
+                                "item_name": '16" Big Matt Pizza.',
+                                "quantity": 1,
+                                "selection_paths": [
+                                    {
+                                        "path": [
+                                            {
+                                                "group_name": '*Toppings Choice 16"',
+                                                "option_name": 'Topping Options 16"',
+                                            },
+                                            {
+                                                "group_name": 'Artichokes - 16"',
+                                                "option_name": 'LEFT Artichokes - 16"',
+                                            },
+                                        ]
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                },
+            },
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.score == 1.0

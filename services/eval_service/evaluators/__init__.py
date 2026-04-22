@@ -22,6 +22,7 @@ from services.eval_service.evaluators.stt_accuracy import (
     extract_primary_transcript,
 )
 from services.eval_service.evaluators.tool_call_args import (
+    LookupArgumentEvaluator,
     ToastArgumentEvaluator,
     ToolArgumentEvaluator,
     evaluate_tool_call_args,
@@ -37,6 +38,7 @@ __all__ = [
     "evaluate_stt_accuracy",
     "evaluate_task_completion",
     "evaluate_tool_call_args",
+    "LookupArgumentEvaluator",
     "ToastArgumentEvaluator",
     "ToolArgumentEvaluator",
     "extract_primary_transcript",

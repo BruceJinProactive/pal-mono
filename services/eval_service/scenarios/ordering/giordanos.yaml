@@ -23,6 +23,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Cheese (Tavern)
+        targets:
+        - group_name: Size
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -65,6 +71,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Cheese (Tavern)
+        targets:
+        - group_name: Size
+          path_prefix: []
+        - group_name: Add Dipping Sauces ($)
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -110,6 +124,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Double Pepperoni (Thin)
+        targets:
+        - group_name: Size
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -152,6 +172,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 1/2 & 1/2 Specialty (Tavern)
+        targets:
+        - group_name: Size
+          path_prefix: []
+        - group_name: Half Toppings (Tavern Spec)
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -208,6 +236,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Cheesy Garlic Bread
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -247,6 +279,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Cheesy Garlic Bread
+        targets:
+        - group_name: Add Dipping Sauces ($)
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -289,6 +327,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Chicken Parmesan
+        targets:
+        - group_name: Size
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -331,6 +375,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Chicken Parmesan
+        targets:
+        - group_name: Size
+          path_prefix: []
+        - group_name: Add Salad or Soup
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -378,6 +430,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Classic Italian Beef
+        targets:
+        - group_name: Sandwich Sides
+          path_prefix: []
+        - group_name: Italian Beef Options
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -425,6 +485,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Double Pepperoni (Thin)
+        targets:
+        - group_name: Size
+          path_prefix: []
+      - item_name: Cheesy Garlic Bread
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -470,6 +538,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Personal Thin Crust
+        targets:
+        - group_name: Combo Pizza Choice
+          path_prefix: []
+        - group_name: Choose Your Side
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -515,6 +591,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Chicken Caprese Melt (Lunch Combo)
+        targets:
+        - group_name: Chicken Caprese Adds
+          path_prefix: []
+        - group_name: Choose Your Side
+          path_prefix: []
+        - group_name: General Mods
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -563,6 +649,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Double Pepperoni (Thin)
+        targets:
+        - group_name: Size
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -605,6 +697,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: MYO Stuffed DD
+        targets:
+        - group_name: Size
+          path_prefix: []
+        - group_name: Sauce/Cheese Options
+          path_prefix: []
+        - group_name: Add Dipping Sauces ($)
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -653,6 +755,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Chicken Parmesan
+        targets:
+        - group_name: Size
+          path_prefix: []
+        - group_name: Pasta Options
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -701,6 +811,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Lasagna
+        targets:
+        - group_name: Size
+          path_prefix: []
+        - group_name: Lasagna Options
+          path_prefix: []
+        - group_name: Add Salad or Soup
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -749,6 +869,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Classic Italian Beef
+        targets:
+        - group_name: Sandwich Sides
+          path_prefix: []
+        - group_name: Italian Beef Options
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -795,6 +923,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: '#1 GD - LG THN/2xWING/COOKIE/SODA'
+        targets:
+        - group_name: Meal Deal Bottled Drinks
+          path_prefix: []
+        - group_name: Wing Sauce^
+          path_prefix: []
+        - group_name: Meal Deal Pizza Toppings
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:

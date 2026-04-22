@@ -86,6 +86,196 @@ class ToolArgumentEvaluator(ABC):
 # ---------------------------------------------------------------------------
 
 
+class LookupArgumentEvaluator(ToolArgumentEvaluator):
+    """Argument evaluator for ``get_toast_item_details_v3`` lookup calls.
+
+    Compares the ``items`` array: item_name matching + order-independent
+    target comparison (group_name + path_prefix).
+    """
+
+    def evaluate(
+        self, expected_args: dict[str, Any], actual_args: dict[str, Any]
+    ) -> list[MatchDetail]:
+        results: list[MatchDetail] = []
+        exp_items = expected_args.get("items", [])
+        act_items = actual_args.get("items", [])
+        results.extend(self._compare_lookup_items(exp_items, act_items))
+        return results
+
+    def _compare_lookup_items(
+        self,
+        expected_items: list[dict[str, Any]],
+        actual_items: list[dict[str, Any]],
+    ) -> list[MatchDetail]:
+        results: list[MatchDetail] = []
+
+        if len(expected_items) != len(actual_items):
+            results.append(
+                MatchDetail(
+                    "items",
+                    False,
+                    f"count mismatch: expected {len(expected_items)}, got {len(actual_items)}",
+                )
+            )
+            return results
+
+        remaining_actual: list[tuple[int, dict[str, Any]]] = list(
+            enumerate(actual_items)
+        )
+
+        for exp_idx, exp_item in enumerate(expected_items):
+            item_path = f"items[{exp_idx}]"
+            exp_name = self._normalize_text(exp_item.get("item_name"))
+
+            # Find best matching actual item by item_name
+            matched_idx: int | None = None
+            for rem_idx, (_, act_item) in enumerate(remaining_actual):
+                if self._normalize_text(act_item.get("item_name")) == exp_name:
+                    matched_idx = rem_idx
+                    break
+
+            if matched_idx is None:
+                results.append(
+                    MatchDetail(
+                        f"{item_path}.item_name",
+                        False,
+                        f"expected {exp_name!r}, not found in actual items",
+                    )
+                )
+                continue
+
+            _, act_item = remaining_actual.pop(matched_idx)
+
+            results.append(
+                self._compare_named_value(
+                    field_path=f"{item_path}.item_name",
+                    expected=exp_item.get("item_name"),
+                    actual=act_item.get("item_name"),
+                )
+            )
+
+            exp_targets = exp_item.get("targets", [])
+            act_targets = act_item.get("targets", [])
+            if exp_targets or act_targets:
+                results.extend(
+                    self._compare_targets(exp_targets, act_targets, item_path)
+                )
+
+        return results
+
+    def _canonicalize_target(
+        self, target: dict[str, Any]
+    ) -> tuple[Any, tuple[tuple[Any, Any], ...]]:
+        """Canonical form: (group_name, ((pfx_group, pfx_option), ...))."""
+        group = self._normalize_text(target.get("group_name"))
+        prefix_items = target.get("path_prefix", [])
+        prefix_key = tuple(
+            (
+                self._normalize_text(p.get("group_name")),
+                self._normalize_text(p.get("option_name")),
+            )
+            for p in prefix_items
+        )
+        return (group, prefix_key)
+
+    def _compare_targets(
+        self,
+        expected_targets: list[dict[str, Any]],
+        actual_targets: list[dict[str, Any]],
+        item_path: str,
+    ) -> list[MatchDetail]:
+        results: list[MatchDetail] = []
+
+        if len(expected_targets) != len(actual_targets):
+            results.append(
+                MatchDetail(
+                    f"{item_path}.targets",
+                    False,
+                    f"count mismatch: expected {len(expected_targets)}, got {len(actual_targets)}",
+                )
+            )
+            return results
+
+        remaining_actual: list[tuple[int, dict[str, Any]]] = list(
+            enumerate(actual_targets)
+        )
+
+        for exp_idx, exp_tgt in enumerate(expected_targets):
+            tgt_path = f"{item_path}.targets[{exp_idx}]"
+            exp_key = self._canonicalize_target(exp_tgt)
+            matched_idx: int | None = None
+
+            for rem_idx, (_, act_tgt) in enumerate(remaining_actual):
+                if self._canonicalize_target(act_tgt) == exp_key:
+                    matched_idx = rem_idx
+                    break
+
+            if matched_idx is None:
+                if not remaining_actual:
+                    results.append(MatchDetail(tgt_path, False, "missing target"))
+                    continue
+                # Pick best match for diagnostics
+                matched_idx = 0
+
+            _, act_tgt = remaining_actual.pop(matched_idx)
+
+            results.append(
+                self._compare_named_value(
+                    field_path=f"{tgt_path}.group_name",
+                    expected=exp_tgt.get("group_name"),
+                    actual=act_tgt.get("group_name"),
+                )
+            )
+
+            exp_prefix = exp_tgt.get("path_prefix", [])
+            act_prefix = act_tgt.get("path_prefix", [])
+            if exp_prefix or act_prefix:
+                results.extend(
+                    self._compare_path_prefix(exp_prefix, act_prefix, tgt_path)
+                )
+
+        return results
+
+    def _compare_path_prefix(
+        self,
+        expected_prefix: list[dict[str, Any]],
+        actual_prefix: list[dict[str, Any]],
+        tgt_path: str,
+    ) -> list[MatchDetail]:
+        results: list[MatchDetail] = []
+
+        if len(expected_prefix) != len(actual_prefix):
+            results.append(
+                MatchDetail(
+                    f"{tgt_path}.path_prefix",
+                    False,
+                    f"count mismatch: expected {len(expected_prefix)}, got {len(actual_prefix)}",
+                )
+            )
+            return results
+
+        for i, (exp_step, act_step) in enumerate(
+            zip(expected_prefix, actual_prefix, strict=True)
+        ):
+            loc = f"{tgt_path}.path_prefix[{i}]"
+            results.append(
+                self._compare_named_value(
+                    field_path=f"{loc}.group_name",
+                    expected=exp_step.get("group_name"),
+                    actual=act_step.get("group_name"),
+                )
+            )
+            results.append(
+                self._compare_named_value(
+                    field_path=f"{loc}.option_name",
+                    expected=exp_step.get("option_name"),
+                    actual=act_step.get("option_name"),
+                )
+            )
+
+        return results
+
+
 class ToastArgumentEvaluator(ToolArgumentEvaluator):
     """Argument evaluator for ``toast.*`` tool calls.
 
@@ -378,6 +568,7 @@ _EVALUATOR_REGISTRY: dict[str, type[ToolArgumentEvaluator]] = {
     "toast.": ToastArgumentEvaluator,
     "checkout_order": ToastArgumentEvaluator,
     "toast_takeout_create_order_v1": ToastArgumentEvaluator,
+    "get_toast_item_details_v3": LookupArgumentEvaluator,
 }
 
 

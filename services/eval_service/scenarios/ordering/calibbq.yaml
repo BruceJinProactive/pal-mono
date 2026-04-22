@@ -23,6 +23,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Wings (10pc)
+        targets:
+        - group_name: Wing Sauce (10 & 20)
+          path_prefix: []
+        - group_name: Wing Dressings
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -71,6 +81,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: OG Combo Ribs
+        targets:
+        - group_name: OG Choice
+          path_prefix: []
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -122,6 +142,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 'Combo #1 Chicken'
+        targets:
+        - group_name: '#1 Choice'
+          path_prefix: []
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -176,6 +208,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 'Combo #2 Pork'
+        targets:
+        - group_name: '#2 Choice'
+          path_prefix: []
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -230,6 +274,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 'Combo #3 Rib Tips'
+        targets:
+        - group_name: '#3 Choice'
+          path_prefix: []
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -282,6 +336,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 'Combo #4 Brisket/Tri Tip'
+        targets:
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -336,6 +400,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Rib Tip Plate
+        targets:
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -387,6 +461,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Brisket Plate
+        targets:
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -435,6 +517,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Tri-Tip Plate
+        targets:
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -489,6 +581,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Chicken Plate
+        targets:
+        - group_name: Chicken Size
+          path_prefix: []
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -543,6 +647,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Pulled Pork Plate
+        targets:
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -594,6 +708,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Hot Link Plate
+        targets:
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -642,6 +764,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Wings (20pc)
+        targets:
+        - group_name: Wing Sauce (10 & 20)
+          path_prefix: []
+        - group_name: Wing Dressings
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -693,6 +825,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Wings (5pc)
+        targets:
+        - group_name: Wing Sauce (5pc)
+          path_prefix: []
+        - group_name: Wing Dressings
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -738,6 +878,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: BBQ Rib Plate
+        targets:
+        - group_name: Rib Size
+          path_prefix: []
+        - group_name: Plate Sides*
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -791,6 +941,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: County Fair
+        targets:
+        - group_name: Sandwich Sides*
+          path_prefix: []
+        - group_name: Fair Mod
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -846,6 +1006,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Brisket Sandwich
+        targets:
+        - group_name: Sandwich Sides*
+          path_prefix: []
+        - group_name: Sandwich add on
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -898,6 +1068,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Tri-Tip Salad
+        targets:
+        - group_name: Dressing
+          path_prefix: []
+        - group_name: Tri Tip Ingredients
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -946,6 +1124,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Kid's Mac & Cheesy
+        targets:
+        - group_name: Kids Side
+          path_prefix: []
+        - group_name: Kids Mac Mod
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -991,6 +1177,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: FOUNTAIN Soda
+        targets:
+        - group_name: Choose your soda
+          path_prefix: []
+      - item_name: Wicked Peach Cobbler
+        targets:
+        - group_name: Cobbler Ice Cream
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1041,6 +1237,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Full Rib Rack
+        targets:
+        - group_name: Meat Add Ons
+          path_prefix: []
+        - group_name: Extras & Add Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1091,6 +1295,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Tailgater BBQ Feast (for 10)
+        targets:
+        - group_name: 'Included Items(no substitutions):'
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1151,6 +1361,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Hot Link Hoagie
+        targets:
+        - group_name: Add Jalapeños?
+          path_prefix: []
+        - group_name: Sandwich Sides*
+          path_prefix: []
+      - item_name: 20oz Soda BOTTLE
+        targets:
+        - group_name: Choose your bottle
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1204,6 +1426,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Brisket Pound
+        targets:
+        - group_name: Extras & Add Ons
+          path_prefix: []
+        - group_name: Meat Add Ons
+          path_prefix: []
+      - item_name: Side Caesar
+        targets:
+        - group_name: Caesar Mods
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1258,6 +1492,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Lrg House Salad
+        targets:
+        - group_name: Dressing
+          path_prefix: []
+        - group_name: Sd salad mods
+          path_prefix: []
+      - item_name: Seasoned Fries
+        targets:
+        - group_name: Fry Seasoning
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1315,6 +1561,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Kid's Cheese Burger
+        targets:
+        - group_name: Kids Side
+          path_prefix: []
+      - item_name: Kids 3 pc Naked wings
+        targets:
+        - group_name: Kids Side
+          path_prefix: []
+      - item_name: YES DISPOSABLES
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1368,6 +1626,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Tailgater BBQ Feast (for 8)
+        targets:
+        - group_name: Extras & Add Ons
+          path_prefix: []
+      - item_name: NO DISPOSIBLES
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1416,6 +1682,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Bacon Wrapped Jalapeño Poppers (4)
+        targets: []
+      - item_name: Brisket Nachos
+        targets: []
+      - item_name: Loaded Pulled Pork Fries
+        targets: []
+      - item_name: Red Bull Original- 8.4oz can
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1464,6 +1740,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: The Real Smokehouse Sandwich
+        targets:
+        - group_name: Sandwich Sides*
+          path_prefix: []
+        - group_name: Sandwich add on
+          path_prefix: []
+      - item_name: FOUNTAIN Soda
+        targets:
+        - group_name: Choose your soda
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1518,6 +1806,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Cornbread Basket (4)
+        targets: []
+      - item_name: Mac N Cheesy
+        targets: []
+      - item_name: Tater Tots
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1563,6 +1859,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Full Chicken
+        targets:
+        - group_name: Meat Add Ons
+          path_prefix: []
+      - item_name: Mac N Cheesy
+        targets: []
+      - item_name: Cole Slaw
+        targets: []
+      - item_name: Strawberry Lemonade
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -1617,6 +1925,20 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: FOUNTAIN Soda
+        targets:
+        - group_name: Choose your soda
+          path_prefix: []
+      - item_name: Diet Pepsi - Fountain
+        targets:
+        - group_name: Fountain Size
+          path_prefix: []
+      - item_name: 20oz Soda BOTTLE
+        targets:
+        - group_name: Choose your bottle
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:

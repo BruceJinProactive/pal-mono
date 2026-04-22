@@ -23,6 +23,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Avocado Toast
+        targets:
+        - group_name: Toast Choice*
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -64,6 +70,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: B.E.L.T.
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -103,6 +113,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: French Toast
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -142,6 +156,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Shakshuka
+        targets:
+        - group_name: Add-Ons & Modifiers
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -184,6 +204,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Bagel and Lox
+        targets:
+        - group_name: Bagel Choice*
+          path_prefix: []
+        - group_name: Make It Gluten-Free?
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -229,6 +257,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Breakfast Bowl
+        targets:
+        - group_name: Egg Style Options
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -271,6 +305,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Breakfast Burger
+        targets:
+        - group_name: Temperature Options
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -313,6 +353,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Breakfast Burger
+        targets:
+        - group_name: Temperature Options
+          path_prefix: []
+        - group_name: Burger Add-Ons & Modifiers
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -358,6 +406,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Chicken Chilaquiles
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -397,6 +449,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: B.E.L.T.
+        targets: []
+      - item_name: French Toast
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -439,6 +497,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Avocado Toast
+        targets:
+        - group_name: Toast Choice*
+          path_prefix: []
+        - group_name: Egg Style Options
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -484,6 +550,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: B.E.L.T.
+        targets:
+        - group_name: Egg Style Options
+          path_prefix: []
+        - group_name: Add-Ons & Modifiers
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -529,6 +603,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Bagel and Lox
+        targets:
+        - group_name: Bagel Choice*
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -571,6 +651,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Breakfast Bowl
+        targets:
+        - group_name: Egg Style Options
+          path_prefix: []
+        - group_name: Make It Gluten-Free?
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -616,6 +704,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Breakfast Burger
+        targets:
+        - group_name: Temperature Options
+          path_prefix: []
+        - group_name: Burger Add-Ons & Modifiers
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -664,6 +760,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Chicken Chilaquiles
+        targets:
+        - group_name: Egg Style Options
+          path_prefix: []
+        - group_name: Add-Ons & Modifiers
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -709,6 +813,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: B.E.L.T.
+        targets:
+        - group_name: Egg Style Options
+          path_prefix: []
+        - group_name: Add-Ons & Modifiers
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:

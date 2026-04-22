@@ -23,6 +23,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 16" Big Matt Pizza.
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -62,6 +66,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 16" Big Matt Pizza.
+        targets:
+        - group_name: '*Toppings Choice 16"'
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -106,6 +116,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 16" Mattenga's Margherita Specialty.
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -145,6 +159,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 16" Mattenga's Supreme.
+        targets:
+        - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -187,6 +207,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 16" Mattenga's Molto Meat.
+        targets:
+        - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -231,6 +257,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: WINGS Buffalo (Mild, Medium, Hot)
+        targets:
+        - group_name: Buffalo
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -273,6 +305,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: WINGS Buffalo (Mild, Medium, Hot)
+        targets:
+        - group_name: Buffalo
+          path_prefix: []
+        - group_name: Mattenga's DIP (2 OZ) Mods.
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -318,6 +358,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Cheesy Garlic Bread
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -357,6 +401,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 16" Mattenga's 1/2 & 1/2.
+        targets:
+        - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+          path_prefix: []
+        - group_name: LEFT Specialties
+          path_prefix: []
+        - group_name: RIGHT Specialties
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -405,6 +459,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 16" Big Matt Pizza.
+        targets: []
+      - item_name: Cheesy Garlic Bread
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -447,6 +507,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: 16" Big Matt Pizza.
+        targets:
+        - group_name: Bake (deselect to change).
+          path_prefix: []
+        - group_name: Cut (deselect to change).
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -492,6 +560,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Family (16").
+        targets:
+        - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -535,6 +609,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Family (16").
+        targets:
+        - group_name: 16" Base (DEFAULT is ALL PIZZA SAUCE)
+          path_prefix: []
+        - group_name: '*Toppings Choice 16"'
+          path_prefix: []
+        - group_name: Cut (deselect to change).
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -590,6 +674,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Party (20").
+        targets:
+        - group_name: 20" Base (Default is ALL PIZZA SAUCE)
+          path_prefix: []
+        - group_name: Please include.
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -638,6 +730,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Calzone (includes Mozz and Ricotta Cheese)
+        targets:
+        - group_name: 3 Included Toppings
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -686,6 +784,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Sm Caesar Salad
+        targets:
+        - group_name: Small Salad Dressings/
+          path_prefix: []
+        - group_name: Small Salad Changes
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -731,6 +837,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Party Wings (30)
+        targets:
+        - group_name: Wing Flavors
+          path_prefix: []
+        - group_name: 3 Included Mattenga's Dips
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -785,6 +899,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Tiramisu
+        targets:
+        - group_name: Now or Later?
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:

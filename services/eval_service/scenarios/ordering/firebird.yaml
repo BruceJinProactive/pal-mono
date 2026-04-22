@@ -23,6 +23,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: LG Cheese Pizza
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -62,6 +66,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: LG Cheese Pizza
+        targets:
+        - group_name: LG PIZZA ADD SAUCE
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -104,6 +114,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: LG Pepperoni Pizza
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -143,6 +157,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: LG Margherita Pizza
+        targets:
+        - group_name: LG PIZZA ADD SAUCE
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -185,6 +205,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Create your own LARGE Pizza
+        targets:
+        - group_name: ADD MEATS
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -227,6 +253,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Classic Chicken Sandwich
+        targets:
+        - group_name: No Sandwich
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -269,6 +301,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Classic Chicken Tenders (4PC)
+        targets:
+        - group_name: Chicken Tender Dipping Sauce
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -311,6 +349,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Caesar Salad
+        targets:
+        - group_name: No Requests
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -353,6 +397,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Caesar Salad
+        targets:
+        - group_name: salad modifier
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -395,6 +445,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: LG Cheese Pizza
+        targets: []
+      - item_name: LARGE French Fries
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -437,6 +493,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: SM Cheese Pizza
+        targets:
+        - group_name: SM Pizza ADD Sauce
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -481,6 +543,20 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Create your own LARGE Pizza
+        targets:
+        - group_name: CHOOSE A SAUCE
+          path_prefix: []
+        - group_name: CHOOSE A CHEESE
+          path_prefix: []
+        - group_name: ADD MEATS
+          path_prefix: []
+        - group_name: ADD VEGETABLES
+          path_prefix: []
+        - group_name: Dipping Sauces
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -541,6 +617,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Create your own SMALL Pizza
+        targets:
+        - group_name: CHOOSE A SAUCE
+          path_prefix: []
+        - group_name: CHOOSE A CHEESE
+          path_prefix: []
+        - group_name: ADD VEGETABLES
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -589,6 +675,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Pepperoni Slice
+        targets:
+        - group_name: Pizza Slice Combo
+          path_prefix: []
+        - group_name: Extra Dipping Sauces
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -637,6 +731,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Classic Chicken Tender Meal (4PC)
+        targets:
+        - group_name: Chicken Tender Dipping Sauce
+          path_prefix: []
+        - group_name: No Request
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -682,6 +784,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Box of Side Chix!
+        targets:
+        - group_name: Side Chix Sauce!
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -729,6 +837,22 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Create your own LARGE Pizza
+        targets:
+        - group_name: CHOOSE A SAUCE
+          path_prefix: []
+        - group_name: CHOOSE A CHEESE
+          path_prefix: []
+        - group_name: ADD MEATS
+          path_prefix: []
+      - item_name: Coca-Cola, Fountain
+        targets: []
+      - item_name: Chocolate Milkshake
+        targets:
+        - group_name: ADD Whipped Cream!
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:

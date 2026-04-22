@@ -23,6 +23,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Margherita
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -32,7 +36,7 @@
       items:
       - item_name: Margherita
         quantity: 1
-        selection_paths: [] 
+        selection_paths: []
   expected_outcomes:
     task_completed: true
   context:
@@ -62,6 +66,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Margherita
+        targets:
+        - group_name: Margherita Removals
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -103,6 +113,10 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Classico
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -142,6 +156,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Classico
+        targets:
+        - group_name: Additional Toppings
+          path_prefix: []
+        - group_name: Classico Removals
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -187,6 +209,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Pepperoni Bianco
+        targets:
+        - group_name: Pepperoni Bianco Removals
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -229,6 +257,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Sweet Buffalo Chicken Pizza
+        targets:
+        - group_name: Sweet Buffalo Chicken Pizza Removals
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -271,6 +305,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Caesar Salad
+        targets:
+        - group_name: Size
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -313,6 +353,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Caesar Salad
+        targets:
+        - group_name: Size
+          path_prefix: []
+        - group_name: Caesar Salad Removals
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -358,6 +406,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Truffle Parmesan Fries
+        targets:
+        - group_name: Side Add-Ons
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -400,6 +454,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Margherita
+        targets: []
+      - item_name: Truffle Parmesan Fries
+        targets: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -442,6 +502,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Crafted By You
+        targets:
+        - group_name: Sauce Choice
+          path_prefix: []
+        - group_name: Additional Toppings
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -487,6 +555,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Crafted By You
+        targets:
+        - group_name: Sauce Choice
+          path_prefix: []
+        - group_name: Additional Toppings
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -535,6 +611,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: $15 Pizza Meal Deal
+        targets:
+        - group_name: Pizza Choice
+          path_prefix: []
+        - group_name: Soda Choice
+          path_prefix: []
+        - group_name: Salad Choice
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -583,6 +669,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: $15 Pizza Meal Deal
+        targets:
+        - group_name: Pizza Choice
+          path_prefix: []
+        - group_name: Soda Choice
+          path_prefix: []
+        - group_name: Salad Choice
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -633,6 +729,14 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Fresh Prince
+        targets:
+        - group_name: Cheese Choice
+          path_prefix: []
+        - group_name: Meat Choice
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -678,6 +782,18 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Fresh Prince
+        targets:
+        - group_name: Cheese Choice
+          path_prefix: []
+        - group_name: Meat Choice
+          path_prefix: []
+        - group_name: Fresh Prince Removals
+          path_prefix: []
+        - group_name: Other Options
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -729,6 +845,12 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Fountain Soda
+        targets:
+        - group_name: Soda Choice
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
@@ -771,6 +893,16 @@
   expected_tool_calls:
   - tool: get_toast_item_details_v3
     optional: true
+    args:
+      items:
+      - item_name: Margherita
+        targets: []
+      - item_name: Caesar Salad
+        targets:
+        - group_name: Size
+          path_prefix: []
+        - group_name: Caesar Salad Removals
+          path_prefix: []
   - tool: toast_takeout_create_order_v1
     args:
       customer:
