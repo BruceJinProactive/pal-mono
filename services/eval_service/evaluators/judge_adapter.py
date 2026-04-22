@@ -92,13 +92,13 @@ def _build_judge_config() -> JudgeConfig:
             JudgeDimension(
                 name="request_accuracy",
                 weight=2.0,
-                evaluation_question="Did the agent end with the correct and complete captured order or requested update state, independent of backend submission availability?",
-                why_it_matters="The primary job is to capture the requested food or update exactly. If submission is temporarily unavailable, do not penalize that alone as long as the final order state is clearly preserved and communicated.",
+                evaluation_question="Did the agent end with the correct and complete captured order or requested update state, independent of backend submission availability? If the user never requested a food order or modification, score 5 — this dimension only applies when ordering is involved.",
+                why_it_matters="The primary job is to capture the requested food or update exactly. If submission is temporarily unavailable, do not penalize that alone as long as the final order state is clearly preserved and communicated. If no order was requested, this dimension is automatically satisfied.",
                 scale_1="The final captured order or requested update state is wrong, incomplete, or unstable.",
                 scale_2="Multiple meaningful order details are missing, contradictory, or likely wrong.",
                 scale_3="The core request is probably right, but at least one meaningful detail is weakly captured or not re-anchored.",
                 scale_4="The captured order state is clear and largely complete. If submission is unavailable, the agent communicates that cleanly without losing the final order state.",
-                scale_5="The final captured order or requested update state is explicit, complete, and fully updated after all changes. If submission is unavailable, the agent communicates that clearly without any loss of order accuracy.",
+                scale_5="The final captured order or requested update state is explicit, complete, and fully updated after all changes. If submission is unavailable, the agent communicates that clearly without any loss of order accuracy. If no order or modification was requested by the user, this is automatically a 5.",
                 high_signals=[
                     "Captures item names, sizes, quantities, modifiers, and add-ons clearly",
                     "Folds late changes into the final order state",

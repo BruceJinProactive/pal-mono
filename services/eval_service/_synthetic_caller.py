@@ -38,6 +38,7 @@ from utils.log import logger
 _DEFAULT_AGENT_RESPONSE_TIMEOUT_S = 30.0
 _DEFAULT_GREETING_WAIT_S = 8.0
 _DEFAULT_AGENT_RESPONSE_WAIT_S = 10.0
+_DEFAULT_FINAL_RESPONSE_WAIT_S = 20.0
 _AUDIO_NUM_CHANNELS = 1
 _FRAME_DURATION_MS = 20.0
 
@@ -158,12 +159,14 @@ class SyntheticCaller:
                     )
                     await asyncio.sleep(_DEFAULT_AGENT_RESPONSE_WAIT_S)
 
-            # After last turn, wait for agent's final response
+            # After last turn, wait longer for the agent's final response.
+            # The agent may need 3-5s to start responding plus 5-10s of TTS
+            # speaking time for longer answers.
             logger.debug(
                 "Waiting for agent final response",
-                extra={"wait_s": _DEFAULT_AGENT_RESPONSE_WAIT_S},
+                extra={"wait_s": _DEFAULT_FINAL_RESPONSE_WAIT_S},
             )
-            await asyncio.sleep(_DEFAULT_AGENT_RESPONSE_WAIT_S)
+            await asyncio.sleep(_DEFAULT_FINAL_RESPONSE_WAIT_S)
 
             logger.info(
                 "Synthetic caller completed all turns",
