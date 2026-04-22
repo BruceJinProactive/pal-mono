@@ -146,7 +146,7 @@ def _format_conversation(record: ConversationRecord) -> tuple[str, str]:
     if not agent_parts and record.agent_responses:
         agent_parts = list(record.agent_responses)
 
-    return "\n".join(user_parts), "\n".join(agent_parts)
+    return " ".join(user_parts), " ".join(agent_parts)
 
 
 async def evaluate_speech_fidelity(
