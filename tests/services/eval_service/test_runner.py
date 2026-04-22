@@ -319,13 +319,13 @@ class TestRunEvalBackground:
         mock_run_repo.update_status.assert_any_await(
             eval_run_id, "completed", completed_at=unittest_mock_any
         )
-        mock_run_repo.update_counts.assert_awaited_once_with(
-            eval_run_id,
-            scenario_count=1,
-            passed_count=1,
-            failed_count=0,
-            overall_score=1.0,
-        )
+        # update_counts is called per-scenario + final; verify final call values
+        final_counts_call = mock_run_repo.update_counts.await_args
+        assert final_counts_call.args[0] == eval_run_id
+        assert final_counts_call.kwargs["scenario_count"] == 1
+        assert final_counts_call.kwargs["passed_count"] == 1
+        assert final_counts_call.kwargs["failed_count"] == 0
+        assert final_counts_call.kwargs["overall_score"] == 1.0
         mock_result_repo.create.assert_awaited_once()
         created_result = mock_result_repo.create.call_args[0][0]
         assert created_result.eval_run_id == eval_run_id
@@ -482,13 +482,13 @@ class TestRunEvalBackground:
                 eval_run_id, project_id, "api:test-project", "http"
             )
 
-        mock_run_repo.update_counts.assert_awaited_once_with(
-            eval_run_id,
-            scenario_count=2,
-            passed_count=1,
-            failed_count=1,
-            overall_score=0.5,
-        )
+        # update_counts is called per-scenario + final; verify final call values
+        final_counts_call = mock_run_repo.update_counts.await_args
+        assert final_counts_call.args[0] == eval_run_id
+        assert final_counts_call.kwargs["scenario_count"] == 2
+        assert final_counts_call.kwargs["passed_count"] == 1
+        assert final_counts_call.kwargs["failed_count"] == 1
+        assert final_counts_call.kwargs["overall_score"] == 0.5
         mock_run_repo.update_status.assert_any_await(
             eval_run_id, "completed", completed_at=unittest_mock_any
         )

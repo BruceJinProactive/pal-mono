@@ -236,7 +236,16 @@ async def _run_eval_background(
                     else:
                         failed_count += 1
 
-                    # Commit per-scenario for progress visibility
+                    # Update run-level counters for progress visibility
+                    completed = passed_count + failed_count
+                    score = passed_count / completed if completed > 0 else 0.0
+                    await run_repo.update_counts(
+                        eval_run_id,
+                        scenario_count=completed,
+                        passed_count=passed_count,
+                        failed_count=failed_count,
+                        overall_score=score,
+                    )
                     await session.commit()
 
                     logger.info(
@@ -254,17 +263,21 @@ async def _run_eval_background(
                         extra={"eval_run_id": str(eval_run_id)},
                     )
                     failed_count += 1
+                    # Update counters even on failure
+                    completed = passed_count + failed_count
+                    score = passed_count / completed if completed > 0 else 0.0
+                    await run_repo.update_counts(
+                        eval_run_id,
+                        scenario_count=completed,
+                        passed_count=passed_count,
+                        failed_count=failed_count,
+                        overall_score=score,
+                    )
+                    await session.commit()
 
-            # Update final counts and status
-            total = len(scenarios)
+            # Final status update
+            total = passed_count + failed_count
             overall_score = passed_count / total if total > 0 else 0.0
-            await run_repo.update_counts(
-                eval_run_id,
-                scenario_count=total,
-                passed_count=passed_count,
-                failed_count=failed_count,
-                overall_score=overall_score,
-            )
             await run_repo.update_status(
                 eval_run_id,
                 "completed",
