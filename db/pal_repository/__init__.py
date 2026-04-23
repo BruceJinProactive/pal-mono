@@ -21,6 +21,7 @@ from .lead import LeadRepository
 from .message import MessageRepository
 from .monitoring_config import MonitoringConfigRepository
 from .monitoring_run import MonitoringRunRepository
+from .order import OrderRepository
 from .permission import PermissionRepository
 from .phone_call import PhoneCallRepository
 from .project import ProjectRepository
@@ -69,6 +70,7 @@ __all__ = [
     "MessageRepository",
     "MonitoringConfigRepository",
     "MonitoringRunRepository",
+    "OrderRepository",
     "PermissionRepository",
     "PhoneCallRepository",
     "ProjectContactRepository",
