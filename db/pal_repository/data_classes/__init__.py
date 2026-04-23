@@ -8,6 +8,8 @@ from .agent_config_snapshot import AgentConfigSnapshotData
 from .campaign import CampaignData, CampaignMessageData
 from .capability_action import CapabilityActionData
 from .catering_request import CateringRequestData
+from .change_field import ChangeFieldData
+from .change_log import ChangeLogData
 from .contact import ContactData
 from .conversation import ConversationData
 from .eval_result import EvalResultData
@@ -61,6 +63,8 @@ __all__ = [
     "CampaignMessageData",
     "CapabilityActionData",
     "CateringRequestData",
+    "ChangeFieldData",
+    "ChangeLogData",
     "ContactData",
     "ConversationData",
     "EvalResultData",
