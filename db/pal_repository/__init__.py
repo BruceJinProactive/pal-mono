@@ -5,6 +5,7 @@ from .affiliate import AffiliateRepository
 from .agent import AgentRepository
 from .agent_capability import AgentCapabilityRepository
 from .agent_config_snapshot import AgentConfigSnapshotRepository
+from .analytics import AnalyticsRepository
 from .campaign import CampaignRepository
 from .capability_action import CapabilityActionRepository
 from .catering_request import CateringRequestRepository
@@ -54,6 +55,7 @@ __all__ = [
     "AgentCapabilityRepository",
     "AgentConfigSnapshotRepository",
     "AgentRepository",
+    "AnalyticsRepository",
     "CampaignRepository",
     "CapabilityActionRepository",
     "CateringRequestRepository",

@@ -5,6 +5,13 @@ from .affiliate import AffiliateData
 from .agent import AgentData
 from .agent_capability import AgentCapabilityData
 from .agent_config_snapshot import AgentConfigSnapshotData
+from .analytics import (
+    ActiveUsersRow,
+    CallsInfoSummaryRow,
+    CallsTimeSummaryRow,
+    ConversionSummaryRow,
+    TurnsSummaryRow,
+)
 from .campaign import CampaignData, CampaignMessageData
 from .capability_action import CapabilityActionData
 from .catering_request import CateringRequestData
@@ -56,10 +63,13 @@ __all__ = [
     "AccountData",
     "AccountSubscriptionData",
     "AccountUserData",
+    "ActiveUsersRow",
     "AffiliateData",
     "AgentCapabilityData",
     "AgentConfigSnapshotData",
     "AgentData",
+    "CallsInfoSummaryRow",
+    "CallsTimeSummaryRow",
     "CampaignData",
     "CampaignMessageData",
     "CapabilityActionData",
@@ -67,6 +77,7 @@ __all__ = [
     "ChangeFieldData",
     "ChangeLogData",
     "ContactData",
+    "ConversionSummaryRow",
     "ConversationData",
     "EvalResultData",
     "EvalRunData",
@@ -101,6 +112,7 @@ __all__ = [
     "SubscriptionPlanData",
     "ToolCallRecordData",
     "TosAcceptanceData",
+    "TurnsSummaryRow",
     "UserData",
     "UserInvitationData",
     "VoiceConfigData",
