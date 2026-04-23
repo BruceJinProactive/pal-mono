@@ -37,6 +37,7 @@ from .routine_submission import RoutineSubmissionRepository
 from .signal_feed import SignalFeedRepository
 from .signal_source import SignalSourceRepository
 from .subscription_plan import SubscriptionPlanRepository
+from .tool_call_record import ToolCallRecordRepository
 from .tos_acceptance import TosAcceptanceRepository
 from .user import UserRepository
 from .user_invitation import UserInvitationRepository
@@ -82,6 +83,7 @@ __all__ = [
     "SignalFeedRepository",
     "SignalSourceRepository",
     "SubscriptionPlanRepository",
+    "ToolCallRecordRepository",
     "TosAcceptanceRepository",
     "UserInvitationRepository",
     "VoiceConfigRepository",

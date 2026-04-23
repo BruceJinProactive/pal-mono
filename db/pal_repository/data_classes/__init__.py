@@ -42,6 +42,7 @@ from .routine_submission import RoutineSubmissionData
 from .signal_feed import SignalFeedData
 from .signal_source import SignalSourceData
 from .subscription_plan import SubscriptionPlanData
+from .tool_call_record import ToolCallRecordData
 from .tos_acceptance import TosAcceptanceData
 from .user import UserData
 from .user_invitation import UserInvitationData
@@ -90,6 +91,7 @@ __all__ = [
     "SignalFeedData",
     "SignalSourceData",
     "SubscriptionPlanData",
+    "ToolCallRecordData",
     "TosAcceptanceData",
     "UserData",
     "UserInvitationData",
