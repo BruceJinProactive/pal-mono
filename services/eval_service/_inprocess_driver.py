@@ -7,6 +7,7 @@ with the eval runner. Each turn opens its own AsyncSessionLocal.
 from __future__ import annotations
 
 from pal_agents.evals.drivers.protocol import ConversationTurn, TurnResult
+from pal_agents.input import RuntimeContext
 
 from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject, Type
 from db.session import AsyncSessionLocal
@@ -27,11 +28,13 @@ class InProcessDriver:
         recipient_identifier: str,
         sender_identifier: str = "eval-user@test.com",
         channel: str = "api",
+        customer_phone: str | None = None,
     ) -> None:
         self.recipient_identifier = recipient_identifier
         self.sender_identifier = sender_identifier
         self.channel = Channel(channel)
         self.last_conversation_id: str | None = None
+        self.customer_phone = customer_phone
 
     async def send_turn(
         self,
@@ -50,6 +53,12 @@ class InProcessDriver:
         """
         chat_message = self._build_message(message)
 
+        phone = self.customer_phone
+
+        def _context_modifier(ctx: RuntimeContext) -> None:
+            if phone:
+                ctx.customer_phone = phone
+
         async with AsyncSessionLocal() as session:
             try:
                 request_context = RequestContext()
@@ -57,6 +66,7 @@ class InProcessDriver:
                     session=session,
                     message=chat_message,
                     request_context=request_context,
+                    context_modifier=_context_modifier,
                 )
                 await session.commit()
             except Exception:

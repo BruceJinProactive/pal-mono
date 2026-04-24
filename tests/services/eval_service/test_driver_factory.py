@@ -40,6 +40,27 @@ class TestCreateDriverHttp:
         assert "order-simple-001" in result.sender_identifier
 
 
+class TestCreateDriverCustomerPhone:
+    def test_passes_customer_phone_to_driver(self) -> None:
+        with patch(f"{FACTORY_MODULE}.logger"):
+            result = create_driver(
+                driver_mode="http",
+                project_identifier="proj-123",
+                customer_phone="5551234567",
+            )
+
+        assert result.customer_phone == "5551234567"
+
+    def test_customer_phone_defaults_to_none(self) -> None:
+        with patch(f"{FACTORY_MODULE}.logger"):
+            result = create_driver(
+                driver_mode="http",
+                project_identifier="proj-123",
+            )
+
+        assert result.customer_phone is None
+
+
 class TestCreateDriverDirect:
     def test_raises_not_implemented_error(self) -> None:
         with patch(f"{FACTORY_MODULE}.logger"):

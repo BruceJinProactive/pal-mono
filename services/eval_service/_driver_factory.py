@@ -16,6 +16,7 @@ def create_driver(
     project_identifier: str,
     channel: str = "api",
     scenario_id: str | None = None,
+    customer_phone: str | None = None,
 ) -> InProcessDriver:
     """Create an AgentDriver for the given mode.
 
@@ -50,6 +51,7 @@ def create_driver(
             recipient_identifier=project_identifier,
             sender_identifier=sender,
             channel=channel,
+            customer_phone=customer_phone,
         )
 
     if driver_mode == "direct":

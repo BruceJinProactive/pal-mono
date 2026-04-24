@@ -236,6 +236,70 @@ class TestScheduleEvalBackground:
         assert len(captured_task) == 1
 
 
+class TestInferCustomerPhone:
+    def test_extracts_phone_from_expected_tool_calls(self) -> None:
+        from services.eval_service._runner import _infer_customer_phone
+
+        scenario = MagicMock()
+        tc = MagicMock()
+        tc.args = {"customer": {"first_name": "Taylor", "phone": "5551234567"}}
+        scenario.expected_tool_calls = [tc]
+
+        assert _infer_customer_phone(scenario) == "5551234567"
+
+    def test_returns_none_when_no_tool_calls(self) -> None:
+        from services.eval_service._runner import _infer_customer_phone
+
+        scenario = MagicMock()
+        scenario.expected_tool_calls = []
+
+        assert _infer_customer_phone(scenario) is None
+
+    def test_returns_none_when_no_customer_in_args(self) -> None:
+        from services.eval_service._runner import _infer_customer_phone
+
+        scenario = MagicMock()
+        tc = MagicMock()
+        tc.args = {"items": [{"item_name": "Pizza"}]}
+        scenario.expected_tool_calls = [tc]
+
+        assert _infer_customer_phone(scenario) is None
+
+    def test_returns_none_for_empty_phone(self) -> None:
+        from services.eval_service._runner import _infer_customer_phone
+
+        scenario = MagicMock()
+        tc = MagicMock()
+        tc.args = {"customer": {"first_name": "Taylor", "phone": ""}}
+        scenario.expected_tool_calls = [tc]
+
+        assert _infer_customer_phone(scenario) is None
+
+    def test_skips_tool_call_without_customer_returns_first_phone(self) -> None:
+        from services.eval_service._runner import _infer_customer_phone
+
+        scenario = MagicMock()
+        tc_no_customer = MagicMock()
+        tc_no_customer.args = {"items": []}
+        tc_with_customer = MagicMock()
+        tc_with_customer.args = {"customer": {"phone": "5559876543"}}
+        scenario.expected_tool_calls = [tc_no_customer, tc_with_customer]
+
+        assert _infer_customer_phone(scenario) == "5559876543"
+
+    def test_returns_first_non_empty_phone(self) -> None:
+        from services.eval_service._runner import _infer_customer_phone
+
+        scenario = MagicMock()
+        tc1 = MagicMock()
+        tc1.args = {"customer": {"phone": "  "}}
+        tc2 = MagicMock()
+        tc2.args = {"customer": {"phone": "5551111111"}}
+        scenario.expected_tool_calls = [tc1, tc2]
+
+        assert _infer_customer_phone(scenario) == "5551111111"
+
+
 class TestRunEvalBackground:
     def _make_scenario(self, scenario_id: str = "sc-1") -> MagicMock:
         scenario = MagicMock()
@@ -311,7 +375,11 @@ class TestRunEvalBackground:
 
         # Verify channel_identifier is parsed and forwarded to driver factory
         mock_create_driver.assert_called_once_with(
-            "http", "test-project", channel="api", scenario_id="sc-1"
+            "http",
+            "test-project",
+            channel="api",
+            scenario_id="sc-1",
+            customer_phone=None,
         )
         mock_run_repo.update_status.assert_any_await(
             eval_run_id, "running", started_at=unittest_mock_any
@@ -329,6 +397,70 @@ class TestRunEvalBackground:
         mock_result_repo.create.assert_awaited_once()
         created_result = mock_result_repo.create.call_args[0][0]
         assert created_result.eval_run_id == eval_run_id
+
+    @pytest.mark.asyncio
+    async def test_infers_customer_phone_from_scenario(self) -> None:
+        eval_run_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        scenario = self._make_scenario()
+        # Add expected_tool_calls with customer phone
+        tc = MagicMock()
+        tc.args = {"customer": {"first_name": "Taylor", "phone": "5551234567"}}
+        scenario.expected_tool_calls = [tc]
+
+        ctx, session = self._make_session_ctx()
+        mock_run_repo = AsyncMock()
+        mock_result_repo = AsyncMock()
+
+        eval_result = MagicMock()
+        eval_result.metric_name = "tool_call_accuracy"
+        eval_result.score = 1.0
+        eval_result.passed = True
+        eval_result.reason = "ok"
+        eval_result.raw_output = None
+
+        record = MagicMock()
+        record.turns = []
+        record.agent_responses = []
+        record.tool_calls = []
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal", return_value=ctx),
+            patch(
+                f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_run_repo
+            ),
+            patch(
+                f"{RUNNER_MODULE}.EvalResultRepositoryAsync",
+                return_value=mock_result_repo,
+            ),
+            patch(f"{RUNNER_MODULE}.load_scenarios", return_value=[scenario]),
+            patch(
+                f"{RUNNER_MODULE}.create_driver", return_value=AsyncMock()
+            ) as mock_create_driver,
+            patch(
+                f"{RUNNER_MODULE}._run_conversation",
+                new_callable=AsyncMock,
+                return_value=record,
+            ),
+            patch(
+                f"{RUNNER_MODULE}.evaluate_scenario",
+                new_callable=AsyncMock,
+                return_value=[eval_result],
+            ),
+        ):
+            from services.eval_service._runner import _run_eval_background
+
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
+
+        mock_create_driver.assert_called_once_with(
+            "http",
+            "test-project",
+            channel="api",
+            scenario_id="sc-1",
+            customer_phone="5551234567",
+        )
 
     @pytest.mark.asyncio
     async def test_falls_back_to_generic_scenarios(self) -> None:

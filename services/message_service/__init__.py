@@ -1,7 +1,9 @@
 import uuid
+from collections.abc import Callable
 from typing import AsyncIterator
 
 from openai.types.chat import ChatCompletionChunk
+from pal_agents.input import RuntimeContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -20,7 +22,10 @@ def get_filler_message(message: Message) -> Message:
 
 @traced("Message Service Async Processing")
 async def get_chat_response_async(
-    session: AsyncSession, message: Message, request_context: RequestContext
+    session: AsyncSession,
+    message: Message,
+    request_context: RequestContext,
+    context_modifier: Callable[[RuntimeContext], None] | None = None,
 ) -> list[Message]:
     """
     Processes an incoming message and generates a response from the appropriate agent.
@@ -28,6 +33,7 @@ async def get_chat_response_async(
     Args:
         session (Session): The database session.
         message (Message): The incoming message object.
+        context_modifier: Optional callback to modify RuntimeContext after construction.
 
     Returns:
         list[Message]: A list of message objects.
@@ -37,7 +43,7 @@ async def get_chat_response_async(
         ValueError: If the response type from the agent is unexpected.
     """
     return await _implementation.get_chat_response_async(
-        session, message, request_context
+        session, message, request_context, context_modifier=context_modifier
     )
 
 

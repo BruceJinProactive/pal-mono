@@ -2,6 +2,7 @@ import asyncio
 import datetime
 import random
 import uuid
+from collections.abc import Callable
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
@@ -138,7 +139,10 @@ def get_filler_message(message: Message) -> Message:
 
 
 async def get_chat_response_async(
-    session: AsyncSession, message: Message, request_context: RequestContext
+    session: AsyncSession,
+    message: Message,
+    request_context: RequestContext,
+    context_modifier: Callable[[RuntimeContext], None] | None = None,
 ) -> list[Message]:
     # Initialize LLMObs for Datadog LLM Observability
     if is_testing_mode():
@@ -237,6 +241,9 @@ async def get_chat_response_async(
                 timezone=project_timezone or "America/Los_Angeles",
                 channel=message.channel.value,
             )
+
+            if context_modifier:
+                context_modifier(runtime_context)
 
             # Fetch conversation history
             history_messages = await query_history_messages(

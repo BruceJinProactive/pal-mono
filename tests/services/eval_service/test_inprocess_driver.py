@@ -122,6 +122,98 @@ class TestSendTurn:
         assert result.content == "[No response content]"
 
 
+class TestCustomerPhone:
+    def test_stores_customer_phone(self) -> None:
+        driver = InProcessDriver(
+            recipient_identifier="proj",
+            customer_phone="5551234567",
+        )
+        assert driver.customer_phone == "5551234567"
+
+    def test_customer_phone_defaults_to_none(self) -> None:
+        driver = InProcessDriver(recipient_identifier="proj")
+        assert driver.customer_phone is None
+
+    @pytest.mark.asyncio
+    async def test_context_modifier_passed_to_service(self) -> None:
+        driver = InProcessDriver(
+            recipient_identifier="proj",
+            customer_phone="5551234567",
+        )
+        agent_msg = _make_agent_message("Hi", session_id="conv-1")
+        mock_get_chat = AsyncMock(return_value=[agent_msg])
+        mock_session = AsyncMock()
+
+        with (
+            patch(f"{MODULE}.get_chat_response_async", mock_get_chat),
+            patch(f"{MODULE}.AsyncSessionLocal") as mock_session_factory,
+        ):
+            mock_session_factory.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
+            mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await driver.send_turn("Hi", [])
+
+        call_kwargs = mock_get_chat.call_args.kwargs
+        assert "context_modifier" in call_kwargs
+        assert call_kwargs["context_modifier"] is not None
+
+    @pytest.mark.asyncio
+    async def test_context_modifier_sets_customer_phone(self) -> None:
+        from pal_agents.input import RuntimeContext
+
+        driver = InProcessDriver(
+            recipient_identifier="proj",
+            customer_phone="5551234567",
+        )
+        agent_msg = _make_agent_message("Hi", session_id="conv-1")
+        mock_get_chat = AsyncMock(return_value=[agent_msg])
+        mock_session = AsyncMock()
+
+        with (
+            patch(f"{MODULE}.get_chat_response_async", mock_get_chat),
+            patch(f"{MODULE}.AsyncSessionLocal") as mock_session_factory,
+        ):
+            mock_session_factory.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
+            mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await driver.send_turn("Hi", [])
+
+        # Extract the modifier and verify it sets customer_phone
+        modifier = mock_get_chat.call_args.kwargs["context_modifier"]
+        ctx = RuntimeContext(timezone="UTC", channel="api")
+        modifier(ctx)
+        assert ctx.customer_phone == "5551234567"
+
+    @pytest.mark.asyncio
+    async def test_context_modifier_noop_when_no_phone(self) -> None:
+        from pal_agents.input import RuntimeContext
+
+        driver = InProcessDriver(recipient_identifier="proj")
+        agent_msg = _make_agent_message("Hi", session_id="conv-1")
+        mock_get_chat = AsyncMock(return_value=[agent_msg])
+        mock_session = AsyncMock()
+
+        with (
+            patch(f"{MODULE}.get_chat_response_async", mock_get_chat),
+            patch(f"{MODULE}.AsyncSessionLocal") as mock_session_factory,
+        ):
+            mock_session_factory.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
+            mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await driver.send_turn("Hi", [])
+
+        modifier = mock_get_chat.call_args.kwargs["context_modifier"]
+        ctx = RuntimeContext(timezone="UTC", channel="api")
+        modifier(ctx)
+        assert ctx.customer_phone is None
+
+
 class TestBuildMessage:
     def test_message_fields(self) -> None:
         driver = InProcessDriver(

@@ -340,6 +340,20 @@ def _parse_channel_identifier(channel_identifier: str) -> tuple[str, str]:
     return channel, recipient_id
 
 
+def _infer_customer_phone(scenario: EvalScenario) -> str | None:
+    """Extract customer phone from scenario expected_tool_calls.
+
+    Mirrors pal-agents run_loop._infer_customer_phone: checks
+    expected_tool_calls[*].args.customer.phone for the first non-empty value.
+    """
+    for tc in scenario.expected_tool_calls:
+        customer = tc.args.get("customer", {})
+        phone = str(customer.get("phone", "")).strip()
+        if phone:
+            return phone
+    return None
+
+
 async def _run_scenario_for_mode(
     driver_mode: str,
     scenario: EvalScenario,
@@ -363,8 +377,13 @@ async def _run_scenario_for_mode(
             scenario, voice_config, session, dialed_number=recipient_id
         )
 
+    customer_phone = _infer_customer_phone(scenario)
     driver = create_driver(
-        driver_mode, recipient_id, channel=channel, scenario_id=scenario.scenario_id
+        driver_mode,
+        recipient_id,
+        channel=channel,
+        scenario_id=scenario.scenario_id,
+        customer_phone=customer_phone,
     )
     simulator = UserSimulator()
     return await _run_conversation(driver, scenario, simulator)
