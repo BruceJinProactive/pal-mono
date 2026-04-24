@@ -1727,6 +1727,25 @@ wheels = [
 ]
 
 [[package]]
+name = "langfuse"
+version = "4.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "backoff" },
+    { name = "httpx" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
+    { name = "packaging" },
+    { name = "pydantic" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7e/ea/e4a583d39cbbb13bf070a8e8816697874df2e611f2faff5661f6f65c7ac3/langfuse-4.5.0.tar.gz", hash = "sha256:ecb2c3e19098065f64933f8f2b4d8b3a426938ca1c8e9bf7611d6df569adaa3f", size = 279309, upload-time = "2026-04-21T11:30:40.048Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ee/72/0bb02ab2144d9da38a4c91146661f6147323acdd1d17ce45c3a6f9932410/langfuse-4.5.0-py3-none-any.whl", hash = "sha256:99434f9553fa8711bfc6a2e61dac011af0c771f52d61809d7774b85f3b91c9a7", size = 479214, upload-time = "2026-04-21T11:30:38.573Z" },
+]
+
+[[package]]
 name = "lingua-language-detector"
 version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2943,6 +2962,7 @@ dependencies = [
     { name = "httpx" },
     { name = "instructor" },
     { name = "jinja2" },
+    { name = "langfuse" },
     { name = "lingua-language-detector" },
     { name = "livekit" },
     { name = "livekit-agents" },
@@ -3040,6 +3060,7 @@ requires-dist = [
     { name = "instructor", specifier = "==1.14.5" },
     { name = "isort", marker = "extra == 'dev'", specifier = "~=5.13.2" },
     { name = "jinja2", specifier = "==3.1.6" },
+    { name = "langfuse", specifier = ">=4.0.0,<5" },
     { name = "lingua-language-detector", specifier = "==2.1.1" },
     { name = "livekit", specifier = ">=1.0.0" },
     { name = "livekit-agents", specifier = ">=1.0.0" },

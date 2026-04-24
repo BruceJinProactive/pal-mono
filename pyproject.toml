@@ -33,6 +33,7 @@ dependencies = [
   "httpx==0.28.1", # Modern async/sync HTTP client with HTTP/2 support
   "instructor==1.14.5", # Structured outputs from LLMs using Pydantic models
   "jinja2==3.1.6", # Modern template engine for Python
+  "langfuse>=4.0.0,<5", # Langfuse SDK for LLM observability
   "lingua-language-detector==2.1.1", # Fast and accurate language detection library
   "livekit-agents>=1.0.0", # LiveKit Agents framework for building AI voice agents
   "livekit-api>=1.0.0", # LiveKit server API client for room and participant management
@@ -140,6 +141,7 @@ exclude = [
   "**/__pycache__",
   ".agents",
   ".claude",
+  ".devenv",
   ".git",
   ".pal-skills",
   ".venv*",
