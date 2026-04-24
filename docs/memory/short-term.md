@@ -12,6 +12,8 @@ Last updated: 2026-03-27
 
 - **Eval platform Wave 3** (started 2026-03-28) — Eval service runner, evaluators, config snapshot. Wave 3 shipped as PR #3840. Now integrating pal-agents DeepEval metrics (v0.2.210) to replace custom LLM judges. → `docs/plans/eval-platform-proposal.md`
 
+- **Eval scenarios DB migration** (started 2026-04-23) — Migrating eval YAML scenario files from filesystem to `eval_scenarios` DB table. Table created; next: repository, service layer rewrite, API endpoints, seed script. → `docs/plans/eval-scenarios-db-migration.md`
+
 ## Recently Landed
 
 - 2026-03-27: Voice config language refactoring complete (3-PR series) — PR1: Pydantic validators. PR2: SQLAlchemy CHECK constraints. PR3: Alembic migration for data cleanup + removed legacy handling. All voice configs now lowercase, no more combined languages or triage.

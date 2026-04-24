@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04
 
+### 2026-04-23
+- Add `eval_scenarios` DB table to store eval scenario YAML files in the database, replacing filesystem-based scenario loading; columns: `project_id` (nullable — NULL for generic), `scenario_type`, `name`, `raw_yaml`; unique constraint on `(project_id, name)` → `docs/plans/eval-scenarios-db-migration.md`
+
 ### 2026-04-21
 - Add `GET /v1/eval/runs` endpoint to list eval runs with optional `status`, `project_id`, and `limit` query params
 - Add `POST /v1/eval/runs/{run_id}/cancel` endpoint to cancel running/pending eval runs; cancels the asyncio background task and marks DB row as failed

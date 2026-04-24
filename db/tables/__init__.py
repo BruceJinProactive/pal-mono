@@ -15,6 +15,7 @@ from .conversations import Conversation, ConversationStatus
 from .credit_grants import CreditGrant
 from .eval_results import EvalResult
 from .eval_runs import EvalRun
+from .eval_scenarios import EvalScenario
 from .faqs import FAQ
 from .features import Feature
 from .feedback import Feedback
