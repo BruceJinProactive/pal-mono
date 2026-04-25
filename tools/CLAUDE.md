@@ -4,8 +4,8 @@ AI agent tools that extend agent capabilities with external integrations.
 
 ## Important Notes
 
-- All exposed tools must be decorated with `@tool` for datadog monitoring
-- External API calls isolated in `_apis/` with `@task` decorator
+- All exposed tools must be decorated with `@observe(as_type="tool")` for observability
+- External API calls isolated in `_apis/` with `@observe` decorator from Langfuse
 - Pydantic models in `classes.py` for validation
 - Private files use underscore prefix (`_implementation.py`, `_utils.py`)
 - Clean exports: `__init__.py` exports only main tool class
@@ -16,10 +16,10 @@ AI agent tools that extend agent capabilities with external integrations.
 ```tree
 tools/{tool_name}/
 ├── __init__.py              # Export main tool class ONLY
-├── _implementation.py       # Tool class (use @tool decorator)
+├── _implementation.py       # Tool class (use @observe(as_type="tool") decorator)
 ├── classes.py              # Pydantic models (request/response)
 └── _apis/
-    ├── __init__.py         # API function implementations (use @task decorator)
+    ├── __init__.py         # API function implementations (use @observe decorator)
     └── _utils.py           # API utilities (connection, auth, token mgmt)
 ```
 

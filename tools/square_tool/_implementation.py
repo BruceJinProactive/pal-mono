@@ -8,8 +8,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import tool
+from langfuse import get_client, observe
 from pydantic import ValidationError
 
 import db
@@ -192,7 +191,7 @@ class SquareTool(Toolkit):
         Returns:
             SquareAccessToken: An object containing the access token for Square API calls.
         """
-        with LLMObs.task(name="get_square_token"):
+        with get_client().start_as_current_observation(name="get_square_token"):
             # Try to get access token from integration service first
             access_token = self._get_access_token_from_integration()
 
@@ -467,7 +466,7 @@ class SquareTool(Toolkit):
             )
             return "Failed to get the menu, please try again."
 
-    @tool
+    @observe(as_type="tool")
     def create_order_and_payment_link(self) -> str:
         """
         **WHEN TO USE THIS TOOL:**

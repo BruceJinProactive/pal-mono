@@ -1,14 +1,13 @@
 import uuid
 
-from ddtrace.llmobs.decorators import task
+from langfuse import get_client, observe
 
 from agent.input_output import Message
 from db import MessageRepositoryAsync
 from db.session import AsyncSessionLocal
-from utils.dd import safe_annotate
 
 
-@task(name="Query History Messages")
+@observe(name="Query History Messages")
 async def query_history_messages(
     conversation_id: uuid.UUID, limit: int = 100
 ) -> list[Message]:
@@ -35,8 +34,8 @@ async def query_history_messages(
                     sender_identifier=sender_identifier,
                 )
             )
-        safe_annotate(
-            tags={
+        get_client().update_current_span(
+            metadata={
                 "conversation_id": conversation_id,
                 "history_messages": len(history_messages),
             }

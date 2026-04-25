@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, TypeVar, Union
 
 from anthropic import Anthropic
 from anthropic.types import TextBlock, ToolUseBlock
+from langfuse import get_client
 from pydantic import BaseModel, ValidationError
 
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
@@ -25,7 +26,6 @@ from tools.utils.ordering.classes import (
     OrderConstructionModel,
     SubQueries,
 )
-from utils.dd import safe_annotate
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
@@ -57,7 +57,7 @@ def get_chat_history(query_messages_tool: QueryMessagesTool) -> str:
             f"[ToastTool._get_chat_history] Possible issue with chat history: {chat_history}"
         )
 
-    safe_annotate(output_data=chat_history)
+    get_client().update_current_span(output=chat_history)
 
     return chat_history
 
@@ -142,7 +142,7 @@ def get_relevant_docs(
                 )
                 output_data.append({"id": node.id_, "text": node.text})
 
-    safe_annotate(input_data=chat_history, output_data=output_data)
+    get_client().update_current_span(input=chat_history, output=output_data)
     return context
 
 
@@ -191,7 +191,7 @@ async def get_relevant_docs_v2(
             context += f"<document name='{doc_name}'>\n\t<document_content>\n{node_text}\n\t</document_content>\n</document>\n\n"
             output_data.append({"id": node.id_, "text": node.text})
 
-    safe_annotate(input_data=order_items, output_data=output_data)
+    get_client().update_current_span(input=order_items, output=output_data)
     return context
 
 
@@ -305,9 +305,9 @@ def _call_anthropic_client(
         logger.error(f"Error calling Anthropic {model_name}: {str(e)}")
         return f"Error constructing order: {e}"
 
-    safe_annotate(
-        input_data=prompt,
-        output_data=str(response),
+    get_client().update_current_span(
+        input=prompt,
+        output=str(response),
         metadata={"system_prompt": system_prompt, "model": model_name},
     )
 

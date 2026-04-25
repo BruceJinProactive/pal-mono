@@ -3,8 +3,7 @@ import json
 import threading
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import task, tool
+from langfuse import get_client, observe
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
@@ -38,7 +37,6 @@ from tools.adora_v2_tool.classes import (
 from tools.utils.ordering._llm import async_llm_call
 from tools.utils.ordering._query_engine import create_query_engine
 from tools.utils.ordering._utils import get_relevant_docs_v2, is_valid_email
-from utils.dd import safe_annotate
 from utils.log import logger
 
 
@@ -79,7 +77,7 @@ class AdoraV2Tool(Toolkit):
         self.register(self.check_address)
         self.register(self.fulfill_order)
 
-    @task(name="_get_bearer_token")
+    @observe(name="_get_bearer_token")
     async def _get_bearer_token(self) -> str | None:
         """Get cached bearer token or fetch new one if not cached."""
         logger.debug(
@@ -107,7 +105,7 @@ class AdoraV2Tool(Toolkit):
             self._cached_bearer_token = token
             return self._cached_bearer_token
 
-    @tool
+    @observe(as_type="tool")
     async def get_store_info(self, date: str) -> str:
         """
         Retrieves store details for the current date, including estimated wait times,
@@ -136,7 +134,7 @@ class AdoraV2Tool(Toolkit):
 
         return str(store_info_response)
 
-    @tool
+    @observe(as_type="tool")
     async def check_store_ordering_status(self) -> str:
         """
         Check the online ordering status of the store.
@@ -161,7 +159,7 @@ class AdoraV2Tool(Toolkit):
         is_online = status_response.get("isOnline", False)
         return f"Store online ordering status: {'Online' if is_online else 'Offline'}"
 
-    @tool
+    @observe(as_type="tool")
     async def check_address(
         self, delivery_address: BaseDeliveryAddress
     ) -> tuple[str, dict | None]:
@@ -225,7 +223,7 @@ class AdoraV2Tool(Toolkit):
             {"lat_lng": geocoding_result, "type_id": result.type_id},
         )
 
-    @tool
+    @observe(as_type="tool")
     async def fulfill_order(
         self,
         customer_info: ClientCustomerInfo,
@@ -315,9 +313,9 @@ class AdoraV2Tool(Toolkit):
             if not all(isinstance(item, str) and item.strip() for item in item_group):
                 return f"Order item group {idx + 1} contains invalid items. All items must be non-empty strings."
 
-        # Annotate input data for Datadog tracing
-        safe_annotate(
-            input_data={
+        # Annotate input data for Langfuse tracing
+        get_client().update_current_span(
+            input={
                 "order_type": order_type.value,
                 "payment_type": payment_type.value,
                 "order_items": order_items,
@@ -327,7 +325,9 @@ class AdoraV2Tool(Toolkit):
         )
 
         # Gather common tasks
-        with LLMObs.task(name="fulfill_order.gather_context"):
+        with get_client().start_as_current_observation(
+            name="fulfill_order.gather_context"
+        ):
             bearer_token, chat_history, item_context = await asyncio.gather(
                 self._get_bearer_token(),
                 asyncio.to_thread(self.query_messages_tool.query_messages),
@@ -340,9 +340,11 @@ class AdoraV2Tool(Toolkit):
         # Validate coupon code if provided
         coupon_id = None
         if coupon_code:
-            with LLMObs.task(name="fulfill_order.validate_coupon"):
+            with get_client().start_as_current_observation(
+                name="fulfill_order.validate_coupon"
+            ):
                 # Annotate input
-                safe_annotate(
+                get_client().update_current_span(
                     metadata={
                         "coupon_code": coupon_code,
                     }
@@ -354,7 +356,7 @@ class AdoraV2Tool(Toolkit):
 
                 # Annotate output
                 if coupon_result:
-                    safe_annotate(
+                    get_client().update_current_span(
                         metadata={
                             "is_valid": coupon_result.is_valid,
                             "coupon_id": coupon_result.coupon_id,
@@ -362,7 +364,7 @@ class AdoraV2Tool(Toolkit):
                         }
                     )
                 else:
-                    safe_annotate(
+                    get_client().update_current_span(
                         metadata={
                             "is_valid": False,
                             "error": "API call failed",
@@ -401,13 +403,15 @@ class AdoraV2Tool(Toolkit):
             )
 
         # LLM call to extract order items with modifiers/sizes/quantities
-        with LLMObs.task(name="fulfill_order.extract_order_details"):
+        with get_client().start_as_current_observation(
+            name="fulfill_order.extract_order_details"
+        ):
             formatted_prompt = context_template.format(
                 context=context, chat_history=chat_history
             )
 
             # Annotate input before LLM call
-            safe_annotate(
+            get_client().update_current_span(
                 metadata={
                     "llm_input_system_prompt": system_prompt,
                     "llm_input_prompt": formatted_prompt,
@@ -429,7 +433,7 @@ class AdoraV2Tool(Toolkit):
                 llm_output_data = (
                     str(order_request_base) if order_request_base else "None"
                 )
-            safe_annotate(
+            get_client().update_current_span(
                 metadata={
                     "llm_output": llm_output_data,
                     "output_type": str(type(order_request_base)),
@@ -479,7 +483,7 @@ class AdoraV2Tool(Toolkit):
             order_request.customer.email = "orderingagent@palona.ai"
 
         # Annotate complete order request for tracing (before delivery address validation)
-        safe_annotate(
+        get_client().update_current_span(
             metadata={
                 "complete_order_request_pre_validation": order_request.model_dump(),
             }
@@ -490,9 +494,11 @@ class AdoraV2Tool(Toolkit):
             if not delivery_address:
                 return "This is a delivery order. Please provide your delivery address so it can be validated before placing the order."
 
-            with LLMObs.task(name="fulfill_order.validate_delivery_address"):
+            with get_client().start_as_current_observation(
+                name="fulfill_order.validate_delivery_address"
+            ):
                 # Annotate input before API call
-                safe_annotate(
+                get_client().update_current_span(
                     metadata={
                         "input_address": delivery_address.model_dump(),
                     }
@@ -502,7 +508,7 @@ class AdoraV2Tool(Toolkit):
                 address_data = validate_address_result[1]
 
                 # Annotate output after API call
-                safe_annotate(
+                get_client().update_current_span(
                     metadata={
                         "validation_success": address_data is not None,
                         "validated_lat_lng": (
@@ -537,10 +543,12 @@ class AdoraV2Tool(Toolkit):
         )
 
         # Step 1: Validate the order
-        with LLMObs.task(name="fulfill_order.validate_order"):
+        with get_client().start_as_current_observation(
+            name="fulfill_order.validate_order"
+        ):
             # Annotate input before API call with complete order information
-            safe_annotate(
-                input_data=order_request.model_dump(),
+            get_client().update_current_span(
+                input=order_request.model_dump(),
                 metadata={
                     "api_input": order_request.model_dump(),
                     "complete_order_object": {
@@ -586,7 +594,7 @@ class AdoraV2Tool(Toolkit):
                 total = getattr(validate_result, "total", None)
                 delivery_charge = getattr(validate_result, "delivery_charge", None)
 
-            safe_annotate(
+            get_client().update_current_span(
                 metadata={
                     "api_response": api_response_data,
                     "validation_success": validation_success,
@@ -601,14 +609,16 @@ class AdoraV2Tool(Toolkit):
                 return f"Validation failed: {validate_result if isinstance(validate_result, str) else 'No order key returned'}"
 
         # Step 2: Build process order request and process the order
-        with LLMObs.task(name="fulfill_order.process_order"):
+        with get_client().start_as_current_observation(
+            name="fulfill_order.process_order"
+        ):
             process_order_request = build_process_order_request(
                 order_request, validate_result
             )
 
             # Annotate input before API call with complete order information
-            safe_annotate(
-                input_data=process_order_request.model_dump(),
+            get_client().update_current_span(
+                input=process_order_request.model_dump(),
                 metadata={
                     "api_input": process_order_request.model_dump(),
                     "complete_order_object": {
@@ -652,7 +662,7 @@ class AdoraV2Tool(Toolkit):
                 api_response_data = process_result.model_dump()
             else:
                 api_response_data = str(process_result)
-            safe_annotate(
+            get_client().update_current_span(
                 metadata={
                     "api_response": api_response_data,
                 }
@@ -677,9 +687,9 @@ class AdoraV2Tool(Toolkit):
         if payment_url:
             confirmation += f"\nPayment URL: {payment_url}"
 
-        # Annotate final output for Datadog tracing with complete order information
-        safe_annotate(
-            output_data=confirmation,
+        # Annotate final output for Langfuse tracing with complete order information
+        get_client().update_current_span(
+            output=confirmation,
             metadata={
                 "order_id": process_result.order_id,
                 "order_number": process_result.order_no,

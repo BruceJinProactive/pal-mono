@@ -10,7 +10,7 @@ from agno.run.response import (
     ToolCallCompletedEvent,
     ToolCallStartedEvent,
 )
-from ddtrace.llmobs.decorators import agent
+from langfuse import get_client, observe
 from pydantic import BaseModel, Field
 
 from agent.config import AgentConfig
@@ -21,7 +21,7 @@ from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
 from db.repositories.tool_call_record_repository import ToolCallRecordRepositoryAsync
 from db.session import AsyncSessionLocal
-from utils.dd import safe_annotate, send_dd_histogram_metrics
+from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
 from utils.otel import trace_block
 
@@ -175,7 +175,7 @@ class AgnoAgent:
 
         return self._create_traced_stream_iterator(input)
 
-    @agent(name="AgnoAgent")
+    @observe(name="AgnoAgent", as_type="agent")
     async def _arun_with_workflow(self, input: Input) -> Output:
         message, messages = await self._build_model_inputs(input)
 
@@ -218,14 +218,10 @@ class AgnoAgent:
         )
 
     def _create_traced_stream_iterator(self, input: Input) -> AsyncIterator[Output]:
-        @agent(name="AgnoAgent")
+        @observe(name="AgnoAgent", as_type="agent")
         async def stream_wrapper() -> AsyncIterator[Output]:
-            safe_annotate(
-                input_data=input,
-                tags={
-                    "streaming": True,
-                },
-            )
+            langfuse = get_client()
+            langfuse.update_current_span(input=input)
 
             output_content = ""
             message, messages = await self._build_model_inputs(input)
@@ -448,7 +444,7 @@ class AgnoAgent:
                 output_content += error_output.content
                 yield error_output
 
-            safe_annotate(output_data=output_content)
+            langfuse.update_current_span(output=output_content)
 
         return stream_wrapper()
 

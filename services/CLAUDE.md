@@ -47,4 +47,4 @@ service_name/
 
 **Distributed Tracing:**
 
-- use `traced("Agent Service Create Agent")` for Datadog tracing
+- Use `traced("Agent Service Create Agent")` for OTel tracing and `@observe()` from Langfuse for LLM observability

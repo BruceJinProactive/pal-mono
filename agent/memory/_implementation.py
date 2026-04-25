@@ -2,10 +2,9 @@ import time
 from collections.abc import Mapping
 from typing import Dict, Tuple
 
-from ddtrace.llmobs.decorators import task
+from langfuse import get_client, observe
 from mem0 import AsyncMemoryClient
 
-from utils.dd import safe_annotate
 from utils.log import logger
 
 # Simple cache: user_id -> (memories_string, timestamp)
@@ -56,7 +55,7 @@ async def update_memory(
     )
 
 
-@task(name="Get All Memories")
+@observe(name="Get All Memories")
 async def get_all_memories(user_id: str) -> str:
     """
     Get all memories about a user. The memories are limited to the user's personal
@@ -66,22 +65,14 @@ async def get_all_memories(user_id: str) -> str:
     # Check cache first
     cached_memories = _get_cached_memories(user_id)
     if cached_memories is not None:
-        safe_annotate(
-            tags={
-                "cache_hit": True,
-            }
-        )
+        get_client().update_current_span(metadata={"cache_hit": True})
         return cached_memories
 
     # Cache miss - start background task to populate cache, return empty string immediately
     import asyncio
 
     asyncio.create_task(_fetch_and_cache_memories(user_id))
-    safe_annotate(
-        tags={
-            "cache_hit": False,
-        }
-    )
+    get_client().update_current_span(metadata={"cache_hit": False})
     return ""
 
 

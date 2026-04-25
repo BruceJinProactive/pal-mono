@@ -34,7 +34,7 @@ Last updated: 2026-03-27
 
 ## Don't Touch (fragile / in-progress)
 
-- `agent/agent.py` LLMObs bootstrap — trace isolation depends on current structure
+- `agent/agent.py` Langfuse `@observe` tracing — trace isolation depends on current structure
 
 ## Upcoming
 

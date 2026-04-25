@@ -4,11 +4,10 @@ from agno.agent.agent import Agent
 from agno.models.groq.groq import Groq
 from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import TextBlock, ToolUseBlock
-from ddtrace.llmobs.decorators import llm
+from langfuse import get_client, observe
 from pydantic import BaseModel
 
 from tools.utils.ordering.classes import OrderConstructionModel
-from utils.dd import safe_annotate
 from utils.log import logger
 from utils.secret import (
     async_get_server_secret_with_fallback,
@@ -117,16 +116,16 @@ def _call_anthropic_client(
         )
         return None
 
-    safe_annotate(
-        input_data=prompt,
-        output_data=str(response),
+    get_client().update_current_span(
+        input=prompt,
+        output=str(response),
         metadata={"system_prompt": system_prompt, "model": model_name},
     )
 
     return response
 
 
-@llm(name="get_structured_outputs")
+@observe(name="get_structured_outputs", as_type="generation")
 def llm_call(
     system_prompt: str,
     prompt: str,
@@ -202,9 +201,9 @@ Rules:
         )
         return None
 
-    safe_annotate(
-        input_data=prompt,
-        output_data=str(response),
+    get_client().update_current_span(
+        input=prompt,
+        output=str(response),
         metadata={"system_prompt": system_prompt},
     )
 
@@ -291,9 +290,9 @@ async def _async_call_anthropic_client(
         )
         return None
 
-    safe_annotate(
-        input_data=prompt,
-        output_data=str(response),
+    get_client().update_current_span(
+        input=prompt,
+        output=str(response),
         metadata={"system_prompt": system_prompt, "model": model_name},
     )
 
@@ -322,7 +321,7 @@ async def async_llm_call(
 ) -> str | None: ...
 
 
-@llm(name="get_structured_outputs_async")
+@observe(name="get_structured_outputs_async", as_type="generation")
 async def async_llm_call(
     system_prompt: str,
     prompt: str,
@@ -389,9 +388,9 @@ of the response.
         )
         return None
 
-    safe_annotate(
-        input_data=prompt,
-        output_data=str(response_content),
+    get_client().update_current_span(
+        input=prompt,
+        output=str(response_content),
         metadata={"system_prompt": system_prompt},
     )
 

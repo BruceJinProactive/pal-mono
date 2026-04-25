@@ -2,11 +2,10 @@ import json
 from typing import Any
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import get_client, observe
 from llama_index.core.indices.query.base import BaseQueryEngine
 
 from agent.knowledge import KnowledgeConfig, get_knowledge
-from utils.dd import safe_annotate
 
 
 class QueryKnowledgeTool(Toolkit):
@@ -23,7 +22,7 @@ class QueryKnowledgeTool(Toolkit):
 
         return json.dumps(docs, indent=2)
 
-    @tool
+    @observe(as_type="tool")
     def query_knowledge(self, query: str) -> str:
         """Use this function to search the knowledge base for information about a query.
 
@@ -37,8 +36,8 @@ class QueryKnowledgeTool(Toolkit):
         response = self.knowledge.query(query)
         retrieved_documents = [node.text for node in response.source_nodes]
 
-        safe_annotate(
-            input_data=query, output_data=[{"text": doc} for doc in retrieved_documents]
+        get_client().update_current_span(
+            input=query, output=[{"text": doc} for doc in retrieved_documents]
         )
 
         if not retrieved_documents:

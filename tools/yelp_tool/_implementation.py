@@ -5,7 +5,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import retrieval, tool
+from langfuse import get_client, observe
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
@@ -67,7 +67,6 @@ from tools.yelp_tool.classes import (
     WaitlistOnMyWayQuery,
     YelpAccessToken,
 )
-from utils.dd import safe_annotate
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -295,7 +294,7 @@ class YelpTool(Toolkit):
 
         return YelpAccessToken(access_token=api_key, token_type="Bearer")
 
-    @retrieval
+    @observe(as_type="retriever")
     def _get_chat_history(self) -> str:
         """
         Retrieves the chat history from the query messages tool.
@@ -307,10 +306,10 @@ class YelpTool(Toolkit):
         if not chat_history:
             logger.warning("[YelpTool._get_chat_history] Empty chat history returned")
 
-        safe_annotate(output_data=chat_history)
+        get_client().update_current_span(output=chat_history)
         return chat_history
 
-    @tool
+    @observe(as_type="tool")
     def get_restaurant_openings_creditcard_not_required(
         self,
         covers: Optional[int] = None,
@@ -404,7 +403,7 @@ class YelpTool(Toolkit):
             )
             return "Failed to get restaurant openings. Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def make_reservation_creditcard_not_required(
         self,
         covers: Optional[int] = None,
@@ -582,7 +581,7 @@ class YelpTool(Toolkit):
             logger.warning("[YelpTool.make_reservation] Error: %s", e, exc_info=True)
             return "Failed to make reservation. Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def get_waitlist_status(self) -> str:
         """
         Get current waitlist status and wait times for a restaurant using the Yelp Waitlist API.
@@ -644,7 +643,7 @@ class YelpTool(Toolkit):
             logger.warning("[YelpTool.get_waitlist_status] Error: %s", e, exc_info=True)
             return "Failed to get waitlist status. Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def get_waitlist_info(self) -> str:
         """
         This endpoint returns waitlist configuration fields including operational parameters and
@@ -704,7 +703,7 @@ class YelpTool(Toolkit):
             logger.warning("[YelpTool.get_waitlist_info] Error: %s", e, exc_info=True)
             return "Failed to get waitlist configuration. Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def create_waitlist_on_my_way_visit(
         self,
         name: Optional[str] = None,
@@ -828,7 +827,7 @@ class YelpTool(Toolkit):
 
             return f"Failed to create waitlist on-my-way visit. {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     def join_waitlist_queue(
         self,
         name: Optional[str] = None,
@@ -1002,7 +1001,7 @@ class YelpTool(Toolkit):
 
             return f"Failed to join the waitlist queue. {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     def get_openings_open_api_creditcard_required(
         self,
         covers: Optional[int] = None,
@@ -1108,7 +1107,7 @@ class YelpTool(Toolkit):
             )
             return "Failed to get restaurant openings. Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def make_reservation_creditcard_required(
         self,
         covers: Optional[int] = None,
@@ -1241,7 +1240,7 @@ class YelpTool(Toolkit):
             )
             return "Failed to make reservation. Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def cancel_visit(
         self,
         visit_id: Optional[str] = None,

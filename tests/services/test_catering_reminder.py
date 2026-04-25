@@ -9,52 +9,6 @@ import sqlalchemy.engine
 import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
 
-
-class _TraceSpan:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-    def set_tag(self, key, value):
-        return None
-
-
-class _TracerStub:
-    def current_span(self):
-        return None
-
-    def trace(self, *args, **kwargs):
-        return _TraceSpan()
-
-
-class _LLMObsStub:
-    @staticmethod
-    def annotate(**kwargs):
-        return None
-
-
-class _DogStatsdStub:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def histogram(self, *args, **kwargs):
-        return None
-
-
-ddtrace_stub = ModuleType("ddtrace")
-setattr(ddtrace_stub, "tracer", _TracerStub())
-sys.modules.setdefault("ddtrace", ddtrace_stub)
-
-ddtrace_llmobs_stub = ModuleType("ddtrace.llmobs")
-setattr(ddtrace_llmobs_stub, "LLMObs", _LLMObsStub)
-sys.modules.setdefault("ddtrace.llmobs", ddtrace_llmobs_stub)
-
-datadog_stub = ModuleType("datadog")
-setattr(datadog_stub, "DogStatsd", _DogStatsdStub)
-sys.modules.setdefault("datadog", datadog_stub)
-
 boto3_stub = ModuleType("boto3")
 setattr(boto3_stub, "client", lambda *args, **kwargs: object())
 sys.modules.setdefault("boto3", boto3_stub)

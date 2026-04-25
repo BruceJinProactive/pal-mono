@@ -2,11 +2,10 @@ import os
 from typing import Any, AsyncIterator, Mapping
 
 from agno.models.azure.openai_chat import AzureOpenAI
-from ddtrace.llmobs.decorators import task
+from langfuse import get_client, observe
 from openai import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
-from utils.dd import safe_annotate
 from utils.log import logger
 from utils.otel import traced
 
@@ -38,7 +37,7 @@ def _build_azure_client() -> AsyncAzureOpenAI:
     )
 
 
-@task(name="LLM Call Default")
+@observe(name="LLM Call Default")
 async def call_llm_default(
     model_option: ModelOptions, params: Mapping[str, Any]
 ) -> ChatCompletion:
@@ -59,9 +58,9 @@ async def call_llm_default(
     sanitized_params = {key: value for key, value in params.items() if key != "stream"}
     sanitized_params["model"] = deployment_name
 
-    safe_annotate(
-        input_data=sanitized_params,
-        tags={
+    get_client().update_current_span(
+        input=sanitized_params,
+        metadata={
             "model": deployment_name,
             "streaming": False,
             "provider": "azure",
@@ -79,7 +78,7 @@ async def call_llm_default(
         raise
 
 
-@task(name="LLM Call Stream")
+@observe(name="LLM Call Stream")
 async def call_llm_stream(
     model_option: ModelOptions, params: Mapping[str, Any]
 ) -> AsyncIterator[ChatCompletionChunk]:
@@ -100,12 +99,13 @@ async def call_llm_stream(
     sanitized_params = {key: value for key, value in params.items() if key != "stream"}
     sanitized_params["model"] = deployment_name
 
-    safe_annotate(
-        tags={
+    get_client().update_current_span(
+        input=sanitized_params,
+        metadata={
             "model": deployment_name,
             "streaming": True,
             "provider": "azure",
-        }
+        },
     )
     try:
         response = await client.chat.completions.create(stream=True, **sanitized_params)

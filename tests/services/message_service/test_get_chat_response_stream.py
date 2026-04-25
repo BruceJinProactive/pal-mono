@@ -25,52 +25,6 @@ def _ensure_package_module(
     return pkg
 
 
-def _install_ddtrace_llmobs_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
-    try:
-        import ddtrace.llmobs.decorators  # noqa: F401
-
-        return
-    except Exception:
-        pass
-
-    ddtrace_mod = sys.modules.get("ddtrace")
-    if ddtrace_mod is None:
-        ddtrace_mod = _ensure_package_module(monkeypatch, "ddtrace")
-    else:
-        _ensure_package_module(monkeypatch, "ddtrace", ddtrace_mod)
-
-    llmobs_mod = ModuleType("ddtrace.llmobs")
-    decorators_mod = ModuleType("ddtrace.llmobs.decorators")
-    _ensure_package_module(monkeypatch, "ddtrace.llmobs", llmobs_mod)
-    monkeypatch.setitem(sys.modules, "ddtrace.llmobs.decorators", decorators_mod)
-
-    class _NoopLLMObs:
-        @staticmethod
-        def disable() -> None:
-            return
-
-        @staticmethod
-        def enable(**kwargs) -> None:
-            return
-
-        @staticmethod
-        def annotate(**kwargs) -> None:
-            return
-
-    def _noop_decorator(name=None):
-        def _decorator(func):
-            return func
-
-        return _decorator
-
-    llmobs_mod.LLMObs = _NoopLLMObs  # type: ignore[attr-defined]
-    llmobs_mod.decorators = decorators_mod  # type: ignore[attr-defined]
-    decorators_mod.agent = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.workflow = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.task = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.__getattr__ = lambda name: _noop_decorator  # type: ignore[attr-defined]
-
-
 def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     try:
         import pal_agents.providers.knowledge  # noqa: F401
@@ -245,7 +199,6 @@ class _FakeAgentRepo:
 async def test_get_chat_response_stream_generates_chatcmpl_stream_id_and_reuses_it(
     monkeypatch,
 ):
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -285,8 +238,6 @@ async def test_get_chat_response_stream_generates_chatcmpl_stream_id_and_reuses_
         return {"input": "ok"}
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
@@ -346,7 +297,6 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
     monkeypatch,
 ):
     """Verify channel, room_name, and participant_identity are forwarded to RuntimeContext."""
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -399,8 +349,6 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
             return _stream()
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
@@ -419,15 +367,15 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
         _fake_construct_agent_spec,
     )
     monkeypatch.setattr(_implementation, "PalAgent", _CapturingPalAgent)
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
 
     async def _fake_query_history_messages(*args, **kwargs):
         return []
 
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
+    )
+    monkeypatch.setattr(
+        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
     )
 
     session = AsyncMock()
@@ -470,7 +418,6 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
 async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
     monkeypatch,
 ):
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -514,8 +461,6 @@ async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
         return []
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
@@ -567,7 +512,6 @@ async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
 async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error_chunk(
     monkeypatch,
 ):
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -611,8 +555,6 @@ async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error
         return []
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
@@ -665,7 +607,6 @@ async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error
 async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_cleanly(
     monkeypatch,
 ):
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -714,8 +655,6 @@ async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_clea
         return []
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
@@ -767,7 +706,6 @@ async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_clea
 async def test_get_chat_response_stream_outer_cancelled_error_returns_cleanly(
     monkeypatch,
 ):
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -781,8 +719,6 @@ async def test_get_chat_response_stream_outer_cancelled_error_returns_cleanly(
         raise asyncio.CancelledError()
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.project_service,
         "get_project_async",
@@ -816,7 +752,6 @@ async def test_get_chat_response_stream_legacy_agent_closing_conversation_update
     monkeypatch,
 ):
     """Test that closing_conversation flag triggers conversation status update in legacy agent path."""
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -882,8 +817,6 @@ async def test_get_chat_response_stream_legacy_agent_closing_conversation_update
             return fake_conversation
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import observe
 
 from agent.tool import ToolMetadata
 from db.tables.types import IntegrationProvider
@@ -50,7 +50,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
         self.register(self.join_waitlist_queue)
         self.register(self.get_user_wait_status)
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def check_availability(  # type: ignore[misc]
         self,
@@ -125,7 +125,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             logger.error(f"[MiniTable] Error checking availability: {str(e)}")
             return f"Error checking availability: {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def make_reservation(  # type: ignore[misc]
         self,
@@ -269,7 +269,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             logger.error(f"[MiniTable] Error creating reservation: {str(e)}")
             return f"Error creating reservation: {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     def get_waitlist_status(self) -> str:  # type: ignore[misc]
         """
         Get current waitlist status and wait times for the restaurant.
@@ -338,7 +338,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             logger.error(f"[MiniTable] Error getting waitlist status: {str(e)}")
             return f"Error getting waitlist status: {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def join_waitlist_queue(  # type: ignore[misc]
         self,
@@ -465,7 +465,7 @@ class MiniTableTool(Toolkit, BaseReservationTool):
             logger.error(f"[MiniTable] Error joining waitlist: {str(e)}")
             return f"Error joining waitlist: {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def get_user_wait_status(self) -> str:  # type: ignore[misc]
         """

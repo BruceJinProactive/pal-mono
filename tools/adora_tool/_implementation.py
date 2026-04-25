@@ -7,8 +7,7 @@ from typing import List
 from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import retrieval, task, tool
+from langfuse import get_client, observe
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
@@ -29,7 +28,6 @@ from tools.adora_tool.classes import (
     SubQueries,
 )
 from tools.utils.ordering.classes import OrderConstructionModel
-from utils.dd import safe_annotate
 from utils.log import logger
 from utils.secret import get_client_secret_with_fallback
 
@@ -117,7 +115,7 @@ class AdoraTool(Toolkit):
 
     def _prefetch_adora_bearer_token(self) -> AdoraAccessToken | None:
         """
-        Prefetches the Adora bearer token without LLMObs tracking.
+        Prefetches the Adora bearer token without Langfuse tracking.
         This is called during initialization to start token fetching in the background.
 
         Returns:
@@ -130,15 +128,17 @@ class AdoraTool(Toolkit):
 
     def _get_adora_bearer_token(self) -> AdoraAccessToken | None:
         """
-        Gets the Adora bearer token with LLMObs task tracking.
+        Gets the Adora bearer token with Langfuse tracking.
         This should be used during tool methods that need observation.
 
         Returns:
             AdoraAccessToken | None: The bearer token or None if fetching failed
         """
         if not self._adora_bearer_token:
-            logger.debug("Fetching Adora bearer token with LLMObs tracking")
-            with LLMObs.task(name="get_adora_bearer_token"):
+            logger.debug("Fetching Adora bearer token with Langfuse tracking")
+            with get_client().start_as_current_observation(
+                name="get_adora_bearer_token"
+            ):
                 self._adora_bearer_token = self._fetch_adora_bearer_token()
         return self._adora_bearer_token
 
@@ -186,7 +186,7 @@ class AdoraTool(Toolkit):
             logger.error(f"Error fetching Adora bearer token: {e}")
             return None
 
-    @tool
+    @observe(as_type="tool")
     def check_online_ordering_status(self) -> str:
         """
         Check the online ordering status of the store.
@@ -202,7 +202,7 @@ class AdoraTool(Toolkit):
             return "The store is open for online ordering."
 
         try:
-            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            # Use _get_adora_bearer_token to ensure Langfuse tracking
             bearer_token = self._get_adora_bearer_token()
             if not bearer_token:
                 return (
@@ -229,7 +229,7 @@ class AdoraTool(Toolkit):
             )
             return "Failed to check the online ordering status, please try again."
 
-    @tool
+    @observe(as_type="tool")
     def get_store_info(self, date: str) -> str:
         """
         Retrieves store details for the current date, including estimated wait times,
@@ -261,7 +261,7 @@ class AdoraTool(Toolkit):
             if self.cached_store_info:
                 return self.cached_store_info
 
-            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            # Use _get_adora_bearer_token to ensure Langfuse tracking
             bearer_token = self._get_adora_bearer_token()
             if not bearer_token:
                 return (
@@ -289,7 +289,7 @@ class AdoraTool(Toolkit):
             logger.error(f"[AdoraTool.store_info] Error getting store info: {e}")
             return "Failed to get the wait time, please try again."
 
-    @tool
+    @observe(as_type="tool")
     def check_address(self, address: str) -> str:
         """
         This tool can be used to validate whether or not an address is within a
@@ -329,7 +329,7 @@ class AdoraTool(Toolkit):
 
         return validate_order_message
 
-    @task
+    @observe()
     def _validate_address(
         self, canonical_address: DeliveryAddress | None
     ) -> tuple[bool, str]:
@@ -350,7 +350,7 @@ class AdoraTool(Toolkit):
                 "Could you provide your complete address?",
             )
 
-        # Use _get_adora_bearer_token to ensure LLMObs tracking
+        # Use _get_adora_bearer_token to ensure Langfuse tracking
         bearer_token = self._get_adora_bearer_token()
         if not bearer_token:
             return (
@@ -383,7 +383,7 @@ class AdoraTool(Toolkit):
         else:
             return True, "Address is validated and is in the delivery zone."
 
-    @retrieval
+    @observe(as_type="retriever")
     def _get_relevant_docs(self, chat_history: str) -> str:
         # Decompose chat history into multiple sub-queries
 
@@ -462,7 +462,7 @@ class AdoraTool(Toolkit):
                     output_data.append({"id": node.id_, "text": node.text})
                     doc_id += 1
 
-        safe_annotate(input_data=chat_history, output_data=output_data)
+        get_client().update_current_span(input=chat_history, output=output_data)
         return context
 
     def _format_phone_for_db(self, raw_phone: str | None) -> str:
@@ -489,7 +489,7 @@ class AdoraTool(Toolkit):
         else:
             return PHONE_PLACEHOLDER
 
-    @task(name="_save_order_to_db")
+    @observe(name="_save_order_to_db")
     def _save_order_to_db(
         self, order: Order, validated_order: AdoraOrderCalculationResult
     ) -> None:
@@ -598,14 +598,14 @@ class AdoraTool(Toolkit):
         finally:
             session.close()
 
-    @task(name="_fulfill_order [via Adora API]")
+    @observe(name="_fulfill_order [via Adora API]")
     def _fulfill_order(self, order: Order, bearer_token: AdoraAccessToken) -> str:
         # Exclude promise_date_time from payload if it's None (ASAP orders)
         exclude_fields = set()
         if order.promise_date_time is None:
             exclude_fields.add("promise_date_time")
         payload = order.model_dump_json(by_alias=True, exclude=exclude_fields)
-        safe_annotate(input_data=order, metadata={"payload": payload})
+        get_client().update_current_span(input=order, metadata={"payload": payload})
 
         # Guaranteed phone number since we validated it in the order
         json_payload = json.loads(payload)
@@ -668,7 +668,7 @@ class AdoraTool(Toolkit):
                 f"{text_payment_url}"
             )
 
-            safe_annotate(output_data=output)
+            get_client().update_current_span(output=output)
             return output
         else:
             logger.error(
@@ -676,7 +676,7 @@ class AdoraTool(Toolkit):
             )
             return "Failed to validate order due to unexpected response."
 
-    @task(name="_add_loyalty_discounts")
+    @observe(name="_add_loyalty_discounts")
     def _add_loyalty_discounts(
         self, order: Order, bearer_token: AdoraAccessToken
     ) -> None:
@@ -875,7 +875,7 @@ class AdoraTool(Toolkit):
                         )
                     )
 
-    @tool
+    @observe(as_type="tool")
     def checkout_order(self) -> str:
         """
         Validates an order for checkout by extracting structured ordering data from chat history. This function absolutely must be invoked  either when the order is ready to be placed or when the user asks to checkout, pay, place the order, etc.
@@ -993,7 +993,7 @@ class AdoraTool(Toolkit):
             if order.coupon_codes and self.coupons_enabled:
                 code = order.coupon_codes[-1]
 
-                # Use _get_adora_bearer_token to ensure LLMObs tracking
+                # Use _get_adora_bearer_token to ensure Langfuse tracking
                 bearer_token = self._get_adora_bearer_token()
                 if bearer_token:
                     # Validate each coupon code
@@ -1015,7 +1015,7 @@ class AdoraTool(Toolkit):
                 else:
                     order.coupon_ids.append(self.default_coupon_id)
 
-            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            # Use _get_adora_bearer_token to ensure Langfuse tracking
             bearer_token = self._get_adora_bearer_token()
             if not bearer_token:
                 return (
@@ -1060,7 +1060,7 @@ class AdoraTool(Toolkit):
             logger.exception("Error in extracting structured data: %s", e)
             return "Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def validate_coupons(self, coupon_codes: List[str]) -> str:
         """
         Validates one or more coupon codes and returns information about their validity.
@@ -1090,7 +1090,7 @@ class AdoraTool(Toolkit):
             return "Please provide at least one valid coupon code to validate."
 
         try:
-            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            # Use _get_adora_bearer_token to ensure Langfuse tracking
             bearer_token = self._get_adora_bearer_token()
             if not bearer_token:
                 return (
@@ -1133,7 +1133,7 @@ class AdoraTool(Toolkit):
             )
             return "There was an error validating the coupon code(s). Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def get_loyalty_info(self, phone_number: str) -> str:
         """
         Access customer information and retrieve their loyalty status through phone number
@@ -1160,7 +1160,7 @@ class AdoraTool(Toolkit):
             if not phone_number:
                 return "Please provide a valid phone number in the standard ten-digit format."
 
-            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            # Use _get_adora_bearer_token to ensure Langfuse tracking
             bearer_token = self._get_adora_bearer_token()
             if not bearer_token:
                 logger.debug("[AdoraTool.get_loyalty_info] No bearer token found")
@@ -1189,7 +1189,7 @@ class AdoraTool(Toolkit):
             )
             return error_message
 
-    @tool
+    @observe(as_type="tool")
     def get_last_order_status(self, phone_number: str) -> str:
         """
         Retrieves the status of the customer's last order using their phone number.
@@ -1216,7 +1216,7 @@ class AdoraTool(Toolkit):
             if not phone_number:
                 return "Please confirm your phone number."
 
-            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            # Use _get_adora_bearer_token to ensure Langfuse tracking
             bearer_token = self._get_adora_bearer_token()
             if not bearer_token:
                 logger.debug("[AdoraTool.get_last_order_status] No bearer token found")
@@ -1281,7 +1281,7 @@ class AdoraTool(Toolkit):
             )
             return "Error formatting order status information."
 
-    @tool
+    @observe(as_type="tool")
     def get_menu_item_info(self, menu_item: str) -> str:
         """
         Get details about a menu item. The detailed information such as modifiers, toppings, etc. could be found by this tool.
@@ -1319,7 +1319,7 @@ class AdoraTool(Toolkit):
             )
             return "Failed to retrieve menu item information. Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def get_available_coupons(self) -> str:
         """
         Retrieves all currently available coupons from the Adora API.
@@ -1338,7 +1338,7 @@ class AdoraTool(Toolkit):
                  coupons cannot be retrieved.
         """
         try:
-            # Use _get_adora_bearer_token to ensure LLMObs tracking
+            # Use _get_adora_bearer_token to ensure Langfuse tracking
             bearer_token = self._get_adora_bearer_token()
             if not bearer_token:
                 return (

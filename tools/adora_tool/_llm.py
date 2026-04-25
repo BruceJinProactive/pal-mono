@@ -2,12 +2,11 @@ from typing import TypeVar, overload
 
 from agno.agent.agent import Agent
 from agno.models.groq.groq import Groq
-from ddtrace.llmobs.decorators import llm
+from langfuse import get_client, observe
 from pydantic import BaseModel
 
 from tools.utils.ordering._utils import _call_anthropic_client
 from tools.utils.ordering.classes import OrderConstructionModel
-from utils.dd import safe_annotate
 
 RETRIEVE_ORDER_ITEMS_SYSTEM_PROMPT = """You are a helpful assistant that extracts full and specific order items' names from a chat history between a user and a restaurant bot. Your job is to identify the complete names of all food or drink items the user has added to their final order.
 Requirements:
@@ -114,7 +113,7 @@ def llm_call(
 ) -> str | None: ...
 
 
-@llm(name="get_structured_outputs")
+@observe(name="get_structured_outputs", as_type="generation")
 def llm_call(
     system_prompt: str,
     prompt: str,
@@ -158,9 +157,9 @@ def llm_call(
 
     response = agent.run(prompt).content
 
-    safe_annotate(
-        input_data=prompt,
-        output_data=str(response),
+    get_client().update_current_span(
+        input=prompt,
+        output=str(response),
         metadata={"system_prompt": system_prompt},
     )
 

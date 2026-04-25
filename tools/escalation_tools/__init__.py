@@ -1,5 +1,5 @@
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import observe
 
 
 class EscalationTools(Toolkit):
@@ -23,7 +23,7 @@ class EscalationTools(Toolkit):
     # Toolkit tools (actions)
     # ----------------------------------------
 
-    @tool
+    @observe(as_type="tool")
     def get_criteria(self) -> str:
         """
         Always call this function first to retrieve the criteria for deciding whether a user prompt needs escalation.
@@ -33,7 +33,7 @@ class EscalationTools(Toolkit):
         """
         return self.criteria
 
-    @tool
+    @observe(as_type="tool")
     def get_escalated_response(self) -> str:
         """
         Always call this function to retrieve the escalated response to reply a message.
@@ -45,7 +45,7 @@ class EscalationTools(Toolkit):
         """
         return self.escalated_response
 
-    @tool
+    @observe(as_type="tool")
     def get_emergency_response(self) -> str:
         """
         Always call this function to retrieve the emergency response to reply a message.

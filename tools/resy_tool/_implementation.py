@@ -3,8 +3,7 @@ from datetime import datetime
 from functools import cached_property
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import tool
+from langfuse import get_client, observe
 
 from agent.tool import ToolMetadata
 from tools.base.reservation import BaseReservationTool, params_validate
@@ -71,7 +70,7 @@ class ResyTool(Toolkit, BaseReservationTool):
             party_size=party_size,
         )
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def check_availability(self, party_size: int, date: str, time: str) -> str:  # type: ignore[misc]
         """
@@ -91,7 +90,9 @@ class ResyTool(Toolkit, BaseReservationTool):
         )  # 2 people minimum for checking
 
         try:
-            with LLMObs.task(name="search_resy_availability"):
+            with get_client().start_as_current_observation(
+                name="search_resy_availability"
+            ):
                 response = self._search_resy(day=date, party_size=party_size)
         except urllib.error.HTTPError as exc:
             body = (
@@ -133,7 +134,7 @@ class ResyTool(Toolkit, BaseReservationTool):
         logger.info("[Resy Tool] Formatted availability: %s", formatted)
         return formatted
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def make_reservation(  # type: ignore[misc]
         self,

@@ -2,11 +2,10 @@ import uuid
 from typing import Dict
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import get_client, observe
 
 from db.repositories.message_repository import MessageRepository
 from db.session import get_db
-from utils.dd import safe_annotate
 from utils.log import logger
 
 from ... import _config
@@ -18,7 +17,7 @@ class QueryMessagesTool(Toolkit):
         self.register(self.query_messages)
         self.metadata = metadata
 
-    @tool
+    @observe(as_type="tool")
     def query_messages(self) -> str:
         """Use this function to get the chat history.
 
@@ -30,7 +29,7 @@ class QueryMessagesTool(Toolkit):
         """
 
         try:
-            safe_annotate(metadata=self.metadata.model_dump())
+            get_client().update_current_span(metadata=self.metadata.model_dump())
 
             chat_history = ""
 
@@ -73,7 +72,7 @@ class QueryMessagesTool(Toolkit):
                                     f"**[Assistant]**\n{assistant_content}\n\n"
                                 )
 
-                safe_annotate(output_data=chat_history)
+                get_client().update_current_span(output=chat_history)
 
                 return chat_history
 

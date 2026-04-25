@@ -5,14 +5,13 @@ import os
 from collections.abc import AsyncIterator as _AsyncIterator
 from typing import AsyncIterator
 
-from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import workflow
+from langfuse import get_client, observe
 
 from agent.config import AgentConfig
 from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
-from utils.dd import is_testing_mode, safe_annotate, send_dd_histogram_metrics
+from utils.dd import send_dd_histogram_metrics
 from utils.otel import traced
 
 
@@ -35,12 +34,7 @@ class Agent:
 
         self._metadata = config.metadata
 
-        # Set up Datadog LLM Observability (skip for testing requests)
-        if not is_testing_mode():
-            LLMObs.enable(
-                ml_app="pal",
-                agentless_enabled=True,
-            )
+        # Langfuse auto-initializes from LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY env vars
 
     async def arun(self, input: Input) -> Output | AsyncIterator[Output]:
         """
@@ -62,18 +56,9 @@ class Agent:
         # For streaming case, use a wrapper that maintains the workflow span
         return self._create_traced_stream_iterator(input)
 
-    @workflow(name="Pal Agent Processing")
+    @observe(name="Pal Agent Processing")
     async def _arun_with_workflow(self, input: Input) -> Output:
         """Internal method for non-streaming responses with workflow tracing"""
-        safe_annotate(
-            tags={
-                "account_name": self._metadata.account_name,
-                "user_id": self._metadata.user_id,
-                "session_id": self._metadata.session_id,
-                "agent_id": self._metadata.agent_id,
-                "streaming": False,
-            }
-        )
 
         # Start agent task
         agent_task = asyncio.create_task(self._agent.arun(input))  # type: ignore
@@ -94,9 +79,6 @@ class Agent:
 
         if isinstance(output, _AsyncIterator):
             # This should never happen in non-streaming mode
-            safe_annotate(
-                tags={"error": "Non-streaming result received in non-streaming mode"}
-            )
             raise TypeError(
                 "Expected an single Output in non-streaming mode, but got a AsyncIterator."
             )
@@ -106,23 +88,15 @@ class Agent:
     def _create_traced_stream_iterator(self, input: Input) -> AsyncIterator[Output]:
         """
         Creates an AsyncIterator that maintains the workflow span throughout its lifecycle.
-        This ensures the entire streaming process is captured in the Datadog trace.
+        This ensures the entire streaming process is captured in the Langfuse trace.
         """
 
         async def stream_wrapper() -> AsyncIterator[Output]:
-            # Apply workflow decorator to a generator function to trace the entire stream lifecycle
-            @workflow(name="Pal Agent Processing")
+            # Apply observe decorator to a generator function to trace the entire stream lifecycle
+            @observe(name="Pal Agent Processing")
             async def process_stream() -> AsyncIterator[Output]:
-                safe_annotate(
-                    input_data=input,
-                    tags={
-                        "account_name": self._metadata.account_name,
-                        "user_id": self._metadata.user_id,
-                        "session_id": self._metadata.session_id,
-                        "agent_id": self._metadata.agent_id,
-                        "streaming": True,
-                    },
-                )
+                langfuse = get_client()
+                langfuse.update_current_span(input=input)
 
                 try:
                     send_dd_histogram_metrics(
@@ -135,11 +109,6 @@ class Agent:
                     )
                     output_stream = await self._agent.arun(input)  # type: ignore
                     if not isinstance(output_stream, _AsyncIterator):
-                        safe_annotate(
-                            tags={
-                                "error": "Non-streaming result received in streaming mode"
-                            }
-                        )
                         raise TypeError(
                             "Expected an AsyncIterator in streaming mode, but got a single Output."
                         )
@@ -159,7 +128,6 @@ class Agent:
                     async for chunk in output_stream:
                         chunk_count += 1
                         if chunk_count == 1:
-                            safe_annotate(tags={"first_chunk_received": True})
                             send_dd_histogram_metrics(
                                 "agent.received_first_chunk",
                                 input.request_context.request_time,
@@ -172,8 +140,9 @@ class Agent:
                         output_content += chunk.content
                         yield chunk
 
-                    safe_annotate(
-                        output_data=output_content, tags={"total_chunks": chunk_count}
+                    langfuse.update_current_span(
+                        output=output_content,
+                        metadata={"total_chunks": chunk_count},
                     )
 
                 except Exception as e:

@@ -2,10 +2,8 @@ from typing import TypeVar, overload
 
 from agno.agent.agent import Agent
 from agno.models.groq.groq import Groq
-from ddtrace.llmobs.decorators import llm
+from langfuse import get_client, observe
 from pydantic import BaseModel
-
-from utils.dd import safe_annotate
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -31,7 +29,7 @@ def llm_call(
 
 
 # This LLM is brought from Adora. Let's do a refactor to merge them.
-@llm(name="get_structured_outputs")
+@observe(name="get_structured_outputs", as_type="generation")
 def llm_call(
     system_prompt: str,
     prompt: str,
@@ -65,9 +63,9 @@ of the response. Do not include newline characters in the returned JSON object.
 
     response = agent.run(prompt).content
 
-    safe_annotate(
-        input_data=prompt,
-        output_data=str(response),
+    get_client().update_current_span(
+        input=prompt,
+        output=str(response),
         metadata={"system_prompt": system_prompt},
     )
 

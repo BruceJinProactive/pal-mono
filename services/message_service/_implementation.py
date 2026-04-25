@@ -6,7 +6,6 @@ from collections.abc import Callable
 from typing import AsyncIterator
 
 from agno.run.response import RunResponse
-from ddtrace.llmobs import LLMObs
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
 from openai.types.chat.chat_completion_chunk import ChoiceDelta
@@ -37,7 +36,7 @@ from services import (
     transaction_service,
     user_service,
 )
-from utils.dd import is_testing_mode, send_dd_histogram_metrics
+from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
 from utils.otel import trace_async_block
 from utils.request_context import RequestContext
@@ -144,13 +143,6 @@ async def get_chat_response_async(
     request_context: RequestContext,
     context_modifier: Callable[[RuntimeContext], None] | None = None,
 ) -> list[Message]:
-    # Initialize LLMObs for Datadog LLM Observability
-    if is_testing_mode():
-        # Explicitly disable LLMObs for testing requests to prevent data collection
-        LLMObs.disable()
-    else:
-        LLMObs.enable(ml_app="pal", agentless_enabled=True)
-
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
     try:
@@ -522,13 +514,6 @@ async def get_chat_response_stream(
     participant_identity: str | None = None,
     sip_provider: str | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
-    # Initialize LLMObs for Datadog LLM Observability
-    if is_testing_mode():
-        # Explicitly disable LLMObs for testing requests to prevent data collection
-        LLMObs.disable()
-    else:
-        LLMObs.enable(ml_app="pal", agentless_enabled=True)
-
     async with trace_async_block("Message Service Stream Processing"):
         message_repo = db.MessageRepositoryAsync(session)
         stream_id = f"chatcmpl-{uuid.uuid4().hex}"
@@ -929,8 +914,8 @@ async def get_chat_response_stream(
                         logger.debug("[MessageService] pal-agents stream cancelled")
                         return
                     except RuntimeError as stream_error:
-                        # ddtrace's async generator wrapper can convert normal
-                        # StopAsyncIteration completion into a RuntimeError.
+                        # Async generator wrappers (e.g. tracing middleware) can convert
+                        # normal StopAsyncIteration completion into a RuntimeError.
                         if (
                             isinstance(stream_error.__cause__, StopAsyncIteration)
                             or str(stream_error)

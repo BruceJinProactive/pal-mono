@@ -8,8 +8,7 @@ from typing import Any, Dict, Optional, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import tool
+from langfuse import get_client, observe
 
 from agent.tool import ToolMetadata
 from tools.base.reservation import BaseReservationTool, params_validate
@@ -124,7 +123,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             party_size=party_size,
         )
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def check_availability(self, party_size: int, date: str, time: str) -> str:  # type: ignore[misc]
         """
@@ -168,7 +167,9 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
             return f"Error checking availability for venue {self.venue_id}: Authentication failed"
 
         try:
-            with LLMObs.task(name="search_resy_inventory_availability"):
+            with get_client().start_as_current_observation(
+                name="search_resy_inventory_availability"
+            ):
                 response = fetch_inventory_availability(
                     api_key=api_key,
                     auth_token=operational_token,
@@ -271,7 +272,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         return "\n".join(lines)
 
-    @tool
+    @observe(as_type="tool", capture_input=False, capture_output=False)
     @params_validate()
     def make_reservation(  # type: ignore[misc]
         self,
@@ -316,7 +317,9 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
         target_dt = datetime.fromisoformat(normalized_dt)
         availability_response: Dict[str, Any]
         try:
-            with LLMObs.task(name="search_resy_availability"):
+            with get_client().start_as_current_observation(
+                name="search_resy_availability"
+            ):
                 availability_response = self._search_resy(
                     day=date, party_size=party_size
                 )
@@ -476,7 +479,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         lock_response: Dict[str, Any]
         try:
-            with LLMObs.task(name="resy_create_lock"):
+            with get_client().start_as_current_observation(name="resy_create_lock"):
                 lock_response = create_reservation_lock(
                     api_key=api_key,
                     auth_token=operational_token,
@@ -514,7 +517,9 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         reservation_response: Dict[str, Any]
         try:
-            with LLMObs.task(name="resy_confirm_reservation"):
+            with get_client().start_as_current_observation(
+                name="resy_confirm_reservation"
+            ):
                 reservation_response = create_reservation(
                     api_key=api_key,
                     auth_token=operational_token,
@@ -589,7 +594,7 @@ class ResyToolWithReservation(Toolkit, BaseReservationTool):
 
         return "\n".join(line for line in summary_lines if line)
 
-    @tool
+    @observe(as_type="tool", capture_input=False, capture_output=False)
     @params_validate()
     def delete_reservation(self, date: str, time: str) -> str:  # type: ignore[misc]
         """Cancel the reservation on a given date/time that matches the caller's phone. This tool doesnt support editing reservations, only cancelling.

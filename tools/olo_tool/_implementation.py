@@ -6,8 +6,7 @@ from typing import Any
 
 from agno.tools.toolkit import Toolkit
 from cryptography.fernet import Fernet
-from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import tool
+from langfuse import get_client, observe
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
@@ -127,7 +126,7 @@ class OloTool(Toolkit):
         Raises:
             ValueError: If the required credentials are not set.
         """
-        with LLMObs.task(name="get_olo_token"):
+        with get_client().start_as_current_observation(name="get_olo_token"):
             if self.use_signed_auth:
                 if not self.client_credentials:
                     raise ValueError(
@@ -245,7 +244,7 @@ class OloTool(Toolkit):
                 "HARD_CODED_PAYMENT_IFRAME_SECRET must be a URL-safe base64-encoded 32-byte key"
             ) from exc
 
-    @tool
+    @observe(as_type="tool")
     def get_store_info_tool(self) -> str:
         """
         Retrieves detailed configuration information for a specific restaurant.
@@ -290,7 +289,7 @@ class OloTool(Toolkit):
             logger.error(f"[OLO] OloTool.store_info Error getting store info: {e}")
             return "Failed to get the store information, please try again."
 
-    @tool
+    @observe(as_type="tool")
     def check_online_ordering_status(self) -> str:
         """
         Retrieves the current online ordering availability status of a specified restaurant.
@@ -329,7 +328,7 @@ class OloTool(Toolkit):
             )
             return "Failed to check the online ordering status, please try again."
 
-    @tool
+    @observe(as_type="tool")
     def validate_address_tool(
         self, street_address: str, city: str, zipcode: str
     ) -> str:
@@ -416,7 +415,7 @@ class OloTool(Toolkit):
             order_construction_model=self.order_construction_model,
         )
 
-    @tool
+    @observe(as_type="tool")
     def checkout_order(self) -> str:
         """
         Completes and submits an order for checkout by extracting ordering data from chat

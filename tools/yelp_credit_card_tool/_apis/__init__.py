@@ -1,6 +1,6 @@
 import time
 
-from ddtrace.llmobs.decorators import task
+from langfuse import observe
 
 from tools.yelp_credit_card_tool._apis._utils import YELP_API_HOST, connect_yelp_api
 from tools.yelp_credit_card_tool.classes import (
@@ -13,7 +13,7 @@ from tools.yelp_credit_card_tool.classes import (
 from utils.log import logger
 
 
-@task(name="get_waitlist_status")
+@observe(name="get_waitlist_status")
 def get_waitlist_status(
     bearer_token: YelpAccessToken,
     business_id: str,
@@ -63,7 +63,7 @@ def get_waitlist_status(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
-@task(name="join_waitlist_queue")
+@observe(name="join_waitlist_queue")
 def join_waitlist_queue(
     bearer_token: YelpAccessToken,
     business_id: str,
@@ -140,7 +140,7 @@ def join_waitlist_queue(
         raise Exception(f"Failed to parse Yelp API response: {str(e)}") from e
 
 
-@task(name="get_openings_creditcard_required")
+@observe(name="get_openings_creditcard_required")
 def get_openings_creditcard_required(
     business_id_or_alias: str,
     request_params: YelpBookingsOpeningsRequestCreditCardRequired,

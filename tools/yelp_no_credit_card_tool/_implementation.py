@@ -3,7 +3,7 @@ import threading
 from typing import Optional
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import observe
 
 from agent.tool import ToolMetadata
 from tools.base.reservation import BaseReservationTool, params_validate
@@ -161,7 +161,7 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
 
         return f"Reservation confirmed! Here is the reservation details: {reservation_response}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def check_availability(self, party_size: int, date: str, time: str) -> str:  # type: ignore[misc]
         """
@@ -220,7 +220,7 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
                     )
             return f"Failed to get restaurant openings. {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def make_reservation(  # type: ignore[misc]
         self,
@@ -344,7 +344,7 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
                     return f"Failed to make reservation after retry. {str(retry_e)}"
             return f"Failed to make reservation. {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def get_waitlist_status(self) -> str:  # type: ignore[misc]
         """
@@ -408,7 +408,7 @@ class YelpNoCreditCardTool(Toolkit, BaseReservationTool):
                     return f"Failed to get waitlist status after retry. {str(retry_e)}"
             return f"Failed to get waitlist status. {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def join_waitlist_queue(  # type: ignore[misc]
         self,

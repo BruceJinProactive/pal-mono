@@ -7,7 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional, Union
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import observe
 from pydantic import ValidationError
 
 from agent.tool import ToolMetadata
@@ -1142,7 +1142,7 @@ class MenuSifuTool(Toolkit):
             logger.debug(f"[MenuSifuTool] {error_msg}")
             return error_msg
 
-    @tool
+    @observe(as_type="tool")
     def create_order_checkout(
         self,
         customer_name: Optional[str] = None,

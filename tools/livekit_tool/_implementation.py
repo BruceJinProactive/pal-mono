@@ -2,7 +2,7 @@ import json
 import os
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import observe
 from livekit import api as livekit_api
 
 from agent.tool import ToolMetadata
@@ -78,7 +78,7 @@ class LiveKitTool(Toolkit):
         )
         return None
 
-    @tool
+    @observe(as_type="tool")
     async def call_transfer(self, purpose: str = "general") -> str:
         """
         Transfer the current call to the appropriate department based on purpose.

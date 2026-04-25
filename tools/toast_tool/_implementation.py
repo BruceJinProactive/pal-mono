@@ -12,9 +12,8 @@ from zoneinfo import ZoneInfo
 import polyline
 from agno.tools.toolkit import Toolkit
 from cryptography.fernet import Fernet
-from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import retrieval, task, tool
 from geopy.distance import geodesic
+from langfuse import get_client, observe
 from pydantic import ValidationError
 from shapely import Point, Polygon
 
@@ -70,7 +69,6 @@ from tools.utils.ordering._utils import (
 )
 from tools.utils.ordering.classes import OrderConstructionModel
 from tools.utils.url_shortener import shorten_url
-from utils.dd import safe_annotate
 from utils.log import logger
 
 # Agent identification suffix for customer names
@@ -83,10 +81,10 @@ HARD_CODED_PAYMENT_IFRAME_SECRET = "xK8dP2m_QrZ7vN4wL9cF3bJ6hT5yU1gS0aE8iO-pMxA=
 DELIVERY_RADIUS_MILES = 8
 
 # TODO: Fix type: ignore comments throughout this file
-# Issue: The @task decorator from ddtrace.llmobs.decorators wraps return values,
+# Issue: The @observe decorator from Langfuse wraps return values,
 # causing type mismatches. Current workaround uses # type: ignore to suppress warnings.
 # Proper fix options:
-#   1. Create a .pyi stub file for ddtrace to provide proper type hints
+#   1. Create a .pyi stub file for langfuse to provide proper type hints
 #   2. Use typing.cast() to explicitly cast return values
 #   3. Update return type hints to reflect actual wrapped return types
 
@@ -174,7 +172,7 @@ class ToastTool(Toolkit):
 
     @cached_property
     def _toast_bearer_token(self) -> ToastAccessToken | None:
-        with LLMObs.task(name="get_toast_bearer_token"):
+        with get_client().start_as_current_observation(name="get_toast_bearer_token"):
             if "sandbox" in str(self.general_api_endpoint):
                 return get_toast_access_token_from_aws(
                     self.token_api_endpoint,
@@ -185,7 +183,9 @@ class ToastTool(Toolkit):
 
     @cached_property
     def _toast_hosted_payment_checkout_bearer_token(self) -> ToastAccessToken | None:
-        with LLMObs.task(name="get_toast_hosted_payment_checkout_bearer_token"):
+        with get_client().start_as_current_observation(
+            name="get_toast_hosted_payment_checkout_bearer_token"
+        ):
             return get_toast_access_token_from_aws(
                 self.token_api_endpoint,
                 token_name="TOAST_PAYMENT_CHECKOUT_ACCESS_TOKEN",
@@ -194,7 +194,9 @@ class ToastTool(Toolkit):
 
     @property
     def _toast_hosted_payment_iframe_bearer_token(self) -> ToastAccessToken | None:
-        with LLMObs.task(name="get_toast_hosted_payment_iframe_bearer_token"):
+        with get_client().start_as_current_observation(
+            name="get_toast_hosted_payment_iframe_bearer_token"
+        ):
             return get_toast_access_token_from_aws(
                 self.token_api_endpoint,
                 token_name="TOAST_PAYMENT_IFRAME_ACCESS_TOKEN",
@@ -250,7 +252,7 @@ class ToastTool(Toolkit):
         """
         return geodesic((lat1, lng1), (lat2, lng2)).miles
 
-    @task
+    @observe()
     def _validate_address(self, canonical_address: DeliveryAddress) -> bool | str:
         """
         Validates if an address is within the delivery zone polygon.
@@ -337,7 +339,7 @@ class ToastTool(Toolkit):
             )
             return "Unable to calculate delivery distance. Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def check_address(self, address: str) -> str:
         """
         Validates if the given address is within the restaurant's delivery area.
@@ -384,7 +386,7 @@ class ToastTool(Toolkit):
         else:
             return "Address is outside the delivery area."
 
-    @tool
+    @observe(as_type="tool")
     def get_store_info_tool(self) -> str:
         """
         Retrieves detailed configuration information for a specific restaurant.
@@ -481,7 +483,7 @@ class ToastTool(Toolkit):
 
         return (latitude, longitude)
 
-    @tool
+    @observe(as_type="tool")
     def check_online_ordering_status(self) -> str:
         """
         Retrieves the current online ordering availability status of a specified restaurant.
@@ -516,7 +518,7 @@ class ToastTool(Toolkit):
             )
             return "Failed to check the online ordering status, please try again."
 
-    @tool
+    @observe(as_type="tool")
     def is_online_order_available(self) -> str:
         """
         Check if the store is currently open for online ordering based on the service periods.
@@ -737,7 +739,7 @@ class ToastTool(Toolkit):
 
     # TODO: decide if we want to use order.externalId for payment intent's externalReferenceId
     # TODO: Add tips
-    @task
+    @observe()
     def _checkout_order_hosted(self) -> str:
         """
         Internal method: Creates a payment intent for an order with hosted checkout iframe support.
@@ -791,7 +793,7 @@ class ToastTool(Toolkit):
             logger.exception("[ToastTool._checkout_order_hosted] Error: %s", e)
             return "Error processing checkout. Please try again."
 
-    @tool
+    @observe(as_type="tool")
     def checkout_order(self) -> str:
         """
         **WHEN TO USE THIS TOOL:**
@@ -837,7 +839,7 @@ class ToastTool(Toolkit):
             return "Failed to process checkout. Please try again."
 
     # TODO: Investigate whether Agno agent can handle async tool calling, and whether calling asynio.run in the tool is allowed
-    @task
+    @observe()
     def _checkout_order_traditional(self) -> str:
         """
         Internal method: Processes traditional checkout flow (direct order submission).
@@ -891,7 +893,7 @@ class ToastTool(Toolkit):
             )
             return "Please try again."
 
-    @retrieval
+    @observe(as_type="retriever")
     def _get_chat_history(self) -> str:
         """
         Retrieves the chat history from the query messages tool.
@@ -913,11 +915,11 @@ class ToastTool(Toolkit):
                 f"[ToastTool._get_chat_history] Possible issue with chat history: {chat_history}"
             )
 
-        safe_annotate(output_data=chat_history)
+        get_client().update_current_span(output=chat_history)
 
         return chat_history
 
-    @retrieval
+    @observe(as_type="retriever")
     def _get_relevant_docs(self, chat_history: str) -> str:
         # Check if query engine is available
         if self.query_engine is None:
@@ -1027,7 +1029,7 @@ class ToastTool(Toolkit):
                 "Dining options file not found in the menu knowledge base."
             )
 
-        safe_annotate(input_data=chat_history, output_data=output_data)
+        get_client().update_current_span(input=chat_history, output=output_data)
         return context
 
     @staticmethod
@@ -1078,7 +1080,7 @@ class ToastTool(Toolkit):
             result.append(transformed)
         return result
 
-    @task(name="_save_order_to_db")
+    @observe(name="_save_order_to_db")
     def _save_order_to_db(self, validated_order: Order) -> None:
         """
         Save order information to the database.
@@ -1172,7 +1174,7 @@ class ToastTool(Toolkit):
             )
             raise e
 
-    @task
+    @observe()
     def _construct_order(self) -> OrderInput | str:
         chat_history: str = self._get_chat_history()  # type: ignore
         context = self._get_relevant_docs(chat_history)  # type: ignore
@@ -1255,7 +1257,7 @@ class ToastTool(Toolkit):
             logger.error(e)
             return f"Failed to construct order: {e}"
 
-    @task
+    @observe()
     def _finalize_order_details(self, order: OrderInput) -> str | None:
         """
         Validate order requirements and add agent suffix to customer lastName.
@@ -1377,7 +1379,7 @@ class ToastTool(Toolkit):
                 f"{check.customer.firstName} {check.customer.lastName}",
             )
 
-    @task
+    @observe()
     def _submit_order(self, order: OrderInput) -> str | tuple[Order, str]:
         # Retrieve the bearer token
         toast_bearer_token = self._toast_bearer_token
@@ -1416,7 +1418,7 @@ class ToastTool(Toolkit):
             logger.error(f"[ToastTool._submit_order] Failed to submit the order: {e}")
             return "There was an error while submitting the order. Please try again."
 
-    @task
+    @observe()
     def _get_order_prices(self, order: OrderInput) -> Price:
         # Retrieve the bearer token
         toast_bearer_token = self._toast_bearer_token
@@ -1519,7 +1521,7 @@ class ToastTool(Toolkit):
 
         return fees
 
-    @tool
+    @observe(as_type="tool")
     def get_order_prices_tool(self) -> Price:
         """
         Gets pricing information for the current order.
@@ -1545,7 +1547,7 @@ class ToastTool(Toolkit):
             )
             raise
 
-    @task
+    @observe()
     def _create_payment_intent(
         self,
         price: Price,
@@ -1611,7 +1613,7 @@ class ToastTool(Toolkit):
             )
             return "Error creating payment. Please try again."
 
-    @task
+    @observe()
     def _begin_hosted_checkout_flow(self, order: OrderInput, price: Price) -> str:
         """
         Begins the hosted checkout flow for an order with priced information.
@@ -1818,7 +1820,7 @@ class ToastTool(Toolkit):
 
         return payload
 
-    @task
+    @observe()
     def _generate_iframe_payment_link(
         self,
         payload: dict[str, Any],

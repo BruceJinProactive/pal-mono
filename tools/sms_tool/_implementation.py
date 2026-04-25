@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import observe
 
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
@@ -40,7 +40,7 @@ class SMSTool(Toolkit):
         # Register tools
         self.register(self.send_order_summary)
 
-    @tool
+    @observe(as_type="tool")
     def send_order_summary(
         self,
         recipient_phone_number: str,

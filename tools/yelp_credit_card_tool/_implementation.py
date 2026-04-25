@@ -3,7 +3,7 @@ import threading
 from typing import Optional
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import observe
 
 from agent.tool import ToolMetadata
 from tools.base.reservation import BaseReservationTool, params_validate
@@ -142,7 +142,7 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
             )
             return _CACHED_BEARER_TOKEN
 
-    @tool
+    @observe(as_type="tool")
     def get_waitlist_status(self) -> str:  # type: ignore[misc]
         """
         Get current waitlist status and wait times for a restaurant using the Yelp Waitlist API.
@@ -205,7 +205,7 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
                     return f"Failed to get waitlist status after retry. {str(retry_e)}"
             return f"Failed to get waitlist status. {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def join_waitlist_queue(  # type: ignore[misc]
         self,
@@ -326,7 +326,7 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
                     )
             return f"Failed to join the waitlist queue. {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def check_availability(self, party_size: int, date: str, time: str) -> str:  # type: ignore[misc]
         """
@@ -393,7 +393,7 @@ class YelpCreditCardTool(Toolkit, BaseReservationTool):
                     )
             return f"Failed to get restaurant openings. {str(e)}"
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def make_reservation(  # type: ignore[misc]
         self,

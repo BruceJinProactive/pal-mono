@@ -37,7 +37,7 @@
 > - [ ] Add a matching downgrade path in the migration file
 
 > **If this task adds or modifies a Tool:**
-> - Inherit from `Toolkit`, use `@tool` decorator (from `ddtrace`, not Agno)
+> - Inherit from `Toolkit`, use `@observe(as_type="tool")` decorator from Langfuse
 > - Register in `tools/registry.py`
 > - Docstrings max 1024 chars; include when-to-use / when-not-to-use
 > - Never make LLM calls inside tool methods

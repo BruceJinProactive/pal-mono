@@ -5,8 +5,7 @@ from datetime import datetime, timezone
 from functools import cached_property
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs import LLMObs
-from ddtrace.llmobs.decorators import tool
+from langfuse import get_client, observe
 
 from agent.tool import ToolMetadata
 from tools.base.reservation import BaseReservationTool, params_validate
@@ -77,7 +76,7 @@ class OpenTableTool(Toolkit, BaseReservationTool):
             pass
         return token
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def check_availability(self, party_size: int, date: str, time: str) -> str:  # type: ignore[misc]
         """
@@ -114,7 +113,9 @@ class OpenTableTool(Toolkit, BaseReservationTool):
 
         try:
             # Search for availability
-            with LLMObs.task(name="search_opentable_availability"):
+            with get_client().start_as_current_observation(
+                name="search_opentable_availability"
+            ):
                 result = search_availability_api(
                     bearer_token=bearer_token,
                     restaurant_id=self.restaurant_id,
@@ -145,7 +146,7 @@ class OpenTableTool(Toolkit, BaseReservationTool):
         logger.info(f"[OpenTable Tool] Formatted result: {formatted_result}")
         return formatted_result
 
-    @tool
+    @observe(as_type="tool")
     @params_validate()
     def make_reservation(  # type: ignore[misc]
         self,

@@ -23,52 +23,6 @@ def _ensure_package_module(
     return pkg
 
 
-def _install_ddtrace_llmobs_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
-    try:
-        import ddtrace.llmobs.decorators  # noqa: F401
-
-        return
-    except Exception:
-        pass
-
-    ddtrace_mod = sys.modules.get("ddtrace")
-    if ddtrace_mod is None:
-        ddtrace_mod = _ensure_package_module(monkeypatch, "ddtrace")
-    else:
-        _ensure_package_module(monkeypatch, "ddtrace", ddtrace_mod)
-
-    llmobs_mod = ModuleType("ddtrace.llmobs")
-    decorators_mod = ModuleType("ddtrace.llmobs.decorators")
-    _ensure_package_module(monkeypatch, "ddtrace.llmobs", llmobs_mod)
-    monkeypatch.setitem(sys.modules, "ddtrace.llmobs.decorators", decorators_mod)
-
-    class _NoopLLMObs:
-        @staticmethod
-        def disable() -> None:
-            return
-
-        @staticmethod
-        def enable(**kwargs) -> None:
-            return
-
-        @staticmethod
-        def annotate(**kwargs) -> None:
-            return
-
-    def _noop_decorator(name=None):
-        def _decorator(func):
-            return func
-
-        return _decorator
-
-    llmobs_mod.LLMObs = _NoopLLMObs  # type: ignore[attr-defined]
-    llmobs_mod.decorators = decorators_mod  # type: ignore[attr-defined]
-    decorators_mod.agent = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.workflow = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.task = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.__getattr__ = lambda name: _noop_decorator  # type: ignore[attr-defined]
-
-
 def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     try:
         import pal_agents.providers.knowledge  # noqa: F401
@@ -191,7 +145,6 @@ class _FakeAgentRepo:
 @pytest.mark.asyncio
 async def test_reservation_details_persisted_from_stream(monkeypatch):
     """reservation_details from a streaming chunk are persisted via reservation_service."""
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
     from services.message_service import _implementation
@@ -287,8 +240,6 @@ async def test_reservation_details_persisted_from_stream(monkeypatch):
         return uuid.uuid4()
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
@@ -355,7 +306,6 @@ async def test_reservation_details_persisted_from_stream(monkeypatch):
 @pytest.mark.asyncio
 async def test_reservation_details_error_does_not_break_stream(monkeypatch):
     """Reservation persistence error does not break the streaming response."""
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
     from services.message_service import _implementation
@@ -433,8 +383,6 @@ async def test_reservation_details_error_does_not_break_stream(monkeypatch):
     fake_session.run_sync = _fake_run_sync
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )

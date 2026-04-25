@@ -12,7 +12,6 @@ from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject
 from db.tables.types import Channel
 from tests.services.message_service.test_get_chat_response_stream import (
     _install_agent_shims_if_needed,
-    _install_ddtrace_llmobs_shim_if_needed,
     _install_knowledge_shim_if_needed,
     _install_services_shims_if_needed,
 )
@@ -39,7 +38,6 @@ def _cancelled_async_iterator():
 
 def _prepare_chat_import(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_env()
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)

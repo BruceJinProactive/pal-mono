@@ -3,9 +3,9 @@ from typing import Any, Tuple
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-from ddtrace.llmobs.decorators import task
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 from geopy.geocoders import GoogleV3
+from langfuse import observe
 
 from tools.adora_tool.classes import (
     AdoraOrderType,
@@ -195,7 +195,7 @@ def geocode_with_aws_location(
         return None
 
 
-@task
+@observe()
 def add_lat_long_to_address(delivery_address: DeliveryAddress) -> Tuple[bool, str]:
     """
     Add latitude and longitude to a delivery address. Modifies the delivery address

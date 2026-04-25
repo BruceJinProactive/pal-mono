@@ -24,52 +24,6 @@ def _ensure_package_module(
     return pkg
 
 
-def _install_ddtrace_llmobs_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
-    try:
-        import ddtrace.llmobs.decorators  # noqa: F401
-
-        return
-    except Exception:
-        pass
-
-    ddtrace_mod = sys.modules.get("ddtrace")
-    if ddtrace_mod is None:
-        ddtrace_mod = _ensure_package_module(monkeypatch, "ddtrace")
-    else:
-        _ensure_package_module(monkeypatch, "ddtrace", ddtrace_mod)
-
-    llmobs_mod = ModuleType("ddtrace.llmobs")
-    decorators_mod = ModuleType("ddtrace.llmobs.decorators")
-    _ensure_package_module(monkeypatch, "ddtrace.llmobs", llmobs_mod)
-    monkeypatch.setitem(sys.modules, "ddtrace.llmobs.decorators", decorators_mod)
-
-    class _NoopLLMObs:
-        @staticmethod
-        def disable() -> None:
-            return
-
-        @staticmethod
-        def enable(**kwargs) -> None:  # type: ignore[no-untyped-def]
-            return
-
-        @staticmethod
-        def annotate(**kwargs) -> None:  # type: ignore[no-untyped-def]
-            return
-
-    def _noop_decorator(name=None):  # type: ignore[no-untyped-def]
-        def _decorator(func):  # type: ignore[no-untyped-def]
-            return func
-
-        return _decorator
-
-    llmobs_mod.LLMObs = _NoopLLMObs  # type: ignore[attr-defined]
-    llmobs_mod.decorators = decorators_mod  # type: ignore[attr-defined]
-    decorators_mod.agent = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.workflow = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.task = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.__getattr__ = lambda name: _noop_decorator  # type: ignore[attr-defined]
-
-
 def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     try:
         import pal_agents.providers.knowledge  # noqa: F401
@@ -193,7 +147,6 @@ async def test_streaming_tool_call_events_attached_to_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tool call events from streaming chunks are collected and saved in message body."""
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
     from services.message_service import _implementation
@@ -270,8 +223,6 @@ async def test_streaming_tool_call_events_attached_to_message(
     fake_session.rollback = AsyncMock()
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
@@ -341,7 +292,6 @@ async def test_streaming_no_events_no_tool_calls_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When no events are emitted, the saved message body has no tool_calls key."""
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
     from services.message_service import _implementation
@@ -396,8 +346,6 @@ async def test_streaming_no_events_no_tool_calls_key(
     fake_session.rollback = AsyncMock()
 
     monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
@@ -458,7 +406,6 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tool call events from non-streaming output are attached to the first saved message."""
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
     from services.message_service import _implementation
@@ -514,9 +461,6 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
     fake_session = AsyncMock()
     fake_session.refresh = AsyncMock()
 
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
-    monkeypatch.setattr(_implementation.LLMObs, "enable", lambda **kwargs: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )

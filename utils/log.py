@@ -13,8 +13,6 @@ logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("boto3").setLevel(logging.WARNING)
 # S3 transfer internals: IOWriteTask, multipart upload progress
 logging.getLogger("s3transfer").setLevel(logging.WARNING)
-# Datadog tracing internals: span finishing, trace completion, sampler init
-logging.getLogger("ddtrace").setLevel(logging.WARNING)
 # OpenTelemetry SDK internals: exporter lifecycle, batch processor
 logging.getLogger("opentelemetry").setLevel(logging.WARNING)
 # HTTP connection pool noise: acquire/release
@@ -42,11 +40,9 @@ class OTelJsonFormatter(jsonlogger.JsonFormatter):
         super().add_fields(log_record, record, message_dict)
         # Add service attributes as top-level fields for filtering
         if "env" not in log_record:
-            log_record["env"] = os.getenv("DD_ENV") or os.getenv("RUNTIME_ENV", "dev")
+            log_record["env"] = os.getenv("RUNTIME_ENV", "dev")
         if "service" not in log_record:
-            log_record["service"] = (
-                os.getenv("OTEL_SERVICE_NAME") or os.getenv("DD_SERVICE") or "pal-mono"
-            )
+            log_record["service"] = os.getenv("OTEL_SERVICE_NAME", "pal-mono")
 
         # LoggingInstrumentor auto-injects otelTraceID/otelSpanID on each LogRecord.
         # Map them to our standard field names for log-trace linking.

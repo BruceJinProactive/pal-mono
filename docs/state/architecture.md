@@ -136,7 +136,7 @@ The core AI agent implementation providing conversational capabilities.
            ├──► Framework (framework/agno.py)
            │    - Agno agent wrapper with streaming support
            │    - Streaming with filler words (internal/filler_words_manager.py)
-           │    - Datadog LLM observability
+           │    - Langfuse LLM observability
            │    - Additional framework classes (classes.py)
            │
            ├──► Model (model/)
@@ -287,7 +287,7 @@ The core AI agent implementation providing conversational capabilities.
 **Tool Standards** (`/tools/CLAUDE.md`):
 - Consistent structure: `__init__.py`, `_implementation.py`, `classes.py`, `_apis/`
 - Inherit from `Toolkit` (agno.tools), init with `super().__init__(name="tool_name")`
-- `@tool` decorator required for all methods (Datadog tracing)
+- `@observe(as_type="tool")` decorator required for all methods (Langfuse tracing)
 - `@params_validate()` required only for methods with parameters
 - Input validation with Pydantic
 - Token caching for API credentials
@@ -305,7 +305,7 @@ AWS EventBridge integration for asynchronous event-driven communication.
 
 Shared utilities and helpers:
 - `log.py` - Logging utilities (structured JSON logging)
-- `dd.py` - Datadog utilities
+- `dd.py` - Observability utilities (Langfuse + OTel)
 - `request_context.py` - Request context management
 - `secret.py` - AWS Secrets Manager integration
 
@@ -511,7 +511,7 @@ Pydantic Settings for type-safe configuration:
 - Cache warming in background
 
 ### Monitoring
-- Datadog APM for tracing
+- OpenTelemetry for distributed tracing
 - LLM observability for AI metrics
 - Structured logging for debugging
 
@@ -597,7 +597,7 @@ Pydantic Settings for type-safe configuration:
 - See `docs/plans/livekit-migration/` for migration history
 
 ### Observability
-- Comprehensive Datadog integration
+- Langfuse + OpenTelemetry observability
 - LLM-specific observability
 - Structured logging throughout
 

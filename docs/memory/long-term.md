@@ -78,7 +78,7 @@ API → Service → Database
 - **Never** import from API layer in Service layer (or any reverse dependency)
 - **Never** return full catalogs from tools — use query engines for large datasets
 - **Never** make additional LLM calls inside tool methods
-- **Never** skip `@tool` decorator on registered tool methods (Datadog tracing breaks)
+- **Never** skip `@observe(as_type="tool")` decorator on registered tool methods (Langfuse tracing breaks)
 - **Never** use `Optional[]` parameters without defaults and clear documentation
 
 ---
@@ -90,7 +90,7 @@ API → Service → Database
 - **Toast API** menu data can be very large — use the indexer pipeline (Toast → Pinecone) rather than returning raw data
 - **`pal_agents.AdoraSpec` rejects `lookup_menu_data`** — treat ProjectIntegration-backed specs as the source of truth for Adora configuration and ignore stale raw_config-only lookup payloads, because Pydantic now forbids that extra field
 - **Vapi** `assistant-request` webhook has a tight timeout — cache agent configs where possible
-- **ddtrace context inheritance**: Monitoring LLM calls can inherit voice agent trace context, causing spans to appear in wrong trace trees. Use trace isolation when running LLM analysis outside the agent pipeline.
+- **Trace context inheritance**: Monitoring LLM calls can inherit voice agent trace context, causing spans to appear in wrong trace trees. Use trace isolation when running LLM analysis outside the agent pipeline.
 - **ADR-007 migration state**: Agno and `pal-agents` coexist during the migration. Prefer `pal-agents` (`PalAgent` with `Spec` and `RuntimeContext`) for new LiveKit-oriented agent work; maintain Agno only where existing integrations still depend on it.
 
 ---
@@ -98,6 +98,6 @@ API → Service → Database
 ## Lessons Learned
 
 - **Long-lived async responses must own their DB session** (2026-03-17): Releasing the current transaction before LLM work is not enough for `StreamingResponse` or other cancellation-prone flows. If a request-scoped `AsyncSession` survives inside a long-lived generator or task, SQLAlchemy may later warn that a non-checked-in asyncpg connection is being garbage-collected. Fix the ownership boundary instead: create and close `AsyncSessionLocal()` inside the generator/task that owns the lifetime.
-- **Monitoring trace isolation** (2025-02-14): Monitoring LLM calls (image/video analysis) were inheriting active voice-agent trace context in Datadog. Fix: explicit trace isolation in `/services/monitoring_service/_llm.py`. See `docs/records/2025-02-14-monitoring-trace-fix.md`.
+- **Monitoring trace isolation** (2025-02-14): Monitoring LLM calls (image/video analysis) were inheriting active voice-agent trace context. Fix: explicit trace isolation in `/services/monitoring_service/_llm.py`. See `docs/records/2025-02-14-monitoring-trace-fix.md`.
 - **Permission decorators** have limitations: endpoints with resource IDs in form data, query params, or request body can't use simple route-level decorators. Need custom permission handlers that traverse the resource hierarchy. See `docs/state/auth.md`.
-- **Event-driven vs completion events**: For observability, Datadog Lambda Extension is simpler and more effective than completion events + CloudWatch. Fewer moving parts, better developer experience.
+- **Event-driven vs completion events**: For observability, the Langfuse SDK + OTel exporter is simpler and more effective than completion events + CloudWatch. Fewer moving parts, better developer experience.

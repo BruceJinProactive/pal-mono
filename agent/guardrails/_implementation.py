@@ -2,12 +2,12 @@ import os
 
 import boto3
 from botocore.exceptions import ClientError
-from ddtrace.llmobs.decorators import task
+from langfuse import observe
 
 from utils.log import logger
 
 
-@task(name="Bedrock Checking")
+@observe(name="Bedrock Checking")
 def check_input_bedrock(prompt: str) -> bool:  # aws bedrock approach
     """
     Checks a prompt against a Bedrock guardrail.

@@ -21,52 +21,6 @@ def _ensure_package_module(
     return pkg
 
 
-def _install_ddtrace_llmobs_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
-    try:
-        import ddtrace.llmobs.decorators  # noqa: F401
-
-        return
-    except Exception:
-        pass
-
-    ddtrace_mod = sys.modules.get("ddtrace")
-    if ddtrace_mod is None:
-        ddtrace_mod = _ensure_package_module(monkeypatch, "ddtrace")
-    else:
-        _ensure_package_module(monkeypatch, "ddtrace", ddtrace_mod)
-
-    llmobs_mod = ModuleType("ddtrace.llmobs")
-    decorators_mod = ModuleType("ddtrace.llmobs.decorators")
-    _ensure_package_module(monkeypatch, "ddtrace.llmobs", llmobs_mod)
-    monkeypatch.setitem(sys.modules, "ddtrace.llmobs.decorators", decorators_mod)
-
-    class _NoopLLMObs:
-        @staticmethod
-        def disable() -> None:
-            return
-
-        @staticmethod
-        def enable(**kwargs) -> None:
-            return
-
-        @staticmethod
-        def annotate(**kwargs) -> None:
-            return
-
-    def _noop_decorator(name=None):
-        def _decorator(func):
-            return func
-
-        return _decorator
-
-    llmobs_mod.LLMObs = _NoopLLMObs  # type: ignore[attr-defined]
-    llmobs_mod.decorators = decorators_mod  # type: ignore[attr-defined]
-    decorators_mod.agent = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.workflow = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.task = _noop_decorator  # type: ignore[attr-defined]
-    decorators_mod.__getattr__ = lambda name: _noop_decorator  # type: ignore[attr-defined]
-
-
 def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     try:
         import pal_agents.providers.knowledge  # noqa: F401
@@ -222,7 +176,6 @@ async def test_get_chat_response_async_captures_project_attributes_early(monkeyp
     Test that get_chat_response_async captures project attributes (id, name, agent_id,
     account_id, timezone) early to avoid lazy-loading issues after async boundaries.
     """
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -273,9 +226,6 @@ async def test_get_chat_response_async_captures_project_attributes_early(monkeyp
     async def _fake_query_history_messages(*args, **kwargs):
         return []
 
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
-    monkeypatch.setattr(_implementation.LLMObs, "enable", lambda **kwargs: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )
@@ -342,7 +292,6 @@ async def test_get_chat_response_async_legacy_path_uses_captured_attributes(
     """
     Test that get_chat_response_async uses captured project attributes in legacy (non-pal-agents) path.
     """
-    _install_ddtrace_llmobs_shim_if_needed(monkeypatch)
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -389,9 +338,6 @@ async def test_get_chat_response_async_legacy_path_uses_captured_attributes(
     async def _fake_query_history_messages(*args, **kwargs):
         return []
 
-    monkeypatch.setattr(_implementation, "is_testing_mode", lambda: True)
-    monkeypatch.setattr(_implementation.LLMObs, "disable", lambda: None)
-    monkeypatch.setattr(_implementation.LLMObs, "enable", lambda **kwargs: None)
     monkeypatch.setattr(
         _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
     )

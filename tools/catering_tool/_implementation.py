@@ -2,7 +2,7 @@ from datetime import date, time
 from typing import Optional
 
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import observe
 
 from agent.tool import ToolMetadata
 from db.repositories.catering_request_repository import CateringRequestRepository
@@ -25,7 +25,7 @@ class CateringTool(Toolkit):
         # Register tools
         self.register(self.create_catering_request)
 
-    @tool
+    @observe(as_type="tool")
     def create_catering_request(
         self,
         event_date: str,  # YYYY-MM-DD format

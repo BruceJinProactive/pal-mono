@@ -1,5 +1,5 @@
 from agno.tools.toolkit import Toolkit
-from ddtrace.llmobs.decorators import tool
+from langfuse import observe
 
 from agent.tool import ToolMetadata
 from api.schemas.chat.message import (
@@ -26,7 +26,7 @@ class StoreMessagingTool(Toolkit):
 
         self.register(self.send_text_message)
 
-    @tool
+    @observe(as_type="tool")
     def send_text_message(self, message_content: str) -> str:
         """
         Send a text message to the store manager with customer phone and request details.
