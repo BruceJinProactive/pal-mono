@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from db.repositories.account_repository import AccountRepository, AccountRepositoryAsync
 from db.tables import Account, Conversation, User
 from db.tables.accounts import AccountStatus
+from db.tables.types import SubscriptionStatus
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -454,6 +455,23 @@ class TestAccountFiltering:
         ]
 
         accounts, total = repo.filter_accounts(keyword="test")
+        assert total == 1
+
+    def test_filter_accounts_by_subscription_status(
+        self, repo, mock_session, sample_account
+    ):
+        """Filter accounts by subscription status uses EXISTS subquery."""
+        mock_q = mock_session.query.return_value.filter.return_value
+        mock_q.filter.return_value = mock_q
+        mock_q.count.return_value = 1
+        mock_q.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+            sample_account
+        ]
+
+        accounts, total = repo.filter_accounts(
+            subscription_status=[SubscriptionStatus.active]
+        )
+        assert accounts == [sample_account]
         assert total == 1
 
     def test_filter_accounts_returns_empty_on_error(self, repo, mock_session):

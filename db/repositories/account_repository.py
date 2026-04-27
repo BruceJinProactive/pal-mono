@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, joinedload
@@ -157,7 +157,11 @@ class AccountRepository:
             if load_subscription:
                 query = query.outerjoin(
                     AccountSubscription,
-                    Account.current_subscription_id == AccountSubscription.id,
+                    and_(
+                        Account.current_subscription_id
+                        == AccountSubscription.external_id,
+                        AccountSubscription.account_id == Account.id,
+                    ),
                 ).options(
                     joinedload(Account.subscriptions).joinedload(
                         AccountSubscription.subscription_plan
@@ -210,12 +214,21 @@ class AccountRepository:
             if status:
                 query = query.filter(Account.status.in_(status))
 
-            # Apply subscription_status filter (requires join)
+            # Apply subscription_status filter via EXISTS to avoid duplicate
+            # rows (external_id is not unique on AccountSubscription)
             if subscription_status:
-                query = query.join(
-                    AccountSubscription,
-                    Account.current_subscription_id == AccountSubscription.id,
-                ).filter(AccountSubscription.status.in_(subscription_status))
+                query = query.filter(
+                    self.session.query(AccountSubscription)
+                    .filter(
+                        and_(
+                            AccountSubscription.external_id
+                            == Account.current_subscription_id,
+                            AccountSubscription.account_id == Account.id,
+                            AccountSubscription.status.in_(subscription_status),
+                        )
+                    )
+                    .exists()
+                )
 
             # Get total count before applying eager-loading options
             # This prevents count inflation from joinedload on Account.subscriptions
