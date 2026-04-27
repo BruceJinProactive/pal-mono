@@ -1,7 +1,9 @@
 """Tests for tools.adora_tool._implementation — Langfuse migration paths."""
 
+from datetime import datetime
 from typing import Any
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 
 def _make_adora_tool(**overrides: Any) -> Any:
@@ -103,7 +105,8 @@ class TestGetStoreInfo:
     def test_returns_cached_store_info(self, mock_get_client):
         tool = _make_adora_tool(cached_store_info="cached info")
 
-        result = tool.get_store_info(date="2026-04-24")
+        today = datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")
+        result = tool.get_store_info(date=today)
 
         assert result == "cached info"
 
@@ -113,7 +116,9 @@ class TestGetStoreInfo:
         with patch.object(
             tool, "_get_adora_bearer_token", side_effect=Exception("fail")
         ):
-            result = tool.get_store_info(date="2026-04-24")
+            result = tool.get_store_info(
+                date=datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")
+            )
 
         assert "Failed to get" in result
 
