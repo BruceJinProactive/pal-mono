@@ -2,20 +2,29 @@
 
 Current project context. Read this before starting any work.
 
-Last updated: 2026-03-27
+Last updated: 2026-04-27
 
 ---
 
 ## Active Work
 
-- **LiveKit migration** (started 2025-02) — Migrating voice AI from Vapi to LiveKit. LiveKit is now the active voice system (dependencies, tools, SIP integration, VoiceProvider enum all in place). Vapi routes removed. Remaining: `services/voice_service/providers/livekit/` not yet created, some later migration phases TBD. → `docs/plans/livekit-migration/`
+- **LiveKit migration** (started 2025-02) — Vapi is fully removed at the code level: `tools/vapi_tool/` and `api/routes/integrations/vapi/` source files are deleted, `VoiceProvider` enum is LiveKit-only (explicitly rejects `"vapi"`), and the `assistant-request` webhook is gone. Residual legacy only: `conversations.vapi_control_url` column (kept for historical data) and a few stale docstrings/log strings in `services/number_service/_implementation.py`, `api/routes/internal/_voice.py`, and admin routes. Remaining LiveKit work: `services/voice_service/providers/livekit/` not yet created, plus later migration phases TBD. → `docs/plans/livekit-migration/`
 
-- **Eval platform Wave 3** (started 2026-03-28) — Eval service runner, evaluators, config snapshot. Wave 3 shipped as PR #3840. Now integrating pal-agents DeepEval metrics (v0.2.210) to replace custom LLM judges. → `docs/plans/eval-platform-proposal.md`
+- **Eval scenarios DB migration** (started 2026-04-23) — Migrating eval YAML scenario files from filesystem to `eval_scenarios` DB table. Table + repository shipped (record: `docs/records/2026-04-23-eval-scenarios-table.md`). PR #4087 migrated eval tests to DB. Remaining: API endpoints for scenario CRUD, seed/backfill script, retire YAML filesystem fallback.
 
-- **Eval scenarios DB migration** (started 2026-04-23) — Migrating eval YAML scenario files from filesystem to `eval_scenarios` DB table. Table created; next: repository, service layer rewrite, API endpoints, seed script. → `docs/plans/eval-scenarios-db-migration.md`
+- **Eval context modifier for phone injection** (started 2026-04-25) — After removing `"api"` from the `customer_phone` channel list (PR #4086), API-channel evals get `customer_phone=None`. Adding an optional `context_modifier` callback on `get_chat_response_async` that only the eval `InProcessDriver` uses, to inject phone into RuntimeContext without polluting the public `Message.Metadata` schema. Also lays groundwork for future overrides (e.g. `spec_modifier`). → `docs/plans/conversation-eval/eval-context-modifier-plan.md` (partially shipped in PR #4092).
+
+- **Frozen analytics/change-log dataclasses** (started 2026-04) — PAL-10000 through PAL-10012 converting analytics, monitoring, order, catering, message, lead, tool-call, change-log, integration, change-field payloads into frozen dataclasses. Most shipped on main; watch for remaining PAL-101xx follow-ups and consumer migrations.
 
 ## Recently Landed
 
+- 2026-04-25: **Datadog LLMObs → Langfuse/OTel migration** (PAL-10113, PR #4090). ADR-013 superseded. LLM observability now uses Langfuse SDK v4 (`@observe` decorators in `agent/agent.py`, `agent/framework/agno.py`, tool `_implementation.py` files). General tracing moves to OpenTelemetry (Grafana Tempo). Datadog StatsD metrics via `utils/dd.py` are still in use for non-LLM metrics.
+- 2026-04-24: Langfuse dependency added (PAL-10112, PR #4089) — precursor to the LLMObs migration.
+- 2026-04-23: `eval_scenarios` table landed → `docs/records/2026-04-23-eval-scenarios-table.md`.
+- 2026-04-08: Eval AI-driven turns + `tool_call_records` table → `docs/records/2026-04-08-eval-ai-driven-turns.md`, `docs/records/2026-04-08-tool-call-records-table.md`.
+- 2026-04-01: `ChangeResourceType` enum migration → `docs/records/2026-04-01-changeresourcetype-enum-migration.md`.
+- 2026-03-31: Eval API routes → `docs/records/2026-03-31-eval-api-routes.md`.
+- 2026-03-28: Eval platform Wave 3 (runner, evaluators, config snapshot) shipped → `docs/records/2026-03-28-eval-platform-schema.md`. `pal-agents` DeepEval metrics integrated (now on v0.2.265).
 - 2026-03-27: Voice config language refactoring complete (3-PR series) — PR1: Pydantic validators. PR2: SQLAlchemy CHECK constraints. PR3: Alembic migration for data cleanup + removed legacy handling. All voice configs now lowercase, no more combined languages or triage.
 - 2026-03-19: Plans audit — graduated 4 completed plans to records, removed stale checkpoint auth plan
   - Monitoring config restructure → `docs/records/2026-03-09-monitoring-config-restructure.md`
@@ -34,7 +43,8 @@ Last updated: 2026-03-27
 
 ## Don't Touch (fragile / in-progress)
 
-- `agent/agent.py` Langfuse `@observe` tracing — trace isolation depends on current structure
+- `agent/agent.py` Langfuse `@observe` tracing — trace isolation depends on the current structure (decorator on the top-level processing function + the inner streaming generator wrapper). Do not collapse or reorder these without understanding the trace tree implications.
+- Do not reintroduce `ddtrace.llmobs` / Datadog LLMObs instrumentation — that pathway was removed as part of the 2026-04-25 migration. `utils/dd.py` StatsD metrics are fine to keep using.
 
 ## Upcoming
 

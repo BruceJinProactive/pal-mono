@@ -2,7 +2,7 @@
 
 Institutional knowledge for the pal-mono codebase. Every entry has a rationale — no rules without "because."
 
-Last curated: 2026-03-20
+Last curated: 2026-04-27
 
 ---
 
@@ -89,15 +89,19 @@ API → Service → Database
 - **Square OAuth tokens** expire every 30 days — `SQUARE_TOKEN_REFRESHER` handles automatic refresh
 - **Toast API** menu data can be very large — use the indexer pipeline (Toast → Pinecone) rather than returning raw data
 - **`pal_agents.AdoraSpec` rejects `lookup_menu_data`** — treat ProjectIntegration-backed specs as the source of truth for Adora configuration and ignore stale raw_config-only lookup payloads, because Pydantic now forbids that extra field
-- **Vapi** `assistant-request` webhook has a tight timeout — cache agent configs where possible
-- **Trace context inheritance**: Monitoring LLM calls can inherit voice agent trace context, causing spans to appear in wrong trace trees. Use trace isolation when running LLM analysis outside the agent pipeline.
-- **ADR-007 migration state**: Agno and `pal-agents` coexist during the migration. Prefer `pal-agents` (`PalAgent` with `Spec` and `RuntimeContext`) for new LiveKit-oriented agent work; maintain Agno only where existing integrations still depend on it.
+- **Vapi** is fully removed from code — `tools/vapi_tool/`, `api/routes/integrations/vapi/`, and the `assistant-request` webhook are gone; `VoiceProvider` enum is LiveKit-only and explicitly rejects `"vapi"`. Residual legacy only: the `conversations.vapi_control_url` column (historical data; still threaded through DTOs/repos/admin schema/`message_service` for back-compat) and a few stale docstrings/log strings. Do not build new voice functionality against a Vapi code path — none exists.
+- **Trace context inheritance**: Monitoring LLM calls can inherit voice-agent trace context, causing spans to appear in wrong trace trees. Use explicit trace isolation when running LLM analysis outside the agent pipeline. Applies to both Langfuse (`@observe`) and OTel spans.
+- **Observability split (post-ADR-013 supersede, 2026-04-25)**: LLM tracing is **Langfuse** (`@observe`, `langfuse.get_client()`), general app tracing is **OpenTelemetry** (Grafana Tempo), and StatsD metrics still go through the Datadog agent via `utils/dd.py` (`DogStatsd`). Do not re-import `ddtrace.llmobs` — that pathway was removed. Note: `ddtrace` and `datadog` are still listed in `pyproject.toml` because `utils/dd.py` and APM hooks use them; they are not gone at the dependency level.
+- **`api` is not a `customer_phone` channel** (2026-04-25, PR #4086): API-channel requests no longer have `customer_phone` auto-populated from email-derived values. Eval flows that simulate phone customers over API must inject `customer_phone` through the `context_modifier` pattern (see active work), not through `Message.Metadata`.
+- **ADR-007 migration state**: Agno and `pal-agents` coexist during the migration. Prefer `pal-agents` (`PalAgent` with `Spec` and `RuntimeContext`) for new LiveKit-oriented agent work; maintain Agno only where existing integrations still depend on it. Current pinned version: `pal-agents` v0.2.265.
 
 ---
 
 ## Lessons Learned
 
 - **Long-lived async responses must own their DB session** (2026-03-17): Releasing the current transaction before LLM work is not enough for `StreamingResponse` or other cancellation-prone flows. If a request-scoped `AsyncSession` survives inside a long-lived generator or task, SQLAlchemy may later warn that a non-checked-in asyncpg connection is being garbage-collected. Fix the ownership boundary instead: create and close `AsyncSessionLocal()` inside the generator/task that owns the lifetime.
-- **Monitoring trace isolation** (2025-02-14): Monitoring LLM calls (image/video analysis) were inheriting active voice-agent trace context. Fix: explicit trace isolation in `/services/monitoring_service/_llm.py`. See `docs/records/2025-02-14-monitoring-trace-fix.md`.
+- **Monitoring trace isolation** (2025-02-14): Monitoring LLM calls (image/video analysis) were inheriting active voice-agent trace context. Fix: explicit trace isolation in `/services/monitoring_service/_llm.py`. See `docs/records/2025-02-14-monitoring-trace-fix.md`. Still applies under Langfuse—wrap the isolated call so it doesn't adopt the parent `@observe` span.
 - **Permission decorators** have limitations: endpoints with resource IDs in form data, query params, or request body can't use simple route-level decorators. Need custom permission handlers that traverse the resource hierarchy. See `docs/state/auth.md`.
 - **Event-driven vs completion events**: For observability, the Langfuse SDK + OTel exporter is simpler and more effective than completion events + CloudWatch. Fewer moving parts, better developer experience.
+- **Don't use `Message.Metadata` as a back-door for eval-only context** (2026-04-25): When eval flows needed `customer_phone` after it stopped auto-populating for the API channel, the clean fix is an optional `context_modifier` callback on the service entry point that only the eval driver supplies—not a new optional field on the public request schema. Keeps the API surface honest and keeps eval-only concerns in the eval layer.
+- **Frozen dataclasses for cross-layer payloads** (2026-04): The PAL-10000’s series moved analytics/change-log/monitoring/order/etc. payloads from mutable dicts to frozen dataclasses. Prefer frozen dataclasses (not TypedDicts or free-form dicts) for any new DTO that crosses layer boundaries — immutability + explicit fields catch drift at type-check time.
