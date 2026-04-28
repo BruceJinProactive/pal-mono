@@ -61,6 +61,29 @@ class TestCreateDriverCustomerPhone:
         assert result.customer_phone is None
 
 
+class TestCreateDriverSpecModifier:
+    def test_default_is_eval_safety(self) -> None:
+        from services.eval_service._safety import apply_eval_safety
+
+        with patch(f"{FACTORY_MODULE}.logger"):
+            result = create_driver(driver_mode="http", project_identifier="proj-123")
+
+        assert result.spec_modifier is apply_eval_safety
+
+    def test_custom_spec_modifier_is_forwarded(self) -> None:
+        def custom(spec: object) -> None:  # pragma: no cover - identity only
+            pass
+
+        with patch(f"{FACTORY_MODULE}.logger"):
+            result = create_driver(
+                driver_mode="http",
+                project_identifier="proj-123",
+                spec_modifier=custom,
+            )
+
+        assert result.spec_modifier is custom
+
+
 class TestCreateDriverDirect:
     def test_raises_not_implemented_error(self) -> None:
         with patch(f"{FACTORY_MODULE}.logger"):

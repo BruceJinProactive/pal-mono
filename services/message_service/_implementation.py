@@ -12,6 +12,7 @@ from openai.types.chat.chat_completion_chunk import ChoiceDelta
 from pal_agents import Agent as PalAgent
 from pal_agents import Input as PalInput
 from pal_agents.input import RuntimeContext
+from pal_agents.spec import Spec
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -153,6 +154,7 @@ async def _dispatch_agent_async(
     account_name: str,
     conversation_id: uuid.UUID,
     context_modifier: Callable[[RuntimeContext], None] | None = None,
+    spec_modifier: Callable[[Spec], None] | None = None,
 ) -> tuple[Output, list[dict]]:
     """Dispatch to pal-agents or legacy agent and return (Output, events)."""
     collected_events: list[dict] = []
@@ -168,6 +170,9 @@ async def _dispatch_agent_async(
             sender_identifier=message.sender_identifier,
             raw_config=project_raw_config,
         )
+
+        if spec_modifier:
+            spec_modifier(spec)
 
         pal_agent = PalAgent(spec=spec)
 
@@ -351,6 +356,7 @@ async def get_chat_response_async(
     message: Message,
     request_context: RequestContext,
     context_modifier: Callable[[RuntimeContext], None] | None = None,
+    spec_modifier: Callable[[Spec], None] | None = None,
 ) -> list[Message]:
     message_repo = db.MessageRepositoryAsync(session)
     response_messages = []
@@ -427,6 +433,7 @@ async def get_chat_response_async(
                 account_name=account_name,
                 conversation_id=request_message.conversation_id,
                 context_modifier=context_modifier,
+                spec_modifier=spec_modifier,
             )
             lf.set_current_trace_io(output={"content": output.content})
 

@@ -4,6 +4,7 @@ from typing import AsyncIterator
 
 from openai.types.chat import ChatCompletionChunk
 from pal_agents.input import RuntimeContext
+from pal_agents.spec import Spec
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,7 @@ async def get_chat_response_async(
     message: Message,
     request_context: RequestContext,
     context_modifier: Callable[[RuntimeContext], None] | None = None,
+    spec_modifier: Callable[[Spec], None] | None = None,
 ) -> list[Message]:
     """
     Processes an incoming message and generates a response from the appropriate agent.
@@ -34,6 +36,11 @@ async def get_chat_response_async(
         session (Session): The database session.
         message (Message): The incoming message object.
         context_modifier: Optional callback to modify RuntimeContext after construction.
+        spec_modifier: Optional callback to modify the pal-agents ``Spec`` after
+            construction and before the agent runs. Used by eval drivers to
+            force safety flags (e.g. ``toast.submit_orders=False``) regardless
+            of what the project's DB config says. Production callers leave
+            this ``None``.
 
     Returns:
         list[Message]: A list of message objects.
@@ -43,7 +50,11 @@ async def get_chat_response_async(
         ValueError: If the response type from the agent is unexpected.
     """
     return await _implementation.get_chat_response_async(
-        session, message, request_context, context_modifier=context_modifier
+        session,
+        message,
+        request_context,
+        context_modifier=context_modifier,
+        spec_modifier=spec_modifier,
     )
 
 

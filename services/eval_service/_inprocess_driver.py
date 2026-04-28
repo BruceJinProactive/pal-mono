@@ -6,12 +6,16 @@ with the eval runner. Each turn opens its own AsyncSessionLocal.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from pal_agents.evals.drivers.protocol import ConversationTurn, TurnResult
 from pal_agents.input import RuntimeContext
+from pal_agents.spec import Spec
 
 from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject, Type
 from db.session import AsyncSessionLocal
 from db.tables.types import Channel
+from services.eval_service._safety import apply_eval_safety
 from services.message_service import get_chat_response_async
 from utils.log import logger
 from utils.request_context import RequestContext
@@ -29,12 +33,19 @@ class InProcessDriver:
         sender_identifier: str = "eval-user@test.com",
         channel: str = "api",
         customer_phone: str | None = None,
+        spec_modifier: Callable[[Spec], None] | None = None,
     ) -> None:
         self.recipient_identifier = recipient_identifier
         self.sender_identifier = sender_identifier
         self.channel = Channel(channel)
         self.last_conversation_id: str | None = None
         self.customer_phone = customer_phone
+        # Default to the eval safety modifier so real orders are never placed
+        # from an eval run, even if the project's DB config enables them.
+        # Callers that specifically need a different modifier (e.g. a test that
+        # wants submit_orders=True with a mocked HTTP client) can pass their
+        # own; ``None`` is coerced to the safety default.
+        self.spec_modifier: Callable[[Spec], None] = spec_modifier or apply_eval_safety
 
     async def send_turn(
         self,
@@ -67,6 +78,7 @@ class InProcessDriver:
                     message=chat_message,
                     request_context=request_context,
                     context_modifier=_context_modifier,
+                    spec_modifier=self.spec_modifier,
                 )
                 await session.commit()
             except Exception:

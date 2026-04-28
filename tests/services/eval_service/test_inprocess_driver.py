@@ -214,6 +214,54 @@ class TestCustomerPhone:
         assert ctx.customer_phone is None
 
 
+class TestSpecModifier:
+    def test_default_spec_modifier_is_eval_safety(self) -> None:
+        from services.eval_service._safety import apply_eval_safety
+
+        driver = InProcessDriver(recipient_identifier="proj")
+        assert driver.spec_modifier is apply_eval_safety
+
+    def test_none_falls_back_to_eval_safety(self) -> None:
+        from services.eval_service._safety import apply_eval_safety
+
+        driver = InProcessDriver(recipient_identifier="proj", spec_modifier=None)
+        assert driver.spec_modifier is apply_eval_safety
+
+    def test_custom_spec_modifier_is_stored(self) -> None:
+        def custom(spec: object) -> None:  # pragma: no cover - identity only
+            pass
+
+        driver = InProcessDriver(recipient_identifier="proj", spec_modifier=custom)
+        assert driver.spec_modifier is custom
+
+    @pytest.mark.asyncio
+    async def test_spec_modifier_forwarded_to_service(self) -> None:
+        sentinel_called: list[bool] = []
+
+        def sentinel(spec: object) -> None:
+            sentinel_called.append(True)
+
+        driver = InProcessDriver(recipient_identifier="proj", spec_modifier=sentinel)
+        agent_msg = _make_agent_message("Hi", session_id="conv-1")
+        mock_get_chat = AsyncMock(return_value=[agent_msg])
+        mock_session = AsyncMock()
+
+        with (
+            patch(f"{MODULE}.get_chat_response_async", mock_get_chat),
+            patch(f"{MODULE}.AsyncSessionLocal") as mock_session_factory,
+        ):
+            mock_session_factory.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
+            mock_session_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await driver.send_turn("Hi", [])
+
+        kwargs = mock_get_chat.call_args.kwargs
+        assert "spec_modifier" in kwargs
+        assert kwargs["spec_modifier"] is sentinel
+
+
 class TestBuildMessage:
     def test_message_fields(self) -> None:
         driver = InProcessDriver(

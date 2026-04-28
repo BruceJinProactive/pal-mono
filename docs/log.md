@@ -4,6 +4,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-04-28
+
+- **Eval `spec_modifier` — prevent real Toast/Adora order submission during eval runs.** Added optional `spec_modifier` hook to `message_service.get_chat_response_async`, applied after `construct_agent_spec`. New `services/eval_service/_safety.py::apply_eval_safety` is installed by default on `InProcessDriver`: forces `toast.submit_orders=False` and `adora.force_payment_link=True` (coerces Adora orders to payment-link flow, so nothing hits the POS). Zero production impact; production callers pass no modifier. → `docs/records/2026-04-28-eval-spec-modifier.md`
+
 ## 2026-04
 
 ### 2026-04-28

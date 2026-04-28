@@ -6,6 +6,9 @@ Creates the appropriate driver based on driver_mode configuration.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
+
+from pal_agents.spec import Spec
 
 from services.eval_service._inprocess_driver import InProcessDriver
 from utils.log import logger
@@ -17,6 +20,7 @@ def create_driver(
     channel: str = "api",
     scenario_id: str | None = None,
     customer_phone: str | None = None,
+    spec_modifier: Callable[[Spec], None] | None = None,
 ) -> InProcessDriver:
     """Create an AgentDriver for the given mode.
 
@@ -29,6 +33,11 @@ def create_driver(
         project_identifier: Channel-specific identifier for routing messages.
         channel: Channel type (e.g. "api", "voice"). Defaults to "api".
         scenario_id: Optional scenario ID included in the sender for traceability.
+        customer_phone: Optional phone number to inject into ``RuntimeContext``
+            for the scenario.
+        spec_modifier: Optional ``Spec`` mutator. If ``None``, the driver
+            installs ``apply_eval_safety`` by default so real orders are never
+            placed from an eval run.
 
     Returns:
         An AgentDriver instance.
@@ -52,6 +61,7 @@ def create_driver(
             sender_identifier=sender,
             channel=channel,
             customer_phone=customer_phone,
+            spec_modifier=spec_modifier,
         )
 
     if driver_mode == "direct":

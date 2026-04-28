@@ -18,6 +18,7 @@ Last updated: 2026-04-27
 
 ## Recently Landed
 
+- 2026-04-28: **Eval `spec_modifier` for order-submission safety** — `InProcessDriver` now installs `apply_eval_safety` by default via a new `spec_modifier` hook on `message_service.get_chat_response_async`. Forces `toast.submit_orders=False` and `adora.force_payment_link=True` regardless of DB config. → `docs/records/2026-04-28-eval-spec-modifier.md`
 - 2026-04-25: **Datadog LLMObs → Langfuse/OTel migration** (PAL-10113, PR #4090). ADR-013 superseded. LLM observability now uses Langfuse SDK v4 (`@observe` decorators in `agent/agent.py`, `agent/framework/agno.py`, tool `_implementation.py` files). General tracing moves to OpenTelemetry (Grafana Tempo). Datadog StatsD metrics via `utils/dd.py` are still in use for non-LLM metrics.
 - 2026-04-24: Langfuse dependency added (PAL-10112, PR #4089) — precursor to the LLMObs migration.
 - 2026-04-23: `eval_scenarios` table landed → `docs/records/2026-04-23-eval-scenarios-table.md`.
