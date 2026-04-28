@@ -8,6 +8,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ### 2026-04-28
 - Add `vision_entity_type` DB table for per-account vision entity type definitions (table, employee, food_tray, etc.); columns: `account_id` (indexed), `name`, `display_name`, `description`, `icon`, `is_active`; unique constraint on `(account_id, name)` → `docs/records/2026-04-28-vision-entity-type-table.md`
+- Add `vision_entity_state_definition` DB table for per-entity-type state definitions (dirty, occupied, idle, etc.); columns: `entity_type_id` (indexed), `name`, `display_name`, `color`, `sort_order`, `is_default`; unique constraint on `(entity_type_id, name)` → `docs/records/2026-04-28-vision-entity-state-definition-table.md`
 
 ### 2026-04-27
 - ADR drift fix: added [ADR-020](decisions/020-otel-langfuse-observability.md) documenting the target observability stack — Grafana LGTM (Loki/Tempo/Mimir) for Ops, Langfuse for LLM — and the in-progress Datadog removal. Updated [ADR-013](decisions/013-datadog-observability.md) to `Superseded by ADR-020`; added 2026-04 status notes to [ADR-018](decisions/018-vapi-to-livekit-migration.md) confirming code-level VAPI removal is complete; updated decisions index with inline status-change dates for `Superseded` / `Deprecated` rows.
