@@ -42,6 +42,7 @@ from utils.otel import trace_async_block
 from utils.request_context import RequestContext
 
 from . import _utils
+from ._tracing import langfuse_message_span
 
 _background_tasks: set[asyncio.Task[None]] = set()
 
@@ -137,6 +138,214 @@ def get_filler_message(message: Message) -> Message:
     return filler_message
 
 
+async def _dispatch_agent_async(
+    *,
+    session: AsyncSession,
+    message: Message,
+    request_context: RequestContext,
+    use_pal_agents: bool,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+    project_id: uuid.UUID,
+    project_account_id: uuid.UUID,
+    project_raw_config: dict,
+    project_timezone: str | None,
+    account_name: str,
+    conversation_id: uuid.UUID,
+    context_modifier: Callable[[RuntimeContext], None] | None = None,
+) -> tuple[Output, list[dict]]:
+    """Dispatch to pal-agents or legacy agent and return (Output, events)."""
+    collected_events: list[dict] = []
+
+    if use_pal_agents:
+        spec = await agent_service.construct_agent_spec(
+            session=session,
+            agent_id=agent_id,
+            user_id=user_id,
+            project_id=project_id,
+            conversation_id=conversation_id,
+            channel=message.channel,
+            sender_identifier=message.sender_identifier,
+            raw_config=project_raw_config,
+        )
+
+        pal_agent = PalAgent(spec=spec)
+
+        # Build RuntimeContext for tool execution
+        customer_phone = None
+        if message.channel and message.channel.value.lower() in [
+            "sms",
+            "voice",
+            "whatsapp",
+        ]:
+            customer_phone = message.sender_identifier
+
+        runtime_context = RuntimeContext(
+            user_id=str(user_id),
+            session_id=str(conversation_id),
+            customer_phone=customer_phone,
+            project_id=str(project_id),
+            account_id=str(project_account_id),
+            account_name=account_name,
+            agent_id=str(agent_id),
+            timezone=project_timezone or "America/Los_Angeles",
+            channel=message.channel.value,
+        )
+
+        if context_modifier:
+            context_modifier(runtime_context)
+
+        # Fetch conversation history
+        history_messages = await query_history_messages(
+            conversation_id,
+            limit=100,
+        )
+
+        # Format history for context
+        current_message = message.text.body if message.text else ""
+        history_text = ""
+        if history_messages:
+            if (
+                history_messages[-1].content == current_message
+                and history_messages[-1].role == "user"
+            ):
+                prior_messages = history_messages[:-1]
+            else:
+                logger.warning(
+                    "[pal-agents] Last history message does not match current input. "
+                    f"Expected: {current_message[:50]}..., "
+                    f"Got: {(history_messages[-1].content or '')[:50]}..."
+                )
+                prior_messages = history_messages
+
+            if prior_messages:
+                history_text = "\n".join(
+                    [
+                        f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
+                        for msg in prior_messages
+                        if msg.content
+                    ]
+                )
+
+        # Build content with history
+        if history_text:
+            full_content = (
+                f"<conversation_history>\n{history_text}\n</conversation_history>\n\n"
+                f"User: {current_message}"
+            )
+        else:
+            full_content = f"User: {current_message}"
+
+        pal_input = PalInput(
+            content=full_content,
+            runtime_context=runtime_context,
+        )
+
+        pal_output = await pal_agent.run(pal_input)
+
+        # Log order_details if present and persist to DB
+        if hasattr(pal_output, "order_details") and pal_output.order_details:
+            order_details = pal_output.order_details
+            logger.info(
+                "[order_details]Order successfully placed",
+                extra={
+                    "event_type": "order_placed",
+                    "conversation_id": str(conversation_id),
+                    "agent_id": str(agent_id),
+                    "account_name": account_name,
+                    "vendor": order_details.vendor,
+                    "order_id": order_details.order_id,
+                    "store_id": order_details.store_id,
+                    "user_phone_number": order_details.user_phone_number,
+                    "tracking_link": order_details.tracking_link,
+                    "status": order_details.status,
+                    "fulfillment_strategy": order_details.fulfillment_strategy,
+                    "subtotal": float(order_details.subtotal),
+                    "tax": float(order_details.tax),
+                    "service_charge": float(order_details.service_charge),
+                    "delivery_charge": float(order_details.delivery_charge),
+                    "discount": float(order_details.discount),
+                    "total": float(order_details.total),
+                    "item_count": len(order_details.order_items),
+                    "order_time": order_details.order_time,
+                },
+            )
+
+            await transaction_service.create_order_from_agent_async(
+                session=session,
+                order_details=order_details,
+                conversation_id=conversation_id,
+            )
+
+        # Persist reservation_details if present
+        if (
+            hasattr(pal_output, "reservation_details")
+            and pal_output.reservation_details
+        ):
+            rd = pal_output.reservation_details
+            logger.info(
+                "[reservation_details]Reservation/waitlist placed",
+                extra={
+                    "event_type": "reservation_placed",
+                    "conversation_id": str(conversation_id),
+                    "agent_id": str(agent_id),
+                    "account_name": account_name,
+                    "vendor": rd.vendor,
+                    "entry_type": rd.entry_type,
+                    "reservation_id": rd.reservation_id,
+                    "store_id": rd.store_id,
+                    "status": rd.status,
+                    "party_size": rd.party_size,
+                },
+            )
+            await reservation_service.save_reservation_from_agent_async(
+                session=session,
+                reservation_details=rd,
+                conversation_id=conversation_id,
+            )
+
+        # Collect generic tool call events
+        if hasattr(pal_output, "events") and pal_output.events:  # type: ignore[reportAttributeAccessIssue]
+            collected_events = pal_output.events  # type: ignore[reportAttributeAccessIssue]
+            logger.info(
+                "[tool_call_events] Collected %d events from pal-agents output",
+                len(collected_events),
+                extra={
+                    "event_count": len(collected_events),
+                    "conversation_id": str(conversation_id),
+                },
+            )
+
+        output = Output(
+            content=pal_output.content,
+            escalated=pal_output.escalated,
+            closing_conversation=pal_output.closing_conversation,
+        )
+    else:
+        # EXISTING FLOW: Use current agent system
+        config = await agent_service.construct_agent_config(
+            session=session,
+            agent_id=agent_id,
+            user_id=user_id,
+            project_id=project_id,
+            conversation_id=conversation_id,
+            channel=message.channel,
+            sender_identifier=message.sender_identifier,
+            receiver_identifier=message.recipient_identifier,
+        )
+
+        agent = Agent(config=config)
+
+        input = await _utils.get_agent_input_from_message(
+            message=message,
+            stream=False,
+            request_context=request_context,
+        )
+        output: Output = await agent.arun(input)  # type: ignore
+
+    return output, collected_events
+
+
 async def get_chat_response_async(
     session: AsyncSession,
     message: Message,
@@ -194,210 +403,32 @@ async def get_chat_response_async(
             raise ValueError("Agent ID not found")
 
         # **************** Step 2: Construct agent, get input, and generate output ****************
-        current_message = ""
-        collected_events_sync: list[dict] = []
-        if use_pal_agents:
-            # NEW FLOW: Use pal-agents
-
-            spec = await agent_service.construct_agent_spec(
+        current_message = message.text.body if message.text else ""
+        with langfuse_message_span(
+            conversation_id=request_message.conversation_id,
+            user_id=user.id,
+            agent_id=agent_id,
+            account_name=account_name,
+            project_name=project_name,
+            channel=message.channel.value if message.channel else "unknown",
+        ) as lf:
+            lf.set_current_trace_io(input={"content": current_message})
+            output, collected_events_sync = await _dispatch_agent_async(
                 session=session,
-                agent_id=agent_id,
-                user_id=user.id,
-                project_id=project_id,
-                conversation_id=request_message.conversation_id,
-                channel=message.channel,
-                sender_identifier=message.sender_identifier,
-                raw_config=project_raw_config,
-            )
-
-            pal_agent = PalAgent(spec=spec)
-
-            # Build RuntimeContext for tool execution
-            # Determines customer_phone based on channel type
-            customer_phone = None
-            if message.channel and message.channel.value.lower() in [
-                "sms",
-                "voice",
-                "whatsapp",
-            ]:
-                customer_phone = message.sender_identifier
-
-            runtime_context = RuntimeContext(
-                user_id=str(user.id),
-                session_id=str(request_message.conversation_id),
-                customer_phone=customer_phone,
-                project_id=str(project_id),
-                account_id=str(project_account_id),
-                account_name=account_name,
-                agent_id=str(agent_id),
-                timezone=project_timezone or "America/Los_Angeles",
-                channel=message.channel.value,
-            )
-
-            if context_modifier:
-                context_modifier(runtime_context)
-
-            # Fetch conversation history
-            history_messages = await query_history_messages(
-                request_message.conversation_id,
-                limit=100,
-            )
-
-            # Format history for context
-            # Match legacy flow's defensive pattern: verify last message matches
-            # current input before excluding (see agent/framework/agno.py:356-377)
-            current_message = message.text.body if message.text else ""
-            history_text = ""
-            if history_messages:
-                # Check if last message matches current input (should be the case
-                # since create_message commits before we fetch history)
-                if (
-                    history_messages[-1].content == current_message
-                    and history_messages[-1].role == "user"
-                ):
-                    # Exclude current message from history
-                    prior_messages = history_messages[:-1]
-                else:
-                    # Defensive: log warning but include all history
-                    # (safer to have potential duplicate than missing context)
-                    logger.warning(
-                        "[pal-agents] Last history message does not match current input. "
-                        f"Expected: {current_message[:50]}..., "
-                        f"Got: {(history_messages[-1].content or '')[:50]}..."
-                    )
-                    prior_messages = history_messages
-
-                if prior_messages:
-                    history_text = "\n".join(
-                        [
-                            f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
-                            for msg in prior_messages
-                            if msg.content  # Filter out None/empty content
-                        ]
-                    )
-
-            # Build content with history
-            if history_text:
-                full_content = (
-                    f"<conversation_history>\n{history_text}\n</conversation_history>\n\n"
-                    f"User: {current_message}"
-                )
-            else:
-                full_content = f"User: {current_message}"
-
-            pal_input = PalInput(
-                content=full_content,
-                runtime_context=runtime_context,
-            )
-
-            pal_output = await pal_agent.run(pal_input)
-
-            # Log order_details if present and persist to DB
-            if hasattr(pal_output, "order_details") and pal_output.order_details:
-                order_details = pal_output.order_details
-                logger.info(
-                    "[order_details]Order successfully placed",
-                    extra={
-                        "event_type": "order_placed",
-                        "conversation_id": str(request_message.conversation_id),
-                        "agent_id": str(agent_id),
-                        "account_name": account_name,
-                        "vendor": order_details.vendor,
-                        "order_id": order_details.order_id,
-                        "store_id": order_details.store_id,
-                        "user_phone_number": order_details.user_phone_number,
-                        "tracking_link": order_details.tracking_link,
-                        "status": order_details.status,
-                        "fulfillment_strategy": order_details.fulfillment_strategy,
-                        "subtotal": float(order_details.subtotal),
-                        "tax": float(order_details.tax),
-                        "service_charge": float(order_details.service_charge),
-                        "delivery_charge": float(order_details.delivery_charge),
-                        "discount": float(order_details.discount),
-                        "total": float(order_details.total),
-                        "item_count": len(order_details.order_items),
-                        "order_time": order_details.order_time,
-                    },
-                )
-
-                # Persist order to database using transaction service
-                await transaction_service.create_order_from_agent_async(
-                    session=session,
-                    order_details=order_details,
-                    conversation_id=request_message.conversation_id,
-                )
-
-            # Persist reservation_details if present
-            if (
-                hasattr(pal_output, "reservation_details")
-                and pal_output.reservation_details
-            ):
-                rd = pal_output.reservation_details
-                logger.info(
-                    "[reservation_details]Reservation/waitlist placed",
-                    extra={
-                        "event_type": "reservation_placed",
-                        "conversation_id": str(request_message.conversation_id),
-                        "agent_id": str(agent_id),
-                        "account_name": account_name,
-                        "vendor": rd.vendor,
-                        "entry_type": rd.entry_type,
-                        "reservation_id": rd.reservation_id,
-                        "store_id": rd.store_id,
-                        "status": rd.status,
-                        "party_size": rd.party_size,
-                    },
-                )
-                await reservation_service.save_reservation_from_agent_async(
-                    session=session,
-                    reservation_details=rd,
-                    conversation_id=request_message.conversation_id,
-                )
-
-            # Collect generic tool call events from pal-agents output
-            # (guarded by hasattr — field added in pal-agents feat/generic-tool-call-events)
-            if hasattr(pal_output, "events") and pal_output.events:  # type: ignore[reportAttributeAccessIssue]
-                collected_events_sync = pal_output.events  # type: ignore[reportAttributeAccessIssue]
-                logger.info(
-                    "[tool_call_events] Collected %d events from pal-agents output",
-                    len(collected_events_sync),
-                    extra={
-                        "event_count": len(collected_events_sync),
-                        "conversation_id": str(request_message.conversation_id),
-                    },
-                )
-
-            # Use pal-agents Output fields directly (v0.2.1+)
-            output = Output(
-                content=pal_output.content,
-                escalated=pal_output.escalated,
-                closing_conversation=pal_output.closing_conversation,
-            )
-        else:
-            # EXISTING FLOW: Use current agent system
-
-            # Construct agent config
-            config = await agent_service.construct_agent_config(
-                session=session,
-                agent_id=agent_id,
-                user_id=user.id,
-                project_id=project_id,
-                conversation_id=request_message.conversation_id,
-                channel=message.channel,
-                sender_identifier=message.sender_identifier,
-                receiver_identifier=message.recipient_identifier,
-            )
-
-            agent = Agent(config=config)
-
-            # Get Input with conversation history
-            input = await _utils.get_agent_input_from_message(
                 message=message,
-                stream=False,
                 request_context=request_context,
+                use_pal_agents=use_pal_agents,
+                agent_id=agent_id,
+                user_id=user.id,
+                project_id=project_id,
+                project_account_id=project_account_id,
+                project_raw_config=project_raw_config,
+                project_timezone=project_timezone,
+                account_name=account_name,
+                conversation_id=request_message.conversation_id,
+                context_modifier=context_modifier,
             )
-            # Get Output
-            output: Output = await agent.arun(input)  # type: ignore # Temporarily disable specific pyright errors since Datadog annotations are not fully compatible with pyright yet.
+            lf.set_current_trace_io(output={"content": output.content})
 
         # Fire background fingerprinting (covers both pal-agents and legacy flows)
         fp_task = asyncio.create_task(
@@ -601,132 +632,132 @@ async def get_chat_response_stream(
             collected_events: list[dict] = []
             current_message = ""
 
-            # ========== CHUNK GENERATION (if/else by project config) ==========
-            if use_pal_agents:
-                # PAL-AGENTS PATH
-
-                spec = await agent_service.construct_agent_spec(
-                    session=session,
-                    agent_id=agent_id,
-                    user_id=user_id,
-                    project_id=project_id,
-                    conversation_id=request_conversation_id,
-                    channel=message.channel,
-                    sender_identifier=message.sender_identifier,
-                    raw_config=project_raw_config,
-                    room_name=room_name,
-                    participant_identity=participant_identity,
-                    sip_provider=sip_provider,
-                )
-                pal_agent = PalAgent(spec=spec)
-
-                # Build RuntimeContext (same as non-streaming)
-                customer_phone = None
-                if message.channel and message.channel.value.lower() in [
-                    "sms",
-                    "voice",
-                    "whatsapp",
-                ]:
-                    customer_phone = message.sender_identifier
-
-                # Pre-fetch voice-specific data for RuntimeContext
-                vapi_control_url = None
-                if message.channel == Channel.VOICE and call_id:
-                    try:
-                        conversation = await db.ConversationRepositoryAsync(
-                            session
-                        ).get_conversation_by_id(
-                            conversation_id=request_conversation_id
-                        )
-                        vapi_control_url = conversation.vapi_control_url
-                    except Exception as e:
-                        # Catch all exceptions for graceful degradation during voice calls.
-                        # Voice transfer tools can function without this URL if needed.
-                        logger.warning(
-                            "Failed to fetch conversation for vapi_control_url: %s",
-                            str(e),
-                            extra={
-                                "conversation_id": str(request_conversation_id),
-                                "call_id": call_id,
-                                "exception_type": type(e).__name__,
-                            },
-                        )
-
-                runtime_context = RuntimeContext(
-                    user_id=str(user_id),
-                    session_id=str(request_conversation_id),
-                    customer_phone=customer_phone,
-                    project_id=str(project_id),
-                    account_id=str(project_account_id),
-                    account_name=account_name,
-                    agent_id=str(agent_id),
-                    timezone=project_timezone or "America/Los_Angeles",
-                    channel=message.channel.value,
-                    # Voice-specific fields (extra="allow" permits these)
-                    call_id=call_id,  # type: ignore[call-arg]
-                    vapi_control_url=vapi_control_url,  # type: ignore[call-arg]
-                    room_name=room_name,  # type: ignore[call-arg]
-                    participant_identity=participant_identity,  # type: ignore[call-arg]
+            with langfuse_message_span(
+                conversation_id=request_conversation_id,
+                user_id=user_id,
+                agent_id=agent_id,
+                account_name=account_name,
+                project_name=project_name,
+                channel=message.channel.value if message.channel else "unknown",
+            ) as lf:
+                lf.set_current_trace_io(
+                    input={"content": message.text.body if message.text else ""},
                 )
 
-                # Fetch and format conversation history (same as non-streaming)
-                history_messages = await query_history_messages(
-                    request_conversation_id,
-                    limit=100,
-                )
+                # ========== CHUNK GENERATION (if/else by project config) ==========
+                if use_pal_agents:
+                    # PAL-AGENTS PATH
 
-                current_message = message.text.body if message.text else ""
-                history_text = ""
-                if history_messages:
-                    if (
-                        history_messages[-1].content == current_message
-                        and history_messages[-1].role == "user"
-                    ):
-                        prior_messages = history_messages[:-1]
-                    else:
-                        logger.warning(
-                            "[pal-agents streaming] Last history message does not match current input. "
-                            f"Expected: {current_message[:50]}..., "
-                            f"Got: {(history_messages[-1].content or '')[:50]}..."
-                        )
-                        prior_messages = history_messages
-
-                    if prior_messages:
-                        history_text = "\n".join(
-                            [
-                                f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
-                                for msg in prior_messages
-                                if msg.content  # Filter out None/empty content
-                            ]
-                        )
-
-                if history_text:
-                    full_content = (
-                        f"<conversation_history>\n{history_text}\n</conversation_history>\n\n"
-                        f"User: {current_message}"
+                    spec = await agent_service.construct_agent_spec(
+                        session=session,
+                        agent_id=agent_id,
+                        user_id=user_id,
+                        project_id=project_id,
+                        conversation_id=request_conversation_id,
+                        channel=message.channel,
+                        sender_identifier=message.sender_identifier,
+                        raw_config=project_raw_config,
+                        room_name=room_name,
+                        participant_identity=participant_identity,
+                        sip_provider=sip_provider,
                     )
-                else:
-                    full_content = f"User: {current_message}"
+                    pal_agent = PalAgent(spec=spec)
 
-                pal_input = PalInput(
-                    content=full_content,
-                    runtime_context=runtime_context,
-                )
+                    # Build RuntimeContext (same as non-streaming)
+                    customer_phone = None
+                    if message.channel and message.channel.value.lower() in [
+                        "sms",
+                        "voice",
+                        "whatsapp",
+                    ]:
+                        customer_phone = message.sender_identifier
 
-                send_dd_histogram_metrics(
-                    "message_service.start_streaming",
-                    request_context.request_time,
-                    [
-                        f"agent_id:{agent_id}",
-                        f"account_name:{account_name}",
-                    ],
-                )
+                    # Pre-fetch voice-specific data for RuntimeContext
+                    vapi_control_url = None
+                    if message.channel == Channel.VOICE and call_id:
+                        try:
+                            conversation = await db.ConversationRepositoryAsync(
+                                session
+                            ).get_conversation_by_id(
+                                conversation_id=request_conversation_id
+                            )
+                            vapi_control_url = conversation.vapi_control_url
+                        except Exception as e:
+                            # Catch all exceptions for graceful degradation during voice calls.
+                            # Voice transfer tools can function without this URL if needed.
+                            logger.warning(
+                                "Failed to fetch conversation for vapi_control_url: %s",
+                                str(e),
+                                extra={
+                                    "conversation_id": str(request_conversation_id),
+                                    "call_id": call_id,
+                                    "exception_type": type(e).__name__,
+                                },
+                            )
 
-                # Stream from pal-agents
-                async with trace_async_block("Message Service Streaming"):
-                    index = 0
+                    runtime_context = RuntimeContext(
+                        user_id=str(user_id),
+                        session_id=str(request_conversation_id),
+                        customer_phone=customer_phone,
+                        project_id=str(project_id),
+                        account_id=str(project_account_id),
+                        account_name=account_name,
+                        agent_id=str(agent_id),
+                        timezone=project_timezone or "America/Los_Angeles",
+                        channel=message.channel.value,
+                        # Voice-specific fields (extra="allow" permits these)
+                        call_id=call_id,  # type: ignore[call-arg]
+                        vapi_control_url=vapi_control_url,  # type: ignore[call-arg]
+                        room_name=room_name,  # type: ignore[call-arg]
+                        participant_identity=participant_identity,  # type: ignore[call-arg]
+                    )
+
+                    # Fetch and format conversation history (same as non-streaming)
+                    history_messages = await query_history_messages(
+                        request_conversation_id,
+                        limit=100,
+                    )
+
+                    current_message = message.text.body if message.text else ""
+                    history_text = ""
+                    if history_messages:
+                        if (
+                            history_messages[-1].content == current_message
+                            and history_messages[-1].role == "user"
+                        ):
+                            prior_messages = history_messages[:-1]
+                        else:
+                            logger.warning(
+                                "[pal-agents streaming] Last history message does not match current input. "
+                                f"Expected: {current_message[:50]}..., "
+                                f"Got: {(history_messages[-1].content or '')[:50]}..."
+                            )
+                            prior_messages = history_messages
+
+                        if prior_messages:
+                            history_text = "\n".join(
+                                [
+                                    f"{'User' if msg.role == 'user' else 'Assistant'}: {msg.content}"
+                                    for msg in prior_messages
+                                    if msg.content  # Filter out None/empty content
+                                ]
+                            )
+
+                    if history_text:
+                        full_content = (
+                            f"<conversation_history>\n{history_text}\n</conversation_history>\n\n"
+                            f"User: {current_message}"
+                        )
+                    else:
+                        full_content = f"User: {current_message}"
+
+                    pal_input = PalInput(
+                        content=full_content,
+                        runtime_context=runtime_context,
+                    )
+
                     send_dd_histogram_metrics(
-                        "message_service.waiting_first_chunk",
+                        "message_service.start_streaming",
                         request_context.request_time,
                         [
                             f"agent_id:{agent_id}",
@@ -734,249 +765,7 @@ async def get_chat_response_stream(
                         ],
                     )
 
-                    transfer_purpose_captured = None
-
-                    try:
-                        pal_stream = await pal_agent.run(pal_input, stream=True)
-                        if pal_stream is None:
-                            # Gracefully stop streaming when upstream cancellation/teardown
-                            # results in a missing iterator from pal-agents.
-                            logger.warn(
-                                "[MessageService] pal-agents stream unavailable, ending stream",
-                                extra={
-                                    "agent_id": str(agent_id),
-                                    "conversation_id": str(request_conversation_id),
-                                },
-                            )
-                            return
-                        if not hasattr(pal_stream, "__aiter__"):
-                            raise TypeError(
-                                "Expected async iterator from pal_agent.run(stream=True), "
-                                f"got {type(pal_stream).__name__}"
-                            )
-
-                        async for chunk in pal_stream:
-                            if index == 0:
-                                send_dd_histogram_metrics(
-                                    "message_service.received_first_chunk",
-                                    request_context.request_time,
-                                    [
-                                        f"agent_id:{agent_id}",
-                                        f"account_name:{account_name}",
-                                    ],
-                                )
-
-                            # Capture and persist transfer_purpose immediately (before cancellation can interrupt)
-                            if (
-                                hasattr(chunk, "transfer_purpose")
-                                and chunk.transfer_purpose
-                                and not transfer_purpose_captured  # Only persist once
-                            ):
-                                transfer_purpose_captured = chunk.transfer_purpose
-                                try:
-                                    conversation = await db.ConversationRepositoryAsync(
-                                        session
-                                    ).get_conversation_by_id(
-                                        conversation_id=request_conversation_id
-                                    )
-                                    if conversation:
-                                        conversation.transfer_purpose = (
-                                            transfer_purpose_captured
-                                        )
-                                        await session.commit()
-                                        logger.info(
-                                            "Captured transfer_purpose during streaming",
-                                            extra={
-                                                "conversation_id": str(
-                                                    request_conversation_id
-                                                ),
-                                                "transfer_purpose": transfer_purpose_captured,
-                                            },
-                                        )
-                                except Exception as e:
-                                    await session.rollback()
-                                    logger.warning(
-                                        "Failed to persist transfer_purpose",
-                                        extra={
-                                            "conversation_id": str(
-                                                request_conversation_id
-                                            ),
-                                            "error": str(e),
-                                        },
-                                    )
-
-                            # Persist order_details if present in streaming response
-                            if hasattr(chunk, "order_details") and chunk.order_details:
-                                order_details = chunk.order_details
-                                logger.info(
-                                    "[order_details]Order details received in streaming response",
-                                    extra={
-                                        "event_type": "order_details_streamed",
-                                        "conversation_id": str(request_conversation_id),
-                                        "agent_id": str(agent_id),
-                                        "account_name": account_name,
-                                        "vendor": order_details.vendor,
-                                        "order_id": order_details.order_id,
-                                        "store_id": order_details.store_id,
-                                        "user_phone_number": order_details.user_phone_number,
-                                        "tracking_link": order_details.tracking_link,
-                                        "status": order_details.status,
-                                        "fulfillment_strategy": order_details.fulfillment_strategy,
-                                        "subtotal": float(order_details.subtotal),
-                                        "tax": float(order_details.tax),
-                                        "service_charge": float(
-                                            order_details.service_charge
-                                        ),
-                                        "delivery_charge": float(
-                                            order_details.delivery_charge
-                                        ),
-                                        "discount": float(order_details.discount),
-                                        "total": float(order_details.total),
-                                        "item_count": len(order_details.order_items),
-                                        "order_time": order_details.order_time,
-                                    },
-                                )
-
-                                # Persist order to database using transaction service
-                                await transaction_service.create_order_from_agent_async(
-                                    session=session,
-                                    order_details=order_details,
-                                    conversation_id=request_conversation_id,
-                                )
-
-                            # Persist reservation_details if present in streaming response
-                            if (
-                                hasattr(chunk, "reservation_details")
-                                and chunk.reservation_details
-                            ):
-                                rd = chunk.reservation_details
-                                logger.info(
-                                    "[reservation_details]Reservation/waitlist received in stream",
-                                    extra={
-                                        "event_type": "reservation_placed_streamed",
-                                        "conversation_id": str(request_conversation_id),
-                                        "agent_id": str(agent_id),
-                                        "account_name": account_name,
-                                        "vendor": rd.vendor,
-                                        "entry_type": rd.entry_type,
-                                        "reservation_id": rd.reservation_id,
-                                        "store_id": rd.store_id,
-                                        "status": rd.status,
-                                        "party_size": rd.party_size,
-                                    },
-                                )
-                                await reservation_service.save_reservation_from_agent_async(
-                                    session=session,
-                                    reservation_details=rd,
-                                    conversation_id=request_conversation_id,
-                                )
-
-                            # Collect generic tool call events
-                            # (guarded by hasattr — field added in pal-agents feat/generic-tool-call-events)
-                            if hasattr(chunk, "events") and chunk.events:  # type: ignore[reportAttributeAccessIssue]
-                                collected_events.extend(chunk.events)  # type: ignore[reportAttributeAccessIssue]
-                                logger.info(
-                                    "[tool_call_events] Collected %d events from stream chunk",
-                                    len(chunk.events),  # type: ignore[reportAttributeAccessIssue]
-                                    extra={
-                                        "event_count": len(chunk.events),  # type: ignore[reportAttributeAccessIssue]
-                                        "total_events": len(collected_events),
-                                        "conversation_id": str(request_conversation_id),
-                                    },
-                                )
-
-                            if not chunk.content:
-                                continue
-
-                            completion_chunk = ChatCompletionChunk(
-                                id=stream_id,
-                                object="chat.completion.chunk",
-                                created=int(
-                                    datetime.datetime.now(
-                                        datetime.timezone.utc
-                                    ).timestamp()
-                                ),
-                                model=message.recipient_identifier,
-                                choices=[
-                                    ChunkChoice(
-                                        index=0,
-                                        delta=ChoiceDelta(
-                                            role="assistant", content=chunk.content
-                                        ),
-                                        finish_reason=None,
-                                    )
-                                ],
-                            )
-                            yield completion_chunk
-                            collected_content.append(chunk.content)
-                            index += 1
-                    except asyncio.CancelledError:
-                        logger.debug("[MessageService] pal-agents stream cancelled")
-                        return
-                    except RuntimeError as stream_error:
-                        # Async generator wrappers (e.g. tracing middleware) can convert
-                        # normal StopAsyncIteration completion into a RuntimeError.
-                        if (
-                            isinstance(stream_error.__cause__, StopAsyncIteration)
-                            or str(stream_error)
-                            == "async generator raised StopAsyncIteration"
-                        ):
-                            logger.debug(
-                                "pal-agents stream ended with wrapped StopAsyncIteration",
-                                extra={
-                                    "agent_id": str(agent_id),
-                                    "conversation_id": str(request_conversation_id),
-                                    "error": str(stream_error),
-                                    "error_type": type(stream_error).__name__,
-                                    "cause": str(stream_error.__cause__),
-                                    "cause_type": (
-                                        type(stream_error.__cause__).__name__
-                                        if stream_error.__cause__
-                                        else None
-                                    ),
-                                },
-                            )
-                        else:
-                            raise
-                    finally:
-                        pass  # transfer_purpose already persisted during streaming
-
-            else:
-                # LEGACY PATH - existing agent system
-                config = await agent_service.construct_agent_config(
-                    session=session,
-                    agent_id=agent_id,
-                    user_id=user_id,
-                    project_id=project_id,
-                    conversation_id=request_conversation_id,
-                    channel=message.channel,
-                    sender_identifier=message.sender_identifier,
-                    receiver_identifier=message.recipient_identifier,
-                    room_name=room_name,
-                    participant_identity=participant_identity,
-                    sip_provider=sip_provider,
-                )
-                config.stream = True
-
-                agent = Agent(config=config)
-
-                input = await _utils.get_agent_input_from_message(
-                    message=message,
-                    stream=True,
-                    request_context=request_context,
-                )
-                send_dd_histogram_metrics(
-                    "message_service.start_streaming",
-                    request_context.request_time,
-                    [
-                        f"agent_id:{agent_id}",
-                        f"account_name:{account_name}",
-                    ],
-                )
-
-                response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
-
-                if response_stream:
+                    # Stream from pal-agents
                     async with trace_async_block("Message Service Streaming"):
                         index = 0
                         send_dd_histogram_metrics(
@@ -988,34 +777,46 @@ async def get_chat_response_stream(
                             ],
                         )
 
-                        async for chunk in response_stream:
-                            if index == 0:
-                                send_dd_histogram_metrics(
-                                    "message_service.received_first_chunk",
-                                    request_context.request_time,
-                                    [
-                                        f"agent_id:{agent_id}",
-                                        f"account_name:{account_name}",
-                                    ],
+                        transfer_purpose_captured = None
+
+                        try:
+                            pal_stream = await pal_agent.run(pal_input, stream=True)
+                            if pal_stream is None:
+                                # Gracefully stop streaming when upstream cancellation/teardown
+                                # results in a missing iterator from pal-agents.
+                                logger.warn(
+                                    "[MessageService] pal-agents stream unavailable, ending stream",
+                                    extra={
+                                        "agent_id": str(agent_id),
+                                        "conversation_id": str(request_conversation_id),
+                                    },
+                                )
+                                return
+                            if not hasattr(pal_stream, "__aiter__"):
+                                raise TypeError(
+                                    "Expected async iterator from pal_agent.run(stream=True), "
+                                    f"got {type(pal_stream).__name__}"
                                 )
 
-                            async with trace_async_block(
-                                "Process Stream Chunk",
-                                tags={
-                                    "chunk_index": index,
-                                    "conversation_id": str(request_conversation_id),
-                                    "chunk_type": type(chunk).__name__,
-                                },
-                            ) as span:
-                                # Process different chunk types into content string
-                                content = ""
-                                if isinstance(chunk, Output):
-                                    content = chunk.content
-                                    # Check for conversation closing if available
-                                    if (
-                                        hasattr(chunk, "closing_conversation")
-                                        and chunk.closing_conversation
-                                    ):
+                            async for chunk in pal_stream:
+                                if index == 0:
+                                    send_dd_histogram_metrics(
+                                        "message_service.received_first_chunk",
+                                        request_context.request_time,
+                                        [
+                                            f"agent_id:{agent_id}",
+                                            f"account_name:{account_name}",
+                                        ],
+                                    )
+
+                                # Capture and persist transfer_purpose immediately (before cancellation can interrupt)
+                                if (
+                                    hasattr(chunk, "transfer_purpose")
+                                    and chunk.transfer_purpose
+                                    and not transfer_purpose_captured  # Only persist once
+                                ):
+                                    transfer_purpose_captured = chunk.transfer_purpose
+                                    try:
                                         conversation = (
                                             await db.ConversationRepositoryAsync(
                                                 session
@@ -1024,40 +825,125 @@ async def get_chat_response_stream(
                                             )
                                         )
                                         if conversation:
-                                            conversation.status = (
-                                                db.ConversationStatus.CLOSING
+                                            conversation.transfer_purpose = (
+                                                transfer_purpose_captured
                                             )
-                                            await session.flush()
-                                elif isinstance(chunk, RunResponse):
-                                    content = chunk.get_content_as_string()
-                                elif isinstance(chunk, tuple):
-                                    content = chunk[0]
-                                elif isinstance(chunk, Message):
-                                    content = chunk.text.body if chunk.text else ""
-                                elif chunk:
-                                    if not isinstance(chunk, (str, int, float, bool)):
+                                            await session.commit()
+                                            logger.info(
+                                                "Captured transfer_purpose during streaming",
+                                                extra={
+                                                    "conversation_id": str(
+                                                        request_conversation_id
+                                                    ),
+                                                    "transfer_purpose": transfer_purpose_captured,
+                                                },
+                                            )
+                                    except Exception as e:
+                                        await session.rollback()
                                         logger.warning(
-                                            f"Unexpected chunk type: {type(chunk)}"
+                                            "Failed to persist transfer_purpose",
+                                            extra={
+                                                "conversation_id": str(
+                                                    request_conversation_id
+                                                ),
+                                                "error": str(e),
+                                            },
                                         )
-                                        continue
-                                    content = str(chunk)
 
-                                # Skip empty chunks
-                                if not content:
-                                    continue
-
-                                # Update span tags with content (skip if span is None in testing mode)
-                                if span:
-                                    span.set_attribute(
-                                        "content",
-                                        (
-                                            content[:100]
-                                            if len(content) > 100
-                                            else content
-                                        ),
+                                # Persist order_details if present in streaming response
+                                if (
+                                    hasattr(chunk, "order_details")
+                                    and chunk.order_details
+                                ):
+                                    order_details = chunk.order_details
+                                    logger.info(
+                                        "[order_details]Order details received in streaming response",
+                                        extra={
+                                            "event_type": "order_details_streamed",
+                                            "conversation_id": str(
+                                                request_conversation_id
+                                            ),
+                                            "agent_id": str(agent_id),
+                                            "account_name": account_name,
+                                            "vendor": order_details.vendor,
+                                            "order_id": order_details.order_id,
+                                            "store_id": order_details.store_id,
+                                            "user_phone_number": order_details.user_phone_number,
+                                            "tracking_link": order_details.tracking_link,
+                                            "status": order_details.status,
+                                            "fulfillment_strategy": order_details.fulfillment_strategy,
+                                            "subtotal": float(order_details.subtotal),
+                                            "tax": float(order_details.tax),
+                                            "service_charge": float(
+                                                order_details.service_charge
+                                            ),
+                                            "delivery_charge": float(
+                                                order_details.delivery_charge
+                                            ),
+                                            "discount": float(order_details.discount),
+                                            "total": float(order_details.total),
+                                            "item_count": len(
+                                                order_details.order_items
+                                            ),
+                                            "order_time": order_details.order_time,
+                                        },
                                     )
 
-                                # Create and yield chunk
+                                    # Persist order to database using transaction service
+                                    await transaction_service.create_order_from_agent_async(
+                                        session=session,
+                                        order_details=order_details,
+                                        conversation_id=request_conversation_id,
+                                    )
+
+                                # Persist reservation_details if present in streaming response
+                                if (
+                                    hasattr(chunk, "reservation_details")
+                                    and chunk.reservation_details
+                                ):
+                                    rd = chunk.reservation_details
+                                    logger.info(
+                                        "[reservation_details]Reservation/waitlist received in stream",
+                                        extra={
+                                            "event_type": "reservation_placed_streamed",
+                                            "conversation_id": str(
+                                                request_conversation_id
+                                            ),
+                                            "agent_id": str(agent_id),
+                                            "account_name": account_name,
+                                            "vendor": rd.vendor,
+                                            "entry_type": rd.entry_type,
+                                            "reservation_id": rd.reservation_id,
+                                            "store_id": rd.store_id,
+                                            "status": rd.status,
+                                            "party_size": rd.party_size,
+                                        },
+                                    )
+                                    await reservation_service.save_reservation_from_agent_async(
+                                        session=session,
+                                        reservation_details=rd,
+                                        conversation_id=request_conversation_id,
+                                    )
+
+                                # Collect generic tool call events
+                                # (guarded by hasattr — field added in pal-agents feat/generic-tool-call-events)
+                                if hasattr(chunk, "events") and chunk.events:  # type: ignore[reportAttributeAccessIssue]
+                                    collected_events.extend(chunk.events)  # type: ignore[reportAttributeAccessIssue]
+                                    logger.info(
+                                        "[tool_call_events] Collected %d events from stream chunk",
+                                        len(chunk.events),  # type: ignore[reportAttributeAccessIssue]
+                                        extra={
+                                            "event_count": len(chunk.events),  # type: ignore[reportAttributeAccessIssue]
+                                            "total_events": len(collected_events),
+                                            "conversation_id": str(
+                                                request_conversation_id
+                                            ),
+                                        },
+                                    )
+
+                                if not chunk.content:
+                                    continue
+
                                 completion_chunk = ChatCompletionChunk(
                                     id=stream_id,
                                     object="chat.completion.chunk",
@@ -1071,63 +957,238 @@ async def get_chat_response_stream(
                                         ChunkChoice(
                                             index=0,
                                             delta=ChoiceDelta(
-                                                role="assistant", content=content
+                                                role="assistant", content=chunk.content
                                             ),
                                             finish_reason=None,
                                         )
                                     ],
                                 )
                                 yield completion_chunk
-                                # Store original content for relay service
-                                collected_content.append(content)
+                                collected_content.append(chunk.content)
                                 index += 1
+                        except asyncio.CancelledError:
+                            logger.debug("[MessageService] pal-agents stream cancelled")
+                            return
+                        except RuntimeError as stream_error:
+                            # Async generator wrappers (e.g. tracing middleware) can convert
+                            # normal StopAsyncIteration completion into a RuntimeError.
+                            if (
+                                isinstance(stream_error.__cause__, StopAsyncIteration)
+                                or str(stream_error)
+                                == "async generator raised StopAsyncIteration"
+                            ):
+                                logger.debug(
+                                    "pal-agents stream ended with wrapped StopAsyncIteration",
+                                    extra={
+                                        "agent_id": str(agent_id),
+                                        "conversation_id": str(request_conversation_id),
+                                        "error": str(stream_error),
+                                        "error_type": type(stream_error).__name__,
+                                        "cause": str(stream_error.__cause__),
+                                        "cause_type": (
+                                            type(stream_error.__cause__).__name__
+                                            if stream_error.__cause__
+                                            else None
+                                        ),
+                                    },
+                                )
+                            else:
+                                raise
+                        finally:
+                            pass  # transfer_purpose already persisted during streaming
 
-            # ==== Step 4: After streaming, save final messages to database ====
-            # (shared by both pal-agents and legacy paths)
-            if collected_content:
-                output_message_metadata = Metadata(
-                    account_name=account_name,
-                    project_name=project_name,
-                    agent_id=str(agent_id),
-                    user_id=str(user_id),
-                    session_id=str(request_conversation_id),
-                    testing=testing,
-                )
+                else:
+                    # LEGACY PATH - existing agent system
+                    config = await agent_service.construct_agent_config(
+                        session=session,
+                        agent_id=agent_id,
+                        user_id=user_id,
+                        project_id=project_id,
+                        conversation_id=request_conversation_id,
+                        channel=message.channel,
+                        sender_identifier=message.sender_identifier,
+                        receiver_identifier=message.recipient_identifier,
+                        room_name=room_name,
+                        participant_identity=participant_identity,
+                        sip_provider=sip_provider,
+                    )
+                    config.stream = True
 
-                full_response = "".join(collected_content)
+                    agent = Agent(config=config)
 
-                response_message = Message(
-                    author_type=AuthorType.AGENT,
-                    sender_identifier=message.recipient_identifier,
-                    recipient_identifier=message.sender_identifier,
-                    channel=message.channel,
-                    broker=message.broker,
-                    channel_info=message.channel_info,
-                    text=TextObject(body=full_response),
-                    metadata=output_message_metadata,
-                )
-
-                # Use add_message_to_conversation with the known conversation_id
-                # instead of create_message which does a lookup that can find
-                # the wrong conversation when multiple active conversations exist
-                response_message_body = response_message.to_dict()
-                if collected_events:
-                    response_message_body["tool_calls"] = collected_events
-                    logger.info(
-                        "[tool_call_events] Attached %d events to streaming message body",
-                        len(collected_events),
-                        extra={
-                            "event_count": len(collected_events),
-                            "conversation_id": str(request_conversation_id),
-                        },
+                    input = await _utils.get_agent_input_from_message(
+                        message=message,
+                        stream=True,
+                        request_context=request_context,
+                    )
+                    send_dd_histogram_metrics(
+                        "message_service.start_streaming",
+                        request_context.request_time,
+                        [
+                            f"agent_id:{agent_id}",
+                            f"account_name:{account_name}",
+                        ],
                     )
 
-                await message_repo.add_message_to_conversation(
-                    conversation_id=request_conversation_id,
-                    message_body=response_message_body,
-                )
+                    response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
 
-                await session.refresh(user, attribute_names=["id"])
+                    if response_stream:
+                        async with trace_async_block("Message Service Streaming"):
+                            index = 0
+                            send_dd_histogram_metrics(
+                                "message_service.waiting_first_chunk",
+                                request_context.request_time,
+                                [
+                                    f"agent_id:{agent_id}",
+                                    f"account_name:{account_name}",
+                                ],
+                            )
+
+                            async for chunk in response_stream:
+                                if index == 0:
+                                    send_dd_histogram_metrics(
+                                        "message_service.received_first_chunk",
+                                        request_context.request_time,
+                                        [
+                                            f"agent_id:{agent_id}",
+                                            f"account_name:{account_name}",
+                                        ],
+                                    )
+
+                                async with trace_async_block(
+                                    "Process Stream Chunk",
+                                    tags={
+                                        "chunk_index": index,
+                                        "conversation_id": str(request_conversation_id),
+                                        "chunk_type": type(chunk).__name__,
+                                    },
+                                ) as span:
+                                    # Process different chunk types into content string
+                                    content = ""
+                                    if isinstance(chunk, Output):
+                                        content = chunk.content
+                                        # Check for conversation closing if available
+                                        if (
+                                            hasattr(chunk, "closing_conversation")
+                                            and chunk.closing_conversation
+                                        ):
+                                            conversation = await db.ConversationRepositoryAsync(
+                                                session
+                                            ).get_conversation_by_id(
+                                                conversation_id=request_conversation_id
+                                            )
+                                            if conversation:
+                                                conversation.status = (
+                                                    db.ConversationStatus.CLOSING
+                                                )
+                                                await session.flush()
+                                    elif isinstance(chunk, RunResponse):
+                                        content = chunk.get_content_as_string()
+                                    elif isinstance(chunk, tuple):
+                                        content = chunk[0]
+                                    elif isinstance(chunk, Message):
+                                        content = chunk.text.body if chunk.text else ""
+                                    elif chunk:
+                                        if not isinstance(
+                                            chunk, (str, int, float, bool)
+                                        ):
+                                            logger.warning(
+                                                f"Unexpected chunk type: {type(chunk)}"
+                                            )
+                                            continue
+                                        content = str(chunk)
+
+                                    # Skip empty chunks
+                                    if not content:
+                                        continue
+
+                                    # Update span tags with content (skip if span is None in testing mode)
+                                    if span:
+                                        span.set_attribute(
+                                            "content",
+                                            (
+                                                content[:100]
+                                                if len(content) > 100
+                                                else content
+                                            ),
+                                        )
+
+                                    # Create and yield chunk
+                                    completion_chunk = ChatCompletionChunk(
+                                        id=stream_id,
+                                        object="chat.completion.chunk",
+                                        created=int(
+                                            datetime.datetime.now(
+                                                datetime.timezone.utc
+                                            ).timestamp()
+                                        ),
+                                        model=message.recipient_identifier,
+                                        choices=[
+                                            ChunkChoice(
+                                                index=0,
+                                                delta=ChoiceDelta(
+                                                    role="assistant", content=content
+                                                ),
+                                                finish_reason=None,
+                                            )
+                                        ],
+                                    )
+                                    yield completion_chunk
+                                    # Store original content for relay service
+                                    collected_content.append(content)
+                                    index += 1
+
+                # ==== Step 4: After streaming, save final messages to database ====
+                # (shared by both pal-agents and legacy paths)
+                if collected_content:
+                    output_message_metadata = Metadata(
+                        account_name=account_name,
+                        project_name=project_name,
+                        agent_id=str(agent_id),
+                        user_id=str(user_id),
+                        session_id=str(request_conversation_id),
+                        testing=testing,
+                    )
+
+                    full_response = "".join(collected_content)
+
+                    response_message = Message(
+                        author_type=AuthorType.AGENT,
+                        sender_identifier=message.recipient_identifier,
+                        recipient_identifier=message.sender_identifier,
+                        channel=message.channel,
+                        broker=message.broker,
+                        channel_info=message.channel_info,
+                        text=TextObject(body=full_response),
+                        metadata=output_message_metadata,
+                    )
+
+                    # Use add_message_to_conversation with the known conversation_id
+                    # instead of create_message which does a lookup that can find
+                    # the wrong conversation when multiple active conversations exist
+                    response_message_body = response_message.to_dict()
+                    if collected_events:
+                        response_message_body["tool_calls"] = collected_events
+                        logger.info(
+                            "[tool_call_events] Attached %d events to streaming message body",
+                            len(collected_events),
+                            extra={
+                                "event_count": len(collected_events),
+                                "conversation_id": str(request_conversation_id),
+                            },
+                        )
+
+                    await message_repo.add_message_to_conversation(
+                        conversation_id=request_conversation_id,
+                        message_body=response_message_body,
+                    )
+
+                    await session.refresh(user, attribute_names=["id"])
+
+                if collected_content:
+                    lf.set_current_trace_io(
+                        output={"content": "".join(collected_content)},
+                    )
 
         except asyncio.CancelledError:
             logger.debug("[MessageService] Stream cancelled (client disconnect)")
