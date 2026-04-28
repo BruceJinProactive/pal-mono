@@ -81,4 +81,5 @@ from .types import (
 )
 from .user_invitation import UserInvitation
 from .users import User
+from .vision_entity_types import VisionEntityType
 from .voice_configs import VoiceConfig
