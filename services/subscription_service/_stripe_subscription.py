@@ -1475,3 +1475,127 @@ async def sync_account_subscriptions(
         "errors": errors,
         "details": details,
     }
+
+
+def create_subscription_direct(
+    stripe_customer_id: str,
+    line_items: list[dict[str, Any]],
+    metadata: dict[str, str],
+    days_until_due: int = 30,
+    coupon_id: str | None = None,
+    trial_end: int | None = None,
+) -> stripe.Subscription:
+    """
+    Create a Stripe subscription directly via API (no Checkout).
+
+    Uses collection_method="send_invoice" so no payment method is required
+    on the customer. Stripe generates invoices that the client pays manually
+    via card, ACH, or credits.
+
+    Args:
+        stripe_customer_id: Stripe customer ID to create the subscription for
+        line_items: List of dicts with 'price' (Stripe price ID) and optional 'quantity'
+        metadata: Metadata dict to attach to the subscription
+        days_until_due: Number of days the client has to pay each invoice (default 30)
+        coupon_id: Optional Stripe coupon ID to apply to the subscription
+        trial_end: Optional Unix timestamp for when the trial period ends
+
+    Returns:
+        Created Stripe subscription object
+
+    Raises:
+        ValueError: If validation fails (empty line_items, invalid params)
+        stripe.StripeError: If Stripe API call fails
+    """
+    if not stripe_customer_id:
+        raise ValueError("stripe_customer_id is required")
+
+    if not line_items:
+        raise ValueError("line_items cannot be empty")
+
+    for item in line_items:
+        if not isinstance(item, dict):
+            raise ValueError(f"Invalid line_item format: {item}")
+        if "price" not in item:
+            raise ValueError(f"Line item must have a 'price' key: {item}")
+
+    if days_until_due < 1:
+        raise ValueError("days_until_due must be at least 1")
+
+    # Build subscription items from line_items
+    items = []
+    for item in line_items:
+        sub_item: dict[str, Any] = {"price": item["price"]}
+        if "quantity" in item:
+            sub_item["quantity"] = item["quantity"]
+        items.append(sub_item)
+
+    # Build subscription params
+    subscription_params: dict[str, Any] = {
+        "customer": stripe_customer_id,
+        "items": items,
+        "collection_method": "send_invoice",
+        "days_until_due": days_until_due,
+        "payment_settings": {
+            "payment_method_types": ["card", "us_bank_account"],
+        },
+        "metadata": metadata,
+    }
+
+    if coupon_id:
+        validate_stripe_coupon(coupon_id)
+        subscription_params["coupon"] = coupon_id
+
+    if trial_end is not None:
+        subscription_params["trial_end"] = trial_end
+
+    # Require subscription_external_id in metadata — used as the idempotency key
+    # to prevent duplicate subscriptions on retries.
+    idempotency_key = metadata.get("subscription_external_id")
+    if not idempotency_key:
+        raise ValueError("metadata must contain 'subscription_external_id'")
+
+    try:
+        subscription = stripe.Subscription.create(
+            **subscription_params,
+            idempotency_key=idempotency_key,
+        )
+
+        logger.info(
+            "Created Stripe subscription directly (send_invoice)",
+            extra={
+                "stripe_subscription_id": subscription.id,
+                "customer_id": stripe_customer_id,
+                "collection_method": "send_invoice",
+                "days_until_due": days_until_due,
+                "item_count": len(items),
+                "has_coupon": coupon_id is not None,
+                "has_trial": trial_end is not None,
+            },
+        )
+
+        return subscription
+
+    except stripe.InvalidRequestError as e:
+        error_msg = str(e)
+        logger.error(
+            "Stripe InvalidRequestError creating direct subscription",
+            extra={
+                "customer_id": stripe_customer_id,
+                "error": error_msg,
+            },
+        )
+        if "No such customer" in error_msg:
+            raise ValueError(f"Stripe customer {stripe_customer_id} not found") from e
+        if "No such price" in error_msg:
+            raise ValueError(f"Invalid price ID in line items: {error_msg}") from e
+        raise
+    except stripe.StripeError as e:
+        logger.error(
+            "Stripe error creating direct subscription",
+            extra={
+                "customer_id": stripe_customer_id,
+                "error": str(e),
+            },
+        )
+        raise

@@ -19,6 +19,7 @@ from ._plan import (
     update_subscription_plan,
 )
 from ._stripe_subscription import (
+    create_subscription_direct,
     handle_subscription_deleted,
     sync_account_subscriptions,
     sync_subscription_from_stripe,
@@ -108,6 +109,8 @@ __all__ = [
     "switch_subscription_plan",
     "switch_project_subscription_plan",
     "unlink_subscription_from_account",
+    # Direct subscription creation
+    "create_subscription_direct",
     # Stripe sync functions
     "sync_account_subscriptions",
     "sync_subscription_from_stripe",
