@@ -32,6 +32,12 @@ This ADR does not freeze vendor pricing or feature-comparison details as the bas
 - **Easier:** Voice behavior, observability, and deployment become more controllable by the platform team; new voice work converges on one runtime
 - **Harder:** The team owns more voice-platform engineering and migration complexity than with a turnkey managed product
 
+## Status Notes
+
+- **2026-04:** Code-level removal of VAPI is complete. `tools/vapi_tool/` and `api/routes/integrations/vapi/` are deleted, the `VoiceProvider` enum is LiveKit-only (explicitly rejects `"vapi"`), and the `assistant-request` webhook is gone. Residual legacy: the `conversations.vapi_control_url` column (kept for historical data) and a few stale docstrings/log strings in `services/number_service/_implementation.py`, `api/routes/internal/_voice.py`, and admin routes.
+- **Remaining work:** `services/voice_service/providers/livekit/` has not yet been created. Later migration phases are TBD and tracked under `docs/plans/livekit-migration/`.
+- The rule above (new voice work targets LiveKit; VAPI is legacy) still applies.
+
 ## Evidence
 
 - LiveKit is the target runtime referenced by [ADR-007](007-agno-to-pal-agents-migration.md)

@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04
 
+### 2026-04-27
+- ADR drift fix: added [ADR-020](decisions/020-otel-langfuse-observability.md) documenting the target observability stack — Grafana LGTM (Loki/Tempo/Mimir) for Ops, Langfuse for LLM — and the in-progress Datadog removal. Updated [ADR-013](decisions/013-datadog-observability.md) to `Superseded by ADR-020`; added 2026-04 status notes to [ADR-018](decisions/018-vapi-to-livekit-migration.md) confirming code-level VAPI removal is complete; updated decisions index with inline status-change dates for `Superseded` / `Deprecated` rows.
+
 ### 2026-04-23
 - Add `eval_scenarios` DB table to store eval scenario YAML files in the database, replacing filesystem-based scenario loading; columns: `project_id` (nullable — NULL for generic), `scenario_type`, `name`, `raw_yaml`; unique constraint on `(project_id, name)` → `docs/plans/eval-scenarios-db-migration.md`
 

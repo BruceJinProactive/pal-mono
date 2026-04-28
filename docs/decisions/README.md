@@ -21,18 +21,20 @@ When a decision changes, don't delete the old ADR. Mark the old ADR `Superseded 
 | [008](008-multi-provider-llm.md) | Multi-provider LLM support | Accepted | 2025-07-01 |
 | [009](009-mem0-for-memory.md) | mem0ai for conversational memory | Accepted | 2024-01-01 |
 | [010](010-pinecone-llamaindex-for-rag.md) | Pinecone + LlamaIndex for RAG | Accepted | 2024-01-01 |
-| [011](011-bedrock-guardrails.md) | Bedrock guardrails for content safety | Deprecated | 2024-01-01 |
+| [011](011-bedrock-guardrails.md) | Bedrock guardrails for content safety | Deprecated 2026-03-23 | 2024-01-01 |
 | [012](012-uv-package-manager.md) | uv as package manager | Accepted | 2024-06-01 |
-| [013](013-datadog-observability.md) | Datadog for all observability | Accepted | 2024-01-01 |
+| [013](013-datadog-observability.md) | Datadog for all observability | Superseded 2026-04-25 by [ADR-020](020-otel-langfuse-observability.md) | 2024-01-01 |
 | [014](014-dual-vector-storage.md) | PostgreSQL pgvector AND Pinecone | Accepted | 2024-01-01 |
 | [015](015-cognito-plus-custom-rbac.md) | Cognito + custom RBAC | Accepted | 2025-11-01 |
 | [016](016-sse-for-streaming.md) | SSE for streaming (not WebSocket) | Accepted | 2024-01-01 |
 | [017](017-no-orm-relationships.md) | No ORM relationships | Accepted | 2024-01-01 |
 | [018](018-vapi-to-livekit-migration.md) | Migrate from VAPI to LiveKit | Accepted | 2026-02-18 |
 | [019](019-streaming-session-ownership.md) | Streaming endpoints must own their DB session | Accepted | 2026-03-18 |
+| [020](020-otel-langfuse-observability.md) | LGTM stack for Ops + Langfuse for LLM observability (Datadog being removed) | Accepted | 2026-04-27 |
 
 ## Notes
 
 - Numbering is append-only. Gaps are allowed if an ADR was abandoned before merge.
 - ADRs should be short, directive, and testable against future changes.
 - Detailed postmortems and implementation history belong in `docs/records/`, not here.
+- The `Date` column is the original decision date and does not change. For `Superseded` / `Deprecated` rows, the state-change date is recorded inline in the `Status` column (e.g. `Superseded 2026-04-25 by ADR-020`).

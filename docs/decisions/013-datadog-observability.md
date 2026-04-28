@@ -1,6 +1,6 @@
 # ADR-013: Datadog for All Observability
 
-> **Status:** Superseded by OTel + Langfuse (2026-04-24)
+> **Status:** Superseded by [ADR-020](020-otel-langfuse-observability.md)
 > **Date:** 2024-01-01
 > **Decision makers:** Jun Lee
 
@@ -12,10 +12,7 @@ The platform needs unified observability including APM, LLM observability, and d
 
 ~~The platform uses Datadog for all observability: APM, LLM observability, and distributed tracing.~~
 
-**Superseded:** As of 2026-04-24, the platform uses:
-- **OpenTelemetry (OTel)** for general distributed tracing (exported to Grafana Tempo)
-- **Langfuse SDK v4** for LLM observability (`@observe` decorators)
-- `ddtrace` and `datadog` packages have been fully removed from the codebase.
+**Superseded:** As of 2026-04-25 (PAL-10113, PR #4090), observability is governed by [ADR-020](020-otel-langfuse-observability.md), which standardizes on the Grafana LGTM stack for Ops (Loki/Tempo/Mimir) and Langfuse for LLM traces. Datadog is being removed from the platform: `ddtrace.llmobs` has already been deleted, and `utils/dd.py` (Datadog StatsD) is legacy and being migrated to OTel metrics → Mimir.
 
 ## Alternatives Considered
 
