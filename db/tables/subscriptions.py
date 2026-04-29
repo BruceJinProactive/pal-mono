@@ -145,7 +145,11 @@ class AccountSubscription(Base):
 
     @property
     def is_valid(self):
-        return self.status in [SubscriptionStatus.pending, SubscriptionStatus.active]
+        return self.status in [
+            SubscriptionStatus.pending,
+            SubscriptionStatus.active,
+            SubscriptionStatus.trialing,
+        ]
 
 
 class ProjectSubscription(Base):

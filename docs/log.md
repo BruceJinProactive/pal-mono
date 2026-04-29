@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-04-29
 
+- **Credit-funded subscriptions: `activate_subscription_without_payment_method()` + `create_subscription_direct()`** — New service functions for activating pending subscriptions via Stripe `send_invoice` collection method (no payment method required). Supports optional credit grants with idempotency keys, future-start-date trialing, and account coupon pass-through. Added `SubscriptionStatus.trialing` to `AccountSubscription.is_valid` so trialing subscriptions work with validity-gated flows (updates, invoice handling). → `docs/plans/billing/credit-funded-subscriptions-tech-design.md`
 - Add `vision_camera_entity` DB table — many-to-many join between camera configurations and entities with optional `roi_hint` JSONB column; composite unique constraint on `(camera_config_id, entity_id)` → `docs/records/2026-04-29-vision-camera-entity-table.md`
 
 ## 2026-04-28
