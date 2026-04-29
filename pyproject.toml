@@ -19,8 +19,6 @@ dependencies = [
   "beautifulsoup4==4.12.3", # HTML/XML parsing and web scraping library
   "boto3==1.40.61", # Amazon Web Services SDK for Python
   "cryptography>=46.0.5", # Modern cryptographic recipes and primitives
-  "datadog==0.52.0", # Datadog API client for metrics and monitoring
-  "ddtrace==4.5.0", # Datadog APM and distributed tracing library
   "diff-cover==9.2.4", # Incremental test coverage enforcement on changed lines
   "email-validator==2.2.0", # Robust email address validation with DNS checking
   "fastapi==0.116.1", # Modern async web framework with automatic API docs
