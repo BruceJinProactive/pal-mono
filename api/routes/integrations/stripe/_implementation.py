@@ -59,6 +59,151 @@ async def _get_account_id_from_stripe_customer(
     return account.id
 
 
+async def _handle_invoice_created(
+    event_data: dict[str, Any], async_session: AsyncSession
+) -> None:
+    """
+    Handle invoice.created webhook event.
+
+    When Stripe creates a new subscription invoice (draft), check for
+    unpaid prior invoices on the same subscription and roll their amounts
+    into this invoice as a "Prior unpaid balance" line item, then void
+    the old invoices to prevent double-billing.
+    """
+    invoice = event_data.get("object", {})
+    invoice_id: str | None = invoice.get("id")
+    stripe_customer_id: str | None = invoice.get("customer")
+    subscription_id: str | None = invoice.get("subscription")
+
+    # Skip non-subscription invoices (e.g. one-off invoices)
+    if not subscription_id:
+        logger.info(
+            "[Stripe Webhook] invoice.created skipped — not a subscription invoice",
+            extra={"invoice_id": invoice_id},
+        )
+        return
+
+    if not stripe_customer_id or not invoice_id:
+        logger.warning(
+            "[Stripe Webhook] invoice.created missing required fields",
+            extra={"invoice_id": invoice_id, "customer": stripe_customer_id},
+        )
+        return
+
+    # Query Stripe for open invoices on this subscription
+    try:
+        open_invoices = stripe.Invoice.list(
+            customer=stripe_customer_id,
+            subscription=subscription_id,
+            status="open",
+        )
+    except stripe.StripeError as e:
+        logger.error(
+            "[Stripe Webhook] Failed to list open invoices for accrual",
+            extra={
+                "invoice_id": invoice_id,
+                "subscription_id": subscription_id,
+                "error": str(e),
+            },
+        )
+        return
+
+    # Filter to past-due invoices (due_date in the past) excluding the current invoice
+    now_ts = int(datetime.now(tz=timezone.utc).timestamp())
+    past_due_invoices: list[dict[str, Any]] = []
+    accrued_amount_cents = 0
+
+    for inv in open_invoices.auto_paging_iter():
+        inv_dict: dict[str, Any] = dict(inv)
+        inv_id = inv_dict.get("id")
+        due_date = inv_dict.get("due_date")
+        amount_remaining = inv_dict.get("amount_remaining", 0)
+
+        # Skip current invoice and invoices not yet due
+        if inv_id == invoice_id:
+            continue
+        if due_date and due_date > now_ts:
+            continue
+        if amount_remaining <= 0:
+            continue
+
+        past_due_invoices.append(inv_dict)
+        accrued_amount_cents += amount_remaining
+
+    if accrued_amount_cents <= 0:
+        logger.info(
+            "[Stripe Webhook] invoice.created — no prior unpaid balance to accrue",
+            extra={"invoice_id": invoice_id, "subscription_id": subscription_id},
+        )
+        return
+
+    # Add accrued amount as a line item on the new draft invoice.
+    # Use idempotency key to prevent duplicate line items on webhook retries.
+    currency = invoice.get("currency", "usd")
+    past_due_ids = sorted(inv.get("id", "") for inv in past_due_invoices)
+    idempotency_key = f"accrual-{invoice_id}-{'-'.join(past_due_ids)}"
+    try:
+        stripe.InvoiceItem.create(
+            customer=stripe_customer_id,
+            invoice=invoice_id,
+            amount=accrued_amount_cents,
+            currency=currency,
+            description=f"Prior unpaid balance ({len(past_due_invoices)} invoice(s))",
+            stripe_account=None,
+            idempotency_key=idempotency_key,
+        )
+    except stripe.StripeError as e:
+        logger.error(
+            "[Stripe Webhook] Failed to add accrued balance line item",
+            extra={
+                "invoice_id": invoice_id,
+                "accrued_amount_cents": accrued_amount_cents,
+                "error": str(e),
+            },
+        )
+        return
+
+    # Void old unpaid invoices to prevent double-billing
+    voided_count = 0
+    for old_inv in past_due_invoices:
+        old_inv_id: str | None = old_inv.get("id")
+        if not old_inv_id:
+            continue
+        try:
+            old_invoice = stripe.Invoice.retrieve(old_inv_id)
+            old_invoice.void_invoice()
+            voided_count += 1
+        except stripe.StripeError as e:
+            logger.error(
+                "[Stripe Webhook] Failed to void old invoice during accrual",
+                extra={"old_invoice_id": old_inv_id, "error": str(e)},
+            )
+            # Continue voiding remaining invoices — partial void is acceptable
+
+    if voided_count < len(past_due_invoices):
+        logger.warning(
+            "[Stripe Webhook] Partial void failure — accrued line item added but "
+            "some old invoices could not be voided. Manual review required.",
+            extra={
+                "invoice_id": invoice_id,
+                "subscription_id": subscription_id,
+                "expected_voids": len(past_due_invoices),
+                "actual_voids": voided_count,
+            },
+        )
+
+    logger.info(
+        "[Stripe Webhook] Processed invoice.created — accrued prior balance",
+        extra={
+            "invoice_id": invoice_id,
+            "subscription_id": subscription_id,
+            "accrued_amount_cents": accrued_amount_cents,
+            "past_due_invoice_count": len(past_due_invoices),
+            "voided_count": voided_count,
+        },
+    )
+
+
 async def _handle_invoice_payment_failed(
     event_data: dict[str, Any], async_session: AsyncSession
 ) -> None:
@@ -683,7 +828,9 @@ async def handle_stripe_webhook(request: Request) -> dict[str, str]:
         # Events that require DB access use a shared session
         async with AsyncSessionLocal() as async_session:
             # Invoice events
-            if event_type == "invoice.payment_failed":
+            if event_type == "invoice.created":
+                await _handle_invoice_created(event_data, async_session)
+            elif event_type == "invoice.payment_failed":
                 await _handle_invoice_payment_failed(event_data, async_session)
             elif event_type == "invoice.payment_succeeded":
                 await _handle_invoice_payment_succeeded(event_data, async_session)

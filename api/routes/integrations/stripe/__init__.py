@@ -20,6 +20,7 @@ async def stripe_webhook(request: Request) -> dict[str, str]:
     Handle incoming Stripe webhook events for billing notifications.
 
     Supported events:
+    - invoice.created: Accrues prior unpaid balance onto new subscription invoices
     - invoice.payment_failed: Triggered when payment fails
     - invoice.payment_succeeded: Triggered when payment succeeds
 
