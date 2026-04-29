@@ -17,6 +17,8 @@ from api.routes.admin._builder import (
 )
 from api.routes.admin._utils import not_found_error
 from api.schemas.admin.subscription import (
+    ActivateSubscriptionRequest,
+    ActivateSubscriptionResponse,
     AssignCouponRequest,
     CancelProjectSubscriptionResponse,
     CouponDetailsResponse,
@@ -1834,6 +1836,56 @@ def get_project_coupon(
         )
     except Exception as err:
         logger.error(f"Error retrieving coupon for project: {err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
+        )
+
+
+def activate_subscription(
+    context: UserContext,
+    session: Session,
+    account_name: str,
+    external_id: uuid.UUID,
+    request: ActivateSubscriptionRequest,
+) -> ActivateSubscriptionResponse:
+    """Activate a pending subscription without a payment method.
+
+    Creates a Stripe subscription with collection_method="send_invoice"
+    and optionally grants credits at activation time.
+    Authorization is handled by require_account_permission in route decorator.
+    """
+    account = account_service.get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found")
+
+    try:
+        activated = subscription_service.activate_subscription_without_payment_method(
+            session=session,
+            context=context,
+            account_id=account.id,
+            external_id=external_id,
+            grant_credit_amount_cents=request.grant_credit_amount_cents,
+            currency=request.currency,
+        )
+        return ActivateSubscriptionResponse(
+            external_id=activated.external_id,
+            status=activated.status.value,
+            stripe_subscription_id=activated.stripe_subscription_id,
+            collection_method="send_invoice",
+            message="Subscription activated successfully",
+        )
+    except ValueError as err:
+        if "not found" in str(err).lower() or "does not exist" in str(err).lower():
+            raise not_found_error(str(err))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        )
+    except HTTPException:
+        raise
+    except Exception as err:
+        logger.error(f"Error activating subscription {external_id}: {err}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error",

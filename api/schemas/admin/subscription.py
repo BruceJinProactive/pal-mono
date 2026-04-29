@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import List, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, EmailStr, field_validator
+from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field, field_validator
 from pydantic_core.core_schema import ValidationInfo
 
 from api.schemas.admin.project import ProjectSummary
@@ -616,3 +616,41 @@ class ListCouponsResponse(BaseModel):
 
     coupons: list[CouponDetailsResponse]
     count: int
+
+
+class ActivateSubscriptionRequest(BaseModel):
+    """Request to activate a pending subscription without a payment method."""
+
+    grant_credit_amount_cents: int | None = Field(
+        default=None, description="Optional credit grant in cents at activation time"
+    )
+    currency: str = Field(
+        default="usd", description="Currency for the credit grant (ISO 4217, lowercase)"
+    )
+
+    @field_validator("grant_credit_amount_cents")
+    def validate_credit_amount(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("grant_credit_amount_cents must be non-negative")
+        return v
+
+    @field_validator("currency")
+    def validate_currency(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if len(normalized) != 3 or not normalized.isalpha():
+            raise ValueError("currency must be a 3-letter ISO 4217 code")
+        return normalized
+
+
+class ActivateSubscriptionResponse(BaseModel):
+    """Response after activating a subscription without a payment method."""
+
+    external_id: uuid.UUID = Field(..., description="Subscription external ID")
+    status: str = Field(..., description="New subscription status")
+    stripe_subscription_id: str | None = Field(
+        default=None, description="Stripe subscription ID"
+    )
+    collection_method: str = Field(
+        default="send_invoice", description="Stripe collection method"
+    )
+    message: str = Field(..., description="Human-readable result message")

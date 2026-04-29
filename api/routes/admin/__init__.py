@@ -155,6 +155,8 @@ from api.schemas.admin.prompt import (
     UpdatePromptRequest,
 )
 from api.schemas.admin.subscription import (
+    ActivateSubscriptionRequest,
+    ActivateSubscriptionResponse,
     AssignCouponRequest,
     CancelProjectSubscriptionResponse,
     CouponDetailsResponse,
@@ -2982,6 +2984,27 @@ def cancel_account_subscription(
     """
     return _subscription.cancel_account_subscription(
         context, session, account_name, external_id
+    )
+
+
+@admin_router.post(
+    "/accounts/{account_name}/subscriptions/{external_id}/activate",
+)
+def activate_account_subscription(
+    account_name: str,
+    external_id: uuid.UUID,
+    request: ActivateSubscriptionRequest = ActivateSubscriptionRequest(),
+    context: UserContext = Depends(require_admin),
+    session: Session = Depends(db.get_db),
+) -> ActivateSubscriptionResponse:
+    """
+    Activate a pending subscription without a payment method.
+
+    Creates a Stripe subscription with collection_method="send_invoice"
+    and optionally grants credits at activation time.
+    """
+    return _subscription.activate_subscription(
+        context, session, account_name, external_id, request
     )
 
 
