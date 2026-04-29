@@ -3340,3 +3340,207 @@ def _send_project_subscription_cancelled_notification(
                 "subscription_id": str(subscription.id),
             },
         )
+
+
+def activate_subscription_without_payment_method(
+    session: Session,
+    context: UserContext,
+    account_id: uuid.UUID,
+    external_id: uuid.UUID,
+    grant_credit_amount_cents: int | None = None,
+    currency: str = "usd",
+) -> db.AccountSubscription:
+    """
+    Activate a pending subscription by creating a Stripe subscription
+    directly (no Checkout), with collection_method="send_invoice".
+
+    This enables credit-funded and invoice-based billing without requiring
+    a payment method on the customer.
+
+    Args:
+        session: Database session
+        context: User context for authorization and logging
+        account_id: UUID of the account
+        external_id: External ID of the subscription to activate
+        grant_credit_amount_cents: Optional credit amount to grant before activation
+        currency: Currency for credit grant (default "usd")
+
+    Returns:
+        Updated AccountSubscription with status=active
+
+    Raises:
+        ValueError: If subscription not found, wrong status, or missing Stripe customer
+        RuntimeError: If no line items found or Stripe call fails
+    """
+    if grant_credit_amount_cents is not None and grant_credit_amount_cents < 0:
+        raise ValueError("grant_credit_amount_cents must not be negative")
+
+    account_subscription_repo = AccountSubscriptionRepository(
+        session, auto_commit=False
+    )
+    project_subscription_repo = ProjectSubscriptionRepository(
+        session, auto_commit=False
+    )
+
+    # 1. Retrieve and validate subscription
+    subscription = account_subscription_repo.get_account_subscription(
+        account_id, external_id
+    )
+    if not subscription:
+        raise ValueError(f"Subscription with external_id {external_id} not found")
+
+    if subscription.status != SubscriptionStatus.pending:
+        if subscription.status == SubscriptionStatus.active:
+            raise ValueError(f"Subscription {external_id} is already active")
+        raise ValueError(
+            f"Subscription {external_id} must be in pending status to activate, "
+            f"current status: {subscription.status.value if subscription.status else 'unknown'}"
+        )
+
+    # 2. Retrieve account and validate Stripe customer
+    account = account_service.get_account_by_id(session, account_id)
+    if not account:
+        raise ValueError(f"Account {account_id} not found")
+
+    if not account.stripe_customer_id:
+        raise ValueError(
+            f"Account {account_id} does not have a Stripe customer. "
+            "Create a Stripe customer before activating."
+        )
+
+    # 3. Collect line items from linked ProjectSubscription entries
+    project_subscriptions = (
+        project_subscription_repo.get_project_subscriptions_by_subscription_id(
+            subscription.external_id
+        )
+    )
+
+    if not project_subscriptions:
+        raise RuntimeError(
+            "No project subscriptions found for this account subscription"
+        )
+
+    line_items: list[dict[str, Any]] = []
+    for ps in project_subscriptions:
+        if ps.base_price_id:
+            line_items.append({"price": ps.base_price_id, "quantity": 1})
+        if ps.call_price_id:
+            line_items.append({"price": ps.call_price_id})
+        if ps.order_price_id:
+            line_items.append({"price": ps.order_price_id})
+
+    if not line_items:
+        raise RuntimeError("No valid price IDs found across project subscriptions")
+
+    # 4. Create Stripe subscription directly (send_invoice, no payment method)
+    metadata = {
+        "subscription_external_id": str(subscription.external_id),
+        "account_id": str(account_id),
+    }
+
+    # Check for account-level coupon
+    coupon_id = account.stripe_coupon_id if account.stripe_coupon_id else None
+
+    # If the subscription has a future start_date, use trial_end to defer
+    # invoicing until that date. Stripe treats the period before trial_end
+    # as a free trial with no charges.
+    trial_end: int | None = None
+    now = datetime.now(UTC)
+    if subscription.start_date and subscription.start_date > now:
+        trial_end = int(subscription.start_date.timestamp())
+
+    stripe_subscription = _stripe_subscription.create_subscription_direct(
+        stripe_customer_id=account.stripe_customer_id,
+        line_items=line_items,
+        metadata=metadata,
+        coupon_id=coupon_id,
+        trial_end=trial_end,
+    )
+
+    # Determine initial status: trialing if start is in the future, active otherwise
+    initial_status = (
+        SubscriptionStatus.trialing
+        if trial_end is not None
+        else SubscriptionStatus.active
+    )
+
+    # 5. Persist all DB updates and grant credits. If anything fails after
+    #    Stripe subscription creation, log the Stripe ID so an admin can
+    #    reconcile manually (cancelling the orphan subscription in Stripe).
+    try:
+        # Grant credits after successful Stripe subscription creation to avoid
+        # inconsistent state (credits granted but no subscription).
+        if grant_credit_amount_cents is not None and grant_credit_amount_cents > 0:
+            grant_credit_to_account(
+                account=account,
+                credit_amount_cents=grant_credit_amount_cents,
+                currency=currency,
+                description="Credit grant at subscription activation",
+                issued_by=context.email if context.email else "system",
+                metadata={
+                    "issued_via": "activate_subscription_without_payment_method",
+                    "request_source": "admin_activation",
+                    "subscription_external_id": str(external_id),
+                },
+                idempotency_key=f"activate-credit-{external_id}",
+            )
+
+        # 6. Update AccountSubscription
+        updated_subscription = update_account_subscription(
+            session,
+            context,
+            account_id,
+            external_id,
+            {
+                "status": initial_status,
+                "stripe_subscription_id": stripe_subscription.id,
+                "payment_method": PaymentMethod.invoice,
+            },
+            force_update=True,
+        )
+
+        # 7. Update each ProjectSubscription with stripe_subscription_id
+        for ps in project_subscriptions:
+            project_subscription_repo.update_project_subscription(
+                id=ps.id,
+                stripe_subscription_id=stripe_subscription.id,
+                status=initial_status,
+            )
+
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.error(
+            "DB update failed after Stripe subscription was created. "
+            "Manual cleanup may be required.",
+            extra={
+                "stripe_subscription_id": stripe_subscription.id,
+                "account_id": str(account_id),
+                "subscription_external_id": str(external_id),
+            },
+        )
+        raise
+
+    # 8. Send activation notification (best-effort, do not fail activation)
+    if updated_subscription.subscription_plan:
+        _send_subscription_activated_notification(
+            session,
+            account,
+            updated_subscription,
+            updated_subscription.subscription_plan,
+        )
+
+    logger.info(
+        "Activated subscription without payment method (send_invoice)",
+        extra={
+            "account_id": str(account_id),
+            "subscription_external_id": str(external_id),
+            "stripe_subscription_id": stripe_subscription.id,
+            "collection_method": "send_invoice",
+            "project_count": len(project_subscriptions),
+            "line_item_count": len(line_items),
+            "credit_granted": grant_credit_amount_cents or 0,
+        },
+    )
+
+    return updated_subscription

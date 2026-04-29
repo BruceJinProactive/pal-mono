@@ -26,6 +26,7 @@ from ._stripe_subscription import (
     update_subscription_status_from_stripe,
 )
 from ._subscription import (
+    activate_subscription_without_payment_method,
     cancel_account_subscription,
     cancel_project_subscription,
     create_account_subscription,
@@ -109,8 +110,9 @@ __all__ = [
     "switch_subscription_plan",
     "switch_project_subscription_plan",
     "unlink_subscription_from_account",
-    # Direct subscription creation
+    # Direct subscription creation / activation
     "create_subscription_direct",
+    "activate_subscription_without_payment_method",
     # Stripe sync functions
     "sync_account_subscriptions",
     "sync_subscription_from_stripe",
