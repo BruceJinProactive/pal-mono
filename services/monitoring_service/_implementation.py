@@ -33,6 +33,7 @@ from services.asset_service import delete_asset, write_asset
 from services.asset_service._implementation import WriteAssetRequest
 from services.asset_service._utils import map_uri_to_s3_url
 from utils.log import logger
+from utils.otel import increment_counter, record_duration
 
 # HTTP status codes and statuses that indicate transient LLM API errors worth retrying.
 _RETRYABLE_CODES = ["503", "429", "500", "502", "504"]
@@ -1559,7 +1560,6 @@ async def _rerun_monitoring_analysis_background(
         is_video: True if this is a video analysis, False for image
     """
     from db.session import AsyncSessionLocal
-    from utils.dd import statsd
 
     media_type = "video" if is_video else "image"
     log_extra = {
@@ -1687,29 +1687,21 @@ async def _rerun_monitoring_analysis_background(
                 duration_ms = (
                     datetime.now(timezone.utc) - start_time
                 ).total_seconds() * 1000
-                try:
-                    statsd.histogram(
-                        "monitoring.rerun.duration_ms",
-                        duration_ms,
-                        tags=[
-                            f"media_type:{media_type}",
-                            f"result:{result_status}",
-                        ],
-                    )
-                    statsd.increment(
-                        "monitoring.rerun.completed",
-                        tags=[
-                            f"media_type:{media_type}",
-                            f"result:{result_status}",
-                        ],
-                    )
-                except Exception:
-                    logger.warning(
-                        "[Rerun Background] Metrics emission failed for run %s",
-                        run_id,
-                        exc_info=True,
-                        extra={**log_extra, "duration_ms": duration_ms},
-                    )
+                record_duration(
+                    "monitoring.rerun.duration",
+                    start_time,
+                    attributes={
+                        "media_type": media_type,
+                        "result": result_status,
+                    },
+                )
+                increment_counter(
+                    "monitoring.rerun.completed",
+                    attributes={
+                        "media_type": media_type,
+                        "result": result_status,
+                    },
+                )
 
                 logger.info(
                     "[Rerun Background] Analysis completed for run %s in %.0fms",
@@ -1726,9 +1718,12 @@ async def _rerun_monitoring_analysis_background(
                 duration_ms = (
                     datetime.now(timezone.utc) - start_time
                 ).total_seconds() * 1000
-                statsd.increment(
+                increment_counter(
                     "monitoring.rerun.failed",
-                    tags=[f"media_type:{media_type}", f"error_type:{type(e).__name__}"],
+                    attributes={
+                        "media_type": media_type,
+                        "error_type": type(e).__name__,
+                    },
                 )
 
                 logger.error(
@@ -1767,9 +1762,9 @@ async def _rerun_monitoring_analysis_background(
                     )
 
     except Exception as e:
-        statsd.increment(
+        increment_counter(
             "monitoring.rerun.fatal_error",
-            tags=[f"media_type:{media_type}", f"error_type:{type(e).__name__}"],
+            attributes={"media_type": media_type, "error_type": type(e).__name__},
         )
         logger.error(
             "[Rerun Background] Fatal error in background task for run %s: %s",

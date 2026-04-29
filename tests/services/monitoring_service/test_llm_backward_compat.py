@@ -65,8 +65,8 @@ def _build_llm_mocks(mocker, rules: dict):
     mock_otel_context.attach.return_value = "mock-token"
     mocker.patch("services.monitoring_service._llm.Context")
 
-    # Mock statsd
-    mocker.patch("services.monitoring_service._llm.statsd")
+    # Mock record_histogram
+    mocker.patch("services.monitoring_service._llm.record_histogram")
 
     return mock_provider
 
@@ -463,8 +463,8 @@ def _build_video_llm_mocks(mocker, rules: dict):
     mock_otel_context.attach.return_value = "mock-token"
     mocker.patch("services.monitoring_service._llm.Context")
 
-    # Mock statsd
-    mocker.patch("services.monitoring_service._llm.statsd")
+    # Mock record_histogram
+    mocker.patch("services.monitoring_service._llm.record_histogram")
 
     return mock_provider
 
@@ -646,8 +646,8 @@ class TestNativeVideoLLMCriteria:
         mock_otel_context.attach.return_value = "mock-token"
         mocker.patch("services.monitoring_service._llm.Context")
 
-        # Mock statsd
-        mocker.patch("services.monitoring_service._llm.statsd")
+        # Mock record_histogram
+        mocker.patch("services.monitoring_service._llm.record_histogram")
 
         await generate_monitoring_video_llm_prompt(session, config_id, "video.mp4")
 

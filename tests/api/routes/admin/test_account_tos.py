@@ -384,10 +384,10 @@ class TestAcceptAccountTerms:
             mock_session.rollback.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_accept_terms_metrics_failure_on_create(
+    async def test_accept_terms_metrics_on_create(
         self, mock_context, mock_account, mock_request
     ):
-        """Should handle statsd metric failures gracefully when creating acceptance."""
+        """Should emit OTel metrics when creating acceptance."""
         mock_session = MagicMock()
 
         with (
@@ -396,7 +396,8 @@ class TestAcceptAccountTerms:
                 "api.routes.admin._account.get_user_role_on_account"
             ) as mock_get_role,
             patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
-            patch("api.routes.admin._account.statsd") as mock_statsd,
+            patch("api.routes.admin._account.increment_counter") as mock_counter,
+            patch("api.routes.admin._account.record_duration") as mock_histogram,
         ):
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
@@ -408,11 +409,7 @@ class TestAcceptAccountTerms:
             tos_repo_instance.get_tos_acceptance_by_version.return_value = None
             tos_repo_instance.create_tos_acceptance.return_value = MagicMock()
 
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-            mock_statsd.histogram.side_effect = Exception("Statsd error")
-
-            # Execute - should succeed despite metrics failures
+            # Execute
             result = await accept_account_terms(
                 "test-account", mock_request, mock_context, mock_session
             )
@@ -423,11 +420,18 @@ class TestAcceptAccountTerms:
             mock_session.commit.assert_called_once()
             tos_repo_instance.create_tos_acceptance.assert_called_once()
 
+            # Verify OTel metrics were called
+            mock_counter.assert_called_once_with(
+                "tos.acceptance.created", attributes={"version": "v1.0"}
+            )
+            mock_histogram.assert_called_once()
+            assert mock_histogram.call_args.args[0] == "tos.acceptance.duration"
+
     @pytest.mark.asyncio
-    async def test_accept_terms_metrics_failure_on_duplicate(
+    async def test_accept_terms_metrics_on_duplicate(
         self, mock_context, mock_account, mock_request
     ):
-        """Should handle statsd metric failures gracefully when acceptance already exists."""
+        """Should emit OTel metrics when acceptance already exists."""
         mock_session = MagicMock()
 
         with (
@@ -436,7 +440,8 @@ class TestAcceptAccountTerms:
                 "api.routes.admin._account.get_user_role_on_account"
             ) as mock_get_role,
             patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
-            patch("api.routes.admin._account.statsd") as mock_statsd,
+            patch("api.routes.admin._account.increment_counter") as mock_counter,
+            patch("api.routes.admin._account.record_duration") as mock_histogram,
         ):
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
@@ -451,11 +456,7 @@ class TestAcceptAccountTerms:
                 existing_acceptance
             )
 
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-            mock_statsd.histogram.side_effect = Exception("Statsd error")
-
-            # Execute - should succeed despite metrics failures
+            # Execute
             result = await accept_account_terms(
                 "test-account", mock_request, mock_context, mock_session
             )
@@ -466,11 +467,18 @@ class TestAcceptAccountTerms:
             mock_session.commit.assert_called_once()
             tos_repo_instance.create_tos_acceptance.assert_not_called()
 
+            # Verify OTel metrics were called
+            mock_counter.assert_called_once_with(
+                "tos.acceptance.duplicate", attributes={"version": "v1.0"}
+            )
+            mock_histogram.assert_called_once()
+            assert mock_histogram.call_args.args[0] == "tos.acceptance.duration"
+
     @pytest.mark.asyncio
-    async def test_accept_terms_metrics_failure_on_race_condition(
+    async def test_accept_terms_metrics_on_race_condition(
         self, mock_context, mock_account, mock_request
     ):
-        """Should handle statsd metric failures gracefully during race condition."""
+        """Should emit OTel metrics during race condition."""
         mock_session = MagicMock()
 
         with (
@@ -479,7 +487,8 @@ class TestAcceptAccountTerms:
                 "api.routes.admin._account.get_user_role_on_account"
             ) as mock_get_role,
             patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
-            patch("api.routes.admin._account.statsd") as mock_statsd,
+            patch("api.routes.admin._account.increment_counter") as mock_counter,
+            patch("api.routes.admin._account.record_duration") as mock_histogram,
         ):
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
@@ -499,11 +508,7 @@ class TestAcceptAccountTerms:
                 sqlalchemy_exc.IntegrityError("statement", {}, Exception())
             )
 
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-            mock_statsd.histogram.side_effect = Exception("Statsd error")
-
-            # Execute - should succeed despite metrics failures
+            # Execute
             result = await accept_account_terms(
                 "test-account", mock_request, mock_context, mock_session
             )
@@ -514,11 +519,18 @@ class TestAcceptAccountTerms:
             mock_session.rollback.assert_called_once()
             mock_session.commit.assert_called_once()
 
+            # Verify OTel metrics were called
+            mock_counter.assert_called_once_with(
+                "tos.acceptance.duplicate", attributes={"version": "v1.0"}
+            )
+            mock_histogram.assert_called_once()
+            assert mock_histogram.call_args.args[0] == "tos.acceptance.duration"
+
     @pytest.mark.asyncio
-    async def test_accept_terms_metrics_failure_on_error(
+    async def test_accept_terms_metrics_on_error(
         self, mock_context, mock_account, mock_request
     ):
-        """Should handle statsd metric failures gracefully during database errors."""
+        """Should emit OTel metrics during database errors."""
         mock_session = MagicMock()
 
         with (
@@ -527,7 +539,8 @@ class TestAcceptAccountTerms:
                 "api.routes.admin._account.get_user_role_on_account"
             ) as mock_get_role,
             patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
-            patch("api.routes.admin._account.statsd") as mock_statsd,
+            patch("api.routes.admin._account.increment_counter") as mock_counter,
+            patch("api.routes.admin._account.record_duration") as mock_histogram,
         ):
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
@@ -541,10 +554,6 @@ class TestAcceptAccountTerms:
                 "Database error"
             )
 
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-            mock_statsd.histogram.side_effect = Exception("Statsd error")
-
             # Execute and assert - should still raise the database error
             with pytest.raises(HTTPException) as exc_info:
                 await accept_account_terms(
@@ -554,6 +563,14 @@ class TestAcceptAccountTerms:
             assert exc_info.value.status_code == 500
             assert "Failed to record TOS acceptance" in exc_info.value.detail
             mock_session.rollback.assert_called_once()
+
+            # Verify OTel metrics were called even on error
+            mock_counter.assert_called_once_with(
+                "tos.acceptance.failed",
+                attributes={"version": "v1.0", "error": "Exception"},
+            )
+            mock_histogram.assert_called_once()
+            assert mock_histogram.call_args.args[0] == "tos.acceptance.duration"
 
     @pytest.mark.asyncio
     async def test_accept_terms_lookup_failure_before_insert(

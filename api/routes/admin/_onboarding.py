@@ -45,8 +45,8 @@ from services.number_service import NumberService
 from services.number_service._utils import NumberChannel
 from services.project_service import ProjectParams
 from services.voice_service import VoiceService
-from utils.dd import statsd
 from utils.log import logger
+from utils.otel import increment_counter
 
 from ._account import _set_user_session, get_account_status
 from ._auth import authorize_admin
@@ -568,20 +568,14 @@ async def self_onboarding(
                 account = account_service.get_account(session, account_name)
                 if not account:
                     # METRIC: Track account retrieval failure (best-effort)
-                    try:
-                        statsd.increment(
-                            "tos.acceptance.failed",
-                            tags=[
-                                f"account_name:{account_name}",
-                                f"version:{account_service.CURRENT_TOS_VERSION}",
-                                "error:AccountRetrievalFailed",
-                                "source:onboarding",
-                            ],
-                        )
-                    except Exception as metric_err:
-                        logger.debug(
-                            f"Failed to emit tos.acceptance.failed metric: {metric_err}"
-                        )
+                    increment_counter(
+                        "tos.acceptance.failed",
+                        attributes={
+                            "version": account_service.CURRENT_TOS_VERSION,
+                            "error": "AccountRetrievalFailed",
+                            "source": "onboarding",
+                        },
+                    )
 
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -628,20 +622,14 @@ async def self_onboarding(
                 session.rollback()
 
                 # METRIC: Track TOS acceptance failures in onboarding (best-effort)
-                try:
-                    statsd.increment(
-                        "tos.acceptance.failed",
-                        tags=[
-                            f"account_name:{account_name}",
-                            f"version:{account_service.CURRENT_TOS_VERSION}",
-                            f"error:{type(e).__name__}",
-                            "source:onboarding",
-                        ],
-                    )
-                except Exception as metric_err:
-                    logger.debug(
-                        f"Failed to emit tos.acceptance.failed metric: {metric_err}"
-                    )
+                increment_counter(
+                    "tos.acceptance.failed",
+                    attributes={
+                        "version": account_service.CURRENT_TOS_VERSION,
+                        "error": type(e).__name__,
+                        "source": "onboarding",
+                    },
+                )
 
                 logger.error(
                     f"[SelfOnboarding] Failed to create TOS acceptance for account {account_name}: {e}",
@@ -661,19 +649,13 @@ async def self_onboarding(
     if request.terms_accepted and tos_account_id:
         if tos_acceptance_created:
             # METRIC: Track successful TOS acceptance creation in onboarding (best-effort)
-            try:
-                statsd.increment(
-                    "tos.acceptance.created",
-                    tags=[
-                        f"account_id:{tos_account_id}",
-                        f"version:{account_service.CURRENT_TOS_VERSION}",
-                        "source:onboarding",
-                    ],
-                )
-            except Exception as metric_err:
-                logger.debug(
-                    f"Failed to emit tos.acceptance.created metric: {metric_err}"
-                )
+            increment_counter(
+                "tos.acceptance.created",
+                attributes={
+                    "version": account_service.CURRENT_TOS_VERSION,
+                    "source": "onboarding",
+                },
+            )
 
             logger.info(
                 f"[SelfOnboarding] TOS acceptance created for account {account_name} "
@@ -681,19 +663,13 @@ async def self_onboarding(
             )
         else:
             # METRIC: Track duplicate acceptance in onboarding (best-effort)
-            try:
-                statsd.increment(
-                    "tos.acceptance.duplicate",
-                    tags=[
-                        f"account_id:{tos_account_id}",
-                        f"version:{account_service.CURRENT_TOS_VERSION}",
-                        "source:onboarding",
-                    ],
-                )
-            except Exception as metric_err:
-                logger.debug(
-                    f"Failed to emit tos.acceptance.duplicate metric: {metric_err}"
-                )
+            increment_counter(
+                "tos.acceptance.duplicate",
+                attributes={
+                    "version": account_service.CURRENT_TOS_VERSION,
+                    "source": "onboarding",
+                },
+            )
 
     # Send notification to #test-channel Slack channel
     try:

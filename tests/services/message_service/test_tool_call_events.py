@@ -246,9 +246,7 @@ async def test_streaming_tool_call_events_attached_to_message(
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     message = Message(
         author_type=AuthorType.USER,
@@ -369,9 +367,7 @@ async def test_streaming_no_events_no_tool_calls_key(
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     message = Message(
         author_type=AuthorType.USER,
@@ -484,9 +480,7 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     message = Message(
         author_type=AuthorType.USER,

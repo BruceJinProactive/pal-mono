@@ -15,7 +15,7 @@ class TestRecordCapture:
 
     @pytest.mark.asyncio
     async def test_record_capture_success_with_metrics(self):
-        """Test successful capture recording emits camera.feed.updated metric."""
+        """Test successful capture recording emits monitoring.camera.feed.updated metric."""
         signal_source_id = uuid.uuid4()
         feed_id = uuid.uuid4()
         project_id = uuid.uuid4()
@@ -82,7 +82,7 @@ class TestRecordCapture:
                 "api.routes.internal.monitoring._generate_presigned_url_safe",
                 return_value="https://presigned-url.com",
             ),
-            patch("api.routes.internal.monitoring.statsd") as mock_statsd,
+            patch("api.routes.internal.monitoring.increment_counter") as mock_counter,
         ):
             result = await record_capture(request, mock_session)
 
@@ -92,7 +92,7 @@ class TestRecordCapture:
             assert result.feed_id == feed_id
 
             # Verify metric was emitted (no high-cardinality tags)
-            mock_statsd.increment.assert_called_once_with("camera.feed.updated")
+            mock_counter.assert_called_once_with("monitoring.camera.feed.updated")
 
             # Verify feed was updated
             mock_feed_repo.update_last_capture.assert_awaited_once_with(
@@ -101,7 +101,7 @@ class TestRecordCapture:
 
     @pytest.mark.asyncio
     async def test_record_capture_metrics_failure_doesnt_break_flow(self):
-        """Test that metric emission failure doesn't prevent capture recording."""
+        """Test that capture recording works normally with OTel metrics (never raise)."""
         signal_source_id = uuid.uuid4()
         feed_id = uuid.uuid4()
         captured_at = datetime.now(timezone.utc)
@@ -163,28 +163,19 @@ class TestRecordCapture:
                 "api.routes.internal.monitoring._generate_presigned_url_safe",
                 return_value=None,
             ),
-            patch("api.routes.internal.monitoring.statsd") as mock_statsd,
-            patch("api.routes.internal.monitoring.logger") as mock_logger,
+            patch("api.routes.internal.monitoring.increment_counter") as mock_counter,
         ):
-            # Make statsd raise an exception
-            mock_statsd.increment.side_effect = Exception("Statsd connection error")
-
             result = await record_capture(request, mock_session)
 
-            # Verify success despite metric failure
+            # Verify success (OTel metrics never raise exceptions)
             assert result.success is True
             assert result.signal_source_id == signal_source_id
             assert result.feed_id == feed_id
 
-            # Verify metric was attempted
-            mock_statsd.increment.assert_called_once()
+            # Verify metric was called
+            mock_counter.assert_called_once_with("monitoring.camera.feed.updated")
 
-            # Verify error was logged
-            mock_logger.debug.assert_any_call(
-                "Failed to emit camera.feed.updated metric: Statsd connection error"
-            )
-
-            # Verify feed was still updated
+            # Verify feed was updated
             mock_feed_repo.update_last_capture.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -243,7 +234,7 @@ class TestRecordCapture:
                 "api.routes.internal.monitoring.ProjectRepositoryAsync",
                 return_value=mock_project_repo,
             ),
-            patch("api.routes.internal.monitoring.statsd") as mock_statsd,
+            patch("api.routes.internal.monitoring.increment_counter") as mock_counter,
         ):
             result = await record_capture(request, mock_session)
 
@@ -253,7 +244,7 @@ class TestRecordCapture:
             assert result.feed_id is None
 
             # Verify no metric was emitted (feed doesn't exist)
-            mock_statsd.increment.assert_not_called()
+            mock_counter.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_record_capture_exception_handling(self):
@@ -273,7 +264,7 @@ class TestRecordCapture:
                 "api.routes.internal.monitoring.SignalSourceRepositoryAsync",
                 side_effect=Exception("Database error"),
             ),
-            patch("api.routes.internal.monitoring.statsd") as mock_statsd,
+            patch("api.routes.internal.monitoring.increment_counter") as mock_counter,
             patch("api.routes.internal.monitoring.logger") as mock_logger,
         ):
             with pytest.raises(HTTPException) as exc_info:
@@ -284,11 +275,9 @@ class TestRecordCapture:
             assert "Failed to record capture" in exc_info.value.detail
 
             # Verify error metric was emitted (only error_type tag, no camera_id)
-            mock_statsd.increment.assert_called_once_with(
-                "camera.feed.error",
-                tags=[
-                    "error_type:Exception",
-                ],
+            mock_counter.assert_called_once_with(
+                "monitoring.camera.feed.error",
+                attributes={"error_type": "Exception"},
             )
 
             # Verify error was logged
@@ -324,7 +313,7 @@ class TestRecordCapture:
                 "api.routes.internal.monitoring.AccountRepositoryAsync",
                 side_effect=RuntimeError("Account lookup failed"),
             ),
-            patch("api.routes.internal.monitoring.statsd") as mock_statsd,
+            patch("api.routes.internal.monitoring.increment_counter") as mock_counter,
             patch("api.routes.internal.monitoring.logger") as mock_logger,
         ):
             with pytest.raises(HTTPException) as exc_info:
@@ -334,11 +323,9 @@ class TestRecordCapture:
             assert exc_info.value.status_code == 500
 
             # Verify error metric was emitted (only error_type tag, no camera_id)
-            mock_statsd.increment.assert_called_once_with(
-                "camera.feed.error",
-                tags=[
-                    "error_type:RuntimeError",
-                ],
+            mock_counter.assert_called_once_with(
+                "monitoring.camera.feed.error",
+                attributes={"error_type": "RuntimeError"},
             )
 
             # Verify error was logged
@@ -346,7 +333,7 @@ class TestRecordCapture:
 
     @pytest.mark.asyncio
     async def test_record_capture_error_metric_failure_doesnt_break(self):
-        """Test that error metric failure doesn't prevent error handling."""
+        """Test that error handling works correctly with OTel metrics (never raise)."""
         signal_source_id = uuid.uuid4()
 
         request = RecordCaptureRequest(
@@ -362,26 +349,21 @@ class TestRecordCapture:
                 "api.routes.internal.monitoring.SignalSourceRepositoryAsync",
                 side_effect=Exception("Database error"),
             ),
-            patch("api.routes.internal.monitoring.statsd") as mock_statsd,
+            patch("api.routes.internal.monitoring.increment_counter") as mock_counter,
             patch("api.routes.internal.monitoring.logger") as mock_logger,
         ):
-            # Make statsd raise an exception
-            mock_statsd.increment.side_effect = Exception("Statsd connection error")
-
             with pytest.raises(HTTPException) as exc_info:
                 await record_capture(request, mock_session)
 
-            # Verify 500 error still raised despite metric failure
+            # Verify 500 error is raised (OTel metrics never raise exceptions)
             assert exc_info.value.status_code == 500
             assert "Failed to record capture" in exc_info.value.detail
 
-            # Verify metric was attempted
-            mock_statsd.increment.assert_called_once()
-
-            # Verify metric failure was logged
-            mock_logger.debug.assert_any_call(
-                "Failed to emit camera.feed.error metric: Statsd connection error"
+            # Verify metric was called
+            mock_counter.assert_called_once_with(
+                "monitoring.camera.feed.error",
+                attributes={"error_type": "Exception"},
             )
 
-            # Verify original error was still logged
+            # Verify original error was logged
             mock_logger.error.assert_called_once()

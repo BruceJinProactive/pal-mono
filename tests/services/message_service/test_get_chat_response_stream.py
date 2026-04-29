@@ -374,9 +374,7 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     session = AsyncMock()
     message = Message(
@@ -482,9 +480,7 @@ async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     session = AsyncMock()
     message = Message(
@@ -576,9 +572,7 @@ async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     session = AsyncMock()
     message = Message(
@@ -676,9 +670,7 @@ async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_clea
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     session = AsyncMock()
     message = Message(

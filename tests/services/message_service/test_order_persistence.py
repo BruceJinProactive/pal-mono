@@ -346,9 +346,7 @@ async def test_order_details_persisted_to_database(monkeypatch):
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
     monkeypatch.setattr(
         _implementation.transaction_service,
         "create_order_from_agent_async",
@@ -509,9 +507,7 @@ async def test_order_details_error_handling(monkeypatch):
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
     monkeypatch.setattr(
         _implementation.transaction_service,
         "create_order_from_agent_async",

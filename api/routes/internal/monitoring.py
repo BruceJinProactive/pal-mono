@@ -25,8 +25,8 @@ from db.repositories.monitoring_config_repository import MonitoringConfigReposit
 from db.tables import MonitoringConfig, MonitoringRun
 from services import monitoring_service
 from services.asset_service import _utils as asset_utils
-from utils.dd import statsd
 from utils.log import logger
+from utils.otel import increment_counter
 
 monitoring_router = APIRouter(prefix="/monitoring", tags=["internal-monitoring"])
 
@@ -262,10 +262,7 @@ async def record_capture(
             )
 
             # METRIC: Track camera feed update
-            try:
-                statsd.increment("camera.feed.updated")
-            except Exception as metric_err:
-                logger.debug(f"Failed to emit camera.feed.updated metric: {metric_err}")
+            increment_counter("monitoring.camera.feed.updated")
 
             # Generate presigned URL if S3 key exists
             presigned_url = None
@@ -304,16 +301,11 @@ async def record_capture(
 
     except Exception as e:
         # METRIC: Track camera feed errors
-        try:
-            error_type = type(e).__name__
-            statsd.increment(
-                "camera.feed.error",
-                tags=[
-                    f"error_type:{error_type}",
-                ],
-            )
-        except Exception as metric_err:
-            logger.debug(f"Failed to emit camera.feed.error metric: {metric_err}")
+        error_type = type(e).__name__
+        increment_counter(
+            "monitoring.camera.feed.error",
+            attributes={"error_type": error_type},
+        )
 
         logger.error(
             f"[Internal API] Error recording capture for signal_source_id={request.signal_source_id}",

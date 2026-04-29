@@ -252,9 +252,7 @@ async def test_get_chat_response_async_captures_project_attributes_early(monkeyp
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     session = AsyncMock()
     session.refresh = AsyncMock()
@@ -369,9 +367,7 @@ async def test_get_chat_response_async_legacy_path_uses_captured_attributes(
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     session = AsyncMock()
     session.refresh = AsyncMock()

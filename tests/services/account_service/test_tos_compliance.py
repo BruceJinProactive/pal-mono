@@ -89,8 +89,8 @@ class TestCheckTosCompliance:
                 account_id, "v2.0"
             )
 
-    def test_check_tos_compliance_metrics_failure_compliant(self):
-        """Test compliance check succeeds despite statsd failures when compliant."""
+    def test_check_tos_compliance_calls_metrics_compliant(self):
+        """Test compliance check calls OTel metrics when compliant."""
         # Arrange
         mock_session = MagicMock()
         account_id = uuid.uuid4()
@@ -101,19 +101,16 @@ class TestCheckTosCompliance:
         mock_repo = MagicMock()
         mock_repo.get_tos_acceptance_by_version.return_value = mock_acceptance
 
-        # Patch both repository and statsd
+        # Patch repository and OTel functions
         with (
             patch(
                 "services.account_service._tos.TosAcceptanceRepository",
                 return_value=mock_repo,
             ),
-            patch("services.account_service._tos.statsd") as mock_statsd,
+            patch("services.account_service._tos.increment_counter") as mock_increment,
+            patch("services.account_service._tos.record_duration") as mock_histogram,
         ):
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-            mock_statsd.histogram.side_effect = Exception("Statsd error")
-
-            # Act - should succeed despite metrics failures
+            # Act
             result = check_tos_compliance(mock_session, account_id, required_version)
 
             # Assert
@@ -121,9 +118,12 @@ class TestCheckTosCompliance:
             mock_repo.get_tos_acceptance_by_version.assert_called_once_with(
                 account_id, required_version
             )
+            # Verify metrics were called
+            assert mock_increment.call_count >= 2  # check + passed
+            mock_histogram.assert_called_once()
 
-    def test_check_tos_compliance_metrics_failure_not_compliant(self):
-        """Test compliance check succeeds despite statsd failures when not compliant."""
+    def test_check_tos_compliance_calls_metrics_not_compliant(self):
+        """Test compliance check calls OTel metrics when not compliant."""
         # Arrange
         mock_session = MagicMock()
         account_id = uuid.uuid4()
@@ -132,19 +132,16 @@ class TestCheckTosCompliance:
         mock_repo = MagicMock()
         mock_repo.get_tos_acceptance_by_version.return_value = None
 
-        # Patch both repository and statsd
+        # Patch repository and OTel functions
         with (
             patch(
                 "services.account_service._tos.TosAcceptanceRepository",
                 return_value=mock_repo,
             ),
-            patch("services.account_service._tos.statsd") as mock_statsd,
+            patch("services.account_service._tos.increment_counter") as mock_increment,
+            patch("services.account_service._tos.record_duration") as mock_histogram,
         ):
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-            mock_statsd.histogram.side_effect = Exception("Statsd error")
-
-            # Act - should succeed despite metrics failures
+            # Act
             result = check_tos_compliance(mock_session, account_id, required_version)
 
             # Assert
@@ -152,9 +149,12 @@ class TestCheckTosCompliance:
             mock_repo.get_tos_acceptance_by_version.assert_called_once_with(
                 account_id, required_version
             )
+            # Verify metrics were called
+            assert mock_increment.call_count >= 2  # check + failed
+            mock_histogram.assert_called_once()
 
-    def test_check_tos_compliance_metrics_failure_on_error(self):
-        """Test compliance check handles statsd failures during database errors."""
+    def test_check_tos_compliance_calls_metrics_on_error(self):
+        """Test compliance check calls OTel metrics during database errors."""
         # Arrange
         mock_session = MagicMock()
         account_id = uuid.uuid4()
@@ -163,20 +163,22 @@ class TestCheckTosCompliance:
         mock_repo = MagicMock()
         mock_repo.get_tos_acceptance_by_version.side_effect = Exception("DB error")
 
-        # Patch both repository and statsd
+        # Patch repository and OTel functions
         with (
             patch(
                 "services.account_service._tos.TosAcceptanceRepository",
                 return_value=mock_repo,
             ),
-            patch("services.account_service._tos.statsd") as mock_statsd,
+            patch("services.account_service._tos.increment_counter") as mock_increment,
+            patch("services.account_service._tos.record_duration") as mock_histogram,
         ):
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-
             # Act and assert - should still raise the database error
             with pytest.raises(Exception, match="DB error"):
                 check_tos_compliance(mock_session, account_id, required_version)
+
+            # Verify error metrics were called
+            mock_increment.assert_called()
+            mock_histogram.assert_called_once()
 
 
 class TestGetTosStatus:
@@ -241,8 +243,8 @@ class TestGetTosStatus:
                 account_id, required_version
             )
 
-    def test_get_tos_status_metrics_failure_with_acceptance(self):
-        """Test get_tos_status succeeds despite statsd failures when acceptance exists."""
+    def test_get_tos_status_calls_metrics_with_acceptance(self):
+        """Test get_tos_status calls OTel metrics when acceptance exists."""
         # Arrange
         mock_session = MagicMock()
         account_id = uuid.uuid4()
@@ -256,19 +258,16 @@ class TestGetTosStatus:
         mock_repo = MagicMock()
         mock_repo.get_tos_acceptance_by_version.return_value = mock_acceptance
 
-        # Patch both repository and statsd
+        # Patch repository and OTel functions
         with (
             patch(
                 "services.account_service._tos.TosAcceptanceRepository",
                 return_value=mock_repo,
             ),
-            patch("services.account_service._tos.statsd") as mock_statsd,
+            patch("services.account_service._tos.increment_counter") as mock_increment,
+            patch("services.account_service._tos.record_duration") as mock_histogram,
         ):
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-            mock_statsd.histogram.side_effect = Exception("Statsd error")
-
-            # Act - should succeed despite metrics failures
+            # Act
             status = get_tos_status(mock_session, account_id, required_version)
 
             # Assert
@@ -278,9 +277,12 @@ class TestGetTosStatus:
             mock_repo.get_tos_acceptance_by_version.assert_called_once_with(
                 account_id, required_version
             )
+            # Verify metrics were called
+            mock_increment.assert_called_once()
+            mock_histogram.assert_called_once()
 
-    def test_get_tos_status_metrics_failure_not_accepted(self):
-        """Test get_tos_status succeeds despite statsd failures when not accepted."""
+    def test_get_tos_status_calls_metrics_not_accepted(self):
+        """Test get_tos_status calls OTel metrics when not accepted."""
         # Arrange
         mock_session = MagicMock()
         account_id = uuid.uuid4()
@@ -289,19 +291,16 @@ class TestGetTosStatus:
         mock_repo = MagicMock()
         mock_repo.get_tos_acceptance_by_version.return_value = None
 
-        # Patch both repository and statsd
+        # Patch repository and OTel functions
         with (
             patch(
                 "services.account_service._tos.TosAcceptanceRepository",
                 return_value=mock_repo,
             ),
-            patch("services.account_service._tos.statsd") as mock_statsd,
+            patch("services.account_service._tos.increment_counter") as mock_increment,
+            patch("services.account_service._tos.record_duration") as mock_histogram,
         ):
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-            mock_statsd.histogram.side_effect = Exception("Statsd error")
-
-            # Act - should succeed despite metrics failures
+            # Act
             status = get_tos_status(mock_session, account_id, required_version)
 
             # Assert
@@ -311,9 +310,12 @@ class TestGetTosStatus:
             mock_repo.get_tos_acceptance_by_version.assert_called_once_with(
                 account_id, required_version
             )
+            # Verify metrics were called
+            mock_increment.assert_called_once()
+            mock_histogram.assert_called_once()
 
-    def test_get_tos_status_metrics_failure_on_error(self):
-        """Test get_tos_status handles statsd failures during database errors."""
+    def test_get_tos_status_calls_metrics_on_error(self):
+        """Test get_tos_status calls OTel metrics during database errors."""
         # Arrange
         mock_session = MagicMock()
         account_id = uuid.uuid4()
@@ -322,17 +324,19 @@ class TestGetTosStatus:
         mock_repo = MagicMock()
         mock_repo.get_tos_acceptance_by_version.side_effect = Exception("DB error")
 
-        # Patch both repository and statsd
+        # Patch repository and OTel functions
         with (
             patch(
                 "services.account_service._tos.TosAcceptanceRepository",
                 return_value=mock_repo,
             ),
-            patch("services.account_service._tos.statsd") as mock_statsd,
+            patch("services.account_service._tos.increment_counter") as mock_increment,
+            patch("services.account_service._tos.record_duration") as mock_histogram,
         ):
-            # Make statsd raise exceptions
-            mock_statsd.increment.side_effect = Exception("Statsd error")
-
             # Act and assert - should still raise the database error
             with pytest.raises(Exception, match="DB error"):
                 get_tos_status(mock_session, account_id, required_version)
+
+            # Verify error metrics were called
+            mock_increment.assert_called()
+            mock_histogram.assert_called_once()

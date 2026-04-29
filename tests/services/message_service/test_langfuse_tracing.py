@@ -298,9 +298,7 @@ def _setup_mocks(monkeypatch, *, use_pal_agents=True):
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     return _implementation, project, user
 

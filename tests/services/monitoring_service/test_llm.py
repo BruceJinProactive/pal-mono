@@ -1311,11 +1311,11 @@ class TestNativeVideoAnalysis:
 
 
 class TestTokenUsageMetricEmission:
-    """Tests for statsd metric emission of LLM token usage."""
+    """Tests for OTel histogram metric emission of LLM token usage."""
 
     @pytest.mark.asyncio
     async def test_image_analysis_emits_token_metric(self, mocker):
-        """Should emit monitoring.llm.total_tokens histogram for image analysis."""
+        """Should emit monitoring.llm.token.count histogram for image analysis."""
         from services.monitoring_service._llm import generate_monitoring_llm_prompt
 
         session = AsyncMock()
@@ -1341,19 +1341,22 @@ class TestTokenUsageMetricEmission:
             return_value=False
         )
 
-        mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
+        mock_record_histogram = mocker.patch(
+            "services.monitoring_service._llm.record_histogram"
+        )
 
         await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
 
-        mock_statsd.histogram.assert_called_once_with(
-            "monitoring.llm.total_tokens",
+        mock_record_histogram.assert_called_once_with(
+            "monitoring.llm.token.count",
             550,
-            tags=["provider:azure", "model:gpt-4o", "media_type:image"],
+            attributes={"provider": "azure", "model": "gpt-4o", "media_type": "image"},
+            unit="1",
         )
 
     @pytest.mark.asyncio
     async def test_video_frames_analysis_emits_token_metric(self, mocker):
-        """Should emit monitoring.llm.total_tokens histogram for video frame analysis."""
+        """Should emit monitoring.llm.token.count histogram for video frame analysis."""
         from services.monitoring_service._llm import (
             generate_monitoring_video_llm_prompt,
         )
@@ -1381,19 +1384,22 @@ class TestTokenUsageMetricEmission:
             return_value=False
         )
 
-        mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
+        mock_record_histogram = mocker.patch(
+            "services.monitoring_service._llm.record_histogram"
+        )
 
         await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
 
-        mock_statsd.histogram.assert_called_once_with(
-            "monitoring.llm.total_tokens",
+        mock_record_histogram.assert_called_once_with(
+            "monitoring.llm.token.count",
             860,
-            tags=["provider:azure", "model:gpt-4o", "media_type:video"],
+            attributes={"provider": "azure", "model": "gpt-4o", "media_type": "video"},
+            unit="1",
         )
 
     @pytest.mark.asyncio
     async def test_native_video_analysis_emits_token_metric(self, mocker):
-        """Should emit monitoring.llm.total_tokens histogram for native video analysis."""
+        """Should emit monitoring.llm.token.count histogram for native video analysis."""
         from services.monitoring_service._llm import (
             generate_monitoring_video_llm_prompt,
         )
@@ -1421,18 +1427,21 @@ class TestTokenUsageMetricEmission:
             return_value=False
         )
 
-        mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
+        mock_record_histogram = mocker.patch(
+            "services.monitoring_service._llm.record_histogram"
+        )
 
         await generate_monitoring_video_llm_prompt(session, config_id, "vid.mp4")
 
-        mock_statsd.histogram.assert_called_once_with(
-            "monitoring.llm.total_tokens",
+        mock_record_histogram.assert_called_once_with(
+            "monitoring.llm.token.count",
             1280,
-            tags=[
-                "provider:google",
-                "model:gemini-2.5-flash",
-                "media_type:native_video",
-            ],
+            attributes={
+                "provider": "google",
+                "model": "gemini-2.5-flash",
+                "media_type": "native_video",
+            },
+            unit="1",
         )
 
     @pytest.mark.asyncio
@@ -1467,8 +1476,10 @@ class TestTokenUsageMetricEmission:
             return_value=False
         )
 
-        mock_statsd = mocker.patch("services.monitoring_service._llm.statsd")
+        mock_record_histogram = mocker.patch(
+            "services.monitoring_service._llm.record_histogram"
+        )
 
         await generate_monitoring_llm_prompt(session, config_id, "img.jpg")
 
-        mock_statsd.histogram.assert_not_called()
+        mock_record_histogram.assert_not_called()

@@ -37,9 +37,8 @@ from services import (
     transaction_service,
     user_service,
 )
-from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
-from utils.otel import trace_async_block
+from utils.otel import record_duration, trace_async_block
 from utils.request_context import RequestContext
 
 from . import _utils
@@ -763,25 +762,23 @@ async def get_chat_response_stream(
                         runtime_context=runtime_context,
                     )
 
-                    send_dd_histogram_metrics(
-                        "message_service.start_streaming",
+                    record_duration(
+                        "message.streaming.start.duration",
                         request_context.request_time,
-                        [
-                            f"agent_id:{agent_id}",
-                            f"account_name:{account_name}",
-                        ],
+                        attributes={
+                            "agent_id": str(agent_id),
+                        },
                     )
 
                     # Stream from pal-agents
                     async with trace_async_block("Message Service Streaming"):
                         index = 0
-                        send_dd_histogram_metrics(
-                            "message_service.waiting_first_chunk",
+                        record_duration(
+                            "message.streaming.first_chunk.wait",
                             request_context.request_time,
-                            [
-                                f"agent_id:{agent_id}",
-                                f"account_name:{account_name}",
-                            ],
+                            attributes={
+                                "agent_id": str(agent_id),
+                            },
                         )
 
                         transfer_purpose_captured = None
@@ -807,13 +804,12 @@ async def get_chat_response_stream(
 
                             async for chunk in pal_stream:
                                 if index == 0:
-                                    send_dd_histogram_metrics(
-                                        "message_service.received_first_chunk",
+                                    record_duration(
+                                        "message.streaming.first_chunk.duration",
                                         request_context.request_time,
-                                        [
-                                            f"agent_id:{agent_id}",
-                                            f"account_name:{account_name}",
-                                        ],
+                                        attributes={
+                                            "agent_id": str(agent_id),
+                                        },
                                     )
 
                                 # Capture and persist transfer_purpose immediately (before cancellation can interrupt)
@@ -1028,13 +1024,12 @@ async def get_chat_response_stream(
                         stream=True,
                         request_context=request_context,
                     )
-                    send_dd_histogram_metrics(
-                        "message_service.start_streaming",
+                    record_duration(
+                        "message.streaming.start.duration",
                         request_context.request_time,
-                        [
-                            f"agent_id:{agent_id}",
-                            f"account_name:{account_name}",
-                        ],
+                        attributes={
+                            "agent_id": str(agent_id),
+                        },
                     )
 
                     response_stream: AsyncIterator[Output] = await agent.arun(input)  # type: ignore
@@ -1042,24 +1037,22 @@ async def get_chat_response_stream(
                     if response_stream:
                         async with trace_async_block("Message Service Streaming"):
                             index = 0
-                            send_dd_histogram_metrics(
-                                "message_service.waiting_first_chunk",
+                            record_duration(
+                                "message.streaming.first_chunk.wait",
                                 request_context.request_time,
-                                [
-                                    f"agent_id:{agent_id}",
-                                    f"account_name:{account_name}",
-                                ],
+                                attributes={
+                                    "agent_id": str(agent_id),
+                                },
                             )
 
                             async for chunk in response_stream:
                                 if index == 0:
-                                    send_dd_histogram_metrics(
-                                        "message_service.received_first_chunk",
+                                    record_duration(
+                                        "message.streaming.first_chunk.duration",
                                         request_context.request_time,
-                                        [
-                                            f"agent_id:{agent_id}",
-                                            f"account_name:{account_name}",
-                                        ],
+                                        attributes={
+                                            "agent_id": str(agent_id),
+                                        },
                                     )
 
                                 async with trace_async_block(

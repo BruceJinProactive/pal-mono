@@ -21,8 +21,8 @@ from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
 from services.message_service import get_chat_response_stream
 from services.relay_service import send_message
-from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
+from utils.otel import record_duration
 from utils.request_context import RequestContext
 
 
@@ -517,8 +517,8 @@ async def chat_completions_agno(
         async def generate_stream():
             async with _managed_session(session) as active_session:
                 try:
-                    send_dd_histogram_metrics(
-                        "chat_completions.start_streaming", request_context.request_time
+                    record_duration(
+                        "chat.streaming.start.duration", request_context.request_time
                     )
 
                     response_stream = await get_chat_response_stream(
@@ -535,13 +535,9 @@ async def chat_completions_agno(
                     if response_stream:
                         chunk_count = 0
                         url_filter = create_url_filter()
-                        send_dd_histogram_metrics(
-                            "chat_completions.waiting_first_chunk",
+                        record_duration(
+                            "chat.streaming.first_chunk.wait",
                             request_context.request_time,
-                            [
-                                f"sender_identifier:{sender_identifier}",
-                                f"recipient_identifier:{recipient_identifier}",
-                            ],
                         )
 
                         # Stream chunks immediately as they arrive
@@ -586,13 +582,9 @@ async def chat_completions_agno(
                                             "sender_identifier": sender_identifier,
                                         },
                                     )
-                                    send_dd_histogram_metrics(
-                                        "chat_completions.sent_first_chunk",
+                                    record_duration(
+                                        "chat.streaming.first_chunk.sent.duration",
                                         request_context.request_time,
-                                        [
-                                            f"sender_identifier:{sender_identifier}",
-                                            f"recipient_identifier:{recipient_identifier}",
-                                        ],
                                     )
 
                                 # Stream chunk to client immediately

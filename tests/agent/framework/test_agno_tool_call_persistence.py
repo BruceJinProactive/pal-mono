@@ -258,8 +258,8 @@ class TestToolCallRecordPersistence:
         mock_record = MagicMock()
         mock_repo.add_tool_call_record = AsyncMock(return_value=mock_record)
 
-        # Mock Datadog metrics to avoid telemetry issues
-        with patch("agent.framework.agno.send_dd_histogram_metrics"):
+        # Mock OTel metrics to avoid telemetry issues
+        with patch("agent.framework.agno.record_duration"):
             config = MagicMock()
             config.tool = []
             config.knowledge = None
@@ -357,8 +357,8 @@ class TestToolCallRecordPersistence:
         mock_record = MagicMock()
         mock_repo.add_tool_call_record = AsyncMock(return_value=mock_record)
 
-        # Mock Datadog metrics to avoid telemetry issues
-        with patch("agent.framework.agno.send_dd_histogram_metrics"):
+        # Mock OTel metrics to avoid telemetry issues
+        with patch("agent.framework.agno.record_duration"):
             config = MagicMock()
             config.tool = []
             config.knowledge = None

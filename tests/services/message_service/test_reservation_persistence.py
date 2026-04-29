@@ -261,9 +261,7 @@ async def test_reservation_details_persisted_from_stream(monkeypatch):
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
     monkeypatch.setattr(
         _implementation.reservation_service,
         "save_reservation_from_agent_async",
@@ -404,9 +402,7 @@ async def test_reservation_details_error_does_not_break_stream(monkeypatch):
     monkeypatch.setattr(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
     monkeypatch.setattr(
         _implementation.reservation_service,
         "save_reservation_from_agent_async",

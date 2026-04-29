@@ -39,8 +39,8 @@ from services.monitoring_service._video import (
     download_video_bytes,
     extract_video_frames,
 )
-from utils.dd import statsd
 from utils.log import logger
+from utils.otel import record_histogram
 
 tracer = trace.get_tracer("pal-mono-monitoring")
 
@@ -440,14 +440,15 @@ For invalid/problematic images:
                         "total_tokens"
                     )
                     if total_tokens is not None:
-                        statsd.histogram(
-                            "monitoring.llm.total_tokens",
+                        record_histogram(
+                            "monitoring.llm.token.count",
                             total_tokens,
-                            tags=[
-                                f"provider:{provider.config.provider.value}",
-                                f"model:{provider.config.model}",
-                                "media_type:image",
-                            ],
+                            attributes={
+                                "provider": provider.config.provider.value,
+                                "model": provider.config.model,
+                                "media_type": "image",
+                            },
+                            unit="1",
                         )
 
                     return llm_response["result"]
@@ -1024,14 +1025,15 @@ For invalid/problematic frames:
                             "total_tokens"
                         )
                         if total_tokens is not None:
-                            statsd.histogram(
-                                "monitoring.llm.total_tokens",
+                            record_histogram(
+                                "monitoring.llm.token.count",
                                 total_tokens,
-                                tags=[
-                                    f"provider:{provider.config.provider.value}",
-                                    f"model:{provider.config.model}",
-                                    "media_type:native_video",
-                                ],
+                                attributes={
+                                    "provider": provider.config.provider.value,
+                                    "model": provider.config.model,
+                                    "media_type": "native_video",
+                                },
+                                unit="1",
                             )
 
                         return llm_response["result"]
@@ -1101,14 +1103,15 @@ For invalid/problematic frames:
                             "total_tokens"
                         )
                         if total_tokens is not None:
-                            statsd.histogram(
-                                "monitoring.llm.total_tokens",
+                            record_histogram(
+                                "monitoring.llm.token.count",
                                 total_tokens,
-                                tags=[
-                                    f"provider:{provider.config.provider.value}",
-                                    f"model:{provider.config.model}",
-                                    "media_type:video",
-                                ],
+                                attributes={
+                                    "provider": provider.config.provider.value,
+                                    "model": provider.config.model,
+                                    "media_type": "video",
+                                },
+                                unit="1",
                             )
 
                         return llm_response["result"]

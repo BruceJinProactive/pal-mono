@@ -11,8 +11,7 @@ from agent.config import AgentConfig
 from agent.framework import AgnoAgent
 from agent.guardrails import check_input_bedrock
 from agent.input_output import Input, Output
-from utils.dd import send_dd_histogram_metrics
-from utils.otel import traced
+from utils.otel import record_duration, traced
 
 
 class Agent:
@@ -99,13 +98,12 @@ class Agent:
                 langfuse.update_current_span(input=input)
 
                 try:
-                    send_dd_histogram_metrics(
-                        "agent.start_streaming",
+                    record_duration(
+                        "agent.streaming.start.duration",
                         input.request_context.request_time,
-                        [
-                            f"agent_id:{self._metadata.agent_id}",
-                            f"account_name:{self._metadata.account_name}",
-                        ],
+                        attributes={
+                            "agent_id": self._metadata.agent_id,
+                        },
                     )
                     output_stream = await self._agent.arun(input)  # type: ignore
                     if not isinstance(output_stream, _AsyncIterator):
@@ -116,25 +114,23 @@ class Agent:
                     # Process each chunk within the same workflow span
                     chunk_count = 0
                     output_content = ""
-                    send_dd_histogram_metrics(
-                        "agent.waiting_first_chunk",
+                    record_duration(
+                        "agent.streaming.first_chunk.wait",
                         input.request_context.request_time,
-                        [
-                            f"agent_id:{self._metadata.agent_id}",
-                            f"account_name:{self._metadata.account_name}",
-                        ],
+                        attributes={
+                            "agent_id": self._metadata.agent_id,
+                        },
                     )
 
                     async for chunk in output_stream:
                         chunk_count += 1
                         if chunk_count == 1:
-                            send_dd_histogram_metrics(
-                                "agent.received_first_chunk",
+                            record_duration(
+                                "agent.streaming.first_chunk.duration",
                                 input.request_context.request_time,
-                                [
-                                    f"agent_id:{self._metadata.agent_id}",
-                                    f"account_name:{self._metadata.account_name}",
-                                ],
+                                attributes={
+                                    "agent_id": self._metadata.agent_id,
+                                },
                             )
 
                         output_content += chunk.content

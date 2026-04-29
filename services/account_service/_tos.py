@@ -1,15 +1,14 @@
 """TOS (Terms of Service) acceptance service methods."""
 
-import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TypedDict
 
 from sqlalchemy.orm import Session
 
 from db.repositories.tos_acceptance_repository import TosAcceptanceRepository
-from utils.dd import statsd
 from utils.log import logger
+from utils.otel import increment_counter, record_duration
 
 # Current TOS version - single source of truth
 CURRENT_TOS_VERSION = "v1.0"
@@ -42,13 +41,10 @@ def check_tos_compliance(
     Returns:
         bool: True if account has accepted the required TOS version
     """
-    # METRIC: Track compliance check attempts (best-effort)
-    try:
-        statsd.increment("tos.compliance.check")
-    except Exception as metric_err:
-        logger.debug(f"Failed to emit tos.compliance.check metric: {metric_err}")
+    # METRIC: Track compliance check attempts
+    increment_counter("tos.compliance.check")
 
-    start_time = time.time()
+    start_time = datetime.now(timezone.utc)
 
     try:
         tos_repo = TosAcceptanceRepository(session)
@@ -58,28 +54,18 @@ def check_tos_compliance(
 
         is_compliant = acceptance is not None
 
-        # METRIC: Track compliance result (best-effort)
+        # METRIC: Track compliance result
         if is_compliant:
-            try:
-                statsd.increment(
-                    "tos.compliance.passed", tags=[f"version:{acceptance.tos_version}"]
-                )
-            except Exception as metric_err:
-                logger.debug(
-                    f"Failed to emit tos.compliance.passed metric: {metric_err}"
-                )
+            increment_counter(
+                "tos.compliance.passed", attributes={"version": acceptance.tos_version}
+            )
 
             logger.info(
                 f"TOS compliance check passed for account {account_id} "
                 f"(version: {acceptance.tos_version})"
             )
         else:
-            try:
-                statsd.increment("tos.compliance.failed")
-            except Exception as metric_err:
-                logger.debug(
-                    f"Failed to emit tos.compliance.failed metric: {metric_err}"
-                )
+            increment_counter("tos.compliance.failed")
 
             logger.info(
                 f"TOS compliance check failed for account {account_id} - no acceptance found"
@@ -88,14 +74,11 @@ def check_tos_compliance(
         return is_compliant
 
     except Exception as e:
-        # METRIC: Track query errors (best-effort, don't mask original exception)
-        try:
-            statsd.increment(
-                "tos.query.error",
-                tags=[f"error:{type(e).__name__}", "operation:check_compliance"],
-            )
-        except Exception as metric_err:
-            logger.debug(f"Failed to emit tos.query.error metric: {metric_err}")
+        # METRIC: Track query errors (don't mask original exception)
+        increment_counter(
+            "tos.query.error",
+            attributes={"error": type(e).__name__, "operation": "check_compliance"},
+        )
 
         logger.error(
             f"Error checking TOS compliance for account {account_id}: {e}",
@@ -103,14 +86,12 @@ def check_tos_compliance(
         )
         raise
     finally:
-        # METRIC: Track query latency (best-effort, always record regardless of success/error)
-        try:
-            duration_ms = (time.time() - start_time) * 1000
-            statsd.histogram(
-                "tos.query.latency", duration_ms, tags=["operation:check_compliance"]
-            )
-        except Exception as metric_err:
-            logger.debug(f"Failed to emit tos.query.latency metric: {metric_err}")
+        # METRIC: Track query latency
+        record_duration(
+            "tos.query.duration",
+            start_time,
+            attributes={"operation": "check_compliance"},
+        )
 
 
 def get_tos_status(
@@ -135,13 +116,10 @@ def get_tos_status(
             - is_compliant: bool (True if accepted the required version)
             - accepted_at: datetime | None (when accepted, UTC)
     """
-    # METRIC: Track status query attempts (best-effort)
-    try:
-        statsd.increment("tos.status.query")
-    except Exception as metric_err:
-        logger.debug(f"Failed to emit tos.status.query metric: {metric_err}")
+    # METRIC: Track status query attempts
+    increment_counter("tos.status.query")
 
-    start_time = time.time()
+    start_time = datetime.now(timezone.utc)
 
     try:
         tos_repo = TosAcceptanceRepository(session)
@@ -170,14 +148,11 @@ def get_tos_status(
         )
 
     except Exception as e:
-        # METRIC: Track query errors (best-effort, don't mask original exception)
-        try:
-            statsd.increment(
-                "tos.query.error",
-                tags=[f"error:{type(e).__name__}", "operation:get_status"],
-            )
-        except Exception as metric_err:
-            logger.debug(f"Failed to emit tos.query.error metric: {metric_err}")
+        # METRIC: Track query errors
+        increment_counter(
+            "tos.query.error",
+            attributes={"error": type(e).__name__, "operation": "get_status"},
+        )
 
         logger.error(
             f"Error retrieving TOS status for account {account_id}: {e}",
@@ -185,11 +160,9 @@ def get_tos_status(
         )
         raise
     finally:
-        # METRIC: Track query latency (best-effort, always record regardless of success/error)
-        try:
-            duration_ms = (time.time() - start_time) * 1000
-            statsd.histogram(
-                "tos.query.latency", duration_ms, tags=["operation:get_status"]
-            )
-        except Exception as metric_err:
-            logger.debug(f"Failed to emit tos.query.latency metric: {metric_err}")
+        # METRIC: Track query latency
+        record_duration(
+            "tos.query.duration",
+            start_time,
+            attributes={"operation": "get_status"},
+        )

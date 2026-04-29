@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.functions import coalesce
 
 from db.tables import Channel, Conversation, ConversationStatus, Message, User
-from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
+from utils.otel import record_duration
 
 CONVERSATION_RESET_SECONDS_SINCE_CREATED = 24 * 3600  # 24 hours
 CONVERSATION_RESET_SECONDS_SINCE_LAST_MESSAGE = 2 * 3600  # 2 hours
@@ -332,10 +332,10 @@ class MessageRepositoryAsync:
                 )
                 .limit(limit)
             )
-            send_dd_histogram_metrics(
-                "message_repo.execute_query_time_spent",
+            record_duration(
+                "db.repository.query.duration",
                 start_time,
-                [f"conversation_id:{conversation_id}"],
+                attributes={"repository": "message"},
             )
 
             # reverse the list so the messages are in chronological order

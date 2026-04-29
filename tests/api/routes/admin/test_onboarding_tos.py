@@ -472,7 +472,7 @@ class TestSelfOnboardingTOSIntegration:
 
     @pytest.mark.asyncio
     async def test_self_onboarding_tos_metrics_failure_on_duplicate(self):
-        """Test self_onboarding handles metric failures gracefully when acceptance exists."""
+        """Test self_onboarding continues successfully when acceptance exists (OTel never throws)."""
         request = SelfOnboardingRequest(
             account_name="test-account",
             account_display_name="Test Account",
@@ -553,8 +553,7 @@ class TestSelfOnboardingTOSIntegration:
                 "api.routes.admin._onboarding.get_account_status",
                 return_value=mock_account_status,
             ),
-            patch("api.routes.admin._onboarding.statsd") as mock_statsd,
-            patch("api.routes.admin._onboarding.logger") as mock_logger,
+            patch("api.routes.admin._onboarding.increment_counter") as mock_increment,
         ):
             mock_account_svc.get_account.return_value = mock_account
             mock_account_svc.CURRENT_TOS_VERSION = "v1.0"
@@ -564,28 +563,19 @@ class TestSelfOnboardingTOSIntegration:
                 existing_tos  # Existing acceptance found
             )
 
-            # Make statsd raise an exception
-            mock_statsd.increment.side_effect = Exception("Statsd connection error")
-
             result = await self_onboarding(request, mock_response, mock_session)
 
-            # Verify function still succeeds despite metrics failure
+            # Verify function still succeeds
             assert result is not None
             assert result.success is True
 
-            # Verify exact StatsD payload was attempted
-            mock_statsd.increment.assert_any_call(
+            # Verify exact OTel metric payload was emitted
+            mock_increment.assert_any_call(
                 "tos.acceptance.duplicate",
-                tags=[
-                    f"account_id:{mock_account.id}",
-                    "version:v1.0",
-                    "source:onboarding",
-                ],
-            )
-
-            # Verify metric failure was logged
-            mock_logger.debug.assert_any_call(
-                "Failed to emit tos.acceptance.duplicate metric: Statsd connection error"
+                attributes={
+                    "version": "v1.0",
+                    "source": "onboarding",
+                },
             )
 
             # Verify session was still committed
@@ -593,7 +583,7 @@ class TestSelfOnboardingTOSIntegration:
 
     @pytest.mark.asyncio
     async def test_self_onboarding_tos_metrics_failure_on_create(self):
-        """Test self_onboarding handles metric failures gracefully when creating acceptance."""
+        """Test self_onboarding continues successfully when creating acceptance (OTel never throws)."""
         request = SelfOnboardingRequest(
             account_name="test-account",
             account_display_name="Test Account",
@@ -669,8 +659,7 @@ class TestSelfOnboardingTOSIntegration:
                 "api.routes.admin._onboarding.get_account_status",
                 return_value=mock_account_status,
             ),
-            patch("api.routes.admin._onboarding.statsd") as mock_statsd,
-            patch("api.routes.admin._onboarding.logger") as mock_logger,
+            patch("api.routes.admin._onboarding.increment_counter") as mock_increment,
         ):
             mock_account_svc.get_account.return_value = mock_account
             mock_account_svc.CURRENT_TOS_VERSION = "v1.0"
@@ -681,28 +670,19 @@ class TestSelfOnboardingTOSIntegration:
             )
             tos_repo_instance.create_tos_acceptance.return_value = MagicMock()
 
-            # Make statsd raise an exception
-            mock_statsd.increment.side_effect = Exception("Statsd connection error")
-
             result = await self_onboarding(request, mock_response, mock_session)
 
-            # Verify function still succeeds despite metrics failure
+            # Verify function still succeeds
             assert result is not None
             assert result.success is True
 
-            # Verify exact StatsD payload was attempted
-            mock_statsd.increment.assert_any_call(
+            # Verify exact OTel metric payload was emitted
+            mock_increment.assert_any_call(
                 "tos.acceptance.created",
-                tags=[
-                    f"account_id:{mock_account.id}",
-                    "version:v1.0",
-                    "source:onboarding",
-                ],
-            )
-
-            # Verify metric failure was logged
-            mock_logger.debug.assert_any_call(
-                "Failed to emit tos.acceptance.created metric: Statsd connection error"
+                attributes={
+                    "version": "v1.0",
+                    "source": "onboarding",
+                },
             )
 
             # Verify TOS was still created
@@ -713,7 +693,7 @@ class TestSelfOnboardingTOSIntegration:
 
     @pytest.mark.asyncio
     async def test_self_onboarding_tos_metrics_failure_on_error(self):
-        """Test self_onboarding handles metric failures gracefully during TOS creation error."""
+        """Test self_onboarding emits error metric during TOS creation error (OTel never throws)."""
         request = SelfOnboardingRequest(
             account_name="test-account",
             account_display_name="Test Account",
@@ -773,8 +753,7 @@ class TestSelfOnboardingTOSIntegration:
             patch(
                 "api.routes.admin._onboarding.TosAcceptanceRepository"
             ) as mock_tos_repo,
-            patch("api.routes.admin._onboarding.statsd") as mock_statsd,
-            patch("api.routes.admin._onboarding.logger") as mock_logger,
+            patch("api.routes.admin._onboarding.increment_counter") as mock_increment,
         ):
             mock_account_svc.get_account.return_value = mock_account
             mock_account_svc.CURRENT_TOS_VERSION = "v1.0"
@@ -788,9 +767,6 @@ class TestSelfOnboardingTOSIntegration:
                 "Database error"
             )
 
-            # Make statsd also raise an exception
-            mock_statsd.increment.side_effect = Exception("Statsd connection error")
-
             with pytest.raises(HTTPException) as exc_info:
                 await self_onboarding(request, mock_response, mock_session)
 
@@ -799,20 +775,14 @@ class TestSelfOnboardingTOSIntegration:
             assert exc_info.value.detail == "Failed to record TOS acceptance"
             mock_session.rollback.assert_called_once()
 
-            # Verify exact StatsD payload was attempted
-            mock_statsd.increment.assert_any_call(
+            # Verify exact OTel metric payload was emitted
+            mock_increment.assert_any_call(
                 "tos.acceptance.failed",
-                tags=[
-                    "account_name:test-account",
-                    "version:v1.0",
-                    "error:Exception",
-                    "source:onboarding",
-                ],
-            )
-
-            # Verify metric failure was logged
-            mock_logger.debug.assert_any_call(
-                "Failed to emit tos.acceptance.failed metric: Statsd connection error"
+                attributes={
+                    "version": "v1.0",
+                    "error": "Exception",
+                    "source": "onboarding",
+                },
             )
 
     @pytest.mark.asyncio

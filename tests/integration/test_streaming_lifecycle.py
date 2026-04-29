@@ -61,7 +61,7 @@ class TestStreamingLifecycle:
                 return_value=fake_stream(),
             ),
             patch("api.routes.chat.chat.send_messages", new_callable=AsyncMock),
-            patch("utils.dd.set_testing_mode"),
+            patch("api.routes.chat.chat.set_testing_mode"),
         ):
             async with client.stream(
                 "POST",
@@ -97,7 +97,7 @@ class TestStreamingLifecycle:
                 return_value=failing_stream(),
             ),
             patch("api.routes.chat.chat.send_messages", new_callable=AsyncMock),
-            patch("utils.dd.set_testing_mode"),
+            patch("api.routes.chat.chat.set_testing_mode"),
         ):
             async with client.stream(
                 "POST",
@@ -129,7 +129,7 @@ class TestStreamingLifecycle:
                 return_value=[],
             ),
             patch("api.routes.chat.chat.send_messages", new_callable=AsyncMock),
-            patch("utils.dd.set_testing_mode"),
+            patch("api.routes.chat.chat.set_testing_mode"),
         ):
             response = await client.post(
                 "/v1/chat/",

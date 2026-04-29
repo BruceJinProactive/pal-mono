@@ -262,9 +262,7 @@ def _setup_common_mocks(monkeypatch, *, project, user, message_repo):
     monkeypatch.setattr(
         _implementation.user_service, "get_user_async", _fake_get_user_async
     )
-    monkeypatch.setattr(
-        _implementation, "send_dd_histogram_metrics", lambda *a, **kw: None
-    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
 
     return _implementation, conversation_repo
 

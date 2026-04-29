@@ -1,6 +1,5 @@
 import math
 import os
-import time
 import uuid
 from datetime import UTC, datetime
 
@@ -30,8 +29,8 @@ from services import account_service, admin_service, subscription_service, user_
 from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUserSession
 from services.auth_service.authorization import get_user_role_on_account
-from utils.dd import statsd
 from utils.log import logger
+from utils.otel import increment_counter, record_duration
 
 from ._builder import build_account, build_account_summary, build_agent_summary
 from ._utils import UserContext, not_found_error
@@ -256,7 +255,7 @@ async def accept_account_terms(
     session: Session,
 ) -> AcceptTermsResponse:
     # Track acceptance flow duration and outcome
-    start_time = time.time()
+    start_time = datetime.now(UTC)
     outcome = "error"  # Default to error, update on success
 
     try:
@@ -360,15 +359,10 @@ async def accept_account_terms(
 
                 outcome = "created"
 
-                # METRIC: Track successful TOS acceptance creation (best-effort)
-                try:
-                    statsd.increment(
-                        "tos.acceptance.created", tags=[f"version:{tos_version}"]
-                    )
-                except Exception as metric_err:
-                    logger.warning(
-                        f"Failed to emit tos.acceptance.created metric: {metric_err}"
-                    )
+                # METRIC: Track successful TOS acceptance creation
+                increment_counter(
+                    "tos.acceptance.created", attributes={"version": tos_version}
+                )
 
                 logger.info(
                     f"TOS acceptance created for account {account_name} "
@@ -412,15 +406,10 @@ async def accept_account_terms(
 
                 outcome = "duplicate"
 
-                # METRIC: Track duplicate acceptance attempts (best-effort)
-                try:
-                    statsd.increment(
-                        "tos.acceptance.duplicate", tags=[f"version:{tos_version}"]
-                    )
-                except Exception as metric_err:
-                    logger.warning(
-                        f"Failed to emit tos.acceptance.duplicate metric: {metric_err}"
-                    )
+                # METRIC: Track duplicate acceptance attempts
+                increment_counter(
+                    "tos.acceptance.duplicate", attributes={"version": tos_version}
+                )
 
                 logger.info(
                     f"TOS acceptance already exists for account {account_name} "
@@ -432,16 +421,11 @@ async def accept_account_terms(
 
                 outcome = "error"
 
-                # METRIC: Track acceptance creation failures (best-effort)
-                try:
-                    statsd.increment(
-                        "tos.acceptance.failed",
-                        tags=[f"version:{tos_version}", f"error:{type(e).__name__}"],
-                    )
-                except Exception as metric_err:
-                    logger.warning(
-                        f"Failed to emit tos.acceptance.failed metric: {metric_err}"
-                    )
+                # METRIC: Track acceptance creation failures
+                increment_counter(
+                    "tos.acceptance.failed",
+                    attributes={"version": tos_version, "error": type(e).__name__},
+                )
 
                 logger.error(
                     f"Failed to record TOS acceptance for account {account_name}: {e}",
@@ -455,15 +439,10 @@ async def accept_account_terms(
         else:
             outcome = "duplicate"
 
-            # METRIC: Track duplicate acceptance attempts (best-effort)
-            try:
-                statsd.increment(
-                    "tos.acceptance.duplicate", tags=[f"version:{tos_version}"]
-                )
-            except Exception as metric_err:
-                logger.warning(
-                    f"Failed to emit tos.acceptance.duplicate metric: {metric_err}"
-                )
+            # METRIC: Track duplicate acceptance attempts
+            increment_counter(
+                "tos.acceptance.duplicate", attributes={"version": tos_version}
+            )
 
             logger.info(
                 f"TOS acceptance already exists for account {account_name} "
@@ -478,19 +457,11 @@ async def accept_account_terms(
             session.rollback()
             outcome = "error"
 
-            # METRIC: Track commit failures (best-effort)
-            try:
-                statsd.increment(
-                    "tos.acceptance.commit_failed",
-                    tags=[
-                        f"version:{tos_version}",
-                        f"error:{type(commit_err).__name__}",
-                    ],
-                )
-            except Exception as metric_err:
-                logger.warning(
-                    f"Failed to emit tos.acceptance.commit_failed metric: {metric_err}"
-                )
+            # METRIC: Track commit failures
+            increment_counter(
+                "tos.acceptance.commit_failed",
+                attributes={"version": tos_version, "error": type(commit_err).__name__},
+            )
 
             logger.error(
                 f"Failed to commit TOS acceptance for account {account_name}: {commit_err}",
@@ -505,18 +476,12 @@ async def accept_account_terms(
         return AcceptTermsResponse(accepted=True, tos_version=tos_version)
 
     finally:
-        # METRIC: Always track acceptance flow duration with outcome (best-effort)
-        try:
-            duration_ms = (time.time() - start_time) * 1000
-            statsd.histogram(
-                "tos.acceptance.duration",
-                duration_ms,
-                tags=[f"outcome:{outcome}"],
-            )
-        except Exception as metric_err:
-            logger.warning(
-                f"Failed to emit tos.acceptance.duration metric: {metric_err}"
-            )
+        # METRIC: Always track acceptance flow duration with outcome
+        record_duration(
+            "tos.acceptance.duration",
+            start_time,
+            attributes={"outcome": outcome},
+        )
 
 
 def _set_user_session(

@@ -23,8 +23,8 @@ from services.message_service import (
     get_filler_message,
 )
 from services.relay_service import send_messages
-from utils.dd import set_testing_mode
 from utils.log import logger
+from utils.otel import set_testing_mode
 from utils.request_context import RequestContext
 
 chat_router = APIRouter(prefix=endpoints.CHAT, tags=["Chat"])

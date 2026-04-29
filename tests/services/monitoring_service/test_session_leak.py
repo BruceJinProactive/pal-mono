@@ -241,11 +241,11 @@ class TestMonitoringServiceTaskGC:
             mock_logger.exception.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_fatal_error_emits_statsd_metric(
+    async def test_fatal_error_emits_otel_metric(
         self,
         mock_async_session: AsyncMock,
     ) -> None:
-        """Fatal error (session creation failure) emits statsd counter."""
+        """Fatal error (session creation failure) emits OTel counter."""
         run_id = uuid.uuid4()
         config_id = uuid.uuid4()
 
@@ -254,7 +254,9 @@ class TestMonitoringServiceTaskGC:
                 "db.session.AsyncSessionLocal",
                 side_effect=RuntimeError("connection refused"),
             ),
-            patch("utils.dd.statsd") as mock_statsd,
+            patch(
+                "services.monitoring_service._implementation.increment_counter"
+            ) as mock_increment,
         ):
             from services.monitoring_service._implementation import (
                 _rerun_monitoring_analysis_background,
@@ -267,6 +269,6 @@ class TestMonitoringServiceTaskGC:
                 is_video=False,
             )
 
-            mock_statsd.increment.assert_called_once()
-            call_args = mock_statsd.increment.call_args
-            assert call_args[0][0] == "monitoring.rerun.fatal_error"
+            mock_increment.assert_called_once()
+            call_args = mock_increment.call_args
+            assert call_args.args[0] == "monitoring.rerun.fatal_error"

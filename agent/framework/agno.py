@@ -21,9 +21,8 @@ from agent.storage._implementation import query_history_messages
 from agent.tool import get_tools
 from db.repositories.tool_call_record_repository import ToolCallRecordRepositoryAsync
 from db.session import AsyncSessionLocal
-from utils.dd import send_dd_histogram_metrics
 from utils.log import logger
-from utils.otel import trace_block
+from utils.otel import record_duration, trace_block
 
 # Module-level registry for tracking background tasks across all agent instances
 _ALL_BACKGROUND_TASKS: set[asyncio.Task[None]] = set()
@@ -226,14 +225,13 @@ class AgnoAgent:
             output_content = ""
             message, messages = await self._build_model_inputs(input)
 
-            send_dd_histogram_metrics(
-                "framework_agent.start_streaming",
+            record_duration(
+                "agent.framework.streaming.start.duration",
                 input.request_context.request_time,
-                [
-                    "agent:agno",
-                    f"agent_id:{self.config.metadata.agent_id}",
-                    f"account_name:{self.config.metadata.account_name}",
-                ],
+                attributes={
+                    "agent": "agno",
+                    "agent_id": self.config.metadata.agent_id,
+                },
             )
 
             result = await self._agent.arun(
@@ -243,14 +241,13 @@ class AgnoAgent:
             )
 
             try:
-                send_dd_histogram_metrics(
-                    "framework_agent.waiting_first_chunk",
+                record_duration(
+                    "agent.framework.streaming.first_chunk.wait",
                     input.request_context.request_time,
-                    [
-                        "agent:agno",
-                        f"agent_id:{self.config.metadata.agent_id}",
-                        f"account_name:{self.config.metadata.account_name}",
-                    ],
+                    attributes={
+                        "agent": "agno",
+                        "agent_id": self.config.metadata.agent_id,
+                    },
                 )
                 # Output chat filler words if configured
                 filler_words = self.filler_manager.get_chat_filler_for_input(
@@ -329,14 +326,13 @@ class AgnoAgent:
 
                         chunk_index += 1
                         if chunk_index == 1:
-                            send_dd_histogram_metrics(
-                                "framework_agent.received_first_chunk",
+                            record_duration(
+                                "agent.framework.streaming.first_chunk.duration",
                                 input.request_context.request_time,
-                                [
-                                    "agent:agno",
-                                    f"agent_id:{self.config.metadata.agent_id}",
-                                    f"account_name:{self.config.metadata.account_name}",
-                                ],
+                                attributes={
+                                    "agent": "agno",
+                                    "agent_id": self.config.metadata.agent_id,
+                                },
                             )
 
                         chunk_output = Output(
@@ -467,16 +463,14 @@ class AgnoAgent:
 
         messages = await self.get_history_messages(input)
 
-        send_dd_histogram_metrics(
-            "framework_agent.query_history_messages_time_spent",
+        record_duration(
+            "agent.framework.history_query.duration",
             current_time,
-            [
-                f"streaming:{str(input.stream).lower()}",
-                f"conversation_id:{self.config.metadata.session_id}",
-                "agent:agno",
-                f"agent_id:{self.config.metadata.agent_id}",
-                f"account_name:{self.config.metadata.account_name}",
-            ],
+            attributes={
+                "streaming": str(input.stream).lower(),
+                "agent": "agno",
+                "agent_id": self.config.metadata.agent_id,
+            },
         )
 
         return None, messages

@@ -322,7 +322,7 @@ async def test_chat_completions_stream_cancelled_error_returns_cleanly(monkeypat
     )
     monkeypatch.setattr(
         chat_completions_module,
-        "send_dd_histogram_metrics",
+        "record_duration",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
@@ -379,7 +379,7 @@ async def test_chat_completions_without_injected_session_closes_managed_session(
     )
     monkeypatch.setattr(
         chat_completions_module,
-        "send_dd_histogram_metrics",
+        "record_duration",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
