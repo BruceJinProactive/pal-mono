@@ -82,6 +82,7 @@ from .types import (
 from .user_invitation import UserInvitation
 from .users import User
 from .vision_camera_configurations import VisionCameraConfiguration
+from .vision_camera_entities import VisionCameraEntity
 from .vision_entities import VisionEntity
 from .vision_entity_state_definitions import VisionEntityStateDefinition
 from .vision_entity_types import VisionEntityType
