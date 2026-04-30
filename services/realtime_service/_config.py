@@ -4,6 +4,8 @@ Configuration for OpenAI Realtime API (OpenAI 2.x).
 Provides structured configuration using Pydantic models for session setup.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -32,9 +34,13 @@ class RealtimeConfig(BaseModel):
     )
 
     # VAD configuration
-    turn_detection_type: str = Field(
+    turn_detection_type: Literal["server_vad", "semantic_vad"] = Field(
         default="server_vad",
-        description="Turn detection type (server_vad or none)",
+        description="Turn detection type (server_vad or semantic_vad)",
+    )
+    interrupt_response: bool = Field(
+        default=True,
+        description="Auto-cancel AI output when user starts speaking (barge-in)",
     )
 
     def to_session_config(self) -> dict:
@@ -55,8 +61,11 @@ class RealtimeConfig(BaseModel):
             "audio": {  # Nested audio configuration
                 "input": {
                     "format": {"type": self.input_audio_format},
-                    "turn_detection": {"type": self.turn_detection_type},
-                    "transcription": {"model": "whisper-1"},  # Enable transcription
+                    "turn_detection": {
+                        "type": self.turn_detection_type,
+                        "interrupt_response": self.interrupt_response,
+                    },
+                    "transcription": {"model": "whisper-1"},
                 },
                 "output": {
                     "format": {"type": self.output_audio_format},

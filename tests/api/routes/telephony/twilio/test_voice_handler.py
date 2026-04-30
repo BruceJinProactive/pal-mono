@@ -556,6 +556,71 @@ class TestHandleMedia:
 # ---------------------------------------------------------------------------
 
 
+class TestHandleInterruption:
+    """Test VoiceCallHandler._handle_interruption() method."""
+
+    @pytest.mark.asyncio
+    async def test_handle_interruption_sends_twilio_clear_message(self) -> None:
+        """_handle_interruption() sends clear event to Twilio with correct streamSid."""
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_ws.send_text = AsyncMock()
+        mock_session = MagicMock(spec=RealtimeSession)
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+        handler.stream_sid = "MZ123abc"
+
+        await handler._handle_interruption()
+
+        mock_ws.send_text.assert_called_once()
+        sent = json.loads(mock_ws.send_text.call_args[0][0])
+        assert sent["event"] == "clear"
+        assert sent["streamSid"] == "MZ123abc"
+
+    @pytest.mark.asyncio
+    async def test_handle_interruption_skips_when_no_stream_sid(self) -> None:
+        """_handle_interruption() does nothing if stream_sid is not yet set."""
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_ws.send_text = AsyncMock()
+        mock_session = MagicMock(spec=RealtimeSession)
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+        handler.stream_sid = None
+
+        await handler._handle_interruption()
+
+        mock_ws.send_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_interruption_logs_error_on_send_failure(self) -> None:
+        """_handle_interruption() logs error if Twilio send fails."""
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_ws.send_text = AsyncMock(side_effect=RuntimeError("WebSocket closed"))
+        mock_session = MagicMock(spec=RealtimeSession)
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+        handler.stream_sid = "MZ123"
+
+        with patch("api.routes.telephony.twilio._voice_handler.logger") as mock_logger:
+            await handler._handle_interruption()
+
+            mock_logger.error.assert_called_once()
+            assert "Error sending Twilio clear" in str(mock_logger.error.call_args)
+
+
+# ---------------------------------------------------------------------------
+# _handle_stop() Tests
+# ---------------------------------------------------------------------------
+
+
 class TestHandleStop:
     """Test VoiceCallHandler._handle_stop() method."""
 

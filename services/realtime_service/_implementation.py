@@ -5,8 +5,10 @@ Provides RealtimeSession class for managing OpenAI Realtime API connections
 with callback support and factory function for creating sessions.
 """
 
+import asyncio
 import os
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import AsyncIterator
 
 from openai import AsyncOpenAI
@@ -35,18 +37,13 @@ class RealtimeSession:
         self,
         api_key: str,
         config: RealtimeConfig,
+        on_interruption: Callable[[], Awaitable[None]] | None = None,
     ):
-        """
-        Initialize RealtimeSession.
-
-        Args:
-            api_key: OpenAI API key for authentication
-            config: RealtimeConfig with session configuration
-        """
         self.api_key = api_key
         self.config = config
         self.client: AsyncOpenAI | None = None
         self.connection = None
+        self.on_interruption = on_interruption
 
         # Counters for logging
         self.audio_chunks_sent_to_openai = 0
@@ -206,6 +203,24 @@ class RealtimeSession:
                             "item_id": item_id,
                         },
                     )
+
+                # User started speaking — interruption
+                elif event_type == "input_audio_buffer.speech_started":
+                    logger.info("[REALTIME] Interruption detected (speech_started)")
+                    if self.on_interruption:
+                        try:
+                            await asyncio.wait_for(self.on_interruption(), timeout=0.5)
+                        except asyncio.TimeoutError:
+                            logger.warning("[REALTIME] Interruption callback timed out")
+                        except Exception as cb_err:
+                            logger.error(
+                                "[REALTIME] Interruption callback failed",
+                                extra={"error": str(cb_err)},
+                                exc_info=True,
+                            )
+
+                elif event_type == "input_audio_buffer.speech_stopped":
+                    logger.debug("[REALTIME] Speech stopped")
 
                 # Audio response complete
                 elif event_type == "response.output_audio.done":

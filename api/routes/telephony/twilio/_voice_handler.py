@@ -174,6 +174,30 @@ class VoiceCallHandler:
                 exc_info=True,
             )
 
+    async def _handle_interruption(self) -> None:
+        """Send Twilio clear message to flush queued audio on barge-in."""
+        if not self.stream_sid:
+            return
+
+        try:
+            clear_message = json.dumps(
+                {
+                    "event": "clear",
+                    "streamSid": self.stream_sid,
+                }
+            )
+            await self.twilio_ws.send_text(clear_message)
+            logger.info(
+                "[VOICE_HANDLER] Barge-in: sent Twilio clear",
+                extra={"stream_sid": self.stream_sid},
+            )
+        except Exception as e:
+            logger.error(
+                "[VOICE_HANDLER] Error sending Twilio clear on barge-in",
+                extra={"error": str(e)},
+                exc_info=True,
+            )
+
     async def _handle_stop(self, message: dict) -> None:
         """Handle Twilio 'stop' event."""
         duration = (datetime.now(timezone.utc) - self.start_time).total_seconds()

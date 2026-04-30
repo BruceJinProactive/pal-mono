@@ -321,6 +321,68 @@ class TestRealtimeSessionReceiveAudioStream:
         assert chunks == ["audio_chunk"]
 
     @pytest.mark.asyncio
+    async def test_receive_audio_stream_invokes_interruption_callback(self) -> None:
+        """receive_audio_stream() invokes on_interruption callback on speech_started event."""
+        on_interruption = AsyncMock()
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+            on_interruption=on_interruption,
+        )
+
+        speech_started_event = MagicMock()
+        speech_started_event.type = "input_audio_buffer.speech_started"
+
+        audio_event = MagicMock()
+        audio_event.type = "response.output_audio.delta"
+        audio_event.delta = "audio_chunk"
+
+        async def mock_event_stream():
+            yield speech_started_event
+            yield audio_event
+
+        mock_connection = MagicMock()
+        mock_connection.__aiter__ = lambda self: mock_event_stream()
+        session.connection = mock_connection
+
+        chunks = []
+        async for chunk in session.receive_audio_stream():
+            chunks.append(chunk)
+
+        on_interruption.assert_awaited_once()
+        assert chunks == ["audio_chunk"]
+
+    @pytest.mark.asyncio
+    async def test_receive_audio_stream_skips_interruption_when_no_callback(
+        self,
+    ) -> None:
+        """receive_audio_stream() handles speech_started without callback."""
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+        )
+
+        speech_started_event = MagicMock()
+        speech_started_event.type = "input_audio_buffer.speech_started"
+
+        speech_stopped_event = MagicMock()
+        speech_stopped_event.type = "input_audio_buffer.speech_stopped"
+
+        async def mock_event_stream():
+            yield speech_started_event
+            yield speech_stopped_event
+
+        mock_connection = MagicMock()
+        mock_connection.__aiter__ = lambda self: mock_event_stream()
+        session.connection = mock_connection
+
+        chunks = []
+        async for chunk in session.receive_audio_stream():
+            chunks.append(chunk)
+
+        assert chunks == []
+
+    @pytest.mark.asyncio
     async def test_receive_audio_stream_handles_error_events(self) -> None:
         """receive_audio_stream() logs error events without raising."""
         session = RealtimeSession(

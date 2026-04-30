@@ -86,13 +86,13 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                 await websocket.close(code=1011, reason="Service unavailable")
                 return
 
-        # Create handler and process call
+        # Create handler and wire barge-in callback
         handler = VoiceCallHandler(
             twilio_websocket=websocket,
             realtime_session=realtime_session,
         )
+        realtime_session.on_interruption = handler._handle_interruption
 
-        # Let handler manage the call (start_event processed in try/finally)
         await handler.handle_call(start_event=start_event)
 
     except Exception as e:
