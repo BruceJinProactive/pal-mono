@@ -35,12 +35,16 @@ class RealtimeConfig(BaseModel):
 
     # VAD configuration
     turn_detection_type: Literal["server_vad", "semantic_vad"] = Field(
-        default="server_vad",
+        default="semantic_vad",
         description="Turn detection type (server_vad or semantic_vad)",
     )
     interrupt_response: bool = Field(
         default=True,
         description="Auto-cancel AI output when user starts speaking (barge-in)",
+    )
+    eagerness: Literal["low", "medium", "high", "auto"] = Field(
+        default="low",
+        description="How quickly the model responds (semantic_vad only). low = waits longer.",
     )
     vad_threshold: float = Field(
         default=0.7,
@@ -72,6 +76,8 @@ class RealtimeConfig(BaseModel):
             td["threshold"] = self.vad_threshold
             td["silence_duration_ms"] = self.silence_duration_ms
             td["prefix_padding_ms"] = self.prefix_padding_ms
+        elif self.turn_detection_type == "semantic_vad":
+            td["eagerness"] = self.eagerness
         return td
 
     def to_session_config(self) -> dict:

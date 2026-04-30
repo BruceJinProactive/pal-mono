@@ -28,31 +28,49 @@ from services.realtime_service._implementation import (
 class TestRealtimeConfigTurnDetection:
     """Test RealtimeConfig._build_turn_detection() and to_session_config()."""
 
-    def test_server_vad_includes_threshold_and_timing_params(self) -> None:
+    def test_default_is_semantic_vad_with_low_eagerness(self) -> None:
         config = RealtimeConfig(system_prompt="Test", voice_id="alloy")
+        td = config._build_turn_detection()
+        assert td["type"] == "semantic_vad"
+        assert td["eagerness"] == "low"
+        assert td["interrupt_response"] is True
+        assert "threshold" not in td
+        assert "silence_duration_ms" not in td
+
+    def test_server_vad_includes_threshold_and_timing_params(self) -> None:
+        config = RealtimeConfig(
+            system_prompt="Test",
+            voice_id="alloy",
+            turn_detection_type="server_vad",
+        )
         td = config._build_turn_detection()
         assert td["type"] == "server_vad"
         assert td["threshold"] == 0.7
         assert td["silence_duration_ms"] == 500
         assert td["prefix_padding_ms"] == 300
         assert td["interrupt_response"] is True
+        assert "eagerness" not in td
 
-    def test_semantic_vad_omits_threshold_and_timing_params(self) -> None:
+    def test_semantic_vad_includes_eagerness(self) -> None:
         config = RealtimeConfig(
             system_prompt="Test",
             voice_id="alloy",
             turn_detection_type="semantic_vad",
+            eagerness="high",
         )
         td = config._build_turn_detection()
         assert td["type"] == "semantic_vad"
-        assert td["interrupt_response"] is True
+        assert td["eagerness"] == "high"
         assert "threshold" not in td
         assert "silence_duration_ms" not in td
         assert "prefix_padding_ms" not in td
 
     def test_custom_vad_threshold(self) -> None:
         config = RealtimeConfig(
-            system_prompt="Test", voice_id="alloy", vad_threshold=0.9
+            system_prompt="Test",
+            voice_id="alloy",
+            turn_detection_type="server_vad",
+            vad_threshold=0.9,
         )
         td = config._build_turn_detection()
         assert td["threshold"] == 0.9
@@ -85,6 +103,7 @@ class TestRealtimeConfigTurnDetection:
         config = RealtimeConfig(
             system_prompt="Test",
             voice_id="alloy",
+            turn_detection_type="server_vad",
             vad_threshold=0.8,
             silence_duration_ms=700,
         )
