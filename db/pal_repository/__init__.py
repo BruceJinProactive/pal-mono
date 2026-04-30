@@ -46,6 +46,11 @@ from .tool_call_record import ToolCallRecordRepository
 from .tos_acceptance import TosAcceptanceRepository
 from .user import UserRepository
 from .user_invitation import UserInvitationRepository
+from .vision_camera_configuration import VisionCameraConfigurationRepository
+from .vision_camera_entity import VisionCameraEntityRepository
+from .vision_entity import VisionEntityRepository
+from .vision_entity_state_definition import VisionEntityStateDefinitionRepository
+from .vision_entity_type import VisionEntityTypeRepository
 from .voice_config import VoiceConfigRepository
 
 __all__ = [
@@ -96,6 +101,11 @@ __all__ = [
     "ToolCallRecordRepository",
     "TosAcceptanceRepository",
     "UserInvitationRepository",
+    "VisionCameraConfigurationRepository",
+    "VisionCameraEntityRepository",
+    "VisionEntityRepository",
+    "VisionEntityStateDefinitionRepository",
+    "VisionEntityTypeRepository",
     "VoiceConfigRepository",
     "UserRepository",
 ]

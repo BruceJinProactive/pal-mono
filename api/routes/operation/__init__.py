@@ -72,11 +72,37 @@ from api.schemas.operations.signal_source import (
     SignalSourceResponse,
     UpdateSignalSourceRequest,
 )
+from api.schemas.operations.vision_camera_configuration import (
+    AssignEntityRequest,
+    CameraConfigResponse,
+    CameraEntityResponse,
+    CreateCameraConfigRequest,
+    ListCameraConfigsResponse,
+    ListCameraEntitiesResponse,
+    UpdateCameraConfigRequest,
+    UpdateCameraEntityRequest,
+)
+from api.schemas.operations.vision_entity import (
+    CreateEntityRequest,
+    CreateEntityTypeRequest,
+    CreateStateDefinitionRequest,
+    EntityResponse,
+    EntityTypeResponse,
+    ListEntitiesResponse,
+    ListEntityTypesResponse,
+    ListStateDefinitionsResponse,
+    StateDefinitionResponse,
+    UpdateEntityRequest,
+    UpdateEntityStateRequest,
+    UpdateEntityTypeRequest,
+    UpdateStateDefinitionRequest,
+)
 from db.pal_repository.project import ProjectRepository
 from db.tables.types import ExecutionStatus
 from services import signal_source_service
 from services.auth_service.authorization import check_permission
 from services.auth_service.dependencies import (
+    require_account_permission,
     require_execution_permission,
     require_project_permission,
     require_routine_permission,
@@ -85,7 +111,15 @@ from services.auth_service.dependencies import (
 from services.auth_types import UserContext
 from utils.log import logger
 
-from . import _implementation, _monitoring, _routines, _signal_sources, _video_upload
+from . import (
+    _implementation,
+    _monitoring,
+    _routines,
+    _signal_sources,
+    _video_upload,
+    _vision_camera_configs,
+    _vision_entities,
+)
 
 operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
 
@@ -574,6 +608,923 @@ async def delete_signal_source(
         source_id=source_id,
         session=session,
         project_id=project_id,
+    )
+
+
+# ==============================================================================
+# VISION ENTITY TYPE ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.post(
+    "/accounts/{account_id}/entity-types",
+    status_code=status.HTTP_201_CREATED,
+    response_model=EntityTypeResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_entity_type(
+    account_id: uuid.UUID,
+    request: CreateEntityTypeRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> EntityTypeResponse:
+    """
+    Create a new vision entity type for an account.
+
+    Entity types define categories of trackable objects (e.g., "table", "employee").
+
+    Path Parameters:
+    - account_id: UUID of the account
+    """
+    _ = context
+    return await _vision_entities.create_entity_type(
+        session=session,
+        account_id=account_id,
+        request=request,
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_id}/entity-types",
+    response_model=ListEntityTypesResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_entity_types(
+    account_id: uuid.UUID,
+    is_active: bool | None = Query(default=None, description="Filter by active status"),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListEntityTypesResponse:
+    """
+    List all entity types for an account.
+
+    Path Parameters:
+    - account_id: UUID of the account
+
+    Query Parameters:
+    - is_active (optional): Filter by active status
+    """
+    _ = context
+    return await _vision_entities.list_entity_types(
+        session=session,
+        account_id=account_id,
+        is_active=is_active,
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_id}/entity-types/{entity_type_id}",
+    response_model=EntityTypeResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_entity_type(
+    account_id: uuid.UUID,
+    entity_type_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> EntityTypeResponse:
+    """
+    Get an entity type by ID.
+
+    Path Parameters:
+    - account_id: UUID of the account
+    - entity_type_id: UUID of the entity type
+    """
+    _ = context
+    return await _vision_entities.get_entity_type(
+        session=session,
+        account_id=account_id,
+        entity_type_id=entity_type_id,
+    )
+
+
+@operation_router.patch(
+    "/accounts/{account_id}/entity-types/{entity_type_id}",
+    response_model=EntityTypeResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_entity_type(
+    account_id: uuid.UUID,
+    entity_type_id: uuid.UUID,
+    request: UpdateEntityTypeRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> EntityTypeResponse:
+    """
+    Update an entity type.
+
+    Path Parameters:
+    - account_id: UUID of the account
+    - entity_type_id: UUID of the entity type
+    """
+    _ = context
+    return await _vision_entities.update_entity_type(
+        session=session,
+        account_id=account_id,
+        entity_type_id=entity_type_id,
+        request=request,
+    )
+
+
+@operation_router.delete(
+    "/accounts/{account_id}/entity-types/{entity_type_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_entity_type(
+    account_id: uuid.UUID,
+    entity_type_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete an entity type.
+
+    Path Parameters:
+    - account_id: UUID of the account
+    - entity_type_id: UUID of the entity type
+    """
+    _ = context
+    return await _vision_entities.delete_entity_type(
+        session=session,
+        account_id=account_id,
+        entity_type_id=entity_type_id,
+    )
+
+
+# ==============================================================================
+# VISION ENTITY STATE DEFINITION ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.post(
+    "/accounts/{account_id}/entity-types/{entity_type_id}/state-definitions",
+    status_code=status.HTTP_201_CREATED,
+    response_model=StateDefinitionResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_state_definition(
+    account_id: uuid.UUID,
+    entity_type_id: uuid.UUID,
+    request: CreateStateDefinitionRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> StateDefinitionResponse:
+    """
+    Create a new state definition for an entity type.
+
+    State definitions describe the possible states an entity can be in
+    (e.g., "dirty", "clean", "occupied").
+
+    Path Parameters:
+    - account_id: UUID of the account
+    - entity_type_id: UUID of the entity type
+    """
+    _ = context
+    return await _vision_entities.create_state_definition(
+        session=session,
+        account_id=account_id,
+        entity_type_id=entity_type_id,
+        request=request,
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_id}/entity-types/{entity_type_id}/state-definitions",
+    response_model=ListStateDefinitionsResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_state_definitions(
+    account_id: uuid.UUID,
+    entity_type_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListStateDefinitionsResponse:
+    """
+    List all state definitions for an entity type.
+
+    Path Parameters:
+    - account_id: UUID of the account
+    - entity_type_id: UUID of the entity type
+    """
+    _ = context
+    return await _vision_entities.list_state_definitions(
+        session=session,
+        account_id=account_id,
+        entity_type_id=entity_type_id,
+    )
+
+
+@operation_router.patch(
+    "/accounts/{account_id}/entity-types/{entity_type_id}/state-definitions/{state_definition_id}",
+    response_model=StateDefinitionResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_state_definition(
+    account_id: uuid.UUID,
+    entity_type_id: uuid.UUID,
+    state_definition_id: uuid.UUID,
+    request: UpdateStateDefinitionRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> StateDefinitionResponse:
+    """
+    Update a state definition.
+
+    Path Parameters:
+    - account_id: UUID of the account
+    - entity_type_id: UUID of the entity type
+    - state_definition_id: UUID of the state definition
+    """
+    _ = context
+    return await _vision_entities.update_state_definition(
+        session=session,
+        account_id=account_id,
+        entity_type_id=entity_type_id,
+        state_definition_id=state_definition_id,
+        request=request,
+    )
+
+
+@operation_router.delete(
+    "/accounts/{account_id}/entity-types/{entity_type_id}/state-definitions/{state_definition_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_state_definition(
+    account_id: uuid.UUID,
+    entity_type_id: uuid.UUID,
+    state_definition_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a state definition.
+
+    Returns 400 if the state is currently in use by any entity.
+
+    Path Parameters:
+    - account_id: UUID of the account
+    - entity_type_id: UUID of the entity type
+    - state_definition_id: UUID of the state definition
+    """
+    _ = context
+    return await _vision_entities.delete_state_definition(
+        session=session,
+        account_id=account_id,
+        entity_type_id=entity_type_id,
+        state_definition_id=state_definition_id,
+    )
+
+
+# ==============================================================================
+# VISION ENTITY ENDPOINTS (project-scoped)
+# ==============================================================================
+
+
+@operation_router.post(
+    "/projects/{project_id}/entities",
+    status_code=status.HTTP_201_CREATED,
+    response_model=EntityResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_entity(
+    project_id: uuid.UUID,
+    request: CreateEntityRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> EntityResponse:
+    """
+    Create a new vision entity under a project.
+
+    Automatically assigns the default state for the entity type if one exists.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    """
+    _ = context
+    return await _vision_entities.create_entity(
+        session=session,
+        project_id=project_id,
+        request=request,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/entities",
+    response_model=ListEntitiesResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_entities(
+    project_id: uuid.UUID,
+    entity_type_id: uuid.UUID | None = Query(
+        default=None, description="Filter by entity type"
+    ),
+    current_state_id: uuid.UUID | None = Query(
+        default=None, description="Filter by current state"
+    ),
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListEntitiesResponse:
+    """
+    List entities for a project.
+
+    Path Parameters:
+    - project_id: UUID of the project
+
+    Query Parameters:
+    - entity_type_id (optional): Filter by entity type
+    - current_state_id (optional): Filter by current state
+    """
+    _ = context
+    return await _vision_entities.list_entities(
+        session=session,
+        project_id=project_id,
+        entity_type_id=entity_type_id,
+        current_state_id=current_state_id,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/entities/{entity_id}",
+    response_model=EntityResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_entity(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> EntityResponse:
+    """
+    Get a single entity with its current state.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - entity_id: UUID of the entity
+    """
+    _ = context
+    return await _vision_entities.get_entity(
+        session=session,
+        project_id=project_id,
+        entity_id=entity_id,
+    )
+
+
+@operation_router.patch(
+    "/projects/{project_id}/entities/{entity_id}",
+    response_model=EntityResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_entity(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    request: UpdateEntityRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> EntityResponse:
+    """
+    Update an entity's name, metadata, or active status.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - entity_id: UUID of the entity
+    """
+    _ = context
+    return await _vision_entities.update_entity(
+        session=session,
+        project_id=project_id,
+        entity_id=entity_id,
+        request=request,
+    )
+
+
+@operation_router.put(
+    "/projects/{project_id}/entities/{entity_id}/state",
+    response_model=EntityResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_entity_state(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    request: UpdateEntityStateRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> EntityResponse:
+    """
+    Transition an entity to a new state.
+
+    Sets current_state_id and current_state_since. The target state must
+    belong to the entity's type.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - entity_id: UUID of the entity
+    """
+    _ = context
+    return await _vision_entities.update_entity_state(
+        session=session,
+        project_id=project_id,
+        entity_id=entity_id,
+        request=request,
+    )
+
+
+@operation_router.delete(
+    "/projects/{project_id}/entities/{entity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_entity(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete an entity.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - entity_id: UUID of the entity
+    """
+    _ = context
+    return await _vision_entities.delete_entity(
+        session=session,
+        project_id=project_id,
+        entity_id=entity_id,
+    )
+
+
+# ==============================================================================
+# VISION CAMERA CONFIGURATION ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.post(
+    "/projects/{project_id}/camera-configs",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CameraConfigResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_camera_config(
+    project_id: uuid.UUID,
+    request: CreateCameraConfigRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CameraConfigResponse:
+    """
+    Create a vision camera configuration for a signal source.
+
+    Each signal source can have at most one camera configuration that controls
+    how the LLM processes captured frames.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    """
+    _ = context
+    return await _vision_camera_configs.create_camera_config(
+        session=session,
+        project_id=project_id,
+        request=request,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/camera-configs",
+    response_model=ListCameraConfigsResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_camera_configs(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListCameraConfigsResponse:
+    """
+    List all vision camera configurations for a project.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    """
+    _ = context
+    return await _vision_camera_configs.list_camera_configs(
+        session=session,
+        project_id=project_id,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/camera-configs/by-source/{signal_source_id}",
+    response_model=CameraConfigResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_camera_config_by_source(
+    project_id: uuid.UUID,
+    signal_source_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CameraConfigResponse:
+    """
+    Get a vision camera configuration by its signal source ID.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - signal_source_id: UUID of the signal source
+    """
+    _ = context
+    return await _vision_camera_configs.get_camera_config_by_source(
+        session=session,
+        project_id=project_id,
+        signal_source_id=signal_source_id,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/camera-configs/{config_id}",
+    response_model=CameraConfigResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_camera_config(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CameraConfigResponse:
+    """
+    Get a vision camera configuration by ID.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the camera configuration
+    """
+    _ = context
+    return await _vision_camera_configs.get_camera_config(
+        session=session,
+        project_id=project_id,
+        config_id=config_id,
+    )
+
+
+@operation_router.patch(
+    "/projects/{project_id}/camera-configs/{config_id}",
+    response_model=CameraConfigResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_camera_config(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    request: UpdateCameraConfigRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CameraConfigResponse:
+    """
+    Update a vision camera configuration.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the camera configuration
+    """
+    _ = context
+    return await _vision_camera_configs.update_camera_config(
+        session=session,
+        project_id=project_id,
+        config_id=config_id,
+        request=request,
+    )
+
+
+@operation_router.delete(
+    "/projects/{project_id}/camera-configs/{config_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_camera_config(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a vision camera configuration.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the camera configuration
+    """
+    _ = context
+    return await _vision_camera_configs.delete_camera_config(
+        session=session,
+        project_id=project_id,
+        config_id=config_id,
+    )
+
+
+# ==============================================================================
+# CAMERA-ENTITY MAPPING ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.post(
+    "/projects/{project_id}/camera-configs/{config_id}/entities",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CameraEntityResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def assign_entity_to_camera(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    request: AssignEntityRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CameraEntityResponse:
+    """
+    Assign an entity to a camera configuration with an optional ROI hint.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the camera configuration
+    """
+    _ = context
+    return await _vision_camera_configs.assign_entity_to_camera(
+        session=session,
+        project_id=project_id,
+        config_id=config_id,
+        request=request,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/camera-configs/{config_id}/entities",
+    response_model=ListCameraEntitiesResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_camera_entities(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListCameraEntitiesResponse:
+    """
+    List all entities assigned to a camera configuration.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the camera configuration
+    """
+    _ = context
+    return await _vision_camera_configs.list_camera_entities(
+        session=session,
+        project_id=project_id,
+        config_id=config_id,
+    )
+
+
+@operation_router.get(
+    "/projects/{project_id}/entities/{entity_id}/cameras",
+    response_model=ListCameraEntitiesResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_cameras_for_entity(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListCameraEntitiesResponse:
+    """
+    List all cameras that can see a given entity.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - entity_id: UUID of the entity
+    """
+    _ = context
+    return await _vision_camera_configs.list_cameras_for_entity(
+        session=session,
+        project_id=project_id,
+        entity_id=entity_id,
+    )
+
+
+@operation_router.patch(
+    "/projects/{project_id}/camera-configs/{config_id}/entities/{entity_id}",
+    response_model=CameraEntityResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_camera_entity(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    request: UpdateCameraEntityRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CameraEntityResponse:
+    """
+    Update the ROI hint for a camera-entity mapping.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the camera configuration
+    - entity_id: UUID of the entity
+    """
+    _ = context
+    return await _vision_camera_configs.update_camera_entity(
+        session=session,
+        project_id=project_id,
+        config_id=config_id,
+        entity_id=entity_id,
+        request=request,
+    )
+
+
+@operation_router.delete(
+    "/projects/{project_id}/camera-configs/{config_id}/entities/{entity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def unassign_entity_from_camera(
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Remove an entity from a camera configuration.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - config_id: UUID of the camera configuration
+    - entity_id: UUID of the entity
+    """
+    _ = context
+    return await _vision_camera_configs.unassign_entity_from_camera(
+        session=session,
+        project_id=project_id,
+        config_id=config_id,
+        entity_id=entity_id,
     )
 
 

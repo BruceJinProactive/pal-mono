@@ -57,6 +57,11 @@ from .tool_call_record import ToolCallRecordData
 from .tos_acceptance import TosAcceptanceData
 from .user import UserData
 from .user_invitation import UserInvitationData
+from .vision_camera_configuration import VisionCameraConfigurationData
+from .vision_camera_entity import VisionCameraEntityData
+from .vision_entity import VisionEntityData
+from .vision_entity_state_definition import VisionEntityStateDefinitionData
+from .vision_entity_type import VisionEntityTypeData
 from .voice_config import VoiceConfigData
 
 __all__ = [
@@ -115,6 +120,11 @@ __all__ = [
     "TurnsSummaryRow",
     "UserData",
     "UserInvitationData",
+    "VisionCameraConfigurationData",
+    "VisionCameraEntityData",
+    "VisionEntityData",
+    "VisionEntityStateDefinitionData",
+    "VisionEntityTypeData",
     "VoiceConfigData",
     "UNSET",
     "_Unset",
