@@ -46,6 +46,7 @@ async def trigger_eval_run(
         driver_mode=request.driver,
         triggered_by=request.triggered_by,
         session=session,
+        max_concurrency=request.max_concurrency,
     )
     response = EvalRunResponse.model_validate(run)
     response.scenario_files = scenario_info["scenario_files"]

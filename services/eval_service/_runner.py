@@ -34,6 +34,37 @@ from utils.log import logger
 # GC prevention for background tasks
 _background_tasks: set[asyncio.Task[object]] = set()
 
+# Default max concurrent scenarios per eval run.
+# Callers of ``create_eval_run`` can override by passing ``max_concurrency``.
+# Voice mode honours the same knob — each voice scenario owns an isolated
+# LiveKit room, orchestrator, TTS engine, and egress pipeline (see
+# ``run_voice_scenario``), so concurrency is bounded by caller infra
+# (LiveKit worker pool, Cartesia rate limit, STT quota), not by shared
+# in-process state. Pick a conservative cap if your worker pool is small.
+_DEFAULT_MAX_CONCURRENCY = 4
+
+# Hard upper bound on per-run scenario concurrency. Enforced inside
+# ``_resolve_max_concurrency`` so *any* caller (not just the HTTP API,
+# which already validates via ``RunEvalRequest.max_concurrency``) cannot
+# fan out more workers / sessions than the service is willing to support.
+# Must stay in sync with ``RunEvalRequest.max_concurrency``'s ``le=``.
+_MAX_CONCURRENCY = 64
+
+
+def _resolve_max_concurrency(driver_mode: str, max_concurrency: int | None) -> int:
+    """Return the effective per-run scenario concurrency cap.
+
+    Use the caller-supplied value if provided, else
+    ``_DEFAULT_MAX_CONCURRENCY``. The result is clamped to
+    ``[1, _MAX_CONCURRENCY]``. ``driver_mode`` is accepted for future
+    mode-specific defaults but is currently unused.
+    """
+    del driver_mode  # reserved for future per-mode defaults
+    if max_concurrency is None:
+        return _DEFAULT_MAX_CONCURRENCY
+    return min(_MAX_CONCURRENCY, max(1, max_concurrency))
+
+
 _PROJECT_MAP_PATH = Path(__file__).parent / "scenarios" / "project_map.json"
 
 
@@ -95,6 +126,7 @@ async def create_eval_run(
     driver_mode: str,
     triggered_by: str,
     session: AsyncSession,
+    max_concurrency: int | None = None,
 ) -> EvalRun:
     """Create a new eval run and schedule its background execution.
 
@@ -105,6 +137,11 @@ async def create_eval_run(
         driver_mode: "http" or "direct".
         triggered_by: Who triggered the run (e.g. "api", "schedule").
         session: Database session for creating the run row.
+        max_concurrency: Optional cap on parallel scenarios. ``None`` uses
+            the module default (see ``_DEFAULT_MAX_CONCURRENCY``). Applies
+            uniformly to all driver modes including ``voice`` — callers
+            should pick a value appropriate to their LiveKit worker pool
+            and TTS/STT rate limits.
 
     Returns:
         The created EvalRun in "pending" status.
@@ -122,7 +159,9 @@ async def create_eval_run(
     await session.commit()
     await session.refresh(run)
 
-    _schedule_eval_background(run.id, project_id, channel_identifier, driver_mode)
+    _schedule_eval_background(
+        run.id, project_id, channel_identifier, driver_mode, max_concurrency
+    )
     return run
 
 
@@ -131,6 +170,7 @@ def _schedule_eval_background(
     project_id: uuid.UUID,
     channel_identifier: str,
     driver_mode: str,
+    max_concurrency: int | None = None,
 ) -> None:
     """Fire-and-forget background task for running evaluation."""
     task = asyncio.create_task(
@@ -139,6 +179,7 @@ def _schedule_eval_background(
             project_id,
             channel_identifier,
             driver_mode,
+            max_concurrency,
         ),
         name=f"eval-run-{eval_run_id}",
     )
@@ -151,6 +192,7 @@ async def _run_eval_background(
     project_id: uuid.UUID,
     channel_identifier: str,
     driver_mode: str,
+    max_concurrency: int | None = None,
 ) -> None:
     """Execute an evaluation run in the background.
 
@@ -159,7 +201,6 @@ async def _run_eval_background(
     """
     async with AsyncSessionLocal() as session:
         run_repo = EvalRunRepositoryAsync(session)
-        result_repo = EvalResultRepositoryAsync(session)
 
         try:
             # Mark running
@@ -208,38 +249,27 @@ async def _run_eval_background(
 
             passed_count = 0
             failed_count = 0
+            max_concurrency_effective = _resolve_max_concurrency(
+                driver_mode, max_concurrency
+            )
+            sem = asyncio.Semaphore(max_concurrency_effective)
+            counter_lock = asyncio.Lock()
 
-            for scenario in scenarios:
-                try:
-                    record = await _run_scenario_for_mode(
-                        driver_mode, scenario, session, recipient_id, channel
+            async def _worker(scenario: EvalScenario) -> None:
+                nonlocal passed_count, failed_count
+                async with sem:
+                    scenario_passed = await _run_one_scenario(
+                        scenario,
+                        driver_mode,
+                        recipient_id,
+                        channel,
+                        eval_run_id,
                     )
-                    eval_results = await evaluate_scenario(record)
-
-                    # Write results — embed raw conversation in each result's raw_output
-                    conversation_turns = record.turns
-                    for er in eval_results:
-                        raw = dict(er.raw_output) if er.raw_output else {}
-                        raw["conversation"] = conversation_turns
-                        db_result = EvalResult(
-                            id=uuid.uuid4(),
-                            eval_run_id=eval_run_id,
-                            scenario_id=scenario.scenario_id,
-                            metric_name=er.metric_name,
-                            score=er.score,
-                            passed=er.passed,
-                            reason=er.reason,
-                            raw_output=raw,
-                        )
-                        await result_repo.create(db_result)
-
-                    scenario_passed = all(er.passed for er in eval_results)
+                async with counter_lock:
                     if scenario_passed:
                         passed_count += 1
                     else:
                         failed_count += 1
-
-                    # Update run-level counters for progress visibility
                     completed = passed_count + failed_count
                     score = passed_count / completed if completed > 0 else 0.0
                     await run_repo.update_counts(
@@ -250,7 +280,6 @@ async def _run_eval_background(
                         overall_score=score,
                     )
                     await session.commit()
-
                     logger.info(
                         "Scenario %s completed: passed=%s",
                         scenario.scenario_id,
@@ -258,25 +287,14 @@ async def _run_eval_background(
                         extra={"eval_run_id": str(eval_run_id)},
                     )
 
-                except Exception:
-                    await session.rollback()
-                    logger.exception(
-                        "Scenario %s failed",
-                        scenario.scenario_id,
-                        extra={"eval_run_id": str(eval_run_id)},
-                    )
-                    failed_count += 1
-                    # Update counters even on failure
-                    completed = passed_count + failed_count
-                    score = passed_count / completed if completed > 0 else 0.0
-                    await run_repo.update_counts(
-                        eval_run_id,
-                        scenario_count=completed,
-                        passed_count=passed_count,
-                        failed_count=failed_count,
-                        overall_score=score,
-                    )
-                    await session.commit()
+            logger.info(
+                "Running %d scenarios with max_concurrency=%d (driver_mode=%s)",
+                len(scenarios),
+                max_concurrency_effective,
+                driver_mode,
+                extra={"eval_run_id": str(eval_run_id)},
+            )
+            await asyncio.gather(*(_worker(s) for s in scenarios))
 
             # Final status update
             total = passed_count + failed_count
@@ -352,6 +370,73 @@ def _infer_customer_phone(scenario: EvalScenario) -> str | None:
         if phone:
             return phone
     return None
+
+
+async def _run_one_scenario(
+    scenario: EvalScenario,
+    driver_mode: str,
+    recipient_id: str,
+    channel: str,
+    eval_run_id: uuid.UUID,
+) -> bool:
+    """Run + evaluate one scenario, writing its EvalResult rows.
+
+    Owns its own ``AsyncSessionLocal`` so parallel workers do not contend on
+    the outer run-level session (see ADR-019 for the session-ownership
+    pattern used by long-lived async work).
+
+    Returns:
+        True if every evaluator result for this scenario passed, False if
+        any evaluator failed OR the scenario raised before evaluation
+        completed (exception is logged here; caller treats it as a failure).
+    """
+    async with AsyncSessionLocal() as session:
+        result_repo = EvalResultRepositoryAsync(session)
+        # Stage 1: driver + evaluators. Failures here mark the scenario
+        # failed but do NOT fail the whole run — one broken scenario
+        # should not poison siblings.
+        try:
+            record = await _run_scenario_for_mode(
+                driver_mode, scenario, session, recipient_id, channel
+            )
+            eval_results = await evaluate_scenario(record)
+        except asyncio.CancelledError:
+            await session.rollback()
+            raise
+        except Exception:
+            await session.rollback()
+            logger.exception(
+                "Scenario %s failed",
+                scenario.scenario_id,
+                extra={"eval_run_id": str(eval_run_id)},
+            )
+            return False
+
+        # Stage 2: persist results. Failures here indicate a broken
+        # persistence path (DB down, schema mismatch, etc.) and MUST
+        # propagate so the outer runner surfaces the run as failed
+        # rather than silently completing with missing rows.
+        try:
+            conversation_turns = record.turns
+            for er in eval_results:
+                raw = dict(er.raw_output) if er.raw_output else {}
+                raw["conversation"] = conversation_turns
+                db_result = EvalResult(
+                    id=uuid.uuid4(),
+                    eval_run_id=eval_run_id,
+                    scenario_id=scenario.scenario_id,
+                    metric_name=er.metric_name,
+                    score=er.score,
+                    passed=er.passed,
+                    reason=er.reason,
+                    raw_output=raw,
+                )
+                await result_repo.create(db_result)
+            await session.commit()
+        except BaseException:
+            await session.rollback()
+            raise
+        return all(er.passed for er in eval_results)
 
 
 async def _run_scenario_for_mode(

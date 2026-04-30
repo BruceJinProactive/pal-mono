@@ -172,7 +172,7 @@ class TestScheduleEvalBackground:
             # Task should have been added to the set (may already be removed if it
             # completed synchronously, but the add+discard callback must have fired)
             mock_bg.assert_called_once_with(
-                eval_run_id, project_id, "api:test-project", "http"
+                eval_run_id, project_id, "api:test-project", "http", None
             )
 
             # Let the event loop tick so the task runs and the done callback fires
@@ -1806,4 +1806,333 @@ class TestListEvalRuns:
         assert len(result) == 1
         mock_repo.get_all.assert_awaited_once_with(
             status=None, project_id=project_id, limit=50
+        )
+
+
+class TestScenarioParallelism:
+    """Verify scenarios run concurrently up to max_concurrency."""
+
+    def _make_scenario(self, scenario_id: str) -> MagicMock:
+        scenario = MagicMock()
+        scenario.scenario_id = scenario_id
+        turn = MagicMock()
+        turn.text = "Hello"
+        turn.goal = None
+        scenario.user_turns = [turn]
+        scenario.expected_tool_calls = []
+        scenario.expected_outcomes = MagicMock()
+        scenario.context = []
+        return scenario
+
+    def _make_session_ctx(self) -> tuple[MagicMock, AsyncMock]:
+        # Return a fresh AsyncMock per __aenter__ so each AsyncSessionLocal()
+        # call (outer run session + one per _run_one_scenario worker) sees
+        # an isolated session. This prevents regressions that would share
+        # sessions across parallel workers from silently passing.
+        first_session = AsyncMock()
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(side_effect=lambda: AsyncMock())
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx, first_session
+
+    def _make_eval_result(self, passed: bool = True) -> MagicMock:
+        er = MagicMock()
+        er.metric_name = "tool_call_accuracy"
+        er.score = 1.0 if passed else 0.0
+        er.passed = passed
+        er.reason = "ok"
+        er.raw_output = None
+        return er
+
+    @pytest.mark.asyncio
+    async def test_scenarios_run_up_to_max_concurrency(self) -> None:
+        """With N=6 scenarios and cap=3, peak in-flight must be <=3 and >=2."""
+        scenarios = [self._make_scenario(f"sc-{i}") for i in range(6)]
+        ctx, _session = self._make_session_ctx()
+        mock_run_repo = AsyncMock()
+        mock_result_repo = AsyncMock()
+
+        in_flight = 0
+        peak = 0
+        lock = asyncio.Lock()
+
+        async def _fake_run_scenario(
+            driver_mode: str,
+            scenario: object,
+            session: object,
+            recipient_id: str,
+            channel: str,
+        ) -> MagicMock:
+            nonlocal in_flight, peak
+            async with lock:
+                in_flight += 1
+                peak = max(peak, in_flight)
+            for _ in range(5):
+                await asyncio.sleep(0)
+            async with lock:
+                in_flight -= 1
+            record = MagicMock()
+            record.turns = []
+            record.agent_responses = []
+            record.tool_calls = []
+            return record
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal", return_value=ctx),
+            patch(
+                f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_run_repo
+            ),
+            patch(
+                f"{RUNNER_MODULE}.EvalResultRepositoryAsync",
+                return_value=mock_result_repo,
+            ),
+            patch(f"{RUNNER_MODULE}.load_scenarios", return_value=scenarios),
+            patch(
+                f"{RUNNER_MODULE}._run_scenario_for_mode",
+                side_effect=_fake_run_scenario,
+            ),
+            patch(
+                f"{RUNNER_MODULE}.evaluate_scenario",
+                new_callable=AsyncMock,
+                return_value=[self._make_eval_result(True)],
+            ),
+        ):
+            from services.eval_service._runner import _run_eval_background
+
+            await _run_eval_background(
+                uuid.uuid4(),
+                uuid.uuid4(),
+                "api:test-project",
+                "http",
+                max_concurrency=3,
+            )
+
+        assert peak <= 3, f"peak concurrency {peak} exceeded cap 3"
+        assert (
+            peak >= 2
+        ), f"peak concurrency {peak} — scenarios did not run concurrently"
+
+    def test_voice_mode_honors_requested_concurrency(self) -> None:
+        """Voice mode uses the same cap as other modes (no longer forced to 1)."""
+        from services.eval_service._runner import (
+            _DEFAULT_MAX_CONCURRENCY,
+            _resolve_max_concurrency,
+        )
+
+        assert _resolve_max_concurrency("voice", 8) == 8
+        assert _resolve_max_concurrency("voice", 1) == 1
+        assert _resolve_max_concurrency("voice", None) == _DEFAULT_MAX_CONCURRENCY
+        assert _resolve_max_concurrency("http", 8) == 8
+
+    def test_default_concurrency_when_none(self) -> None:
+        from services.eval_service._runner import (
+            _DEFAULT_MAX_CONCURRENCY,
+            _resolve_max_concurrency,
+        )
+
+        assert _resolve_max_concurrency("http", None) == _DEFAULT_MAX_CONCURRENCY
+
+    def test_concurrency_clamped_to_one(self) -> None:
+        from services.eval_service._runner import _resolve_max_concurrency
+
+        assert _resolve_max_concurrency("http", 0) == 1
+        assert _resolve_max_concurrency("http", -5) == 1
+
+    def test_concurrency_clamped_to_upper_bound(self) -> None:
+        """Non-HTTP callers can't bypass the 64-worker safety cap."""
+        from services.eval_service._runner import (
+            _MAX_CONCURRENCY,
+            _resolve_max_concurrency,
+        )
+
+        assert _resolve_max_concurrency("http", _MAX_CONCURRENCY) == _MAX_CONCURRENCY
+        assert _resolve_max_concurrency("http", 9999) == _MAX_CONCURRENCY
+        # Voice path uses the same clamp.
+        assert _resolve_max_concurrency("voice", 9999) == _MAX_CONCURRENCY
+
+    @pytest.mark.asyncio
+    async def test_single_failure_does_not_affect_siblings(self) -> None:
+        """One failing scenario among many leaves the others' counts intact."""
+        scenarios = [self._make_scenario(f"sc-{i}") for i in range(5)]
+        ctx, _session = self._make_session_ctx()
+        mock_run_repo = AsyncMock()
+        mock_result_repo = AsyncMock()
+
+        record = MagicMock()
+        record.turns = []
+        record.agent_responses = []
+        record.tool_calls = []
+
+        async def _fake_run_scenario(
+            driver_mode: str,
+            scenario: MagicMock,
+            session: object,
+            recipient_id: str,
+            channel: str,
+        ) -> MagicMock:
+            if scenario.scenario_id == "sc-2":
+                raise RuntimeError("boom")
+            return record
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal", return_value=ctx),
+            patch(
+                f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_run_repo
+            ),
+            patch(
+                f"{RUNNER_MODULE}.EvalResultRepositoryAsync",
+                return_value=mock_result_repo,
+            ),
+            patch(f"{RUNNER_MODULE}.load_scenarios", return_value=scenarios),
+            patch(
+                f"{RUNNER_MODULE}._run_scenario_for_mode",
+                side_effect=_fake_run_scenario,
+            ),
+            patch(
+                f"{RUNNER_MODULE}.evaluate_scenario",
+                new_callable=AsyncMock,
+                return_value=[self._make_eval_result(True)],
+            ),
+        ):
+            from services.eval_service._runner import _run_eval_background
+
+            await _run_eval_background(
+                uuid.uuid4(),
+                uuid.uuid4(),
+                "api:test-project",
+                "http",
+                max_concurrency=4,
+            )
+
+        final = mock_run_repo.update_counts.await_args
+        assert final.kwargs["passed_count"] == 4
+        assert final.kwargs["failed_count"] == 1
+        assert final.kwargs["scenario_count"] == 5
+
+    @pytest.mark.asyncio
+    async def test_counter_updates_not_lost_under_concurrency(self) -> None:
+        """20 scenarios @ concurrency 8: final counts must match exactly."""
+        scenarios = [self._make_scenario(f"sc-{i}") for i in range(20)]
+        ctx, _session = self._make_session_ctx()
+        mock_run_repo = AsyncMock()
+        mock_result_repo = AsyncMock()
+
+        def _eval_side_effect(rec: MagicMock) -> list[MagicMock]:
+            sid = rec.scenario.scenario_id
+            idx = int(sid.split("-")[1])
+            return [self._make_eval_result(passed=(idx % 2 == 0))]
+
+        async def _eval_async(rec: MagicMock) -> list[MagicMock]:
+            await asyncio.sleep(0)
+            return _eval_side_effect(rec)
+
+        async def _fake_run_scenario(
+            driver_mode: str,
+            scenario: MagicMock,
+            session: object,
+            recipient_id: str,
+            channel: str,
+        ) -> MagicMock:
+            rec = MagicMock()
+            rec.turns = []
+            rec.agent_responses = []
+            rec.tool_calls = []
+            rec.scenario = scenario
+            await asyncio.sleep(0)
+            return rec
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal", return_value=ctx),
+            patch(
+                f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_run_repo
+            ),
+            patch(
+                f"{RUNNER_MODULE}.EvalResultRepositoryAsync",
+                return_value=mock_result_repo,
+            ),
+            patch(f"{RUNNER_MODULE}.load_scenarios", return_value=scenarios),
+            patch(
+                f"{RUNNER_MODULE}._run_scenario_for_mode",
+                side_effect=_fake_run_scenario,
+            ),
+            patch(
+                f"{RUNNER_MODULE}.evaluate_scenario",
+                side_effect=_eval_async,
+            ),
+        ):
+            from services.eval_service._runner import _run_eval_background
+
+            await _run_eval_background(
+                uuid.uuid4(),
+                uuid.uuid4(),
+                "api:test-project",
+                "http",
+                max_concurrency=8,
+            )
+
+        final = mock_run_repo.update_counts.await_args
+        assert final.kwargs["scenario_count"] == 20
+        assert final.kwargs["passed_count"] == 10
+        assert final.kwargs["failed_count"] == 10
+        assert final.kwargs["overall_score"] == pytest.approx(0.5)
+
+    @pytest.mark.asyncio
+    async def test_persistence_failure_propagates_and_fails_run(self) -> None:
+        """DB write failure inside a scenario must NOT be swallowed as a soft
+        scenario miss — it must propagate so the outer runner marks the whole
+        run as failed (broken persistence is not the same as a broken driver).
+        """
+        scenarios = [self._make_scenario(f"sc-{i}") for i in range(2)]
+        ctx, _session = self._make_session_ctx()
+        mock_run_repo = AsyncMock()
+        mock_result_repo = AsyncMock()
+        mock_result_repo.create.side_effect = RuntimeError("db unavailable")
+
+        record = MagicMock()
+        record.turns = []
+        record.agent_responses = []
+        record.tool_calls = []
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal", return_value=ctx),
+            patch(
+                f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_run_repo
+            ),
+            patch(
+                f"{RUNNER_MODULE}.EvalResultRepositoryAsync",
+                return_value=mock_result_repo,
+            ),
+            patch(f"{RUNNER_MODULE}.load_scenarios", return_value=scenarios),
+            patch(
+                f"{RUNNER_MODULE}._run_scenario_for_mode",
+                new_callable=AsyncMock,
+                return_value=record,
+            ),
+            patch(
+                f"{RUNNER_MODULE}.evaluate_scenario",
+                new_callable=AsyncMock,
+                return_value=[self._make_eval_result(True)],
+            ),
+        ):
+            from services.eval_service._runner import _run_eval_background
+
+            # The outer runner's except-Exception handler should catch this
+            # and mark the run 'failed' — it must NOT complete silently.
+            await _run_eval_background(
+                uuid.uuid4(),
+                uuid.uuid4(),
+                "api:test-project",
+                "http",
+                max_concurrency=2,
+            )
+
+        # Verify the run was marked failed (not completed).
+        status_calls = [
+            call
+            for call in mock_run_repo.update_status.await_args_list
+            if call.args[1] == "failed"
+        ]
+        assert status_calls, (
+            "Persistence failure should have marked the run 'failed'; "
+            f"got status calls: {mock_run_repo.update_status.await_args_list}"
         )

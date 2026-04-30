@@ -8,6 +8,8 @@ Last updated: 2026-04-28
 
 ## Active Work
 
+- **Eval runner parallel scenarios** (2026-04-29) — Scenarios within an eval run now execute concurrently, bounded by `max_concurrency` (request parameter on `RunEvalRequest` / `create_eval_run`; default 4). Applies uniformly to all driver modes including voice — each voice scenario owns an isolated LiveKit room, orchestrator, TTS engine, and egress pipeline, so concurrency is bounded by caller infra (worker pool, rate limits), not by shared in-process state. Each worker owns its own `AsyncSession`; counter updates on the outer session are serialised via `asyncio.Lock`. → `docs/plans/conversation-eval/parallel-scenario-execution-plan.md`
+
 - **LiveKit migration** (started 2025-02) — Vapi is fully removed at the code level: `tools/vapi_tool/` and `api/routes/integrations/vapi/` source files are deleted, `VoiceProvider` enum is LiveKit-only (explicitly rejects `"vapi"`), and the `assistant-request` webhook is gone. Residual legacy only: `conversations.vapi_control_url` column (kept for historical data) and a few stale docstrings/log strings in `services/number_service/_implementation.py`, `api/routes/internal/_voice.py`, and admin routes. Remaining LiveKit work: `services/voice_service/providers/livekit/` not yet created, plus later migration phases TBD. → `docs/plans/livekit-migration/`
 
 - **Eval scenarios DB migration** (started 2026-04-23) — Migrating eval YAML scenario files from filesystem to `eval_scenarios` DB table. Table + repository shipped (record: `docs/records/2026-04-23-eval-scenarios-table.md`). PR #4087 migrated eval tests to DB. Remaining: API endpoints for scenario CRUD, seed/backfill script, retire YAML filesystem fallback.

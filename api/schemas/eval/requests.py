@@ -53,6 +53,18 @@ class RunEvalRequest(BaseModel):
         description="Who triggered the run",
     )
 
+    max_concurrency: int | None = Field(
+        default=None,
+        ge=1,
+        le=64,
+        description=(
+            "Max scenarios to run in parallel. None uses the service default "
+            "(currently 4). Applies to all driver modes including voice; pick "
+            "a value appropriate to your LiveKit worker pool and "
+            "TTS/STT rate limits."
+        ),
+    )
+
 
 class ComputeSnapshotDiffRequest(BaseModel):
     """Request body for computing a diff between two agent config snapshots."""
