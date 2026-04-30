@@ -44,6 +44,7 @@ class RealtimeSession:
         self.client: AsyncOpenAI | None = None
         self.connection = None
         self.on_interruption = on_interruption
+        self._pending_interruption: asyncio.Task[None] | None = None
 
         # Counters for logging
         self.audio_chunks_sent_to_openai = 0
@@ -142,6 +143,31 @@ class RealtimeSession:
             )
             raise
 
+    def _cancel_pending_interruption(self) -> None:
+        if self._pending_interruption and not self._pending_interruption.done():
+            self._pending_interruption.cancel()
+        self._pending_interruption = None
+
+    async def _delayed_interruption(self) -> None:
+        delay_s = self.config.interruption_delay_ms / 1000.0
+        try:
+            await asyncio.sleep(delay_s)
+        except asyncio.CancelledError:
+            return
+        if not self.on_interruption:
+            return
+        try:
+            await asyncio.wait_for(self.on_interruption(), timeout=0.5)
+            logger.info("[REALTIME] Interruption callback fired after delay")
+        except asyncio.TimeoutError:
+            logger.warning("[REALTIME] Interruption callback timed out")
+        except Exception as cb_err:
+            logger.error(
+                "[REALTIME] Interruption callback failed",
+                extra={"error": str(cb_err)},
+                exc_info=True,
+            )
+
     async def receive_audio_stream(self) -> AsyncIterator[str]:
         """
         Async generator yielding audio chunks and invoking callbacks.
@@ -204,23 +230,27 @@ class RealtimeSession:
                         },
                     )
 
-                # User started speaking — interruption
+                # User started speaking — schedule interruption with delay
                 elif event_type == "input_audio_buffer.speech_started":
-                    logger.info("[REALTIME] Interruption detected (speech_started)")
+                    logger.info("[REALTIME] Speech started, scheduling interruption")
                     if self.on_interruption:
-                        try:
-                            await asyncio.wait_for(self.on_interruption(), timeout=0.5)
-                        except asyncio.TimeoutError:
-                            logger.warning("[REALTIME] Interruption callback timed out")
-                        except Exception as cb_err:
-                            logger.error(
-                                "[REALTIME] Interruption callback failed",
-                                extra={"error": str(cb_err)},
-                                exc_info=True,
-                            )
+                        self._cancel_pending_interruption()
+                        self._pending_interruption = asyncio.create_task(
+                            self._delayed_interruption()
+                        )
 
                 elif event_type == "input_audio_buffer.speech_stopped":
-                    logger.debug("[REALTIME] Speech stopped")
+                    if (
+                        self._pending_interruption
+                        and not self._pending_interruption.done()
+                    ):
+                        self._cancel_pending_interruption()
+                        logger.debug(
+                            "[REALTIME] Speech stopped before delay — "
+                            "interruption cancelled (likely cough/noise)"
+                        )
+                    else:
+                        logger.debug("[REALTIME] Speech stopped")
 
                 # Audio response complete
                 elif event_type == "response.output_audio.done":
@@ -256,6 +286,8 @@ class RealtimeSession:
 
         Should be called when call ends or on error to clean up resources.
         """
+        self._cancel_pending_interruption()
+
         # Close connection if it exists
         if self.connection:
             try:

@@ -175,7 +175,7 @@ class VoiceCallHandler:
             )
 
     async def _handle_interruption(self) -> None:
-        """Send Twilio clear message to flush queued audio on barge-in."""
+        """Send Twilio clear message to flush queued audio on interruption."""
         if not self.stream_sid:
             return
 
@@ -193,7 +193,7 @@ class VoiceCallHandler:
             )
         except Exception as e:
             logger.error(
-                "[VOICE_HANDLER] Error sending Twilio clear on barge-in",
+                "[VOICE_HANDLER] Error sending Twilio clear on interruption",
                 extra={"error": str(e)},
                 exc_info=True,
             )

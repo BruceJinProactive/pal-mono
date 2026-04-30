@@ -40,7 +40,12 @@ class RealtimeConfig(BaseModel):
     )
     interrupt_response: bool = Field(
         default=True,
-        description="Auto-cancel AI output when user starts speaking (barge-in)",
+        description="Auto-cancel AI output when user starts speaking (interruption).",
+    )
+    interruption_delay_ms: int = Field(
+        default=300,
+        ge=0,
+        description="Delay in ms before sending Twilio clear on speech_started. Filters brief noises like coughs.",
     )
     eagerness: Literal["low", "medium", "high", "auto"] = Field(
         default="low",
