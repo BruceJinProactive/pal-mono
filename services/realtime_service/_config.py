@@ -39,13 +39,8 @@ class RealtimeConfig(BaseModel):
         description="Turn detection type (server_vad or semantic_vad)",
     )
     interrupt_response: bool = Field(
-        default=False,
-        description="OpenAI auto-cancel on speech_started. Disabled to allow debounced interruption.",
-    )
-    interruption_delay_ms: int = Field(
-        default=300,
-        ge=0,
-        description="Delay in ms before sending Twilio clear on speech_started. Filters brief noises like coughs.",
+        default=True,
+        description="Auto-cancel AI output when user starts speaking (barge-in)",
     )
     eagerness: Literal["low", "medium", "high", "auto"] = Field(
         default="low",
