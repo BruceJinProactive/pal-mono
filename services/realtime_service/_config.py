@@ -4,7 +4,7 @@ Configuration for OpenAI Realtime API (OpenAI 2.x).
 Provides structured configuration using Pydantic models for session setup.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -39,8 +39,13 @@ class RealtimeConfig(BaseModel):
         description="Turn detection type (server_vad or semantic_vad)",
     )
     interrupt_response: bool = Field(
-        default=True,
-        description="Auto-cancel AI output when user starts speaking (barge-in)",
+        default=False,
+        description="OpenAI auto-cancel on speech_started. Disabled to allow debounced interruption.",
+    )
+    interruption_delay_ms: int = Field(
+        default=300,
+        ge=0,
+        description="Delay in ms before sending Twilio clear on speech_started. Filters brief noises like coughs.",
     )
     eagerness: Literal["low", "medium", "high", "auto"] = Field(
         default="low",
@@ -59,6 +64,16 @@ class RealtimeConfig(BaseModel):
     prefix_padding_ms: int = Field(
         default=300,
         description="Audio to include before detected speech in ms (server_vad only).",
+    )
+
+    # Tool calling
+    tools: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Tool definitions in OpenAI SessionTool format.",
+    )
+    tool_choice: Literal["auto", "none", "required"] = Field(
+        default="auto",
+        description="How the model chooses tools: auto, none, required.",
     )
 
     # Noise reduction
@@ -113,6 +128,11 @@ class RealtimeConfig(BaseModel):
             },
             "instructions": self.system_prompt,
             "output_modalities": ["audio"],
+            **(
+                {"tools": self.tools, "tool_choice": self.tool_choice}
+                if self.tools
+                else {}
+            ),
         }
 
         return config

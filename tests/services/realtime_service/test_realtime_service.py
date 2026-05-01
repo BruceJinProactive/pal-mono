@@ -8,6 +8,7 @@ Tests cover:
 - Logging and counter functionality
 """
 
+import asyncio
 import os
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,6 +18,7 @@ import pytest
 from services.realtime_service._config import RealtimeConfig
 from services.realtime_service._implementation import (
     RealtimeSession,
+    _build_demo_tools,
     create_realtime_session,
 )
 
@@ -33,7 +35,7 @@ class TestRealtimeConfigTurnDetection:
         td = config._build_turn_detection()
         assert td["type"] == "semantic_vad"
         assert td["eagerness"] == "low"
-        assert td["interrupt_response"] is True
+        assert td["interrupt_response"] is False
         assert "threshold" not in td
         assert "silence_duration_ms" not in td
 
@@ -48,7 +50,7 @@ class TestRealtimeConfigTurnDetection:
         assert td["threshold"] == 0.7
         assert td["silence_duration_ms"] == 500
         assert td["prefix_padding_ms"] == 300
-        assert td["interrupt_response"] is True
+        assert td["interrupt_response"] is False
         assert "eagerness" not in td
 
     def test_semantic_vad_includes_eagerness(self) -> None:
@@ -414,12 +416,16 @@ class TestRealtimeSessionReceiveAudioStream:
         assert chunks == ["audio_chunk"]
 
     @pytest.mark.asyncio
-    async def test_receive_audio_stream_invokes_interruption_callback(self) -> None:
-        """receive_audio_stream() invokes on_interruption callback on speech_started event."""
+    async def test_interruption_fires_after_delay(self) -> None:
+        """on_interruption fires after interruption_delay_ms if speech persists."""
         on_interruption = AsyncMock()
         session = RealtimeSession(
             api_key="test-key",
-            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+            config=RealtimeConfig(
+                system_prompt="Test",
+                voice_id="alloy",
+                interruption_delay_ms=50,
+            ),
             on_interruption=on_interruption,
         )
 
@@ -442,17 +448,24 @@ class TestRealtimeSessionReceiveAudioStream:
         async for chunk in session.receive_audio_stream():
             chunks.append(chunk)
 
+        # Wait for the delayed task to complete
+        await asyncio.sleep(0.1)
+
         on_interruption.assert_awaited_once()
         assert chunks == ["audio_chunk"]
 
     @pytest.mark.asyncio
-    async def test_receive_audio_stream_skips_interruption_when_no_callback(
-        self,
-    ) -> None:
-        """receive_audio_stream() handles speech_started without callback."""
+    async def test_interruption_cancelled_by_quick_speech_stop(self) -> None:
+        """on_interruption does NOT fire if speech_stopped arrives before delay."""
+        on_interruption = AsyncMock()
         session = RealtimeSession(
             api_key="test-key",
-            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+            config=RealtimeConfig(
+                system_prompt="Test",
+                voice_id="alloy",
+                interruption_delay_ms=200,
+            ),
+            on_interruption=on_interruption,
         )
 
         speech_started_event = MagicMock()
@@ -473,7 +486,128 @@ class TestRealtimeSessionReceiveAudioStream:
         async for chunk in session.receive_audio_stream():
             chunks.append(chunk)
 
+        await asyncio.sleep(0.3)
+
+        on_interruption.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_interruption_skipped_when_no_callback(self) -> None:
+        """speech_started without callback does not error."""
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+        )
+
+        speech_started_event = MagicMock()
+        speech_started_event.type = "input_audio_buffer.speech_started"
+
+        async def mock_event_stream():
+            yield speech_started_event
+
+        mock_connection = MagicMock()
+        mock_connection.__aiter__ = lambda self: mock_event_stream()
+        session.connection = mock_connection
+
+        chunks = []
+        async for chunk in session.receive_audio_stream():
+            chunks.append(chunk)
+
         assert chunks == []
+
+    @pytest.mark.asyncio
+    async def test_delayed_interruption_handles_timeout(self) -> None:
+        """_delayed_interruption logs warning when callback times out."""
+        on_interruption = AsyncMock(side_effect=asyncio.TimeoutError)
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(
+                system_prompt="Test",
+                voice_id="alloy",
+                interruption_delay_ms=10,
+            ),
+            on_interruption=on_interruption,
+        )
+
+        with patch(
+            "services.realtime_service._implementation.asyncio.wait_for"
+        ) as mock_wf:
+            mock_wf.side_effect = asyncio.TimeoutError
+            await session._delayed_interruption()
+
+    @pytest.mark.asyncio
+    async def test_delayed_interruption_handles_callback_exception(self) -> None:
+        """_delayed_interruption logs error when callback raises."""
+        on_interruption = AsyncMock(side_effect=RuntimeError("boom"))
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(
+                system_prompt="Test",
+                voice_id="alloy",
+                interruption_delay_ms=10,
+            ),
+            on_interruption=on_interruption,
+        )
+
+        with patch(
+            "services.realtime_service._implementation.asyncio.wait_for"
+        ) as mock_wf:
+            mock_wf.side_effect = RuntimeError("boom")
+            await session._delayed_interruption()
+
+    @pytest.mark.asyncio
+    async def test_delayed_interruption_returns_on_cancel(self) -> None:
+        """_delayed_interruption returns early when cancelled during sleep."""
+        on_interruption = AsyncMock()
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(
+                system_prompt="Test",
+                voice_id="alloy",
+                interruption_delay_ms=5000,
+            ),
+            on_interruption=on_interruption,
+        )
+
+        task = asyncio.create_task(session._delayed_interruption())
+        await asyncio.sleep(0.01)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+        on_interruption.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_delayed_interruption_skips_when_no_callback(self) -> None:
+        """_delayed_interruption returns early if on_interruption is None."""
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(
+                system_prompt="Test",
+                voice_id="alloy",
+                interruption_delay_ms=10,
+            ),
+        )
+        await session._delayed_interruption()
+
+    @pytest.mark.asyncio
+    async def test_speech_stopped_without_pending_interruption(self) -> None:
+        """speech_stopped logs normally when no pending interruption exists."""
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+        )
+
+        speech_stopped_event = MagicMock()
+        speech_stopped_event.type = "input_audio_buffer.speech_stopped"
+
+        async def mock_event_stream():
+            yield speech_stopped_event
+
+        mock_connection = MagicMock()
+        mock_connection.__aiter__ = lambda self: mock_event_stream()
+        session.connection = mock_connection
+
+        async for _ in session.receive_audio_stream():
+            pass
 
     @pytest.mark.asyncio
     async def test_receive_audio_stream_handles_error_events(self) -> None:
@@ -776,3 +910,359 @@ class TestCreateRealtimeSession:
         # Verify the query was executed
         # The channel identifier should be "voice:+15551234567"
         assert mock_session.execute.called
+
+
+# ---------------------------------------------------------------------------
+# _build_demo_tools Tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildRealtimeTools:
+    """Test _build_realtime_tools() function."""
+
+    def test_builds_tools_from_registry(self) -> None:
+        from services.realtime_service._implementation import _build_realtime_tools
+
+        mock_func = MagicMock()
+        mock_func.entrypoint = lambda: "ok"
+        mock_func.description = "Test tool"
+        mock_func.parameters = {"type": "object", "properties": {}}
+
+        mock_toolkit = MagicMock()
+        mock_toolkit.functions = {"test_func": mock_func}
+
+        mock_identifier = MagicMock()
+        mock_identifier.tool_name = "test_tool"
+
+        mock_tool_config = MagicMock()
+        mock_tool_config.identifiers = [mock_identifier]
+        mock_tool_config.metadata = MagicMock()
+
+        with patch("tools.registry.tool_registry") as mock_registry:
+            mock_registry.get_tool.return_value = mock_toolkit
+            tools, executors = _build_realtime_tools(mock_tool_config)
+
+        assert len(tools) == 1
+        assert tools[0]["name"] == "test_func"
+        assert "test_func" in executors
+
+    def test_skips_tool_not_in_registry(self) -> None:
+        from services.realtime_service._implementation import _build_realtime_tools
+
+        mock_identifier = MagicMock()
+        mock_identifier.tool_name = "missing_tool"
+
+        mock_tool_config = MagicMock()
+        mock_tool_config.identifiers = [mock_identifier]
+        mock_tool_config.metadata = MagicMock()
+
+        with patch("tools.registry.tool_registry") as mock_registry:
+            mock_registry.get_tool.return_value = None
+            tools, executors = _build_realtime_tools(mock_tool_config)
+
+        assert len(tools) == 0
+        assert len(executors) == 0
+
+    def test_skips_function_without_entrypoint(self) -> None:
+        from services.realtime_service._implementation import _build_realtime_tools
+
+        mock_func = MagicMock()
+        mock_func.entrypoint = None
+        mock_func.description = "No entrypoint"
+
+        mock_toolkit = MagicMock()
+        mock_toolkit.functions = {"broken_func": mock_func}
+
+        mock_identifier = MagicMock()
+        mock_identifier.tool_name = "test_tool"
+
+        mock_tool_config = MagicMock()
+        mock_tool_config.identifiers = [mock_identifier]
+        mock_tool_config.metadata = MagicMock()
+
+        with patch("tools.registry.tool_registry") as mock_registry:
+            mock_registry.get_tool.return_value = mock_toolkit
+            tools, executors = _build_realtime_tools(mock_tool_config)
+
+        assert len(tools) == 0
+        assert len(executors) == 0
+
+
+# ---------------------------------------------------------------------------
+# Delayed interruption OpenAI cancel Tests
+# ---------------------------------------------------------------------------
+
+
+class TestDelayedInterruptionCancel:
+    """Test _delayed_interruption OpenAI response.cancel() path."""
+
+    @pytest.mark.asyncio
+    async def test_delayed_interruption_cancels_openai_response(self) -> None:
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(
+                system_prompt="Test",
+                voice_id="alloy",
+                interruption_delay_ms=10,
+            ),
+        )
+        mock_connection = MagicMock()
+        mock_connection.response.cancel = AsyncMock()
+        session.connection = mock_connection
+
+        await session._delayed_interruption()
+
+        mock_connection.response.cancel.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# _build_demo_tools Tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildDemoTools:
+    """Test _build_demo_tools() function."""
+
+    def test_returns_two_tools(self) -> None:
+        tools, executors = _build_demo_tools()
+        assert len(tools) == 2
+        assert "get_store_hours" in executors
+        assert "get_daily_specials" in executors
+
+    def test_tool_definitions_have_required_fields(self) -> None:
+        tools, _ = _build_demo_tools()
+        for tool in tools:
+            assert tool["type"] == "function"
+            assert "name" in tool
+            assert "description" in tool
+            assert "parameters" in tool
+
+    def test_get_store_hours_returns_json(self) -> None:
+        import json
+
+        _, executors = _build_demo_tools()
+        result = executors["get_store_hours"]()
+        data = json.loads(result)
+        assert "monday" in data
+        assert "sunday" in data
+
+    def test_get_daily_specials_returns_json(self) -> None:
+        import json
+
+        _, executors = _build_demo_tools()
+        result = executors["get_daily_specials"]()
+        data = json.loads(result)
+        assert "appetizer" in data
+        assert "entree" in data
+
+
+# ---------------------------------------------------------------------------
+# _handle_tool_call Tests
+# ---------------------------------------------------------------------------
+
+
+class TestHandleToolCall:
+    """Test RealtimeSession._handle_tool_call() method."""
+
+    @pytest.mark.asyncio
+    async def test_handle_tool_call_executes_and_sends_result(self) -> None:
+        on_tool_call = AsyncMock(return_value='{"hours": "9-5"}')
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+            on_tool_call=on_tool_call,
+        )
+        mock_connection = MagicMock()
+        mock_connection.conversation.item.create = AsyncMock()
+        mock_connection.response.create = AsyncMock()
+        session.connection = mock_connection
+
+        event = MagicMock()
+        event.call_id = "call_123"
+        event.name = "get_store_hours"
+        event.arguments = "{}"
+
+        await session._handle_tool_call(event)
+
+        on_tool_call.assert_awaited_once_with("get_store_hours", "{}")
+        mock_connection.conversation.item.create.assert_called_once()
+        mock_connection.response.create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_tool_call_without_handler(self) -> None:
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+        )
+        mock_connection = MagicMock()
+        mock_connection.conversation.item.create = AsyncMock()
+        mock_connection.response.create = AsyncMock()
+        session.connection = mock_connection
+
+        event = MagicMock()
+        event.call_id = "call_123"
+        event.name = "get_store_hours"
+        event.arguments = "{}"
+
+        await session._handle_tool_call(event)
+
+        call_args = mock_connection.conversation.item.create.call_args
+        assert "error" in call_args[1]["item"]["output"]
+
+    @pytest.mark.asyncio
+    async def test_handle_tool_call_timeout(self) -> None:
+        on_tool_call = AsyncMock(side_effect=asyncio.TimeoutError)
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+            on_tool_call=on_tool_call,
+        )
+        mock_connection = MagicMock()
+        mock_connection.conversation.item.create = AsyncMock()
+        mock_connection.response.create = AsyncMock()
+        session.connection = mock_connection
+
+        with patch(
+            "services.realtime_service._implementation.asyncio.wait_for"
+        ) as mock_wf:
+            mock_wf.side_effect = asyncio.TimeoutError
+            event = MagicMock()
+            event.call_id = "call_123"
+            event.name = "slow_tool"
+            event.arguments = "{}"
+
+            await session._handle_tool_call(event)
+
+        call_args = mock_connection.conversation.item.create.call_args
+        assert "timed out" in call_args[1]["item"]["output"]
+
+    @pytest.mark.asyncio
+    async def test_handle_tool_call_exception(self) -> None:
+        on_tool_call = AsyncMock(side_effect=RuntimeError("boom"))
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+            on_tool_call=on_tool_call,
+        )
+        mock_connection = MagicMock()
+        mock_connection.conversation.item.create = AsyncMock()
+        mock_connection.response.create = AsyncMock()
+        session.connection = mock_connection
+
+        with patch(
+            "services.realtime_service._implementation.asyncio.wait_for"
+        ) as mock_wf:
+            mock_wf.side_effect = RuntimeError("boom")
+            event = MagicMock()
+            event.call_id = "call_123"
+            event.name = "bad_tool"
+            event.arguments = "{}"
+
+            await session._handle_tool_call(event)
+
+        call_args = mock_connection.conversation.item.create.call_args
+        assert "boom" in call_args[1]["item"]["output"]
+
+    @pytest.mark.asyncio
+    async def test_handle_tool_call_no_connection(self) -> None:
+        on_tool_call = AsyncMock(return_value='{"ok": true}')
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+            on_tool_call=on_tool_call,
+        )
+        session.connection = None
+
+        event = MagicMock()
+        event.call_id = "call_123"
+        event.name = "tool"
+        event.arguments = "{}"
+
+        await session._handle_tool_call(event)
+
+    @pytest.mark.asyncio
+    async def test_handle_tool_call_send_result_failure(self) -> None:
+        on_tool_call = AsyncMock(return_value='{"ok": true}')
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+            on_tool_call=on_tool_call,
+        )
+        mock_connection = MagicMock()
+        mock_connection.conversation.item.create = AsyncMock(
+            side_effect=RuntimeError("ws closed")
+        )
+        session.connection = mock_connection
+
+        event = MagicMock()
+        event.call_id = "call_123"
+        event.name = "tool"
+        event.arguments = "{}"
+
+        await session._handle_tool_call(event)
+
+
+# ---------------------------------------------------------------------------
+# Tool call event in receive_audio_stream Tests
+# ---------------------------------------------------------------------------
+
+
+class TestToolCallEventStream:
+    """Test tool call event handling in receive_audio_stream."""
+
+    @pytest.mark.asyncio
+    async def test_tool_call_event_triggers_handle(self) -> None:
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+        )
+
+        tool_event = MagicMock()
+        tool_event.type = "response.function_call_arguments.done"
+        tool_event.call_id = "call_1"
+        tool_event.name = "test_tool"
+        tool_event.arguments = "{}"
+
+        async def mock_event_stream():
+            yield tool_event
+
+        mock_connection = MagicMock()
+        mock_connection.__aiter__ = lambda self: mock_event_stream()
+        mock_connection.conversation.item.create = AsyncMock()
+        mock_connection.response.create = AsyncMock()
+        session.connection = mock_connection
+
+        async for _ in session.receive_audio_stream():
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Config tool fields Tests
+# ---------------------------------------------------------------------------
+
+
+class TestConfigToolFields:
+    """Test RealtimeConfig tool-related fields."""
+
+    def test_tools_in_session_config_when_present(self) -> None:
+        config = RealtimeConfig(
+            system_prompt="Test",
+            voice_id="alloy",
+            tools=[
+                {
+                    "type": "function",
+                    "name": "test",
+                    "description": "t",
+                    "parameters": {},
+                }
+            ],
+        )
+        session = config.to_session_config()
+        assert "tools" in session
+        assert session["tool_choice"] == "auto"
+
+    def test_tools_omitted_from_session_config_when_empty(self) -> None:
+        config = RealtimeConfig(system_prompt="Test", voice_id="alloy")
+        session = config.to_session_config()
+        assert "tools" not in session
+        assert "tool_choice" not in session

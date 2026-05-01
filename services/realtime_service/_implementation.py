@@ -9,7 +9,11 @@ import asyncio
 import os
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator
+
+if TYPE_CHECKING:
+    from agent.tool import ToolConfig
+    from agno.tools.function import Function
 
 from openai import AsyncOpenAI
 from sqlalchemy import select
@@ -38,12 +42,15 @@ class RealtimeSession:
         api_key: str,
         config: RealtimeConfig,
         on_interruption: Callable[[], Awaitable[None]] | None = None,
+        on_tool_call: Callable[[str, str], Awaitable[str]] | None = None,
     ):
         self.api_key = api_key
         self.config = config
         self.client: AsyncOpenAI | None = None
         self.connection = None
         self.on_interruption = on_interruption
+        self.on_tool_call = on_tool_call
+        self._pending_interruption: asyncio.Task[None] | None = None
 
         # Counters for logging
         self.audio_chunks_sent_to_openai = 0
@@ -142,6 +149,96 @@ class RealtimeSession:
             )
             raise
 
+    def _cancel_pending_interruption(self) -> None:
+        if self._pending_interruption and not self._pending_interruption.done():
+            self._pending_interruption.cancel()
+        self._pending_interruption = None
+
+    async def _delayed_interruption(self) -> None:
+        delay_s = self.config.interruption_delay_ms / 1000.0
+        try:
+            await asyncio.sleep(delay_s)
+        except asyncio.CancelledError:
+            return
+
+        # Cancel OpenAI's in-progress response (server-side)
+        if self.connection:
+            try:
+                await self.connection.response.cancel()
+                logger.info("[REALTIME] Cancelled OpenAI response after delay")
+            except Exception as e:
+                logger.warning(
+                    "[REALTIME] Failed to cancel OpenAI response",
+                    extra={"error": str(e)},
+                )
+
+        # Flush Twilio playback buffer (client-side)
+        if not self.on_interruption:
+            return
+        try:
+            await asyncio.wait_for(self.on_interruption(), timeout=0.5)
+            logger.info("[REALTIME] Twilio clear sent after delay")
+        except asyncio.TimeoutError:
+            logger.warning("[REALTIME] Interruption callback timed out")
+        except Exception as cb_err:
+            logger.error(
+                "[REALTIME] Interruption callback failed",
+                extra={"error": str(cb_err)},
+                exc_info=True,
+            )
+
+    async def _handle_tool_call(self, event: object) -> None:
+        call_id = getattr(event, "call_id", "")
+        name = getattr(event, "name", "")
+        arguments = getattr(event, "arguments", "{}")
+
+        logger.info(
+            f"[REALTIME.{name}] Tool call received",
+            extra={"call_id": call_id, "tool_name": name},
+        )
+
+        if not self.on_tool_call:
+            logger.warning(f"[REALTIME.{name}] No handler configured")
+            result = '{"error": "Tool execution not available"}'
+        else:
+            try:
+                result = await asyncio.wait_for(
+                    self.on_tool_call(name, arguments), timeout=10.0
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"[REALTIME.{name}] Tool call timed out")
+                result = '{"error": "Tool execution timed out"}'
+            except Exception as e:
+                logger.error(
+                    f"[REALTIME.{name}] Tool call failed",
+                    extra={"error": str(e)},
+                    exc_info=True,
+                )
+                result = f'{{"error": "{str(e)}"}}'
+
+        if not self.connection:
+            return
+
+        try:
+            await self.connection.conversation.item.create(
+                item={
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": result,
+                }
+            )
+            await self.connection.response.create()
+            logger.info(
+                f"[REALTIME.{name}] Tool result sent, response triggered",
+                extra={"call_id": call_id},
+            )
+        except Exception as e:
+            logger.error(
+                f"[REALTIME.{name}] Failed to send tool result",
+                extra={"call_id": call_id, "error": str(e)},
+                exc_info=True,
+            )
+
     async def receive_audio_stream(self) -> AsyncIterator[str]:
         """
         Async generator yielding audio chunks and invoking callbacks.
@@ -204,23 +301,26 @@ class RealtimeSession:
                         },
                     )
 
-                # User started speaking — interruption
+                # User started speaking — schedule interruption with delay
                 elif event_type == "input_audio_buffer.speech_started":
-                    logger.info("[REALTIME] Interruption detected (speech_started)")
-                    if self.on_interruption:
-                        try:
-                            await asyncio.wait_for(self.on_interruption(), timeout=0.5)
-                        except asyncio.TimeoutError:
-                            logger.warning("[REALTIME] Interruption callback timed out")
-                        except Exception as cb_err:
-                            logger.error(
-                                "[REALTIME] Interruption callback failed",
-                                extra={"error": str(cb_err)},
-                                exc_info=True,
-                            )
+                    logger.info("[REALTIME] Speech started, scheduling interruption")
+                    self._cancel_pending_interruption()
+                    self._pending_interruption = asyncio.create_task(
+                        self._delayed_interruption()
+                    )
 
                 elif event_type == "input_audio_buffer.speech_stopped":
-                    logger.debug("[REALTIME] Speech stopped")
+                    if (
+                        self._pending_interruption
+                        and not self._pending_interruption.done()
+                    ):
+                        self._cancel_pending_interruption()
+                        logger.debug(
+                            "[REALTIME] Speech stopped before delay — "
+                            "interruption cancelled (likely cough/noise)"
+                        )
+                    else:
+                        logger.debug("[REALTIME] Speech stopped")
 
                 # Audio response complete
                 elif event_type == "response.output_audio.done":
@@ -233,6 +333,10 @@ class RealtimeSession:
                         "[REALTIME] Assistant transcript",
                         extra={"transcript": transcript},
                     )
+
+                # Tool call completed — execute and send result
+                elif event_type == "response.function_call_arguments.done":
+                    await self._handle_tool_call(event)
 
                 # Error events
                 elif event_type == "error":
@@ -256,6 +360,8 @@ class RealtimeSession:
 
         Should be called when call ends or on error to clean up resources.
         """
+        self._cancel_pending_interruption()
+
         # Close connection if it exists
         if self.connection:
             try:
@@ -280,6 +386,96 @@ class RealtimeSession:
         # Reset to None
         self.connection = None
         self.client = None
+
+
+def _build_demo_tools() -> tuple[list[dict], dict[str, Callable[..., str]]]:
+    """Build demo tools for live testing. No credentials required."""
+    import json as _json
+
+    def get_store_hours() -> str:
+        return _json.dumps(
+            {
+                "monday": "10:00 AM - 9:00 PM",
+                "tuesday": "10:00 AM - 9:00 PM",
+                "wednesday": "10:00 AM - 9:00 PM",
+                "thursday": "10:00 AM - 9:00 PM",
+                "friday": "10:00 AM - 10:00 PM",
+                "saturday": "11:00 AM - 10:00 PM",
+                "sunday": "11:00 AM - 8:00 PM",
+            }
+        )
+
+    def get_daily_specials() -> str:
+        return _json.dumps(
+            {
+                "appetizer": "Bruschetta - $8.99",
+                "entree": "Grilled Salmon with lemon butter sauce - $18.99",
+                "dessert": "Tiramisu - $7.99",
+                "drink": "House Red Wine - $6.99",
+            }
+        )
+
+    tools = [
+        {
+            "type": "function",
+            "name": "get_store_hours",
+            "description": "Get the store's opening and closing hours for each day of the week.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
+            "type": "function",
+            "name": "get_daily_specials",
+            "description": "Get today's daily specials including appetizer, entree, dessert, and drink.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    ]
+
+    executors: dict[str, Callable[..., str]] = {
+        "get_store_hours": get_store_hours,
+        "get_daily_specials": get_daily_specials,
+    }
+
+    return tools, executors
+
+
+def _build_realtime_tools(
+    tool_config: "ToolConfig",
+) -> tuple[list[dict], dict[str, "Function"]]:
+    from tools.registry import tool_registry
+
+    tools: list[dict] = []
+    executors: dict[str, "Function"] = {}
+
+    for identifier in tool_config.identifiers:
+        toolkit = tool_registry.get_tool(identifier, tool_config.metadata)
+        if not toolkit:
+            logger.warning(
+                f"[REALTIME] Tool not found in registry: {identifier.tool_name}"
+            )
+            continue
+
+        for func_name, func in toolkit.functions.items():
+            if not func.entrypoint:
+                logger.warning(
+                    "[REALTIME] Skipping tool without entrypoint: %s", func_name
+                )
+                continue
+            tools.append(
+                {
+                    "type": "function",
+                    "name": func_name,
+                    "description": func.description or "",
+                    "parameters": func.parameters,
+                }
+            )
+            executors[func_name] = func
+
+    logger.info(
+        "[REALTIME] Loaded %d tool function(s): %s",
+        len(tools),
+        [t["name"] for t in tools],
+    )
+    return tools, executors
 
 
 async def create_realtime_session(
@@ -347,10 +543,19 @@ async def create_realtime_session(
     if not system_prompt:
         raise ValueError(f"Agent prompt is empty for agent: {agent.id}")
 
+    # Load tools for this agent
+    tool_config = await raw_config._get_agent_tools(session)
+    tools, tool_executors = _build_realtime_tools(tool_config)
+
+    # Add demo tools (no credentials required)
+    demo_tools, demo_executors = _build_demo_tools()
+    tools.extend(demo_tools)
+
     # Build RealtimeConfig from agent settings
     config = RealtimeConfig(
         system_prompt=system_prompt,
         voice_id="alloy",  # TODO: Get from voice_config
+        tools=tools,
     )
 
     # Get OpenAI API key from environment
@@ -358,10 +563,32 @@ async def create_realtime_session(
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable not set")
 
+    all_executors = {**demo_executors}
+
+    # Merge Agno tool executors (entrypoint-based)
+    for func_name, func in tool_executors.items():
+        if func.entrypoint:
+            all_executors[func_name] = func.entrypoint
+
+    async def execute_tool(name: str, arguments: str) -> str:
+        import inspect
+        import json as _json
+
+        executor = all_executors.get(name)
+        if not executor:
+            return _json.dumps({"error": f"Unknown tool: {name}"})
+        args = _json.loads(arguments) if arguments else {}
+        if inspect.iscoroutinefunction(executor):
+            result = await executor(**args)
+        else:
+            result = await asyncio.to_thread(executor, **args)
+        return _json.dumps(result) if not isinstance(result, str) else result
+
     # Create session
     realtime_session = RealtimeSession(
         api_key=api_key,
         config=config,
+        on_tool_call=execute_tool if all_executors else None,
     )
 
     await realtime_session.connect()
