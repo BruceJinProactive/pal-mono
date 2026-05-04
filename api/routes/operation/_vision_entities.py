@@ -22,17 +22,29 @@ from api.schemas.operations.vision_entity import (
     UpdateEntityTypeRequest,
     UpdateStateDefinitionRequest,
 )
-from services import vision_entity_service
+from services import account_service, vision_entity_service
 from utils.log import logger
 from utils.otel import traced
+
+
+async def _resolve_account_id(session: AsyncSession, account_name: str) -> uuid.UUID:
+    account = await account_service.get_account_async(session, account_name)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Account {account_name} not found",
+            headers={"Content-Type": "application/json"},
+        )
+    return account.id
 
 
 @traced("vision_entity.create_entity_type")
 async def create_entity_type(
     session: AsyncSession,
-    account_id: uuid.UUID,
+    account_name: str,
     request: CreateEntityTypeRequest,
 ) -> EntityTypeResponse:
+    account_id = await _resolve_account_id(session, account_name)
     try:
         return await vision_entity_service.create_entity_type(
             session=session,
@@ -49,7 +61,7 @@ async def create_entity_type(
         logger.error(
             "[Vision Entity] Failed to create entity type",
             exc_info=True,
-            extra={"account_id": str(account_id), "entity_type_name": request.name},
+            extra={"account_name": account_name, "entity_type_name": request.name},
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -61,9 +73,10 @@ async def create_entity_type(
 @traced("vision_entity.get_entity_type")
 async def get_entity_type(
     session: AsyncSession,
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
 ) -> EntityTypeResponse:
+    account_id = await _resolve_account_id(session, account_name)
     try:
         return await vision_entity_service.get_entity_type(
             session=session,
@@ -81,7 +94,7 @@ async def get_entity_type(
             "[Vision Entity] Failed to get entity type",
             exc_info=True,
             extra={
-                "account_id": str(account_id),
+                "account_name": account_name,
                 "entity_type_id": str(entity_type_id),
             },
         )
@@ -95,9 +108,10 @@ async def get_entity_type(
 @traced("vision_entity.list_entity_types")
 async def list_entity_types(
     session: AsyncSession,
-    account_id: uuid.UUID,
+    account_name: str,
     is_active: bool | None = None,
 ) -> ListEntityTypesResponse:
+    account_id = await _resolve_account_id(session, account_name)
     try:
         return await vision_entity_service.list_entity_types(
             session=session,
@@ -108,7 +122,7 @@ async def list_entity_types(
         logger.error(
             "[Vision Entity] Failed to list entity types",
             exc_info=True,
-            extra={"account_id": str(account_id)},
+            extra={"account_name": account_name},
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -120,10 +134,11 @@ async def list_entity_types(
 @traced("vision_entity.update_entity_type")
 async def update_entity_type(
     session: AsyncSession,
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     request: UpdateEntityTypeRequest,
 ) -> EntityTypeResponse:
+    account_id = await _resolve_account_id(session, account_name)
     try:
         return await vision_entity_service.update_entity_type(
             session=session,
@@ -149,7 +164,7 @@ async def update_entity_type(
             "[Vision Entity] Failed to update entity type",
             exc_info=True,
             extra={
-                "account_id": str(account_id),
+                "account_name": account_name,
                 "entity_type_id": str(entity_type_id),
             },
         )
@@ -163,9 +178,10 @@ async def update_entity_type(
 @traced("vision_entity.delete_entity_type")
 async def delete_entity_type(
     session: AsyncSession,
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
 ) -> None:
+    account_id = await _resolve_account_id(session, account_name)
     try:
         await vision_entity_service.delete_entity_type(
             session=session,
@@ -183,7 +199,7 @@ async def delete_entity_type(
             "[Vision Entity] Failed to delete entity type",
             exc_info=True,
             extra={
-                "account_id": str(account_id),
+                "account_name": account_name,
                 "entity_type_id": str(entity_type_id),
             },
         )
@@ -202,10 +218,11 @@ async def delete_entity_type(
 @traced("vision_entity.create_state_definition")
 async def create_state_definition(
     session: AsyncSession,
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     request: CreateStateDefinitionRequest,
 ) -> StateDefinitionResponse:
+    account_id = await _resolve_account_id(session, account_name)
     try:
         return await vision_entity_service.create_state_definition(
             session=session,
@@ -231,7 +248,7 @@ async def create_state_definition(
             "[Vision Entity] Failed to create state definition",
             exc_info=True,
             extra={
-                "account_id": str(account_id),
+                "account_name": account_name,
                 "entity_type_id": str(entity_type_id),
             },
         )
@@ -245,9 +262,10 @@ async def create_state_definition(
 @traced("vision_entity.list_state_definitions")
 async def list_state_definitions(
     session: AsyncSession,
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
 ) -> ListStateDefinitionsResponse:
+    account_id = await _resolve_account_id(session, account_name)
     try:
         return await vision_entity_service.list_state_definitions(
             session=session,
@@ -265,7 +283,7 @@ async def list_state_definitions(
             "[Vision Entity] Failed to list state definitions",
             exc_info=True,
             extra={
-                "account_id": str(account_id),
+                "account_name": account_name,
                 "entity_type_id": str(entity_type_id),
             },
         )
@@ -279,11 +297,12 @@ async def list_state_definitions(
 @traced("vision_entity.update_state_definition")
 async def update_state_definition(
     session: AsyncSession,
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     state_definition_id: uuid.UUID,
     request: UpdateStateDefinitionRequest,
 ) -> StateDefinitionResponse:
+    account_id = await _resolve_account_id(session, account_name)
     try:
         return await vision_entity_service.update_state_definition(
             session=session,
@@ -310,7 +329,7 @@ async def update_state_definition(
             "[Vision Entity] Failed to update state definition",
             exc_info=True,
             extra={
-                "account_id": str(account_id),
+                "account_name": account_name,
                 "state_definition_id": str(state_definition_id),
             },
         )
@@ -324,10 +343,11 @@ async def update_state_definition(
 @traced("vision_entity.delete_state_definition")
 async def delete_state_definition(
     session: AsyncSession,
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     state_definition_id: uuid.UUID,
 ) -> None:
+    account_id = await _resolve_account_id(session, account_name)
     try:
         await vision_entity_service.delete_state_definition(
             session=session,
@@ -353,7 +373,7 @@ async def delete_state_definition(
             "[Vision Entity] Failed to delete state definition",
             exc_info=True,
             extra={
-                "account_id": str(account_id),
+                "account_name": account_name,
                 "state_definition_id": str(state_definition_id),
             },
         )

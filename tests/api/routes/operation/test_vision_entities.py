@@ -2,7 +2,8 @@
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -16,11 +17,24 @@ from api.schemas.operations.vision_entity import (
 
 MODULE = "api.routes.operation._vision_entities"
 
+ACCOUNT_NAME = "test-account"
+ACCOUNT_ID = uuid.uuid4()
+
+
+def _mock_resolve_account_id() -> Any:
+    mock_account = MagicMock()
+    mock_account.id = ACCOUNT_ID
+    return patch(
+        f"{MODULE}.account_service.get_account_async",
+        new_callable=AsyncMock,
+        return_value=mock_account,
+    )
+
 
 def _make_response(**overrides: object) -> EntityTypeResponse:
     defaults: dict[str, object] = {
         "id": uuid.uuid4(),
-        "account_id": uuid.uuid4(),
+        "account_id": ACCOUNT_ID,
         "name": "table",
         "display_name": "Table",
         "description": None,
@@ -40,16 +54,18 @@ class TestCreateEntityType:
         from api.routes.operation._vision_entities import create_entity_type
 
         session = AsyncMock()
-        account_id = uuid.uuid4()
         request = CreateEntityTypeRequest(name="table", display_name="Table")
-        expected = _make_response(account_id=account_id)
+        expected = _make_response()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.create_entity_type",
-            new_callable=AsyncMock,
-            return_value=expected,
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.create_entity_type",
+                new_callable=AsyncMock,
+                return_value=expected,
+            ),
         ):
-            result = await create_entity_type(session, account_id, request)
+            result = await create_entity_type(session, ACCOUNT_NAME, request)
 
         assert result.name == "table"
 
@@ -60,13 +76,16 @@ class TestCreateEntityType:
         session = AsyncMock()
         request = CreateEntityTypeRequest(name="dup", display_name="Dup")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.create_entity_type",
-            new_callable=AsyncMock,
-            side_effect=ValueError("already exists"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.create_entity_type",
+                new_callable=AsyncMock,
+                side_effect=ValueError("already exists"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await create_entity_type(session, uuid.uuid4(), request)
+                await create_entity_type(session, ACCOUNT_NAME, request)
             assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
@@ -76,13 +95,16 @@ class TestCreateEntityType:
         session = AsyncMock()
         request = CreateEntityTypeRequest(name="x", display_name="X")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.create_entity_type",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.create_entity_type",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await create_entity_type(session, uuid.uuid4(), request)
+                await create_entity_type(session, ACCOUNT_NAME, request)
             assert exc_info.value.status_code == 500
 
 
@@ -93,16 +115,18 @@ class TestGetEntityType:
         from api.routes.operation._vision_entities import get_entity_type
 
         session = AsyncMock()
-        account_id = uuid.uuid4()
         entity_type_id = uuid.uuid4()
-        expected = _make_response(id=entity_type_id, account_id=account_id)
+        expected = _make_response(id=entity_type_id)
 
-        with patch(
-            f"{MODULE}.vision_entity_service.get_entity_type",
-            new_callable=AsyncMock,
-            return_value=expected,
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.get_entity_type",
+                new_callable=AsyncMock,
+                return_value=expected,
+            ),
         ):
-            result = await get_entity_type(session, account_id, entity_type_id)
+            result = await get_entity_type(session, ACCOUNT_NAME, entity_type_id)
 
         assert result.id == entity_type_id
 
@@ -112,13 +136,16 @@ class TestGetEntityType:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.get_entity_type",
-            new_callable=AsyncMock,
-            side_effect=ValueError("not found"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.get_entity_type",
+                new_callable=AsyncMock,
+                side_effect=ValueError("not found"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await get_entity_type(session, uuid.uuid4(), uuid.uuid4())
+                await get_entity_type(session, ACCOUNT_NAME, uuid.uuid4())
             assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -127,13 +154,16 @@ class TestGetEntityType:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.get_entity_type",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.get_entity_type",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await get_entity_type(session, uuid.uuid4(), uuid.uuid4())
+                await get_entity_type(session, ACCOUNT_NAME, uuid.uuid4())
             assert exc_info.value.status_code == 500
 
 
@@ -144,15 +174,17 @@ class TestListEntityTypes:
         from api.routes.operation._vision_entities import list_entity_types
 
         session = AsyncMock()
-        account_id = uuid.uuid4()
         expected = ListEntityTypesResponse(items=[], total=0)
 
-        with patch(
-            f"{MODULE}.vision_entity_service.list_entity_types",
-            new_callable=AsyncMock,
-            return_value=expected,
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.list_entity_types",
+                new_callable=AsyncMock,
+                return_value=expected,
+            ),
         ):
-            result = await list_entity_types(session, account_id)
+            result = await list_entity_types(session, ACCOUNT_NAME)
 
         assert result.total == 0
 
@@ -162,13 +194,16 @@ class TestListEntityTypes:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.list_entity_types",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.list_entity_types",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await list_entity_types(session, uuid.uuid4())
+                await list_entity_types(session, ACCOUNT_NAME)
             assert exc_info.value.status_code == 500
 
 
@@ -179,18 +214,20 @@ class TestUpdateEntityType:
         from api.routes.operation._vision_entities import update_entity_type
 
         session = AsyncMock()
-        account_id = uuid.uuid4()
         entity_type_id = uuid.uuid4()
         request = UpdateEntityTypeRequest(display_name="New Name")
         expected = _make_response(id=entity_type_id, display_name="New Name")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.update_entity_type",
-            new_callable=AsyncMock,
-            return_value=expected,
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.update_entity_type",
+                new_callable=AsyncMock,
+                return_value=expected,
+            ),
         ):
             result = await update_entity_type(
-                session, account_id, entity_type_id, request
+                session, ACCOUNT_NAME, entity_type_id, request
             )
 
         assert result.display_name == "New Name"
@@ -202,13 +239,16 @@ class TestUpdateEntityType:
         session = AsyncMock()
         request = UpdateEntityTypeRequest(display_name="X")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.update_entity_type",
-            new_callable=AsyncMock,
-            side_effect=ValueError("not found"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.update_entity_type",
+                new_callable=AsyncMock,
+                side_effect=ValueError("not found"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await update_entity_type(session, uuid.uuid4(), uuid.uuid4(), request)
+                await update_entity_type(session, ACCOUNT_NAME, uuid.uuid4(), request)
             assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -218,13 +258,16 @@ class TestUpdateEntityType:
         session = AsyncMock()
         request = UpdateEntityTypeRequest(name="taken")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.update_entity_type",
-            new_callable=AsyncMock,
-            side_effect=ValueError("already exists"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.update_entity_type",
+                new_callable=AsyncMock,
+                side_effect=ValueError("already exists"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await update_entity_type(session, uuid.uuid4(), uuid.uuid4(), request)
+                await update_entity_type(session, ACCOUNT_NAME, uuid.uuid4(), request)
             assert exc_info.value.status_code == 400
 
     @pytest.mark.asyncio
@@ -234,13 +277,16 @@ class TestUpdateEntityType:
         session = AsyncMock()
         request = UpdateEntityTypeRequest(display_name="X")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.update_entity_type",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.update_entity_type",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await update_entity_type(session, uuid.uuid4(), uuid.uuid4(), request)
+                await update_entity_type(session, ACCOUNT_NAME, uuid.uuid4(), request)
             assert exc_info.value.status_code == 500
 
 
@@ -251,15 +297,17 @@ class TestDeleteEntityType:
         from api.routes.operation._vision_entities import delete_entity_type
 
         session = AsyncMock()
-        account_id = uuid.uuid4()
         entity_type_id = uuid.uuid4()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.delete_entity_type",
-            new_callable=AsyncMock,
-            return_value=True,
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.delete_entity_type",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
         ):
-            await delete_entity_type(session, account_id, entity_type_id)
+            await delete_entity_type(session, ACCOUNT_NAME, entity_type_id)
 
     @pytest.mark.asyncio
     async def test_not_found_returns_404(self) -> None:
@@ -267,13 +315,16 @@ class TestDeleteEntityType:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.delete_entity_type",
-            new_callable=AsyncMock,
-            side_effect=ValueError("not found"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.delete_entity_type",
+                new_callable=AsyncMock,
+                side_effect=ValueError("not found"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await delete_entity_type(session, uuid.uuid4(), uuid.uuid4())
+                await delete_entity_type(session, ACCOUNT_NAME, uuid.uuid4())
             assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -282,11 +333,14 @@ class TestDeleteEntityType:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.delete_entity_type",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.delete_entity_type",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await delete_entity_type(session, uuid.uuid4(), uuid.uuid4())
+                await delete_entity_type(session, ACCOUNT_NAME, uuid.uuid4())
             assert exc_info.value.status_code == 500

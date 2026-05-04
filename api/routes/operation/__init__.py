@@ -617,17 +617,18 @@ async def delete_signal_source(
 
 
 @operation_router.post(
-    "/accounts/{account_id}/entity-types",
+    "/accounts/{account_name}/entity-types",
     status_code=status.HTTP_201_CREATED,
     response_model=EntityTypeResponse,
     responses={
         400: {"model": ErrorResponse},
         403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
         500: {"model": ErrorResponse},
     },
 )
 async def create_entity_type(
-    account_id: uuid.UUID,
+    account_name: str,
     request: CreateEntityTypeRequest,
     context: UserContext = Depends(
         require_account_permission("account.write", authenticate_user)
@@ -640,26 +641,27 @@ async def create_entity_type(
     Entity types define categories of trackable objects (e.g., "table", "employee").
 
     Path Parameters:
-    - account_id: UUID of the account
+    - account_name: Name of the account
     """
     _ = context
     return await _vision_entities.create_entity_type(
         session=session,
-        account_id=account_id,
+        account_name=account_name,
         request=request,
     )
 
 
 @operation_router.get(
-    "/accounts/{account_id}/entity-types",
+    "/accounts/{account_name}/entity-types",
     response_model=ListEntityTypesResponse,
     responses={
         403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
         500: {"model": ErrorResponse},
     },
 )
 async def list_entity_types(
-    account_id: uuid.UUID,
+    account_name: str,
     is_active: bool | None = Query(default=None, description="Filter by active status"),
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
@@ -670,7 +672,7 @@ async def list_entity_types(
     List all entity types for an account.
 
     Path Parameters:
-    - account_id: UUID of the account
+    - account_name: Name of the account
 
     Query Parameters:
     - is_active (optional): Filter by active status
@@ -678,13 +680,13 @@ async def list_entity_types(
     _ = context
     return await _vision_entities.list_entity_types(
         session=session,
-        account_id=account_id,
+        account_name=account_name,
         is_active=is_active,
     )
 
 
 @operation_router.get(
-    "/accounts/{account_id}/entity-types/{entity_type_id}",
+    "/accounts/{account_name}/entity-types/{entity_type_id}",
     response_model=EntityTypeResponse,
     responses={
         403: {"model": ErrorResponse},
@@ -693,7 +695,7 @@ async def list_entity_types(
     },
 )
 async def get_entity_type(
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
@@ -704,19 +706,19 @@ async def get_entity_type(
     Get an entity type by ID.
 
     Path Parameters:
-    - account_id: UUID of the account
+    - account_name: Name of the account
     - entity_type_id: UUID of the entity type
     """
     _ = context
     return await _vision_entities.get_entity_type(
         session=session,
-        account_id=account_id,
+        account_name=account_name,
         entity_type_id=entity_type_id,
     )
 
 
 @operation_router.patch(
-    "/accounts/{account_id}/entity-types/{entity_type_id}",
+    "/accounts/{account_name}/entity-types/{entity_type_id}",
     response_model=EntityTypeResponse,
     responses={
         400: {"model": ErrorResponse},
@@ -726,7 +728,7 @@ async def get_entity_type(
     },
 )
 async def update_entity_type(
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     request: UpdateEntityTypeRequest,
     context: UserContext = Depends(
@@ -738,20 +740,20 @@ async def update_entity_type(
     Update an entity type.
 
     Path Parameters:
-    - account_id: UUID of the account
+    - account_name: Name of the account
     - entity_type_id: UUID of the entity type
     """
     _ = context
     return await _vision_entities.update_entity_type(
         session=session,
-        account_id=account_id,
+        account_name=account_name,
         entity_type_id=entity_type_id,
         request=request,
     )
 
 
 @operation_router.delete(
-    "/accounts/{account_id}/entity-types/{entity_type_id}",
+    "/accounts/{account_name}/entity-types/{entity_type_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         403: {"model": ErrorResponse},
@@ -760,7 +762,7 @@ async def update_entity_type(
     },
 )
 async def delete_entity_type(
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     context: UserContext = Depends(
         require_account_permission("account.write", authenticate_user)
@@ -771,13 +773,13 @@ async def delete_entity_type(
     Delete an entity type.
 
     Path Parameters:
-    - account_id: UUID of the account
+    - account_name: Name of the account
     - entity_type_id: UUID of the entity type
     """
     _ = context
     return await _vision_entities.delete_entity_type(
         session=session,
-        account_id=account_id,
+        account_name=account_name,
         entity_type_id=entity_type_id,
     )
 
@@ -788,7 +790,7 @@ async def delete_entity_type(
 
 
 @operation_router.post(
-    "/accounts/{account_id}/entity-types/{entity_type_id}/state-definitions",
+    "/accounts/{account_name}/entity-types/{entity_type_id}/state-definitions",
     status_code=status.HTTP_201_CREATED,
     response_model=StateDefinitionResponse,
     responses={
@@ -799,7 +801,7 @@ async def delete_entity_type(
     },
 )
 async def create_state_definition(
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     request: CreateStateDefinitionRequest,
     context: UserContext = Depends(
@@ -814,20 +816,20 @@ async def create_state_definition(
     (e.g., "dirty", "clean", "occupied").
 
     Path Parameters:
-    - account_id: UUID of the account
+    - account_name: Name of the account
     - entity_type_id: UUID of the entity type
     """
     _ = context
     return await _vision_entities.create_state_definition(
         session=session,
-        account_id=account_id,
+        account_name=account_name,
         entity_type_id=entity_type_id,
         request=request,
     )
 
 
 @operation_router.get(
-    "/accounts/{account_id}/entity-types/{entity_type_id}/state-definitions",
+    "/accounts/{account_name}/entity-types/{entity_type_id}/state-definitions",
     response_model=ListStateDefinitionsResponse,
     responses={
         403: {"model": ErrorResponse},
@@ -836,7 +838,7 @@ async def create_state_definition(
     },
 )
 async def list_state_definitions(
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
@@ -847,19 +849,19 @@ async def list_state_definitions(
     List all state definitions for an entity type.
 
     Path Parameters:
-    - account_id: UUID of the account
+    - account_name: Name of the account
     - entity_type_id: UUID of the entity type
     """
     _ = context
     return await _vision_entities.list_state_definitions(
         session=session,
-        account_id=account_id,
+        account_name=account_name,
         entity_type_id=entity_type_id,
     )
 
 
 @operation_router.patch(
-    "/accounts/{account_id}/entity-types/{entity_type_id}/state-definitions/{state_definition_id}",
+    "/accounts/{account_name}/entity-types/{entity_type_id}/state-definitions/{state_definition_id}",
     response_model=StateDefinitionResponse,
     responses={
         400: {"model": ErrorResponse},
@@ -869,7 +871,7 @@ async def list_state_definitions(
     },
 )
 async def update_state_definition(
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     state_definition_id: uuid.UUID,
     request: UpdateStateDefinitionRequest,
@@ -882,14 +884,14 @@ async def update_state_definition(
     Update a state definition.
 
     Path Parameters:
-    - account_id: UUID of the account
+    - account_name: Name of the account
     - entity_type_id: UUID of the entity type
     - state_definition_id: UUID of the state definition
     """
     _ = context
     return await _vision_entities.update_state_definition(
         session=session,
-        account_id=account_id,
+        account_name=account_name,
         entity_type_id=entity_type_id,
         state_definition_id=state_definition_id,
         request=request,
@@ -897,7 +899,7 @@ async def update_state_definition(
 
 
 @operation_router.delete(
-    "/accounts/{account_id}/entity-types/{entity_type_id}/state-definitions/{state_definition_id}",
+    "/accounts/{account_name}/entity-types/{entity_type_id}/state-definitions/{state_definition_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         400: {"model": ErrorResponse},
@@ -907,7 +909,7 @@ async def update_state_definition(
     },
 )
 async def delete_state_definition(
-    account_id: uuid.UUID,
+    account_name: str,
     entity_type_id: uuid.UUID,
     state_definition_id: uuid.UUID,
     context: UserContext = Depends(
@@ -921,14 +923,14 @@ async def delete_state_definition(
     Returns 400 if the state is currently in use by any entity.
 
     Path Parameters:
-    - account_id: UUID of the account
+    - account_name: Name of the account
     - entity_type_id: UUID of the entity type
     - state_definition_id: UUID of the state definition
     """
     _ = context
     return await _vision_entities.delete_state_definition(
         session=session,
-        account_id=account_id,
+        account_name=account_name,
         entity_type_id=entity_type_id,
         state_definition_id=state_definition_id,
     )

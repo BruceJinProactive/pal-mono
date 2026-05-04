@@ -2,7 +2,8 @@
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -15,6 +16,19 @@ from api.schemas.operations.vision_entity import (
 )
 
 MODULE = "api.routes.operation._vision_entities"
+
+ACCOUNT_NAME = "test-account"
+ACCOUNT_ID = uuid.uuid4()
+
+
+def _mock_resolve_account_id() -> Any:
+    mock_account = MagicMock()
+    mock_account.id = ACCOUNT_ID
+    return patch(
+        f"{MODULE}.account_service.get_account_async",
+        new_callable=AsyncMock,
+        return_value=mock_account,
+    )
 
 
 def _make_sd_response(**overrides: object) -> StateDefinitionResponse:
@@ -39,18 +53,20 @@ class TestCreateStateDefinition:
         from api.routes.operation._vision_entities import create_state_definition
 
         session = AsyncMock()
-        account_id = uuid.uuid4()
         entity_type_id = uuid.uuid4()
         request = CreateStateDefinitionRequest(name="clean", display_name="Clean")
         expected = _make_sd_response(entity_type_id=entity_type_id)
 
-        with patch(
-            f"{MODULE}.vision_entity_service.create_state_definition",
-            new_callable=AsyncMock,
-            return_value=expected,
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.create_state_definition",
+                new_callable=AsyncMock,
+                return_value=expected,
+            ),
         ):
             result = await create_state_definition(
-                session, account_id, entity_type_id, request
+                session, ACCOUNT_NAME, entity_type_id, request
             )
 
         assert result.name == "clean"
@@ -62,14 +78,17 @@ class TestCreateStateDefinition:
         session = AsyncMock()
         request = CreateStateDefinitionRequest(name="x", display_name="X")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.create_state_definition",
-            new_callable=AsyncMock,
-            side_effect=ValueError("not found"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.create_state_definition",
+                new_callable=AsyncMock,
+                side_effect=ValueError("not found"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await create_state_definition(
-                    session, uuid.uuid4(), uuid.uuid4(), request
+                    session, ACCOUNT_NAME, uuid.uuid4(), request
                 )
             assert exc_info.value.status_code == 404
 
@@ -80,14 +99,17 @@ class TestCreateStateDefinition:
         session = AsyncMock()
         request = CreateStateDefinitionRequest(name="dup", display_name="Dup")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.create_state_definition",
-            new_callable=AsyncMock,
-            side_effect=ValueError("already exists"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.create_state_definition",
+                new_callable=AsyncMock,
+                side_effect=ValueError("already exists"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await create_state_definition(
-                    session, uuid.uuid4(), uuid.uuid4(), request
+                    session, ACCOUNT_NAME, uuid.uuid4(), request
                 )
             assert exc_info.value.status_code == 400
 
@@ -98,14 +120,17 @@ class TestCreateStateDefinition:
         session = AsyncMock()
         request = CreateStateDefinitionRequest(name="x", display_name="X")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.create_state_definition",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.create_state_definition",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await create_state_definition(
-                    session, uuid.uuid4(), uuid.uuid4(), request
+                    session, ACCOUNT_NAME, uuid.uuid4(), request
                 )
             assert exc_info.value.status_code == 500
 
@@ -119,12 +144,15 @@ class TestListStateDefinitions:
         session = AsyncMock()
         expected = ListStateDefinitionsResponse(items=[], total=0)
 
-        with patch(
-            f"{MODULE}.vision_entity_service.list_state_definitions",
-            new_callable=AsyncMock,
-            return_value=expected,
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.list_state_definitions",
+                new_callable=AsyncMock,
+                return_value=expected,
+            ),
         ):
-            result = await list_state_definitions(session, uuid.uuid4(), uuid.uuid4())
+            result = await list_state_definitions(session, ACCOUNT_NAME, uuid.uuid4())
 
         assert result.total == 0
 
@@ -134,13 +162,16 @@ class TestListStateDefinitions:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.list_state_definitions",
-            new_callable=AsyncMock,
-            side_effect=ValueError("not found"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.list_state_definitions",
+                new_callable=AsyncMock,
+                side_effect=ValueError("not found"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await list_state_definitions(session, uuid.uuid4(), uuid.uuid4())
+                await list_state_definitions(session, ACCOUNT_NAME, uuid.uuid4())
             assert exc_info.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -149,13 +180,16 @@ class TestListStateDefinitions:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.list_state_definitions",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.list_state_definitions",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
-                await list_state_definitions(session, uuid.uuid4(), uuid.uuid4())
+                await list_state_definitions(session, ACCOUNT_NAME, uuid.uuid4())
             assert exc_info.value.status_code == 500
 
 
@@ -170,13 +204,16 @@ class TestUpdateStateDefinition:
         request = UpdateStateDefinitionRequest(display_name="Dirty")
         expected = _make_sd_response(id=sd_id, display_name="Dirty")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.update_state_definition",
-            new_callable=AsyncMock,
-            return_value=expected,
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.update_state_definition",
+                new_callable=AsyncMock,
+                return_value=expected,
+            ),
         ):
             result = await update_state_definition(
-                session, uuid.uuid4(), uuid.uuid4(), sd_id, request
+                session, ACCOUNT_NAME, uuid.uuid4(), sd_id, request
             )
 
         assert result.display_name == "Dirty"
@@ -188,14 +225,17 @@ class TestUpdateStateDefinition:
         session = AsyncMock()
         request = UpdateStateDefinitionRequest(display_name="X")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.update_state_definition",
-            new_callable=AsyncMock,
-            side_effect=ValueError("not found"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.update_state_definition",
+                new_callable=AsyncMock,
+                side_effect=ValueError("not found"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await update_state_definition(
-                    session, uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), request
+                    session, ACCOUNT_NAME, uuid.uuid4(), uuid.uuid4(), request
                 )
             assert exc_info.value.status_code == 404
 
@@ -206,14 +246,17 @@ class TestUpdateStateDefinition:
         session = AsyncMock()
         request = UpdateStateDefinitionRequest(name="taken")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.update_state_definition",
-            new_callable=AsyncMock,
-            side_effect=ValueError("already exists"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.update_state_definition",
+                new_callable=AsyncMock,
+                side_effect=ValueError("already exists"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await update_state_definition(
-                    session, uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), request
+                    session, ACCOUNT_NAME, uuid.uuid4(), uuid.uuid4(), request
                 )
             assert exc_info.value.status_code == 400
 
@@ -224,14 +267,17 @@ class TestUpdateStateDefinition:
         session = AsyncMock()
         request = UpdateStateDefinitionRequest(display_name="X")
 
-        with patch(
-            f"{MODULE}.vision_entity_service.update_state_definition",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.update_state_definition",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await update_state_definition(
-                    session, uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), request
+                    session, ACCOUNT_NAME, uuid.uuid4(), uuid.uuid4(), request
                 )
             assert exc_info.value.status_code == 500
 
@@ -244,13 +290,16 @@ class TestDeleteStateDefinition:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.delete_state_definition",
-            new_callable=AsyncMock,
-            return_value=True,
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.delete_state_definition",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
         ):
             await delete_state_definition(
-                session, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+                session, ACCOUNT_NAME, uuid.uuid4(), uuid.uuid4()
             )
 
     @pytest.mark.asyncio
@@ -259,14 +308,17 @@ class TestDeleteStateDefinition:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.delete_state_definition",
-            new_callable=AsyncMock,
-            side_effect=ValueError("Cannot delete state definition: 3 entities"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.delete_state_definition",
+                new_callable=AsyncMock,
+                side_effect=ValueError("Cannot delete state definition: 3 entities"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await delete_state_definition(
-                    session, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+                    session, ACCOUNT_NAME, uuid.uuid4(), uuid.uuid4()
                 )
             assert exc_info.value.status_code == 400
 
@@ -276,14 +328,17 @@ class TestDeleteStateDefinition:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.delete_state_definition",
-            new_callable=AsyncMock,
-            side_effect=ValueError("not found"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.delete_state_definition",
+                new_callable=AsyncMock,
+                side_effect=ValueError("not found"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await delete_state_definition(
-                    session, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+                    session, ACCOUNT_NAME, uuid.uuid4(), uuid.uuid4()
                 )
             assert exc_info.value.status_code == 404
 
@@ -293,13 +348,16 @@ class TestDeleteStateDefinition:
 
         session = AsyncMock()
 
-        with patch(
-            f"{MODULE}.vision_entity_service.delete_state_definition",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("boom"),
+        with (
+            _mock_resolve_account_id(),
+            patch(
+                f"{MODULE}.vision_entity_service.delete_state_definition",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await delete_state_definition(
-                    session, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+                    session, ACCOUNT_NAME, uuid.uuid4(), uuid.uuid4()
                 )
             assert exc_info.value.status_code == 500
