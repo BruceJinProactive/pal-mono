@@ -6,6 +6,7 @@ with callback support and factory function for creating sessions.
 """
 
 import asyncio
+import json
 import os
 import time
 import uuid
@@ -189,10 +190,19 @@ class RealtimeSession:
                 exc_info=True,
             )
 
+    def _filter_tool_args(self, name: str, arguments: str) -> str:
+        for t in self.config.tools:
+            if t.get("name") == name:
+                allowed = set(t.get("parameters", {}).get("properties", {}).keys())
+                args = json.loads(arguments) if arguments else {}
+                filtered = {k: v for k, v in args.items() if k in allowed}
+                return json.dumps(filtered)
+        return arguments
+
     async def _handle_tool_call(self, event: object) -> None:
         call_id = getattr(event, "call_id", "")
         name = getattr(event, "name", "")
-        arguments = getattr(event, "arguments", "{}")
+        arguments = self._filter_tool_args(name, getattr(event, "arguments", "{}"))
 
         start = time.monotonic()
 
@@ -497,9 +507,29 @@ def _build_realtime_tools(
     return tools, executors
 
 
+def _make_tool_executor(
+    executors: dict,
+) -> Callable[[str, str], Awaitable[str]]:
+    import inspect
+
+    async def execute_tool(name: str, arguments: str) -> str:
+        executor = executors.get(name)
+        if not executor:
+            return json.dumps({"error": f"Unknown tool: {name}"})
+        args = json.loads(arguments) if arguments else {}
+        if inspect.iscoroutinefunction(executor):
+            result = await executor(**args)
+        else:
+            result = await asyncio.to_thread(executor, **args)
+        return json.dumps(result) if not isinstance(result, str) else result
+
+    return execute_tool
+
+
 async def create_realtime_session(
     session: AsyncSession,
     recipient_id: str,
+    caller_id: str | None = None,
 ) -> RealtimeSession:
     """
     Create and connect RealtimeSession for voice conversations.
@@ -565,6 +595,8 @@ async def create_realtime_session(
         conversation_id=uuid.uuid4(),  # Generate new conversation ID
         channel=Channel.VOICE,
         integration=None,
+        sender_identifier=caller_id,
+        receiver_identifier=recipient_id,
         project_integrations=project_integrations,
         faqs=[],
     )
@@ -623,25 +655,11 @@ async def create_realtime_session(
         if func.entrypoint:
             all_executors[func_name] = func.entrypoint
 
-    async def execute_tool(name: str, arguments: str) -> str:
-        import inspect
-        import json as _json
-
-        executor = all_executors.get(name)
-        if not executor:
-            return _json.dumps({"error": f"Unknown tool: {name}"})
-        args = _json.loads(arguments) if arguments else {}
-        if inspect.iscoroutinefunction(executor):
-            result = await executor(**args)
-        else:
-            result = await asyncio.to_thread(executor, **args)
-        return _json.dumps(result) if not isinstance(result, str) else result
-
     # Create session
     realtime_session = RealtimeSession(
         api_key=api_key,
         config=config,
-        on_tool_call=execute_tool if all_executors else None,
+        on_tool_call=(_make_tool_executor(all_executors) if all_executors else None),
     )
 
     await realtime_session.connect()

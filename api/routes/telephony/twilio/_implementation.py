@@ -52,6 +52,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
         start_data = start_event.get("start", {})
         custom_params = start_data.get("customParameters", {})
         recipient_id = custom_params.get("to_number")
+        caller_id = custom_params.get("from_number")
 
         if not recipient_id:
             logger.error("[TWILIO_WS] Missing recipient_id in start event")
@@ -62,6 +63,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
             "[TWILIO_WS] Starting call",
             extra={
                 "recipient_id": recipient_id,
+                "caller_id": caller_id,
                 "call_sid": start_data.get("callSid"),
             },
         )
@@ -72,6 +74,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                 realtime_session = await realtime_service.create_realtime_session(
                     db_session,
                     recipient_id,
+                    caller_id=caller_id,
                 )
             except ValueError as e:
                 logger.error(f"[TWILIO_WS] Project lookup failed: {e}")
@@ -86,7 +89,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                 await websocket.close(code=1011, reason="Service unavailable")
                 return
 
-        # Create handler and wire barge-in callback
+        # Create handler and wire interruption callback
         handler = VoiceCallHandler(
             twilio_websocket=websocket,
             realtime_session=realtime_session,

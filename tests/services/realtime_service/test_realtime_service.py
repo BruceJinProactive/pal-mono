@@ -1220,6 +1220,98 @@ class TestHandleToolCall:
 
 
 # ---------------------------------------------------------------------------
+# _filter_tool_args Tests
+# ---------------------------------------------------------------------------
+
+
+class TestFilterToolArgs:
+    """Test RealtimeSession._filter_tool_args() method."""
+
+    def test_filters_unknown_kwargs(self) -> None:
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(
+                system_prompt="Test",
+                voice_id="alloy",
+                tools=[
+                    {
+                        "type": "function",
+                        "name": "make_reservation",
+                        "description": "Make a reservation",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "party_size": {"type": "integer"},
+                            },
+                        },
+                    }
+                ],
+            ),
+        )
+        import json
+
+        result = session._filter_tool_args(
+            "make_reservation",
+            json.dumps({"name": "Alice", "party_size": 2, "phone_number": "555-1234"}),
+        )
+        parsed = json.loads(result)
+        assert "name" in parsed
+        assert "party_size" in parsed
+        assert "phone_number" not in parsed
+
+    def test_passes_through_when_tool_not_in_config(self) -> None:
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+        )
+        import json
+
+        args = json.dumps({"foo": "bar"})
+        result = session._filter_tool_args("unknown_tool", args)
+        assert result == args
+
+
+# ---------------------------------------------------------------------------
+# _make_tool_executor Tests
+# ---------------------------------------------------------------------------
+
+
+class TestMakeToolExecutor:
+    """Test _make_tool_executor() function."""
+
+    @pytest.mark.asyncio
+    async def test_executes_sync_tool(self) -> None:
+        from services.realtime_service._implementation import _make_tool_executor
+
+        def my_tool(x: int) -> dict:
+            return {"result": x * 2}
+
+        executor = _make_tool_executor({"my_tool": my_tool})
+        result = await executor("my_tool", '{"x": 5}')
+        assert '"result": 10' in result
+
+    @pytest.mark.asyncio
+    async def test_executes_async_tool(self) -> None:
+        from services.realtime_service._implementation import _make_tool_executor
+
+        async def my_async_tool(x: int) -> dict:
+            return {"result": x + 1}
+
+        executor = _make_tool_executor({"my_async_tool": my_async_tool})
+        result = await executor("my_async_tool", '{"x": 3}')
+        assert '"result": 4' in result
+
+    @pytest.mark.asyncio
+    async def test_returns_error_for_unknown_tool(self) -> None:
+        from services.realtime_service._implementation import _make_tool_executor
+
+        executor = _make_tool_executor({"real_tool": lambda: "ok"})
+        result = await executor("fake_tool", "{}")
+        assert "Unknown tool" in result
+
+
+# ---------------------------------------------------------------------------
 # Tool call event in receive_audio_stream Tests
 # ---------------------------------------------------------------------------
 
