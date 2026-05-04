@@ -212,3 +212,99 @@ class TestGetByProjectId:
         with pytest.raises(SQLAlchemyError):
             await repo.get_by_project_id(uuid.uuid4())
         mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# get_by_idempotency_key
+# ---------------------------------------------------------------------------
+
+
+class TestGetByIdempotencyKey:
+    @pytest.mark.asyncio
+    async def test_found(
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.get_by_idempotency_key("key_123")
+        assert isinstance(data, CateringRequestData)
+        assert data.idempotency_key == "key_123"
+
+    @pytest.mark.asyncio
+    async def test_not_found(
+        self, repo: CateringRequestRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        assert await repo.get_by_idempotency_key("nonexistent") is None
+
+    @pytest.mark.asyncio
+    async def test_error_rolls_back(
+        self, repo: CateringRequestRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = SQLAlchemyError("db error")
+        with pytest.raises(SQLAlchemyError):
+            await repo.get_by_idempotency_key("key_123")
+        mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# create
+# ---------------------------------------------------------------------------
+
+
+class TestCreate:
+    @pytest.mark.asyncio
+    async def test_creates_request(
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        data = CateringRequestData(
+            id=sample_id,
+            project_id=uuid.uuid4(),
+            event_date=date(2025, 7, 1),
+            contact_name="John",
+            contact_phone_number="+1234567890",
+            status="INQUIRY",
+            idempotency_key="key_123",
+            created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            event_time=time(12, 0),
+            party_size=50,
+        )
+
+        await repo.create(data)
+
+        mock_session.add.assert_called_once()
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_error_rolls_back(
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        mock_session.commit.side_effect = Exception("insert failed")
+        data = CateringRequestData(
+            id=uuid.uuid4(),
+            project_id=uuid.uuid4(),
+            event_date=date(2025, 7, 1),
+            contact_name="John",
+            contact_phone_number="+1234567890",
+            status="INQUIRY",
+            idempotency_key="key_456",
+            created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            updated_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+        )
+        with pytest.raises(Exception, match="insert failed"):
+            await repo.create(data)
+        mock_session.rollback.assert_awaited_once()

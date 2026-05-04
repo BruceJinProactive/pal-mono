@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.pal_repository.data_classes.catering_request import CateringRequestData
-from db.tables.catering_requests import CateringRequest
+from db.tables.catering_requests import CateringRequest, RequestStatus
 from utils.log import logger
 
 
@@ -68,4 +68,47 @@ class CateringRequestRepository:
         except SQLAlchemyError:
             await self.session.rollback()
             logger.exception("Error retrieving catering requests by project")
+            raise
+
+    async def get_by_idempotency_key(
+        self, idempotency_key: str
+    ) -> CateringRequestData | None:
+        """Retrieve a catering request by its idempotency key."""
+        try:
+            result = await self.session.execute(
+                select(CateringRequest).filter(
+                    CateringRequest.idempotency_key == idempotency_key
+                )
+            )
+            row = result.scalar_one_or_none()
+            return _to_data(row) if row else None
+        except SQLAlchemyError:
+            await self.session.rollback()
+            logger.exception("Error retrieving catering request by idempotency key")
+            raise
+
+    async def create(self, data: CateringRequestData) -> None:
+        """Create a new catering request."""
+        try:
+            row = CateringRequest(
+                project_id=data.project_id,
+                event_date=data.event_date,
+                contact_name=data.contact_name,
+                contact_phone_number=data.contact_phone_number,
+                idempotency_key=data.idempotency_key,
+                event_time=data.event_time,
+                event_address=data.event_address,
+                event_detail=data.event_detail,
+                event_fulfillment=data.event_fulfillment,
+                party_size=data.party_size,
+                contact_id=data.contact_id,
+                status=(
+                    RequestStatus(data.status) if data.status else RequestStatus.INQUIRY
+                ),
+            )
+            self.session.add(row)
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Error creating catering request")
             raise
