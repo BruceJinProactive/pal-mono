@@ -196,6 +196,12 @@ class RealtimeSession:
                 allowed = set(t.get("parameters", {}).get("properties", {}).keys())
                 args = json.loads(arguments) if arguments else {}
                 filtered = {k: v for k, v in args.items() if k in allowed}
+                removed = set(args.keys()) - set(filtered.keys())
+                if removed:
+                    logger.info(
+                        f"[REALTIME.{name}] Filtered out args: {removed}",
+                        extra={"allowed": list(allowed), "removed": list(removed)},
+                    )
                 return json.dumps(filtered)
         return arguments
 
@@ -627,15 +633,6 @@ async def create_realtime_session(
     )
 
     # Append tool usage instructions to system prompt
-    if tools:
-        tool_names = ", ".join(t["name"] for t in tools)
-        system_prompt += (
-            f"\n\nYou have access to the following tools: {tool_names}. "
-            "Always use the appropriate tool when the user asks about store hours, "
-            "daily specials, or any information that a tool can provide. "
-            "Do not make up answers — call the tool and use its response."
-        )
-
     # Build RealtimeConfig from agent settings
     config = RealtimeConfig(
         system_prompt=system_prompt,
