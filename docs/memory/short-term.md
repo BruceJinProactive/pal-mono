@@ -2,7 +2,7 @@
 
 Current project context. Read this before starting any work.
 
-Last updated: 2026-04-28
+Last updated: 2026-05-01
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: 2026-04-28
 
 - **LiveKit migration** (started 2025-02) — Vapi is fully removed at the code level: `tools/vapi_tool/` and `api/routes/integrations/vapi/` source files are deleted, `VoiceProvider` enum is LiveKit-only (explicitly rejects `"vapi"`), and the `assistant-request` webhook is gone. Residual legacy only: `conversations.vapi_control_url` column (kept for historical data) and a few stale docstrings/log strings in `services/number_service/_implementation.py`, `api/routes/internal/_voice.py`, and admin routes. Remaining LiveKit work: `services/voice_service/providers/livekit/` not yet created, plus later migration phases TBD. → `docs/plans/livekit-migration/`
 
-- **Eval scenarios DB migration** (started 2026-04-23) — Migrating eval YAML scenario files from filesystem to `eval_scenarios` DB table. Table + repository shipped (record: `docs/records/2026-04-23-eval-scenarios-table.md`). PR #4087 migrated eval tests to DB. Remaining: API endpoints for scenario CRUD, seed/backfill script, retire YAML filesystem fallback.
+- **Eval scenarios DB migration** (started 2026-04-23) — Migrating eval YAML scenario files from filesystem to `eval_scenarios` DB table. Table + repository shipped (record: `docs/records/2026-04-23-eval-scenarios-table.md`). PR #4087 migrated eval tests to DB. 2026-05-01 (PAL-10278): added pal-agents case-spec JSON → scenario YAML converter + generated Sonny's BBQ corpus (`services/eval_service/scripts/convert_case_specs.py`, `services/eval_service/scenarios/ordering/sonnys_bbq.yaml`); output is forward-compatible with `eval_scenarios.raw_yaml` so the converter can be reused in-memory by the seed script. Remaining: API endpoints for scenario CRUD, seed/backfill script (which will absorb `sonnys_bbq.yaml`), retire YAML filesystem fallback.
 
 - **Eval context modifier for phone injection** (started 2026-04-25) — After removing `"api"` from the `customer_phone` channel list (PR #4086), API-channel evals get `customer_phone=None`. Adding an optional `context_modifier` callback on `get_chat_response_async` that only the eval `InProcessDriver` uses, to inject phone into RuntimeContext without polluting the public `Message.Metadata` schema. Also lays groundwork for future overrides (e.g. `spec_modifier`). → `docs/plans/conversation-eval/eval-context-modifier-plan.md` (partially shipped in PR #4092).
 
@@ -20,6 +20,7 @@ Last updated: 2026-04-28
 
 ## Recently Landed
 
+- 2026-05-01: **Eval case-spec converter** (PAL-10278). `services/eval_service/scripts/convert_case_specs.py` turns pal-agents case-spec JSON into `EvalScenario` YAML; generated `services/eval_service/scenarios/ordering/sonnys_bbq.yaml` (5,288 lines, do not hand-edit). Pure/stateless, reusable by the future `eval_scenarios` seed script. → `docs/records/2026-05-01-eval-case-spec-converter.md`
 - 2026-04-28: **StatsD → OTel metrics migration**. Removed `utils/dd.py` (DogStatsd). All metrics now use OTel `increment_counter` / `record_histogram` / `record_duration` from `utils/otel.py`, exported via OTLP. `datadog` package removal is a separate PR.
 - 2026-04-28: **Eval `spec_modifier` for order-submission safety** — `InProcessDriver` now installs `apply_eval_safety` by default via a new `spec_modifier` hook on `message_service.get_chat_response_async`. Forces `toast.submit_orders=False` and `adora.force_payment_link=True` regardless of DB config. → `docs/records/2026-04-28-eval-spec-modifier.md`
 - 2026-04-25: **Datadog LLMObs → Langfuse/OTel migration** (PAL-10113, PR #4090). ADR-013 superseded. LLM observability now uses Langfuse SDK v4 (`@observe` decorators in `agent/agent.py`, `agent/framework/agno.py`, tool `_implementation.py` files). General tracing moves to OpenTelemetry (Grafana Tempo).

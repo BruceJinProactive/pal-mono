@@ -5,5 +5,6 @@
     "d24ca630-c41f-4035-8905-b90cf2adc10d": ["ordering/mattengas_pizzeria.yaml"],
     "f9bc5335-1c5b-4450-a0c4-aca259741f51": ["ordering/spread_bagels.yaml"],
     "bf4a04ba-12d6-44f2-b405-e14dbe64a5c3": ["ordering/tonopizzeriacheesesteaks.yaml"],
-    "b4fd479c-0dd9-4306-bbe7-63468aae9b92": ["ordering/giordanos.yaml"]
+    "b4fd479c-0dd9-4306-bbe7-63468aae9b92": ["ordering/giordanos.yaml"],
+    "950d4f23-95fc-40ff-8505-ff40f10ae260": ["ordering/sonnys_bbq.yaml"]
 }

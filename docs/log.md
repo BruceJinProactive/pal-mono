@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-01
+
+- **Eval case-spec → scenario YAML converter + Sonny's BBQ scenarios** (PAL-10278). New `services/eval_service/scripts/convert_case_specs.py` converts pal-agents case-spec JSON (Toast ordering cases with item + selection trees) into pal-mono `EvalScenario` YAML: opening utterance + AI-driven goal turn with shared `HARD_RULES` / `DEFAULT_CUSTOMER`, optional `get_toast_item_details_v3` lookup, and a required `toast_takeout_create_order_v1` call carrying full `selection_paths`. Speech strings are cleaned of internal Toast codes (`(.32)`, `(1LB)`, `(MOD)`, etc.); raw labels are kept in tool payloads. YAML emits `|` block literals for multi-line fields via a `SafeDumper` subclass. 19 tests covering round-trip `EvalScenario` validation. Generated `services/eval_service/scenarios/ordering/sonnys_bbq.yaml` (5,288 lines, do not hand-edit). Transitional — forward-compatible with the in-flight `eval_scenarios` DB migration; the same converter can be reused by the future seed script. → `docs/records/2026-05-01-eval-case-spec-converter.md`
+
+---
+
 ## 2026-04-29
 
 - Add Vision Entity Type CRUD API (`/v1/operation/accounts/{account_id}/entity-types`) — repository, service, routes, schemas, OTel tracing, structured logging, 16 tests → `docs/records/2026-04-29-vision-entity-type-api.md`
