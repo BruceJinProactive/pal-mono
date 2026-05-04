@@ -13,15 +13,16 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, AsyncIterator
 
 if TYPE_CHECKING:
-    from agent.tool import ToolConfig
     from agno.tools.function import Function
+
+    from agent.tool import ToolConfig
 
 from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db.tables import Project
+from db.tables import Project, ProjectIntegration
 from db.tables.types import Channel
 from services.agent_service._raw_config import RawConfig
 from utils.log import logger
@@ -542,6 +543,19 @@ async def create_realtime_session(
     if not agent:
         raise ValueError(f"Agent not found for project: {project.name}")
 
+    # Load project integrations for tool resolution
+    pi_result = await session.execute(
+        select(ProjectIntegration).filter(ProjectIntegration.project_id == project.id)
+    )
+    project_integrations = list(pi_result.scalars())
+
+    logger.info(
+        "[REALTIME] Project integrations: %d found for project %s (%s)",
+        len(project_integrations),
+        project.name,
+        [pi.tool_name for pi in project_integrations],
+    )
+
     # Build agent configuration using existing pattern
     raw_config = RawConfig(
         agent=agent,
@@ -551,7 +565,7 @@ async def create_realtime_session(
         conversation_id=uuid.uuid4(),  # Generate new conversation ID
         channel=Channel.VOICE,
         integration=None,
-        project_integrations=[],
+        project_integrations=project_integrations,
         faqs=[],
     )
 
