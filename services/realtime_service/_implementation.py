@@ -7,6 +7,7 @@ with callback support and factory function for creating sessions.
 
 import asyncio
 import os
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, AsyncIterator
@@ -192,6 +193,8 @@ class RealtimeSession:
         name = getattr(event, "name", "")
         arguments = getattr(event, "arguments", "{}")
 
+        start = time.monotonic()
+
         logger.info(
             f"[REALTIME.{name}] Tool call received",
             extra={"call_id": call_id, "tool_name": name},
@@ -216,6 +219,8 @@ class RealtimeSession:
                 )
                 result = f'{{"error": "{str(e)}"}}'
 
+        exec_ms = (time.monotonic() - start) * 1000
+
         if not self.connection:
             return
 
@@ -228,9 +233,14 @@ class RealtimeSession:
                 }
             )
             await self.connection.response.create()
+            total_ms = (time.monotonic() - start) * 1000
             logger.info(
                 f"[REALTIME.{name}] Tool result sent, response triggered",
-                extra={"call_id": call_id},
+                extra={
+                    "call_id": call_id,
+                    "exec_ms": round(exec_ms, 1),
+                    "total_ms": round(total_ms, 1),
+                },
             )
         except Exception as e:
             logger.error(
