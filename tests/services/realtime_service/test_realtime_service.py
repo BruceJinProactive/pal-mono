@@ -987,6 +987,23 @@ class TestBuildRealtimeTools:
         assert len(tools) == 0
         assert len(executors) == 0
 
+    def test_handles_tool_instantiation_error(self) -> None:
+        from services.realtime_service._implementation import _build_realtime_tools
+
+        mock_identifier = MagicMock()
+        mock_identifier.tool_name = "broken_tool"
+
+        mock_tool_config = MagicMock()
+        mock_tool_config.identifiers = [mock_identifier]
+        mock_tool_config.metadata = MagicMock()
+
+        with patch("tools.registry.tool_registry") as mock_registry:
+            mock_registry.get_tool.side_effect = RuntimeError("init failed")
+            tools, executors = _build_realtime_tools(mock_tool_config)
+
+        assert len(tools) == 0
+        assert len(executors) == 0
+
 
 # ---------------------------------------------------------------------------
 # Delayed interruption OpenAI cancel Tests

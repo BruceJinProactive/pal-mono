@@ -457,7 +457,15 @@ def _build_realtime_tools(
     executors: dict[str, "Function"] = {}
 
     for identifier in tool_config.identifiers:
-        toolkit = tool_registry.get_tool(identifier, tool_config.metadata)
+        try:
+            toolkit = tool_registry.get_tool(identifier, tool_config.metadata)
+        except Exception as e:
+            logger.error(
+                f"[REALTIME] Failed to instantiate tool: {identifier.tool_name}",
+                extra={"error": str(e)},
+                exc_info=True,
+            )
+            continue
         if not toolkit:
             logger.warning(
                 f"[REALTIME] Tool not found in registry: {identifier.tool_name}"
@@ -555,6 +563,11 @@ async def create_realtime_session(
 
     # Load tools for this agent
     tool_config = await raw_config._get_agent_tools(session)
+    logger.info(
+        "[REALTIME] Agent tool config: %d identifier(s): %s",
+        len(tool_config.identifiers),
+        [t.tool_name for t in tool_config.identifiers],
+    )
     tools, tool_executors = _build_realtime_tools(tool_config)
 
     # Add demo tools (no credentials required)
