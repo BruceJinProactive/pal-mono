@@ -551,6 +551,22 @@ async def create_realtime_session(
     demo_tools, demo_executors = _build_demo_tools()
     tools.extend(demo_tools)
 
+    logger.info(
+        "[REALTIME] Total tools registered: %d (%s)",
+        len(tools),
+        [t["name"] for t in tools],
+    )
+
+    # Append tool usage instructions to system prompt
+    if tools:
+        tool_names = ", ".join(t["name"] for t in tools)
+        system_prompt += (
+            f"\n\nYou have access to the following tools: {tool_names}. "
+            "Always use the appropriate tool when the user asks about store hours, "
+            "daily specials, or any information that a tool can provide. "
+            "Do not make up answers — call the tool and use its response."
+        )
+
     # Build RealtimeConfig from agent settings
     config = RealtimeConfig(
         system_prompt=system_prompt,
