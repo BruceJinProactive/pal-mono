@@ -495,6 +495,7 @@ def _build_realtime_tools(
                     "[REALTIME] Skipping tool without entrypoint: %s", func_name
                 )
                 continue
+            func.process_entrypoint()
             tools.append(
                 {
                     "type": "function",
