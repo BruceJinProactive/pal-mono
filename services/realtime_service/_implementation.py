@@ -272,6 +272,13 @@ class RealtimeSession:
             return
 
         try:
+            try:
+                await self.connection.response.cancel()
+            except Exception as cancel_err:
+                logger.warning(
+                    f"[REALTIME.{name}] Failed to cancel in-progress response",
+                    extra={"call_id": call_id, "error": str(cancel_err)},
+                )
             await self.connection.conversation.item.create(
                 item={
                     "type": "function_call_output",

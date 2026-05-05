@@ -1092,6 +1092,7 @@ class TestHandleToolCall:
         mock_connection = MagicMock()
         mock_connection.conversation.item.create = AsyncMock()
         mock_connection.response.create = AsyncMock()
+        mock_connection.response.cancel = AsyncMock()
         session.connection = mock_connection
 
         event = MagicMock()
@@ -1105,6 +1106,7 @@ class TestHandleToolCall:
         mock_connection.conversation.item.create.assert_called_once()
         # response.create called twice: filler + final
         assert mock_connection.response.create.await_count == 2
+        mock_connection.response.cancel.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_without_handler(self) -> None:
@@ -1115,6 +1117,7 @@ class TestHandleToolCall:
         mock_connection = MagicMock()
         mock_connection.conversation.item.create = AsyncMock()
         mock_connection.response.create = AsyncMock()
+        mock_connection.response.cancel = AsyncMock()
         session.connection = mock_connection
 
         event = MagicMock()
@@ -1140,6 +1143,7 @@ class TestHandleToolCall:
         mock_connection = MagicMock()
         mock_connection.conversation.item.create = AsyncMock()
         mock_connection.response.create = AsyncMock()
+        mock_connection.response.cancel = AsyncMock()
         session.connection = mock_connection
 
         with patch(
@@ -1167,6 +1171,7 @@ class TestHandleToolCall:
         mock_connection = MagicMock()
         mock_connection.conversation.item.create = AsyncMock()
         mock_connection.response.create = AsyncMock()
+        mock_connection.response.cancel = AsyncMock()
         session.connection = mock_connection
 
         with patch(
@@ -1212,6 +1217,7 @@ class TestHandleToolCall:
         mock_connection.conversation.item.create = AsyncMock(
             side_effect=RuntimeError("ws closed")
         )
+        mock_connection.response.cancel = AsyncMock()
         session.connection = mock_connection
 
         event = MagicMock()
@@ -1220,6 +1226,32 @@ class TestHandleToolCall:
         event.arguments = "{}"
 
         await session._handle_tool_call(event)
+
+    @pytest.mark.asyncio
+    async def test_handle_tool_call_cancel_failure_still_sends_result(self) -> None:
+        on_tool_call = AsyncMock(return_value='{"ok": true}')
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+            on_tool_call=on_tool_call,
+        )
+        mock_connection = MagicMock()
+        mock_connection.conversation.item.create = AsyncMock()
+        mock_connection.response.create = AsyncMock()
+        mock_connection.response.cancel = AsyncMock(
+            side_effect=RuntimeError("cancel failed")
+        )
+        session.connection = mock_connection
+
+        event = MagicMock()
+        event.call_id = "call_123"
+        event.name = "tool"
+        event.arguments = "{}"
+
+        await session._handle_tool_call(event)
+
+        mock_connection.conversation.item.create.assert_called_once()
+        mock_connection.response.create.assert_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -1391,6 +1423,7 @@ class TestToolCallEventStream:
         mock_connection.__aiter__ = lambda self: mock_event_stream()
         mock_connection.conversation.item.create = AsyncMock()
         mock_connection.response.create = AsyncMock()
+        mock_connection.response.cancel = AsyncMock()
         session.connection = mock_connection
 
         async for _ in session.receive_audio_stream():
