@@ -35,7 +35,7 @@ class TestRealtimeConfigTurnDetection:
         td = config._build_turn_detection()
         assert td["type"] == "semantic_vad"
         assert td["eagerness"] == "low"
-        assert td["interrupt_response"] is False
+        assert td["interrupt_response"] is True
         assert "threshold" not in td
         assert "silence_duration_ms" not in td
 
@@ -50,7 +50,7 @@ class TestRealtimeConfigTurnDetection:
         assert td["threshold"] == 0.7
         assert td["silence_duration_ms"] == 500
         assert td["prefix_padding_ms"] == 300
-        assert td["interrupt_response"] is False
+        assert td["interrupt_response"] is True
         assert "eagerness" not in td
 
     def test_semantic_vad_includes_eagerness(self) -> None:
@@ -416,15 +416,14 @@ class TestRealtimeSessionReceiveAudioStream:
         assert chunks == ["audio_chunk"]
 
     @pytest.mark.asyncio
-    async def test_interruption_fires_after_delay(self) -> None:
-        """on_interruption fires after interruption_delay_ms if speech persists."""
+    async def test_interruption_fires_immediately_on_speech_started(self) -> None:
+        """on_interruption fires immediately when speech_started is received."""
         on_interruption = AsyncMock()
         session = RealtimeSession(
             api_key="test-key",
             config=RealtimeConfig(
                 system_prompt="Test",
                 voice_id="alloy",
-                interruption_delay_ms=50,
             ),
             on_interruption=on_interruption,
         )
@@ -448,47 +447,8 @@ class TestRealtimeSessionReceiveAudioStream:
         async for chunk in session.receive_audio_stream():
             chunks.append(chunk)
 
-        # Wait for the delayed task to complete
-        await asyncio.sleep(0.1)
-
         on_interruption.assert_awaited_once()
         assert chunks == ["audio_chunk"]
-
-    @pytest.mark.asyncio
-    async def test_interruption_cancelled_by_quick_speech_stop(self) -> None:
-        """on_interruption does NOT fire if speech_stopped arrives before delay."""
-        on_interruption = AsyncMock()
-        session = RealtimeSession(
-            api_key="test-key",
-            config=RealtimeConfig(
-                system_prompt="Test",
-                voice_id="alloy",
-                interruption_delay_ms=200,
-            ),
-            on_interruption=on_interruption,
-        )
-
-        speech_started_event = MagicMock()
-        speech_started_event.type = "input_audio_buffer.speech_started"
-
-        speech_stopped_event = MagicMock()
-        speech_stopped_event.type = "input_audio_buffer.speech_stopped"
-
-        async def mock_event_stream():
-            yield speech_started_event
-            yield speech_stopped_event
-
-        mock_connection = MagicMock()
-        mock_connection.__aiter__ = lambda self: mock_event_stream()
-        session.connection = mock_connection
-
-        chunks = []
-        async for chunk in session.receive_audio_stream():
-            chunks.append(chunk)
-
-        await asyncio.sleep(0.3)
-
-        on_interruption.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_interruption_skipped_when_no_callback(self) -> None:
@@ -515,82 +475,56 @@ class TestRealtimeSessionReceiveAudioStream:
         assert chunks == []
 
     @pytest.mark.asyncio
-    async def test_delayed_interruption_handles_timeout(self) -> None:
-        """_delayed_interruption logs warning when callback times out."""
-        on_interruption = AsyncMock(side_effect=asyncio.TimeoutError)
+    async def test_handle_interruption_handles_timeout(self) -> None:
+        """_handle_interruption logs warning when callback times out."""
         session = RealtimeSession(
             api_key="test-key",
             config=RealtimeConfig(
                 system_prompt="Test",
                 voice_id="alloy",
-                interruption_delay_ms=10,
             ),
-            on_interruption=on_interruption,
+            on_interruption=AsyncMock(),
         )
 
         with patch(
             "services.realtime_service._implementation.asyncio.wait_for"
         ) as mock_wf:
             mock_wf.side_effect = asyncio.TimeoutError
-            await session._delayed_interruption()
+            await session._handle_interruption()
 
     @pytest.mark.asyncio
-    async def test_delayed_interruption_handles_callback_exception(self) -> None:
-        """_delayed_interruption logs error when callback raises."""
-        on_interruption = AsyncMock(side_effect=RuntimeError("boom"))
+    async def test_handle_interruption_handles_callback_exception(self) -> None:
+        """_handle_interruption logs error when callback raises."""
         session = RealtimeSession(
             api_key="test-key",
             config=RealtimeConfig(
                 system_prompt="Test",
                 voice_id="alloy",
-                interruption_delay_ms=10,
             ),
-            on_interruption=on_interruption,
+            on_interruption=AsyncMock(),
         )
 
         with patch(
             "services.realtime_service._implementation.asyncio.wait_for"
         ) as mock_wf:
             mock_wf.side_effect = RuntimeError("boom")
-            await session._delayed_interruption()
+            await session._handle_interruption()
 
     @pytest.mark.asyncio
-    async def test_delayed_interruption_returns_on_cancel(self) -> None:
-        """_delayed_interruption returns early when cancelled during sleep."""
-        on_interruption = AsyncMock()
+    async def test_handle_interruption_skips_when_no_callback(self) -> None:
+        """_handle_interruption returns early if on_interruption is None."""
         session = RealtimeSession(
             api_key="test-key",
             config=RealtimeConfig(
                 system_prompt="Test",
                 voice_id="alloy",
-                interruption_delay_ms=5000,
-            ),
-            on_interruption=on_interruption,
-        )
-
-        task = asyncio.create_task(session._delayed_interruption())
-        await asyncio.sleep(0.01)
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-
-        on_interruption.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_delayed_interruption_skips_when_no_callback(self) -> None:
-        """_delayed_interruption returns early if on_interruption is None."""
-        session = RealtimeSession(
-            api_key="test-key",
-            config=RealtimeConfig(
-                system_prompt="Test",
-                voice_id="alloy",
-                interruption_delay_ms=10,
             ),
         )
-        await session._delayed_interruption()
+        await session._handle_interruption()
 
     @pytest.mark.asyncio
-    async def test_speech_stopped_without_pending_interruption(self) -> None:
-        """speech_stopped logs normally when no pending interruption exists."""
+    async def test_speech_stopped_logs_without_error(self) -> None:
+        """speech_stopped logs normally."""
         session = RealtimeSession(
             api_key="test-key",
             config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
@@ -1003,33 +937,6 @@ class TestBuildRealtimeTools:
 
         assert len(tools) == 0
         assert len(executors) == 0
-
-
-# ---------------------------------------------------------------------------
-# Delayed interruption OpenAI cancel Tests
-# ---------------------------------------------------------------------------
-
-
-class TestDelayedInterruptionCancel:
-    """Test _delayed_interruption OpenAI response.cancel() path."""
-
-    @pytest.mark.asyncio
-    async def test_delayed_interruption_cancels_openai_response(self) -> None:
-        session = RealtimeSession(
-            api_key="test-key",
-            config=RealtimeConfig(
-                system_prompt="Test",
-                voice_id="alloy",
-                interruption_delay_ms=10,
-            ),
-        )
-        mock_connection = MagicMock()
-        mock_connection.response.cancel = AsyncMock()
-        session.connection = mock_connection
-
-        await session._delayed_interruption()
-
-        mock_connection.response.cancel.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
