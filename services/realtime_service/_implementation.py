@@ -205,34 +205,6 @@ class RealtimeSession:
                 return json.dumps(filtered)
         return arguments
 
-    async def _send_filler_response(self) -> None:
-        """Send an out-of-band filler response to fill silence during tool execution.
-
-        Uses conversation="none" so it doesn't block the default conversation
-        and doesn't need to be cancelled before the real response.
-        """
-        if not self.connection:
-            return
-        try:
-            await self.connection.response.create(
-                response={
-                    "conversation": "none",
-                    "instructions": (
-                        "Say a very brief natural acknowledgment to fill silence "
-                        "while looking something up. Examples: 'One moment...', "
-                        "'Let me check that...', 'Sure, looking into it...'. "
-                        "Keep it under 5 words. Do NOT answer the question yet."
-                    ),
-                    "max_output_tokens": 50,
-                }
-            )
-            logger.info("[REALTIME] Filler response triggered (out-of-band)")
-        except Exception as e:
-            logger.warning(
-                "[REALTIME] Failed to send filler response",
-                extra={"error": str(e)},
-            )
-
     async def _handle_tool_call(self, event: object) -> None:
         call_id = getattr(event, "call_id", "")
         name = getattr(event, "name", "")
@@ -244,9 +216,6 @@ class RealtimeSession:
             f"[REALTIME.{name}] Tool call received",
             extra={"call_id": call_id, "tool_name": name},
         )
-
-        # Send filler audio while tool executes (out-of-band, won't block real response)
-        await self._send_filler_response()
 
         if not self.on_tool_call:
             logger.warning(f"[REALTIME.{name}] No handler configured")
@@ -664,7 +633,15 @@ async def create_realtime_session(
         [t["name"] for t in tools],
     )
 
-    # Append tool usage instructions to system prompt
+    # Append tool-call preamble instruction
+    system_prompt += (
+        "\n\n# Tools\n"
+        "- Before any tool call, say one short line like "
+        '"I\'m checking that now.", "Let me look that up.", '
+        '"One moment.", "Sure, let me check." '
+        "Then call the tool immediately."
+    )
+
     # Build RealtimeConfig from agent settings
     config = RealtimeConfig(
         system_prompt=system_prompt,

@@ -1103,8 +1103,7 @@ class TestHandleToolCall:
 
         on_tool_call.assert_awaited_once_with("get_store_hours", "{}")
         mock_connection.conversation.item.create.assert_called_once()
-        # response.create called: once for filler (out-of-band task) + once for final
-        assert mock_connection.response.create.await_count == 2
+        mock_connection.response.create.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_without_handler(self) -> None:
@@ -1126,8 +1125,7 @@ class TestHandleToolCall:
 
         call_args = mock_connection.conversation.item.create.call_args
         assert "error" in call_args[1]["item"]["output"]
-        # response.create called: once for filler (out-of-band task) + once for final
-        assert mock_connection.response.create.await_count == 2
+        mock_connection.response.create.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_handle_tool_call_timeout(self) -> None:
@@ -1220,56 +1218,6 @@ class TestHandleToolCall:
         event.arguments = "{}"
 
         await session._handle_tool_call(event)
-
-
-# ---------------------------------------------------------------------------
-# _send_filler_response Tests
-# ---------------------------------------------------------------------------
-
-
-class TestSendFillerResponse:
-    """Test RealtimeSession._send_filler_response() method."""
-
-    @pytest.mark.asyncio
-    async def test_sends_filler_response(self) -> None:
-        session = RealtimeSession(
-            api_key="test-key",
-            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
-        )
-        mock_connection = MagicMock()
-        mock_connection.response.create = AsyncMock()
-        session.connection = mock_connection
-
-        await session._send_filler_response()
-
-        mock_connection.response.create.assert_awaited_once()
-        call_kwargs = mock_connection.response.create.call_args[1]
-        assert "instructions" in call_kwargs["response"]
-        assert call_kwargs["response"]["conversation"] == "none"
-
-    @pytest.mark.asyncio
-    async def test_filler_no_connection(self) -> None:
-        session = RealtimeSession(
-            api_key="test-key",
-            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
-        )
-        session.connection = None
-
-        await session._send_filler_response()
-
-    @pytest.mark.asyncio
-    async def test_filler_handles_exception(self) -> None:
-        session = RealtimeSession(
-            api_key="test-key",
-            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
-        )
-        mock_connection = MagicMock()
-        mock_connection.response.create = AsyncMock(
-            side_effect=RuntimeError("ws error")
-        )
-        session.connection = mock_connection
-
-        await session._send_filler_response()
 
 
 # ---------------------------------------------------------------------------
