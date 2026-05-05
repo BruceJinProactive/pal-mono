@@ -114,6 +114,17 @@ class TestRealtimeConfigTurnDetection:
         assert td["threshold"] == 0.8
         assert td["silence_duration_ms"] == 700
 
+    def test_speed_default_in_session_config(self) -> None:
+        config = RealtimeConfig(system_prompt="Test", voice_id="alloy")
+        session = config.to_session_config()
+        assert session["audio"]["output"]["speed"] == 1.0
+
+    def test_speed_custom_in_session_config(self) -> None:
+        config = RealtimeConfig(system_prompt="Test", voice_id="coral", speed=0.8)
+        session = config.to_session_config()
+        assert session["audio"]["output"]["voice"] == "coral"
+        assert session["audio"]["output"]["speed"] == 0.8
+
 
 # ---------------------------------------------------------------------------
 # RealtimeSession Tests
@@ -683,12 +694,22 @@ class TestCreateRealtimeSession:
 
         mock_project.account = mock_account
 
-        # Mock database query
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_project
+        # Mock database queries (project, integrations, voice_config)
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([])
+
+        mock_vc_scalars = MagicMock()
+        mock_vc_scalars.first.return_value = None
+        mock_vc_result = MagicMock()
+        mock_vc_result.scalars.return_value = mock_vc_scalars
 
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_pi_result, mock_vc_result]
+        )
 
         # Mock RawConfig._build_agent_prompt
         mock_prompt = "Test system prompt"
@@ -804,11 +825,22 @@ class TestCreateRealtimeSession:
         mock_account.id = uuid.uuid4()
         mock_project.account = mock_account
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_project
+        # Mock database queries (project, integrations, voice_config)
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([])
+
+        mock_vc_scalars = MagicMock()
+        mock_vc_scalars.first.return_value = None
+        mock_vc_result = MagicMock()
+        mock_vc_result.scalars.return_value = mock_vc_scalars
 
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_pi_result, mock_vc_result]
+        )
 
         with patch(
             "services.realtime_service._implementation.RawConfig"
@@ -844,6 +876,89 @@ class TestCreateRealtimeSession:
         # Verify the query was executed
         # The channel identifier should be "voice:+15551234567"
         assert mock_session.execute.called
+
+    @pytest.mark.asyncio
+    async def test_create_realtime_session_uses_voice_config(self) -> None:
+        """create_realtime_session reads voice and speed from VoiceConfig."""
+        from db.tables.types import SpeechRate
+
+        mock_agent = MagicMock()
+        mock_agent.id = uuid.uuid4()
+        mock_agent.raw_config = {}
+        mock_agent.memory_enabled = False
+        mock_agent.filler_words = {}
+
+        mock_project = MagicMock()
+        mock_project.id = uuid.uuid4()
+        mock_project.name = "Test Project"
+        mock_project.timezone = "America/New_York"
+        mock_project.agent = mock_agent
+        mock_project.raw_config = {}
+
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+        mock_project.account = mock_account
+
+        mock_voice_config = MagicMock()
+        mock_voice_config.raw_config = {"openai_voice": "coral"}
+        mock_voice_config.speech_rate = SpeechRate.faster
+
+        # Mock session.execute to return different results per query
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([])
+
+        mock_vc_scalars = MagicMock()
+        mock_vc_scalars.first.return_value = mock_voice_config
+        mock_vc_result = MagicMock()
+        mock_vc_result.scalars.return_value = mock_vc_scalars
+
+        call_count = 0
+
+        async def mock_execute(query):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_project_result
+            elif call_count == 2:
+                return mock_pi_result
+            else:
+                return mock_vc_result
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=mock_execute)
+
+        with patch(
+            "services.realtime_service._implementation.RawConfig"
+        ) as mock_raw_config_cls:
+            mock_raw_config_instance = AsyncMock()
+            mock_raw_config_instance._build_agent_prompt = AsyncMock(
+                return_value="Test prompt"
+            )
+            mock_raw_config_instance._get_agent_tools = AsyncMock(
+                return_value=MagicMock(identifiers=[])
+            )
+            mock_raw_config_cls.return_value = mock_raw_config_instance
+
+            with patch.dict(os.environ, {"OPENAI_API_KEY": "test-api-key"}):
+                with patch(
+                    "services.realtime_service._implementation.RealtimeSession"
+                ) as mock_session_cls:
+                    mock_realtime_session = AsyncMock()
+                    mock_realtime_session.connect = AsyncMock()
+                    mock_session_cls.return_value = mock_realtime_session
+
+                    await create_realtime_session(
+                        mock_session, recipient_id="+15551234567"
+                    )
+
+                    # Verify RealtimeSession was created with voice config values
+                    call_kwargs = mock_session_cls.call_args[1]
+                    config = call_kwargs["config"]
+                    assert config.voice_id == "coral"
+                    assert config.speed == 1.25
 
 
 # ---------------------------------------------------------------------------

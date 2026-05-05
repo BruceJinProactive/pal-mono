@@ -25,7 +25,13 @@ class RealtimeConfig(BaseModel):
     # Voice settings
     voice_id: str = Field(
         default="alloy",
-        description="OpenAI voice ID (alloy, echo, fable, onyx, nova, shimmer)",
+        description="OpenAI voice ID (alloy, ash, ballad, coral, echo, sage, shimmer, verse)",
+    )
+    speed: float = Field(
+        default=1.0,
+        ge=0.25,
+        le=1.5,
+        description="Speech speed multiplier. 1.0 is default, 0.25 min, 1.5 max.",
     )
 
     # System configuration
@@ -119,6 +125,7 @@ class RealtimeConfig(BaseModel):
                 "output": {
                     "format": {"type": self.output_audio_format},
                     "voice": self.voice_id,
+                    "speed": self.speed,
                 },
             },
             "instructions": self.system_prompt,

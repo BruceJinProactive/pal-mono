@@ -23,10 +23,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from db.tables import Project, ProjectIntegration
-from db.tables.types import Channel
+from db.tables import Project, ProjectIntegration, VoiceConfig
+from db.tables.types import Channel, SpeechRate
 from services.agent_service._raw_config import RawConfig
 from utils.log import logger
+
+_SPEECH_RATE_TO_SPEED: dict[SpeechRate, float] = {
+    SpeechRate.slowest: 0.6,
+    SpeechRate.slower: 0.8,
+    SpeechRate.normal: 1.0,
+    SpeechRate.faster: 1.25,
+    SpeechRate.fastest: 1.5,
+}
 
 from ._config import RealtimeConfig
 
@@ -604,10 +612,42 @@ async def create_realtime_session(
         "Then call the tool immediately."
     )
 
+    # Load voice configuration for this project
+    vc_result = await session.execute(
+        select(VoiceConfig).filter(VoiceConfig.project_id == project.id)
+    )
+    voice_config = vc_result.scalars().first()
+
+    _VALID_OPENAI_VOICES = {
+        "alloy",
+        "ash",
+        "ballad",
+        "coral",
+        "echo",
+        "sage",
+        "shimmer",
+        "verse",
+    }
+
+    voice_id = "alloy"
+    speed = 1.0
+    if voice_config:
+        raw_voice = (voice_config.raw_config or {}).get("openai_voice")
+        if isinstance(raw_voice, str) and raw_voice in _VALID_OPENAI_VOICES:
+            voice_id = raw_voice
+        speed = _SPEECH_RATE_TO_SPEED.get(voice_config.speech_rate, 1.0)
+
+    logger.info(
+        "[REALTIME] Voice config: voice=%s, speed=%s",
+        voice_id,
+        speed,
+    )
+
     # Build RealtimeConfig from agent settings
     config = RealtimeConfig(
         system_prompt=system_prompt,
-        voice_id="alloy",  # TODO: Get from voice_config
+        voice_id=voice_id,
+        speed=speed,
         tools=tools,
     )
 
