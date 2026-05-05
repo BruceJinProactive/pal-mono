@@ -206,26 +206,27 @@ class RealtimeSession:
         return arguments
 
     async def _send_filler_response(self) -> None:
-        """Send a filler response to fill silence during tool execution."""
+        """Send an out-of-band filler response to fill silence during tool execution.
+
+        Uses conversation="none" so it doesn't block the default conversation
+        and doesn't need to be cancelled before the real response.
+        """
         if not self.connection:
             return
         try:
-            await asyncio.wait_for(
-                self.connection.response.create(
-                    response={
-                        "instructions": (
-                            "Say a very brief natural acknowledgment to fill silence "
-                            "while looking something up. Examples: 'One moment...', "
-                            "'Let me check that...', 'Sure, looking into it...'. "
-                            "Keep it under 5 words. Do NOT answer the question yet."
-                        ),
-                    }
-                ),
-                timeout=2.0,
+            await self.connection.response.create(
+                response={
+                    "conversation": "none",
+                    "instructions": (
+                        "Say a very brief natural acknowledgment to fill silence "
+                        "while looking something up. Examples: 'One moment...', "
+                        "'Let me check that...', 'Sure, looking into it...'. "
+                        "Keep it under 5 words. Do NOT answer the question yet."
+                    ),
+                    "max_output_tokens": 50,
+                }
             )
-            logger.info("[REALTIME] Filler response triggered")
-        except asyncio.TimeoutError:
-            logger.warning("[REALTIME] Filler response timed out")
+            logger.info("[REALTIME] Filler response triggered (out-of-band)")
         except Exception as e:
             logger.warning(
                 "[REALTIME] Failed to send filler response",
@@ -244,7 +245,7 @@ class RealtimeSession:
             extra={"call_id": call_id, "tool_name": name},
         )
 
-        # Send filler audio while tool executes
+        # Send filler audio while tool executes (out-of-band, won't block real response)
         await self._send_filler_response()
 
         if not self.on_tool_call:
@@ -272,13 +273,6 @@ class RealtimeSession:
             return
 
         try:
-            try:
-                await self.connection.response.cancel()
-            except Exception as cancel_err:
-                logger.warning(
-                    f"[REALTIME.{name}] Failed to cancel in-progress response",
-                    extra={"call_id": call_id, "error": str(cancel_err)},
-                )
             await self.connection.conversation.item.create(
                 item={
                     "type": "function_call_output",
