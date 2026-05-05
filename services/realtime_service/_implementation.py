@@ -205,6 +205,33 @@ class RealtimeSession:
                 return json.dumps(filtered)
         return arguments
 
+    async def _send_filler_response(self) -> None:
+        """Send a filler response to fill silence during tool execution."""
+        if not self.connection:
+            return
+        try:
+            await asyncio.wait_for(
+                self.connection.response.create(
+                    response={
+                        "instructions": (
+                            "Say a very brief natural acknowledgment to fill silence "
+                            "while looking something up. Examples: 'One moment...', "
+                            "'Let me check that...', 'Sure, looking into it...'. "
+                            "Keep it under 5 words. Do NOT answer the question yet."
+                        ),
+                    }
+                ),
+                timeout=2.0,
+            )
+            logger.info("[REALTIME] Filler response triggered")
+        except asyncio.TimeoutError:
+            logger.warning("[REALTIME] Filler response timed out")
+        except Exception as e:
+            logger.warning(
+                "[REALTIME] Failed to send filler response",
+                extra={"error": str(e)},
+            )
+
     async def _handle_tool_call(self, event: object) -> None:
         call_id = getattr(event, "call_id", "")
         name = getattr(event, "name", "")
@@ -216,6 +243,9 @@ class RealtimeSession:
             f"[REALTIME.{name}] Tool call received",
             extra={"call_id": call_id, "tool_name": name},
         )
+
+        # Send filler audio while tool executes
+        await self._send_filler_response()
 
         if not self.on_tool_call:
             logger.warning(f"[REALTIME.{name}] No handler configured")
