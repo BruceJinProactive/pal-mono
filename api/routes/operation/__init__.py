@@ -1169,7 +1169,15 @@ async def delete_entity(
 )
 async def create_camera_config(
     project_id: uuid.UUID,
-    request: CreateCameraConfigRequest,
+    signal_source_id: uuid.UUID = Form(...),
+    name: str = Form(...),
+    llm_prompt: str = Form(...),
+    llm_provider: str = Form(default="azure"),
+    llm_model: str = Form(default="gpt-4o"),
+    processing_interval_seconds: int = Form(default=15),
+    enabled: bool = Form(default=True),
+    reference_images: list[UploadFile] = File(default=[]),
+    reference_image_descriptions: list[str] = Form(default=[]),
     context: UserContext = Depends(
         require_project_permission("project.write", authenticate_user)
     ),
@@ -1179,16 +1187,36 @@ async def create_camera_config(
     Create a vision camera configuration for a signal source.
 
     Each signal source can have at most one camera configuration that controls
-    how the LLM processes captured frames.
+    how the LLM processes captured frames. Supports optional reference image uploads.
 
     Path Parameters:
     - project_id: UUID of the project
     """
     _ = context
+
+    if len(reference_images) != len(reference_image_descriptions):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Number of images ({len(reference_images)}) must match number of descriptions ({len(reference_image_descriptions)})",
+            headers={"Content-Type": "application/json"},
+        )
+
+    request = CreateCameraConfigRequest(
+        signal_source_id=signal_source_id,
+        name=name,
+        llm_prompt=llm_prompt,
+        llm_provider=llm_provider,
+        llm_model=llm_model,
+        processing_interval_seconds=processing_interval_seconds,
+        enabled=enabled,
+    )
+
     return await _vision_camera_configs.create_camera_config(
         session=session,
         project_id=project_id,
         request=request,
+        reference_images=reference_images,
+        reference_image_descriptions=reference_image_descriptions,
     )
 
 

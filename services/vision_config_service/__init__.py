@@ -1,5 +1,6 @@
 from ._implementation import (
     assign_entity_to_camera,
+    cleanup_reference_images,
     create_camera_config,
     delete_camera_config,
     get_camera_config,
@@ -10,10 +11,12 @@ from ._implementation import (
     unassign_entity_from_camera,
     update_camera_config,
     update_camera_entity,
+    upload_reference_images,
 )
 
 __all__ = [
     "assign_entity_to_camera",
+    "cleanup_reference_images",
     "create_camera_config",
     "delete_camera_config",
     "get_camera_config",
@@ -24,4 +27,5 @@ __all__ = [
     "unassign_entity_from_camera",
     "update_camera_config",
     "update_camera_entity",
+    "upload_reference_images",
 ]

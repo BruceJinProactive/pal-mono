@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import os
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.schemas.asset.asset import WriteAssetRequest
 from api.schemas.operations.vision_camera_configuration import (
     AssignEntityRequest,
     CameraConfigResponse,
@@ -24,10 +29,50 @@ from db.pal_repository.data_classes.vision_camera_configuration import (
     VisionCameraConfigurationData,
 )
 from db.pal_repository.data_classes.vision_camera_entity import VisionCameraEntityData
+from services.asset_service import delete_asset, write_asset
+from services.asset_service._utils import map_uri_to_s3_url
 from utils.log import logger
 
 
-def _build_response(data: VisionCameraConfigurationData) -> CameraConfigResponse:
+async def _presign_reference_images(
+    reference_images: list[Any],
+) -> list[Any]:
+    if not reference_images:
+        return reference_images
+
+    import copy
+
+    images: list[Any] = copy.deepcopy(reference_images)
+    images_to_presign = [
+        (i, img)
+        for i, img in enumerate(images)
+        if isinstance(img, dict) and img.get("url")
+    ]
+
+    if not images_to_presign:
+        return images
+
+    async def _presign(image: dict[str, str]) -> str:
+        original_url = image["url"]
+        try:
+            result = await asyncio.to_thread(map_uri_to_s3_url, original_url)
+            if not result:
+                return original_url
+            return result
+        except Exception:
+            return original_url
+
+    presigned_urls = await asyncio.gather(
+        *[_presign(img) for _, img in images_to_presign]
+    )
+    for (idx, _), url in zip(images_to_presign, presigned_urls):
+        images[idx]["url"] = url
+
+    return images
+
+
+async def _build_response(data: VisionCameraConfigurationData) -> CameraConfigResponse:
+    reference_images = await _presign_reference_images(data.reference_images or [])
     return CameraConfigResponse(
         id=data.id,
         signal_source_id=data.signal_source_id,
@@ -37,11 +82,86 @@ def _build_response(data: VisionCameraConfigurationData) -> CameraConfigResponse
         llm_provider=data.llm_provider,
         llm_model=data.llm_model,
         processing_interval_seconds=data.processing_interval_seconds,
-        reference_images=data.reference_images,
+        reference_images=reference_images,
         enabled=data.enabled,
         created_at=data.created_at,
         updated_at=data.updated_at,
     )
+
+
+async def upload_reference_images(
+    images: list[UploadFile],
+    descriptions: list[str],
+    project_id: uuid.UUID,
+    config_id: uuid.UUID,
+) -> list[dict[str, str]]:
+    uploaded_images: list[dict[str, str]] = []
+
+    for idx, (image, description) in enumerate(zip(images, descriptions)):
+        try:
+            if not image.filename:
+                raise ValueError(f"Image {idx + 1} filename is required.")
+
+            if not description or len(description) < 1 or len(description) > 500:
+                raise ValueError(
+                    f"Image {idx + 1} description must be between 1 and 500 characters"
+                )
+
+            content = await image.read()
+            file_extension = os.path.splitext(image.filename)[1] or ".jpg"
+            image_uuid = uuid.uuid4()
+
+            file_path = f"vision/reference_images/{project_id}/{config_id}/{image_uuid}{file_extension}"
+
+            write_asset_req = WriteAssetRequest(
+                name=file_path,
+                content=content,
+                metadata={
+                    "project_id": str(project_id),
+                    "config_id": str(config_id),
+                    "image_uuid": str(image_uuid),
+                    "description": description,
+                },
+            )
+
+            await asyncio.to_thread(write_asset, write_asset_req)
+
+            uploaded_images.append(
+                {
+                    "url": file_path,
+                    "description": description,
+                }
+            )
+
+        except ValueError as ve:
+            logger.error(f"Validation error uploading reference image {idx + 1}: {ve}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(ve),
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error uploading reference image {idx + 1}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upload reference image {idx + 1}: {str(e)}",
+            )
+
+    return uploaded_images
+
+
+async def cleanup_reference_images(file_paths: list[str]) -> None:
+    if not file_paths:
+        return
+
+    for file_path in file_paths:
+        try:
+            await asyncio.to_thread(delete_asset, file_path)
+        except Exception as e:
+            logger.error(
+                f"Failed to delete reference image {file_path} during cleanup: {e}"
+            )
 
 
 async def create_camera_config(
@@ -76,7 +196,7 @@ async def create_camera_config(
         "[Vision Config] Created camera config",
         extra={"config_id": str(record.id), "project_id": str(project_id)},
     )
-    return _build_response(record)
+    return await _build_response(record)
 
 
 async def get_camera_config(
@@ -90,7 +210,7 @@ async def get_camera_config(
     if not data or data.project_id != project_id:
         raise ValueError(f"Camera configuration {config_id} not found")
 
-    return _build_response(data)
+    return await _build_response(data)
 
 
 async def get_camera_config_by_source(
@@ -106,7 +226,7 @@ async def get_camera_config_by_source(
             f"Camera configuration for signal source {signal_source_id} not found"
         )
 
-    return _build_response(data)
+    return await _build_response(data)
 
 
 async def list_camera_configs(
@@ -117,8 +237,8 @@ async def list_camera_configs(
 
     configs = await repo.list_by_project(project_id)
 
-    items = [_build_response(c) for c in configs]
-    return ListCameraConfigsResponse(items=items, total=len(items))
+    items = await asyncio.gather(*[_build_response(c) for c in configs])
+    return ListCameraConfigsResponse(items=list(items), total=len(items))
 
 
 async def update_camera_config(
@@ -150,7 +270,7 @@ async def update_camera_config(
         updates["enabled"] = request.enabled
 
     if not updates:
-        return _build_response(data)
+        return await _build_response(data)
 
     updated = await repo.update(config_id, **updates)
     if not updated:
@@ -160,7 +280,7 @@ async def update_camera_config(
         "[Vision Config] Updated camera config",
         extra={"config_id": str(config_id)},
     )
-    return _build_response(updated)
+    return await _build_response(updated)
 
 
 async def delete_camera_config(

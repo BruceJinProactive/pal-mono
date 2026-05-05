@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.vision_camera_configuration import (
@@ -27,25 +27,62 @@ async def create_camera_config(
     session: AsyncSession,
     project_id: uuid.UUID,
     request: CreateCameraConfigRequest,
+    reference_images: list[UploadFile],
+    reference_image_descriptions: list[str],
 ) -> CameraConfigResponse:
+    uploaded_file_paths: list[str] = []
+
     try:
-        return await vision_config_service.create_camera_config(
+        result = await vision_config_service.create_camera_config(
             session=session,
             project_id=project_id,
             request=request,
         )
+
+        if reference_images:
+            config_id = result.id
+
+            uploaded_images = await vision_config_service.upload_reference_images(
+                images=reference_images,
+                descriptions=reference_image_descriptions,
+                project_id=project_id,
+                config_id=config_id,
+            )
+
+            uploaded_file_paths = [img["url"] for img in uploaded_images]
+
+            result = await vision_config_service.update_camera_config(
+                session=session,
+                project_id=project_id,
+                config_id=config_id,
+                request=UpdateCameraConfigRequest(reference_images=uploaded_images),
+            )
+
+        return result
+
     except ValueError as e:
+        await session.rollback()
+        if uploaded_file_paths:
+            await vision_config_service.cleanup_reference_images(uploaded_file_paths)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
             headers={"Content-Type": "application/json"},
         )
+    except HTTPException:
+        await session.rollback()
+        if uploaded_file_paths:
+            await vision_config_service.cleanup_reference_images(uploaded_file_paths)
+        raise
     except Exception:
         logger.error(
             "[Vision Config] Failed to create camera config",
             exc_info=True,
             extra={"project_id": str(project_id)},
         )
+        await session.rollback()
+        if uploaded_file_paths:
+            await vision_config_service.cleanup_reference_images(uploaded_file_paths)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create camera configuration",
