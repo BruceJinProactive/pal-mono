@@ -126,6 +126,37 @@ class RealtimeSession:
             # Re-raise original exception
             raise
 
+    async def send_first_message(self, text: str) -> None:
+        """
+        Trigger the model to speak a greeting by calling response.create
+        with per-response instructions.
+
+        Args:
+            text: The greeting text the model should speak
+        """
+        if not self.connection:
+            raise RuntimeError("Connection not established. Call connect() first.")
+
+        try:
+            await asyncio.wait_for(
+                self.connection.response.create(
+                    response={"instructions": f"Say exactly: {text}"}
+                ),
+                timeout=5.0,
+            )
+            logger.info(
+                "[REALTIME] First message triggered",
+                extra={"text": text},
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[REALTIME] First message timed out")
+        except Exception as e:
+            logger.error(
+                "[REALTIME] Failed to trigger first message",
+                extra={"error": str(e)},
+                exc_info=True,
+            )
+
     async def send_audio_chunk(self, base64_audio: str) -> None:
         """
         Send audio chunk to OpenAI for processing.
@@ -672,11 +703,22 @@ async def create_realtime_session(
 
     await realtime_session.connect()
 
+    # Trigger first message / greeting
+    first_message = (
+        voice_config.first_message.strip()
+        if voice_config and voice_config.first_message
+        else ""
+    )
+    if not first_message:
+        first_message = "Hi, how can I help you?"
+    await realtime_session.send_first_message(first_message)
+
     logger.info(
         "[REALTIME] Created realtime session",
         extra={
             "project_name": project.name,
             "agent_id": str(agent.id),
+            "first_message": first_message,
         },
     )
 

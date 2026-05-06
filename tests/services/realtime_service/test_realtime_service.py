@@ -235,6 +235,54 @@ class TestRealtimeSessionConnect:
         assert session.client is None
 
 
+class TestRealtimeSessionSendFirstMessage:
+    """Test RealtimeSession.send_first_message() method."""
+
+    @pytest.mark.asyncio
+    async def test_send_first_message_success(self) -> None:
+        """send_first_message triggers response.create with instructions."""
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+        )
+        mock_connection = MagicMock()
+        mock_connection.response.create = AsyncMock()
+        session.connection = mock_connection
+
+        await session.send_first_message("Hello, welcome to Mario's Pizza!")
+
+        mock_connection.response.create.assert_awaited_once_with(
+            response={"instructions": "Say exactly: Hello, welcome to Mario's Pizza!"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_send_first_message_no_connection_raises(self) -> None:
+        """send_first_message raises RuntimeError without connection."""
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+        )
+
+        with pytest.raises(RuntimeError, match="Connection not established"):
+            await session.send_first_message("Hello")
+
+    @pytest.mark.asyncio
+    async def test_send_first_message_handles_error(self) -> None:
+        """send_first_message logs error but does not raise on failure."""
+        session = RealtimeSession(
+            api_key="test-key",
+            config=RealtimeConfig(system_prompt="Test", voice_id="alloy"),
+        )
+        mock_connection = MagicMock()
+        mock_connection.response.create = AsyncMock(
+            side_effect=RuntimeError("API error")
+        )
+        session.connection = mock_connection
+
+        # Should not raise
+        await session.send_first_message("Hello")
+
+
 class TestRealtimeSessionSendAudioChunk:
     """Test RealtimeSession.send_audio_chunk() method."""
 
