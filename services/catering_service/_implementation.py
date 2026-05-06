@@ -12,6 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.schemas.chat.message import AuthorType, Broker, Extras
 from api.schemas.chat.message import Message as RelayMessage
 from api.schemas.chat.message import Metadata, TextObject, Type
+from db.pal_repository.catering_request import (
+    CateringRequestRepository as CateringRequestRepositoryNew,
+)
+from db.pal_repository.data_classes.catering_request import CateringRequestData
 from db.pal_repository.data_classes.contact import ContactData
 from db.repositories.catering_request_repository import (
     CateringRequestRepository,
@@ -157,6 +161,93 @@ def create_catering_request(
             return created_request
     finally:
         session.close()
+
+
+async def create_catering_request_async(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    event_date: date,
+    contact_name: str,
+    contact_phone_number: str,
+    event_time: Optional[time] = None,
+    event_address: Optional[str] = None,
+    event_detail: Optional[str] = None,
+    event_fulfillment: Optional[FulfillmentType] = None,
+    party_size: Optional[int] = None,
+    idempotency_key: Optional[str] = None,
+) -> CateringRequestData:
+    """Create or update a catering request asynchronously with idempotency support."""
+    repo = CateringRequestRepositoryNew(session)
+
+    if idempotency_key is None:
+        idempotency_key = str(uuid.uuid4())
+
+    existing_request = await repo.get_by_idempotency_key(idempotency_key)
+
+    if existing_request:
+        field_mappings = {
+            "event_date": event_date,
+            "event_time": event_time,
+            "event_address": event_address,
+            "event_detail": event_detail,
+            "event_fulfillment": event_fulfillment,
+            "contact_name": contact_name,
+            "contact_phone_number": contact_phone_number,
+            "party_size": party_size,
+        }
+
+        update_kwargs: dict = {}
+        for field, new_value in field_mappings.items():
+            if new_value is not None and getattr(existing_request, field) != new_value:
+                update_kwargs[field] = new_value
+
+        if update_kwargs:
+            updated = await repo.update(
+                idempotency_key=idempotency_key, **update_kwargs
+            )
+            return updated or existing_request
+        return existing_request
+
+    data = CateringRequestData(
+        id=uuid.uuid4(),
+        project_id=project_id,
+        event_date=event_date,
+        contact_name=contact_name,
+        contact_phone_number=contact_phone_number,
+        status=RequestStatus.INQUIRY.value,
+        idempotency_key=idempotency_key,
+        created_at=datetime.now(tz=timezone.utc),
+        updated_at=datetime.now(tz=timezone.utc),
+        event_time=event_time,
+        event_address=event_address,
+        event_detail=event_detail,
+        event_fulfillment=event_fulfillment.value if event_fulfillment else None,
+        party_size=party_size,
+    )
+
+    await repo.create(data)
+
+    project_repo = ProjectRepositoryAsync(session)
+    project = await project_repo.get_project(project_id)
+    if not project:
+        logger.warning(f"Project {project_id} not found, skipping event publishing")
+        return data
+
+    event = CateringRequestCreated(
+        catering_request_id=data.id,
+        account_id=project.account_id,
+        event_date=datetime.combine(data.event_date, time.min),
+        guest_count=data.party_size or 0,
+        idempotency_key=idempotency_key,
+        created_at=data.created_at or datetime.now(tz=timezone.utc),
+    )
+    event_published = await publish_event(event)
+    if not event_published:
+        logger.warning(
+            f"Failed to publish catering_request_created event for request {data.id}"
+        )
+
+    return data
 
 
 def list_catering_requests_by_project_id(

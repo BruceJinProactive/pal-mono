@@ -32,6 +32,7 @@ from db.session import AsyncSessionLocal
 from db.tables.types import Channel
 from services import (
     agent_service,
+    catering_service,
     project_service,
     reservation_service,
     transaction_service,
@@ -306,6 +307,43 @@ async def _dispatch_agent_async(
                 session=session,
                 reservation_details=rd,
                 conversation_id=conversation_id,
+            )
+
+        # Persist catering_details if present
+        # (guarded by hasattr — field added in pal-agents catering migration)
+        if (
+            hasattr(pal_output, "catering_details")
+            and pal_output.catering_details  # type: ignore[reportAttributeAccessIssue]
+        ):
+            cd = pal_output.catering_details  # type: ignore[reportAttributeAccessIssue]
+            logger.info(
+                "[catering_details]Catering request received",
+                extra={
+                    "event_type": "catering_request_placed",
+                    "conversation_id": str(conversation_id),
+                    "agent_id": str(agent_id),
+                    "account_name": account_name,
+                    "event_date": cd.event_date,
+                    "party_size": cd.party_size,
+                    "contact_name": cd.contact_name,
+                },
+            )
+            await catering_service.create_catering_request_async(
+                session=session,
+                project_id=project_id,
+                event_date=datetime.date.fromisoformat(cd.event_date),
+                contact_name=cd.contact_name,
+                contact_phone_number=cd.contact_phone_number,
+                event_time=(
+                    datetime.time.fromisoformat(cd.event_time)
+                    if cd.event_time
+                    else None
+                ),
+                event_address=cd.event_address,
+                event_detail=cd.event_detail,
+                event_fulfillment=cd.event_fulfillment,
+                party_size=cd.party_size,
+                idempotency_key=str(conversation_id),
             )
 
         # Collect generic tool call events
@@ -926,6 +964,47 @@ async def get_chat_response_stream(
                                         session=session,
                                         reservation_details=rd,
                                         conversation_id=request_conversation_id,
+                                    )
+
+                                # Persist catering_details if present in streaming response
+                                # (guarded by hasattr — field added in pal-agents catering migration)
+                                if (
+                                    hasattr(chunk, "catering_details")
+                                    and chunk.catering_details  # type: ignore[reportAttributeAccessIssue]
+                                ):
+                                    cd = chunk.catering_details  # type: ignore[reportAttributeAccessIssue]
+                                    logger.info(
+                                        "[catering_details]Catering request received in stream",
+                                        extra={
+                                            "event_type": "catering_request_placed_streamed",
+                                            "conversation_id": str(
+                                                request_conversation_id
+                                            ),
+                                            "agent_id": str(agent_id),
+                                            "account_name": account_name,
+                                            "event_date": cd.event_date,
+                                            "party_size": cd.party_size,
+                                            "contact_name": cd.contact_name,
+                                        },
+                                    )
+                                    await catering_service.create_catering_request_async(
+                                        session=session,
+                                        project_id=project_id,
+                                        event_date=datetime.date.fromisoformat(
+                                            cd.event_date
+                                        ),
+                                        contact_name=cd.contact_name,
+                                        contact_phone_number=cd.contact_phone_number,
+                                        event_time=(
+                                            datetime.time.fromisoformat(cd.event_time)
+                                            if cd.event_time
+                                            else None
+                                        ),
+                                        event_address=cd.event_address,
+                                        event_detail=cd.event_detail,
+                                        event_fulfillment=cd.event_fulfillment,
+                                        party_size=cd.party_size,
+                                        idempotency_key=str(request_conversation_id),
                                     )
 
                                 # Collect generic tool call events

@@ -433,12 +433,20 @@ async def _build_pal_tools_specs_from_project_integrations(
     return tool_specs
 
 
+def _is_catering_enabled(raw_config: dict) -> bool:
+    """Check if catering is enabled in project raw_config."""
+    tools = raw_config.get("tools", {})
+    identifiers = tools.get("identifiers", [])
+    return any(t.get("tool_name") == "catering_tool" for t in identifiers)
+
+
 def _agent_config_to_spec(
     agent_config: AgentConfig,
     model_spec: ModelSpec | None = None,
     generic_api_spec: GenericAPISpec | None = None,
     adora_spec: AdoraSpec | None = None,
     toast_spec: ToastSpec | None = None,
+    catering_enabled: bool = False,
     language: str | None = None,
 ) -> Spec:
     """Convert pal-mono AgentConfig to pal-agents Spec.
@@ -453,6 +461,7 @@ def _agent_config_to_spec(
         generic_api_spec: Optional GenericAPISpec for external API calling.
         adora_spec: Optional AdoraSpec for deterministic adora ordering.
         toast_spec: Optional ToastSpec for deterministic toast ordering.
+        catering_enabled: Whether catering request tool is active.
         language: Optional language code for the agent.
 
     Returns:
@@ -496,6 +505,7 @@ def _agent_config_to_spec(
         adora=adora_spec or AdoraSpec(),
         toast=toast_spec or ToastSpec(),
         filler_words=filler_words_spec,
+        **({"catering_enabled": catering_enabled} if catering_enabled else {}),
     )
 
 
@@ -574,6 +584,8 @@ async def construct_agent_spec(
         session, project_id
     )
 
+    catering_enabled = _is_catering_enabled(effective_raw_config)
+
     # Convert AgentConfig to pal-agents Spec (pure conversion, no DB access)
     spec = _agent_config_to_spec(
         agent_config,
@@ -581,6 +593,7 @@ async def construct_agent_spec(
         generic_api_spec=generic_api_spec,
         adora_spec=adora_spec,
         toast_spec=toast_spec,
+        catering_enabled=catering_enabled,
         language=effective_language,
     )
 

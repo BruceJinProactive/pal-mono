@@ -308,3 +308,68 @@ class TestCreate:
         with pytest.raises(Exception, match="insert failed"):
             await repo.create(data)
         mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# update
+# ---------------------------------------------------------------------------
+
+
+class TestUpdate:
+    @pytest.mark.asyncio
+    async def test_updates_fields_and_returns_data(
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+        mock_session.commit = AsyncMock()
+
+        data = await repo.update(
+            idempotency_key="key_123",
+            contact_name="Jane",
+            party_size=100,
+        )
+        assert isinstance(data, CateringRequestData)
+        # execute called 3 times: get_by_idempotency_key, update stmt, get_by_idempotency_key again
+        assert mock_session.execute.call_count == 3
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found(
+        self, repo: CateringRequestRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.update(idempotency_key="unknown_key", contact_name="Jane")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_no_commit_when_no_fields_provided(
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+        mock_session.commit = AsyncMock()
+
+        await repo.update(idempotency_key="key_123")
+        mock_session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_error_rolls_back(
+        self, repo: CateringRequestRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = RuntimeError("db error")
+        with pytest.raises(RuntimeError):
+            await repo.update(idempotency_key="unknown_key", contact_name="Jane")
+        mock_session.rollback.assert_awaited_once()

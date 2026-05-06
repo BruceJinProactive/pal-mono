@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, time
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.pal_repository.data_classes.catering_request import CateringRequestData
-from db.tables.catering_requests import CateringRequest, RequestStatus
+from db.pal_repository.data_classes.routine_execution import UNSET, _Unset
+from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from utils.log import logger
 
 
@@ -111,4 +113,63 @@ class CateringRequestRepository:
         except Exception:
             await self.session.rollback()
             logger.exception("Error creating catering request")
+            raise
+
+    async def update(
+        self,
+        idempotency_key: str,
+        event_date: date | _Unset = UNSET,
+        contact_name: str | _Unset = UNSET,
+        contact_phone_number: str | _Unset = UNSET,
+        event_time: time | None | _Unset = UNSET,
+        event_address: str | None | _Unset = UNSET,
+        event_detail: str | None | _Unset = UNSET,
+        event_fulfillment: FulfillmentType | None | _Unset = UNSET,
+        party_size: int | None | _Unset = UNSET,
+        contact_id: uuid.UUID | None | _Unset = UNSET,
+        status: RequestStatus | _Unset = UNSET,
+    ) -> CateringRequestData | None:
+        """Update a catering request by idempotency key. Only provided fields are updated.
+
+        Returns the updated record, or None if not found.
+        """
+        try:
+            existing = await self.get_by_idempotency_key(idempotency_key)
+            if existing is None:
+                return None
+
+            values: dict = {}
+            if not isinstance(event_date, _Unset):
+                values["event_date"] = event_date
+            if not isinstance(contact_name, _Unset):
+                values["contact_name"] = contact_name
+            if not isinstance(contact_phone_number, _Unset):
+                values["contact_phone_number"] = contact_phone_number
+            if not isinstance(event_time, _Unset):
+                values["event_time"] = event_time
+            if not isinstance(event_address, _Unset):
+                values["event_address"] = event_address
+            if not isinstance(event_detail, _Unset):
+                values["event_detail"] = event_detail
+            if not isinstance(event_fulfillment, _Unset):
+                values["event_fulfillment"] = event_fulfillment
+            if not isinstance(party_size, _Unset):
+                values["party_size"] = party_size
+            if not isinstance(contact_id, _Unset):
+                values["contact_id"] = contact_id
+            if not isinstance(status, _Unset):
+                values["status"] = status
+
+            if values:
+                await self.session.execute(
+                    update(CateringRequest)
+                    .where(CateringRequest.idempotency_key == idempotency_key)
+                    .values(**values)
+                )
+                await self.session.commit()
+
+            return await self.get_by_idempotency_key(idempotency_key)
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Error updating catering request")
             raise
