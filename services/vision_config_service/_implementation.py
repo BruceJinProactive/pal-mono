@@ -294,6 +294,14 @@ async def delete_camera_config(
     if not data or data.project_id != project_id:
         raise ValueError(f"Camera configuration {config_id} not found")
 
+    mapping_repo = VisionCameraEntityRepository(session)
+    removed_count = await mapping_repo.delete_by_vision_config(config_id)
+    if removed_count > 0:
+        logger.info(
+            "[Vision Config] Deleted camera-entity mappings for config",
+            extra={"config_id": str(config_id), "count": removed_count},
+        )
+
     deleted = await repo.delete(config_id)
     if deleted:
         logger.info(

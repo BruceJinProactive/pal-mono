@@ -386,11 +386,18 @@ class TestDeleteCameraConfig:
         config_id = uuid.uuid4()
         config = _make_config_mock(id=config_id, project_id=project_id)
 
-        with patch(f"{MODULE}.VisionCameraConfigurationRepository") as mock_repo_cls:
+        with (
+            patch(f"{MODULE}.VisionCameraConfigurationRepository") as mock_repo_cls,
+            patch(f"{MODULE}.VisionCameraEntityRepository") as mock_mapping_cls,
+        ):
             repo = AsyncMock()
             repo.get_by_id.return_value = config
             repo.delete.return_value = True
             mock_repo_cls.return_value = repo
+
+            mapping_repo = AsyncMock()
+            mapping_repo.delete_by_vision_config.return_value = 0
+            mock_mapping_cls.return_value = mapping_repo
 
             from services.vision_config_service._implementation import (
                 delete_camera_config,
@@ -399,6 +406,36 @@ class TestDeleteCameraConfig:
             result = await delete_camera_config(session, project_id, config_id)
 
             assert result is True
+            mapping_repo.delete_by_vision_config.assert_called_once_with(config_id)
+
+    @pytest.mark.asyncio
+    async def test_deletes_config_with_existing_mappings(self) -> None:
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        config_id = uuid.uuid4()
+        config = _make_config_mock(id=config_id, project_id=project_id)
+
+        with (
+            patch(f"{MODULE}.VisionCameraConfigurationRepository") as mock_repo_cls,
+            patch(f"{MODULE}.VisionCameraEntityRepository") as mock_mapping_cls,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id.return_value = config
+            repo.delete.return_value = True
+            mock_repo_cls.return_value = repo
+
+            mapping_repo = AsyncMock()
+            mapping_repo.delete_by_vision_config.return_value = 3
+            mock_mapping_cls.return_value = mapping_repo
+
+            from services.vision_config_service._implementation import (
+                delete_camera_config,
+            )
+
+            result = await delete_camera_config(session, project_id, config_id)
+
+            assert result is True
+            mapping_repo.delete_by_vision_config.assert_called_once_with(config_id)
 
     @pytest.mark.asyncio
     async def test_not_found_raises(self) -> None:

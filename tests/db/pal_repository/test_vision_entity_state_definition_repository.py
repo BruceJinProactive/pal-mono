@@ -327,6 +327,54 @@ class TestDelete:
         mock_session.rollback.assert_awaited_once()
 
 
+class TestDeleteByEntityType:
+
+    @pytest.mark.asyncio
+    async def test_deletes_all_and_returns_count(
+        self,
+        repo: VisionEntityStateDefinitionRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_entity_type_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [sample_orm_row]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        count = await repo.delete_by_entity_type(sample_entity_type_id)
+
+        assert count == 1
+        mock_session.delete.assert_awaited_once_with(sample_orm_row)
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_zero_when_none_found(
+        self, repo: VisionEntityStateDefinitionRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        count = await repo.delete_by_entity_type(uuid.uuid4())
+
+        assert count == 0
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_on_db_error(
+        self, repo: VisionEntityStateDefinitionRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = Exception("db error")
+
+        with pytest.raises(Exception):
+            await repo.delete_by_entity_type(uuid.uuid4())
+        mock_session.rollback.assert_awaited_once()
+
+
 class TestCountEntitiesUsingState:
 
     @pytest.mark.asyncio

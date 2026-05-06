@@ -409,11 +409,27 @@ class TestDeleteEntityType:
         entity_type_id = uuid.uuid4()
         entity_type = _make_entity_type_mock(id=entity_type_id, account_id=account_id)
 
-        with patch(f"{MODULE}.VisionEntityTypeRepository") as mock_repo_cls:
+        with (
+            patch(f"{MODULE}.VisionEntityTypeRepository") as mock_repo_cls,
+            patch(f"{MODULE}.VisionEntityRepository") as mock_entity_cls,
+            patch(f"{MODULE}.VisionCameraEntityRepository") as mock_mapping_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_state_cls,
+        ):
             repo = AsyncMock()
             repo.get_by_id.return_value = entity_type
             repo.delete.return_value = True
             mock_repo_cls.return_value = repo
+
+            entity_repo = AsyncMock()
+            entity_repo.list_by_entity_type.return_value = []
+            mock_entity_cls.return_value = entity_repo
+
+            mapping_repo = AsyncMock()
+            mock_mapping_cls.return_value = mapping_repo
+
+            state_repo = AsyncMock()
+            state_repo.delete_by_entity_type.return_value = 0
+            mock_state_cls.return_value = state_repo
 
             from services.vision_entity_service._implementation import (
                 delete_entity_type,
@@ -423,6 +439,56 @@ class TestDeleteEntityType:
 
             assert result is True
             repo.delete.assert_awaited_once_with(entity_type_id)
+            entity_repo.list_by_entity_type.assert_called_once_with(entity_type_id)
+            state_repo.delete_by_entity_type.assert_called_once_with(entity_type_id)
+
+    @pytest.mark.asyncio
+    async def test_deletes_entity_type_with_existing_entities_and_states(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        account_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type = _make_entity_type_mock(id=entity_type_id, account_id=account_id)
+
+        entity_mock = MagicMock()
+        entity_mock.id = entity_id
+
+        with (
+            patch(f"{MODULE}.VisionEntityTypeRepository") as mock_repo_cls,
+            patch(f"{MODULE}.VisionEntityRepository") as mock_entity_cls,
+            patch(f"{MODULE}.VisionCameraEntityRepository") as mock_mapping_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_state_cls,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id.return_value = entity_type
+            repo.delete.return_value = True
+            mock_repo_cls.return_value = repo
+
+            entity_repo = AsyncMock()
+            entity_repo.list_by_entity_type.return_value = [entity_mock]
+            entity_repo.delete.return_value = True
+            mock_entity_cls.return_value = entity_repo
+
+            mapping_repo = AsyncMock()
+            mapping_repo.delete_by_entity.return_value = 1
+            mock_mapping_cls.return_value = mapping_repo
+
+            state_repo = AsyncMock()
+            state_repo.delete_by_entity_type.return_value = 2
+            mock_state_cls.return_value = state_repo
+
+            from services.vision_entity_service._implementation import (
+                delete_entity_type,
+            )
+
+            result = await delete_entity_type(session, account_id, entity_type_id)
+
+            assert result is True
+            mapping_repo.delete_by_entity.assert_called_once_with(entity_id)
+            entity_repo.delete.assert_called_once_with(entity_id)
+            state_repo.delete_by_entity_type.assert_called_once_with(entity_type_id)
 
     @pytest.mark.asyncio
     async def test_not_found_raises(self) -> None:

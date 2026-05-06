@@ -159,3 +159,43 @@ class VisionCameraEntityRepository:
                 exc_info=True,
             )
             raise
+
+    async def delete_by_vision_config(self, camera_config_id: uuid.UUID) -> int:
+        try:
+            result = await self.session.execute(
+                select(VisionCameraEntity).filter(
+                    VisionCameraEntity.camera_config_id == camera_config_id
+                )
+            )
+            rows = result.scalars().all()
+            for row in rows:
+                await self.session.delete(row)
+            await self.session.commit()
+            return len(rows)
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision Config] DB error deleting mappings for camera",
+                exc_info=True,
+            )
+            raise
+
+    async def delete_by_entity(self, entity_id: uuid.UUID) -> int:
+        try:
+            result = await self.session.execute(
+                select(VisionCameraEntity).filter(
+                    VisionCameraEntity.entity_id == entity_id
+                )
+            )
+            rows = result.scalars().all()
+            for row in rows:
+                await self.session.delete(row)
+            await self.session.commit()
+            return len(rows)
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision Config] DB error deleting mappings for entity",
+                exc_info=True,
+            )
+            raise

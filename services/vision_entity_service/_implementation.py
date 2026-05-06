@@ -21,6 +21,7 @@ from api.schemas.operations.vision_entity import (
     UpdateStateDefinitionRequest,
 )
 from db.pal_repository import (
+    VisionCameraEntityRepository,
     VisionEntityRepository,
     VisionEntityStateDefinitionRepository,
     VisionEntityTypeRepository,
@@ -160,6 +161,26 @@ async def delete_entity_type(
     data = await repo.get_by_id(entity_type_id)
     if not data or data.account_id != account_id:
         raise ValueError(f"Entity type {entity_type_id} not found")
+
+    entity_repo = VisionEntityRepository(session)
+    mapping_repo = VisionCameraEntityRepository(session)
+    entities = await entity_repo.list_by_entity_type(entity_type_id)
+    for entity in entities:
+        await mapping_repo.delete_by_entity(entity.id)
+        await entity_repo.delete(entity.id)
+    if entities:
+        logger.info(
+            "[Vision Entity] Deleted entities for entity type",
+            extra={"entity_type_id": str(entity_type_id), "count": len(entities)},
+        )
+
+    state_repo = VisionEntityStateDefinitionRepository(session)
+    removed_states = await state_repo.delete_by_entity_type(entity_type_id)
+    if removed_states > 0:
+        logger.info(
+            "[Vision Entity] Deleted state definitions for entity type",
+            extra={"entity_type_id": str(entity_type_id), "count": removed_states},
+        )
 
     deleted = await repo.delete(entity_type_id)
     if deleted:
@@ -514,6 +535,14 @@ async def delete_entity(
     data = await repo.get_by_id(entity_id)
     if not data or data.project_id != project_id:
         raise ValueError(f"Entity {entity_id} not found")
+
+    mapping_repo = VisionCameraEntityRepository(session)
+    removed_count = await mapping_repo.delete_by_entity(entity_id)
+    if removed_count > 0:
+        logger.info(
+            "[Vision Entity] Deleted camera-entity mappings for entity",
+            extra={"entity_id": str(entity_id), "count": removed_count},
+        )
 
     deleted = await repo.delete(entity_id)
     if deleted:

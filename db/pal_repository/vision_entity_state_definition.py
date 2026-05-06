@@ -157,6 +157,26 @@ class VisionEntityStateDefinitionRepository:
             )
             raise
 
+    async def delete_by_entity_type(self, entity_type_id: uuid.UUID) -> int:
+        try:
+            result = await self.session.execute(
+                select(VisionEntityStateDefinition).filter(
+                    VisionEntityStateDefinition.entity_type_id == entity_type_id
+                )
+            )
+            rows = result.scalars().all()
+            for row in rows:
+                await self.session.delete(row)
+            await self.session.commit()
+            return len(rows)
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision Entity] DB error deleting state definitions for entity type",
+                exc_info=True,
+            )
+            raise
+
     async def count_entities_using_state(self, state_definition_id: uuid.UUID) -> int:
         from db.tables import VisionEntity
 

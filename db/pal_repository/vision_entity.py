@@ -80,6 +80,24 @@ class VisionEntityRepository:
             logger.error("[Vision Entity] DB error listing entities", exc_info=True)
             return []
 
+    async def list_by_entity_type(
+        self,
+        entity_type_id: uuid.UUID,
+    ) -> list[VisionEntityData]:
+        try:
+            result = await self.session.execute(
+                select(VisionEntity)
+                .filter(VisionEntity.entity_type_id == entity_type_id)
+                .order_by(VisionEntity.created_at)
+            )
+            return [_to_data(row) for row in result.scalars().all()]
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision Entity] DB error listing entities by type", exc_info=True
+            )
+            return []
+
     async def get_by_project_type_and_name(
         self,
         project_id: uuid.UUID,

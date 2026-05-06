@@ -509,17 +509,52 @@ class TestDeleteEntity:
         entity_id = uuid.uuid4()
         entity = _make_entity_mock(id=entity_id, project_id=project_id)
 
-        with patch(f"{MODULE}.VisionEntityRepository") as mock_cls:
+        with (
+            patch(f"{MODULE}.VisionEntityRepository") as mock_cls,
+            patch(f"{MODULE}.VisionCameraEntityRepository") as mock_mapping_cls,
+        ):
             repo = AsyncMock()
             repo.get_by_id.return_value = entity
             repo.delete.return_value = True
             mock_cls.return_value = repo
+
+            mapping_repo = AsyncMock()
+            mapping_repo.delete_by_entity.return_value = 0
+            mock_mapping_cls.return_value = mapping_repo
 
             from services.vision_entity_service._implementation import delete_entity
 
             result = await delete_entity(session, project_id, entity_id)
 
             assert result is True
+            mapping_repo.delete_by_entity.assert_called_once_with(entity_id)
+
+    @pytest.mark.asyncio
+    async def test_deletes_entity_with_existing_mappings(self) -> None:
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity = _make_entity_mock(id=entity_id, project_id=project_id)
+
+        with (
+            patch(f"{MODULE}.VisionEntityRepository") as mock_cls,
+            patch(f"{MODULE}.VisionCameraEntityRepository") as mock_mapping_cls,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id.return_value = entity
+            repo.delete.return_value = True
+            mock_cls.return_value = repo
+
+            mapping_repo = AsyncMock()
+            mapping_repo.delete_by_entity.return_value = 2
+            mock_mapping_cls.return_value = mapping_repo
+
+            from services.vision_entity_service._implementation import delete_entity
+
+            result = await delete_entity(session, project_id, entity_id)
+
+            assert result is True
+            mapping_repo.delete_by_entity.assert_called_once_with(entity_id)
 
     @pytest.mark.asyncio
     async def test_not_found_raises(self) -> None:
