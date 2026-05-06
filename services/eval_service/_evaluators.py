@@ -53,6 +53,7 @@ class ConversationRecord:
     turn_latencies_ms: list[float] = field(default_factory=list)
     audio_recording_s3_uri: str | None = None
     is_voice: bool = False
+    voice_params: dict[str, Any] | None = None
 
 
 def _should_run_tool_call(scenario: EvalScenario) -> bool:

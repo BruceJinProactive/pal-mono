@@ -590,7 +590,19 @@ async def run_voice_scenario(
         )
 
         # 6. Convert to ConversationRecord
-        return voice_result.to_conversation_record(scenario)
+        record = voice_result.to_conversation_record(scenario)
+
+        # Attach resolved voice params for result metadata
+        record.voice_params = {
+            "persona": effective_persona,
+            "speed": voice_profile.speed,
+            "background_noise": noise_config.enabled,
+            "noise_level_db": noise_config.noise_level_db,
+            "noise_type": (
+                noise_config.noise_type.value if noise_config.enabled else None
+            ),
+        }
+        return record
 
     finally:
         # Best-effort cleanup — each step is isolated so one failure

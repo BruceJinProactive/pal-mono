@@ -457,6 +457,8 @@ async def _run_one_scenario(
             for er in eval_results:
                 raw = dict(er.raw_output) if er.raw_output else {}
                 raw["conversation"] = conversation_turns
+                if record.voice_params:
+                    raw["voice_params"] = record.voice_params
                 db_result = EvalResult(
                     id=uuid.uuid4(),
                     eval_run_id=eval_run_id,

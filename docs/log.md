@@ -7,6 +7,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-05-06
 
 - **Voice simulation parameters: run-level overrides + noise injection pipeline.** Added `VoiceOverridesRequest` schema on `RunEvalRequest` (`api/schemas/eval/requests.py`) allowing callers to override persona, speed, background_noise, noise_level_db, and noise_type at the run level — highest priority in the resolution chain (run override > scenario config > persona registry > defaults). Threaded `voice_overrides: dict[str, Any] | None` through the service layer (`_runner.py` → `_voice_eval_runner.py`). Wired `NoiseMixer` from `pal_agents.evals.voice.noise_mixer` into `SyntheticCaller._speak_turn`: when noise is enabled, each PCM audio frame is mixed with synthetic background noise (street/car/home profiles) before LiveKit publishing. Added frozen `NoiseConfig` dataclass to `_synthetic_caller.py` for typed noise settings. → `docs/plans/evals/voice-simulation-parameters-prd.md`
+- **Record voice params in eval results metadata.** Added `voice_params: dict[str, Any] | None` field to `ConversationRecord` (`_evaluators.py`). `run_voice_scenario` now populates it with resolved settings (persona, speed, background_noise, noise_level_db, noise_type) after completing the call. `_run_one_scenario` writes `voice_params` into the `raw_output` JSONB column of `EvalResult` rows, enabling filtering and grouping eval results by voice conditions without schema migration. → `docs/plans/evals/voice-simulation-parameters-prd.md`
 
 ---
 

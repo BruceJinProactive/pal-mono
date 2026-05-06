@@ -802,6 +802,146 @@ class TestRunEvalBackground:
             assert call[0][0].eval_run_id == eval_run_id
 
 
+class TestVoiceParamsInRawOutput:
+    """Verify voice_params from ConversationRecord are written to raw_output."""
+
+    def _make_scenario(self, scenario_id: str = "sc-1") -> MagicMock:
+        scenario = MagicMock()
+        scenario.scenario_id = scenario_id
+        turn = MagicMock()
+        turn.text = "Hello"
+        turn.goal = None
+        scenario.user_turns = [turn]
+        scenario.expected_tool_calls = []
+        scenario.expected_outcomes = MagicMock()
+        scenario.context = []
+        return scenario
+
+    def _make_session_ctx(self) -> tuple[MagicMock, AsyncMock]:
+        session = AsyncMock()
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=session)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx, session
+
+    @pytest.mark.asyncio
+    async def test_voice_params_included_in_raw_output(self) -> None:
+        eval_run_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        scenario = self._make_scenario()
+        ctx, session = self._make_session_ctx()
+
+        mock_run_repo = AsyncMock()
+        mock_result_repo = AsyncMock()
+
+        eval_result = MagicMock()
+        eval_result.metric_name = "tool_call_accuracy"
+        eval_result.score = 1.0
+        eval_result.passed = True
+        eval_result.reason = "ok"
+        eval_result.raw_output = None
+
+        record = MagicMock()
+        record.turns = [{"user": "Hello", "assistant": "Hi"}]
+        record.agent_responses = ["Hi"]
+        record.tool_calls = []
+        record.voice_params = {
+            "persona": "fast_speaker",
+            "speed": 1.5,
+            "background_noise": True,
+            "noise_level_db": -15.0,
+            "noise_type": "street",
+        }
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal", return_value=ctx),
+            patch(
+                f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_run_repo
+            ),
+            patch(
+                f"{RUNNER_MODULE}.EvalResultRepositoryAsync",
+                return_value=mock_result_repo,
+            ),
+            patch(f"{RUNNER_MODULE}.load_scenarios", return_value=[scenario]),
+            patch(f"{RUNNER_MODULE}.create_driver", return_value=AsyncMock()),
+            patch(
+                f"{RUNNER_MODULE}._run_conversation",
+                new_callable=AsyncMock,
+                return_value=record,
+            ),
+            patch(
+                f"{RUNNER_MODULE}.evaluate_scenario",
+                new_callable=AsyncMock,
+                return_value=[eval_result],
+            ),
+        ):
+            from services.eval_service._runner import _run_eval_background
+
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
+
+        db_result = mock_result_repo.create.call_args[0][0]
+        assert "voice_params" in db_result.raw_output
+        assert db_result.raw_output["voice_params"]["persona"] == "fast_speaker"
+        assert db_result.raw_output["voice_params"]["speed"] == 1.5
+        assert db_result.raw_output["voice_params"]["background_noise"] is True
+
+    @pytest.mark.asyncio
+    async def test_no_voice_params_when_not_set(self) -> None:
+        eval_run_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        scenario = self._make_scenario()
+        ctx, session = self._make_session_ctx()
+
+        mock_run_repo = AsyncMock()
+        mock_result_repo = AsyncMock()
+
+        eval_result = MagicMock()
+        eval_result.metric_name = "tool_call_accuracy"
+        eval_result.score = 1.0
+        eval_result.passed = True
+        eval_result.reason = "ok"
+        eval_result.raw_output = None
+
+        record = MagicMock()
+        record.turns = []
+        record.agent_responses = []
+        record.tool_calls = []
+        record.voice_params = None
+
+        with (
+            patch(f"{RUNNER_MODULE}.AsyncSessionLocal", return_value=ctx),
+            patch(
+                f"{RUNNER_MODULE}.EvalRunRepositoryAsync", return_value=mock_run_repo
+            ),
+            patch(
+                f"{RUNNER_MODULE}.EvalResultRepositoryAsync",
+                return_value=mock_result_repo,
+            ),
+            patch(f"{RUNNER_MODULE}.load_scenarios", return_value=[scenario]),
+            patch(f"{RUNNER_MODULE}.create_driver", return_value=AsyncMock()),
+            patch(
+                f"{RUNNER_MODULE}._run_conversation",
+                new_callable=AsyncMock,
+                return_value=record,
+            ),
+            patch(
+                f"{RUNNER_MODULE}.evaluate_scenario",
+                new_callable=AsyncMock,
+                return_value=[eval_result],
+            ),
+        ):
+            from services.eval_service._runner import _run_eval_background
+
+            await _run_eval_background(
+                eval_run_id, project_id, "api:test-project", "http"
+            )
+
+        db_result = mock_result_repo.create.call_args[0][0]
+        assert "voice_params" not in db_result.raw_output
+
+
 class TestResolveScenarioFiles:
     def test_returns_empty_when_no_map_file(self) -> None:
         with patch(f"{RUNNER_MODULE}._PROJECT_MAP_PATH") as mock_path:

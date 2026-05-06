@@ -722,6 +722,90 @@ class TestVoiceOverridesInRunVoiceScenario:
 
 
 # ---------------------------------------------------------------------------
+# voice_params metadata on ConversationRecord
+# ---------------------------------------------------------------------------
+
+
+class TestVoiceParamsMetadata:
+    """Verify run_voice_scenario attaches voice_params to the returned record."""
+
+    async def test_voice_params_populated(self) -> None:
+        """Returned ConversationRecord.voice_params has resolved settings."""
+        session = AsyncMock()
+        config = _make_config()
+        scenario = _make_scenario()
+
+        mock_caller_factory = AsyncMock()
+        mock_caller_factory.run_call = AsyncMock(return_value="call-meta")
+
+        mock_voice_result = MagicMock()
+        mock_voice_result.transcript = []
+        mock_voice_result.metrics.duration_seconds = 10.0
+        # to_conversation_record returns a real-ish record
+        from services.eval_service._evaluators import ConversationRecord
+
+        real_record = ConversationRecord(scenario=scenario, is_voice=True)
+        mock_voice_result.to_conversation_record.return_value = real_record
+
+        with (
+            patch(
+                "services.eval_service._voice_eval_runner.LiveKitRoomOrchestrator"
+            ) as mock_orch_cls,
+            patch("services.eval_service._voice_eval_runner.TTSEngine") as mock_tts_cls,
+            patch(
+                "services.eval_service._voice_eval_runner.VoiceResultCollector"
+            ) as mock_collector_cls,
+            patch(
+                "services.eval_service._voice_eval_runner._generate_caller_token"
+            ) as mock_gen_token,
+            patch(
+                "services.eval_service._voice_eval_runner.resolve_persona"
+            ) as mock_resolve,
+            patch(
+                "pal_agents.evals.voice.personas.get_persona_config"
+            ) as mock_persona_cfg,
+        ):
+            mock_profile = MagicMock()
+            mock_profile.voice_id = "voice-1"
+            mock_profile.speed = 1.5
+            mock_profile.sample_rate = 24000
+            mock_resolve.return_value = mock_profile
+
+            mock_persona_cfg.return_value = MagicMock(
+                background_noise=True, noise_level_db=-15.0
+            )
+
+            mock_orch = mock_orch_cls.return_value
+            mock_orch.create_room = AsyncMock(
+                return_value=MagicMock(room_name="eval-voice-meta")
+            )
+            mock_orch.teardown = AsyncMock()
+            mock_orch.close = AsyncMock()
+
+            mock_gen_token.return_value = MagicMock(token="jwt")
+
+            mock_tts = mock_tts_cls.return_value
+            mock_tts.close = AsyncMock()
+
+            mock_collector = mock_collector_cls.return_value
+            mock_collector.collect = AsyncMock(return_value=mock_voice_result)
+
+            record = await run_voice_scenario(
+                scenario,
+                config,
+                session,
+                caller_factory=mock_caller_factory,
+            )
+
+        assert record.voice_params is not None
+        assert record.voice_params["persona"] == "fast_speaker"
+        assert record.voice_params["speed"] == 1.5
+        assert record.voice_params["background_noise"] is True
+        assert record.voice_params["noise_level_db"] == -15.0
+        assert record.voice_params["noise_type"] == "street"
+
+
+# ---------------------------------------------------------------------------
 # Runner voice branch wiring
 # ---------------------------------------------------------------------------
 
