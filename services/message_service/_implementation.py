@@ -29,6 +29,7 @@ from api.schemas.chat.message import (
     TextObject,
 )
 from db.session import AsyncSessionLocal
+from db.tables.catering_requests import FulfillmentType
 from db.tables.types import Channel
 from services import (
     agent_service,
@@ -341,7 +342,11 @@ async def _dispatch_agent_async(
                 ),
                 event_address=cd.event_address,
                 event_detail=cd.event_detail,
-                event_fulfillment=cd.event_fulfillment,
+                event_fulfillment=(
+                    FulfillmentType(cd.event_fulfillment)
+                    if cd.event_fulfillment
+                    else None
+                ),
                 party_size=cd.party_size,
                 idempotency_key=str(conversation_id),
             )
@@ -1002,7 +1007,11 @@ async def get_chat_response_stream(
                                         ),
                                         event_address=cd.event_address,
                                         event_detail=cd.event_detail,
-                                        event_fulfillment=cd.event_fulfillment,
+                                        event_fulfillment=(
+                                            FulfillmentType(cd.event_fulfillment)
+                                            if cd.event_fulfillment
+                                            else None
+                                        ),
                                         party_size=cd.party_size,
                                         idempotency_key=str(request_conversation_id),
                                     )
