@@ -4,6 +4,14 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+---
+
+## 2026-05-05
+
+- **Eval Langfuse trace boundary per scenario** (PAL-10344). Each scenario (test case) now produces its own Langfuse trace with all turns nested underneath. Root cause: `opentelemetry-instrument` auto-instruments FastAPI, and `asyncio.create_task(_run_eval_background(...))` snapshotted the originating request's OTel span context — all scenarios and turns silently shared that `trace_id`. Fix: new `services/eval_service/_tracing.py::scenario_trace_boundary` detaches the inherited OTel context (`otel_context.attach(Context())`) and opens an explicit "Eval Scenario" root observation, with `eval_run:<uuid>` / `scenario:<id>` tags for Langfuse filtering. Wired into `_worker` in `services/eval_service/_runner.py`. 6 new unit tests covering Langfuse attribute propagation + OTel context isolation (including exception paths and sibling scenarios). → `docs/records/2026-05-05-eval-langfuse-trace-boundary.md`
+
+---
+
 ## 2026-05-01
 
 - **Eval case-spec → scenario YAML converter + Sonny's BBQ scenarios** (PAL-10278). New `services/eval_service/scripts/convert_case_specs.py` converts pal-agents case-spec JSON (Toast ordering cases with item + selection trees) into pal-mono `EvalScenario` YAML: opening utterance + AI-driven goal turn with shared `HARD_RULES` / `DEFAULT_CUSTOMER`, optional `get_toast_item_details_v3` lookup, and a required `toast_takeout_create_order_v1` call carrying full `selection_paths`. Speech strings are cleaned of internal Toast codes (`(.32)`, `(1LB)`, `(MOD)`, etc.); raw labels are kept in tool payloads. YAML emits `|` block literals for multi-line fields via a `SafeDumper` subclass. 19 tests covering round-trip `EvalScenario` validation. Generated `services/eval_service/scenarios/ordering/sonnys_bbq.yaml` (5,288 lines, do not hand-edit). Transitional — forward-compatible with the in-flight `eval_scenarios` DB migration; the same converter can be reused by the future seed script. → `docs/records/2026-05-01-eval-case-spec-converter.md`

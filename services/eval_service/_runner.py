@@ -27,6 +27,7 @@ from services.eval_service._scenario_loader import (
     load_scenarios,
     validate_scenarios_from_yaml,
 )
+from services.eval_service._tracing import scenario_trace_boundary
 from services.eval_service._user_simulator import END_SENTINEL, UserSimulator
 from services.eval_service.schema import EvalScenario, TurnType, UserTurn
 from utils.log import logger
@@ -257,14 +258,25 @@ async def _run_eval_background(
 
             async def _worker(scenario: EvalScenario) -> None:
                 nonlocal passed_count, failed_count
-                async with sem:
-                    scenario_passed = await _run_one_scenario(
-                        scenario,
-                        driver_mode,
-                        recipient_id,
-                        channel,
-                        eval_run_id,
-                    )
+                # Wrap the entire scenario (driver turns + evaluators) in a
+                # fresh Langfuse trace. Every call to get_chat_response_async
+                # inside _run_one_scenario opens its own langfuse_message_span
+                # and, thanks to scenario_trace_boundary, nests under this
+                # scenario's trace instead of leaking into the originating
+                # HTTP request's trace or siblings' traces. See
+                # services/eval_service/_tracing.py for the rationale.
+                with scenario_trace_boundary(
+                    eval_run_id=eval_run_id,
+                    scenario_id=scenario.scenario_id,
+                ):
+                    async with sem:
+                        scenario_passed = await _run_one_scenario(
+                            scenario,
+                            driver_mode,
+                            recipient_id,
+                            channel,
+                            eval_run_id,
+                        )
                 async with counter_lock:
                     if scenario_passed:
                         passed_count += 1
