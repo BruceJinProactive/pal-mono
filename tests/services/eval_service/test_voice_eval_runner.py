@@ -546,6 +546,182 @@ class TestRunVoiceScenarioWithCallerFactory:
 
 
 # ---------------------------------------------------------------------------
+# Voice overrides
+# ---------------------------------------------------------------------------
+
+
+class TestVoiceOverridesInRunVoiceScenario:
+    """Verify run_voice_scenario applies voice_overrides for speed and noise."""
+
+    async def test_speed_override_applied(self) -> None:
+        """When voice_overrides has 'speed', the VoiceProfile is reconstructed."""
+        session = AsyncMock()
+        config = _make_config()
+        scenario = _make_scenario()
+
+        mock_caller_factory = AsyncMock()
+        mock_caller_factory.run_call = AsyncMock(return_value="call-speed")
+
+        mock_voice_result = MagicMock()
+        mock_voice_result.transcript = []
+        mock_voice_result.metrics.duration_seconds = 10.0
+        mock_voice_result.to_conversation_record.return_value = MagicMock()
+
+        with (
+            patch(
+                "services.eval_service._voice_eval_runner.LiveKitRoomOrchestrator"
+            ) as mock_orch_cls,
+            patch("services.eval_service._voice_eval_runner.TTSEngine") as mock_tts_cls,
+            patch(
+                "services.eval_service._voice_eval_runner.VoiceResultCollector"
+            ) as mock_collector_cls,
+            patch(
+                "services.eval_service._voice_eval_runner._generate_caller_token"
+            ) as mock_gen_token,
+            patch(
+                "services.eval_service._voice_eval_runner.resolve_persona"
+            ) as mock_resolve,
+            patch(
+                "services.eval_service._voice_eval_runner.VoiceProfile"
+            ) as mock_vp_cls,
+            patch(
+                "pal_agents.evals.voice.personas.get_persona_config"
+            ) as mock_persona_cfg,
+        ):
+            mock_profile = MagicMock()
+            mock_profile.voice_id = "voice-1"
+            mock_profile.model = "sonic"
+            mock_profile.language = "en"
+            mock_profile.speed = 1.0
+            mock_profile.sample_rate = 24000
+            mock_resolve.return_value = mock_profile
+
+            # When VoiceProfile(...) is called for the speed override,
+            # return a mock with the new speed
+            mock_new_profile = MagicMock()
+            mock_new_profile.speed = 1.8
+            mock_new_profile.sample_rate = 24000
+            mock_vp_cls.return_value = mock_new_profile
+
+            mock_persona_cfg.return_value = MagicMock(
+                background_noise=False, noise_level_db=-20.0
+            )
+
+            mock_orch = mock_orch_cls.return_value
+            mock_orch.create_room = AsyncMock(
+                return_value=MagicMock(room_name="eval-voice-speed")
+            )
+            mock_orch.teardown = AsyncMock()
+            mock_orch.close = AsyncMock()
+
+            mock_gen_token.return_value = MagicMock(token="jwt")
+
+            mock_tts = mock_tts_cls.return_value
+            mock_tts.close = AsyncMock()
+
+            mock_collector = mock_collector_cls.return_value
+            mock_collector.collect = AsyncMock(return_value=mock_voice_result)
+
+            await run_voice_scenario(
+                scenario,
+                config,
+                session,
+                caller_factory=mock_caller_factory,
+                voice_overrides={"speed": 1.8},
+            )
+
+        # VoiceProfile was reconstructed with the override speed
+        mock_vp_cls.assert_called_once_with(
+            voice_id="voice-1",
+            model="sonic",
+            language="en",
+            speed=1.8,
+            sample_rate=24000,
+        )
+        # The caller_factory received the new profile
+        call_kwargs = mock_caller_factory.run_call.call_args.kwargs
+        assert call_kwargs["voice_profile"] is mock_new_profile
+
+    async def test_noise_overrides_applied(self) -> None:
+        """When voice_overrides has noise fields, noise_config reflects them."""
+        session = AsyncMock()
+        config = _make_config()
+        scenario = _make_scenario()
+
+        mock_caller_factory = AsyncMock()
+        mock_caller_factory.run_call = AsyncMock(return_value="call-noise")
+
+        mock_voice_result = MagicMock()
+        mock_voice_result.transcript = []
+        mock_voice_result.metrics.duration_seconds = 10.0
+        mock_voice_result.to_conversation_record.return_value = MagicMock()
+
+        with (
+            patch(
+                "services.eval_service._voice_eval_runner.LiveKitRoomOrchestrator"
+            ) as mock_orch_cls,
+            patch("services.eval_service._voice_eval_runner.TTSEngine") as mock_tts_cls,
+            patch(
+                "services.eval_service._voice_eval_runner.VoiceResultCollector"
+            ) as mock_collector_cls,
+            patch(
+                "services.eval_service._voice_eval_runner._generate_caller_token"
+            ) as mock_gen_token,
+            patch(
+                "services.eval_service._voice_eval_runner.resolve_persona"
+            ) as mock_resolve,
+            patch(
+                "pal_agents.evals.voice.personas.get_persona_config"
+            ) as mock_persona_cfg,
+        ):
+            mock_profile = MagicMock()
+            mock_profile.voice_id = "voice-1"
+            mock_profile.model = "sonic"
+            mock_profile.language = "en"
+            mock_profile.speed = 1.0
+            mock_profile.sample_rate = 24000
+            mock_resolve.return_value = mock_profile
+
+            mock_persona_cfg.return_value = MagicMock(
+                background_noise=False, noise_level_db=-20.0
+            )
+
+            mock_orch = mock_orch_cls.return_value
+            mock_orch.create_room = AsyncMock(
+                return_value=MagicMock(room_name="eval-voice-noise")
+            )
+            mock_orch.teardown = AsyncMock()
+            mock_orch.close = AsyncMock()
+
+            mock_gen_token.return_value = MagicMock(token="jwt")
+
+            mock_tts = mock_tts_cls.return_value
+            mock_tts.close = AsyncMock()
+
+            mock_collector = mock_collector_cls.return_value
+            mock_collector.collect = AsyncMock(return_value=mock_voice_result)
+
+            await run_voice_scenario(
+                scenario,
+                config,
+                session,
+                caller_factory=mock_caller_factory,
+                voice_overrides={
+                    "background_noise": True,
+                    "noise_level_db": -10.0,
+                    "noise_type": "car",
+                },
+            )
+
+        # The caller_factory should receive a NoiseConfig with overrides
+        call_kwargs = mock_caller_factory.run_call.call_args.kwargs
+        noise_cfg = call_kwargs["noise_config"]
+        assert noise_cfg.enabled is True
+        assert noise_cfg.noise_level_db == -10.0
+        assert noise_cfg.noise_type.value == "car"
+
+
+# ---------------------------------------------------------------------------
 # Runner voice branch wiring
 # ---------------------------------------------------------------------------
 

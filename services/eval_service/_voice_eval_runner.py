@@ -69,6 +69,7 @@ class SyntheticCallerFactory(Protocol):
         voice_profile: VoiceProfile,
         tts_engine: TTSEngine,
         call_id: str,
+        noise_config: Any | None = None,
     ) -> str:
         """Run a synthetic call in the given room.
 
@@ -81,6 +82,7 @@ class SyntheticCallerFactory(Protocol):
             voice_profile: TTS voice configuration for this persona.
             tts_engine: TTS engine instance for speech synthesis.
             call_id: Pre-generated call ID embedded in the caller token.
+            noise_config: Optional NoiseConfig for background noise mixing.
 
         Returns:
             The call_id (same as input, for protocol consistency).
@@ -403,11 +405,12 @@ async def run_voice_scenario(
     session: AsyncSession,
     caller_factory: SyntheticCallerFactory | None = None,
     dialed_number: str = "",
+    voice_overrides: dict[str, Any] | None = None,
 ) -> ConversationRecord:
     """Run a single voice eval scenario end-to-end.
 
     Orchestrates the full Option B flow:
-        1. Resolve persona → VoiceProfile
+        1. Resolve persona → VoiceProfile (applying run-level overrides)
         2. Create LiveKit room
         3. Generate call_id and participant token (with sip.callID attribute)
         4. Run synthetic call (TTS turns → agent responds)
@@ -421,6 +424,10 @@ async def run_voice_scenario(
         caller_factory: Factory for creating synthetic callers. If None,
             a default ``SyntheticCaller`` is created that connects via
             livekit-rtc and publishes TTS audio into the room.
+        dialed_number: Phone number of the project being called.
+        voice_overrides: Optional run-level overrides (persona, speed,
+            background_noise, noise_level_db, noise_type). Takes highest
+            priority over scenario-level persona settings.
 
     Returns:
         ConversationRecord ready for the evaluator pipeline.
@@ -429,7 +436,21 @@ async def run_voice_scenario(
         ValueError: If voice eval config is invalid.
         TimeoutError: If the call does not complete within the timeout.
     """
-    voice_profile = resolve_persona(scenario.persona)
+    # Resolve voice profile: run-level overrides > scenario persona > defaults
+    effective_persona = (
+        voice_overrides.get("persona") if voice_overrides else None
+    ) or scenario.persona
+    voice_profile = resolve_persona(effective_persona)
+
+    # Apply run-level speed override if present
+    if voice_overrides and voice_overrides.get("speed") is not None:
+        voice_profile = VoiceProfile(
+            voice_id=voice_profile.voice_id,
+            model=voice_profile.model,
+            language=voice_profile.language,
+            speed=voice_overrides["speed"],
+            sample_rate=voice_profile.sample_rate,
+        )
     turn_texts = _extract_turn_texts(scenario)
 
     orchestrator = LiveKitRoomOrchestrator(
@@ -490,13 +511,40 @@ async def run_voice_scenario(
                 lk_api, created_room_name, call_id, config
             )
 
-        # 3. Resolve caller factory (use default SyntheticCaller if none)
+        # 3. Resolve caller factory and noise config
         if caller_factory is None:
             from services.eval_service._synthetic_caller import SyntheticCaller
 
             caller_factory = SyntheticCaller(
                 livekit_url=config.livekit_url,
             )
+
+        # Resolve noise settings from persona + run-level overrides
+        from pal_agents.evals.voice.noise_mixer import NoiseType
+        from pal_agents.evals.voice.personas import get_persona_config
+
+        from services.eval_service._synthetic_caller import _NOISE_TYPE_MAP, NoiseConfig
+
+        persona_config = get_persona_config(effective_persona)
+        noise_enabled = persona_config.background_noise
+        noise_level = persona_config.noise_level_db
+        noise_type = NoiseType.STREET
+
+        if voice_overrides:
+            if voice_overrides.get("background_noise") is not None:
+                noise_enabled = voice_overrides["background_noise"]
+            if voice_overrides.get("noise_level_db") is not None:
+                noise_level = voice_overrides["noise_level_db"]
+            if voice_overrides.get("noise_type") is not None:
+                noise_type = _NOISE_TYPE_MAP.get(
+                    voice_overrides["noise_type"], NoiseType.STREET
+                )
+
+        noise_config = NoiseConfig(
+            enabled=noise_enabled,
+            noise_type=noise_type,
+            noise_level_db=noise_level,
+        )
 
         # 4. Run synthetic call (bounded by call_timeout_s)
         call_id = await asyncio.wait_for(
@@ -507,6 +555,7 @@ async def run_voice_scenario(
                 voice_profile=voice_profile,
                 tts_engine=tts_engine,
                 call_id=call_id,
+                noise_config=noise_config if noise_config.enabled else None,
             ),
             timeout=config.call_timeout_s,
         )

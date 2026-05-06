@@ -30,6 +30,7 @@ import asyncio
 from dataclasses import dataclass, field
 
 from livekit import rtc
+from pal_agents.evals.voice.noise_mixer import NoiseMixer, NoiseType
 from pal_agents.evals.voice.room_orchestrator import RoomInfo
 from pal_agents.evals.voice.tts_engine import TTSEngine, VoiceProfile
 
@@ -41,6 +42,25 @@ _DEFAULT_AGENT_RESPONSE_WAIT_S = 15.0
 _DEFAULT_FINAL_RESPONSE_WAIT_S = 20.0
 _AUDIO_NUM_CHANNELS = 1
 _FRAME_DURATION_MS = 20.0
+
+_NOISE_TYPE_MAP: dict[str, NoiseType] = {
+    "street": NoiseType.STREET,
+    "car": NoiseType.CAR,
+    "home": NoiseType.HOME,
+}
+
+
+@dataclass(frozen=True)
+class NoiseConfig:
+    """Resolved noise settings for a synthetic caller session.
+
+    Passed to ``SyntheticCaller.run_call`` when background noise should be
+    mixed into the TTS audio before publishing to the LiveKit room.
+    """
+
+    enabled: bool = False
+    noise_type: NoiseType = NoiseType.STREET
+    noise_level_db: float = -20.0
 
 
 @dataclass
@@ -64,6 +84,7 @@ class SyntheticCaller:
         voice_profile: VoiceProfile,
         tts_engine: TTSEngine,
         call_id: str,
+        noise_config: NoiseConfig | None = None,
     ) -> str:
         """Run a synthetic call in the given room.
 
@@ -78,6 +99,8 @@ class SyntheticCaller:
             voice_profile: TTS voice configuration for this persona.
             tts_engine: TTS engine instance for speech synthesis.
             call_id: Pre-generated call ID (already embedded in the token).
+            noise_config: Optional noise settings. When enabled, background
+                noise is mixed into TTS audio before publishing.
 
         Returns:
             The call_id (same as input).
@@ -148,7 +171,12 @@ class SyntheticCaller:
                 )
 
                 await self._speak_turn(
-                    turn_text, audio_source, tts_engine, voice_profile, sample_rate
+                    turn_text,
+                    audio_source,
+                    tts_engine,
+                    voice_profile,
+                    sample_rate,
+                    noise_config,
                 )
 
                 # Fixed delay for agent to process and respond before next turn
@@ -216,6 +244,7 @@ class SyntheticCaller:
         tts_engine: TTSEngine,
         voice_profile: VoiceProfile,
         sample_rate: int,
+        noise_config: NoiseConfig | None = None,
     ) -> None:
         """Synthesize text via TTS and publish audio frames to the room."""
         samples_per_frame = int(sample_rate * _FRAME_DURATION_MS / 1000.0)
@@ -223,6 +252,11 @@ class SyntheticCaller:
         frame_count = 0
         total_bytes = 0
         non_silent_frames = 0
+
+        # Set up noise mixer if background noise is enabled
+        mixer: NoiseMixer | None = None
+        if noise_config and noise_config.enabled:
+            mixer = NoiseMixer()
 
         logger.info(
             "Speak turn starting TTS synthesis",
@@ -252,8 +286,19 @@ class SyntheticCaller:
                     },
                 )
 
+            # Apply background noise if enabled
+            audio_data = chunk
+            if mixer and noise_config:
+                audio_data = mixer.mix_streaming(
+                    speech_frame=chunk,
+                    noise_type=noise_config.noise_type,
+                    noise_level_db=noise_config.noise_level_db,
+                    sample_rate=sample_rate,
+                    frame_index=frame_count,
+                )
+
             frame = rtc.AudioFrame(
-                data=chunk,
+                data=audio_data,
                 sample_rate=sample_rate,
                 num_channels=_AUDIO_NUM_CHANNELS,
                 samples_per_channel=samples_per_frame,

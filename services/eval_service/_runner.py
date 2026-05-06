@@ -128,6 +128,7 @@ async def create_eval_run(
     triggered_by: str,
     session: AsyncSession,
     max_concurrency: int | None = None,
+    voice_overrides: dict[str, Any] | None = None,
 ) -> EvalRun:
     """Create a new eval run and schedule its background execution.
 
@@ -143,6 +144,10 @@ async def create_eval_run(
             uniformly to all driver modes including ``voice`` — callers
             should pick a value appropriate to their LiveKit worker pool
             and TTS/STT rate limits.
+        voice_overrides: Optional run-level voice parameter overrides (persona,
+            speed, background_noise, noise_level_db, noise_type). When set,
+            these take highest priority over scenario-level persona settings.
+            Only meaningful when driver_mode="voice".
 
     Returns:
         The created EvalRun in "pending" status.
@@ -161,7 +166,12 @@ async def create_eval_run(
     await session.refresh(run)
 
     _schedule_eval_background(
-        run.id, project_id, channel_identifier, driver_mode, max_concurrency
+        run.id,
+        project_id,
+        channel_identifier,
+        driver_mode,
+        max_concurrency,
+        voice_overrides,
     )
     return run
 
@@ -172,6 +182,7 @@ def _schedule_eval_background(
     channel_identifier: str,
     driver_mode: str,
     max_concurrency: int | None = None,
+    voice_overrides: dict[str, Any] | None = None,
 ) -> None:
     """Fire-and-forget background task for running evaluation."""
     task = asyncio.create_task(
@@ -181,6 +192,7 @@ def _schedule_eval_background(
             channel_identifier,
             driver_mode,
             max_concurrency,
+            voice_overrides,
         ),
         name=f"eval-run-{eval_run_id}",
     )
@@ -194,6 +206,7 @@ async def _run_eval_background(
     channel_identifier: str,
     driver_mode: str,
     max_concurrency: int | None = None,
+    voice_overrides: dict[str, Any] | None = None,
 ) -> None:
     """Execute an evaluation run in the background.
 
@@ -276,6 +289,7 @@ async def _run_eval_background(
                             recipient_id,
                             channel,
                             eval_run_id,
+                            voice_overrides=voice_overrides,
                         )
                 async with counter_lock:
                     if scenario_passed:
@@ -390,12 +404,17 @@ async def _run_one_scenario(
     recipient_id: str,
     channel: str,
     eval_run_id: uuid.UUID,
+    voice_overrides: dict[str, Any] | None = None,
 ) -> bool:
     """Run + evaluate one scenario, writing its EvalResult rows.
 
     Owns its own ``AsyncSessionLocal`` so parallel workers do not contend on
     the outer run-level session (see ADR-019 for the session-ownership
     pattern used by long-lived async work).
+
+    Args:
+        voice_overrides: Optional run-level voice overrides passed through
+            to the voice driver. Only used when driver_mode="voice".
 
     Returns:
         True if every evaluator result for this scenario passed, False if
@@ -409,7 +428,12 @@ async def _run_one_scenario(
         # should not poison siblings.
         try:
             record = await _run_scenario_for_mode(
-                driver_mode, scenario, session, recipient_id, channel
+                driver_mode,
+                scenario,
+                session,
+                recipient_id,
+                channel,
+                voice_overrides=voice_overrides,
             )
             eval_results = await evaluate_scenario(record)
         except asyncio.CancelledError:
@@ -457,6 +481,7 @@ async def _run_scenario_for_mode(
     session: AsyncSession,
     recipient_id: str,
     channel: str,
+    voice_overrides: dict[str, Any] | None = None,
 ) -> ConversationRecord:
     """Dispatch a scenario to the appropriate runner based on driver mode.
 
@@ -471,7 +496,11 @@ async def _run_scenario_for_mode(
 
         voice_config = VoiceEvalConfig.from_env()
         return await run_voice_scenario(
-            scenario, voice_config, session, dialed_number=recipient_id
+            scenario,
+            voice_config,
+            session,
+            dialed_number=recipient_id,
+            voice_overrides=voice_overrides,
         )
 
     customer_phone = _infer_customer_phone(scenario)

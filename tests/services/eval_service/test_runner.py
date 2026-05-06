@@ -172,7 +172,7 @@ class TestScheduleEvalBackground:
             # Task should have been added to the set (may already be removed if it
             # completed synchronously, but the add+discard callback must have fired)
             mock_bg.assert_called_once_with(
-                eval_run_id, project_id, "api:test-project", "http", None
+                eval_run_id, project_id, "api:test-project", "http", None, None
             )
 
             # Let the event loop tick so the task runs and the done callback fires
@@ -1862,6 +1862,7 @@ class TestScenarioParallelism:
             session: object,
             recipient_id: str,
             channel: str,
+            voice_overrides: object = None,
         ) -> MagicMock:
             nonlocal in_flight, peak
             async with lock:
@@ -1969,6 +1970,7 @@ class TestScenarioParallelism:
             session: object,
             recipient_id: str,
             channel: str,
+            voice_overrides: object = None,
         ) -> MagicMock:
             if scenario.scenario_id == "sc-2":
                 raise RuntimeError("boom")
@@ -2032,6 +2034,7 @@ class TestScenarioParallelism:
             session: object,
             recipient_id: str,
             channel: str,
+            voice_overrides: object = None,
         ) -> MagicMock:
             rec = MagicMock()
             rec.turns = []

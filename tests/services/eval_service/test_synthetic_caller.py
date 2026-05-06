@@ -314,6 +314,46 @@ class TestSpeakTurn:
         assert mock_audio_source.capture_frame.await_count == 2
         mock_audio_source.wait_for_playout.assert_awaited_once()
 
+    async def test_noise_mixer_applied_when_enabled(self) -> None:
+        """When noise_config is enabled, NoiseMixer.mix_streaming is called."""
+        from services.eval_service._synthetic_caller import NoiseConfig
+
+        caller = SyntheticCaller(livekit_url="wss://test")
+
+        mock_audio_source = MagicMock()
+        mock_audio_source.capture_frame = AsyncMock()
+        mock_audio_source.wait_for_playout = AsyncMock()
+        mock_audio_source.queued_duration = 0.0
+
+        profile = _make_voice_profile()
+        chunks = [b"\x01" * 1920]
+        tts_engine = _make_tts_engine(chunks=chunks)
+
+        noise_config = NoiseConfig(enabled=True, noise_level_db=-20.0)
+
+        with (
+            patch("services.eval_service._synthetic_caller.rtc") as mock_rtc,
+            patch(
+                "services.eval_service._synthetic_caller.NoiseMixer"
+            ) as mock_mixer_cls,
+        ):
+            mock_mixer = MagicMock()
+            mock_mixer.mix_streaming.return_value = b"\x02" * 1920
+            mock_mixer_cls.return_value = mock_mixer
+            mock_rtc.AudioFrame.return_value = MagicMock()
+
+            await caller._speak_turn(
+                "Hello",
+                mock_audio_source,
+                tts_engine,
+                profile,
+                48000,
+                noise_config=noise_config,
+            )
+
+        mock_mixer_cls.assert_called_once()
+        mock_mixer.mix_streaming.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # Protocol compliance

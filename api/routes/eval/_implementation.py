@@ -47,6 +47,11 @@ async def trigger_eval_run(
         triggered_by=request.triggered_by,
         session=session,
         max_concurrency=request.max_concurrency,
+        voice_overrides=(
+            request.voice_overrides.model_dump(exclude_none=True)
+            if request.voice_overrides
+            else None
+        ),
     )
     response = EvalRunResponse.model_validate(run)
     response.scenario_files = scenario_info["scenario_files"]
