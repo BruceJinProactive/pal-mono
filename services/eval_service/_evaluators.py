@@ -54,6 +54,7 @@ class ConversationRecord:
     audio_recording_s3_uri: str | None = None
     is_voice: bool = False
     voice_params: dict[str, Any] | None = None
+    ground_truth_texts: list[str] = field(default_factory=list)
 
 
 def _should_run_tool_call(scenario: EvalScenario) -> bool:
@@ -206,6 +207,20 @@ def _schedule_voice_evaluators(
                     evaluate_speech_rate, record.voice_transcript, "assistant"
                 ),
                 name="speech_rate",
+            )
+        )
+
+    # E19: WER (needs ground truth texts + user transcript)
+    if record.ground_truth_texts and record.voice_transcript:
+        from services.eval_service.evaluators.wer import evaluate_wer
+
+        tasks.append(
+            asyncio.create_task(
+                evaluate_wer(
+                    record.ground_truth_texts,
+                    record.voice_transcript,
+                ),
+                name="wer",
             )
         )
 

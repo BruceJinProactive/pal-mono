@@ -7,6 +7,7 @@
 - speech_rate: E17 TTS speech rate (WPM) scoring
 - audio_quality: E17b basic audio signal quality (SNR, clipping)
 - speech_fidelity: E18 LLM-as-judge TTS naturalness and spoken delivery quality
+- wer: E19 Word Error Rate — ground truth vs STT transcript accuracy
 - judge_adapter: pal-agents conversation judge (task_completion)
 """
 
@@ -27,6 +28,7 @@ from services.eval_service.evaluators.tool_call_args import (
     ToolArgumentEvaluator,
     evaluate_tool_call_args,
 )
+from services.eval_service.evaluators.wer import evaluate_wer
 
 __all__ = [
     "compute_wer",
@@ -42,4 +44,5 @@ __all__ = [
     "ToastArgumentEvaluator",
     "ToolArgumentEvaluator",
     "extract_primary_transcript",
+    "evaluate_wer",
 ]

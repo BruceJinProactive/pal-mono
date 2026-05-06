@@ -592,6 +592,9 @@ async def run_voice_scenario(
         # 6. Convert to ConversationRecord
         record = voice_result.to_conversation_record(scenario)
 
+        # Attach ground truth texts for WER evaluation
+        record.ground_truth_texts = turn_texts
+
         # Attach resolved voice params for result metadata
         record.voice_params = {
             "persona": effective_persona,
