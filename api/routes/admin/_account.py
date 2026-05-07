@@ -1,3 +1,4 @@
+import asyncio
 import math
 import os
 import uuid
@@ -25,7 +26,13 @@ from api.schemas.admin.agent import AgentSummary
 from db import ConversationStatus, TosAcceptanceRepository
 from db.tables.accounts import AccountStatus
 from db.tables.types import SubscriptionStatus
-from services import account_service, admin_service, subscription_service, user_service
+from services import (
+    account_service,
+    admin_service,
+    slack_service,
+    subscription_service,
+    user_service,
+)
 from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUserSession
 from services.auth_service.authorization import get_user_role_on_account
@@ -472,6 +479,27 @@ async def accept_account_terms(
                 detail="Failed to save TOS acceptance. Please try again.",
                 headers={"Content-Type": "application/json"},
             ) from commit_err
+
+        # Send Slack notification for new T&C acceptances (not duplicates)
+        if outcome == "created":
+            try:
+                await asyncio.wait_for(
+                    slack_service.send_tos_accepted_notification(
+                        account_name=account_name,
+                        account_display_name=account.display_name or account.name,
+                        user_email=normalized_email,
+                        tos_version=tos_version,
+                    ),
+                    timeout=5.0,
+                )
+            except Exception as e:
+                logger.error(
+                    f"[TOS] Failed to send Slack notification: {e}",
+                    extra={
+                        "account_name": account_name,
+                        "user_email": normalized_email,
+                    },
+                )
 
         return AcceptTermsResponse(accepted=True, tos_version=tos_version)
 

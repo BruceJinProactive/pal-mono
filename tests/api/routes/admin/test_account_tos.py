@@ -48,12 +48,14 @@ class TestAcceptAccountTerms:
                 "api.routes.admin._account.get_user_role_on_account"
             ) as mock_get_role,
             patch("api.routes.admin._account.TosAcceptanceRepository") as mock_tos_repo,
+            patch("api.routes.admin._account.slack_service") as mock_slack_service,
         ):
             # Setup mocks
             mock_account_service.get_account.return_value = mock_account
             mock_account_service.update_account.return_value = mock_account
             mock_account_service.CURRENT_TOS_VERSION = "v1.0"
             mock_get_role.return_value = "owner"
+            mock_slack_service.send_tos_accepted_notification.return_value = None
 
             tos_repo_instance = mock_tos_repo.return_value
             tos_repo_instance.get_tos_acceptance_by_version.return_value = None
@@ -69,6 +71,7 @@ class TestAcceptAccountTerms:
             assert result.tos_version == "v1.0"
             mock_session.commit.assert_called_once()
             tos_repo_instance.create_tos_acceptance.assert_called_once()
+            mock_slack_service.send_tos_accepted_notification.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_accept_terms_blocks_internal_email(

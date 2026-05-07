@@ -491,6 +491,111 @@ async def update_feedback_message_with_button_state(
         return False
 
 
+async def send_tos_accepted_notification(
+    account_name: str,
+    account_display_name: str,
+    user_email: str,
+    tos_version: str,
+    user_name: Optional[str] = None,
+    channel: Optional[str] = None,
+    client: Optional[AsyncWebClient] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Send a notification to Slack when T&C is accepted for an account.
+
+    Args:
+        account_name: Name of the account
+        account_display_name: Display name of the account
+        user_email: Email of the user who accepted
+        tos_version: Version of T&C accepted
+        user_name: Name of the user (optional)
+        channel: Slack channel to send notification (default: #test-channel for lat, #client-updates for prd)
+        client: Optional Slack client to reuse
+
+    Returns:
+        dict: Response from Slack API or None if failed
+    """
+    try:
+        # Determine channel based on environment if not provided
+        if channel is None:
+            runtime_env = os.getenv("RUNTIME_ENV", "dev")
+            if runtime_env == "prd":
+                channel = "#client-updates"
+            else:
+                channel = "#test-channel"
+
+        # Get Slack client
+        if client is None:
+            try:
+                client = get_slack_client()
+            except ValueError as e:
+                logger.error(f"[Slack TOS] Failed to get Slack client: {e}")
+                return None
+
+        # Build blocks
+        blocks = []
+
+        # Header
+        blocks.append(build_header_block("T&C Accepted"))
+
+        # Details
+        blocks.append(build_divider_block())
+        detail_fields: List[tuple[str, str]] = [
+            ("*Account:*", account_name),
+            ("*Display Name:*", account_display_name),
+        ]
+        if user_name:
+            detail_fields.append(("*User:*", user_name))
+        detail_fields.append(("*Email:*", user_email))
+        detail_fields.append(("*TOS Version:*", tos_version))
+
+        blocks.append(build_fields_section(detail_fields))
+
+        # Context - timestamp in PST
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        utc_now = datetime.now(ZoneInfo("UTC"))
+        pst_now = utc_now.astimezone(ZoneInfo("America/Los_Angeles"))
+        pst_time_str = pst_now.strftime("%Y-%m-%d %I:%M:%S %p PST")
+
+        blocks.append(build_context_block([f"Accepted at: `{pst_time_str}`"]))
+
+        # Send the message to Slack
+        response = await client.chat_postMessage(
+            channel=channel,
+            blocks=blocks,
+            text=f"T&C accepted by {account_display_name} ({user_email})",
+        )
+
+        logger.info(
+            "[Slack TOS] Successfully sent T&C accepted notification",
+            extra={
+                "account_name": account_name,
+                "user_email": user_email,
+                "tos_version": tos_version,
+                "channel": channel,
+            },
+        )
+
+        if hasattr(response, "data") and isinstance(response.data, dict):
+            return response.data
+        return {"ok": response.get("ok", True), "ts": response.get("ts")}
+
+    except SlackApiError as e:
+        logger.error(
+            f"[Slack TOS] Slack API error: {e.response['error']}",
+            extra={"account_name": account_name, "error_details": e.response},
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            f"[Slack TOS] Unexpected error: {e}",
+            extra={"account_name": account_name},
+        )
+        return None
+
+
 async def send_self_onboarding_notification(
     account_name: str,
     account_display_name: str,

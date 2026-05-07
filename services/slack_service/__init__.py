@@ -26,6 +26,7 @@ from ._feedback import (
     make_feedback_button,
     send_feedback_notification,
     send_self_onboarding_notification,
+    send_tos_accepted_notification,
     update_feedback_message,
     update_feedback_message_with_button_state,
 )
@@ -137,6 +138,7 @@ __all__ = [
     "send_slack_message",
     "send_feedback_notification",
     "send_self_onboarding_notification",
+    "send_tos_accepted_notification",
     "update_feedback_message",
     "update_feedback_message_with_button_state",
     "get_feedback_channel_for_client",
