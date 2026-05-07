@@ -11,6 +11,7 @@ import os
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator
 
 if TYPE_CHECKING:
@@ -23,10 +24,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from api.schemas.chat.message import (
+    AuthorType,
+    Extras,
+    Message,
+    Metadata,
+    TextObject,
+    Type,
+)
 from db.tables import Project, ProjectIntegration, VoiceConfig
 from db.tables.types import Channel, SpeechRate
+from services import message_service, user_service
 from services.agent_service._raw_config import RawConfig
 from utils.log import logger
+
+from ._config import RealtimeConfig
 
 _SPEECH_RATE_TO_SPEED: dict[SpeechRate, float] = {
     SpeechRate.slowest: 0.6,
@@ -35,8 +47,6 @@ _SPEECH_RATE_TO_SPEED: dict[SpeechRate, float] = {
     SpeechRate.faster: 1.25,
     SpeechRate.fastest: 1.5,
 }
-
-from ._config import RealtimeConfig
 
 
 class RealtimeSession:
@@ -54,6 +64,9 @@ class RealtimeSession:
         config: RealtimeConfig,
         on_interruption: Callable[[], Awaitable[None]] | None = None,
         on_tool_call: Callable[[str, str], Awaitable[str]] | None = None,
+        user_id: uuid.UUID | None = None,
+        call_id: str | None = None,
+        project_id: uuid.UUID | None = None,
     ):
         self.api_key = api_key
         self.config = config
@@ -61,6 +74,9 @@ class RealtimeSession:
         self.connection = None
         self.on_interruption = on_interruption
         self.on_tool_call = on_tool_call
+        self.user_id = user_id
+        self.call_id = call_id
+        self.project_id = project_id
 
         # Counters for logging
         self.audio_chunks_sent_to_openai = 0
@@ -538,6 +554,7 @@ async def create_realtime_session(
     session: AsyncSession,
     recipient_id: str,
     caller_id: str | None = None,
+    call_id: str | None = None,
 ) -> RealtimeSession:
     """
     Create and connect RealtimeSession for voice conversations.
@@ -581,6 +598,56 @@ async def create_realtime_session(
     if not agent:
         raise ValueError(f"Agent not found for project: {project.name}")
 
+    # --- Resolve user + create conversation (same pattern as init_voice_call) ---
+    user_id: uuid.UUID
+    conversation_id = uuid.uuid4()
+
+    if call_id and caller_id:
+        message = Message(
+            id=str(uuid.uuid4()),
+            author_type=AuthorType.SYSTEM,
+            sender_identifier=caller_id,
+            recipient_identifier=recipient_id,
+            channel=Channel.VOICE,
+            broker=None,
+            type=Type.TEXT,
+            text=TextObject(body="[Call initiated]"),
+            context="",
+            extras=Extras(),
+            metadata=Metadata(),
+            timestamp=datetime.now(timezone.utc),
+        )
+
+        user, _ = await user_service.get_user_async(session, project, message)
+        if not user:
+            user = await user_service.create_user_async(session, project, message)
+            await session.refresh(user, attribute_names=["id"])
+            await session.refresh(project, attribute_names=["id"])
+
+        user_id = user.id
+
+        voice_message = await message_service.create_voice_call_conversation(
+            session,
+            user_id=user_id,
+            project_id=project.id,
+            message_body=message.to_dict(),
+            call_id=call_id,
+        )
+        conversation_id = voice_message.conversation_id
+
+        await session.refresh(project, attribute_names=["id", "account", "agent"])
+
+        logger.info(
+            "[REALTIME] User resolved and conversation created",
+            extra={
+                "user_id": str(user_id),
+                "call_id": call_id,
+                "conversation_id": str(conversation_id),
+            },
+        )
+    else:
+        user_id = uuid.uuid4()
+
     # Load project integrations for tool resolution
     pi_result = await session.execute(
         select(ProjectIntegration).filter(ProjectIntegration.project_id == project.id)
@@ -599,8 +666,8 @@ async def create_realtime_session(
         agent=agent,
         project=project,
         account=account,
-        user_id=uuid.uuid4(),  # No user context for voice calls
-        conversation_id=uuid.uuid4(),  # Generate new conversation ID
+        user_id=user_id,
+        conversation_id=conversation_id,
         channel=Channel.VOICE,
         integration=None,
         sender_identifier=caller_id,
@@ -699,6 +766,9 @@ async def create_realtime_session(
         api_key=api_key,
         config=config,
         on_tool_call=(_make_tool_executor(all_executors) if all_executors else None),
+        user_id=user_id,
+        call_id=call_id,
+        project_id=project.id,
     )
 
     await realtime_session.connect()

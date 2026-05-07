@@ -68,6 +68,9 @@ async def handle_twilio_media_stream(websocket: WebSocket):
             },
         )
 
+        # Extract call_id from Twilio start event
+        call_sid = start_data.get("callSid")
+
         # Create realtime session
         async with AsyncSessionLocal() as db_session:
             try:
@@ -75,6 +78,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
                     db_session,
                     recipient_id,
                     caller_id=caller_id,
+                    call_id=call_sid,
                 )
             except ValueError as e:
                 logger.error(f"[TWILIO_WS] Project lookup failed: {e}")
