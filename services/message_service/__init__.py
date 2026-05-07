@@ -228,6 +228,20 @@ def create_conversation(
     return _implementation.create_conversation(session, user_id, project_id, channel)
 
 
+@traced("Message Service Create Voice Call Conversation")
+async def create_voice_call_conversation(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    project_id: uuid.UUID,
+    message_body: dict,
+    call_id: str,
+) -> db.Message:
+    """Create a new conversation + initial message for a voice call."""
+    return await _implementation.create_voice_call_conversation(
+        session, user_id, project_id, message_body, call_id
+    )
+
+
 __all__ = [
     "get_chat_response",
     "get_chat_response_async",
@@ -238,4 +252,5 @@ __all__ = [
     "get_conversations_by_user",
     "get_conversations_by_users",
     "create_conversation",
+    "create_voice_call_conversation",
 ]

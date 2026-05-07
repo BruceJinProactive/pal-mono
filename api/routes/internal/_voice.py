@@ -41,7 +41,7 @@ from events import (
     ConversationEvaluationRequested,
     publish_event,
 )
-from services import project_service, user_service
+from services import message_service, project_service, user_service
 from services.agent_service._raw_config import RawConfig
 from services.eval_service._snapshot import upsert_agent_config_snapshot
 from utils.log import logger
@@ -260,8 +260,8 @@ async def init_voice_call(
     logger.info("[init_voice_call] Step 3 done: user=%s", user.id, extra=_log_extra)
 
     # --- Step 4: Create voice message / conversation ---
-    message_repo = db.MessageRepositoryAsync(session)
-    await message_repo.create_voice_message(
+    await message_service.create_voice_call_conversation(
+        session,
         user_id=user.id,
         project_id=project.id,
         message_body=message.to_dict(),

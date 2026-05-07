@@ -1414,6 +1414,23 @@ def create_conversation(
     return conversation
 
 
+async def create_voice_call_conversation(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    project_id: uuid.UUID,
+    message_body: dict,
+    call_id: str,
+) -> db.Message:
+    """Create a new conversation + initial message for a voice call."""
+    message_repo = db.MessageRepositoryAsync(session)
+    return await message_repo.create_voice_message(
+        user_id=user_id,
+        project_id=project_id,
+        message_body=message_body,
+        call_id=call_id,
+    )
+
+
 def build_opt_in_message(message: Message, metadata: Metadata) -> Message | None:
     if message.broker == Broker.TWILIO and message.channel == Channel.SMS:
         opt_in_text = (
