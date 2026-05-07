@@ -28,6 +28,111 @@ MERCURY_DIRECT_ACTIONS: frozenset[str] = frozenset(
 )
 
 
+async def handle_mercury_company_search(query: str) -> list[Dict[str, Any]]:
+    """Search Folk companies by name and return Slack-compatible options (max 100)."""
+    from services.slack_service._folk import search_companies
+
+    return await search_companies(query)
+
+
+async def handle_mercury_account_selected(
+    payload: Dict[str, Any], action: Dict[str, Any]
+) -> None:
+    """Handle company selection in Create Client modal — updates the view with identifier preview
+    and pre-fills Client Name/Email from Folk if available."""
+    import re
+
+    client = get_slack_client()
+    view = payload.get("view", {})
+    view_id = view.get("id", "")
+    selected = action.get("selected_option")
+
+    if not selected or not view_id:
+        return
+
+    # Value is encoded as "name|email"
+    raw_value = selected.get("value", "")
+    if "|" in raw_value:
+        company_name, folk_email = raw_value.split("|", 1)
+    else:
+        company_name = raw_value
+        folk_email = ""
+
+    identifier = re.sub(r"[^a-z0-9]+", "-", company_name.lower()).strip("-")
+
+    # Check if account already exists
+    from db.repositories.account_repository import AccountRepository
+    from db.session import SyncSessionLocal
+
+    existing = False
+    with SyncSessionLocal() as session:
+        repo = AccountRepository(session)
+        existing = repo.get_account(identifier) is not None
+
+    # Update blocks: preview + pre-fill Client Name and Email
+    blocks = view.get("blocks", [])
+    for block in blocks:
+        if block.get("block_id") == "account_id_preview":
+            if existing:
+                block["elements"] = [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f":warning: *Account `{identifier}` already exists in PAL.*\n"
+                            f"Submitting will fail. Choose a different company."
+                        ),
+                    }
+                ]
+            else:
+                block["elements"] = [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*Company:* {company_name}\n"
+                            f"*Account identifier:* `{identifier}`\n"
+                            f"_Will create a new account in PAL_"
+                        ),
+                    }
+                ]
+        # Pre-fill Client Name with company name if available
+        if block.get("block_id") == "client_name_input":
+            block["element"] = {
+                "type": "plain_text_input",
+                "placeholder": {"type": "plain_text", "text": "e.g. John Doe"},
+                "action_id": "client_name_value",
+            }
+            if company_name:
+                block["element"]["initial_value"] = company_name
+
+        # Pre-fill Client Email if Folk has one
+        if block.get("block_id") == "client_email_input":
+            block["element"] = {
+                "type": "plain_text_input",
+                "placeholder": {"type": "plain_text", "text": "e.g. john@example.com"},
+                "action_id": "client_email_value",
+            }
+            if folk_email:
+                block["element"]["initial_value"] = folk_email
+
+    try:
+        await client.views_update(
+            view_id=view_id,
+            view={
+                "type": "modal",
+                "callback_id": view.get("callback_id", ""),
+                "title": view.get("title", {}),
+                "submit": view.get("submit", {}),
+                "close": view.get("close", {}),
+                "private_metadata": view.get("private_metadata", ""),
+                "blocks": blocks,
+            },
+        )
+    except Exception as e:
+        logger.error(
+            "[Mercury] Error updating modal with identifier: %s", e, exc_info=True
+        )
+
+
 async def _fetch_accounts() -> list[tuple[str, str | None]]:
     """Fetch all active accounts (name, display_name) from the database for modal dropdowns."""
     from db.repositories.account_repository import AccountRepositoryAsync
@@ -847,9 +952,11 @@ async def _handle_create_client(
     client = get_slack_client()
 
     try:
-        account_display_name = (
-            values["account_name_input"]["account_name_value"]["value"] or ""
-        ).strip()
+        # external_select returns selected_option with value encoded as "name|email"
+        account_select = values["account_name_input"]["account_name_value"]
+        selected = account_select.get("selected_option")
+        raw_value = (selected["value"] if selected else "").strip()
+        account_display_name = raw_value.split("|", 1)[0] if raw_value else ""
         client_name = (
             values["client_name_input"]["client_name_value"]["value"] or ""
         ).strip()

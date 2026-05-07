@@ -411,6 +411,17 @@ async def handle_interactions(request: Request) -> Dict[str, Any] | Response:
             )
             return Response(status_code=200)
 
+        # Handle external_select typeahead suggestions
+        if action_type == "block_suggestion":
+            action_id = payload.get("action_id", "")
+            query = payload.get("value", "")
+            if action_id == "account_name_value":
+                from ._mercury_actions import handle_mercury_company_search
+
+                options = await handle_mercury_company_search(query)
+                return {"options": options}
+            return {"options": []}
+
         if action_type != "block_actions":
             logger.warning(
                 f"[Slack Interactions] Unsupported interaction type: {action_type}"
@@ -424,6 +435,15 @@ async def handle_interactions(request: Request) -> Dict[str, Any] | Response:
 
         action = actions[0]
         action_id = action.get("action_id")
+
+        # Handle dispatch_action from Create Client modal dropdown
+        if action_id == "account_name_value":
+            container = payload.get("container", {})
+            if container.get("type") == "view":
+                from ._mercury_actions import handle_mercury_account_selected
+
+                await handle_mercury_account_selected(payload, action)
+                return {"ok": True}
 
         # Handle Mercury help menu button clicks
         if action_id and action_id.startswith("mercury_"):

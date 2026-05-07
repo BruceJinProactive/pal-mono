@@ -702,19 +702,31 @@ def build_create_client_modal(channel_id: str = "") -> Dict[str, Any]:
             {
                 "type": "input",
                 "block_id": "account_name_input",
+                "dispatch_action": True,
                 "label": {"type": "plain_text", "text": "Account Name"},
                 "hint": {
                     "type": "plain_text",
-                    "text": 'Identifier auto-generated: "Tony\'s Bistro" → tonys-bistro',
+                    "text": "Type to search Folk companies. Identifier auto-generated from name.",
                 },
                 "element": {
-                    "type": "plain_text_input",
+                    "type": "external_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "e.g. Tony's Bistro",
+                        "text": "Type to search companies...",
                     },
                     "action_id": "account_name_value",
+                    "min_query_length": 3,
                 },
+            },
+            {
+                "type": "context",
+                "block_id": "account_id_preview",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "_Select a company to see the generated identifier_",
+                    }
+                ],
             },
             {
                 "type": "input",
