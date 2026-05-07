@@ -679,3 +679,156 @@ def build_subscription_lookup_modal(
             ),
         ],
     }
+
+
+def build_create_client_modal(channel_id: str = "") -> Dict[str, Any]:
+    """
+    Build a modal for creating a new client account.
+
+    Args:
+        channel_id: Channel ID stored in private_metadata for response routing
+
+    Returns:
+        Dict: Slack view payload for views.open()
+    """
+    return {
+        "type": "modal",
+        "callback_id": "mercury_create_client_submit",
+        "title": {"type": "plain_text", "text": "Create Client"},
+        "submit": {"type": "plain_text", "text": "Create"},
+        "close": {"type": "plain_text", "text": "Cancel"},
+        "private_metadata": channel_id,
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "account_name_input",
+                "label": {"type": "plain_text", "text": "Account Name"},
+                "hint": {
+                    "type": "plain_text",
+                    "text": 'Identifier auto-generated: "Tony\'s Bistro" → tonys-bistro',
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "e.g. Tony's Bistro",
+                    },
+                    "action_id": "account_name_value",
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "client_name_input",
+                "label": {"type": "plain_text", "text": "Client Name"},
+                "element": {
+                    "type": "plain_text_input",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "e.g. John Doe",
+                    },
+                    "action_id": "client_name_value",
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "client_email_input",
+                "label": {"type": "plain_text", "text": "Client Email"},
+                "element": {
+                    "type": "plain_text_input",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "e.g. john@example.com",
+                    },
+                    "action_id": "client_email_value",
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "industry_input",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "Industry"},
+                "element": {
+                    "type": "static_select",
+                    "action_id": "industry_value",
+                    "initial_option": {
+                        "text": {"type": "plain_text", "text": "Food & Beverage"},
+                        "value": "food_beverage",
+                    },
+                    "options": [
+                        {
+                            "text": {"type": "plain_text", "text": "Food & Beverage"},
+                            "value": "food_beverage",
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "Lifestyle"},
+                            "value": "lifestyle",
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "E-Commerce"},
+                            "value": "e_commerce",
+                        },
+                    ],
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "tier_input",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "Tier"},
+                "element": {
+                    "type": "static_select",
+                    "action_id": "tier_value",
+                    "initial_option": {
+                        "text": {"type": "plain_text", "text": "T1"},
+                        "value": "t1",
+                    },
+                    "options": [
+                        {
+                            "text": {"type": "plain_text", "text": "T1"},
+                            "value": "t1",
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "T2"},
+                            "value": "t2",
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "T3"},
+                            "value": "t3",
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "Enterprise"},
+                            "value": "enterprise",
+                        },
+                    ],
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "segment_input",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "Segment"},
+                "element": {
+                    "type": "static_select",
+                    "action_id": "segment_value",
+                    "initial_option": {
+                        "text": {"type": "plain_text", "text": "SMB"},
+                        "value": "smb",
+                    },
+                    "options": [
+                        {
+                            "text": {"type": "plain_text", "text": "SMB"},
+                            "value": "smb",
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "Mid-Market"},
+                            "value": "mm",
+                        },
+                        {
+                            "text": {"type": "plain_text", "text": "Enterprise"},
+                            "value": "ent",
+                        },
+                    ],
+                },
+            },
+        ],
+    }

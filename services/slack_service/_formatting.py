@@ -1022,6 +1022,24 @@ def build_help_page() -> dict:
     )
     blocks.append(build_divider_block())
 
+    # ===== CLIENT MANAGEMENT SECTION =====
+    blocks.append(
+        build_section_block("*👤 Client Management*\nCreate new client accounts")
+    )
+    blocks.append(
+        build_actions_block(
+            [
+                build_button(
+                    "Create Client...",
+                    "mercury_create_client",
+                    "create_client",
+                    style="primary",
+                ),
+            ]
+        )
+    )
+    blocks.append(build_divider_block())
+
     # ===== INTERNAL TOOLS SECTION =====
     blocks.append(
         build_section_block(

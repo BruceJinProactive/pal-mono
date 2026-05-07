@@ -57,7 +57,7 @@ class TestBuildHelpPage:
     def test_has_internal_tools_section_with_both_buttons(self) -> None:
         blocks = build_help_page()["blocks"]
         actions_blocks = [b for b in blocks if b["type"] == "actions"]
-        tools_actions = actions_blocks[4]
+        tools_actions = actions_blocks[5]
         action_ids = [e["action_id"] for e in tools_actions["elements"]]
         assert "mercury_tool_feedback" in action_ids
         assert "mercury_tool_request" in action_ids
@@ -65,7 +65,7 @@ class TestBuildHelpPage:
     def test_submit_feedback_button_has_primary_style(self) -> None:
         blocks = build_help_page()["blocks"]
         actions_blocks = [b for b in blocks if b["type"] == "actions"]
-        tools_actions = actions_blocks[4]
+        tools_actions = actions_blocks[5]
         feedback_btn = next(
             e
             for e in tools_actions["elements"]
@@ -76,7 +76,7 @@ class TestBuildHelpPage:
     def test_request_new_tool_button_exists(self) -> None:
         blocks = build_help_page()["blocks"]
         actions_blocks = [b for b in blocks if b["type"] == "actions"]
-        tools_actions = actions_blocks[4]
+        tools_actions = actions_blocks[5]
         request_btn = next(
             e
             for e in tools_actions["elements"]

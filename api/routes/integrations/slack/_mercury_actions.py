@@ -236,6 +236,15 @@ async def handle_mercury_block_action(
             )
             return {"ok": True}
 
+        if action_id == "mercury_create_client":
+            from services.slack_service._modals import build_create_client_modal
+
+            await client.views_open(
+                trigger_id=trigger_id,
+                view=build_create_client_modal(channel_id),
+            )
+            return {"ok": True}
+
     except Exception as e:
         logger.error(
             "[Mercury] Error opening modal for %s: %s",
@@ -314,6 +323,9 @@ async def handle_mercury_view_submission(
 
     if callback_id == "mercury_tool_request_submit":
         return await _handle_tool_request(values, channel_id, user_id, user_name)
+
+    if callback_id == "mercury_create_client_submit":
+        return await _handle_create_client(values, channel_id, user_id)
 
     logger.warning(
         "[Mercury] Unknown callback_id: %s",
@@ -818,5 +830,179 @@ async def _handle_tool_request(
             exc_info=True,
         )
         await _notify_error(client, channel_id, "submitting the tool request")
+
+    return {"ok": True}
+
+
+async def _handle_create_client(
+    values: dict,
+    channel_id: str,
+    user_id: str,
+) -> Dict[str, Any]:
+    """Handle create client modal submission — creates account and sends invitation email."""
+    import re
+
+    from services.slack_service._client import get_slack_client
+
+    client = get_slack_client()
+
+    try:
+        account_display_name = (
+            values["account_name_input"]["account_name_value"]["value"] or ""
+        ).strip()
+        client_name = (
+            values["client_name_input"]["client_name_value"]["value"] or ""
+        ).strip()
+        client_email = (
+            values["client_email_input"]["client_email_value"]["value"] or ""
+        ).strip()
+
+        if not account_display_name or not client_name or not client_email:
+            if channel_id:
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text=":warning: Account Name, Client Name, and Client Email are all required.",
+                )
+            return {"ok": True}
+
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", client_email):
+            if channel_id:
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text=":warning: Please provide a valid email address.",
+                )
+            return {"ok": True}
+
+        # Generate identifier from display name
+        account_name = re.sub(r"[^a-z0-9]+", "-", account_display_name.lower()).strip(
+            "-"
+        )
+
+        if not account_name:
+            if channel_id:
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text=":warning: Account Name must contain at least one alphanumeric character.",
+                )
+            return {"ok": True}
+
+        # Extract optional fields with defaults
+        industry_block = values.get("industry_input", {}).get("industry_value", {})
+        industry_selected = industry_block.get("selected_option")
+        industry_val = (
+            industry_selected["value"] if industry_selected else "food_beverage"
+        )
+
+        tier_block = values.get("tier_input", {}).get("tier_value", {})
+        tier_selected = tier_block.get("selected_option")
+        tier_val = tier_selected["value"] if tier_selected else "t1"
+
+        segment_block = values.get("segment_input", {}).get("segment_value", {})
+        segment_selected = segment_block.get("selected_option")
+        segment_val = segment_selected["value"] if segment_selected else "smb"
+
+        from db.repositories.account_repository import AccountRepository
+        from db.session import SyncSessionLocal
+        from db.tables.accounts import AccountSegment, BusinessIndustry
+        from db.tables.types import TargetTier
+        from services import admin_service
+        from services.account_service.schema import AccountParams
+        from services.admin_service.schema import CognitoUser
+        from services.auth_types import UserContext, UserRole
+
+        # Check for duplicate account name before attempting creation
+        with SyncSessionLocal() as check_session:
+            account_repo = AccountRepository(check_session)
+            existing = account_repo.get_account(account_name)
+
+        if existing:
+            if channel_id:
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text=(
+                        f":warning: Account `{account_name}` already exists. "
+                        f"Please use a different Account Name."
+                    ),
+                )
+            return {"ok": True}
+
+        account_params = AccountParams(
+            display_name=account_display_name,
+            industry=BusinessIndustry(industry_val),
+            tier=TargetTier(tier_val),
+            segment=AccountSegment(segment_val),
+        )
+
+        context = UserContext(
+            username="mercury-bot",
+            email="mercury@palona.ai",
+            groups=["Admin"],
+            display_name="Mercury Bot",
+            role=UserRole.Admin,
+        )
+
+        with SyncSessionLocal() as session:
+            admin_service.onboard_new_account(
+                session=session,
+                context=context,
+                account_name=account_name,
+                account_params=account_params,
+                lead_id=None,
+                agent_projects=[],
+                users=[CognitoUser(email=client_email, name=client_name)],
+            )
+
+        if channel_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=f"Client created: {account_display_name}",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f":white_check_mark: Client *{account_display_name}* created successfully",
+                        },
+                    },
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": (
+                                    f"*Account:* `{account_name}` · "
+                                    f"*Contact:* {client_name} ({client_email}) · "
+                                    f"*Industry:* {industry_val} · "
+                                    f"*Tier:* {tier_val} · "
+                                    f"*Segment:* {segment_val}\n"
+                                    f"Invitation email sent to {client_email}"
+                                ),
+                            }
+                        ],
+                    },
+                ],
+            )
+
+    except ValueError as e:
+        error_msg = str(e)
+        logger.error(
+            "[Mercury] Error creating client: %s",
+            error_msg,
+            extra={"user_id": user_id, "channel_id": channel_id},
+            exc_info=True,
+        )
+        if channel_id:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=f":x: Failed to create client: {error_msg}",
+            )
+    except Exception as e:
+        logger.error(
+            "[Mercury] Error handling create client submission: %s",
+            e,
+            extra={"user_id": user_id, "channel_id": channel_id},
+            exc_info=True,
+        )
+        await _notify_error(client, channel_id, "creating the client")
 
     return {"ok": True}
