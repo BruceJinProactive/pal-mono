@@ -114,6 +114,7 @@ from utils.log import logger
 from . import (
     _implementation,
     _monitoring,
+    _photo_upload,
     _routines,
     _signal_sources,
     _video_upload,
@@ -232,6 +233,51 @@ async def upload_camera_video(
         project_id=project_id,
         camera_id=camera_id,
         video=video,
+        session=session,
+    )
+
+
+@operation_router.post(
+    "/accounts/{account_id}/projects/{project_id}/cameras/{camera_id}/upload-photo",
+    response_model=AssetResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        413: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def upload_camera_photo(
+    account_id: str,
+    project_id: str,
+    camera_id: str,
+    photo: UploadFile = File(...),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> AssetResponse:
+    """
+    Upload a photo snapshot from a camera to the images S3 bucket.
+
+    This endpoint is designed for camera snapshot systems that capture
+    JPEG frames at regular intervals (e.g., every 15 seconds).
+
+    Path Parameters:
+    - account_id: The account ID
+    - project_id: The project ID
+    - camera_id: The camera identifier (from signal source config)
+
+    Request body (multipart/form-data):
+    - photo: The image file to upload (.jpg, .jpeg, .png)
+
+    Returns:
+    - url: S3 key of the uploaded photo
+
+    The photo will be stored at:
+    security/cameras/{account_id}/{project_id}/{camera_name}/images/{date}/{timestamp}-{uuid8}{ext}
+    """
+    return await _photo_upload.upload_camera_photo(
+        account_id=account_id,
+        project_id=project_id,
+        camera_id=camera_id,
+        photo=photo,
         session=session,
     )
 
