@@ -1545,3 +1545,331 @@ class TestConfigToolFields:
         session = config.to_session_config()
         assert "tools" not in session
         assert "tool_choice" not in session
+
+
+# ---------------------------------------------------------------------------
+# on_transcript callback Tests
+# ---------------------------------------------------------------------------
+
+
+class TestOnTranscriptCallback:
+    """Test on_transcript callback firing on transcript events."""
+
+    @pytest.mark.asyncio
+    async def test_on_transcript_fires_for_user_transcript(self) -> None:
+        """on_transcript is called with 'user' role on user transcript event."""
+        config = RealtimeConfig(system_prompt="Test", voice_id="alloy")
+        session = RealtimeSession(api_key="test-key", config=config)
+
+        mock_callback = AsyncMock()
+        session.on_transcript = mock_callback
+
+        mock_event = MagicMock()
+        mock_event.type = "conversation.item.input_audio_transcription.completed"
+        mock_event.transcript = "Hello, I want to order"
+        mock_event.item_id = "item-1"
+
+        async def mock_event_stream():
+            yield mock_event
+
+        mock_connection = MagicMock()
+        mock_connection.__aiter__ = lambda self: mock_event_stream()
+        session.connection = mock_connection
+
+        async for _ in session.receive_audio_stream():
+            pass
+
+        await asyncio.sleep(0)  # let fire-and-forget task run
+        mock_callback.assert_called_once_with("user", "Hello, I want to order")
+
+    @pytest.mark.asyncio
+    async def test_on_transcript_fires_for_assistant_transcript(self) -> None:
+        """on_transcript is called with 'assistant' role on assistant transcript event."""
+        config = RealtimeConfig(system_prompt="Test", voice_id="alloy")
+        session = RealtimeSession(api_key="test-key", config=config)
+
+        mock_callback = AsyncMock()
+        session.on_transcript = mock_callback
+
+        mock_event = MagicMock()
+        mock_event.type = "response.audio_transcript.done"
+        mock_event.transcript = "Sure, what would you like?"
+
+        async def mock_event_stream():
+            yield mock_event
+
+        mock_connection = MagicMock()
+        mock_connection.__aiter__ = lambda self: mock_event_stream()
+        session.connection = mock_connection
+
+        async for _ in session.receive_audio_stream():
+            pass
+
+        await asyncio.sleep(0)  # let fire-and-forget task run
+        mock_callback.assert_called_once_with("assistant", "Sure, what would you like?")
+
+    @pytest.mark.asyncio
+    async def test_on_transcript_not_called_for_empty_transcript(self) -> None:
+        """on_transcript is not called when transcript text is empty."""
+        config = RealtimeConfig(system_prompt="Test", voice_id="alloy")
+        session = RealtimeSession(api_key="test-key", config=config)
+
+        mock_callback = AsyncMock()
+        session.on_transcript = mock_callback
+
+        mock_event = MagicMock()
+        mock_event.type = "conversation.item.input_audio_transcription.completed"
+        mock_event.transcript = ""
+        mock_event.item_id = "item-1"
+
+        async def mock_event_stream():
+            yield mock_event
+
+        mock_connection = MagicMock()
+        mock_connection.__aiter__ = lambda self: mock_event_stream()
+        session.connection = mock_connection
+
+        async for _ in session.receive_audio_stream():
+            pass
+
+        await asyncio.sleep(0)
+        mock_callback.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_on_transcript_error_does_not_crash_stream(self) -> None:
+        """on_transcript exception is caught and does not stop the event stream."""
+        config = RealtimeConfig(system_prompt="Test", voice_id="alloy")
+        session = RealtimeSession(api_key="test-key", config=config)
+
+        mock_callback = AsyncMock(side_effect=RuntimeError("DB error"))
+        session.on_transcript = mock_callback
+
+        mock_event = MagicMock()
+        mock_event.type = "response.audio_transcript.done"
+        mock_event.transcript = "Some response"
+
+        async def mock_event_stream():
+            yield mock_event
+
+        mock_connection = MagicMock()
+        mock_connection.__aiter__ = lambda self: mock_event_stream()
+        session.connection = mock_connection
+
+        async for _ in session.receive_audio_stream():
+            pass
+
+        await asyncio.sleep(0)  # let fire-and-forget task run
+        mock_callback.assert_called_once()
+
+
+class TestPersistTranscriptWiring:
+    """Test that create_realtime_session wires on_transcript when call_id is provided."""
+
+    @pytest.mark.asyncio
+    async def test_on_transcript_wired_when_call_id_provided(self) -> None:
+        """create_realtime_session sets on_transcript when call_id and caller_id given."""
+        mock_agent = MagicMock()
+        mock_agent.id = uuid.uuid4()
+        mock_agent.raw_config = {}
+        mock_agent.memory_enabled = False
+        mock_agent.filler_words = {}
+
+        mock_project = MagicMock()
+        mock_project.id = uuid.uuid4()
+        mock_project.name = "Test Project"
+        mock_project.timezone = "America/New_York"
+        mock_project.agent = mock_agent
+        mock_project.raw_config = {}
+
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+        mock_account.name = "Test Account"
+        mock_project.account = mock_account
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        mock_voice_message = MagicMock()
+        mock_voice_message.conversation_id = uuid.uuid4()
+
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([])
+
+        mock_vc_scalars = MagicMock()
+        mock_vc_scalars.first.return_value = None
+        mock_vc_result = MagicMock()
+        mock_vc_result.scalars.return_value = mock_vc_scalars
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_pi_result, mock_vc_result]
+        )
+        mock_session.refresh = AsyncMock()
+
+        with (
+            patch(
+                "services.realtime_service._implementation.user_service"
+            ) as mock_user_svc,
+            patch(
+                "services.realtime_service._implementation.message_service"
+            ) as mock_msg_svc,
+            patch(
+                "services.realtime_service._implementation.RawConfig"
+            ) as mock_raw_config_cls,
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test-api-key"}),
+            patch(
+                "services.realtime_service._implementation.RealtimeSession"
+            ) as mock_session_cls,
+        ):
+            mock_user_svc.get_user_async = AsyncMock(return_value=(mock_user, False))
+            mock_msg_svc.create_voice_call_conversation = AsyncMock(
+                return_value=mock_voice_message
+            )
+
+            mock_raw_config_instance = AsyncMock()
+            mock_raw_config_instance._build_agent_prompt = AsyncMock(
+                return_value="Test prompt"
+            )
+            mock_raw_config_instance._get_agent_tools = AsyncMock(
+                return_value=MagicMock(identifiers=[])
+            )
+            mock_raw_config_cls.return_value = mock_raw_config_instance
+
+            mock_realtime_session = AsyncMock()
+            mock_realtime_session.connect = AsyncMock()
+            mock_realtime_session.send_first_message = AsyncMock()
+            mock_session_cls.return_value = mock_realtime_session
+
+            await create_realtime_session(
+                mock_session,
+                recipient_id="+15551234567",
+                caller_id="+15559876543",
+                call_id="CA1234567890",
+            )
+
+        # Verify on_transcript was passed to the constructor
+        call_kwargs = mock_session_cls.call_args.kwargs
+        assert call_kwargs["on_transcript"] is not None
+
+    @pytest.mark.asyncio
+    async def test_persist_transcript_calls_repo(self) -> None:
+        """The wired on_transcript callback persists via message repo."""
+        mock_agent = MagicMock()
+        mock_agent.id = uuid.uuid4()
+        mock_agent.raw_config = {}
+        mock_agent.memory_enabled = False
+        mock_agent.filler_words = {}
+
+        mock_project = MagicMock()
+        mock_project.id = uuid.uuid4()
+        mock_project.name = "Test Project"
+        mock_project.timezone = "America/New_York"
+        mock_project.agent = mock_agent
+        mock_project.raw_config = {}
+
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+        mock_account.name = "Test Account"
+        mock_project.account = mock_account
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        mock_voice_message = MagicMock()
+        mock_voice_message.conversation_id = uuid.uuid4()
+
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([])
+
+        mock_vc_scalars = MagicMock()
+        mock_vc_scalars.first.return_value = None
+        mock_vc_result = MagicMock()
+        mock_vc_result.scalars.return_value = mock_vc_scalars
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_pi_result, mock_vc_result]
+        )
+        mock_session.refresh = AsyncMock()
+
+        mock_msg_repo = AsyncMock()
+        mock_msg_repo.add_message_to_voice_conversation = AsyncMock()
+
+        with (
+            patch(
+                "services.realtime_service._implementation.user_service"
+            ) as mock_user_svc,
+            patch(
+                "services.realtime_service._implementation.message_service"
+            ) as mock_msg_svc,
+            patch(
+                "services.realtime_service._implementation.RawConfig"
+            ) as mock_raw_config_cls,
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test-api-key"}),
+            patch(
+                "services.realtime_service._implementation.AsyncSessionLocal"
+            ) as mock_session_local,
+            patch("services.realtime_service._implementation.db") as mock_db,
+        ):
+            mock_user_svc.get_user_async = AsyncMock(return_value=(mock_user, False))
+            mock_msg_svc.create_voice_call_conversation = AsyncMock(
+                return_value=mock_voice_message
+            )
+
+            mock_raw_config_instance = AsyncMock()
+            mock_raw_config_instance._build_agent_prompt = AsyncMock(
+                return_value="Test prompt"
+            )
+            mock_raw_config_instance._get_agent_tools = AsyncMock(
+                return_value=MagicMock(identifiers=[])
+            )
+            mock_raw_config_cls.return_value = mock_raw_config_instance
+
+            # Don't mock RealtimeSession class — let it construct so we get the real callback
+            # But mock connect/send_first_message to avoid hitting OpenAI
+            with (
+                patch.object(RealtimeSession, "connect", new_callable=AsyncMock),
+                patch.object(
+                    RealtimeSession, "send_first_message", new_callable=AsyncMock
+                ),
+            ):
+                result = await create_realtime_session(
+                    mock_session,
+                    recipient_id="+15551234567",
+                    caller_id="+15559876543",
+                    call_id="CA1234567890",
+                )
+
+            # Now call the wired on_transcript
+            assert result.on_transcript is not None
+
+            mock_tx_session = AsyncMock()
+            mock_session_local.return_value.__aenter__ = AsyncMock(
+                return_value=mock_tx_session
+            )
+            mock_session_local.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_db.MessageRepositoryAsync.return_value = mock_msg_repo
+
+            await result.on_transcript("user", "Hello")
+
+        mock_msg_repo.add_message_to_voice_conversation.assert_called_once_with(
+            user_id=mock_user.id,
+            message_body={"role": "user", "content": "Hello"},
+            call_id="CA1234567890",
+        )
+
+    @pytest.mark.asyncio
+    async def test_dispatch_transcript_noop_when_no_callback(self) -> None:
+        """_dispatch_transcript returns early when on_transcript is None."""
+        config = RealtimeConfig(system_prompt="Test", voice_id="alloy")
+        session = RealtimeSession(api_key="test-key", config=config)
+        session.on_transcript = None
+
+        # Should not raise
+        await session._dispatch_transcript("user", "test")

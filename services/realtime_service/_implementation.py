@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+import db
 from api.schemas.chat.message import (
     AuthorType,
     Extras,
@@ -32,6 +33,7 @@ from api.schemas.chat.message import (
     TextObject,
     Type,
 )
+from db.session import AsyncSessionLocal
 from db.tables import Project, ProjectIntegration, VoiceConfig
 from db.tables.types import Channel, SpeechRate
 from services import message_service, user_service
@@ -64,6 +66,7 @@ class RealtimeSession:
         config: RealtimeConfig,
         on_interruption: Callable[[], Awaitable[None]] | None = None,
         on_tool_call: Callable[[str, str], Awaitable[str]] | None = None,
+        on_transcript: Callable[[str, str], Awaitable[None]] | None = None,
         user_id: uuid.UUID | None = None,
         call_id: str | None = None,
         project_id: uuid.UUID | None = None,
@@ -74,10 +77,10 @@ class RealtimeSession:
         self.connection = None
         self.on_interruption = on_interruption
         self.on_tool_call = on_tool_call
+        self.on_transcript = on_transcript
         self.user_id = user_id
         self.call_id = call_id
         self.project_id = project_id
-
         # Counters for logging
         self.audio_chunks_sent_to_openai = 0
         self.audio_chunks_received = 0
@@ -222,6 +225,18 @@ class RealtimeSession:
                 exc_info=True,
             )
 
+    async def _dispatch_transcript(self, role: str, text: str) -> None:
+        """Fire-and-forget transcript persistence. Does not block the stream loop."""
+        if not self.on_transcript:
+            return
+        try:
+            await self.on_transcript(role, text)
+        except Exception as e:
+            logger.error(
+                "[REALTIME] on_transcript callback failed",
+                extra={"role": role, "error": str(e)},
+            )
+
     def _filter_tool_args(self, name: str, arguments: str) -> str:
         for t in self.config.tools:
             if t.get("name") == name:
@@ -351,7 +366,6 @@ class RealtimeSession:
                     transcript_text = getattr(event, "transcript", "")
                     item_id = getattr(event, "item_id", "")
 
-                    # Log user transcripts
                     logger.info(
                         "[REALTIME] User transcript",
                         extra={
@@ -359,6 +373,11 @@ class RealtimeSession:
                             "item_id": item_id,
                         },
                     )
+
+                    if self.on_transcript and transcript_text:
+                        asyncio.create_task(
+                            self._dispatch_transcript("user", transcript_text)
+                        )
 
                 # User started speaking — flush Twilio buffer immediately
                 elif event_type == "input_audio_buffer.speech_started":
@@ -379,6 +398,11 @@ class RealtimeSession:
                         "[REALTIME] Assistant transcript",
                         extra={"transcript": transcript},
                     )
+
+                    if self.on_transcript and transcript:
+                        asyncio.create_task(
+                            self._dispatch_transcript("assistant", transcript)
+                        )
 
                 # Tool call completed — execute and send result
                 elif event_type == "response.function_call_arguments.done":
@@ -761,11 +785,35 @@ async def create_realtime_session(
         if func.entrypoint:
             all_executors[func_name] = func.entrypoint
 
+    # Build transcript persistence callback
+    on_transcript = None
+    if call_id and caller_id:
+        _tx_user_id = user_id
+        _tx_call_id = call_id
+
+        async def _persist_transcript(role: str, text: str) -> None:
+            try:
+                async with AsyncSessionLocal() as tx_session:
+                    message_repo = db.MessageRepositoryAsync(tx_session)
+                    await message_repo.add_message_to_voice_conversation(
+                        user_id=_tx_user_id,
+                        message_body={"role": role, "content": text},
+                        call_id=_tx_call_id,
+                    )
+            except Exception as e:
+                logger.error(
+                    "[REALTIME] Failed to persist transcript",
+                    extra={"role": role, "error": str(e)},
+                )
+
+        on_transcript = _persist_transcript
+
     # Create session
     realtime_session = RealtimeSession(
         api_key=api_key,
         config=config,
         on_tool_call=(_make_tool_executor(all_executors) if all_executors else None),
+        on_transcript=on_transcript,
         user_id=user_id,
         call_id=call_id,
         project_id=project.id,
