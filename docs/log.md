@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-05-07
 
+- **Add `vision_state_change_event` table.** Partitioned table (`PARTITION BY RANGE (observed_at)`) for recording entity state transitions detected by the vision pipeline. Composite PK `(id, observed_at)`, indexed on `(entity_id, observed_at DESC)` and `(observed_at DESC)`. Columns: `entity_id`, `camera_config_id`, `previous_state_id`, `new_state_id`, `confidence`, `frame_s3_key`, `observed_at`, `metadata` (JSONB). Migration: `a680fe8fc678`.
 - **[PAL-10382] Internal vision observation API endpoint.** Added `POST /internal/vision/observations` for generating entity state observations from camera frames. The endpoint accepts a camera config ID, optional S3 image key, and optional image file upload (for testing). The service layer (`services/vision_observation_service/`) loads camera configuration, retrieves assigned entities and state definitions, auto-builds a structured output JSON schema, and calls the configured LLM (Azure OpenAI or Google Gemini) via the existing `MonitoringLLMProvider` abstraction. Returns per-entity state + confidence scores. Schema: `api/schemas/operations/vision_observation.py`.
 
 ---
