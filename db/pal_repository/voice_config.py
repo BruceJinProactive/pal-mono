@@ -94,6 +94,63 @@ class VoiceConfigRepository:
     # Write operations
     # ------------------------------------------------------------------
 
+    async def update(self, config_id: uuid.UUID, **kwargs) -> VoiceConfigData | None:
+        """Update a voice config with provided fields.
+
+        Args:
+            config_id: The voice config ID to update
+            **kwargs: Fields to update (any field from VoiceConfigData)
+
+        Returns:
+            Updated VoiceConfigData or None if not found.
+
+        Raises:
+            Exception: If the update fails.
+        """
+        try:
+            result = await self.session.execute(
+                select(VoiceConfig).filter(VoiceConfig.id == config_id)
+            )
+            row = result.scalar_one_or_none()
+            if not row:
+                return None
+
+            allowed_fields = {
+                "language",
+                "voice_id",
+                "first_message",
+                "transfer_message",
+                "speech_rate",
+                "background_sound",
+                "voice_model",
+                "replacements",
+                "raw_config",
+                "pronunciation_dict_id",
+                "cloned_voice_id",
+                "transcriber",
+            }
+            # Update only provided fields
+            for key, value in kwargs.items():
+                if key not in allowed_fields or value is None:
+                    continue
+                if value is not None and hasattr(row, key):
+                    if key == "speech_rate":
+                        setattr(row, key, SpeechRate(value))
+                    elif key in ("replacements", "raw_config", "transcriber"):
+                        # Ensure dict fields are properly converted
+                        if value is not None:
+                            setattr(row, key, dict(value))
+                    else:
+                        setattr(row, key, value)
+
+            result = _to_data(row)
+            await self.session.commit()
+            return result
+        except Exception as e:
+            await self.session.rollback()
+            logger.error(f"Error updating voice config: {e}")
+            raise
+
     async def create(self, record: VoiceConfigData) -> None:
         """Create a new voice config.
 
@@ -102,7 +159,6 @@ class VoiceConfigRepository:
         """
         try:
             row = VoiceConfig(
-                id=record.id,
                 project_id=record.project_id,
                 language=record.language,
                 voice_id=record.voice_id,
@@ -150,4 +206,33 @@ class VoiceConfigRepository:
         except Exception as e:
             await self.session.rollback()
             logger.error(f"Error deleting voice config: {e}")
+            raise
+
+    async def delete_by_project_id(self, project_id: uuid.UUID) -> int:
+        """Delete all voice configs for a given project.
+
+        Args:
+            project_id: The project ID whose voice configs should be deleted.
+
+        Returns:
+            Number of voice configs deleted.
+
+        Raises:
+            Exception: If the delete fails.
+        """
+        try:
+            result = await self.session.execute(
+                select(VoiceConfig).filter(VoiceConfig.project_id == project_id)
+            )
+            rows = result.scalars().all()
+            count = len(rows)
+
+            for row in rows:
+                await self.session.delete(row)
+
+            await self.session.commit()
+            return count
+        except Exception as e:
+            await self.session.rollback()
+            logger.error(f"Error deleting voice configs by project: {e}")
             raise

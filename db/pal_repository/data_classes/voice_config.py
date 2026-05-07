@@ -16,7 +16,6 @@ class VoiceConfigData:
     is returned to callers.
     """
 
-    id: uuid.UUID
     project_id: uuid.UUID
     language: str
     voice_id: str
@@ -25,12 +24,13 @@ class VoiceConfigData:
     speech_rate: str
     background_sound: str
     voice_model: str
-    created_at: datetime
     replacements: dict[str, Any] = field(default_factory=dict)
     raw_config: dict[str, Any] = field(default_factory=dict)
+    id: uuid.UUID | None = None
     pronunciation_dict_id: str | None = None
     cloned_voice_id: str | None = None
     transcriber: dict[str, Any] | None = None
+    created_at: datetime | None = None
     updated_at: datetime | None = None
 
     def __post_init__(self) -> None:

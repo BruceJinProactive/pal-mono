@@ -278,6 +278,98 @@ class TestCreate:
 
 
 # ---------------------------------------------------------------------------
+# TestUpdate
+# ---------------------------------------------------------------------------
+
+
+class TestUpdate:
+    """Updating a voice config."""
+
+    @pytest.mark.asyncio
+    async def test_update_returns_updated_data(
+        self,
+        repo: VoiceConfigRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.update(sample_id, language="spanish", voice_id="new-voice")
+
+        assert isinstance(data, VoiceConfigData)
+        assert data.id == sample_id
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_update_returns_none_when_not_found(
+        self, repo: VoiceConfigRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.update(uuid.uuid4(), language="spanish")
+        assert data is None
+
+    @pytest.mark.asyncio
+    async def test_update_speech_rate_converts_to_enum(
+        self,
+        repo: VoiceConfigRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+
+        await repo.update(sample_id, speech_rate="normal")
+
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_update_dict_fields_converts_to_dict(
+        self,
+        repo: VoiceConfigRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+
+        await repo.update(
+            sample_id,
+            replacements={"foo": "bar"},
+            raw_config={"key": "val"},
+            transcriber={"provider": "test"},
+        )
+
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_update_raises_on_db_error(
+        self,
+        repo: VoiceConfigRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+        mock_session.commit.side_effect = RuntimeError("update failed")
+
+        with pytest.raises(RuntimeError, match="update failed"):
+            await repo.update(sample_id, language="spanish")
+        mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
 # TestDelete
 # ---------------------------------------------------------------------------
 
@@ -330,6 +422,67 @@ class TestDelete:
 
         with pytest.raises(RuntimeError, match="delete failed"):
             await repo.delete(sample_id)
+        mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# TestDeleteByProjectId
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteByProjectId:
+    """Deleting all voice configs for a project."""
+
+    @pytest.mark.asyncio
+    async def test_delete_by_project_id_returns_count(
+        self,
+        repo: VoiceConfigRepository,
+        mock_session: AsyncMock,
+        sample_project_id: uuid.UUID,
+    ) -> None:
+        # Mock two voice configs
+        row1 = MagicMock()
+        row1.id = uuid.uuid4()
+        row2 = MagicMock()
+        row2.id = uuid.uuid4()
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [row1, row2]
+        mock_session.execute.return_value = mock_result
+
+        count = await repo.delete_by_project_id(sample_project_id)
+
+        assert count == 2
+        assert mock_session.delete.await_count == 2
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_by_project_id_returns_zero_when_none(
+        self,
+        repo: VoiceConfigRepository,
+        mock_session: AsyncMock,
+        sample_project_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        count = await repo.delete_by_project_id(sample_project_id)
+
+        assert count == 0
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_by_project_id_raises_on_db_error(
+        self,
+        repo: VoiceConfigRepository,
+        mock_session: AsyncMock,
+        sample_project_id: uuid.UUID,
+    ) -> None:
+        mock_session.execute.side_effect = RuntimeError("delete failed")
+
+        with pytest.raises(RuntimeError, match="delete failed"):
+            await repo.delete_by_project_id(sample_project_id)
         mock_session.rollback.assert_awaited_once()
 
 

@@ -11,6 +11,7 @@ from api.schemas.admin.voice_config import (
     UpdateVoiceConfigRequest,
     VoiceConfigUpdateData,
 )
+from db.pal_repository.data_classes.voice_config import VoiceConfigData
 from db.tables.voice_configs import SpeechRate
 from services.voice_service import VoiceService
 
@@ -60,11 +61,11 @@ class TestCreateVoiceConfigDuplicateValidation:
         existing_config.project_id = sample_create_request.project_id
 
         with patch(
-            "services.voice_service._implementation.VoiceConfigRepositoryAsync"
+            "services.voice_service._implementation.VoiceConfigRepository"
         ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
-            mock_repo.get_voice_configs_by_project.return_value = [existing_config]
+            mock_repo.list_by_project_id.return_value = [existing_config]
 
             with pytest.raises(HTTPException) as exc_info:
                 await voice_service.create_voice_config(
@@ -95,12 +96,12 @@ class TestCreateVoiceConfigDuplicateValidation:
         mock_created_config.updated_at = None
 
         with patch(
-            "services.voice_service._implementation.VoiceConfigRepositoryAsync"
+            "services.voice_service._implementation.VoiceConfigRepository"
         ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
-            mock_repo.get_voice_configs_by_project.return_value = [existing_config]
-            mock_repo.create_voice_config.return_value = mock_created_config
+            mock_repo.list_by_project_id.return_value = [existing_config]
+            mock_repo.create.return_value = None  # create returns None, not the config
 
             with patch("services.voice_service._implementation.build_voice_config"):
                 await voice_service.create_voice_config(
@@ -120,12 +121,12 @@ class TestCreateVoiceConfigDuplicateValidation:
         mock_created_config.language = "english"
 
         with patch(
-            "services.voice_service._implementation.VoiceConfigRepositoryAsync"
+            "services.voice_service._implementation.VoiceConfigRepository"
         ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
-            mock_repo.get_voice_configs_by_project.return_value = []
-            mock_repo.create_voice_config.return_value = mock_created_config
+            mock_repo.list_by_project_id.return_value = []
+            mock_repo.create.return_value = None  # create returns None, not the config
 
             with patch("services.voice_service._implementation.build_voice_config"):
                 await voice_service.create_voice_config(
@@ -157,12 +158,12 @@ class TestUpdateVoiceConfigDuplicateValidation:
         update_request = UpdateVoiceConfigRequest(language="spanish")
 
         with patch(
-            "services.voice_service._implementation.VoiceConfigRepositoryAsync"
+            "services.voice_service._implementation.VoiceConfigRepository"
         ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
-            mock_repo.get_voice_config_by_id.return_value = existing_config
-            mock_repo.get_voice_configs_by_project.return_value = [
+            mock_repo.get_by_id.return_value = existing_config
+            mock_repo.list_by_project_id.return_value = [
                 existing_config,
                 other_config,
             ]
@@ -191,12 +192,12 @@ class TestUpdateVoiceConfigDuplicateValidation:
         update_request = UpdateVoiceConfigRequest(language="english")
 
         with patch(
-            "services.voice_service._implementation.VoiceConfigRepositoryAsync"
+            "services.voice_service._implementation.VoiceConfigRepository"
         ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
-            mock_repo.get_voice_config_by_id.return_value = existing_config
-            mock_repo.update_voice_config.return_value = existing_config
+            mock_repo.get_by_id.return_value = existing_config
+            mock_repo.update.return_value = existing_config
 
             with patch("services.voice_service._implementation.build_voice_config"):
                 await voice_service.update_voice_config(
@@ -217,12 +218,12 @@ class TestUpdateVoiceConfigDuplicateValidation:
         update_request = UpdateVoiceConfigRequest(first_message="New message")
 
         with patch(
-            "services.voice_service._implementation.VoiceConfigRepositoryAsync"
+            "services.voice_service._implementation.VoiceConfigRepository"
         ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
-            mock_repo.get_voice_config_by_id.return_value = existing_config
-            mock_repo.update_voice_config.return_value = existing_config
+            mock_repo.get_by_id.return_value = existing_config
+            mock_repo.update.return_value = existing_config
 
             with patch("services.voice_service._implementation.build_voice_config"):
                 await voice_service.update_voice_config(
@@ -238,11 +239,11 @@ class TestUpdateVoiceConfigDuplicateValidation:
         update_request = UpdateVoiceConfigRequest(language="english")
 
         with patch(
-            "services.voice_service._implementation.VoiceConfigRepositoryAsync"
+            "services.voice_service._implementation.VoiceConfigRepository"
         ) as mock_repo_class:
             mock_repo = AsyncMock()
             mock_repo_class.return_value = mock_repo
-            mock_repo.get_voice_config_by_id.return_value = None
+            mock_repo.get_by_id.return_value = None
 
             with pytest.raises(HTTPException) as exc_info:
                 await voice_service.update_voice_config(
@@ -338,3 +339,113 @@ class TestVoiceConfigLanguageValidation:
         """Should allow None language on VoiceConfigUpdateData."""
         data = VoiceConfigUpdateData(project_id=uuid.uuid4(), language=None)
         assert data.language is None
+
+
+class TestCreateVoiceConfigErrorHandling:
+    """Test error handling in create_voice_config."""
+
+    @pytest.mark.asyncio
+    async def test_create_rollback_on_repository_error(
+        self,
+        voice_service: VoiceService,
+        sample_create_request: CreateVoiceConfigRequest,
+        mock_async_session: AsyncMock,
+    ) -> None:
+        """Should rollback and raise HTTPException on repository error."""
+        with patch(
+            "services.voice_service._implementation.VoiceConfigRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.list_by_project_id.return_value = []
+            mock_repo.create.side_effect = RuntimeError("Database error")
+
+            with pytest.raises(HTTPException) as exc_info:
+                await voice_service.create_voice_config(
+                    sample_create_request, mock_async_session
+                )
+
+            assert exc_info.value.status_code == 400
+            assert "Failed to create" in exc_info.value.detail
+            mock_async_session.rollback.assert_awaited_once()
+
+
+class TestUpdateVoiceConfigErrorHandling:
+    """Test error handling in update_voice_config."""
+
+    @pytest.mark.asyncio
+    async def test_update_rollback_on_repository_error(
+        self, voice_service: VoiceService, mock_async_session: AsyncMock
+    ) -> None:
+        """Should rollback and raise HTTPException on repository error."""
+        voice_config_id = uuid.uuid4()
+        update_request = UpdateVoiceConfigRequest(voice_id="new-voice")
+
+        with patch(
+            "services.voice_service._implementation.VoiceConfigRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.update.side_effect = RuntimeError("Database error")
+
+            with pytest.raises(HTTPException) as exc_info:
+                await voice_service.update_voice_config(
+                    voice_config_id, update_request, mock_async_session
+                )
+
+            assert exc_info.value.status_code == 400
+            assert "Failed to update" in exc_info.value.detail
+            mock_async_session.rollback.assert_awaited_once()
+
+
+class TestDeleteVoiceConfigErrorHandling:
+    """Test error handling in delete_voice_config."""
+
+    @pytest.mark.asyncio
+    async def test_delete_rollback_on_repository_error(
+        self, voice_service: VoiceService, mock_async_session: AsyncMock
+    ) -> None:
+        """Should rollback and raise HTTPException on repository error."""
+        voice_config_id = uuid.uuid4()
+
+        with patch(
+            "services.voice_service._implementation.VoiceConfigRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo_class.return_value = mock_repo
+            mock_repo.delete.side_effect = RuntimeError("Database error")
+
+            with pytest.raises(HTTPException) as exc_info:
+                await voice_service.delete_voice_config(
+                    voice_config_id, mock_async_session
+                )
+
+            assert exc_info.value.status_code == 400
+            assert "Failed to delete" in exc_info.value.detail
+            mock_async_session.rollback.assert_awaited_once()
+
+
+class TestBuildVoiceConfig:
+    """Test build_voice_config helper function."""
+
+    def test_build_voice_config_raises_on_none_id(self) -> None:
+        """Should raise ValueError when VoiceConfigData has None id."""
+        from datetime import datetime
+
+        from services.voice_service._implementation import build_voice_config
+
+        voice_config_data = VoiceConfigData(
+            id=None,
+            project_id=uuid.uuid4(),
+            language="english",
+            voice_id="test-voice",
+            first_message="Hello",
+            transfer_message="Transferring",
+            speech_rate="normal",
+            background_sound="office",
+            voice_model="sonic-2",
+            created_at=datetime.now(),
+        )
+
+        with pytest.raises(ValueError, match="must have an id"):
+            build_voice_config(voice_config_data)

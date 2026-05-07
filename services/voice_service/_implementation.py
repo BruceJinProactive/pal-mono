@@ -1,6 +1,7 @@
 """Voice service implementation."""
 
 import uuid
+from datetime import datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,8 +13,47 @@ from api.schemas.admin.voice_config import (
     VoiceConfig,
     VoiceConfigUpdateResult,
 )
-from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
-from services.voice_service._builder import build_voice_config
+from db.pal_repository.data_classes.voice_config import VoiceConfigData
+from db.pal_repository.voice_config import VoiceConfigRepository
+
+
+def build_voice_config(voice_config_data: VoiceConfigData) -> VoiceConfig:
+    """Convert VoiceConfigData to VoiceConfig API schema."""
+    from db.tables.types import SpeechRate
+
+    if voice_config_data.id is None:
+        raise ValueError("VoiceConfigData must have an id")
+
+    return VoiceConfig(
+        id=voice_config_data.id,
+        project_id=voice_config_data.project_id,
+        language=voice_config_data.language,
+        voice_id=voice_config_data.voice_id,
+        replacements=voice_config_data.replacements,
+        first_message=voice_config_data.first_message,
+        transfer_message=voice_config_data.transfer_message,
+        speech_rate=(
+            SpeechRate(voice_config_data.speech_rate)
+            if voice_config_data.speech_rate
+            else SpeechRate.normal
+        ),
+        background_sound=voice_config_data.background_sound,
+        raw_config=voice_config_data.raw_config,
+        pronunciation_dict_id=voice_config_data.pronunciation_dict_id,
+        cloned_voice_id=voice_config_data.cloned_voice_id,
+        voice_model=voice_config_data.voice_model,
+        transcriber=voice_config_data.transcriber,
+        created_at=(
+            int(voice_config_data.created_at.timestamp())
+            if voice_config_data.created_at
+            else 0
+        ),
+        updated_at=(
+            int(voice_config_data.updated_at.timestamp())
+            if voice_config_data.updated_at
+            else 0
+        ),
+    )
 
 
 class VoiceService:
@@ -32,11 +72,11 @@ class VoiceService:
             cloned_voice_id = create_request.voice_id
 
         # Create voice config using repository
-        voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
+        voice_repo = VoiceConfigRepository(async_session)
 
         # Check for duplicate language in same project
         # Language is already normalized (lowercased, stripped) by Pydantic validator
-        existing_configs = await voice_repo.get_voice_configs_by_project(
+        existing_configs = await voice_repo.list_by_project_id(
             create_request.project_id
         )
 
@@ -51,7 +91,8 @@ class VoiceService:
             )
 
         try:
-            db_voice_config = await voice_repo.create_voice_config(
+            voice_config_data = VoiceConfigData(
+                id=uuid.uuid4(),
                 project_id=create_request.project_id,
                 language=create_request.language,
                 voice_id=create_request.voice_id,
@@ -61,17 +102,19 @@ class VoiceService:
                 speech_rate=(
                     create_request.speech_rate.value
                     if create_request.speech_rate
-                    else None
+                    else "normal"
                 ),
-                background_sound=create_request.background_sound,
+                background_sound=create_request.background_sound or "",
                 raw_config=create_request.raw_config or {},
                 cloned_voice_id=cloned_voice_id,
-                voice_model=create_request.voice_model,
+                voice_model=create_request.voice_model or "sonic-2",
                 transcriber=create_request.transcriber,
                 pronunciation_dict_id=create_request.pronunciation_dict_id,
+                created_at=datetime.now(),
             )
+            await voice_repo.create(voice_config_data)
 
-            return build_voice_config(db_voice_config)
+            return build_voice_config(voice_config_data)
         except Exception as e:
             await async_session.rollback()
             raise HTTPException(
@@ -86,17 +129,17 @@ class VoiceService:
         async_session: AsyncSession,
     ) -> VoiceConfig:
         """Get voice config by ID."""
-        voice_repo = VoiceConfigRepositoryAsync(async_session)
+        voice_repo = VoiceConfigRepository(async_session)
 
         # Get voice config by ID
-        db_voice_config = await voice_repo.get_voice_config_by_id(voice_config_id)
-        if not db_voice_config:
+        voice_config_data = await voice_repo.get_by_id(voice_config_id)
+        if not voice_config_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Voice config not found",
             )
 
-        return build_voice_config(db_voice_config)
+        return build_voice_config(voice_config_data)
 
     async def list_voice_configs_by_project(
         self,
@@ -104,8 +147,8 @@ class VoiceService:
         async_session: AsyncSession,
     ) -> ListVoiceConfigsResponse:
         """List all voice configs for a project."""
-        voice_repo = VoiceConfigRepositoryAsync(async_session)
-        voice_configs = await voice_repo.get_voice_configs_by_project(project_id)
+        voice_repo = VoiceConfigRepository(async_session)
+        voice_configs = await voice_repo.list_by_project_id(project_id)
 
         return ListVoiceConfigsResponse(
             voice_configs=[build_voice_config(vc) for vc in voice_configs],
@@ -119,13 +162,13 @@ class VoiceService:
         async_session: AsyncSession,
     ) -> VoiceConfig:
         """Update an existing voice config."""
-        voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
+        voice_repo = VoiceConfigRepository(async_session)
 
         # Check for duplicate language if updating language
         # Language is already normalized (lowercased, stripped) by Pydantic validator
         if update_request.language is not None:
             # Fetch existing config to get project_id and current language
-            existing_config = await voice_repo.get_voice_config_by_id(voice_config_id)
+            existing_config = await voice_repo.get_by_id(voice_config_id)
             if not existing_config:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -135,7 +178,7 @@ class VoiceService:
             # Only check if actually changing the language
             normalized_existing = (existing_config.language or "").strip().lower()
             if update_request.language != normalized_existing:
-                existing_configs = await voice_repo.get_voice_configs_by_project(
+                existing_configs = await voice_repo.list_by_project_id(
                     existing_config.project_id
                 )
 
@@ -165,16 +208,14 @@ class VoiceService:
                     update_kwargs["cloned_voice_id"] = update_kwargs["voice_id"]
                 else:
                     # Fetch existing config to get voice_id
-                    existing_config = await voice_repo.get_voice_config_by_id(
-                        voice_config_id
-                    )
+                    existing_config = await voice_repo.get_by_id(voice_config_id)
                     if existing_config:
                         update_kwargs["cloned_voice_id"] = existing_config.voice_id
             # If cloned is False, we don't update cloned_voice_id (keep existing value)
 
         try:
-            updated_voice_config = await voice_repo.update_voice_config(
-                voice_config_id=voice_config_id, **update_kwargs
+            updated_voice_config = await voice_repo.update(
+                voice_config_id, **update_kwargs
             )
 
             if not updated_voice_config:
@@ -198,10 +239,10 @@ class VoiceService:
         async_session: AsyncSession,
     ):
         """Delete a voice config."""
-        voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
+        voice_repo = VoiceConfigRepository(async_session)
 
         try:
-            deleted = await voice_repo.delete_voice_config(voice_config_id)
+            deleted = await voice_repo.delete(voice_config_id)
 
             if not deleted:
                 raise HTTPException(
