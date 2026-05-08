@@ -350,6 +350,50 @@ def batch_delete_projects(
     )
 
 
+async def create_project_async(
+    async_session: AsyncSession,
+    context: UserContext,
+    account_name: str,
+    project_name: str,
+    params: ProjectParams,
+) -> db.Project:
+    """Create a project asynchronously.
+
+    Args:
+        async_session (AsyncSession): The asynchronous database connection.
+        context (UserContext): Information for the current user.
+        account_name (str): The name of the account to which the project belongs.
+        project_name (str): The unique name of the project to be created.
+        params (ProjectParams): The detailed configs of the project to be created.
+
+    Returns:
+        Project: The newly created project.
+    """
+    return await _implementation.create_project_async(
+        async_session, context, account_name, project_name, params
+    )
+
+
+async def delete_project_async(
+    async_session: AsyncSession,
+    context: UserContext,
+    project_id: uuid.UUID,
+) -> None:
+    """Delete a project and its voice_configs asynchronously.
+
+    Args:
+        async_session (AsyncSession): The asynchronous database connection.
+        context (UserContext): Information for the current user.
+        project_id (uuid.UUID): The unique identifier of the project.
+
+    Returns:
+        None
+    """
+    return await _implementation.delete_project_async(
+        async_session, context, project_id
+    )
+
+
 __all__ = [
     "create_project",
     "update_project",
@@ -367,5 +411,7 @@ __all__ = [
     "batch_create_projects",
     "batch_update_projects",
     "batch_delete_projects",
+    "create_project_async",
+    "delete_project_async",
     "ProjectParams",
 ]

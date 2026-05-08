@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 import db
 from api.schemas.chat.message import Message
+from db.pal_repository.data_classes.voice_config import VoiceConfigData
+from db.pal_repository.voice_config import VoiceConfigRepository
 from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
-from db.repositories.voice_config_repository import VoiceConfigRepositoryAsync
 from db.tables.change_log import ChangeResourceType
 from services.auth_types import UserContext
 from services.history_service import change_log_context
@@ -744,16 +745,20 @@ async def create_project_async(
     )
 
     # Create default voice_config for the project
-    voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
+    voice_repo = VoiceConfigRepository(async_session)
 
     default_voice_id = "da69d796-4603-4419-8a95-293bfc5679eb"
-    await voice_repo.create_voice_config(
+    voice_config_data = VoiceConfigData(
         project_id=project.id,
         language="english",
         voice_id=default_voice_id,
         first_message=f"Hello, this is {project_name} AI Agent, how can I help you today?!",
         transfer_message="",
+        speech_rate="normal",
+        background_sound="",
+        voice_model="sonic-2",
     )
+    await voice_repo.create(voice_config_data)
 
     # Capture project data for change logging
     project_data_snapshot = _create_project_data_snapshot(project)
@@ -809,8 +814,8 @@ async def delete_project_async(
             )
 
     # Delete associated voice_configs first
-    voice_repo = VoiceConfigRepositoryAsync(async_session, auto_commit=True)
-    deleted_voice_configs = await voice_repo.delete_voice_configs_by_project(project_id)
+    voice_repo = VoiceConfigRepository(async_session)
+    deleted_voice_configs = await voice_repo.delete_by_project_id(project_id)
 
     logger.debug(
         f"Deleted {deleted_voice_configs} voice configs for project",
