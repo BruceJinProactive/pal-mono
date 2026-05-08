@@ -1873,3 +1873,203 @@ class TestPersistTranscriptWiring:
 
         # Should not raise
         await session._dispatch_transcript("user", "test")
+
+
+# ---------------------------------------------------------------------------
+# Background Audio Mixer Loading Tests
+# ---------------------------------------------------------------------------
+
+
+class TestBackgroundAudioMixerLoading:
+    """Test mixer loading in create_realtime_session."""
+
+    @pytest.mark.asyncio
+    async def test_mixer_loaded_when_asset_exists(self) -> None:
+        """create_realtime_session loads mixer when background_sound asset exists."""
+        mock_agent = MagicMock()
+        mock_agent.id = uuid.uuid4()
+        mock_agent.raw_config = {}
+        mock_agent.memory_enabled = False
+        mock_agent.filler_words = {}
+
+        mock_project = MagicMock()
+        mock_project.id = uuid.uuid4()
+        mock_project.name = "Test Project"
+        mock_project.timezone = "America/New_York"
+        mock_project.agent = mock_agent
+        mock_project.raw_config = {}
+
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+        mock_account.name = "Test Account"
+        mock_project.account = mock_account
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        mock_voice_message = MagicMock()
+        mock_voice_message.conversation_id = uuid.uuid4()
+
+        mock_voice_config = MagicMock()
+        mock_voice_config.background_sound = "office"
+        mock_voice_config.raw_config = {}
+        mock_voice_config.speech_rate = None
+        mock_voice_config.first_message = None
+
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([])
+
+        mock_vc_scalars = MagicMock()
+        mock_vc_scalars.first.return_value = mock_voice_config
+        mock_vc_result = MagicMock()
+        mock_vc_result.scalars.return_value = mock_vc_scalars
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_pi_result, mock_vc_result]
+        )
+        mock_session.refresh = AsyncMock()
+
+        with (
+            patch(
+                "services.realtime_service._implementation.user_service"
+            ) as mock_user_svc,
+            patch(
+                "services.realtime_service._implementation.message_service"
+            ) as mock_msg_svc,
+            patch(
+                "services.realtime_service._implementation.RawConfig"
+            ) as mock_raw_config_cls,
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test-api-key"}),
+            patch.object(RealtimeSession, "connect", new_callable=AsyncMock),
+            patch.object(RealtimeSession, "send_first_message", new_callable=AsyncMock),
+            patch(
+                "services.realtime_service._implementation._ASSETS_DIR"
+            ) as mock_assets_dir,
+        ):
+            mock_user_svc.get_user_async = AsyncMock(return_value=(mock_user, False))
+            mock_msg_svc.create_voice_call_conversation = AsyncMock(
+                return_value=mock_voice_message
+            )
+
+            mock_raw_config_instance = AsyncMock()
+            mock_raw_config_instance._build_agent_prompt = AsyncMock(
+                return_value="Test prompt"
+            )
+            mock_raw_config_instance._get_agent_tools = AsyncMock(
+                return_value=MagicMock(identifiers=[])
+            )
+            mock_raw_config_cls.return_value = mock_raw_config_instance
+
+            # Mock asset path to return valid bytes
+            mock_path = MagicMock()
+            mock_path.exists.return_value = True
+            mock_path.read_bytes.return_value = bytes([0x7F] * 100)
+            mock_assets_dir.__truediv__ = MagicMock(return_value=mock_path)
+
+            result = await create_realtime_session(
+                mock_session,
+                recipient_id="+15551234567",
+                caller_id="+15559876543",
+                call_id="CA123",
+            )
+
+        assert result.mixer is not None
+
+    @pytest.mark.asyncio
+    async def test_mixer_none_when_read_fails(self) -> None:
+        """create_realtime_session sets mixer=None when file read raises OSError."""
+        mock_agent = MagicMock()
+        mock_agent.id = uuid.uuid4()
+        mock_agent.raw_config = {}
+        mock_agent.memory_enabled = False
+        mock_agent.filler_words = {}
+
+        mock_project = MagicMock()
+        mock_project.id = uuid.uuid4()
+        mock_project.name = "Test Project"
+        mock_project.timezone = "America/New_York"
+        mock_project.agent = mock_agent
+        mock_project.raw_config = {}
+
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+        mock_account.name = "Test Account"
+        mock_project.account = mock_account
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        mock_voice_message = MagicMock()
+        mock_voice_message.conversation_id = uuid.uuid4()
+
+        mock_voice_config = MagicMock()
+        mock_voice_config.background_sound = "office"
+        mock_voice_config.raw_config = {}
+        mock_voice_config.speech_rate = None
+        mock_voice_config.first_message = None
+
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([])
+
+        mock_vc_scalars = MagicMock()
+        mock_vc_scalars.first.return_value = mock_voice_config
+        mock_vc_result = MagicMock()
+        mock_vc_result.scalars.return_value = mock_vc_scalars
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_pi_result, mock_vc_result]
+        )
+        mock_session.refresh = AsyncMock()
+
+        with (
+            patch(
+                "services.realtime_service._implementation.user_service"
+            ) as mock_user_svc,
+            patch(
+                "services.realtime_service._implementation.message_service"
+            ) as mock_msg_svc,
+            patch(
+                "services.realtime_service._implementation.RawConfig"
+            ) as mock_raw_config_cls,
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test-api-key"}),
+            patch.object(RealtimeSession, "connect", new_callable=AsyncMock),
+            patch.object(RealtimeSession, "send_first_message", new_callable=AsyncMock),
+            patch(
+                "services.realtime_service._implementation._ASSETS_DIR"
+            ) as mock_assets_dir,
+        ):
+            mock_user_svc.get_user_async = AsyncMock(return_value=(mock_user, False))
+            mock_msg_svc.create_voice_call_conversation = AsyncMock(
+                return_value=mock_voice_message
+            )
+
+            mock_raw_config_instance = AsyncMock()
+            mock_raw_config_instance._build_agent_prompt = AsyncMock(
+                return_value="Test prompt"
+            )
+            mock_raw_config_instance._get_agent_tools = AsyncMock(
+                return_value=MagicMock(identifiers=[])
+            )
+            mock_raw_config_cls.return_value = mock_raw_config_instance
+
+            # Mock asset path to raise OSError
+            mock_path = MagicMock()
+            mock_path.exists.side_effect = OSError("Permission denied")
+            mock_assets_dir.__truediv__ = MagicMock(return_value=mock_path)
+
+            result = await create_realtime_session(
+                mock_session,
+                recipient_id="+15551234567",
+                caller_id="+15559876543",
+                call_id="CA123",
+            )
+
+        assert result.mixer is None

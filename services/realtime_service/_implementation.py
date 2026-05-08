@@ -12,6 +12,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator
 
 if TYPE_CHECKING:
@@ -40,7 +41,10 @@ from services import message_service, user_service
 from services.agent_service._raw_config import RawConfig
 from utils.log import logger
 
+from ._audio_mixer import BackgroundAudioMixer
 from ._config import RealtimeConfig
+
+_ASSETS_DIR = Path(__file__).parent / "assets"
 
 _SPEECH_RATE_TO_SPEED: dict[SpeechRate, float] = {
     SpeechRate.slowest: 0.6,
@@ -70,6 +74,7 @@ class RealtimeSession:
         user_id: uuid.UUID | None = None,
         call_id: str | None = None,
         project_id: uuid.UUID | None = None,
+        mixer: "BackgroundAudioMixer | None" = None,
     ):
         self.api_key = api_key
         self.config = config
@@ -81,6 +86,8 @@ class RealtimeSession:
         self.user_id = user_id
         self.call_id = call_id
         self.project_id = project_id
+        self.mixer = mixer
+
         # Counters for logging
         self.audio_chunks_sent_to_openai = 0
         self.audio_chunks_received = 0
@@ -808,6 +815,21 @@ async def create_realtime_session(
 
         on_transcript = _persist_transcript
 
+    # Load background audio mixer
+    mixer: BackgroundAudioMixer | None = None
+    background_sound = voice_config.background_sound if voice_config else None
+    if background_sound and all(c.isalnum() or c == "-" for c in background_sound):
+        asset_path = _ASSETS_DIR / f"{background_sound}.ulaw"
+        try:
+            if asset_path.exists():
+                mixer = BackgroundAudioMixer(asset_path.read_bytes(), volume=0.1)
+            else:
+                logger.warning(
+                    "[REALTIME] Background audio asset not found: %s", asset_path
+                )
+        except OSError as e:
+            logger.warning("[REALTIME] Failed to read background audio asset: %s", e)
+
     # Create session
     realtime_session = RealtimeSession(
         api_key=api_key,
@@ -817,6 +839,7 @@ async def create_realtime_session(
         user_id=user_id,
         call_id=call_id,
         project_id=project.id,
+        mixer=mixer,
     )
 
     await realtime_session.connect()
