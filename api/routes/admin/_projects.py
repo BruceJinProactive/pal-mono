@@ -1,7 +1,10 @@
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from api.schemas.admin.project import (
     BatchCreateProjectsRequest,
@@ -17,11 +20,14 @@ from api.schemas.admin.project import (
     ProjectUpdateResult,
     UpdateProjectRequest,
 )
+from db.pal_repository.data_classes.voice_config import VoiceConfigData
+from db.pal_repository.voice_config import (
+    VoiceConfigRepository as VoiceConfigRepositoryNew,
+)
 from db.repositories.resource_role_assignment_repository import (
     ResourceRoleAssignmentRepository,
     ResourceType,
 )
-from db.repositories.voice_config_repository import VoiceConfigRepository
 from services import (
     account_service,
     agent_service,
@@ -290,11 +296,11 @@ def get_project(
 async def create_project(
     create_request: CreateProjectRequest,
     context: UserContext,
-    session: Session,
+    session: AsyncSession,
 ) -> Project:
     project_params = create_request.to_project_params()
     try:
-        db_project = project_service.create_project(
+        db_project = await project_service.create_project_async(
             session,
             context,
             create_request.account_name,
@@ -303,11 +309,37 @@ async def create_project(
         )
 
         # If subscription_id is provided, add the project to the subscription
+        # NOTE: subscription_service is sync-only, using run_in_threadpool to bridge async/sync
         if create_request.subscription_id:
             try:
-                subscription_service.create_project_subscription(
-                    session, db_project, create_request.subscription_id
+                # Wrapper to handle sync session in thread - pass only scalar IDs
+                def _add_project_to_subscription(
+                    project_id: uuid.UUID, subscription_id: uuid.UUID
+                ):
+                    from db.session import SyncSessionLocal
+
+                    sync_session = SyncSessionLocal()
+                    try:
+                        # Load project within sync session
+                        project_obj = project_service.get_project(
+                            sync_session, project_id
+                        )
+                        if not project_obj:
+                            raise ValueError(f"Project {project_id} not found")
+
+                        subscription_service.create_project_subscription(
+                            sync_session, project_obj, subscription_id
+                        )
+                        sync_session.commit()
+                    finally:
+                        sync_session.close()
+
+                await run_in_threadpool(
+                    _add_project_to_subscription,
+                    db_project.id,
+                    create_request.subscription_id,
                 )
+
             except ValueError as subscription_err:
                 logger.warning(
                     f"Project created but failed to add to subscription: {subscription_err}",
@@ -339,18 +371,25 @@ async def create_project(
                 )
 
         # Create default voice config if project has no voice configs
-        voice_repo = VoiceConfigRepository(session, auto_commit=True)
-        existing_voice_configs = voice_repo.get_voice_configs_by_project(db_project.id)
+        voice_repo = VoiceConfigRepositoryNew(session)
+        existing_voice_configs = await voice_repo.list_by_project_id(db_project.id)
 
         if not existing_voice_configs:
             default_voice_id = "da69d796-4603-4419-8a95-293bfc5679eb"
-            voice_repo.create_voice_config(
+            voice_config_data = VoiceConfigData(
                 project_id=db_project.id,
                 language="english",
                 voice_id=default_voice_id,
                 first_message=f"Hello, this is {create_request.name} AI Agent, how can I help you today?!",
                 transfer_message="",
+                speech_rate="normal",
+                background_sound="",
+                voice_model="sonic-2",
+                replacements={},
+                raw_config={},
+                created_at=datetime.now(UTC),
             )
+            await voice_repo.create(voice_config_data)
 
     except ValueError as err:
         raise HTTPException(
@@ -395,36 +434,53 @@ async def update_project(
 async def delete_project(
     project_id: uuid.UUID,
     context: UserContext,
-    session: Session,
+    session: AsyncSession,
 ):
     authorize_admin(context)
 
-    project = project_service.get_project(session, project_id)
+    project = await project_service.get_project_by_id_async(session, project_id)
     if not project:
         return
 
     try:
-        curr_sub, _ = subscription_service.get_account_subscriptions(
-            session, project.account_id
+        # Handle subscription cleanup - subscription_service is sync-only
+        # Use run_in_threadpool to bridge async/sync
+        # Wrapper to handle sync session in thread - pass only scalar IDs
+        def _remove_project_from_subscription(
+            account_id: uuid.UUID, project_id: uuid.UUID
+        ):
+            from db.session import SyncSessionLocal
+
+            sync_session = SyncSessionLocal()
+            try:
+                curr_sub, _ = subscription_service.get_account_subscriptions(
+                    sync_session, account_id
+                )
+                if curr_sub:
+                    subscription_service.remove_project_subscription(
+                        sync_session, project_id, curr_sub.external_id
+                    )
+                sync_session.commit()
+            finally:
+                sync_session.close()
+
+        await run_in_threadpool(
+            _remove_project_from_subscription, project.account_id, project.id
         )
-        if curr_sub:
-            subscription_service.remove_project_subscription(
-                session, project.id, curr_sub.external_id
-            )
 
         # Delete all voice configs for this project
-        voice_repo = VoiceConfigRepository(session, auto_commit=False)
-        deleted_voice_configs = voice_repo.delete_voice_configs_by_project(project_id)
+        voice_repo = VoiceConfigRepositoryNew(session)
+        deleted_voice_configs = await voice_repo.delete_by_project_id(project_id)
         logger.info(
             f"Deleted {deleted_voice_configs} voice configs for project {project.name}"
         )
 
-        project_service.delete_project(session, context, project_id)
-        session.commit()
+        await project_service.delete_project_async(session, context, project_id)
+        await session.commit()
     except Exception as e:
-        session.rollback()
+        await session.rollback()
         logger.error(
-            f"Failed to remove project {project.name} to account subscription: {e}",
+            f"Failed to delete project {project.name}: {e}",
             extra={
                 "project_id": str(project.id),
                 "account_id": str(project.account_id),

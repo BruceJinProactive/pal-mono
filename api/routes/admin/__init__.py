@@ -1379,7 +1379,7 @@ async def upsert_feature(
 async def create_project(
     project: CreateProjectRequest,
     context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
+    session: AsyncSession = Depends(db.get_db_async),
 ) -> Project:
     """
     Create a new project based on the provided request data. A project must
@@ -1494,7 +1494,7 @@ async def delete_project(
     context: UserContext = Depends(
         require_project_permission("project.delete", authenticate_user)
     ),
-    session: Session = Depends(db.get_db),
+    session: AsyncSession = Depends(db.get_db_async),
 ):
     """
     Delete the specified project by id.
