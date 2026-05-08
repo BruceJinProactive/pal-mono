@@ -171,6 +171,7 @@ _TOAST_SPEC_FIELDS = [
     "base_url",
     "timeout",
     "submit_orders",
+    "expose_lookup_qualifiers",
     "debug",
     "customer_email",
     "tool_name",
