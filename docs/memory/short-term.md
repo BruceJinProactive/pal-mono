@@ -24,6 +24,13 @@ Last updated: 2026-05-05
 - 2026-05-01: **Eval case-spec converter** (PAL-10278). `services/eval_service/scripts/convert_case_specs.py` turns pal-agents case-spec JSON into `EvalScenario` YAML; generated `services/eval_service/scenarios/ordering/sonnys_bbq.yaml` (5,288 lines, do not hand-edit). Pure/stateless, reusable by the future `eval_scenarios` seed script. → `docs/records/2026-05-01-eval-case-spec-converter.md`
 - 2026-04-28: **StatsD → OTel metrics migration**. Removed `utils/dd.py` (DogStatsd). All metrics now use OTel `increment_counter` / `record_histogram` / `record_duration` from `utils/otel.py`, exported via OTLP. `datadog` package removal is a separate PR.
 - 2026-04-28: **Eval `spec_modifier` for order-submission safety** — `InProcessDriver` now installs `apply_eval_safety` by default via a new `spec_modifier` hook on `message_service.get_chat_response_async`. Forces `toast.submit_orders=False` and `adora.force_payment_link=True` regardless of DB config. → `docs/records/2026-04-28-eval-spec-modifier.md`
+- 2026-04-28: **Eval platform docs graduated — Phase 1 + Phase 2 + system state**.
+  - New `docs/state/eval-platform.md` — living architecture reference (API, DB tables, driver modes, evaluators, fingerprinting, fragile zones).
+  - New `docs/state/eval-platform-fde-guide.md` — user-facing workflow guide (moved from `docs/plans/`).
+  - New records: `docs/records/2026-04-28-eval-platform-phase1-completion.md`, `docs/records/2026-04-28-eval-platform-phase2-completion.md`.
+  - Historical design docs moved to records: `2026-03-01-eval-platform-proposal.md`, `...-requirements.md`, `...-implementation-plan.md`, `...-timeline.md`.
+  - Removed from `docs/plans/conversation-eval/`: 13 P1 plans, `prompt-traceability-plan.md`, `phase2-audio-native-proposal.md` (all shipped).
+  - Remaining active plans: `phase2-followups-plan.md` (audio_quality wiring, DUAL_CHANNEL recording, DirectDriver), `rubric-by-scenario-type-plan.md`, `eval-context-modifier-plan.md` (spec_modifier in PR #4104), `langfuse-integration-plan.md` (new draft).
 - 2026-04-25: **Datadog LLMObs → Langfuse/OTel migration** (PAL-10113, PR #4090). ADR-013 superseded. LLM observability now uses Langfuse SDK v4 (`@observe` decorators in `agent/agent.py`, `agent/framework/agno.py`, tool `_implementation.py` files). General tracing moves to OpenTelemetry (Grafana Tempo).
 - 2026-04-24: Langfuse dependency added (PAL-10112, PR #4089) — precursor to the LLMObs migration.
 - 2026-04-23: `eval_scenarios` table landed → `docs/records/2026-04-23-eval-scenarios-table.md`.
