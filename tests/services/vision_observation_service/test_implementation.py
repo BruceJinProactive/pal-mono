@@ -424,15 +424,21 @@ class TestGenerateObservation:
         mock_mapping.entity_id = entity_id
         mock_mapping.roi_hint = {"x": 10, "y": 20, "w": 100, "h": 50}
 
+        state_id_on = uuid.uuid4()
+        state_id_off = uuid.uuid4()
+
         mock_entity = MagicMock()
         mock_entity.id = entity_id
         mock_entity.name = "oven_1"
         mock_entity.is_active = True
         mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = state_id_off
 
         mock_state_def_on = MagicMock()
+        mock_state_def_on.id = state_id_on
         mock_state_def_on.name = "on"
         mock_state_def_off = MagicMock()
+        mock_state_def_off.id = state_id_off
         mock_state_def_off.name = "off"
 
         mock_entity_type = MagicMock()
@@ -482,6 +488,9 @@ class TestGenerateObservation:
             mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
                 return_value=mock_entity
             )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
             mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
                 return_value=[mock_state_def_on, mock_state_def_off]
             )
@@ -497,12 +506,18 @@ class TestGenerateObservation:
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].entity_name == "oven_1"
             assert result.entity_observations[0].state == "on"
+            assert result.entity_observations[0].state_id == state_id_on
             assert result.entity_observations[0].confidence == 0.95
             assert result.entity_observations[0].entity_id == entity_id
             assert result.raw_llm_response == {
                 "oven_1": {"state": "on", "confidence": 0.95}
             }
             assert result.token_usage == {"prompt_tokens": 100, "completion_tokens": 20}
+            mock_entity_repo_cls.return_value.update.assert_awaited_once_with(
+                entity_id,
+                current_state_id=state_id_on,
+                current_state_since=result.observed_at,
+            )
 
     @pytest.mark.asyncio
     async def test_successful_observation_with_image_url(self):
@@ -522,15 +537,21 @@ class TestGenerateObservation:
         mock_mapping.entity_id = entity_id
         mock_mapping.roi_hint = None
 
+        state_id_open = uuid.uuid4()
+        state_id_closed = uuid.uuid4()
+
         mock_entity = MagicMock()
         mock_entity.id = entity_id
         mock_entity.name = "door_1"
         mock_entity.is_active = True
         mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = state_id_open
 
         mock_state_def = MagicMock()
+        mock_state_def.id = state_id_open
         mock_state_def.name = "open"
         mock_state_def_closed = MagicMock()
+        mock_state_def_closed.id = state_id_closed
         mock_state_def_closed.name = "closed"
 
         mock_entity_type = MagicMock()
@@ -586,6 +607,9 @@ class TestGenerateObservation:
             mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
                 return_value=mock_entity
             )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
             mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
                 return_value=[mock_state_def, mock_state_def_closed]
             )
@@ -600,6 +624,7 @@ class TestGenerateObservation:
             assert result.camera_config_id == config_id
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].state == "closed"
+            assert result.entity_observations[0].state_id == state_id_closed
             assert result.entity_observations[0].confidence == 0.88
 
     @pytest.mark.asyncio
@@ -628,8 +653,10 @@ class TestGenerateObservation:
         mock_entity.name = "entity_1"
         mock_entity.is_active = True
         mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
 
         mock_state_def = MagicMock()
+        mock_state_def.id = uuid.uuid4()
         mock_state_def.name = "normal"
 
         mock_entity_type = MagicMock()
@@ -685,6 +712,9 @@ class TestGenerateObservation:
             mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
                 return_value=mock_entity
             )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
             mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
                 return_value=[mock_state_def]
             )
@@ -722,8 +752,10 @@ class TestGenerateObservation:
         mock_entity.name = "light_1"
         mock_entity.is_active = True
         mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
 
         mock_state_def = MagicMock()
+        mock_state_def.id = uuid.uuid4()
         mock_state_def.name = "on"
 
         mock_entity_type = MagicMock()
@@ -774,6 +806,9 @@ class TestGenerateObservation:
                 return_value=[mock_mapping]
             )
             mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
                 return_value=mock_entity
             )
             mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(

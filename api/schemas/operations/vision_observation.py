@@ -14,7 +14,13 @@ class EntityObservation(BaseModel):
 
     entity_id: uuid.UUID = Field(..., description="ID of the observed entity")
     entity_name: str = Field(..., description="Name of the observed entity")
+    camera_config_id: uuid.UUID = Field(
+        ..., description="ID of the camera configuration used"
+    )
     state: str = Field(..., description="Detected state name")
+    state_id: uuid.UUID | None = Field(
+        default=None, description="ID of the matched state definition"
+    )
     confidence: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence score of the observation"
     )

@@ -107,6 +107,7 @@ class TestCreateObservation:
                 EntityObservation(
                     entity_id=entity_id,
                     entity_name="door_1",
+                    camera_config_id=config_id,
                     state="open",
                     confidence=0.95,
                 )
@@ -147,6 +148,7 @@ class TestCreateObservation:
                 EntityObservation(
                     entity_id=entity_id,
                     entity_name="oven_1",
+                    camera_config_id=config_id,
                     state="on",
                     confidence=0.88,
                 )

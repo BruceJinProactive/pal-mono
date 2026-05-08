@@ -156,7 +156,7 @@ async def generate_observation(
 
     entity_type_definitions: dict[str, dict[str, Any]] = {}
     entities_with_states: list[dict[str, Any]] = []
-    entity_id_map: dict[str, uuid.UUID] = {}
+    entity_lookup: dict[str, dict[str, Any]] = {}
 
     for mapping in mappings:
         entity = await entity_repo.get_by_id(mapping.entity_id)
@@ -187,7 +187,11 @@ async def generate_observation(
                 "roi_hint_text": roi_hint_text,
             }
         )
-        entity_id_map[entity.name] = entity.id
+        entity_lookup[entity.name] = {
+            "entity_id": entity.id,
+            "current_state_id": entity.current_state_id,
+            "state_name_to_id": {sd.name: sd.id for sd in state_defs},
+        }
 
     if not entities_with_states:
         raise ValueError("No active entities with state definitions found")
@@ -259,7 +263,7 @@ async def generate_observation(
     llm_result = await asyncio.to_thread(
         llm_provider.analyze_image,
         system_prompt,
-        "",
+        config.llm_prompt,
         reference_images,
         camera_image_base64,
         response_format,
@@ -271,18 +275,36 @@ async def generate_observation(
 
     entity_observations: list[EntityObservation] = []
     for entity_name, observation in raw_response.items():
-        if entity_name not in entity_id_map:
+        if entity_name not in entity_lookup:
             continue
         if not isinstance(observation, dict):
             continue
 
+        info = entity_lookup[entity_name]
+        state_name = observation.get("state", "unknown")
+        state_id = info["state_name_to_id"].get(state_name)
+
         entity_observations.append(
             EntityObservation(
-                entity_id=entity_id_map[entity_name],
+                entity_id=info["entity_id"],
                 entity_name=entity_name,
-                state=observation.get("state", "unknown"),
+                camera_config_id=camera_config_id,
+                state=state_name,
+                state_id=state_id,
                 confidence=observation.get("confidence", 0.0),
             )
+        )
+
+    for obs in entity_observations:
+        if obs.state_id is None:
+            continue
+        info = entity_lookup[obs.entity_name]
+        if obs.state_id == info["current_state_id"]:
+            continue
+        await entity_repo.update(
+            obs.entity_id,
+            current_state_id=obs.state_id,
+            current_state_since=observed_at,
         )
 
     return GenerateObservationResponse(
