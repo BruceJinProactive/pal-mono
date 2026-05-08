@@ -39,6 +39,8 @@ class VisionEntityStateDefinition(Base):
         Boolean, nullable=False, server_default=text("false")
     )
 
+    criteria: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )
