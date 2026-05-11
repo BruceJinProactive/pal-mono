@@ -5,6 +5,8 @@ import re
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
+from typing import Any
+from urllib.parse import quote
 
 import boto3
 import requests
@@ -1043,14 +1045,119 @@ def list_account_users(account_name: str, session: Session) -> list[CognitoUser]
 CREATE_USER_TEMPLATE_ID = 40701112
 
 
+def _get_cognito_user_sub(cognito_client: Any, user_email: str) -> str | None:
+    """Fetch the Cognito `sub` (user id) for an existing user, or None if missing."""
+    response = cognito_client.admin_get_user(
+        UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID, Username=user_email
+    )
+    for attr in response.get("UserAttributes", []):
+        if attr["Name"] == "sub":
+            return attr["Value"]
+    return None
+
+
+def _attach_user_to_account(
+    session: Session,
+    account_name: str,
+    user_email: str,
+    user_name: str,
+    user_sub: str,
+) -> bool:
+    """Create (or no-op on) an active account_user row.
+
+    Returns True if a row was newly created, False if an active membership
+    already existed (idempotent).
+
+    Raises:
+        ValueError: if the account does not exist.
+    """
+    account_repo = AccountRepository(session)
+    account = account_repo.get_account(account_name)
+    if not account:
+        logger.error(f"Account {account_name} not found for user {user_email}")
+        raise ValueError(f"Account {account_name} not found")
+
+    account_user_repo = AccountUserRepository(session)
+    existing = account_user_repo.get_by_email_and_account(user_email, account.id)
+    if existing:
+        logger.info(
+            f"User {user_email} is already an active member of account {account_name} (skip)"
+        )
+        return False
+
+    account_user_repo.create(
+        account_id=account.id,
+        user_id=uuid.UUID(user_sub),
+        email=user_email,
+        name=user_name,
+        added_by=None,  # Admin-created user
+        status=AccountUserStatus.active,
+    )
+    logger.info(
+        f"Created account_user record for {user_email} in account {account_name}"
+    )
+    return True
+
+
+def _send_welcome_email(
+    user_email: str, user_name: str, account_name: str, password: str
+) -> None:
+    """Send the 'new user + temp password' welcome email. Non-fatal on failure."""
+    try:
+        email_service.send_email_with_template(
+            to_email=user_email,
+            template_id=CREATE_USER_TEMPLATE_ID,
+            template_model={
+                "name": user_name,
+                "email": user_email,
+                "account_name": account_name,
+                "product_name": "Palona AI",
+                "password": password,
+                "login_url": (
+                    (
+                        "https://console.palona.ai"
+                        if os.getenv("RUNTIME_ENV", "prd") == "prd"
+                        else f"https://{os.getenv('RUNTIME_ENV','lat')}-console.palona.ai"
+                    )
+                    # quote() instead of bare interpolation — without it, `+`
+                    # in email aliases (e.g. alice+work@example.com) decodes
+                    # as a space and the prefill on /signin breaks.
+                    + f"/signin?email={quote(user_email, safe='@')}"
+                ),
+                "sender_name": "Support Team",
+            },
+            bcc_emails=[
+                "notifications@proactiveailab.com",
+                "notifications@palona.ai",
+            ],
+        )
+        logger.info(f"Welcome email sent to {user_email}")
+    except Exception as e:
+        logger.error(f"Failed to send welcome email via Postmark: {e}")
+
+
 def create_account_user(
     account_name: str,
     user_email: str,
     user_name: str,
     session: Session,
 ) -> CognitoUser:
+    """Attach a user to an account, creating the Cognito identity if needed.
+
+    Three paths:
+    1. New Cognito user → `admin_create_user` + attach + send welcome email (with temp password).
+    2. Existing Cognito user (`UsernameExistsException`) → look up existing `sub`,
+       attach to the account, and **skip** the welcome-with-password email
+       (the user already has credentials). Unblocks onboarding a new account
+       for someone who was already added to a different account.
+    3. Already an active member of this account → no-op (idempotent); no new
+       row, no email.
+    """
     cognito_client = boto3.client("cognito-idp", region_name=AWS_REGION)
     password = generate_password()
+
+    # Path 1 + 2: create the Cognito user, or fall through if it already exists.
+    cognito_user_created = False
     try:
         cognito_client.admin_create_user(
             UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID,
@@ -1063,90 +1170,54 @@ def create_account_user(
                 {"Name": "name", "Value": user_name},
             ],
         )
+        cognito_user_created = True
         logger.info(f"Created user account for {user_email} using AdminCreateUser")
-
-        # Create account_user record in database
-        try:
-            # Get account_id from account_name
-            account_repo = AccountRepository(session)
-            account = account_repo.get_account(account_name)
-            if not account:
-                logger.error(f"Account {account_name} not found for user {user_email}")
-                raise ValueError(f"Account {account_name} not found")
-
-            # Get user_sub from Cognito
-            user_response = cognito_client.admin_get_user(
-                UserPoolId=AWS_ADMIN_CONSOLE_USER_POOL_ID, Username=user_email
-            )
-            user_sub = None
-            for attr in user_response["UserAttributes"]:
-                if attr["Name"] == "sub":
-                    user_sub = attr["Value"]
-                    break
-
-            if not user_sub:
-                logger.error(f"User sub not found for {user_email}")
-                raise ValueError(f"User sub not found for {user_email}")
-
-            # Create account_user record
-            account_user_repo = AccountUserRepository(session)
-            account_user_repo.create(
-                account_id=account.id,
-                user_id=uuid.UUID(user_sub),
-                email=user_email,
-                name=user_name,
-                added_by=None,  # Admin-created user
-                status=AccountUserStatus.active,
-            )
-            logger.info(
-                f"Created account_user record for {user_email} in account {account_name}"
-            )
-        except Exception as e:
-            logger.error(f"Failed to create account_user record for {user_email}: {e}")
-            # Don't fail the entire operation if account_user creation fails
-            # The user still exists in Cognito
-
-        try:
-            email_service.send_email_with_template(
-                to_email=user_email,
-                template_id=CREATE_USER_TEMPLATE_ID,
-                template_model={
-                    "name": user_name,
-                    "email": user_email,
-                    "account_name": account_name,
-                    "product_name": "Palona AI",
-                    "password": password,
-                    "login_url": (
-                        (
-                            "https://console.palona.ai"
-                            if os.getenv("RUNTIME_ENV", "prd") == "prd"
-                            else f"https://{os.getenv('RUNTIME_ENV','lat')}-console.palona.ai"
-                        )
-                        + f"/signin?email={user_email}"
-                    ),
-                    "sender_name": "Support Team",
-                },
-                bcc_emails=[
-                    "notifications@proactiveailab.com",
-                    "notifications@palona.ai",
-                ],
-            )
-            logger.info(f"Welcome email sent to {user_email}")
-        except Exception as e:
-            logger.error(f"Failed to send welcome email via Postmark: {e}")
-        return CognitoUser(
-            email=user_email,
-            name=user_name,
-        )
     except ClientError as e:
-        if e.response["Error"]["Code"] == "UsernameExistsException":
-            logger.error(f"User with email {user_email} already exists: {e}")
-            raise ValueError(f"User with email {user_email} already exists") from e
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code == "UsernameExistsException":
+            logger.warning(
+                f"Cognito user {user_email} already exists — attaching existing identity to account {account_name}"
+            )
         else:
             logger.error(f"Error creating Cognito user: {e}")
             raise ValueError(
                 f"Failed to create Cognito user account for {user_email}: {e}"
             ) from e
+
+    # Look up the sub (works for both newly-created and pre-existing users).
+    try:
+        user_sub = _get_cognito_user_sub(cognito_client, user_email)
+    except ClientError as e:
+        logger.error(f"Failed to fetch Cognito sub for {user_email}: {e}")
+        raise ValueError(
+            f"Failed to retrieve Cognito user info for {user_email}: {e}"
+        ) from e
+    if not user_sub:
+        logger.error(f"User sub not found for {user_email}")
+        raise ValueError(f"User sub not found for {user_email}")
+
+    # Attach to the account (idempotent). Any failure here — DB error,
+    # constraint violation, etc. — must surface: if we couldn't persist the
+    # membership, the user can't actually access the account and the caller
+    # needs to know (and may want to retry or roll back).
+    newly_attached = _attach_user_to_account(
+        session=session,
+        account_name=account_name,
+        user_email=user_email,
+        user_name=user_name,
+        user_sub=user_sub,
+    )
+
+    # Only send the "here is your temp password" email when we actually created
+    # a new Cognito identity. Existing users already have credentials, and
+    # re-attaching a current member shouldn't spam them.
+    if cognito_user_created and newly_attached:
+        _send_welcome_email(user_email, user_name, account_name, password)
+
+    return CognitoUser(
+        email=user_email,
+        name=user_name,
+    )
 
 
 def assign_account_to_user(
