@@ -98,7 +98,7 @@ async def handle_twilio_media_stream(websocket: WebSocket):
             twilio_websocket=websocket,
             realtime_session=realtime_session,
         )
-        realtime_session.on_interruption = handler._handle_interruption
+        realtime_session.on_interruption = handler._handle_barge_in
 
         await handler.handle_call(start_event=start_event)
 

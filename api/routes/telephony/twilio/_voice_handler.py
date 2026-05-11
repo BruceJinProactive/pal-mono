@@ -10,6 +10,7 @@ Responsibilities:
 """
 
 import asyncio
+import base64
 import json
 from datetime import datetime, timezone
 from typing import Optional
@@ -174,7 +175,7 @@ class VoiceCallHandler:
                 exc_info=True,
             )
 
-    async def _handle_interruption(self) -> None:
+    async def _handle_barge_in(self) -> None:
         """Send Twilio clear message to flush queued audio on barge-in."""
         if not self.stream_sid:
             return
@@ -217,9 +218,9 @@ class VoiceCallHandler:
         """
         Background task: Stream audio from OpenAI → Twilio.
 
-        Forwards µ-law audio directly to Twilio (no conversion needed).
-        Both OpenAI and Twilio use g711_ulaw format natively.
+        Forwards µ-law audio to Twilio, mixing in background audio if configured.
         """
+        mixer = self.realtime_session.mixer
         try:
             async for (
                 audio_chunk_mulaw_b64
@@ -227,13 +228,21 @@ class VoiceCallHandler:
                 self.audio_chunks_sent += 1
 
                 try:
-                    # Pass µ-law audio directly to Twilio (no conversion)
-                    # Both OpenAI and Twilio use g711_ulaw format
+                    if mixer:
+                        try:
+                            raw_bytes = base64.b64decode(audio_chunk_mulaw_b64)
+                            mixed_bytes = mixer.mix_chunk(raw_bytes)
+                            payload = base64.b64encode(mixed_bytes).decode()
+                        except Exception:
+                            payload = audio_chunk_mulaw_b64
+                    else:
+                        payload = audio_chunk_mulaw_b64
+
                     media_message = {
                         "event": "media",
                         "streamSid": self.stream_sid,
                         "media": {
-                            "payload": audio_chunk_mulaw_b64,
+                            "payload": payload,
                         },
                     }
 

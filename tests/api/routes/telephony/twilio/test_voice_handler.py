@@ -557,11 +557,11 @@ class TestHandleMedia:
 
 
 class TestHandleInterruption:
-    """Test VoiceCallHandler._handle_interruption() method."""
+    """Test VoiceCallHandler._handle_barge_in() method."""
 
     @pytest.mark.asyncio
-    async def test_handle_interruption_sends_twilio_clear_message(self) -> None:
-        """_handle_interruption() sends clear event to Twilio with correct streamSid."""
+    async def test_handle_barge_in_sends_twilio_clear_message(self) -> None:
+        """_handle_barge_in() sends clear event to Twilio with correct streamSid."""
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.send_text = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
@@ -572,7 +572,7 @@ class TestHandleInterruption:
         )
         handler.stream_sid = "MZ123abc"
 
-        await handler._handle_interruption()
+        await handler._handle_barge_in()
 
         mock_ws.send_text.assert_called_once()
         sent = json.loads(mock_ws.send_text.call_args[0][0])
@@ -580,8 +580,8 @@ class TestHandleInterruption:
         assert sent["streamSid"] == "MZ123abc"
 
     @pytest.mark.asyncio
-    async def test_handle_interruption_skips_when_no_stream_sid(self) -> None:
-        """_handle_interruption() does nothing if stream_sid is not yet set."""
+    async def test_handle_barge_in_skips_when_no_stream_sid(self) -> None:
+        """_handle_barge_in() does nothing if stream_sid is not yet set."""
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.send_text = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
@@ -592,13 +592,13 @@ class TestHandleInterruption:
         )
         handler.stream_sid = None
 
-        await handler._handle_interruption()
+        await handler._handle_barge_in()
 
         mock_ws.send_text.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_handle_interruption_logs_error_on_send_failure(self) -> None:
-        """_handle_interruption() logs error if Twilio send fails."""
+    async def test_handle_barge_in_logs_error_on_send_failure(self) -> None:
+        """_handle_barge_in() logs error if Twilio send fails."""
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.send_text = AsyncMock(side_effect=RuntimeError("WebSocket closed"))
         mock_session = MagicMock(spec=RealtimeSession)
@@ -610,7 +610,7 @@ class TestHandleInterruption:
         handler.stream_sid = "MZ123"
 
         with patch("api.routes.telephony.twilio._voice_handler.logger") as mock_logger:
-            await handler._handle_interruption()
+            await handler._handle_barge_in()
 
             mock_logger.error.assert_called_once()
             assert "Error sending Twilio clear" in str(mock_logger.error.call_args)
@@ -703,6 +703,7 @@ class TestStreamOpenAIToTwilio:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.send_text = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
 
         handler = VoiceCallHandler(
             twilio_websocket=mock_ws,
@@ -737,6 +738,7 @@ class TestStreamOpenAIToTwilio:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.send_text = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
 
         handler = VoiceCallHandler(
             twilio_websocket=mock_ws,
@@ -760,6 +762,7 @@ class TestStreamOpenAIToTwilio:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.send_text = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
 
         handler = VoiceCallHandler(
             twilio_websocket=mock_ws,
@@ -787,6 +790,7 @@ class TestStreamOpenAIToTwilio:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.send_text = AsyncMock(side_effect=RuntimeError("WebSocket closed"))
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
 
         handler = VoiceCallHandler(
             twilio_websocket=mock_ws,
@@ -811,6 +815,7 @@ class TestStreamOpenAIToTwilio:
         """_stream_openai_to_twilio() logs error if audio stream fails."""
         mock_ws = MagicMock(spec=WebSocket)
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
 
         handler = VoiceCallHandler(
             twilio_websocket=mock_ws,
@@ -845,6 +850,7 @@ class TestCleanup:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.close = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
         mock_session.close = AsyncMock()
 
         handler = VoiceCallHandler(
@@ -873,6 +879,7 @@ class TestCleanup:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.close = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
         mock_session.close = AsyncMock()
 
         handler = VoiceCallHandler(
@@ -890,6 +897,7 @@ class TestCleanup:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.close = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
         mock_session.close = AsyncMock()
 
         handler = VoiceCallHandler(
@@ -907,6 +915,7 @@ class TestCleanup:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.close = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
         mock_session.close = AsyncMock()
 
         handler = VoiceCallHandler(
@@ -930,6 +939,7 @@ class TestCleanup:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.close = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
         mock_session.close = AsyncMock()
 
         handler = VoiceCallHandler(
@@ -952,6 +962,7 @@ class TestCleanup:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.close = AsyncMock(side_effect=RuntimeError("Already closed"))
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
         mock_session.close = AsyncMock()
 
         handler = VoiceCallHandler(
@@ -980,6 +991,7 @@ class TestVoiceCallHandlerIntegration:
         mock_ws = MagicMock(spec=WebSocket)
         mock_ws.send_text = AsyncMock()
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
         mock_session.send_audio_chunk = AsyncMock()
         mock_session.close = AsyncMock()
 
@@ -1030,6 +1042,7 @@ class TestVoiceCallHandlerIntegration:
         """Test that errors during call still trigger cleanup."""
         mock_ws = MagicMock(spec=WebSocket)
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
         mock_session.send_audio_chunk = AsyncMock(side_effect=RuntimeError("Error"))
         mock_session.close = AsyncMock()
 
@@ -1058,3 +1071,75 @@ class TestVoiceCallHandlerIntegration:
         # Verify cleanup was still performed
         mock_session.close.assert_called_once()
         mock_ws.close.assert_called_once()
+
+
+class TestStreamWithMixer:
+    """Test audio mixing in _stream_openai_to_twilio."""
+
+    @pytest.mark.asyncio
+    async def test_stream_applies_mixer_when_present(self) -> None:
+        """_stream_openai_to_twilio applies mixer to outgoing chunks."""
+        import base64
+
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_ws.send_text = AsyncMock()
+        mock_session = MagicMock(spec=RealtimeSession)
+
+        mock_mixer = MagicMock()
+        mock_mixer.mix_chunk.return_value = bytes([0x7F] * 10)
+        mock_session.mixer = mock_mixer
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+        handler.stream_sid = "MZ123"
+
+        # Provide valid base64-encoded µ-law audio
+        raw_audio = bytes([0x80] * 10)
+        b64_audio = base64.b64encode(raw_audio).decode()
+
+        async def mock_audio_stream():
+            yield b64_audio
+
+        mock_session.receive_audio_stream = mock_audio_stream
+
+        await handler._stream_openai_to_twilio()
+
+        mock_mixer.mix_chunk.assert_called_once_with(raw_audio)
+        sent = json.loads(mock_ws.send_text.call_args[0][0])
+        assert sent["media"]["payload"] == base64.b64encode(bytes([0x7F] * 10)).decode()
+
+    @pytest.mark.asyncio
+    async def test_stream_falls_back_to_passthrough_on_mixer_error(self) -> None:
+        """_stream_openai_to_twilio sends original chunk if mixer raises."""
+        import base64
+
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_ws.send_text = AsyncMock()
+        mock_session = MagicMock(spec=RealtimeSession)
+
+        mock_mixer = MagicMock()
+        mock_mixer.mix_chunk.side_effect = RuntimeError("mixer failed")
+        mock_session.mixer = mock_mixer
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+        handler.stream_sid = "MZ123"
+
+        raw_audio = bytes([0x80] * 10)
+        b64_audio = base64.b64encode(raw_audio).decode()
+
+        async def mock_audio_stream():
+            yield b64_audio
+
+        mock_session.receive_audio_stream = mock_audio_stream
+
+        await handler._stream_openai_to_twilio()
+
+        # Chunk still sent (passthrough), not dropped
+        assert mock_ws.send_text.call_count == 1
+        sent = json.loads(mock_ws.send_text.call_args[0][0])
+        assert sent["media"]["payload"] == b64_audio
