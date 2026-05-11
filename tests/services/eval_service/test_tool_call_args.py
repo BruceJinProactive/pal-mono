@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from services.eval_service.evaluators.tool_call_args import (
+    GenericSubsetArgumentEvaluator,
     LookupArgumentEvaluator,
     ToastArgumentEvaluator,
     _extract_args,
@@ -1086,6 +1087,164 @@ class TestDispatchInEvaluateToolCallArgs:
         result = evaluate_tool_call_args(expected, actual)
         assert result.passed is True
         assert result.score == 1.0
+
+    def test_pal_tools_use_generic_subset_evaluator(self) -> None:
+        evaluator = _get_evaluator("send_support_email")
+        assert isinstance(evaluator, GenericSubsetArgumentEvaluator)
+
+    def test_call_transfer_expected_args_match(self) -> None:
+        expected = [{"tool": "call_transfer", "args": {"purpose": "catering"}}]
+        actual = [{"tool_name": "call_transfer", "args": {"purpose": "catering"}}]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.score == 1.0
+
+    def test_support_email_expected_subset_match_allows_extra_args(self) -> None:
+        expected = [
+            {
+                "tool": "send_support_email",
+                "args": {
+                    "first_name": "Sam",
+                    "last_name": "Lee",
+                    "email_address": "sam@example.com",
+                    "purpose": "catering",
+                },
+            }
+        ]
+        actual = [
+            {
+                "type": "tool_call",
+                "payload": {
+                    "tool_name": "send_support_email",
+                    "arguments": {
+                        "first_name": "Sam",
+                        "last_name": "Lee",
+                        "phone_number": "4155551212",
+                        "email_address": "sam@example.com",
+                        "issue": "Catering order help",
+                        "additional_info": "Needs follow-up",
+                        "purpose": "catering",
+                    },
+                },
+            }
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.score == 1.0
+
+    def test_support_email_expected_arg_mismatch_fails(self) -> None:
+        expected = [
+            {
+                "tool": "send_support_email",
+                "args": {"email_address": "sam@example.com"},
+            }
+        ]
+        actual = [
+            {
+                "tool_name": "send_support_email",
+                "args": {"email_address": "wrong@example.com"},
+            }
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is False
+        assert result.raw_output is not None
+        assert result.raw_output["match_details"] == [
+            {
+                "field": "email_address",
+                "matched": False,
+                "detail": "expected 'sam@example.com', got 'wrong@example.com'",
+            }
+        ]
+
+    def test_support_email_missing_nested_expected_arg_fails(self) -> None:
+        expected = [
+            {
+                "tool": "send_support_email",
+                "args": {"metadata": {"source": "voice"}},
+            }
+        ]
+        actual = [{"tool_name": "send_support_email", "args": {"metadata": {}}}]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is False
+        assert result.raw_output is not None
+        assert result.raw_output["match_details"][0]["field"] == "metadata.source"
+        assert result.raw_output["match_details"][0]["detail"] == "missing field"
+
+    def test_support_email_expected_null_requires_explicit_null(self) -> None:
+        expected = [
+            {
+                "tool": "send_support_email",
+                "args": {"order_number": None},
+            }
+        ]
+        actual = [{"tool_name": "send_support_email", "args": {}}]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is False
+        assert result.raw_output is not None
+        assert result.raw_output["match_details"] == [
+            {
+                "field": "order_number",
+                "matched": False,
+                "detail": "missing field",
+            }
+        ]
+
+    def test_support_email_explicit_null_matches_expected_null(self) -> None:
+        expected = [
+            {
+                "tool": "send_support_email",
+                "args": {"order_number": None},
+            }
+        ]
+        actual = [{"tool_name": "send_support_email", "args": {"order_number": None}}]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.score == 1.0
+
+
+class TestGenericSubsetArgumentEvaluator:
+    def test_expected_object_requires_actual_object(self) -> None:
+        evaluator = GenericSubsetArgumentEvaluator()
+        results = evaluator._compare_value("metadata", {"source": "voice"}, "voice")
+        assert len(results) == 1
+        assert results[0].matched is False
+        assert results[0].field_path == "metadata"
+        assert results[0].detail == "expected object, got str"
+
+    def test_expected_list_requires_actual_list(self) -> None:
+        evaluator = GenericSubsetArgumentEvaluator()
+        results = evaluator._compare_value("items", [{"name": "pizza"}], "pizza")
+        assert len(results) == 1
+        assert results[0].matched is False
+        assert results[0].field_path == "items"
+        assert results[0].detail == "expected list, got str"
+
+    def test_expected_list_count_mismatch_fails(self) -> None:
+        evaluator = GenericSubsetArgumentEvaluator()
+        results = evaluator._compare_value("items", ["pizza", "salad"], ["pizza"])
+        assert len(results) == 1
+        assert results[0].matched is False
+        assert results[0].field_path == "items"
+        assert results[0].detail == "count mismatch: expected 2, got 1"
+
+    def test_expected_list_items_are_compared_recursively(self) -> None:
+        evaluator = GenericSubsetArgumentEvaluator()
+        results = evaluator._compare_value(
+            "items",
+            [{"name": "pizza", "qty": 1}],
+            [{"name": "pizza", "qty": 2, "extra": "ignored"}],
+        )
+        assert [(item.field_path, item.matched) for item in results] == [
+            ("items[0].name", True),
+            ("items[0].qty", False),
+        ]
+
+    def test_root_scalar_uses_args_field_path(self) -> None:
+        evaluator = GenericSubsetArgumentEvaluator()
+        results = evaluator._compare_value("", "general", "general")
+        assert len(results) == 1
+        assert results[0].matched is True
+        assert results[0].field_path == "args"
 
 
 # ---------------------------------------------------------------------------

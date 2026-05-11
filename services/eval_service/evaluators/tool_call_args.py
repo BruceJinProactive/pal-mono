@@ -21,6 +21,8 @@ from typing import Any
 
 from services.eval_service._evaluators import EvaluatorResult
 
+MISSING = object()
+
 # ---------------------------------------------------------------------------
 # MatchDetail
 # ---------------------------------------------------------------------------
@@ -560,6 +562,81 @@ class ToastArgumentEvaluator(ToolArgumentEvaluator):
         return results
 
 
+class GenericSubsetArgumentEvaluator(ToolArgumentEvaluator):
+    """Generic evaluator for simple tool arguments.
+
+    Only fields present in expected args are compared. Extra actual fields are ignored.
+    """
+
+    def evaluate(
+        self, expected_args: dict[str, Any], actual_args: dict[str, Any]
+    ) -> list[MatchDetail]:
+        return self._compare_value("", expected_args, actual_args)
+
+    def _compare_value(
+        self,
+        field_path: str,
+        expected: Any,
+        actual: Any,
+    ) -> list[MatchDetail]:
+        if isinstance(expected, dict):
+            if not isinstance(actual, dict):
+                return [
+                    MatchDetail(
+                        field_path or "args",
+                        False,
+                        f"expected object, got {type(actual).__name__}",
+                    )
+                ]
+            results: list[MatchDetail] = []
+            for key, expected_value in expected.items():
+                child_path = f"{field_path}.{key}" if field_path else str(key)
+                actual_value = actual[key] if key in actual else MISSING
+                results.extend(
+                    self._compare_value(child_path, expected_value, actual_value)
+                )
+            return results
+
+        if isinstance(expected, list):
+            if not isinstance(actual, list):
+                return [
+                    MatchDetail(
+                        field_path or "args",
+                        False,
+                        f"expected list, got {type(actual).__name__}",
+                    )
+                ]
+            if len(expected) != len(actual):
+                return [
+                    MatchDetail(
+                        field_path or "args",
+                        False,
+                        f"count mismatch: expected {len(expected)}, got {len(actual)}",
+                    )
+                ]
+            results = []
+            for index, expected_item in enumerate(expected):
+                results.extend(
+                    self._compare_value(
+                        f"{field_path}[{index}]",
+                        expected_item,
+                        actual[index],
+                    )
+                )
+            return results
+
+        if actual is MISSING:
+            return [MatchDetail(field_path or "args", False, "missing field")]
+
+        return [
+            self._compare_named_value(
+                field_path=field_path or "args",
+                expected=expected,
+                actual=actual,
+            )
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Evaluator registry
 # ---------------------------------------------------------------------------
@@ -569,6 +646,8 @@ _EVALUATOR_REGISTRY: dict[str, type[ToolArgumentEvaluator]] = {
     "checkout_order": ToastArgumentEvaluator,
     "toast_takeout_create_order_v1": ToastArgumentEvaluator,
     "get_toast_item_details_v3": LookupArgumentEvaluator,
+    "call_transfer": GenericSubsetArgumentEvaluator,
+    "send_support_email": GenericSubsetArgumentEvaluator,
 }
 
 

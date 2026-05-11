@@ -1,6 +1,8 @@
 # Voice AI Eval Platform — FDE User Guide
 ### How to test restaurant agents before and after launch
 
+**Last updated**: 2026-05-11
+
 ---
 
 ## What This System Does For You
@@ -145,7 +147,7 @@ scenarios/
 | `scenario` | ✅ | Human-readable description. For you, not the system. |
 | `persona` | Optional | Which simulated caller personality to use. Default: `standard_customer`. |
 | `user_turns` | ✅ | What the caller says. Can be exact text (scripted) or `type: ai_driven` (LLM generates based on goal). |
-| `expected_tool_calls` | Optional | Which tools should be called, with what arguments. Checked by E1 (Tool Call Verification). |
+| `expected_tool_calls` | Optional | Which tools should be called, with what arguments. Checked by E1 (Tool Call Verification). For generic pal-tools checks like `call_transfer` and `send_support_email`, list only the args you care about; extra actual args are allowed. |
 | `expected_outcomes` | Optional | High-level outcomes. `task_completed`, `hallucination`, `escalated`, etc. |
 | `context` | Optional | Facts the evaluators use to check groundedness. Menu items, hours, prices. |
 

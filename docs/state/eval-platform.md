@@ -1,6 +1,6 @@
 # Eval Platform — System State
 
-**Last updated**: 2026-04-28
+**Last updated**: 2026-05-11
 **Status**: Phases 1–2 shipped; small follow-ups tracked in `docs/plans/conversation-eval/phase2-followups-plan.md`
 **Historical design docs**: see `docs/records/2026-*-eval-*.md` and the original proposal / requirements / implementation-plan in git history under `docs/plans/conversation-eval/` (graduated 2026-04-28).
 
@@ -128,7 +128,7 @@ Live in `services/eval_service/evaluators/`. Wired into `services/eval_service/_
 | Module | Metric(s) | Notes |
 |--------|-----------|-------|
 | `judge_adapter.py` | LLM judge rubric (currently a single "Toast ordering" rubric; multi-rubric split planned — see `rubric-by-scenario-type-plan.md`) | Uses DeepEval judges |
-| `tool_call_args.py` | `tool_call_args` | Compares captured tool calls from `tool_call_records` against scenario expectations |
+| `tool_call_args.py` | `tool_call_args` | Compares captured tool calls from `tool_call_records` against scenario expectations. Toast tools use purpose-built argument matchers; `call_transfer` and `send_support_email` use generic subset argument matching. |
 
 ### Voice-only evaluators (when `record.is_voice`)
 
