@@ -822,7 +822,7 @@ async def create_realtime_session(
         asset_path = _ASSETS_DIR / f"{background_sound}.ulaw"
         try:
             if asset_path.exists():
-                mixer = BackgroundAudioMixer(asset_path.read_bytes(), volume=0.15)
+                mixer = BackgroundAudioMixer(asset_path.read_bytes(), volume=0.8)
                 logger.info(
                     "[REALTIME] Background audio mixer loaded: %s", background_sound
                 )
