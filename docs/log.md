@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-11
+
+- **Skip Stripe billing for eval calls.** Added `is_eval: bool = False` field to `VoiceEndCallRequest` schema. Updated `_should_track_call_usage` in the voice end-call handler to short-circuit with skip reason `"eval_call"` when the flag is set, preventing eval pipeline calls from generating Stripe meter events. Backwards-compatible — defaults to `False` so existing agent workers are unaffected until they opt in.
+
+---
+
 ## 2026-05-07
 
 - **[PAL-10400] Wire observation output to entity state updates.** Extended `EntityObservation` schema with `camera_config_id` and `state_id` fields. The observation service now resolves detected state names to `state_definition.id` via a lookup map and writes `current_state_id` + `current_state_since` back to the entity record after each observation. Also passes `config.llm_prompt` as the `analysis_task` argument to `analyze_image`, enabling per-camera custom prompts.

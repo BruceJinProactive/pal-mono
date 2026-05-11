@@ -114,6 +114,10 @@ class VoiceEndCallRequest(BaseModel):
     audio_recording_s3_uri: str | None = Field(
         default=None, description="S3 URI of the call recording (e.g., s3://bucket/key)"
     )
+    is_eval: bool = Field(
+        default=False,
+        description="Whether this call originated from the eval pipeline (not billed)",
+    )
     metrics: CallMetricsReport | None = Field(
         default=None,
         description="Per-turn latency and interruption metrics from the agent worker",

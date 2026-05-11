@@ -129,29 +129,35 @@ def _should_track_call_usage(
     caller_number: str,
     duration_seconds: float,
     conversation_history: list[dict],
+    is_eval: bool = False,
 ) -> tuple[bool, str]:
     """
     Determine if a call should be tracked for billing based on filtering rules.
 
     Filtering rules:
-    1. Exclude test phone numbers (Palona internal) - only in production
-    2. Exclude calls less than 10 seconds in duration
-    3. Exclude calls where customer didn't speak
+    1. Exclude eval pipeline calls (not billable)
+    2. Exclude test phone numbers (Palona internal) - only in production
+    3. Exclude calls less than 10 seconds in duration
 
     Args:
         caller_number: Customer phone number
         duration_seconds: Call duration in seconds
         conversation_history: List of message dicts with 'role' and 'content'
+        is_eval: Whether this call originated from the eval pipeline
 
     Returns:
         tuple: (should_track: bool, skip_reason: str)
     """
-    # Rule 1: Check if test phone number (only in production)
+    # Rule 1: Eval calls are never billed
+    if is_eval:
+        return False, "eval_call"
+
+    # Rule 2: Check if test phone number (only in production)
     runtime_env = os.getenv("RUNTIME_ENV", "dev")
     if runtime_env == "prd" and _is_test_phone_number(caller_number):
         return False, f"test_number:{caller_number}"
 
-    # Rule 2: Check call duration
+    # Rule 3: Check call duration
     # If call is less than 10 seconds, don't count as usage
     if duration_seconds < 10:
         return False, f"call_too_short:{duration_seconds:.2f}s"
@@ -655,6 +661,7 @@ async def end_voice_call(
         caller_number=caller_number,
         duration_seconds=duration_seconds,
         conversation_history=conversation_history,
+        is_eval=request.is_eval,
     )
 
     if should_track:
