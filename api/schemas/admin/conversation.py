@@ -101,6 +101,14 @@ class ConversationDetail(BaseModel):
     prompt_fingerprint: str | None = None
 
 
+class ConversationAccountLookupResponse(BaseModel):
+    """Response for conversation account lookup."""
+
+    account_name: str = Field(
+        ..., description="The account name that owns this conversation"
+    )
+
+
 class UpdateConversationRequest(BaseModel):
     is_escalated: bool | None = None
     project_id: uuid.UUID | None = None

@@ -60,6 +60,7 @@ from api.schemas.admin.billing import (
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
 from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
+    ConversationAccountLookupResponse,
     ConversationDetail,
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
@@ -1171,6 +1172,21 @@ async def update_conversation(
         account_name,
         conversation_id,
         update_request,
+    )
+
+
+@admin_router.get("/conversations/{conversation_id}/account")
+async def lookup_conversation_account(
+    conversation_id: uuid.UUID,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ConversationAccountLookupResponse:
+    """
+    Look up which account a conversation belongs to.
+    Used for deep-linking when the client doesn't know which account to switch to.
+    """
+    return await _conversation.lookup_conversation_account(
+        conversation_id, context, session
     )
 
 

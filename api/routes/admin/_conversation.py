@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.conversation import (
+    ConversationAccountLookupResponse,
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
     UpdateConversationRequest,
@@ -13,6 +14,7 @@ from api.schemas.admin.conversation import (
 )
 from db.tables.types import Channel
 from services import account_service, admin_service
+from services.auth_service.authorization import check_permission
 
 from . import _builder
 from ._utils import SortOrder, UserContext, not_found_error
@@ -186,3 +188,30 @@ async def update_conversation(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update conversation {conversation_id}",
         )
+
+
+async def lookup_conversation_account(
+    conversation_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> ConversationAccountLookupResponse:
+    """Look up which account a conversation belongs to, verifying user access."""
+    conversation = admin_service.get_conversation_by_id(session, conversation_id)
+    if not conversation:
+        raise not_found_error(f"Conversation not found for id: {conversation_id}")
+
+    account = conversation.user.account
+    account_name = account.name
+
+    # Verify the user has read access to this account
+    has_permission = check_permission(
+        user_id=uuid.UUID(context.username),
+        resource_id=f"accounts/{account_name}",
+        permission_name="account.read",
+        session=session,
+        user_role=context.role.value,
+    )
+    if not has_permission:
+        raise not_found_error(f"Conversation not found for id: {conversation_id}")
+
+    return ConversationAccountLookupResponse(account_name=account_name)

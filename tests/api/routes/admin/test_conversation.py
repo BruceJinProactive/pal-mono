@@ -1,4 +1,4 @@
-"""Tests for conversation message listing with displayability filtering."""
+"""Tests for conversation endpoints."""
 
 import datetime
 import math
@@ -6,10 +6,15 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
-from api.routes.admin._conversation import list_conversation_messages
+from api.routes.admin._conversation import (
+    list_conversation_messages,
+    lookup_conversation_account,
+)
 from api.routes.admin._utils import SortOrder
 from api.schemas.admin.conversation import Message as SchemaMessage
+from services.auth_types import UserRole
 
 
 def _make_message(body: dict) -> MagicMock:
@@ -201,3 +206,109 @@ class TestListConversationMessagesFiltering:
         assert result.total_messages == 0
         assert result.total_pages == 0
         assert len(result.messages) == 0
+
+
+class TestLookupConversationAccount:
+    """Tests for the conversation account lookup endpoint."""
+
+    @pytest.fixture
+    def conversation(self) -> MagicMock:
+        conv = MagicMock()
+        conv.id = uuid.uuid4()
+        conv.user.account.id = uuid.uuid4()
+        conv.user.account.name = "target-account"
+        return conv
+
+    @pytest.fixture
+    def context(self) -> MagicMock:
+        ctx = MagicMock()
+        ctx.email = "user@test.com"
+        ctx.username = str(uuid.uuid4())
+        ctx.role = UserRole.AccountManager
+        return ctx
+
+    @pytest.mark.asyncio
+    async def test_returns_account_name_when_user_has_access(
+        self, conversation: MagicMock, context: MagicMock
+    ) -> None:
+        with (
+            patch("api.routes.admin._conversation.admin_service") as mock_admin,
+            patch("api.routes.admin._conversation.check_permission") as mock_check,
+        ):
+            mock_admin.get_conversation_by_id.return_value = conversation
+            mock_check.return_value = True
+
+            result = await lookup_conversation_account(
+                conversation_id=conversation.id,
+                context=context,
+                session=MagicMock(),
+            )
+
+            assert result.account_name == "target-account"
+            mock_check.assert_called_once_with(
+                user_id=uuid.UUID(context.username),
+                resource_id="accounts/target-account",
+                permission_name="account.read",
+                session=mock_admin.get_conversation_by_id.call_args[0][0],
+                user_role=UserRole.AccountManager.value,
+            )
+
+    @pytest.mark.asyncio
+    async def test_raises_404_when_conversation_not_found(
+        self, context: MagicMock
+    ) -> None:
+        with patch("api.routes.admin._conversation.admin_service") as mock_admin:
+            mock_admin.get_conversation_by_id.return_value = None
+
+            with pytest.raises(HTTPException) as exc_info:
+                await lookup_conversation_account(
+                    conversation_id=uuid.uuid4(),
+                    context=context,
+                    session=MagicMock(),
+                )
+
+            assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_raises_404_when_user_lacks_permission(
+        self, conversation: MagicMock, context: MagicMock
+    ) -> None:
+        with (
+            patch("api.routes.admin._conversation.admin_service") as mock_admin,
+            patch("api.routes.admin._conversation.check_permission") as mock_check,
+        ):
+            mock_admin.get_conversation_by_id.return_value = conversation
+            mock_check.return_value = False
+
+            with pytest.raises(HTTPException) as exc_info:
+                await lookup_conversation_account(
+                    conversation_id=conversation.id,
+                    context=context,
+                    session=MagicMock(),
+                )
+
+            assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_admin_user_gets_access(self, conversation: MagicMock) -> None:
+        admin_context = MagicMock()
+        admin_context.email = "admin@palona.ai"
+        admin_context.username = str(uuid.uuid4())
+        admin_context.role = UserRole.Admin
+
+        with (
+            patch("api.routes.admin._conversation.admin_service") as mock_admin,
+            patch("api.routes.admin._conversation.check_permission") as mock_check,
+        ):
+            mock_admin.get_conversation_by_id.return_value = conversation
+            mock_check.return_value = (
+                True  # check_permission returns True for Admin role
+            )
+
+            result = await lookup_conversation_account(
+                conversation_id=conversation.id,
+                context=admin_context,
+                session=MagicMock(),
+            )
+
+            assert result.account_name == "target-account"

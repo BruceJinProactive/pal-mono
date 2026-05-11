@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-05-11
 
+- **Conversation deep-link account lookup endpoint.** Added `GET /conversations/{conversation_id}/account` endpoint that returns the `account_name` owning a given conversation. Used by the admin console to auto-switch accounts when a user opens a conversation deep-link (e.g., from Slack notifications) while viewing a different account. The endpoint verifies the authenticated user has `account.read` permission on the conversation's account before returning. Schema: `ConversationAccountLookupResponse` in `api/schemas/admin/conversation.py`.
 - **Skip Stripe billing for eval calls.** Added `is_eval: bool = False` field to `VoiceEndCallRequest` schema. Updated `_should_track_call_usage` in the voice end-call handler to short-circuit with skip reason `"eval_call"` when the flag is set, preventing eval pipeline calls from generating Stripe meter events. Backwards-compatible — defaults to `False` so existing agent workers are unaffected until they opt in.
 
 ---
