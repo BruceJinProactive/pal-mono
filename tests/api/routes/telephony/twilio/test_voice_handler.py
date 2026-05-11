@@ -12,6 +12,7 @@ Tests cover:
 
 import asyncio
 import json
+import time
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -336,6 +337,7 @@ class TestHandleStart:
         """_handle_start() extracts streamSid and callSid from event."""
         mock_ws = MagicMock(spec=WebSocket)
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
 
         handler = VoiceCallHandler(
             twilio_websocket=mock_ws,
@@ -362,6 +364,7 @@ class TestHandleStart:
         """_handle_start() creates background task for OpenAI → Twilio streaming."""
         mock_ws = MagicMock(spec=WebSocket)
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
 
         handler = VoiceCallHandler(
             twilio_websocket=mock_ws,
@@ -389,6 +392,7 @@ class TestHandleStart:
         """_handle_start() logs stream metadata."""
         mock_ws = MagicMock(spec=WebSocket)
         mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
 
         handler = VoiceCallHandler(
             twilio_websocket=mock_ws,
@@ -1143,3 +1147,161 @@ class TestStreamWithMixer:
         assert mock_ws.send_text.call_count == 1
         sent = json.loads(mock_ws.send_text.call_args[0][0])
         assert sent["media"]["payload"] == b64_audio
+
+
+class TestBackgroundAudioSender:
+    """Test continuous background audio during silence."""
+
+    @pytest.mark.asyncio
+    async def test_sends_background_during_silence(self) -> None:
+        """_send_background_audio sends frames when agent is not speaking."""
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_ws.send_text = AsyncMock()
+        mock_session = MagicMock(spec=RealtimeSession)
+
+        mock_mixer = MagicMock()
+        mock_mixer.mix_chunk.return_value = bytes([0x7F] * 160)
+        mock_session.mixer = mock_mixer
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+        handler.stream_sid = "MZ123"
+        handler._last_agent_audio_at = 0.0
+
+        # Run the background sender briefly then cancel
+        task = asyncio.create_task(handler._send_background_audio())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        assert mock_ws.send_text.call_count >= 1
+        mock_mixer.mix_chunk.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_agent_speaking(self) -> None:
+        """_send_background_audio does not send when agent is speaking."""
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_ws.send_text = AsyncMock()
+        mock_session = MagicMock(spec=RealtimeSession)
+
+        mock_mixer = MagicMock()
+        mock_mixer.mix_chunk.return_value = bytes([0x7F] * 160)
+        mock_session.mixer = mock_mixer
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+        handler.stream_sid = "MZ123"
+        handler._last_agent_audio_at = time.monotonic()
+
+        task = asyncio.create_task(handler._send_background_audio())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        mock_ws.send_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_when_no_stream_sid(self) -> None:
+        """_send_background_audio does not send before stream starts."""
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_ws.send_text = AsyncMock()
+        mock_session = MagicMock(spec=RealtimeSession)
+
+        mock_mixer = MagicMock()
+        mock_mixer.mix_chunk.return_value = bytes([0x7F] * 160)
+        mock_session.mixer = mock_mixer
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+        handler.stream_sid = None
+        handler._last_agent_audio_at = 0.0
+
+        task = asyncio.create_task(handler._send_background_audio())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        mock_ws.send_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_immediately_when_no_mixer(self) -> None:
+        """_send_background_audio returns if mixer is None."""
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+
+        await handler._send_background_audio()
+
+    @pytest.mark.asyncio
+    async def test_handle_start_creates_bg_audio_task(self) -> None:
+        """_handle_start creates background audio task when mixer is set."""
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_session = MagicMock(spec=RealtimeSession)
+
+        mock_mixer = MagicMock()
+        mock_mixer.mix_chunk.return_value = bytes([0x7F] * 160)
+        mock_session.mixer = mock_mixer
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+
+        start_message = {
+            "event": "start",
+            "streamSid": "MZ123",
+            "start": {"callSid": "CA123", "tracks": ["inbound"]},
+        }
+
+        await handler._handle_start(start_message)
+
+        assert handler._bg_audio_task is not None
+        # Cleanup
+        handler._bg_audio_task.cancel()
+        if handler.streaming_task:
+            handler.streaming_task.cancel()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_cancels_bg_audio_task(self) -> None:
+        """_cleanup cancels the background audio task."""
+        mock_ws = MagicMock(spec=WebSocket)
+        mock_ws.close = AsyncMock()
+        mock_session = MagicMock(spec=RealtimeSession)
+        mock_session.mixer = None
+        mock_session.close = AsyncMock()
+
+        handler = VoiceCallHandler(
+            twilio_websocket=mock_ws,
+            realtime_session=mock_session,
+        )
+
+        # Create a dummy task
+        async def dummy():
+            await asyncio.sleep(10)
+
+        handler._bg_audio_task = asyncio.create_task(dummy())
+        handler.streaming_task = None
+
+        await handler._cleanup()
+
+        assert handler._bg_audio_task.cancelled()

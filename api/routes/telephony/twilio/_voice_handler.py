@@ -12,6 +12,7 @@ Responsibilities:
 import asyncio
 import base64
 import json
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -46,8 +47,10 @@ class VoiceCallHandler:
         self.media_packet_count = 0
         self.audio_chunks_sent = 0
 
-        # Background task for OpenAI → Twilio streaming
+        # Background tasks
         self.streaming_task: Optional[asyncio.Task] = None
+        self._bg_audio_task: Optional[asyncio.Task] = None
+        self._last_agent_audio_at: float = 0.0
 
     async def handle_call(self, start_event: Optional[dict] = None) -> None:
         """
@@ -137,6 +140,10 @@ class VoiceCallHandler:
         # Start background task to stream OpenAI → Twilio
         self.streaming_task = asyncio.create_task(self._stream_openai_to_twilio())
 
+        # Start continuous background audio sender if mixer is configured
+        if self.realtime_session.mixer:
+            self._bg_audio_task = asyncio.create_task(self._send_background_audio())
+
     async def _handle_media(self, message: dict) -> None:
         """
         Handle Twilio 'media' event (audio from caller).
@@ -225,6 +232,7 @@ class VoiceCallHandler:
             async for (
                 audio_chunk_mulaw_b64
             ) in self.realtime_session.receive_audio_stream():
+                self._last_agent_audio_at = time.monotonic()
                 self.audio_chunks_sent += 1
 
                 try:
@@ -275,8 +283,55 @@ class VoiceCallHandler:
         finally:
             pass
 
+    async def _send_background_audio(self) -> None:
+        """Send background audio frames during silence (when agent is not speaking)."""
+        mixer = self.realtime_session.mixer
+        if not mixer:
+            return
+
+        # 160 bytes = 20ms at 8kHz µ-law
+        silence_frame = bytes([0xFF] * 160)
+
+        try:
+            while True:
+                await asyncio.sleep(0.02)
+
+                agent_recently_spoke = (
+                    time.monotonic() - self._last_agent_audio_at < 0.1
+                )
+                if agent_recently_spoke or not self.stream_sid:
+                    continue
+
+                try:
+                    mixed = mixer.mix_chunk(silence_frame)
+                    payload = base64.b64encode(mixed).decode()
+                    media_message = json.dumps(
+                        {
+                            "event": "media",
+                            "streamSid": self.stream_sid,
+                            "media": {"payload": payload},
+                        }
+                    )
+                    await self.twilio_ws.send_text(media_message)
+                except Exception as e:
+                    logger.error(
+                        "[VOICE_HANDLER] Background audio send failed",
+                        extra={"stream_sid": self.stream_sid, "error": str(e)},
+                    )
+
+        except asyncio.CancelledError:
+            pass
+
     async def _cleanup(self) -> None:
         """Clean up resources."""
+        # Cancel background audio task
+        if self._bg_audio_task and not self._bg_audio_task.done():
+            self._bg_audio_task.cancel()
+            try:
+                await self._bg_audio_task
+            except asyncio.CancelledError:
+                pass
+
         # Cancel streaming task
         if self.streaming_task and not self.streaming_task.done():
             self.streaming_task.cancel()
