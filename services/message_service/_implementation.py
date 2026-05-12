@@ -3,7 +3,7 @@ import datetime
 import random
 import uuid
 from collections.abc import Callable
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from agno.run.response import RunResponse
 from openai.types.chat import ChatCompletionChunk
@@ -353,7 +353,11 @@ async def _dispatch_agent_async(
 
         # Collect generic tool call events
         if hasattr(pal_output, "events") and pal_output.events:  # type: ignore[reportAttributeAccessIssue]
-            collected_events = pal_output.events  # type: ignore[reportAttributeAccessIssue]
+            collected_events = [
+                event
+                for event in pal_output.events  # type: ignore[reportAttributeAccessIssue]
+                if isinstance(event, dict) and event.get("type") != "sms_followup"
+            ]
             logger.info(
                 "[tool_call_events] Collected %d events from pal-agents output",
                 len(collected_events),
@@ -593,6 +597,7 @@ async def get_chat_response_stream(
     room_name: str | None = None,
     participant_identity: str | None = None,
     sip_provider: str | None = None,
+    event_collector: Callable[[dict[str, Any]], None] | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
     async with trace_async_block("Message Service Stream Processing"):
         message_repo = db.MessageRepositoryAsync(session)
@@ -1019,12 +1024,25 @@ async def get_chat_response_stream(
                                 # Collect generic tool call events
                                 # (guarded by hasattr — field added in pal-agents feat/generic-tool-call-events)
                                 if hasattr(chunk, "events") and chunk.events:  # type: ignore[reportAttributeAccessIssue]
-                                    collected_events.extend(chunk.events)  # type: ignore[reportAttributeAccessIssue]
+                                    chunk_events = [
+                                        event
+                                        for event in chunk.events  # type: ignore[reportAttributeAccessIssue]
+                                        if isinstance(event, dict)
+                                    ]
+                                    persistable_events = []
+                                    for event in chunk_events:
+                                        if event.get("type") == "sms_followup":
+                                            if event_collector:
+                                                event_collector(event)
+                                        else:
+                                            persistable_events.append(event)
+
+                                    collected_events.extend(persistable_events)
                                     logger.info(
                                         "[tool_call_events] Collected %d events from stream chunk",
-                                        len(chunk.events),  # type: ignore[reportAttributeAccessIssue]
+                                        len(persistable_events),
                                         extra={
-                                            "event_count": len(chunk.events),  # type: ignore[reportAttributeAccessIssue]
+                                            "event_count": len(persistable_events),
                                             "total_events": len(collected_events),
                                             "conversation_id": str(
                                                 request_conversation_id

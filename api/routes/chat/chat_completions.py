@@ -212,6 +212,19 @@ def _convert_chunk_to_dict(chunk):
     }
 
 
+def _extract_item_recap_from_sms_followup_event(event: Dict[str, Any]) -> str | None:
+    payload = event.get("payload")
+    if not isinstance(payload, dict):
+        return None
+
+    item_recap = payload.get("item_recap")
+    if not isinstance(item_recap, str):
+        return None
+
+    item_recap = item_recap.strip()
+    return item_recap or None
+
+
 def _create_fallback_chunk(model: str, content: str) -> dict:
     """Create a fallback chunk for streaming responses."""
     return {
@@ -275,6 +288,7 @@ async def _send_urls_via_sms(
     recipient_identifier: str,
     call_id: Optional[str] = None,
     sip_provider: Optional[str] = None,
+    item_recap: str | None = None,
 ) -> None:
     """
     Extract URLs from collected content and send them via SMS if found.
@@ -288,6 +302,7 @@ async def _send_urls_via_sms(
         sender_identifier: The sender identifier for the relay message
         recipient_identifier: The recipient identifier for the relay message
         call_id: Call ID for looking up the conversation (for voice calls)
+        item_recap: Optional item recap context from pal-agents sms_followup events.
     """
     try:
         if not sender_identifier or not recipient_identifier:
@@ -314,6 +329,16 @@ async def _send_urls_via_sms(
                 )
 
             first_url = urls[0]
+            item_recap_context = (
+                f"\nOrder item recap context:\n{item_recap}\n" if item_recap else ""
+            )
+            item_recap_instruction = (
+                """
+        - If order item recap context is provided, use it for the item recap
+        - Format item quantities in parentheses at the start of each item line, e.g. "- (1) Large pizza" """
+                if item_recap
+                else ""
+            )
 
             try:
                 # Create a prompt for summarization
@@ -322,6 +347,7 @@ Please create a short, SMS-friendly summary of the following content. DO NOT wri
 
 Content:
 {full_content}
+{item_recap_context}
 
 CRITICAL INSTRUCTION: You MUST use the exact text [INSERT_URL_HERE] as the placeholder. Do NOT use variations like [here], [click here], [link], or any other text. Use EXACTLY: [INSERT_URL_HERE]
 
@@ -329,6 +355,7 @@ Instructions:
 - If the content is about a pending-payment order:
     - Start with a sentence stating the order status (e.g., "Your order is pending")
     - Include a section titled "Order Summary:" **if any order details are present** (items, subtotal, sales tax, discount, order total)
+{item_recap_instruction}
         - List each ordered item on a new line, prefixed with a dash (-) and using the exact item name
         - Include any of the following breakdown lines if they are explicitly present in the content: Subtotal, Sales Tax, Discount, Order Total
     - End with a call to action including the placeholder [INSERT_URL_HERE] (e.g., "Pay here: [INSERT_URL_HERE]")
@@ -521,6 +548,16 @@ async def chat_completions_agno(
                         "chat.streaming.start.duration", request_context.request_time
                     )
 
+                    sms_item_recap: str | None = None
+
+                    def collect_stream_event(event: Dict[str, Any]) -> None:
+                        nonlocal sms_item_recap
+                        if event.get("type") != "sms_followup" or sms_item_recap:
+                            return
+                        sms_item_recap = _extract_item_recap_from_sms_followup_event(
+                            event
+                        )
+
                     response_stream = await get_chat_response_stream(
                         session=active_session,
                         message=message,
@@ -529,6 +566,7 @@ async def chat_completions_agno(
                         room_name=room_name,
                         participant_identity=participant_identity,
                         sip_provider=sip_provider,
+                        event_collector=collect_stream_event,
                     )
 
                     collected_content = []
@@ -603,6 +641,7 @@ async def chat_completions_agno(
                             recipient_identifier,
                             call_id=call_id,
                             sip_provider=sip_provider,
+                            item_recap=sms_item_recap,
                         )
 
                         yield "data: [DONE]\n\n"

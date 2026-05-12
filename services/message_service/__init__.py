@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import Callable
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from openai.types.chat import ChatCompletionChunk
 from pal_agents.input import RuntimeContext
@@ -67,6 +67,7 @@ async def get_chat_response_stream(
     room_name: str | None = None,
     participant_identity: str | None = None,
     sip_provider: str | None = None,
+    event_collector: Callable[[dict[str, Any]], None] | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
     """
      Get a stream of chat responses for a given message.
@@ -84,6 +85,8 @@ async def get_chat_response_stream(
          room_name (str | None): The LiveKit room name for LiveKit voice calls.
          participant_identity (str | None): The LiveKit participant identity for LiveKit voice calls.
          sip_provider (str | None): SIP provider: "pizzacloud", "twilio", or "snet".
+         event_collector: Optional callback for streaming-only events that callers
+             need after the stream completes.
 
      Returns:
         AsyncIterator[Message]: A stream of response messages from the agent.
@@ -100,6 +103,7 @@ async def get_chat_response_stream(
         room_name,
         participant_identity,
         sip_provider,
+        event_collector,
     )
 
 

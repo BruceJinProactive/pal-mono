@@ -201,6 +201,12 @@ async def test_streaming_tool_call_events_attached_to_message(
             },
         },
     ]
+    sms_followup_event = {
+        "type": "sms_followup",
+        "source": "adora_process_order",
+        "payload": {"item_recap": "1 large pepperoni pizza."},
+    }
+    collected_sms_events: list[dict] = []
 
     class _EventStreamPalAgent:
         def __init__(self, spec=None):  # type: ignore[no-untyped-def]
@@ -211,7 +217,9 @@ async def test_streaming_tool_call_events_attached_to_message(
                 # Content chunk
                 yield SimpleNamespace(content="Here's your order!")
                 # Event chunk (empty content, carries events)
-                yield SimpleNamespace(content="", events=tool_events)
+                yield SimpleNamespace(
+                    content="", events=[*tool_events, sms_followup_event]
+                )
 
             return _stream()
 
@@ -264,6 +272,7 @@ async def test_streaming_tool_call_events_attached_to_message(
             session=fake_session,
             message=message,
             request_context=RequestContext(),
+            event_collector=collected_sms_events.append,
         )
     ]
 
@@ -283,6 +292,7 @@ async def test_streaming_tool_call_events_attached_to_message(
         message_repo.saved_message_body["tool_calls"][1]["payload"]["tool_name"]
         == "place_order"
     )
+    assert collected_sms_events == [sms_followup_event]
 
 
 @pytest.mark.asyncio

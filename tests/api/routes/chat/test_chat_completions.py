@@ -17,7 +17,9 @@ import datetime
 import json
 import os
 import uuid
+from collections.abc import AsyncGenerator, Callable
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -28,6 +30,7 @@ from api.routes.chat.chat_completions import (
     _convert_chunk_to_dict,
     _create_fallback_chunk,
     _extract_content_from_request,
+    _extract_item_recap_from_sms_followup_event,
     _managed_session,
     _parse_caller_info,
     _send_urls_via_sms,
@@ -139,6 +142,30 @@ class TestExtractContentFromRequest:
         )
         content = _extract_content_from_request(request)
         assert content == ""
+
+
+class TestExtractItemRecapFromSmsFollowupEvent:
+    """Test _extract_item_recap_from_sms_followup_event() function."""
+
+    def test_extracts_non_empty_item_recap(self) -> None:
+        event = {
+            "type": "sms_followup",
+            "payload": {"item_recap": "  1 large pepperoni pizza.  "},
+        }
+
+        assert (
+            _extract_item_recap_from_sms_followup_event(event)
+            == "1 large pepperoni pizza."
+        )
+
+    def test_returns_none_without_string_item_recap(self) -> None:
+        assert _extract_item_recap_from_sms_followup_event({}) is None
+        assert (
+            _extract_item_recap_from_sms_followup_event(
+                {"type": "sms_followup", "payload": {"item_recap": ""}}
+            )
+            is None
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -561,6 +588,44 @@ class TestSendUrlsViaSms:
                 assert "[INSERT_URL_HERE]" not in call_args.text.body
 
     @pytest.mark.asyncio
+    async def test_llm_prompt_includes_streamed_content_and_item_recap(self) -> None:
+        """Include streamed caller text and optional item recap in the SMS prompt."""
+        mock_response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content="Your order is pending: [INSERT_URL_HERE]"
+                    )
+                )
+            ]
+        )
+
+        with patch(
+            "api.routes.chat.chat_completions.call_llm_default",
+            return_value=mock_response,
+        ) as mock_llm:
+            with patch(
+                "api.routes.chat.chat_completions.send_message",
+                return_value={"status": "sent"},
+            ):
+                await _send_urls_via_sms(
+                    collected_content=[
+                        "Please use the payment link I texted you: ",
+                        "https://pay.example.com/invoice",
+                    ],
+                    sender_identifier="+15551234567",
+                    recipient_identifier="+15557654321",
+                    item_recap="1 large pepperoni pizza and 2 sodas.",
+                )
+
+        prompt = mock_llm.call_args.kwargs["params"]["messages"][0]["content"]
+        assert "Content:" in prompt
+        assert "Please use the payment link I texted you" in prompt
+        assert "Order item recap context:" in prompt
+        assert "1 large pepperoni pizza and 2 sodas." in prompt
+        assert "Format item quantities in parentheses" in prompt
+
+    @pytest.mark.asyncio
     async def test_llm_failure_fallback_to_original_content(self) -> None:
         """Fall back to original content when LLM fails."""
         with patch(
@@ -922,6 +987,85 @@ class TestChatCompletionsAgno:
                 full_stream = "".join(chunks)
                 assert "data: " in full_stream
                 assert "[DONE]" in full_stream
+
+    @pytest.mark.asyncio
+    async def test_stream_passes_sms_followup_item_recap_to_sms_sender(
+        self,
+    ) -> None:
+        """Pass sms_followup.payload.item_recap to URL SMS formatting."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        async def mock_get_chat_response_stream(
+            *args: Any, **kwargs: Any
+        ) -> AsyncGenerator[SimpleNamespace, None]:
+            event_collector: Callable[[dict[str, Any]], None] = kwargs[
+                "event_collector"
+            ]
+            event_collector(
+                {
+                    "type": "sms_followup",
+                    "source": "adora_process_order",
+                    "payload": {"item_recap": "1 large pepperoni pizza and 2 sodas."},
+                }
+            )
+
+            async def mock_stream() -> AsyncGenerator[SimpleNamespace, None]:
+                delta = SimpleNamespace(
+                    content="Please pay here: https://pay.example.com/invoice"
+                )
+                choice = SimpleNamespace(index=0, delta=delta, finish_reason=None)
+                chunk = SimpleNamespace(
+                    id="chatcmpl-123",
+                    object="chat.completion.chunk",
+                    created=1234567890,
+                    model="gpt-4",
+                    choices=[choice],
+                )
+                chunk.model_dump = lambda: {
+                    "id": "chatcmpl-123",
+                    "object": "chat.completion.chunk",
+                    "created": 1234567890,
+                    "model": "gpt-4",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "content": "Please pay here: https://pay.example.com/invoice"
+                            },
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                yield chunk
+
+            return mock_stream()
+
+        with patch(
+            "api.routes.chat.chat_completions.get_chat_response_stream",
+            side_effect=mock_get_chat_response_stream,
+        ):
+            with patch(
+                "api.routes.chat.chat_completions._send_urls_via_sms",
+                new_callable=AsyncMock,
+            ) as mock_send_urls:
+                response = await chat_completions_agno(
+                    request, request.model, request_context, session
+                )
+
+                async for _ in response.body_iterator:
+                    pass
+
+        mock_send_urls.assert_awaited_once()
+        assert (
+            mock_send_urls.call_args.kwargs["item_recap"]
+            == "1 large pepperoni pizza and 2 sodas."
+        )
 
     @pytest.mark.asyncio
     async def test_exception_during_streaming_returns_fallback(self) -> None:
