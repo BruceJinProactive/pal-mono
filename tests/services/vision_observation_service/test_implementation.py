@@ -178,7 +178,9 @@ class TestGenerateObservation:
         with patch(
             "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
         ) as mock_config_repo_cls:
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(return_value=None)
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=None
+            )
 
             with pytest.raises(ValueError, match="not found"):
                 await generate_observation(session, uuid.uuid4())
@@ -192,7 +194,7 @@ class TestGenerateObservation:
         with patch(
             "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
         ) as mock_config_repo_cls:
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=mock_config
             )
 
@@ -215,7 +217,7 @@ class TestGenerateObservation:
                 "services.vision_observation_service._implementation.VisionCameraEntityRepository"
             ) as mock_mapping_repo_cls,
         ):
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=mock_config
             )
             mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
@@ -257,7 +259,7 @@ class TestGenerateObservation:
                 "services.vision_observation_service._implementation.VisionEntityTypeRepository"
             ),
         ):
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=mock_config
             )
             mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
@@ -319,7 +321,7 @@ class TestGenerateObservation:
             ) as mock_type_repo_cls,
             patch("services.vision_observation_service._implementation.init_s3"),
         ):
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=mock_config
             )
             mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
@@ -387,7 +389,7 @@ class TestGenerateObservation:
             ) as mock_type_repo_cls,
             patch("services.vision_observation_service._implementation.init_s3"),
         ):
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=mock_config
             )
             mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
@@ -479,7 +481,7 @@ class TestGenerateObservation:
                 side_effect=_sync_to_thread,
             ),
         ):
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=mock_config
             )
             mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
@@ -502,7 +504,7 @@ class TestGenerateObservation:
                 session, config_id, image_bytes=b"fake-image-data"
             )
 
-            assert result.camera_config_id == config_id
+            assert result.camera_id == config_id
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].entity_name == "oven_1"
             assert result.entity_observations[0].state == "on"
@@ -598,7 +600,7 @@ class TestGenerateObservation:
                 side_effect=_sync_to_thread,
             ),
         ):
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=mock_config
             )
             mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
@@ -621,7 +623,7 @@ class TestGenerateObservation:
                 session, config_id, image_url="cameras/test/frame.jpg"
             )
 
-            assert result.camera_config_id == config_id
+            assert result.camera_id == config_id
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].state == "closed"
             assert result.entity_observations[0].state_id == state_id_closed
@@ -703,7 +705,7 @@ class TestGenerateObservation:
                 side_effect=_sync_to_thread,
             ),
         ):
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=mock_config
             )
             mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
@@ -726,7 +728,7 @@ class TestGenerateObservation:
                 session, config_id, image_bytes=b"camera-frame"
             )
 
-            assert result.camera_config_id == config_id
+            assert result.camera_id == config_id
             assert len(result.entity_observations) == 1
 
     @pytest.mark.asyncio
@@ -799,7 +801,7 @@ class TestGenerateObservation:
                 side_effect=_sync_to_thread,
             ),
         ):
-            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=mock_config
             )
             mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(

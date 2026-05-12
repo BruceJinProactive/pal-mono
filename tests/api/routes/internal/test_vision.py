@@ -24,7 +24,7 @@ class TestCreateObservation:
 
         with pytest.raises(HTTPException) as exc_info:
             await create_observation(
-                camera_config_id=uuid.uuid4(),
+                camera_id=uuid.uuid4(),
                 image_url=None,
                 image=None,
                 session=session,
@@ -45,7 +45,7 @@ class TestCreateObservation:
 
             with pytest.raises(HTTPException) as exc_info:
                 await create_observation(
-                    camera_config_id=config_id,
+                    camera_id=config_id,
                     image_url="test/image.jpg",
                     image=None,
                     session=session,
@@ -66,7 +66,7 @@ class TestCreateObservation:
 
             with pytest.raises(HTTPException) as exc_info:
                 await create_observation(
-                    camera_config_id=config_id,
+                    camera_id=config_id,
                     image_url="test/image.jpg",
                     image=None,
                     session=session,
@@ -87,7 +87,7 @@ class TestCreateObservation:
 
             with pytest.raises(HTTPException) as exc_info:
                 await create_observation(
-                    camera_config_id=config_id,
+                    camera_id=config_id,
                     image_url="test/image.jpg",
                     image=None,
                     session=session,
@@ -101,13 +101,13 @@ class TestCreateObservation:
         entity_id = uuid.uuid4()
 
         expected_response = GenerateObservationResponse(
-            camera_config_id=config_id,
+            camera_id=config_id,
             observed_at=datetime.now(timezone.utc),
             entity_observations=[
                 EntityObservation(
                     entity_id=entity_id,
                     entity_name="door_1",
-                    camera_config_id=config_id,
+                    camera_id=config_id,
                     state="open",
                     confidence=0.95,
                 )
@@ -122,13 +122,13 @@ class TestCreateObservation:
             return_value=expected_response,
         ):
             result = await create_observation(
-                camera_config_id=config_id,
+                camera_id=config_id,
                 image_url="cameras/test/frame.jpg",
                 image=None,
                 session=session,
             )
 
-            assert result.camera_config_id == config_id
+            assert result.camera_id == config_id
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].state == "open"
 
@@ -142,13 +142,13 @@ class TestCreateObservation:
         mock_image.read = AsyncMock(return_value=b"fake-image-bytes")
 
         expected_response = GenerateObservationResponse(
-            camera_config_id=config_id,
+            camera_id=config_id,
             observed_at=datetime.now(timezone.utc),
             entity_observations=[
                 EntityObservation(
                     entity_id=entity_id,
                     entity_name="oven_1",
-                    camera_config_id=config_id,
+                    camera_id=config_id,
                     state="on",
                     confidence=0.88,
                 )
@@ -163,13 +163,13 @@ class TestCreateObservation:
             return_value=expected_response,
         ) as mock_gen:
             result = await create_observation(
-                camera_config_id=config_id,
+                camera_id=config_id,
                 image_url=None,
                 image=mock_image,
                 session=session,
             )
 
-            assert result.camera_config_id == config_id
+            assert result.camera_id == config_id
             assert result.entity_observations[0].entity_name == "oven_1"
             call_kwargs = mock_gen.call_args.kwargs
             assert call_kwargs["image_bytes"] == b"fake-image-bytes"
@@ -184,7 +184,7 @@ class TestCreateObservation:
         mock_image.read = AsyncMock(return_value=b"uploaded-bytes")
 
         expected_response = GenerateObservationResponse(
-            camera_config_id=config_id,
+            camera_id=config_id,
             observed_at=datetime.now(timezone.utc),
             entity_observations=[],
             raw_llm_response={},
@@ -197,7 +197,7 @@ class TestCreateObservation:
             return_value=expected_response,
         ) as mock_gen:
             await create_observation(
-                camera_config_id=config_id,
+                camera_id=config_id,
                 image_url="cameras/should-be-ignored.jpg",
                 image=mock_image,
                 session=session,

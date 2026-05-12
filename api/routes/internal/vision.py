@@ -23,7 +23,7 @@ vision_router = APIRouter(prefix="/vision", tags=["internal-vision"])
 
 @vision_router.post("/observations", status_code=status.HTTP_200_OK)
 async def create_observation(
-    camera_config_id: UUID = Form(..., description="Vision camera configuration UUID"),
+    camera_id: UUID = Form(..., description="Camera (signal source) UUID"),
     image_url: str | None = Form(
         default=None,
         description="S3 key/path of camera image. Required if no image file is uploaded.",
@@ -37,9 +37,10 @@ async def create_observation(
     """
     Run LLM analysis on a camera frame and return entity state observations.
 
-    Loads the camera configuration (prompt, LLM provider/model, reference images),
-    retrieves assigned entities and their state definitions, builds a structured
-    output schema dynamically, and calls the configured LLM to produce observations.
+    Looks up the camera configuration by camera_id (signal source), then
+    loads the LLM provider/model, reference images, retrieves assigned entities
+    and their state definitions, builds a structured output schema dynamically,
+    and calls the configured LLM to produce observations.
 
     Supports both Azure OpenAI (gpt-4o) and Google Gemini models based on the
     camera configuration's llm_provider and llm_model fields.
@@ -49,7 +50,7 @@ async def create_observation(
     Called by Vision Frame Processor Lambda or manually for testing.
 
     Args:
-        camera_config_id: UUID of the vision camera configuration
+        camera_id: UUID of the camera (signal source)
         image_url: S3 key of camera image (optional if image file is uploaded)
         image: Optional uploaded image file for testing
         session: Async database session
@@ -59,7 +60,7 @@ async def create_observation(
 
     Raises:
         400: Missing both image_url and image file, or config validation errors
-        404: Camera configuration not found
+        404: Camera or camera configuration not found
         500: LLM analysis error or S3 error
     """
     try:
@@ -76,7 +77,7 @@ async def create_observation(
         logger.info(
             "[Internal Vision] Running observation",
             extra={
-                "camera_config_id": str(camera_config_id),
+                "camera_id": str(camera_id),
                 "image_url": image_url,
                 "has_uploaded_image": image_bytes is not None,
             },
@@ -84,7 +85,7 @@ async def create_observation(
 
         result = await vision_observation_service.generate_observation(
             session=session,
-            camera_config_id=camera_config_id,
+            camera_id=camera_id,
             image_url=image_url,
             image_bytes=image_bytes,
         )
@@ -92,7 +93,7 @@ async def create_observation(
         logger.info(
             "[Internal Vision] Observation completed",
             extra={
-                "camera_config_id": str(camera_config_id),
+                "camera_id": str(camera_id),
                 "entity_count": len(result.entity_observations),
             },
         )
@@ -116,7 +117,7 @@ async def create_observation(
         logger.error(
             "[Internal Vision] Error generating observation",
             exc_info=True,
-            extra={"camera_config_id": str(camera_config_id)},
+            extra={"camera_id": str(camera_id)},
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

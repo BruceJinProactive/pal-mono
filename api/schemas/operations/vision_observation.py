@@ -14,9 +14,7 @@ class EntityObservation(BaseModel):
 
     entity_id: uuid.UUID = Field(..., description="ID of the observed entity")
     entity_name: str = Field(..., description="Name of the observed entity")
-    camera_config_id: uuid.UUID = Field(
-        ..., description="ID of the camera configuration used"
-    )
+    camera_id: uuid.UUID = Field(..., description="ID of the camera (signal source)")
     state: str = Field(..., description="Detected state name")
     state_id: uuid.UUID | None = Field(
         default=None, description="ID of the matched state definition"
@@ -31,8 +29,8 @@ class GenerateObservationResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    camera_config_id: uuid.UUID = Field(
-        ..., description="Camera configuration used for observation"
+    camera_id: uuid.UUID = Field(
+        ..., description="ID of the camera (signal source) used for observation"
     )
     observed_at: datetime = Field(..., description="Timestamp of observation")
     entity_observations: list[EntityObservation] = Field(

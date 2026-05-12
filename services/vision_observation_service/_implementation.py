@@ -135,23 +135,25 @@ def _build_system_prompt(
 
 async def generate_observation(
     session: AsyncSession,
-    camera_config_id: uuid.UUID,
+    camera_id: uuid.UUID,
     image_url: str | None = None,
     image_bytes: bytes | None = None,
 ) -> GenerateObservationResponse:
     config_repo = VisionCameraConfigurationRepository(session)
-    config = await config_repo.get_by_id(camera_config_id)
+    config = await config_repo.get_by_signal_source(camera_id)
     if not config:
-        raise ValueError(f"Camera configuration {camera_config_id} not found")
+        raise ValueError(f"Camera configuration for camera {camera_id} not found")
 
     if not config.enabled:
-        raise ValueError(f"Camera configuration {camera_config_id} is disabled")
+        raise ValueError(f"Camera configuration for camera {camera_id} is disabled")
+
+    camera_config_id = config.id
 
     mapping_repo = VisionCameraEntityRepository(session)
     mappings = await mapping_repo.list_by_camera(camera_config_id)
     if not mappings:
         raise ValueError(
-            f"No entities assigned to camera configuration {camera_config_id}"
+            f"No entities assigned to camera configuration for camera {camera_id}"
         )
 
     entity_repo = VisionEntityRepository(session)
@@ -260,6 +262,7 @@ async def generate_observation(
     logger.info(
         "[Vision Observation] Generating observation",
         extra={
+            "camera_id": str(camera_id),
             "config_id": str(camera_config_id),
             "provider": config.llm_provider,
             "model": config.llm_model,
@@ -295,7 +298,7 @@ async def generate_observation(
             EntityObservation(
                 entity_id=info["entity_id"],
                 entity_name=entity_name,
-                camera_config_id=camera_config_id,
+                camera_id=camera_id,
                 state=state_name,
                 state_id=state_id,
                 confidence=observation.get("confidence", 0.0),
@@ -315,7 +318,7 @@ async def generate_observation(
         )
 
     return GenerateObservationResponse(
-        camera_config_id=camera_config_id,
+        camera_id=camera_id,
         observed_at=observed_at,
         entity_observations=entity_observations,
         raw_llm_response=raw_response,
