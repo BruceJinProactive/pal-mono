@@ -2175,8 +2175,8 @@ class TestBuildPalAgentProviderTools:
         assert "get_toast_item_details_v3" in executors
 
     @pytest.mark.asyncio
-    async def test_dry_run_executor_returns_logged_response(self) -> None:
-        """Dry-run executor logs and returns status without calling real APIs."""
+    async def test_executor_logs_and_returns_response(self) -> None:
+        """Executor logs arguments and returns a plausible response."""
         mock_pi = MagicMock()
         mock_pi.tool_name = "toast_v3"
         mock_pi.config = {
@@ -2213,12 +2213,25 @@ class TestBuildPalAgentProviderTools:
 
         import json
 
+        # Lookup tool returns item details response
         result = await executors["get_toast_item_details_v3"](
             items=[{"item_name": "Cheeseburger", "targets": [{"group_name": "Size"}]}]
         )
         parsed = json.loads(result)
-        assert parsed["status"] == "dry_run"
-        assert parsed["tool"] == "get_toast_item_details_v3"
+        assert parsed["status"] == "ok"
+
+        # Ordering tool returns order confirmation
+        result = await executors["toast_takeout_create_order_v1"](
+            customer={
+                "first_name": "John",
+                "last_name": "Doe",
+                "phone": "+15551234567",
+            },
+            items=[{"item_name": "Cheeseburger", "quantity": 1}],
+        )
+        parsed = json.loads(result)
+        assert parsed["status"] == "ok"
+        assert "order_id" in parsed
 
     @pytest.mark.asyncio
     async def test_skips_integration_without_tool_name(self) -> None:
