@@ -81,15 +81,21 @@ class LiveKitTool(Toolkit):
     @observe(as_type="tool")
     async def call_transfer(self, purpose: str = "general") -> str:
         """
-        Transfer the current call to the appropriate department based on purpose.
+        Transfer the current voice call to a configured department.
 
-        Use when customer needs human assistance. The purpose determines which
-        department/number receives the transferred call.
+        Invocation timing is governed by the agent's system prompt —
+        follow its transfer rules. If the system prompt has you push
+        back or defer the transfer this turn, do not call this tool.
+        The customer is transferred the moment this tool is called,
+        regardless of what the agent says in the same turn.
 
-        This tool updates the LiveKit agent metadata to trigger a call transfer.
+        The purpose determines which department/number receives the
+        transferred call.
 
         Args:
-            purpose: The reason for transfer. Common values:
+            purpose: The reason for transfer. The system prompt may
+                detail scenarios that determine which purpose applies
+                — follow its guidance. Common values:
                 - "general": Default transfer destination
                 - "faq": Questions about menu, hours, location, etc.
                 - "complaint": Customer complaints or escalations
