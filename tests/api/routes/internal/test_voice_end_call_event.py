@@ -114,6 +114,69 @@ class TestExtractTranscriptText:
         # Defensive: anything we don't recognize should not leak repr().
         assert _extract_transcript_text({"content": [123, 456]}) == ""
 
+    def test_list_of_unknown_type_logs_shape_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            result = _extract_transcript_text(
+                {"role": "assistant", "content": [123, 456]}
+            )
+        assert result == ""
+        warnings = [
+            r for r in caplog.records if "Unexpected list content shape" in r.message
+        ]
+        assert warnings, "expected a shape-warning log"
+        extras = warnings[0].__dict__
+        assert extras["first_element_type"] == "int"
+        assert extras["content_length"] == 2
+        assert extras["role"] == "assistant"
+        # PII guard: warning must not carry raw content.
+        for forbidden in ("content", "text", "content_sample"):
+            assert (
+                forbidden not in extras
+            ), f"warning leaked raw content via extra={forbidden!r}"
+
+    def test_non_list_non_str_content_logs_shape_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            result = _extract_transcript_text({"role": "user", "content": 42})
+        assert result == ""
+        warnings = [
+            r
+            for r in caplog.records
+            if "Unexpected non-list non-str content" in r.message
+        ]
+        assert warnings, "expected a shape-warning log"
+        extras = warnings[0].__dict__
+        assert extras["content_type"] == "int"
+        assert extras["role"] == "user"
+        for forbidden in ("content", "text", "content_sample"):
+            assert (
+                forbidden not in extras
+            ), f"warning leaked raw content via extra={forbidden!r}"
+
+    def test_known_shapes_do_not_log_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        # All of these are recognized shapes and must not emit diagnostics.
+        with caplog.at_level(logging.WARNING):
+            _extract_transcript_text({"content": "Hello"})
+            _extract_transcript_text({"content": [{"text": "Hi"}]})
+            _extract_transcript_text({"content": ["Hello", "world"]})
+            _extract_transcript_text({"content": []})
+            _extract_transcript_text({"content": None})
+            _extract_transcript_text({})
+        assert not any(
+            "Unexpected" in r.message for r in caplog.records
+        ), "known shapes should not emit shape warnings"
+
     def test_none_content(self) -> None:
         assert _extract_transcript_text({"content": None}) == ""
 

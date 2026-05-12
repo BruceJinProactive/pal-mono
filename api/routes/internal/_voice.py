@@ -1058,6 +1058,7 @@ def _extract_transcript_text(msg: dict) -> str:
     See PAL-10527.
     """
     content = msg.get("content")
+    role = msg.get("role")
     if isinstance(content, list):
         if not content:
             return ""
@@ -1070,9 +1071,29 @@ def _extract_transcript_text(msg: dict) -> str:
             return "" if val is None else str(val)
         if isinstance(content[0], str):
             return " ".join(c for c in content if isinstance(c, str))
+        # Unknown list-element type. Log shape metadata (no content — PII)
+        # so we can correlate with pal-conversation-evaluator's
+        # "Transcription normalizer produced empty output" warnings.
+        logger.warning(
+            "[_extract_transcript_text] Unexpected list content shape; returning empty",
+            extra={
+                "role": role,
+                "content_type": "list",
+                "first_element_type": type(content[0]).__name__,
+                "content_length": len(content),
+            },
+        )
         return ""
     if isinstance(content, str):
         return content
+    if content is not None:
+        logger.warning(
+            "[_extract_transcript_text] Unexpected non-list non-str content; returning empty",
+            extra={
+                "role": role,
+                "content_type": type(content).__name__,
+            },
+        )
     return ""
 
 
