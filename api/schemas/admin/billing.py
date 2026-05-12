@@ -112,3 +112,20 @@ class SendInvoiceEmailResponse(BaseModel):
     success: bool
     message: str
     message_id: Optional[str] = None
+
+
+class BillingMetricsResponse(BaseModel):
+    """Response containing billing metrics for an account over a date range."""
+
+    account_name: str = Field(..., description="Account identifier")
+    period_start: str = Field(..., description="Start of billing period (ISO date)")
+    period_end: str = Field(..., description="End of billing period (ISO date)")
+    total_calls: int = Field(..., description="Total number of calls handled")
+    avg_call_duration_seconds: float = Field(
+        ..., description="Average call duration in seconds"
+    )
+    total_reservations: int = Field(..., description="Total reservations booked")
+    total_orders: int = Field(..., description="Total orders placed (paid)")
+    order_total_dollars: float = Field(
+        ..., description="Total dollar value of paid orders"
+    )
