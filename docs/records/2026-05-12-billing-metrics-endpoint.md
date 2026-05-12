@@ -1,7 +1,7 @@
 # Billing Metrics Endpoint
 
 **Date**: 2026-05-12
-**Status**: In Progress
+**Status**: Implemented
 
 ## Context
 
@@ -65,9 +65,7 @@ class BillingMetricsResponse(BaseModel):
 ## Files Changed
 
 - `api/schemas/admin/billing.py` -- added `BillingMetricsResponse`
-- `services/analytics_service/_implementation.py` -- added `get_billing_metrics()`
-- `services/analytics_service/__init__.py` -- exported `get_billing_metrics`
-- `api/routes/admin/_billing.py` -- added `get_billing_metrics()` route handler
-- `api/routes/admin/__init__.py` -- wired up GET endpoint
+- `api/routes/admin/_billing.py` -- added `get_billing_metrics()` route handler (calls `AnalyticsRepository` directly)
+- `api/routes/admin/__init__.py` -- wired up GET endpoint with `account.read` permission
 - `tests/api/routes/admin/test_billing_metrics.py` -- unit tests
 

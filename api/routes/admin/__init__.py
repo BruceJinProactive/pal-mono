@@ -47,6 +47,7 @@ from api.schemas.admin.agent import (
 )
 from api.schemas.admin.analytics import GetAllReportsResponse
 from api.schemas.admin.billing import (
+    BillingMetricsResponse,
     GenerateInvoiceRequest,
     GenerateInvoiceResponse,
     InvoiceActionRequest,
@@ -2029,6 +2030,26 @@ async def send_project_invoice_email(
     """
     return await _billing.send_project_invoice_email(
         account_name, project_id, request, context, session
+    )
+
+
+@admin_router.get("/accounts/{account_name}/billing/metrics")
+async def get_billing_metrics(
+    account_name: str,
+    start_date: str = Query(
+        ..., description="Billing period start (ISO date, e.g. 2026-04-01)"
+    ),
+    end_date: str = Query(
+        ..., description="Billing period end (ISO date, e.g. 2026-04-30)"
+    ),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> BillingMetricsResponse:
+    """Get billing metrics (calls, orders, reservations) for an account over a date range."""
+    return _billing.get_billing_metrics(
+        account_name, start_date, end_date, context, session
     )
 
 

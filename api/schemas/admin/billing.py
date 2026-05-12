@@ -129,3 +129,9 @@ class BillingMetricsResponse(BaseModel):
     order_total_dollars: float = Field(
         ..., description="Total dollar value of paid orders"
     )
+    template_variant: str = Field(
+        ..., description="Suggested invoice template variant based on activity"
+    )
+    template_id: int = Field(
+        ..., description="Postmark template ID for the invoice email"
+    )

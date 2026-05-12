@@ -1,4 +1,6 @@
 import base64
+import uuid
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -7,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from api.routes.admin._utils import UserContext
 from api.schemas.admin.billing import (
+    BillingMetricsResponse,
     GenerateInvoiceRequest,
     GenerateInvoiceResponse,
     InvoiceActionRequest,
@@ -20,6 +23,7 @@ from api.schemas.admin.billing import (
     UpdatePaymentMethodResponse,
 )
 from db.repositories.account_repository import AccountRepository
+from db.repositories.analytics_repository import AnalyticsRepository
 from db.repositories.project_repository import ProjectRepository
 from services.subscription_service import (
     billing_service,
@@ -609,4 +613,124 @@ async def send_project_invoice_email(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send invoice email: {str(e)}",
+        )
+
+
+def get_billing_metrics(
+    account_name: str,
+    start_date: str,
+    end_date: str,
+    context: UserContext,
+    session: Session,
+) -> BillingMetricsResponse:
+    """
+    Get billing metrics (calls, orders, reservations) for an account over a date range.
+
+    Args:
+        account_name: Name of the account
+        start_date: Billing period start (ISO date string)
+        end_date: Billing period end (ISO date string)
+        context: User context for authorization
+        session: Database session
+
+    Returns:
+        BillingMetricsResponse: Billing metrics for the account
+
+    Raises:
+        HTTPException: 404 if account not found, 400 for invalid dates
+    """
+    try:
+        # Parse dates
+        try:
+            parsed_start = datetime.fromisoformat(start_date)
+            parsed_end = datetime.fromisoformat(end_date)
+        except ValueError:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Invalid date format. Use ISO date format (e.g. 2026-04-01)",
+            )
+
+        if parsed_start > parsed_end:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="start_date must be before end_date",
+            )
+
+        # Set end_date to end-of-day to include the full final day
+        parsed_end = parsed_end.replace(hour=23, minute=59, second=59)
+
+        # Get account
+        account_repo = AccountRepository(session)
+        account = account_repo.get_account(account_name)
+        if not account:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Account {account_name} not found",
+            )
+
+        analytics_repo = AnalyticsRepository(session)
+        filter_by: dict[str, uuid.UUID | list[uuid.UUID]] = {"account_id": account.id}
+
+        # Call metrics (total_calls, avg_duration, ...)
+        call_data = analytics_repo.get_calls_time_summary(
+            start_date=parsed_start,
+            end_date=parsed_end,
+            group_by=[],
+            filter_by=filter_by,
+        )
+        total_calls = int(call_data[0][0]) if call_data else 0
+        avg_duration = float(call_data[0][1]) if call_data and call_data[0][1] else 0.0
+
+        # Conversion metrics (total_conversations, conversations_with_orders,
+        # paid_orders, total_subtotal, paid_total, total_reservations, total_waitlists)
+        conversion_data = analytics_repo.get_conversion_summary(
+            start_date=parsed_start,
+            end_date=parsed_end,
+            group_by=[],
+            filter_by=filter_by,
+        )
+        paid_orders = int(conversion_data[0][2]) if conversion_data else 0
+        paid_total = (
+            float(conversion_data[0][4])
+            if conversion_data and conversion_data[0][4]
+            else 0.0
+        )
+        total_reservations = int(conversion_data[0][5]) if conversion_data else 0
+
+        # Determine template variant based on activity
+        has_orders = paid_orders > 0
+        has_reservations = total_reservations > 0
+        if has_orders and has_reservations:
+            template_variant = "ordering_reservation"
+            template_id = 44949424
+        elif has_orders:
+            template_variant = "ordering"
+            template_id = 44949422
+        elif has_reservations:
+            template_variant = "reservation"
+            template_id = 44949423
+        else:
+            template_variant = "answering"
+            template_id = 42569088
+
+        return BillingMetricsResponse(
+            account_name=account_name,
+            period_start=start_date,
+            period_end=end_date,
+            total_calls=total_calls,
+            avg_call_duration_seconds=round(avg_duration, 1),
+            total_reservations=total_reservations,
+            total_orders=paid_orders,
+            order_total_dollars=round(paid_total, 2),
+            template_variant=template_variant,
+            template_id=template_id,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting billing metrics: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get billing metrics",
         )
