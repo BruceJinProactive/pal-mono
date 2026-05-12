@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-12
+
+- **[PAL-10526] Thread `criteria` column through state definition API and prompt builder.** The `criteria` field (added to `vision_entity_state_definition` in a prior migration) is now exposed end-to-end: data class, repository create/read, API schemas (create/update/response), service layer CRUD, and the vision observation prompt builder. The LLM system prompt now renders per-state criteria descriptions under each entity type so the model can make more informed state determinations.
+
+---
+
 ## 2026-05-11
 
 - **Eval tool-call argument checks for generic pal-tools.** Added generic subset argument matching in `services/eval_service/evaluators/tool_call_args.py` and registered it for `call_transfer` and `send_support_email`. Scenario authors can now specify only the expected fields they care about in `expected_tool_calls[*].args`; extra actual tool arguments are ignored while mismatches and missing nested fields still fail deterministically. → `docs/state/eval-platform.md`

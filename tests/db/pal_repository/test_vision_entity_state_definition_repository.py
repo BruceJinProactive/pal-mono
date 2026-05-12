@@ -48,6 +48,7 @@ def sample_orm_row(
     row.color = "#00FF00"
     row.sort_order = 0
     row.is_default = True
+    row.criteria = None
     row.created_at = datetime(2026, 4, 29, tzinfo=timezone.utc)
     return row
 

@@ -37,6 +37,7 @@ def _make_state_def_mock(**overrides: object) -> MagicMock:
     sd.color = overrides.get("color", "#FF0000")
     sd.sort_order = overrides.get("sort_order", 0)
     sd.is_default = overrides.get("is_default", False)
+    sd.criteria = overrides.get("criteria", None)
     sd.created_at = overrides.get("created_at", datetime.now(timezone.utc))
     return sd
 
@@ -108,6 +109,44 @@ class TestCreateStateDefinition:
                 await create_state_definition(
                     session, account_id, entity_type_id, request
                 )
+
+    @pytest.mark.asyncio
+    async def test_creates_with_criteria(self) -> None:
+        session = AsyncMock()
+        account_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        request = CreateStateDefinitionRequest(
+            name="clean",
+            display_name="Clean",
+            criteria="No dishes or trash on the surface",
+        )
+
+        et_mock = _make_entity_type_mock(id=entity_type_id, account_id=account_id)
+
+        with (
+            patch(f"{MODULE}.VisionEntityTypeRepository") as mock_et_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_sd_cls,
+        ):
+            et_repo = AsyncMock()
+            et_repo.get_by_id.return_value = et_mock
+            mock_et_cls.return_value = et_repo
+
+            sd_repo = AsyncMock()
+            sd_repo.get_by_entity_type_and_name.return_value = None
+            sd_repo.create.return_value = None
+            mock_sd_cls.return_value = sd_repo
+
+            from services.vision_entity_service._implementation import (
+                create_state_definition,
+            )
+
+            result = await create_state_definition(
+                session, account_id, entity_type_id, request
+            )
+
+            assert result.criteria == "No dishes or trash on the surface"
+            created_record = sd_repo.create.call_args[0][0]
+            assert created_record.criteria == "No dishes or trash on the surface"
 
     @pytest.mark.asyncio
     async def test_entity_type_not_found_raises(self) -> None:
@@ -392,6 +431,94 @@ class TestUpdateStateDefinition:
                 await update_state_definition(
                     session, account_id, entity_type_id, state_def_id, request
                 )
+
+    @pytest.mark.asyncio
+    async def test_updates_criteria(self) -> None:
+        session = AsyncMock()
+        account_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        state_def_id = uuid.uuid4()
+
+        et_mock = _make_entity_type_mock(id=entity_type_id, account_id=account_id)
+        state_def = _make_state_def_mock(
+            id=state_def_id, entity_type_id=entity_type_id, criteria="Old criteria"
+        )
+        updated = _make_state_def_mock(
+            id=state_def_id,
+            entity_type_id=entity_type_id,
+            criteria="Surface is visibly soiled",
+        )
+
+        request = UpdateStateDefinitionRequest(criteria="Surface is visibly soiled")
+
+        with (
+            patch(f"{MODULE}.VisionEntityTypeRepository") as mock_et_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_sd_cls,
+        ):
+            et_repo = AsyncMock()
+            et_repo.get_by_id.return_value = et_mock
+            mock_et_cls.return_value = et_repo
+
+            sd_repo = AsyncMock()
+            sd_repo.get_by_id.return_value = state_def
+            sd_repo.update.return_value = updated
+            mock_sd_cls.return_value = sd_repo
+
+            from services.vision_entity_service._implementation import (
+                update_state_definition,
+            )
+
+            result = await update_state_definition(
+                session, account_id, entity_type_id, state_def_id, request
+            )
+
+            assert result.criteria == "Surface is visibly soiled"
+            sd_repo.update.assert_awaited_once_with(
+                state_def_id, criteria="Surface is visibly soiled"
+            )
+
+    @pytest.mark.asyncio
+    async def test_clears_criteria_to_none(self) -> None:
+        session = AsyncMock()
+        account_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        state_def_id = uuid.uuid4()
+
+        et_mock = _make_entity_type_mock(id=entity_type_id, account_id=account_id)
+        state_def = _make_state_def_mock(
+            id=state_def_id,
+            entity_type_id=entity_type_id,
+            criteria="Some existing criteria",
+        )
+        updated = _make_state_def_mock(
+            id=state_def_id, entity_type_id=entity_type_id, criteria=None
+        )
+
+        request = UpdateStateDefinitionRequest(criteria=None)
+
+        with (
+            patch(f"{MODULE}.VisionEntityTypeRepository") as mock_et_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_sd_cls,
+        ):
+            et_repo = AsyncMock()
+            et_repo.get_by_id.return_value = et_mock
+            mock_et_cls.return_value = et_repo
+
+            sd_repo = AsyncMock()
+            sd_repo.get_by_id.return_value = state_def
+            sd_repo.update.return_value = updated
+            mock_sd_cls.return_value = sd_repo
+
+            from services.vision_entity_service._implementation import (
+                update_state_definition,
+            )
+
+            result = await update_state_definition(
+                session, account_id, entity_type_id, state_def_id, request
+            )
+
+            assert result.criteria is None
+            sd_repo.update.assert_awaited_once_with(state_def_id, criteria=None)
 
     @pytest.mark.asyncio
     async def test_no_changes_returns_existing(self) -> None:

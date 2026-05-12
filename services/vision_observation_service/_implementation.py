@@ -115,6 +115,10 @@ def _build_system_prompt(
         lines.append(f"- {display} ({type_name})")
         states_str = ", ".join(type_info["state_names"])
         lines.append(f"  - States: {states_str}")
+        state_criteria = type_info.get("state_criteria", {})
+        if state_criteria:
+            for state_name, criteria in state_criteria.items():
+                lines.append(f"    - {state_name}: {criteria}")
 
     lines.append("")
     lines.append("Entities to Observe:")
@@ -175,6 +179,9 @@ async def generate_observation(
             entity_type_definitions[type_name] = {
                 "display_name": type_display,
                 "state_names": [sd.name for sd in state_defs],
+                "state_criteria": {
+                    sd.name: sd.criteria for sd in state_defs if sd.criteria
+                },
             }
 
         roi_hint_text = _format_roi_hint(mapping.roi_hint)

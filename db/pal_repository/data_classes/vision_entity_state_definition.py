@@ -15,3 +15,4 @@ class VisionEntityStateDefinitionData:
     is_default: bool
     created_at: datetime
     color: str | None = None
+    criteria: str | None = None

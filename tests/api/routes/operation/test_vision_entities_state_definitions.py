@@ -40,6 +40,7 @@ def _make_sd_response(**overrides: object) -> StateDefinitionResponse:
         "color": None,
         "sort_order": 0,
         "is_default": False,
+        "criteria": None,
         "created_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
     }
     defaults.update(overrides)

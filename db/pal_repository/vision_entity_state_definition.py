@@ -24,6 +24,7 @@ def _to_data(
         sort_order=row.sort_order,
         is_default=row.is_default,
         created_at=row.created_at,
+        criteria=row.criteria,
     )
 
 
@@ -42,6 +43,7 @@ class VisionEntityStateDefinitionRepository:
                 color=record.color,
                 sort_order=record.sort_order,
                 is_default=record.is_default,
+                criteria=record.criteria,
             )
             self.session.add(row)
             await self.session.commit()

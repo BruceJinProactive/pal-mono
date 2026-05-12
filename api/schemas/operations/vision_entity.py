@@ -96,6 +96,11 @@ class UpdateStateDefinitionRequest(BaseModel):
     is_default: bool | None = Field(
         default=None, description="Whether this is the default state"
     )
+    criteria: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Criteria for matching this state",
+    )
 
 
 class CreateStateDefinitionRequest(BaseModel):
@@ -114,6 +119,11 @@ class CreateStateDefinitionRequest(BaseModel):
     is_default: bool = Field(
         default=False, description="Whether this is the default state"
     )
+    criteria: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Criteria for matching this state",
+    )
 
 
 class StateDefinitionResponse(BaseModel):
@@ -128,6 +138,7 @@ class StateDefinitionResponse(BaseModel):
     color: str | None
     sort_order: int
     is_default: bool
+    criteria: str | None
     created_at: datetime
 
 

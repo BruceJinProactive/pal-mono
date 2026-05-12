@@ -207,6 +207,7 @@ def _build_state_definition_response(
         color=data.color,
         sort_order=data.sort_order,
         is_default=data.is_default,
+        criteria=data.criteria,
         created_at=data.created_at,
     )
 
@@ -249,6 +250,7 @@ async def create_state_definition(
         color=request.color,
         sort_order=request.sort_order,
         is_default=request.is_default,
+        criteria=request.criteria,
         created_at=datetime.now(timezone.utc),
     )
 
@@ -309,6 +311,8 @@ async def update_state_definition(
         updates["sort_order"] = request.sort_order
     if "is_default" in provided:
         updates["is_default"] = request.is_default
+    if "criteria" in provided:
+        updates["criteria"] = request.criteria
 
     if not updates:
         return _build_state_definition_response(data)
