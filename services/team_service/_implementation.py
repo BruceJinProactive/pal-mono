@@ -699,7 +699,8 @@ def remove_team_member(
     if matching_invitation:
         invitation_repo.revoke(matching_invitation.id)
         logger.info(
-            f"Revoked pending invitation for {user_email} in account {account_name}"
+            f"Revoked pending invitation for {user_email} in account {account_name} "
+            f"by actor {context.email} (user_id={context.username}, role={context.role.value})"
         )
         return
 
@@ -730,6 +731,12 @@ def remove_team_member(
             raise ValueError("Cannot remove the last owner from the account")
 
     # 5. Deactivate AccountUser record
+    logger.info(
+        f"remove_team_member: deactivating membership for user {user_email} "
+        f"(user_id={target_user_id}) in account {account_name} (account_id={account.id}) "
+        f"by actor {context.email} (actor_user_id={context.username}, "
+        f"actor_role={context.role.value})"
+    )
     account_user_repo.update_status(
         target_user_id, account.id, AccountUserStatus.deactivated
     )
