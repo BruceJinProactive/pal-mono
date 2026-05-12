@@ -22,6 +22,7 @@ def send_invoice_email_with_analytics(
     from_email: Optional[str] = None,
     cc_emails: Optional[list[str]] = None,
     scope: str = "project",  # "project" or "account"
+    template_id: Optional[int] = None,
 ) -> dict:
     """
     Send an invoice email with usage analytics and PDF attachment.
@@ -91,9 +92,15 @@ def send_invoice_email_with_analytics(
             f"covering {period_start} - {period_end}"
         )
 
+        resolved_template_id = (
+            template_id
+            if template_id is not None
+            else INVOICE_WITH_ANALYTICS_TEMPLATE_ID
+        )
+
         response = email_service.send_email_with_template(
             to_email=to_email,
-            template_id=INVOICE_WITH_ANALYTICS_TEMPLATE_ID,
+            template_id=resolved_template_id,
             template_model=template_model,
             from_email=from_email,
             cc_emails=cc_emails,

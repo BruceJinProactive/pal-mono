@@ -461,6 +461,7 @@ async def send_account_invoice_email(
             pdf_filename=pdf_filename,
             cc_emails=request.cc_emails,
             scope="account",
+            template_id=request.template_id,
         )
 
         logger.info(
@@ -588,6 +589,7 @@ async def send_project_invoice_email(
             pdf_filename=pdf_filename,
             cc_emails=request.cc_emails,
             scope="project",
+            template_id=request.template_id,
         )
 
         logger.info(

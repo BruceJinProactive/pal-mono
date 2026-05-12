@@ -104,6 +104,11 @@ class SendInvoiceEmailRequest(BaseModel):
     )
     pdf_filename: Optional[str] = None  # e.g., "invoice_december_2025.pdf"
     cc_emails: Optional[list[EmailStr]] = None
+    template_id: int | None = Field(
+        None,
+        gt=0,
+        description="Postmark template ID (from /billing/metrics). Uses default if not provided.",
+    )
 
 
 class SendInvoiceEmailResponse(BaseModel):

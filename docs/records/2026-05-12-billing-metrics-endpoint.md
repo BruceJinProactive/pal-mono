@@ -48,6 +48,8 @@ class BillingMetricsResponse(BaseModel):
     total_reservations: int
     total_orders: int
     order_total_dollars: float
+    template_variant: str
+    template_id: int
 ```
 
 ## Data Sources
@@ -62,10 +64,26 @@ class BillingMetricsResponse(BaseModel):
 | Order dollar value   | `Order.subtotal` (paid) | `analytics_repository.get_conversion_summary(...)` -> index 4  |
 
 
+## Template Selection
+
+The response includes `template_variant` and `template_id` (Postmark) derived from activity:
+
+
+| Orders > 0 | Reservations > 0 | Variant                | Template ID |
+| ---------- | ---------------- | ---------------------- | ----------- |
+| No         | No               | `answering`            | 42569088    |
+| Yes        | No               | `ordering`             | 44949422    |
+| No         | Yes              | `reservation`          | 44949423    |
+| Yes        | Yes              | `ordering_reservation` | 44949424    |
+
+
+`SendInvoiceEmailRequest` now accepts an optional `template_id` field. When provided, `send_invoice_email_with_analytics` uses it instead of the default template.
+
 ## Files Changed
 
-- `api/schemas/admin/billing.py` -- added `BillingMetricsResponse`
-- `api/routes/admin/_billing.py` -- added `get_billing_metrics()` route handler (calls `AnalyticsRepository` directly)
+- `api/schemas/admin/billing.py` -- added `BillingMetricsResponse`, added `template_id` to `SendInvoiceEmailRequest`
+- `api/routes/admin/_billing.py` -- added `get_billing_metrics()` handler, passed `template_id` to email service
 - `api/routes/admin/__init__.py` -- wired up GET endpoint with `account.read` permission
+- `services/subscription_service/invoice_email_service.py` -- accept optional `template_id` param
 - `tests/api/routes/admin/test_billing_metrics.py` -- unit tests
 

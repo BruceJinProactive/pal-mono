@@ -1,4 +1,4 @@
-"""Tests for billing metrics endpoint."""
+"""Tests for billing metrics endpoint and invoice email template_id passthrough."""
 
 import uuid
 from unittest.mock import MagicMock, patch
@@ -7,6 +7,9 @@ import pytest
 from fastapi import HTTPException
 
 from api.routes.admin._billing import get_billing_metrics
+from services.subscription_service.invoice_email_service import (
+    send_invoice_email_with_analytics,
+)
 
 
 def _make_context() -> MagicMock:
@@ -139,3 +142,58 @@ class TestGetBillingMetrics:
 
         assert exc_info.value.status_code == 400
         assert "start_date must be before end_date" in exc_info.value.detail
+
+
+class TestSendInvoiceEmailTemplateId:
+    """Tests for template_id passthrough in send_invoice_email_with_analytics."""
+
+    def test_uses_custom_template_id_when_provided(self) -> None:
+        """Should use provided template_id instead of the default."""
+        with patch(
+            "services.subscription_service.invoice_email_service.email_service"
+        ) as mock_email_service:
+            mock_email_service.send_email_with_template.return_value = {
+                "MessageID": "test-123"
+            }
+
+            send_invoice_email_with_analytics(
+                to_email="test@example.com",
+                display_name="Test Account",
+                period_start="April 1",
+                period_end="April 30, 2026",
+                calls_handled=100,
+                total_minutes=200,
+                staff_hours_saved=10,
+                pdf_content=b"fake-pdf",
+                pdf_filename="invoice.pdf",
+                template_id=44949422,
+            )
+
+            mock_email_service.send_email_with_template.assert_called_once()
+            call_kwargs = mock_email_service.send_email_with_template.call_args[1]
+            assert call_kwargs["template_id"] == 44949422
+
+    def test_uses_default_template_id_when_not_provided(self) -> None:
+        """Should fall back to default template when template_id is None."""
+        with patch(
+            "services.subscription_service.invoice_email_service.email_service"
+        ) as mock_email_service:
+            mock_email_service.send_email_with_template.return_value = {
+                "MessageID": "test-456"
+            }
+
+            send_invoice_email_with_analytics(
+                to_email="test@example.com",
+                display_name="Test Account",
+                period_start="April 1",
+                period_end="April 30, 2026",
+                calls_handled=100,
+                total_minutes=200,
+                staff_hours_saved=10,
+                pdf_content=b"fake-pdf",
+                pdf_filename="invoice.pdf",
+            )
+
+            mock_email_service.send_email_with_template.assert_called_once()
+            call_kwargs = mock_email_service.send_email_with_template.call_args[1]
+            assert call_kwargs["template_id"] == 42569088
