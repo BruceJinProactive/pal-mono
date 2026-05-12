@@ -22,8 +22,10 @@ from db.repositories import SignalFeedRepositoryAsync
 from services import signal_source_service
 from utils.log import logger
 
-# S3 configuration — separate bucket for images
-AWS_IMAGE_BUCKET_NAME = os.environ.get("AWS_IMAGE_BUCKET_NAME", "")
+# S3 configuration — uses the same asset bucket as video uploads
+AWS_IMAGE_BUCKET_NAME = os.environ.get(
+    "AWS_IMAGE_BUCKET_NAME", os.environ.get("AWS_ASSET_BUCKET_NAME", "")
+)
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 # Photo file size limit (10MB — JPEG snapshots are typically <500KB)
