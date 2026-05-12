@@ -19,6 +19,7 @@ from services.realtime_service._config import RealtimeConfig
 from services.realtime_service._implementation import (
     RealtimeSession,
     _build_demo_tools,
+    _build_pal_agent_provider_tools,
     create_realtime_session,
 )
 
@@ -718,6 +719,14 @@ class TestRealtimeSessionClose:
 
 class TestCreateRealtimeSession:
     """Test create_realtime_session factory function."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_pal_agent_tools(self):
+        with patch(
+            "services.realtime_service._implementation._build_pal_agent_provider_tools",
+            new=AsyncMock(return_value=([], {})),
+        ):
+            yield
 
     @pytest.mark.asyncio
     async def test_create_realtime_session_success(self) -> None:
@@ -1665,6 +1674,14 @@ class TestOnTranscriptCallback:
 class TestPersistTranscriptWiring:
     """Test that create_realtime_session wires on_transcript when call_id is provided."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_pal_agent_tools(self):
+        with patch(
+            "services.realtime_service._implementation._build_pal_agent_provider_tools",
+            new=AsyncMock(return_value=([], {})),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_on_transcript_wired_when_call_id_provided(self) -> None:
         """create_realtime_session sets on_transcript when call_id and caller_id given."""
@@ -1883,6 +1900,14 @@ class TestPersistTranscriptWiring:
 class TestBackgroundAudioMixerLoading:
     """Test mixer loading in create_realtime_session."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_pal_agent_tools(self):
+        with patch(
+            "services.realtime_service._implementation._build_pal_agent_provider_tools",
+            new=AsyncMock(return_value=([], {})),
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_mixer_loaded_when_asset_exists(self) -> None:
         """create_realtime_session loads mixer when background_sound asset exists."""
@@ -2073,3 +2098,271 @@ class TestBackgroundAudioMixerLoading:
             )
 
         assert result.mixer is None
+
+
+# ---------------------------------------------------------------------------
+# _build_pal_agent_provider_tools Tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildPalAgentProviderTools:
+    """Test _build_pal_agent_provider_tools loading and dry-run execution."""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_no_integrations(self) -> None:
+        """Returns empty tools/executors when no matching integrations exist."""
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([])
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_pi_result)
+
+        tools, executors = await _build_pal_agent_provider_tools(
+            session=mock_session,
+            project_id=uuid.uuid4(),
+            caller_id="+15551234567",
+            user_id=uuid.uuid4(),
+            conversation_id=uuid.uuid4(),
+            project_timezone="America/New_York",
+        )
+
+        assert tools == []
+        assert executors == {}
+
+    @pytest.mark.asyncio
+    async def test_loads_toast_v3_tools_with_dry_run_executor(self) -> None:
+        """Loads toast_v3 provider tools and wires dry-run executors."""
+        mock_pi = MagicMock()
+        mock_pi.tool_name = "toast_v3"
+        mock_pi.config = {
+            "menu_data": {
+                "restaurant_guid": "test-guid",
+                "menus": [],
+            },
+            "takeout_dining_option_guid": "takeout-guid",
+        }
+        mock_pi.store_identifier = "test-guid"
+        mock_pi.integration_id = uuid.uuid4()
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([mock_pi])
+
+        mock_int_result = MagicMock()
+        mock_int_result.scalar_one_or_none.return_value = None
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[mock_pi_result, mock_int_result])
+
+        with patch(
+            "services.agent_service._implementation._resolve_integration_credentials",
+            new=AsyncMock(return_value=(None, None, None)),
+        ):
+            tools, executors = await _build_pal_agent_provider_tools(
+                session=mock_session,
+                project_id=uuid.uuid4(),
+                caller_id="+15551234567",
+                user_id=uuid.uuid4(),
+                conversation_id=uuid.uuid4(),
+                project_timezone="America/New_York",
+            )
+
+        assert len(tools) == 2
+        assert tools[0]["type"] == "function"
+        assert tools[0]["name"] == "toast_takeout_create_order_v1"
+        assert tools[1]["name"] == "get_toast_item_details_v3"
+
+        assert "toast_takeout_create_order_v1" in executors
+        assert "get_toast_item_details_v3" in executors
+
+    @pytest.mark.asyncio
+    async def test_dry_run_executor_returns_logged_response(self) -> None:
+        """Dry-run executor logs and returns status without calling real APIs."""
+        mock_pi = MagicMock()
+        mock_pi.tool_name = "toast_v3"
+        mock_pi.config = {
+            "menu_data": {
+                "restaurant_guid": "test-guid",
+                "menus": [],
+            },
+            "takeout_dining_option_guid": "takeout-guid",
+        }
+        mock_pi.store_identifier = "test-guid"
+        mock_pi.integration_id = uuid.uuid4()
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([mock_pi])
+
+        mock_int_result = MagicMock()
+        mock_int_result.scalar_one_or_none.return_value = None
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[mock_pi_result, mock_int_result])
+
+        with patch(
+            "services.agent_service._implementation._resolve_integration_credentials",
+            new=AsyncMock(return_value=(None, None, None)),
+        ):
+            tools, executors = await _build_pal_agent_provider_tools(
+                session=mock_session,
+                project_id=uuid.uuid4(),
+                caller_id="+15551234567",
+                user_id=uuid.uuid4(),
+                conversation_id=uuid.uuid4(),
+                project_timezone="America/New_York",
+            )
+
+        import json
+
+        result = await executors["get_toast_item_details_v3"](
+            items=[{"item_name": "Cheeseburger", "targets": [{"group_name": "Size"}]}]
+        )
+        parsed = json.loads(result)
+        assert parsed["status"] == "dry_run"
+        assert parsed["tool"] == "get_toast_item_details_v3"
+
+    @pytest.mark.asyncio
+    async def test_skips_integration_without_tool_name(self) -> None:
+        """Skips integrations that have no tool_name set."""
+        mock_pi = MagicMock()
+        mock_pi.tool_name = None
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([mock_pi])
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_pi_result)
+
+        with patch(
+            "services.agent_service._implementation._resolve_integration_credentials",
+            new=AsyncMock(return_value=(None, None, None)),
+        ):
+            tools, executors = await _build_pal_agent_provider_tools(
+                session=mock_session,
+                project_id=uuid.uuid4(),
+                caller_id=None,
+                user_id=uuid.uuid4(),
+                conversation_id=uuid.uuid4(),
+                project_timezone=None,
+            )
+
+        assert tools == []
+        assert executors == {}
+
+    @pytest.mark.asyncio
+    async def test_skips_integration_not_in_registry(self) -> None:
+        """Skips integrations whose tool_name is not in PAL_AGENT_TOOL_REGISTRY."""
+        mock_pi = MagicMock()
+        mock_pi.tool_name = "unknown_tool_xyz"
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([mock_pi])
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=mock_pi_result)
+
+        tools, executors = await _build_pal_agent_provider_tools(
+            session=mock_session,
+            project_id=uuid.uuid4(),
+            caller_id=None,
+            user_id=uuid.uuid4(),
+            conversation_id=uuid.uuid4(),
+            project_timezone=None,
+        )
+
+        assert tools == []
+        assert executors == {}
+
+    @pytest.mark.asyncio
+    async def test_handles_provider_build_error_gracefully(self) -> None:
+        """Continues loading other integrations when one fails."""
+        mock_pi = MagicMock()
+        mock_pi.tool_name = "toast_v3"
+        mock_pi.config = {"menu_data": None}
+        mock_pi.store_identifier = ""
+        mock_pi.integration_id = uuid.uuid4()
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([mock_pi])
+
+        mock_int_result = MagicMock()
+        mock_int_result.scalar_one_or_none.return_value = None
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[mock_pi_result, mock_int_result])
+
+        with patch(
+            "services.agent_service._implementation._resolve_integration_credentials",
+            new=AsyncMock(side_effect=Exception("AWS secrets unavailable")),
+        ):
+            tools, executors = await _build_pal_agent_provider_tools(
+                session=mock_session,
+                project_id=uuid.uuid4(),
+                caller_id="+15551234567",
+                user_id=uuid.uuid4(),
+                conversation_id=uuid.uuid4(),
+                project_timezone="America/New_York",
+            )
+
+        assert tools == []
+        assert executors == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_registry_is_empty(self) -> None:
+        """Returns empty when PAL_AGENT_TOOL_REGISTRY has no entries."""
+        mock_session = AsyncMock()
+
+        with patch(
+            "services.agent_service._pal_agent_tool_registry.PAL_AGENT_TOOL_REGISTRY",
+            {},
+        ):
+            tools, executors = await _build_pal_agent_provider_tools(
+                session=mock_session,
+                project_id=uuid.uuid4(),
+                caller_id=None,
+                user_id=uuid.uuid4(),
+                conversation_id=uuid.uuid4(),
+                project_timezone=None,
+            )
+
+        assert tools == []
+        assert executors == {}
+
+    @pytest.mark.asyncio
+    async def test_loads_adora_v3_tools(self) -> None:
+        """Loads adora_v3 provider tools."""
+        mock_pi = MagicMock()
+        mock_pi.tool_name = "adora_v3"
+        mock_pi.config = {
+            "menu_data": {"categories": []},
+            "base_url": "https://api.adorapos.net",
+        }
+        mock_pi.store_identifier = "store-123"
+        mock_pi.integration_id = uuid.uuid4()
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([mock_pi])
+
+        mock_int_result = MagicMock()
+        mock_int_result.scalar_one_or_none.return_value = None
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[mock_pi_result, mock_int_result])
+
+        with patch(
+            "services.agent_service._implementation._resolve_integration_credentials",
+            new=AsyncMock(return_value=(None, None, None)),
+        ):
+            tools, executors = await _build_pal_agent_provider_tools(
+                session=mock_session,
+                project_id=uuid.uuid4(),
+                caller_id="+15551234567",
+                user_id=uuid.uuid4(),
+                conversation_id=uuid.uuid4(),
+                project_timezone="America/New_York",
+            )
+
+        assert len(tools) >= 1
+        for t in tools:
+            assert t["type"] == "function"
+            assert "name" in t
+        assert len(executors) == len(tools)

@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 if TYPE_CHECKING:
     from agno.tools.function import Function
@@ -562,6 +562,144 @@ def _build_realtime_tools(
     return tools, executors
 
 
+async def _build_pal_agent_provider_tools(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    caller_id: str | None,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    project_timezone: str | None,
+) -> tuple[list[dict], dict[str, Callable]]:
+    """Load pal-agents provider tools (toast_v3, adora_v3) for realtime dry-run.
+
+    Instantiates providers from ProjectIntegration config and returns tool schemas
+    plus stub executors that log the function call without executing real logic.
+    """
+    from db.tables.integration import Integration
+    from services.agent_service._implementation import _resolve_integration_credentials
+    from services.agent_service._pal_agent_tool_registry import PAL_AGENT_TOOL_REGISTRY
+
+    registered_names = list(PAL_AGENT_TOOL_REGISTRY.keys())
+    if not registered_names:
+        return [], {}
+
+    pi_result = await session.execute(
+        select(ProjectIntegration).filter(
+            ProjectIntegration.project_id == project_id,
+            ProjectIntegration.tool_name.in_(registered_names),
+        )
+    )
+    integrations = list(pi_result.scalars())
+    if not integrations:
+        return [], {}
+
+    tools: list[dict] = []
+    executors: dict[str, Callable] = {}
+
+    for pi in integrations:
+        if not pi.tool_name:
+            continue
+        entry = PAL_AGENT_TOOL_REGISTRY.get(pi.tool_name)
+        if not entry:
+            continue
+
+        try:
+            int_result = await session.execute(
+                select(Integration).filter(Integration.id == pi.integration_id)
+            )
+            integration_record = int_result.scalar_one_or_none()
+            client_id, client_secret, parsed_secrets = (
+                await _resolve_integration_credentials(integration_record)
+            )
+
+            spec = entry.builder(
+                dict(pi.config or {}),
+                pi.store_identifier or "",
+                client_id,
+                client_secret,
+                parsed_secrets,
+            )
+
+            provider_tools: list[dict[str, Any]] = []
+            if entry.spec_field == "toast":
+                from pal_agents.providers.toast._implementation import Toast
+
+                provider = Toast(spec)
+                provider_tools = provider.as_tool()
+            elif entry.spec_field == "adora":
+                from pal_agents.providers.adora._implementation import Adora
+
+                adora_provider = Adora(spec)
+                adora_tool_output = adora_provider.as_tool()
+                if isinstance(adora_tool_output, list):
+                    provider_tools = adora_tool_output
+                else:
+                    provider_tools = [adora_tool_output]
+            else:
+                continue
+        except Exception as e:
+            logger.error(
+                "[REALTIME] Skipping PAL integration due to build error",
+                extra={"tool_name": pi.tool_name, "error": str(e)},
+                exc_info=True,
+            )
+            continue
+
+        runtime_context_kwargs = {
+            "timezone": project_timezone or "America/Los_Angeles",
+            "channel": "voice",
+            "user_id": str(user_id),
+            "session_id": str(conversation_id),
+            "customer_phone": caller_id,
+        }
+
+        for tool_def in provider_tools:
+            tool_name: str = tool_def["name"]
+            tools.append(
+                {
+                    "type": "function",
+                    "name": tool_name,
+                    "description": tool_def.get("description", ""),
+                    "parameters": tool_def.get("parameters", {}),
+                }
+            )
+
+            # TODO: Replace dry-run stub with real executor once full integration is validated
+            def _make_dry_run_executor(
+                name: str, ctx_kwargs: dict[str, str | None]
+            ) -> Callable[..., Awaitable[str]]:
+                async def _dry_run_executor(**kwargs: object) -> str:
+                    logger.info(
+                        "[REALTIME.DRY_RUN] Tool call: %s",
+                        name,
+                        extra={
+                            "tool_name": name,
+                            "arguments": kwargs,
+                            "runtime_context": ctx_kwargs,
+                        },
+                    )
+                    return json.dumps(
+                        {
+                            "status": "dry_run",
+                            "tool": name,
+                            "message": "Tool call logged successfully (dry-run mode).",
+                        }
+                    )
+
+                return _dry_run_executor
+
+            executors[tool_name] = _make_dry_run_executor(
+                tool_name, runtime_context_kwargs
+            )
+
+    logger.info(
+        "[REALTIME] Loaded %d pal-agent provider tool(s) (dry-run): %s",
+        len(tools),
+        [t["name"] for t in tools],
+    )
+    return tools, executors
+
+
 def _make_tool_executor(
     executors: dict,
 ) -> Callable[[str, str], Awaitable[str]]:
@@ -722,6 +860,17 @@ async def create_realtime_session(
     )
     tools, tool_executors = _build_realtime_tools(tool_config)
 
+    # Add pal-agents provider tools (toast_v3, adora_v3) in dry-run mode
+    pa_tools, pa_executors = await _build_pal_agent_provider_tools(
+        session=session,
+        project_id=project.id,
+        caller_id=caller_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        project_timezone=project.timezone,
+    )
+    tools.extend(pa_tools)
+
     # Add demo tools (no credentials required)
     demo_tools, demo_executors = _build_demo_tools()
     tools.extend(demo_tools)
@@ -785,7 +934,7 @@ async def create_realtime_session(
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable not set")
 
-    all_executors = {**demo_executors}
+    all_executors = {**demo_executors, **pa_executors}
 
     # Merge Agno tool executors (entrypoint-based)
     for func_name, func in tool_executors.items():
