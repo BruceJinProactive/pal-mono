@@ -656,23 +656,26 @@ async def _build_pal_agent_provider_tools(
                 }
             )
 
-            def _make_logging_executor(
+            tool_fn = tool_def.get("function")
+
+            def _make_executor(
                 name: str,
+                fn: Callable[..., Any] | None,
             ) -> Callable[..., Awaitable[str]]:
                 async def _executor(**kwargs: object) -> str:
+                    import inspect
+
                     logger.info(
                         "[REALTIME.PAL_TOOL] %s",
                         name,
                         extra={"tool_name": name, "arguments": kwargs},
                     )
-                    if "item_details" in name or "lookup" in name:
-                        return json.dumps(
-                            {
-                                "status": "ok",
-                                "message": "Item details retrieved successfully.",
-                                "items": [],
-                            }
-                        )
+                    if fn is not None:
+                        if inspect.iscoroutinefunction(fn):
+                            result = await fn(**kwargs)
+                        else:
+                            result = await asyncio.to_thread(fn, **kwargs)
+                        return result if isinstance(result, str) else json.dumps(result)
                     return json.dumps(
                         {
                             "status": "ok",
@@ -683,7 +686,11 @@ async def _build_pal_agent_provider_tools(
 
                 return _executor
 
-            executors[tool_name] = _make_logging_executor(tool_name)
+            # Use real executor for lookup tools, log-only for ordering
+            if tool_fn and ("item_details" in tool_name or "lookup" in tool_name):
+                executors[tool_name] = _make_executor(tool_name, tool_fn)
+            else:
+                executors[tool_name] = _make_executor(tool_name, None)
 
     logger.info(
         "[REALTIME] Loaded %d pal-agent provider tool(s): %s",

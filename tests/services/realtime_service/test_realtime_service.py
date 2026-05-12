@@ -2213,12 +2213,15 @@ class TestBuildPalAgentProviderTools:
 
         import json
 
-        # Lookup tool returns item details response
+        # Lookup tool calls real executor (returns JSON from compiled menu)
+        # With empty menus, the lookup returns an error for item not found
         result = await executors["get_toast_item_details_v3"](
             items=[{"item_name": "Cheeseburger", "targets": [{"group_name": "Size"}]}]
         )
         parsed = json.loads(result)
-        assert parsed["status"] == "ok"
+        assert isinstance(parsed, dict)
+        assert "results" in parsed
+        assert parsed["results"][0]["status"] == "error"
 
         # Ordering tool returns order confirmation
         result = await executors["toast_takeout_create_order_v1"](
