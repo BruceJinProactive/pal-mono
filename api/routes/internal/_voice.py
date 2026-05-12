@@ -363,9 +363,12 @@ async def init_voice_call(
                 conversation_id=uuid.uuid4(),  # placeholder — fingerprint is config-only, not session-specific
                 channel=Channel.VOICE,
             )
-            config, agent_fp, prompt_fp, config_dict = (
-                await raw_config.build_with_fingerprint(session)
-            )
+            (
+                config,
+                agent_fp,
+                prompt_fp,
+                config_dict,
+            ) = await raw_config.build_with_fingerprint(session)
 
             db_agent_id = db_agent.id
             # Retrieve the just-created conversation and stamp it
@@ -1032,11 +1035,45 @@ def _persist_conversation_messages(
 
 
 def _extract_transcript_text(msg: dict) -> str:
-    """Safely extract text from a conversation history message."""
+    """Safely extract text from a conversation history message.
+
+    Handles every shape we actually receive from upstream:
+
+    * ``str`` — used by pal-agents and legacy callers.
+    * ``list[dict]`` — OpenAI / Anthropic content-block shape
+      (``[{"text": ...}, ...]``). We read the first block's ``text``.
+    * ``list[str]`` — **LiveKit's native shape**. ``AgentSession.history.
+      items`` stores each message's content as a list of string segments
+      (one entry per audio chunk / generation step). We join them with
+      spaces so downstream consumers see a single clean utterance.
+    * ``None`` / missing — empty string.
+
+    Prior to this handling, ``list[str]`` fell through to
+    ``str(content or "")`` and produced the Python repr
+    (e.g. ``"['Hi there']"``). That silently corrupted every downstream
+    consumer of ``TranscriptTurn.text`` — most visibly pal-conversation-
+    evaluator's transcription_accuracy metric, where Whisper's
+    EnglishTextNormalizer treats ``[...]`` as a non-speech tag and drops
+    the contents, driving WER to 1.0 for 100% of LiveKit calls.
+    See PAL-10527.
+    """
     content = msg.get("content")
-    if isinstance(content, list) and content and isinstance(content[0], dict):
-        return content[0].get("text", "")
-    return str(content or "")
+    if isinstance(content, list):
+        if not content:
+            return ""
+        if isinstance(content[0], dict):
+            # Guard against ``{"text": None}`` or non-string text values
+            # leaking downstream as ``None``/repr strings.
+            val = content[0].get("text")
+            if isinstance(val, str):
+                return val
+            return "" if val is None else str(val)
+        if isinstance(content[0], str):
+            return " ".join(c for c in content if isinstance(c, str))
+        return ""
+    if isinstance(content, str):
+        return content
+    return ""
 
 
 def _build_audio_recording_reference(

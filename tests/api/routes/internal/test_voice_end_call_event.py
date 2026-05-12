@@ -74,22 +74,50 @@ def _common_kwargs(**overrides):
 
 
 class TestExtractTranscriptText:
-    def test_string_content(self):
+    def test_string_content(self) -> None:
         assert _extract_transcript_text({"content": "Hello"}) == "Hello"
 
-    def test_list_content_with_text(self):
+    def test_list_content_with_text(self) -> None:
         assert _extract_transcript_text({"content": [{"text": "Hi"}]}) == "Hi"
 
-    def test_empty_list_content(self):
+    def test_list_content_with_none_text_returns_empty(self) -> None:
+        # Guard against ``{"text": None}`` — must not leak ``None`` or its repr.
+        assert _extract_transcript_text({"content": [{"text": None}]}) == ""
+
+    def test_list_content_with_non_string_text_coerced(self) -> None:
+        # Unusual but defensive: non-string ``text`` values become strings,
+        # not ``None`` and not raw objects.
+        assert _extract_transcript_text({"content": [{"text": 123}]}) == "123"
+
+    def test_empty_list_content(self) -> None:
         assert _extract_transcript_text({"content": []}) == ""
 
-    def test_list_with_non_dict(self):
-        assert _extract_transcript_text({"content": ["plain"]}) == "['plain']"
+    def test_list_of_strings_joined(self) -> None:
+        # LiveKit's AgentSession.history.items stores content as list[str]
+        # (one string per audio segment). Must be joined, not str()-ified.
+        # Regression guard for PAL-10527 — prior behavior produced the
+        # Python repr ``"['plain']"`` which was then eaten by Whisper's
+        # non-speech-tag rule in pal-conversation-evaluator.
+        assert _extract_transcript_text({"content": ["plain"]}) == "plain"
 
-    def test_none_content(self):
+    def test_list_of_multiple_strings_joined_with_spaces(self) -> None:
+        assert (
+            _extract_transcript_text({"content": ["Hello", "world"]}) == "Hello world"
+        )
+
+    def test_list_of_strings_with_apostrophes_preserved(self) -> None:
+        # Must not lose the apostrophes this was losing before — they
+        # were surviving only accidentally (as part of the list repr).
+        assert _extract_transcript_text({"content": ["don't worry"]}) == "don't worry"
+
+    def test_list_of_unknown_type_returns_empty(self) -> None:
+        # Defensive: anything we don't recognize should not leak repr().
+        assert _extract_transcript_text({"content": [123, 456]}) == ""
+
+    def test_none_content(self) -> None:
         assert _extract_transcript_text({"content": None}) == ""
 
-    def test_missing_content(self):
+    def test_missing_content(self) -> None:
         assert _extract_transcript_text({}) == ""
 
 
