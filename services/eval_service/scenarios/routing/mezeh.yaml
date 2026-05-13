@@ -1,0 +1,971 @@
+# Mezeh targeted routing scenarios.
+#
+# These scenarios exercise the generic subset argument matcher for
+# call_transfer and send_support_email. Keep expected args sparse: the agent's
+# issue summaries may vary, but names, email addresses, and transfer purposes
+# should be stable.
+#
+# Run call_transfer scenarios with driver="voice"; non-voice channels filter
+# out the LiveKit transfer tool. send_support_email scenarios can run over
+# text/http when the project has the support email tool configured.
+
+- scenario_id: mezeh-catering-transfer-001
+  scenario: "Customer wants to speak with the catering team about a new catering order"
+  test_category: call_transfer
+  max_turns: 8
+  persona: >-
+    A concise phone customer calling Mezeh during customer service hours.
+    You want to speak with the catering team about a new catering order.
+    Do not provide headcount, date, menu, or budget details.
+  user_turns:
+    - "Hi, I need to talk to someone about catering."
+    - type: ai_driven
+      goal: >-
+        Get connected to the catering team.
+
+        Hard rules:
+        - If the agent asks whether this is for a new or existing catering
+          order, say it is for a new catering order.
+        - If the agent offers a website link or a transfer, choose the transfer.
+        - Do not provide catering details such as headcount, date, menu, or budget.
+        - Keep replies to one short sentence.
+        - End the conversation after the agent initiates the transfer.
+  expected_tool_calls:
+    - tool: call_transfer
+      args:
+        purpose: catering
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Mezeh catering callers who want to speak to someone should be transferred with purpose catering during customer service hours."
+    - "The agent should not gather catering details before transferring."
+
+- scenario_id: mezeh-same-day-order-modification-transfer-001
+  scenario: "Customer needs to modify a Mezeh order for later today"
+  test_category: call_transfer
+  max_turns: 8
+  persona: >-
+    A direct phone customer calling Mezeh during customer service hours.
+    You placed a Mezeh order for pickup later today and need to modify it.
+  user_turns:
+    - "I need to change an order I placed."
+    - type: ai_driven
+      goal: >-
+        Get help modifying an order scheduled for today.
+
+        Hard rules:
+        - If the agent asks when the order is for, say it is for later today.
+        - If the agent asks where you ordered, say it was through Mezeh's website.
+        - Do not ask for a refund.
+        - Keep replies to one short sentence.
+        - End the conversation after the agent initiates the transfer.
+  expected_tool_calls:
+    - tool: call_transfer
+      args:
+        purpose: store
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Same-day order modifications are urgent and should transfer with purpose store during customer service hours."
+
+- scenario_id: mezeh-double-charge-email-001
+  scenario: "Customer reports being charged twice today for a Mezeh order"
+  test_category: support_email
+  max_turns: 20
+  persona: >-
+    A cooperative phone customer named Sam Lee. Your email address is
+    sam@example.com. You ordered through Mezeh's website and were charged twice
+    today. You are a rewards member. The order number is 1042.
+  user_turns:
+    - "I was charged twice today for my Mezeh order."
+    - type: ai_driven
+      goal: >-
+        Provide the required details so the agent can submit the issue to the
+        support team.
+
+        Hard rules:
+        - Your first name is Sam.
+        - Your last name is Lee.
+        - Your email address is sam@example.com.
+        - If asked whether you are a rewards member, say yes.
+        - If asked for an order number or card digits, provide order number 1042.
+        - If asked for charge details, say you see two $18.42 charges from today.
+        - Explicitly confirm the final summary and consent to sending it.
+        - Keep replies to one or two short sentences.
+        - End the conversation after the agent sends the support email.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Sam
+        last_name: Lee
+        email_address: sam@example.com
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Refunds, incorrect charges, double charges, and overcharges are always non-urgent."
+    - "The agent should collect customer information and send a support email for double charges."
+
+- scenario_id: mezeh-previous-day-missing-item-email-001
+  scenario: "Customer reports a missing item from a previous-day Mezeh order"
+  test_category: support_email
+  max_turns: 20
+  persona: >-
+    A cooperative phone customer named Priya Shah. Your email address is
+    priya.shah@example.com. Yesterday's Mezeh order was missing falafel. The
+    order number is 8831.
+  user_turns:
+    - "My order yesterday was missing the falafel."
+    - type: ai_driven
+      goal: >-
+        Provide the required details so the agent can submit the missing-item
+        issue to the support team.
+
+        Hard rules:
+        - Your first name is Priya.
+        - Your last name is Shah.
+        - Your email address is priya.shah@example.com.
+        - If asked for an order number or card digits, provide order number 8831.
+        - If asked what happened, say the falafel was missing from yesterday's order.
+        - Explicitly confirm the final summary and consent to sending it.
+        - Keep replies to one or two short sentences.
+        - End the conversation after the agent sends the support email.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Priya
+        last_name: Shah
+        email_address: priya.shah@example.com
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Previous-day order issues are non-urgent."
+    - "The agent should collect customer information and send a support email for previous-day missing-item issues."
+
+- scenario_id: mezeh-post-email-transfer-request-001
+  scenario: "Customer asks to speak to someone after a support email was already sent"
+  test_category: support_email
+  max_turns: 24
+  persona: >-
+    A cooperative phone customer named Dana Kim. Your email address is
+    dana.kim@example.com. You have a general complaint about rude service
+    yesterday. After the agent sends your information to support, ask whether
+    you can speak to someone.
+  user_turns:
+    - "I want to complain about rude service yesterday."
+    - type: ai_driven
+      goal: >-
+        Complete the support email flow, then ask whether you can speak to
+        someone.
+
+        Hard rules:
+        - Your first name is Dana.
+        - Your last name is Kim.
+        - Your email address is dana.kim@example.com.
+        - If asked for a brief description, say an employee was rude during
+          yesterday's lunch visit.
+        - Explicitly confirm the final summary and consent to sending it.
+        - After the agent says the email was sent, ask: "Can I speak to someone too?"
+        - If the agent says your information has already been submitted, accept it.
+        - Keep replies to one or two short sentences.
+        - End after the agent handles the follow-up transfer request.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Dana
+        last_name: Kim
+        email_address: dana.kim@example.com
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "After send_support_email has already been called for an issue, the agent should not restart the transfer flow for that same issue."
+    - "The current tool-call evaluator reports unexpected tools but does not fail the score solely for unexpected tools."
+
+# -----------------------------------------------------------------------------
+# call_transfer scenarios — transfer destination coverage
+#
+# Transfer destinations under test:
+#   general        → +17036625  general customer service line
+#   catering       → +18444663934  catering team
+#   order_support  → store-specific; same-day missing items / wrong order /
+#                    delivery issues on Mezeh first-party orders
+#   store          → store-specific; same-day order modifications
+#
+# Real callers typically ask to "speak to a representative" without stating
+# an issue. The agent must run the 3-attempt flow and triage the underlying
+# need before choosing the right destination.
+#
+# NOTE on transcription: single-word or very short confirmations ("yeah",
+# "mm-hm", "no") are a known failure mode. Personas below prefer short full
+# sentences ("yes that's right", "no it's wrong") and, on name mis-hears,
+# require the agent to switch to letter-by-letter spelling.
+# -----------------------------------------------------------------------------
+
+- scenario_id: mezeh-3-attempt-insisted-transfer-001
+  scenario: "Caller demands a representative without stating an issue; after 3 attempts, transfer to general"
+  test_category: call_transfer
+  max_turns: 10
+  persona: >-
+    A terse, impatient phone customer calling Mezeh during customer service
+    hours. You refuse to explain why you are calling — you only want to be
+    connected to a human. You never mention orders, catering, refunds, food
+    safety, or any other topic.
+  user_turns:
+    - "I want to speak to a representative."
+    - type: ai_driven
+      goal: >-
+        Keep insisting on being transferred without stating any specific
+        issue.
+
+        Hard rules:
+        - Do NOT mention any issue, topic, or reason for calling.
+        - Each time the agent asks what you're calling about, deflect with
+          things like: "Just connect me to a person," "I don't want to
+          explain, put me through," or "I'd rather talk to someone there."
+        - Do not say "order," "catering," "refund," "complaint," or any
+          other topic word.
+        - Keep replies to one short sentence.
+        - End the conversation after the agent initiates the transfer.
+  expected_tool_calls:
+    - tool: call_transfer
+      args:
+        purpose: general
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "The agent must run the 3-attempt clarification flow before transferring."
+    - "After 3 deflections with no stated issue, route using call_transfer with purpose general."
+
+- scenario_id: mezeh-same-day-missing-items-transfer-001
+  scenario: "Caller reports missing items from a Mezeh website pickup order they just picked up"
+  test_category: call_transfer
+  max_turns: 10
+  persona: >-
+    A phone customer calling Mezeh during customer service hours. You picked
+    up a Mezeh website order 20 minutes ago and the hummus and pita are
+    missing from the bag.
+  user_turns:
+    - "Hey, my order is missing a couple of things."
+    - type: ai_driven
+      goal: >-
+        Get connected to someone who can resolve a same-day missing-items
+        issue on a Mezeh first-party order.
+
+        Hard rules:
+        - If the agent asks when the order happened, say you picked it up
+          about 20 minutes ago today.
+        - If the agent asks where you ordered, say you ordered through
+          Mezeh's website (not DoorDash, Uber Eats, or Grubhub).
+        - Do NOT ask for a refund — you want the missing items resolved.
+        - Keep replies to one short sentence.
+        - End the conversation after the agent initiates the transfer.
+  expected_tool_calls:
+    - tool: call_transfer
+      args:
+        purpose: order_support
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Same-day missing-items on Mezeh first-party orders are urgent."
+    - "Missing items / wrong order same-day → transfer with purpose order_support."
+    - "Same-day order MODIFICATIONS (a different path) use purpose store instead."
+
+- scenario_id: mezeh-same-day-wrong-order-transfer-001
+  scenario: "Caller got the completely wrong order from a Mezeh website pickup earlier today"
+  test_category: call_transfer
+  max_turns: 10
+  persona: >-
+    A phone customer calling Mezeh during customer service hours. You picked
+    up your order through Mezeh's website earlier today and got someone
+    else's food entirely.
+  user_turns:
+    - "I got the totally wrong order today."
+    - type: ai_driven
+      goal: >-
+        Get connected to someone who can resolve a same-day wrong-order
+        issue on a Mezeh first-party order.
+
+        Hard rules:
+        - If the agent asks when the order happened, say it was earlier today.
+        - If the agent asks where you ordered, say you ordered through
+          Mezeh's website.
+        - Do NOT ask for a refund.
+        - Keep replies to one short sentence.
+        - End the conversation after the agent initiates the transfer.
+  expected_tool_calls:
+    - tool: call_transfer
+      args:
+        purpose: order_support
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Wrong-order issues same-day on Mezeh first-party orders are urgent and use purpose order_support."
+
+- scenario_id: mezeh-food-safety-transfer-001
+  scenario: "Caller reports they got sick after eating at Mezeh yesterday"
+  test_category: call_transfer
+  max_turns: 8
+  persona: >-
+    A concerned phone customer calling Mezeh during customer service hours.
+    You ate at Mezeh yesterday evening and have been sick since this morning.
+    You want to speak to someone about this.
+  user_turns:
+    - "I ate at your restaurant yesterday and I've been really sick since this morning."
+    - type: ai_driven
+      goal: >-
+        Get connected to someone about a food safety concern.
+
+        Hard rules:
+        - Do NOT accept being told to fill out a form or wait for a callback.
+        - If asked which location, say the Ashburn location.
+        - Keep replies to one short sentence.
+        - End the conversation after the agent initiates the transfer.
+  expected_tool_calls:
+    - tool: call_transfer
+      args:
+        purpose: general
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Food safety concerns are urgent and must transfer during customer service hours."
+    - "Food safety uses purpose general — there is no dedicated food-safety transfer destination."
+
+- scenario_id: mezeh-active-delivery-transfer-001
+  scenario: "Caller is waiting on a Mezeh-website delivery right now and it has not arrived"
+  test_category: call_transfer
+  max_turns: 10
+  persona: >-
+    A phone customer calling Mezeh during customer service hours. You placed
+    a delivery order through Mezeh's website an hour ago and the food still
+    has not arrived. You are actively waiting.
+  user_turns:
+    - "My delivery still hasn't shown up."
+    - type: ai_driven
+      goal: >-
+        Get connected to someone about an actively-waiting delivery.
+
+        Hard rules:
+        - If asked where you ordered, say Mezeh's website (not DoorDash,
+          Uber Eats, or Grubhub).
+        - If asked about timing, say you are still waiting on it right now.
+        - Keep replies to one short sentence.
+        - End the conversation after the agent initiates the transfer.
+  expected_tool_calls:
+    - tool: call_transfer
+      args:
+        purpose: general
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Active delivery issues on Mezeh-website orders are urgent."
+    - "Delivery issues route with purpose general per the prompt."
+    - "If the caller had ordered via DoorDash/Uber/Grubhub, the agent should redirect to that app and not transfer or collect info."
+
+- scenario_id: mezeh-catering-existing-order-transfer-001
+  scenario: "Caller needs to change an existing catering order they already placed"
+  test_category: call_transfer
+  max_turns: 8
+  persona: >-
+    A phone customer calling Mezeh during customer service hours. You already
+    placed a catering order and now need to change the headcount. You do not
+    want to use a website.
+  user_turns:
+    - "I need to change a catering order I already placed."
+    - type: ai_driven
+      goal: >-
+        Get connected to the catering team about an existing catering order.
+
+        Hard rules:
+        - If the agent asks new vs. existing, say it's for an existing order.
+        - If the agent offers a catering website link vs. a transfer, choose
+          the transfer.
+        - Do NOT give specifics like headcount, date, menu, or budget.
+        - Keep replies to one short sentence.
+        - End the conversation after the agent initiates the transfer.
+  expected_tool_calls:
+    - tool: call_transfer
+      args:
+        purpose: catering
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Any catering request — new or existing — transfers with purpose catering during customer service hours."
+    - "The agent should not collect catering details (headcount, date, menu) before transferring."
+
+- scenario_id: mezeh-manager-then-reveals-same-day-order-transfer-001
+  scenario: "Caller asks for a manager, then reveals on attempt 2 they have a same-day order issue"
+  test_category: call_transfer
+  max_turns: 10
+  persona: >-
+    A phone customer calling Mezeh during customer service hours. You first
+    demand a manager without explaining. When pressed, you reveal that you
+    picked up a Mezeh website order an hour ago and it was missing items.
+  user_turns:
+    - "Let me speak to a manager."
+    - type: ai_driven
+      goal: >-
+        Pressure the agent for a transfer, but reveal on the second prompt
+        that this is a same-day missing items issue on a Mezeh order.
+
+        Hard rules:
+        - On the first clarifying question, say "just put me through."
+        - On the second clarifying question, reveal: "Fine — I picked up a
+          Mezeh website order an hour ago and the hummus was missing."
+        - If asked where you ordered, confirm Mezeh's website.
+        - Keep replies to one short sentence.
+        - End the conversation after the agent initiates the transfer.
+  expected_tool_calls:
+    - tool: call_transfer
+      args:
+        purpose: order_support
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "The agent must break out of the 3-attempt flow the moment the caller states an actionable topic."
+    - "Once triaged, same-day missing items on a first-party order routes with purpose order_support — NOT general."
+
+- scenario_id: mezeh-third-party-no-transfer-001
+  scenario: "Caller asks for a manager, then reveals a DoorDash refund issue"
+  test_category: call_transfer
+  max_turns: 10
+  persona: >-
+    A phone customer calling Mezeh during customer service hours. You first
+    demand a manager. When pressed, you reveal you ordered through DoorDash
+    last night and want a refund for a wrong item.
+  user_turns:
+    - "Let me speak to someone in charge."
+    - type: ai_driven
+      goal: >-
+        Pressure the agent for a transfer, but eventually reveal this is a
+        DoorDash refund issue.
+
+        Hard rules:
+        - On the first clarifying question, say "just put me through."
+        - On the second clarifying question, reveal: "Fine — I ordered
+          through DoorDash last night and got the wrong thing. I want a
+          refund."
+        - Keep replies to one short sentence.
+        - End the conversation after the agent tells you to contact DoorDash.
+  expected_tool_calls: []
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Third-party (DoorDash/Uber Eats/Grubhub) order issues must be redirected to that app."
+    - "The agent must NOT call call_transfer and must NOT call send_support_email for third-party order issues."
+
+- scenario_id: mezeh-place-order-link-no-transfer-001
+  scenario: "Caller wants to place a new order over the phone"
+  test_category: call_transfer
+  max_turns: 6
+  persona: >-
+    A casual phone customer calling Mezeh during customer service hours. You
+    want to order a chicken bowl for pickup and expect to place the order on
+    the call.
+  user_turns:
+    - "Hi, I'd like to place an order for pickup."
+    - type: ai_driven
+      goal: >-
+        Try to place an order over the phone.
+
+        Hard rules:
+        - If the agent says orders cannot be placed over the phone, accept
+          it and agree to receive the ordering link by text.
+        - Do NOT list items, sizes, or proteins — even if the agent asks.
+        - Do NOT ask for a transfer.
+        - Keep replies to one short sentence.
+        - End after the agent sends the link and asks if there's anything
+          else.
+  expected_tool_calls: []
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Orders cannot be placed over the phone. The agent must decline and offer to text the ordering link."
+    - "The agent must NOT call call_transfer and must NOT ask the caller what they want to order."
+
+# -----------------------------------------------------------------------------
+# send_support_email scenarios — Phase 2 issue-specific field coverage
+#
+# Each scenario targets one row of the Issue-Specific Fields table so we can
+# verify the agent collects every required field before summarizing.
+#
+# send_support_email `purpose` selection guide:
+#   catering        → catering issues (outside hours)
+#   order           → regular (non-catering) order issues
+#   lost_and_found  → items left at the store
+#   employment      → jobs / hiring
+#   general         → everything else
+#
+# Purpose is only asserted in expected args where the mapping is unambiguous
+# (employment, lost_and_found, catering, clear order-related issues).
+# -----------------------------------------------------------------------------
+
+- scenario_id: mezeh-missed-rewards-points-email-001
+  scenario: "Rewards member reports missing points from an order earlier this week"
+  test_category: support_email
+  max_turns: 22
+  persona: >-
+    A cooperative phone customer named Alex Patel. Your email is
+    alex.patel@example.com. You are a rewards member. Your rewards phone is
+    555-204-8811. You ordered three days ago and points never showed up.
+    The order number is 7712.
+  user_turns:
+    - "I didn't get my rewards points from my last order."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for a missed rewards points
+        issue.
+
+        Hard rules:
+        - Your first name is Alex.
+        - Your last name is Patel.
+        - Your email is alex.patel@example.com.
+        - If asked whether you are a rewards member, say yes.
+        - If asked for your rewards phone number, provide 555-204-8811.
+        - If asked for an order number or last 4 of card, provide order
+          number 7712.
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short — prefer "yes that's right" over "yeah" to
+          avoid transcription issues.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Alex
+        last_name: Patel
+        email_address: alex.patel@example.com
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Missed rewards points is non-urgent; collect info and send support email, do NOT transfer."
+    - "Phase 2 requires: rewards-member status, rewards phone number, AND order number or last 4 of card."
+    - "The agent must not skip any of those three fields before summarizing."
+
+- scenario_id: mezeh-gift-card-issue-email-001
+  scenario: "Caller's physical gift card is not redeeming at checkout"
+  test_category: support_email
+  max_turns: 20
+  persona: >-
+    A cooperative phone customer named Maya Chen. Your email is
+    maya.chen@example.com. Your physical gift card number is
+    6011-2233-4455-6677 and it won't scan or redeem at checkout in-store.
+  user_turns:
+    - "My gift card isn't working when I try to use it."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for a gift card issue.
+
+        Hard rules:
+        - Your first name is Maya.
+        - Your last name is Chen.
+        - Your email is maya.chen@example.com.
+        - If asked for a gift card number, provide 6011-2233-4455-6677.
+        - If asked for a description, say "It won't scan or redeem at the
+          register when I tried it today."
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Maya
+        last_name: Chen
+        email_address: maya.chen@example.com
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Gift card issues are non-urgent; collect info and send support email."
+    - "Phase 2 requires: gift card number AND description of the issue."
+
+- scenario_id: mezeh-receipt-request-email-001
+  scenario: "Caller needs a copy of a receipt for an in-store purchase last week"
+  test_category: support_email
+  max_turns: 22
+  persona: >-
+    A cooperative phone customer named Noah Brooks. Your email is
+    noah.brooks@example.com. You bought dinner in-store at the Tysons
+    location on 2026-05-06 around 7:30 PM. The last 4 of the card used
+    were 4421.
+  user_turns:
+    - "I need a copy of a receipt from last week."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for a receipt request.
+
+        Hard rules:
+        - Your first name is Noah.
+        - Your last name is Brooks.
+        - Your email is noah.brooks@example.com.
+        - If asked for last 4 of card, say 4421.
+        - If asked for store location, say Tysons.
+        - If asked for date and time of purchase, say May 6, around 7:30 PM.
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Noah
+        last_name: Brooks
+        email_address: noah.brooks@example.com
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Receipt requests are non-urgent; collect info and send support email."
+    - "Phase 2 requires: last 4 of card, store location, AND date and time of purchase."
+
+- scenario_id: mezeh-employment-inquiry-email-001
+  scenario: "Caller is asking about open jobs at a specific store"
+  test_category: support_email
+  max_turns: 20
+  persona: >-
+    A cooperative phone customer named Jordan Rivera. Your email is
+    jordan.rivera@example.com. You are interested in a line cook position
+    at the Fairfax location.
+  user_turns:
+    - "I wanted to see if you're hiring."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for an employment inquiry.
+
+        Hard rules:
+        - Your first name is Jordan.
+        - Your last name is Rivera.
+        - Your email is jordan.rivera@example.com.
+        - If asked what position, say line cook.
+        - If asked which location, say Fairfax.
+        - Explicitly confirm the final summary and consent to sending.
+        - Do not ask to be transferred.
+        - Keep replies short.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Jordan
+        last_name: Rivera
+        email_address: jordan.rivera@example.com
+        purpose: employment
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Employment inquiries are non-urgent and go through send_support_email with purpose employment."
+    - "Phase 2 requires: position interested in AND preferred store location."
+    - "The agent must NOT transfer the caller for jobs."
+
+- scenario_id: mezeh-incorrect-charge-rewards-member-email-001
+  scenario: "Rewards member reports an incorrect charge on an order from earlier today"
+  test_category: support_email
+  max_turns: 22
+  persona: >-
+    A cooperative phone customer named Taylor Nguyen. Your email is
+    taylor.nguyen@example.com. You are a rewards member. Your order today
+    was number 5590 and you were charged $24.18 but expected $19.18.
+  user_turns:
+    - "I was charged the wrong amount for my order today."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for an incorrect charge
+        issue.
+
+        Hard rules:
+        - Your first name is Taylor.
+        - Your last name is Nguyen.
+        - Your email is taylor.nguyen@example.com.
+        - If asked whether you are a rewards member, say yes.
+        - If asked for an order number or last 4 of card, provide order
+          number 5590.
+        - If asked for charge details, say "Charged $24.18 but the total
+          should have been $19.18."
+        - Do NOT accept a same-day transfer — incorrect charges are always
+          non-urgent.
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Taylor
+        last_name: Nguyen
+        email_address: taylor.nguyen@example.com
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Incorrect charges are always non-urgent regardless of timing."
+    - "The agent must NOT call call_transfer even though the charge happened today."
+    - "Phase 2 requires: rewards-member status, order number or last 4 of card, AND charge details."
+
+- scenario_id: mezeh-future-date-order-mod-email-001
+  scenario: "Caller wants to modify a Mezeh-website order scheduled for tomorrow"
+  test_category: support_email
+  max_turns: 22
+  persona: >-
+    A cooperative phone customer named Riley Okafor. Your email is
+    riley.okafor@example.com. You placed order number 9045 through Mezeh's
+    website for pickup tomorrow. You want to change the protein from chicken
+    to falafel.
+  user_turns:
+    - "I need to change an order I placed."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for a future-date order
+        modification (non-urgent).
+
+        Hard rules:
+        - Your first name is Riley.
+        - Your last name is Okafor.
+        - Your email is riley.okafor@example.com.
+        - If asked when the order is for, say tomorrow.
+        - If asked for an order number or last 4 of card, provide order
+          number 9045.
+        - If asked what happened or what you need, say "I want to change
+          the protein from chicken to falafel."
+        - Do NOT accept a transfer — future-date mods are non-urgent.
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Riley
+        last_name: Okafor
+        email_address: riley.okafor@example.com
+        purpose: order
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Modifications for future dates (tomorrow or later) are non-urgent."
+    - "The agent must NOT transfer — collect info and send support email with purpose order."
+    - "Phase 2 requires: order number or last 4 of card AND a description of what they need."
+
+- scenario_id: mezeh-general-complaint-email-001
+  scenario: "Caller wants to give general feedback about a slow line yesterday"
+  test_category: support_email
+  max_turns: 18
+  persona: >-
+    A cooperative phone customer named Casey Diaz. Your email is
+    casey.diaz@example.com. Yesterday's visit had a line that took 30
+    minutes and you want to leave feedback — not a refund.
+  user_turns:
+    - "I just want to leave feedback about a bad visit yesterday."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for general feedback.
+
+        Hard rules:
+        - Your first name is Casey.
+        - Your last name is Diaz.
+        - Your email is casey.diaz@example.com.
+        - If asked for a brief description, say "The line took over 30
+          minutes at dinner yesterday and only one register was open."
+        - Do NOT ask for a refund and do NOT ask to be transferred.
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Casey
+        last_name: Diaz
+        email_address: casey.diaz@example.com
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "General complaints and feedback are non-urgent."
+    - "Phase 2 requires only a brief description of the issue."
+
+- scenario_id: mezeh-lost-found-outside-hours-email-001
+  scenario: "Caller left a bag at the store last night, calling outside customer service hours"
+  test_category: support_email
+  max_turns: 22
+  persona: >-
+    A cooperative phone customer named Morgan Lee. Your email is
+    morgan.lee@example.com. You left a black backpack at the Herndon
+    location last night. You are calling outside customer service hours
+    (weekend or evening), so a transfer is not possible.
+  user_turns:
+    - "I left my bag at your restaurant last night."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for a lost-and-found issue
+        outside customer service hours.
+
+        Hard rules:
+        - Your first name is Morgan.
+        - Your last name is Lee.
+        - Your email is morgan.lee@example.com.
+        - If asked for the date lost, say last night (give yesterday's date
+          if the agent asks specifically).
+        - If asked for the store location, say Herndon.
+        - If asked for a description, say "black backpack with a silver
+          laptop inside."
+        - Accept that a transfer is not possible outside hours.
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Morgan
+        last_name: Lee
+        email_address: morgan.lee@example.com
+        purpose: lost_and_found
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Run this scenario with the call time set OUTSIDE Mon-Fri 9 AM - 5 PM Eastern."
+    - "Lost and found outside hours goes through send_support_email with purpose lost_and_found — NOT call_transfer."
+    - "Phase 2 requires: date lost, store location, AND description of item."
+
+- scenario_id: mezeh-catering-outside-hours-email-001
+  scenario: "Caller has an issue with an existing catering order, calling outside customer service hours"
+  test_category: support_email
+  max_turns: 22
+  persona: >-
+    A cooperative phone customer named Sara Martin. Your email is
+    sara.martin@example.com. You placed a catering order for 2026-05-10
+    through Mezeh's catering site, order number C4410, and some trays were
+    missing at delivery. You are calling outside customer service hours.
+  user_turns:
+    - "I had a problem with my catering order."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for a catering issue outside
+        customer service hours.
+
+        Hard rules:
+        - Your first name is Sara.
+        - Your last name is Martin.
+        - Your email is sara.martin@example.com.
+        - If asked for the catering date, say May 10, 2026.
+        - If asked for an order number or last 4 of card, provide order
+          number C4410.
+        - If asked what you need, say "Two trays were missing from the
+          delivery and I need them resolved."
+        - Accept that a transfer is not possible outside hours.
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Sara
+        last_name: Martin
+        email_address: sara.martin@example.com
+        purpose: catering
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Run this scenario with the call time set OUTSIDE customer service hours."
+    - "Catering issues outside hours use send_support_email with purpose catering."
+    - "Phase 2 requires: catering date, order number or last 4 of card, AND what they need."
+
+- scenario_id: mezeh-previous-day-wrong-order-email-001
+  scenario: "Caller reports the wrong order from a Mezeh website pickup yesterday"
+  test_category: support_email
+  max_turns: 22
+  persona: >-
+    A cooperative phone customer named Devon Hall. Your email is
+    devon.hall@example.com. You picked up a Mezeh website order yesterday
+    and got someone else's food. The order number is 3377.
+  user_turns:
+    - "My order yesterday was completely wrong."
+    - type: ai_driven
+      goal: >-
+        Provide all Phase 1 and Phase 2 fields for a previous-day wrong
+        order issue.
+
+        Hard rules:
+        - Your first name is Devon.
+        - Your last name is Hall.
+        - Your email is devon.hall@example.com.
+        - If asked when the order happened, say yesterday.
+        - If asked where you ordered, say Mezeh's website.
+        - If asked for an order number or last 4 of card, provide order
+          number 3377.
+        - If asked what happened, say "I got someone else's food — it was
+          all wrong."
+        - Do NOT accept a transfer — previous-day order issues are
+          non-urgent.
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short.
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        first_name: Devon
+        last_name: Hall
+        email_address: devon.hall@example.com
+        purpose: order
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Previous-day order issues are non-urgent."
+    - "Use send_support_email with purpose order for regular (non-catering) order issues."
+    - "Phase 2 requires: order number or last 4 of card AND description of what happened."
+
+- scenario_id: mezeh-name-spelling-correction-email-001
+  scenario: "Agent mishears the caller's name; caller corrects with letter-by-letter spelling"
+  test_category: support_email
+  max_turns: 24
+  persona: >-
+    A cooperative phone customer whose first name is Aoife (pronounced
+    "EE-fa") and last name is Nuñez. Your email is aoife.nunez@example.com.
+    You are reporting a missing item from yesterday's Mezeh website order,
+    order number 6603.
+  user_turns:
+    - "My order yesterday was missing the baklava."
+    - type: ai_driven
+      goal: >-
+        Force the name-spelling correction flow, then complete Phase 1 and
+        Phase 2 for a previous-day missing item.
+
+        Hard rules:
+        - When asked for your first name, say "Aoife" once.
+        - If the agent reads back ANY name other than "Aoife" (e.g., "Eva",
+          "Ava", "Ee-fa"), say "No, that's wrong."
+        - When the agent asks you to spell it, spell exactly:
+          "A, O, I, F, E."
+        - When asked for your last name, say "Nuñez."
+        - If the agent reads back any last name other than "Nuñez" or
+          "Nunez," say "No, that's wrong" and spell "N, U, N, E, Z."
+        - Your email is aoife.nunez@example.com.
+        - If asked for an order number, say 6603.
+        - If asked what happened, say "The baklava was missing from
+          yesterday's order."
+        - Explicitly confirm the final summary and consent to sending.
+        - Keep replies short — short/single-word answers transcribe poorly,
+          so prefer short full sentences like "yes that's right."
+        - End after the email is sent.
+  expected_tool_calls:
+    - tool: send_support_email
+      args:
+        email_address: aoife.nunez@example.com
+  expected_outcomes:
+    task_completed: true
+    hallucination: false
+  context:
+    - "Short / single-word answers transcribe poorly. After a mishear, the agent must switch to letter-by-letter spelling and read the spelled letters back — it must NOT re-ask 'What's your first name?'"
+    - "Verifies the spelling-correction branch of Phase 1."
+    - "first_name and last_name are intentionally omitted from expected args because phonetic/accent variations may produce acceptable spellings; email_address is the stable anchor."
