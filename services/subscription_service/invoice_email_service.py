@@ -23,6 +23,9 @@ def send_invoice_email_with_analytics(
     cc_emails: Optional[list[str]] = None,
     scope: str = "project",  # "project" or "account"
     template_id: Optional[int] = None,
+    total_orders: int = 0,
+    order_total_dollars: float = 0.0,
+    total_reservations: int = 0,
 ) -> dict:
     """
     Send an invoice email with usage analytics and PDF attachment.
@@ -75,6 +78,9 @@ def send_invoice_email_with_analytics(
             "calls_handled": str(calls_handled),
             "total_minutes": str(total_minutes),
             "staff_hours_saved": str(staff_hours_saved),
+            "total_orders": str(total_orders),
+            "order_total_dollars": f"{order_total_dollars:.2f}",
+            "total_reservations": str(total_reservations),
         }
 
         # Prepare attachment

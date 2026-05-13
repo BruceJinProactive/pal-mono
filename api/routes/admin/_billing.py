@@ -462,6 +462,9 @@ async def send_account_invoice_email(
             cc_emails=request.cc_emails,
             scope="account",
             template_id=request.template_id,
+            total_orders=request.total_orders,
+            order_total_dollars=request.order_total_dollars,
+            total_reservations=request.total_reservations,
         )
 
         logger.info(
@@ -590,6 +593,9 @@ async def send_project_invoice_email(
             cc_emails=request.cc_emails,
             scope="project",
             template_id=request.template_id,
+            total_orders=request.total_orders,
+            order_total_dollars=request.order_total_dollars,
+            total_reservations=request.total_reservations,
         )
 
         logger.info(

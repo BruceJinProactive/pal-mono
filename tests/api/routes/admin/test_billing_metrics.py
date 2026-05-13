@@ -197,3 +197,33 @@ class TestSendInvoiceEmailTemplateId:
             mock_email_service.send_email_with_template.assert_called_once()
             call_kwargs = mock_email_service.send_email_with_template.call_args[1]
             assert call_kwargs["template_id"] == 42569088
+
+    def test_passes_order_and_reservation_metrics_to_template(self) -> None:
+        """Should include orders/reservations in the template model."""
+        with patch(
+            "services.subscription_service.invoice_email_service.email_service"
+        ) as mock_email_service:
+            mock_email_service.send_email_with_template.return_value = {
+                "MessageID": "test-789"
+            }
+
+            send_invoice_email_with_analytics(
+                to_email="test@example.com",
+                display_name="Test Account",
+                period_start="April 1",
+                period_end="April 30, 2026",
+                calls_handled=100,
+                total_minutes=200,
+                staff_hours_saved=10,
+                pdf_content=b"fake-pdf",
+                pdf_filename="invoice.pdf",
+                total_orders=42,
+                order_total_dollars=1234.56,
+                total_reservations=15,
+            )
+
+            call_kwargs = mock_email_service.send_email_with_template.call_args[1]
+            template_model = call_kwargs["template_model"]
+            assert template_model["total_orders"] == "42"
+            assert template_model["order_total_dollars"] == "1234.56"
+            assert template_model["total_reservations"] == "15"

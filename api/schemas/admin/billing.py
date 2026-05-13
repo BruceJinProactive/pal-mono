@@ -98,6 +98,13 @@ class SendInvoiceEmailRequest(BaseModel):
     calls_handled: int
     total_minutes: int
     staff_hours_saved: int
+    total_orders: int = Field(0, description="Total paid orders in billing period")
+    order_total_dollars: float = Field(
+        0.0, description="Total dollar value of paid orders"
+    )
+    total_reservations: int = Field(
+        0, description="Total reservations booked in billing period"
+    )
     pdf_base64: Optional[str] = None  # Base64 encoded PDF content (manual upload)
     stripe_invoice_id: Optional[str] = (
         None  # Stripe invoice ID (auto-fetch from Stripe)

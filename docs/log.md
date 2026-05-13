@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-13
+
+- **Arrears billing: finalize invoices at end of billing cycle.** Invoice drafts now stay open during the billing period (`auto_advance=False` set via `invoice.created` webhook). When the next period starts, the webhook finalizes and sends the previous period's draft (which by then includes metered usage from Stripe Meters). On subscription deletion, remaining drafts are also finalized. Accrual filter tightened to skip invoices with no `due_date`. Added `total_orders`, `order_total_dollars`, and `total_reservations` fields to `SendInvoiceEmailRequest` and passed through to Postmark template model for analytics emails.
+
+---
+
 ## 2026-05-12
 
 - **Mezeh routing eval scenarios.** Added `services/eval_service/scenarios/routing/mezeh.yaml` with five targeted scenarios for `call_transfer` and `send_support_email`: catering transfer, same-day order modification transfer, double-charge email, previous-day missing-item email, and post-email transfer request regression coverage.
