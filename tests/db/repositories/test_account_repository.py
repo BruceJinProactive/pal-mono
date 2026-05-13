@@ -163,6 +163,27 @@ class TestAccountLookup:
         assert result == []
         mock_session.rollback.assert_called_once()
 
+    def test_get_account_by_stripe_customer_id(
+        self, repo, mock_session, sample_account
+    ) -> None:
+        """Webhook processing resolves account from Stripe customer ID."""
+        mock_session.query.return_value.filter.return_value.filter.return_value.first.return_value = (
+            sample_account
+        )
+        result = repo.get_account_by_stripe_customer_id("cus_test123")
+        assert result == sample_account
+
+    def test_get_account_by_stripe_customer_id_returns_none_on_error(
+        self, repo, mock_session
+    ) -> None:
+        """DB error returns None and rolls back."""
+        mock_session.query.return_value.filter.return_value.filter.return_value.first.side_effect = SQLAlchemyError(
+            "connection error"
+        )
+        result = repo.get_account_by_stripe_customer_id("cus_test123")
+        assert result is None
+        mock_session.rollback.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # TestAccountCreation — Onboarding

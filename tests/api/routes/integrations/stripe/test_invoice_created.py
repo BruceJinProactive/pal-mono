@@ -30,6 +30,9 @@ def async_session() -> AsyncMock:
 PATCH_FINALIZE = (
     "api.routes.integrations.stripe._implementation._finalize_previous_draft_invoice"
 )
+PATCH_AUTOMATED_EMAIL = (
+    "api.routes.integrations.stripe._implementation.send_automated_invoice_email"
+)
 
 
 class TestHandleInvoiceCreated:
@@ -420,15 +423,18 @@ class TestFinalizePreviousDraftInvoice:
 
     @pytest.mark.asyncio
     async def test_finalizes_previous_draft_invoice(self) -> None:
-        """Should finalize draft invoices that are not the current one."""
+        """Should finalize, send, and email for draft invoices not the current one."""
         previous_draft = MagicMock()
         previous_draft.id = "in_prev_draft"
         current_draft = MagicMock()
         current_draft.id = "in_new"
 
-        with patch(
-            "api.routes.integrations.stripe._implementation.stripe"
-        ) as mock_stripe:
+        with (
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+            patch(PATCH_AUTOMATED_EMAIL) as mock_email,
+        ):
             mock_stripe.Invoice.list.return_value = _FakeInvoiceList(
                 [previous_draft, current_draft]
             )
@@ -447,6 +453,10 @@ class TestFinalizePreviousDraftInvoice:
             )
             mock_stripe.Invoice.finalize_invoice.assert_called_once_with(
                 "in_prev_draft"
+            )
+            mock_email.assert_called_once_with(
+                finalized_invoice_id="in_prev_draft",
+                stripe_customer_id="cus_123",
             )
 
     @pytest.mark.asyncio

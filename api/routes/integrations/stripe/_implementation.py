@@ -14,6 +14,9 @@ from services.notification_service import (
     BillingEventType,
     handle_billing_event,
 )
+from services.subscription_service.invoice_email_service import (
+    send_automated_invoice_email,
+)
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
@@ -278,6 +281,13 @@ async def _finalize_previous_draft_invoice(
                     "triggered_by_invoice_id": invoice_id,
                     "subscription_id": subscription_id,
                 },
+            )
+            # Send the analytics email with invoice PDF attached.
+            # This is the only customer-facing email — no separate Stripe
+            # send_invoice call needed since the PDF is included here.
+            send_automated_invoice_email(
+                finalized_invoice_id=draft_id,
+                stripe_customer_id=stripe_customer_id,
             )
         except stripe.StripeError as e:
             logger.error(

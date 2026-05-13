@@ -122,6 +122,22 @@ class AccountRepository:
             logger.error(f"Error retrieving account by ID: {e}")
             return None
 
+    def get_account_by_stripe_customer_id(
+        self, stripe_customer_id: str
+    ) -> Account | None:
+        """Retrieve an account by Stripe customer ID."""
+        try:
+            return (
+                self.session.query(Account)
+                .filter(Account.stripe_customer_id == stripe_customer_id)
+                .filter(Account.status != AccountStatus.deleted)
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving account by Stripe customer ID: {e}")
+            return None
+
     def get_accounts_by_names(self, account_names: List[str]) -> List[Account]:
         """Retrieve multiple accounts by their names."""
         try:
