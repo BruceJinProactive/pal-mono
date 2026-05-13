@@ -90,6 +90,29 @@ async def _handle_invoice_created(
         )
         return
 
+    # Arrears billing: keep the new invoice as a draft so metered usage can
+    # accumulate during this billing period. auto_advance is an invoice-level
+    # property (not subscription-level), so we set it here on creation.
+    # Re-raise on failure so Stripe retries the webhook — without this the
+    # invoice would auto-finalize, defeating arrears billing.
+    try:
+        stripe.Invoice.modify(invoice_id, auto_advance=False)
+    except stripe.StripeError as e:
+        logger.error(
+            "[Stripe Webhook] Failed to set auto_advance=False on new invoice",
+            extra={"invoice_id": invoice_id, "error": str(e)},
+        )
+        raise
+
+    # Finalize the previous period's draft invoice. The prior draft now
+    # contains both the flat fee and metered usage for the completed billing
+    # period, so it's ready to be finalized and sent.
+    await _finalize_previous_draft_invoice(
+        invoice_id=invoice_id,
+        stripe_customer_id=stripe_customer_id,
+        subscription_id=subscription_id,
+    )
+
     # Query Stripe for open invoices on this subscription
     try:
         open_invoices = stripe.Invoice.list(
@@ -119,10 +142,11 @@ async def _handle_invoice_created(
         due_date = inv_dict.get("due_date")
         amount_remaining = inv_dict.get("amount_remaining", 0)
 
-        # Skip current invoice and invoices not yet due
+        # Skip current invoice, invoices without a due date (e.g. just-finalized
+        # drafts that haven't been sent yet), and invoices not yet due
         if inv_id == invoice_id:
             continue
-        if due_date and due_date > now_ts:
+        if not due_date or due_date > now_ts:
             continue
         if amount_remaining <= 0:
             continue
@@ -202,6 +226,74 @@ async def _handle_invoice_created(
             "voided_count": voided_count,
         },
     )
+
+
+async def _finalize_previous_draft_invoice(
+    invoice_id: str,
+    stripe_customer_id: str,
+    subscription_id: str,
+) -> None:
+    """
+    Finalize the previous billing period's draft invoice.
+
+    When a new invoice is created for a subscription (signaling the start of a
+    new billing period), this function finds and finalizes the prior period's
+    draft invoice. By that point Stripe has already added metered usage line
+    items to the draft, so the finalized invoice contains both the flat fee
+    and the metered overage for the completed period.
+    """
+    try:
+        draft_invoices = stripe.Invoice.list(
+            customer=stripe_customer_id,
+            subscription=subscription_id,
+            status="draft",
+        )
+    except stripe.StripeError as e:
+        logger.error(
+            "[Stripe Webhook] Failed to list draft invoices for finalization",
+            extra={
+                "invoice_id": invoice_id,
+                "subscription_id": subscription_id,
+                "error": str(e),
+            },
+        )
+        return
+
+    finalized_count = 0
+    for draft in draft_invoices.auto_paging_iter():
+        draft_id: str | None = draft.get("id") if isinstance(draft, dict) else draft.id
+        # Skip the newly created invoice — only finalize the previous period's draft
+        if draft_id == invoice_id:
+            continue
+        if not draft_id:
+            continue
+
+        try:
+            stripe.Invoice.finalize_invoice(draft_id)
+            finalized_count += 1
+            logger.info(
+                "[Stripe Webhook] Finalized previous period draft invoice",
+                extra={
+                    "finalized_invoice_id": draft_id,
+                    "triggered_by_invoice_id": invoice_id,
+                    "subscription_id": subscription_id,
+                },
+            )
+        except stripe.StripeError as e:
+            logger.error(
+                "[Stripe Webhook] Failed to finalize draft invoice",
+                extra={
+                    "draft_invoice_id": draft_id,
+                    "subscription_id": subscription_id,
+                    "error": str(e),
+                },
+            )
+
+    if finalized_count == 0:
+        logger.info(
+            "[Stripe Webhook] invoice.created — no previous draft to finalize",
+            extra={"invoice_id": invoice_id, "subscription_id": subscription_id},
+        )
 
 
 async def _handle_invoice_payment_failed(
@@ -443,10 +535,13 @@ async def _handle_subscription_deleted(
     Handle customer.subscription.deleted webhook event.
 
     Sets the subscription status to cancelled and updates end_date.
+    Also finalizes any remaining draft invoices for the subscription so that
+    the final billing period's charges are collected.
     """
     subscription = event_data.get("object", {})
     stripe_subscription_id = subscription.get("id")
     canceled_at = subscription.get("canceled_at")
+    stripe_customer_id: str | None = subscription.get("customer")
 
     if not stripe_subscription_id:
         logger.warning(
@@ -461,6 +556,15 @@ async def _handle_subscription_deleted(
             "canceled_at": canceled_at,
         },
     )
+
+    # Finalize any remaining draft invoices for this subscription so the
+    # final period's charges (flat fee + metered usage) are not lost.
+    if stripe_customer_id:
+        await _finalize_previous_draft_invoice(
+            invoice_id="",  # No new invoice — finalize all drafts
+            stripe_customer_id=stripe_customer_id,
+            subscription_id=stripe_subscription_id,
+        )
 
     updated = await subscription_service.handle_subscription_deleted(
         async_session, stripe_subscription_id, canceled_at

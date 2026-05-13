@@ -1,11 +1,15 @@
-"""Tests for the invoice.created webhook handler (accrued balance logic)."""
+"""Tests for the invoice.created webhook handler (accrued balance & draft finalization)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
 
-from api.routes.integrations.stripe._implementation import _handle_invoice_created
+from api.routes.integrations.stripe._implementation import (
+    _finalize_previous_draft_invoice,
+    _handle_invoice_created,
+    _handle_subscription_deleted,
+)
 
 
 class _FakeInvoiceList:
@@ -23,8 +27,13 @@ def async_session() -> AsyncMock:
     return AsyncMock()
 
 
+PATCH_FINALIZE = (
+    "api.routes.integrations.stripe._implementation._finalize_previous_draft_invoice"
+)
+
+
 class TestHandleInvoiceCreated:
-    """Tests for _handle_invoice_created webhook handler."""
+    """Tests for _handle_invoice_created webhook handler (accrual logic)."""
 
     @pytest.mark.asyncio
     async def test_skips_non_subscription_invoice(
@@ -73,19 +82,67 @@ class TestHandleInvoiceCreated:
             }
         }
 
-        with patch(
-            "api.routes.integrations.stripe._implementation.stripe"
-        ) as mock_stripe:
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock) as mock_finalize,
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
             mock_stripe.Invoice.list.return_value = _FakeInvoiceList([])
             mock_stripe.StripeError = stripe.StripeError
 
             await _handle_invoice_created(event_data, async_session)
 
+            # Verify arrears billing: finalize previous draft + set auto_advance
+            mock_stripe.Invoice.modify.assert_called_once_with(
+                "in_new", auto_advance=False
+            )
+            mock_finalize.assert_awaited_once_with(
+                invoice_id="in_new",
+                stripe_customer_id="cus_123",
+                subscription_id="sub_456",
+            )
             mock_stripe.Invoice.list.assert_called_once_with(
                 customer="cus_123",
                 subscription="sub_456",
                 status="open",
             )
+            mock_stripe.InvoiceItem.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_accrual_when_invoice_has_no_due_date(
+        self, async_session: AsyncMock
+    ) -> None:
+        """Newly finalized invoices with no due_date should not be accrued."""
+        event_data = {
+            "object": {
+                "id": "in_new",
+                "customer": "cus_123",
+                "subscription": "sub_456",
+                "currency": "usd",
+            }
+        }
+
+        # Invoice with no due_date (e.g. just finalized from draft)
+        no_due_date_invoice = {
+            "id": "in_old",
+            "due_date": None,
+            "amount_remaining": 5000,
+        }
+
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock),
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
+            mock_stripe.Invoice.list.return_value = _FakeInvoiceList(
+                [no_due_date_invoice]
+            )
+            mock_stripe.StripeError = stripe.StripeError
+
+            await _handle_invoice_created(event_data, async_session)
+
             mock_stripe.InvoiceItem.create.assert_not_called()
 
     @pytest.mark.asyncio
@@ -109,9 +166,12 @@ class TestHandleInvoiceCreated:
             "amount_remaining": 5000,
         }
 
-        with patch(
-            "api.routes.integrations.stripe._implementation.stripe"
-        ) as mock_stripe:
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock),
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
             mock_stripe.Invoice.list.return_value = _FakeInvoiceList([future_invoice])
             mock_stripe.StripeError = stripe.StripeError
 
@@ -139,9 +199,12 @@ class TestHandleInvoiceCreated:
             "amount_remaining": 5000,
         }
 
-        with patch(
-            "api.routes.integrations.stripe._implementation.stripe"
-        ) as mock_stripe:
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock),
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
             mock_stripe.Invoice.list.return_value = _FakeInvoiceList([same_invoice])
             mock_stripe.StripeError = stripe.StripeError
 
@@ -174,9 +237,12 @@ class TestHandleInvoiceCreated:
             "amount_remaining": 2000,
         }
 
-        with patch(
-            "api.routes.integrations.stripe._implementation.stripe"
-        ) as mock_stripe:
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock),
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
             mock_stripe.Invoice.list.return_value = _FakeInvoiceList(
                 [past_due_1, past_due_2]
             )
@@ -223,9 +289,12 @@ class TestHandleInvoiceCreated:
             "amount_remaining": 0,
         }
 
-        with patch(
-            "api.routes.integrations.stripe._implementation.stripe"
-        ) as mock_stripe:
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock),
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
             mock_stripe.Invoice.list.return_value = _FakeInvoiceList([zero_remaining])
             mock_stripe.StripeError = stripe.StripeError
 
@@ -246,9 +315,12 @@ class TestHandleInvoiceCreated:
             }
         }
 
-        with patch(
-            "api.routes.integrations.stripe._implementation.stripe"
-        ) as mock_stripe:
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock),
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
             mock_stripe.StripeError = stripe.StripeError
             mock_stripe.Invoice.list.side_effect = stripe.StripeError("API error")
 
@@ -276,9 +348,12 @@ class TestHandleInvoiceCreated:
             "amount_remaining": 5000,
         }
 
-        with patch(
-            "api.routes.integrations.stripe._implementation.stripe"
-        ) as mock_stripe:
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock),
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
             mock_stripe.Invoice.list.return_value = _FakeInvoiceList([past_due])
             mock_stripe.StripeError = stripe.StripeError
             mock_stripe.InvoiceItem.create.side_effect = stripe.StripeError(
@@ -315,9 +390,12 @@ class TestHandleInvoiceCreated:
             "amount_remaining": 2000,
         }
 
-        with patch(
-            "api.routes.integrations.stripe._implementation.stripe"
-        ) as mock_stripe:
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock),
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
             mock_stripe.Invoice.list.return_value = _FakeInvoiceList(
                 [past_due_1, past_due_2]
             )
@@ -335,3 +413,226 @@ class TestHandleInvoiceCreated:
             # Both should be attempted
             assert mock_stripe.Invoice.retrieve.call_count == 2
             assert mock_retrieved.void_invoice.call_count == 2
+
+
+class TestFinalizePreviousDraftInvoice:
+    """Tests for _finalize_previous_draft_invoice."""
+
+    @pytest.mark.asyncio
+    async def test_finalizes_previous_draft_invoice(self) -> None:
+        """Should finalize draft invoices that are not the current one."""
+        previous_draft = MagicMock()
+        previous_draft.id = "in_prev_draft"
+        current_draft = MagicMock()
+        current_draft.id = "in_new"
+
+        with patch(
+            "api.routes.integrations.stripe._implementation.stripe"
+        ) as mock_stripe:
+            mock_stripe.Invoice.list.return_value = _FakeInvoiceList(
+                [previous_draft, current_draft]
+            )
+            mock_stripe.StripeError = stripe.StripeError
+
+            await _finalize_previous_draft_invoice(
+                invoice_id="in_new",
+                stripe_customer_id="cus_123",
+                subscription_id="sub_456",
+            )
+
+            mock_stripe.Invoice.list.assert_called_once_with(
+                customer="cus_123",
+                subscription="sub_456",
+                status="draft",
+            )
+            mock_stripe.Invoice.finalize_invoice.assert_called_once_with(
+                "in_prev_draft"
+            )
+
+    @pytest.mark.asyncio
+    async def test_skips_current_invoice(self) -> None:
+        """Should not finalize the newly created invoice."""
+        current_draft = MagicMock()
+        current_draft.id = "in_new"
+
+        with patch(
+            "api.routes.integrations.stripe._implementation.stripe"
+        ) as mock_stripe:
+            mock_stripe.Invoice.list.return_value = _FakeInvoiceList([current_draft])
+            mock_stripe.StripeError = stripe.StripeError
+
+            await _finalize_previous_draft_invoice(
+                invoice_id="in_new",
+                stripe_customer_id="cus_123",
+                subscription_id="sub_456",
+            )
+
+            mock_stripe.Invoice.finalize_invoice.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_drafts_found(self) -> None:
+        """Should handle gracefully when no drafts exist."""
+        with patch(
+            "api.routes.integrations.stripe._implementation.stripe"
+        ) as mock_stripe:
+            mock_stripe.Invoice.list.return_value = _FakeInvoiceList([])
+            mock_stripe.StripeError = stripe.StripeError
+
+            await _finalize_previous_draft_invoice(
+                invoice_id="in_new",
+                stripe_customer_id="cus_123",
+                subscription_id="sub_456",
+            )
+
+            mock_stripe.Invoice.finalize_invoice.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handles_list_error_gracefully(self) -> None:
+        """Should not raise if listing drafts fails."""
+        with patch(
+            "api.routes.integrations.stripe._implementation.stripe"
+        ) as mock_stripe:
+            mock_stripe.StripeError = stripe.StripeError
+            mock_stripe.Invoice.list.side_effect = stripe.StripeError("API error")
+
+            await _finalize_previous_draft_invoice(
+                invoice_id="in_new",
+                stripe_customer_id="cus_123",
+                subscription_id="sub_456",
+            )
+
+            mock_stripe.Invoice.finalize_invoice.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handles_finalize_error_gracefully(self) -> None:
+        """Should log and continue if finalizing a draft fails."""
+        previous_draft = MagicMock()
+        previous_draft.id = "in_prev_draft"
+
+        with patch(
+            "api.routes.integrations.stripe._implementation.stripe"
+        ) as mock_stripe:
+            mock_stripe.Invoice.list.return_value = _FakeInvoiceList([previous_draft])
+            mock_stripe.StripeError = stripe.StripeError
+            mock_stripe.Invoice.finalize_invoice.side_effect = stripe.StripeError(
+                "Cannot finalize"
+            )
+
+            # Should not raise
+            await _finalize_previous_draft_invoice(
+                invoice_id="in_new",
+                stripe_customer_id="cus_123",
+                subscription_id="sub_456",
+            )
+
+    @pytest.mark.asyncio
+    async def test_skips_draft_with_no_id(self) -> None:
+        """Should skip drafts that have no id attribute."""
+        draft_no_id = MagicMock()
+        draft_no_id.id = None
+
+        with patch(
+            "api.routes.integrations.stripe._implementation.stripe"
+        ) as mock_stripe:
+            mock_stripe.Invoice.list.return_value = _FakeInvoiceList([draft_no_id])
+            mock_stripe.StripeError = stripe.StripeError
+
+            await _finalize_previous_draft_invoice(
+                invoice_id="in_new",
+                stripe_customer_id="cus_123",
+                subscription_id="sub_456",
+            )
+
+            mock_stripe.Invoice.finalize_invoice.assert_not_called()
+
+
+class TestInvoiceCreatedAutoAdvanceError:
+    """Tests for auto_advance error handling in _handle_invoice_created."""
+
+    @pytest.mark.asyncio
+    async def test_raises_when_invoice_modify_fails(
+        self, async_session: AsyncMock
+    ) -> None:
+        """Handler should re-raise so Stripe retries the webhook."""
+        event_data = {
+            "object": {
+                "id": "in_new",
+                "customer": "cus_123",
+                "subscription": "sub_456",
+                "currency": "usd",
+            }
+        }
+
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock) as mock_finalize,
+            patch(
+                "api.routes.integrations.stripe._implementation.stripe"
+            ) as mock_stripe,
+        ):
+            mock_stripe.StripeError = stripe.StripeError
+            mock_stripe.Invoice.modify.side_effect = stripe.StripeError(
+                "Invoice not found"
+            )
+
+            with pytest.raises(stripe.StripeError, match="Invoice not found"):
+                await _handle_invoice_created(event_data, async_session)
+
+            # Should NOT proceed to finalize since modify failed
+            mock_finalize.assert_not_awaited()
+
+
+class TestSubscriptionDeletedFinalization:
+    """Tests for draft invoice finalization on subscription deletion."""
+
+    @pytest.mark.asyncio
+    async def test_finalizes_drafts_on_deletion(self, async_session: AsyncMock) -> None:
+        """Should finalize draft invoices when subscription is deleted."""
+        event_data = {
+            "object": {
+                "id": "sub_123",
+                "customer": "cus_456",
+                "canceled_at": 1700000000,
+            }
+        }
+
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock) as mock_finalize,
+            patch(
+                "api.routes.integrations.stripe._implementation.subscription_service"
+            ) as mock_sub_service,
+        ):
+            mock_sub_service.handle_subscription_deleted = AsyncMock(return_value=True)
+
+            await _handle_subscription_deleted(event_data, async_session)
+
+            mock_finalize.assert_awaited_once_with(
+                invoice_id="",
+                stripe_customer_id="cus_456",
+                subscription_id="sub_123",
+            )
+            mock_sub_service.handle_subscription_deleted.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_skips_finalization_without_customer_id(
+        self, async_session: AsyncMock
+    ) -> None:
+        """Should not finalize if customer ID is missing."""
+        event_data = {
+            "object": {
+                "id": "sub_123",
+                "customer": None,
+                "canceled_at": 1700000000,
+            }
+        }
+
+        with (
+            patch(PATCH_FINALIZE, new_callable=AsyncMock) as mock_finalize,
+            patch(
+                "api.routes.integrations.stripe._implementation.subscription_service"
+            ) as mock_sub_service,
+        ):
+            mock_sub_service.handle_subscription_deleted = AsyncMock(return_value=True)
+
+            await _handle_subscription_deleted(event_data, async_session)
+
+            mock_finalize.assert_not_awaited()
