@@ -18,7 +18,7 @@ import pytest
 from services.realtime_service._config import RealtimeConfig
 from services.realtime_service._implementation import (
     RealtimeSession,
-    _build_pal_agent_provider_tools,
+    build_pal_agent_provider_tools,
     create_realtime_session,
 )
 
@@ -722,7 +722,7 @@ class TestCreateRealtimeSession:
     @pytest.fixture(autouse=True)
     def _patch_pal_agent_tools(self):
         with patch(
-            "services.realtime_service._implementation._build_pal_agent_provider_tools",
+            "services.realtime_service._implementation.build_pal_agent_provider_tools",
             new=AsyncMock(return_value=([], {})),
         ):
             yield
@@ -1116,15 +1116,15 @@ class TestCreateRealtimeSession:
 
 
 # ---------------------------------------------------------------------------
-# _build_realtime_tools Tests
+# build_agno_tools Tests
 # ---------------------------------------------------------------------------
 
 
 class TestBuildRealtimeTools:
-    """Test _build_realtime_tools() function."""
+    """Test build_agno_tools() function."""
 
     def test_builds_tools_from_registry(self) -> None:
-        from services.realtime_service._implementation import _build_realtime_tools
+        from services.realtime_service._tool_handler import build_agno_tools
 
         mock_func = MagicMock()
         mock_func.entrypoint = lambda: "ok"
@@ -1143,14 +1143,14 @@ class TestBuildRealtimeTools:
 
         with patch("tools.registry.tool_registry") as mock_registry:
             mock_registry.get_tool.return_value = mock_toolkit
-            tools, executors = _build_realtime_tools(mock_tool_config)
+            tools, executors = build_agno_tools(mock_tool_config)
 
         assert len(tools) == 1
         assert tools[0]["name"] == "test_func"
         assert "test_func" in executors
 
     def test_skips_tool_not_in_registry(self) -> None:
-        from services.realtime_service._implementation import _build_realtime_tools
+        from services.realtime_service._tool_handler import build_agno_tools
 
         mock_identifier = MagicMock()
         mock_identifier.tool_name = "missing_tool"
@@ -1161,13 +1161,13 @@ class TestBuildRealtimeTools:
 
         with patch("tools.registry.tool_registry") as mock_registry:
             mock_registry.get_tool.return_value = None
-            tools, executors = _build_realtime_tools(mock_tool_config)
+            tools, executors = build_agno_tools(mock_tool_config)
 
         assert len(tools) == 0
         assert len(executors) == 0
 
     def test_skips_function_without_entrypoint(self) -> None:
-        from services.realtime_service._implementation import _build_realtime_tools
+        from services.realtime_service._tool_handler import build_agno_tools
 
         mock_func = MagicMock()
         mock_func.entrypoint = None
@@ -1185,13 +1185,13 @@ class TestBuildRealtimeTools:
 
         with patch("tools.registry.tool_registry") as mock_registry:
             mock_registry.get_tool.return_value = mock_toolkit
-            tools, executors = _build_realtime_tools(mock_tool_config)
+            tools, executors = build_agno_tools(mock_tool_config)
 
         assert len(tools) == 0
         assert len(executors) == 0
 
     def test_handles_tool_instantiation_error(self) -> None:
-        from services.realtime_service._implementation import _build_realtime_tools
+        from services.realtime_service._tool_handler import build_agno_tools
 
         mock_identifier = MagicMock()
         mock_identifier.tool_name = "broken_tool"
@@ -1202,7 +1202,7 @@ class TestBuildRealtimeTools:
 
         with patch("tools.registry.tool_registry") as mock_registry:
             mock_registry.get_tool.side_effect = RuntimeError("init failed")
-            tools, executors = _build_realtime_tools(mock_tool_config)
+            tools, executors = build_agno_tools(mock_tool_config)
 
         assert len(tools) == 0
         assert len(executors) == 0
@@ -1409,40 +1409,40 @@ class TestFilterToolArgs:
 
 
 # ---------------------------------------------------------------------------
-# _make_tool_executor Tests
+# make_tool_executor Tests
 # ---------------------------------------------------------------------------
 
 
 class TestMakeToolExecutor:
-    """Test _make_tool_executor() function."""
+    """Test make_tool_executor() function."""
 
     @pytest.mark.asyncio
     async def test_executes_sync_tool(self) -> None:
-        from services.realtime_service._implementation import _make_tool_executor
+        from services.realtime_service._tool_handler import make_tool_executor
 
         def my_tool(x: int) -> dict:
             return {"result": x * 2}
 
-        executor = _make_tool_executor({"my_tool": my_tool})
+        executor = make_tool_executor({"my_tool": my_tool})
         result = await executor("my_tool", '{"x": 5}')
         assert '"result": 10' in result
 
     @pytest.mark.asyncio
     async def test_executes_async_tool(self) -> None:
-        from services.realtime_service._implementation import _make_tool_executor
+        from services.realtime_service._tool_handler import make_tool_executor
 
         async def my_async_tool(x: int) -> dict:
             return {"result": x + 1}
 
-        executor = _make_tool_executor({"my_async_tool": my_async_tool})
+        executor = make_tool_executor({"my_async_tool": my_async_tool})
         result = await executor("my_async_tool", '{"x": 3}')
         assert '"result": 4' in result
 
     @pytest.mark.asyncio
     async def test_returns_error_for_unknown_tool(self) -> None:
-        from services.realtime_service._implementation import _make_tool_executor
+        from services.realtime_service._tool_handler import make_tool_executor
 
-        executor = _make_tool_executor({"real_tool": lambda: "ok"})
+        executor = make_tool_executor({"real_tool": lambda: "ok"})
         result = await executor("fake_tool", "{}")
         assert "Unknown tool" in result
 
@@ -1635,7 +1635,7 @@ class TestPersistTranscriptWiring:
     @pytest.fixture(autouse=True)
     def _patch_pal_agent_tools(self):
         with patch(
-            "services.realtime_service._implementation._build_pal_agent_provider_tools",
+            "services.realtime_service._implementation.build_pal_agent_provider_tools",
             new=AsyncMock(return_value=([], {})),
         ):
             yield
@@ -1861,7 +1861,7 @@ class TestBackgroundAudioMixerLoading:
     @pytest.fixture(autouse=True)
     def _patch_pal_agent_tools(self):
         with patch(
-            "services.realtime_service._implementation._build_pal_agent_provider_tools",
+            "services.realtime_service._implementation.build_pal_agent_provider_tools",
             new=AsyncMock(return_value=([], {})),
         ):
             yield
@@ -2059,7 +2059,7 @@ class TestBackgroundAudioMixerLoading:
 
 
 # ---------------------------------------------------------------------------
-# _build_pal_agent_provider_tools Tests
+# build_pal_agent_provider_tools Tests
 # ---------------------------------------------------------------------------
 
 
@@ -2075,7 +2075,7 @@ class TestBuildPalAgentProviderTools:
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock(return_value=mock_pi_result)
 
-        tools, executors = await _build_pal_agent_provider_tools(
+        tools, executors = await build_pal_agent_provider_tools(
             session=mock_session,
             project_id=uuid.uuid4(),
             caller_id="+15551234567",
@@ -2115,7 +2115,7 @@ class TestBuildPalAgentProviderTools:
             "services.agent_service._implementation._resolve_integration_credentials",
             new=AsyncMock(return_value=(None, None, None)),
         ):
-            tools, executors = await _build_pal_agent_provider_tools(
+            tools, executors = await build_pal_agent_provider_tools(
                 session=mock_session,
                 project_id=uuid.uuid4(),
                 caller_id="+15551234567",
@@ -2160,7 +2160,7 @@ class TestBuildPalAgentProviderTools:
             "services.agent_service._implementation._resolve_integration_credentials",
             new=AsyncMock(return_value=(None, None, None)),
         ):
-            tools, executors = await _build_pal_agent_provider_tools(
+            tools, executors = await build_pal_agent_provider_tools(
                 session=mock_session,
                 project_id=uuid.uuid4(),
                 caller_id="+15551234567",
@@ -2210,7 +2210,7 @@ class TestBuildPalAgentProviderTools:
             "services.agent_service._implementation._resolve_integration_credentials",
             new=AsyncMock(return_value=(None, None, None)),
         ):
-            tools, executors = await _build_pal_agent_provider_tools(
+            tools, executors = await build_pal_agent_provider_tools(
                 session=mock_session,
                 project_id=uuid.uuid4(),
                 caller_id=None,
@@ -2234,7 +2234,7 @@ class TestBuildPalAgentProviderTools:
         mock_session = AsyncMock()
         mock_session.execute = AsyncMock(return_value=mock_pi_result)
 
-        tools, executors = await _build_pal_agent_provider_tools(
+        tools, executors = await build_pal_agent_provider_tools(
             session=mock_session,
             project_id=uuid.uuid4(),
             caller_id=None,
@@ -2268,7 +2268,7 @@ class TestBuildPalAgentProviderTools:
             "services.agent_service._implementation._resolve_integration_credentials",
             new=AsyncMock(side_effect=Exception("AWS secrets unavailable")),
         ):
-            tools, executors = await _build_pal_agent_provider_tools(
+            tools, executors = await build_pal_agent_provider_tools(
                 session=mock_session,
                 project_id=uuid.uuid4(),
                 caller_id="+15551234567",
@@ -2289,7 +2289,7 @@ class TestBuildPalAgentProviderTools:
             "services.agent_service._pal_agent_tool_registry.PAL_AGENT_TOOL_REGISTRY",
             {},
         ):
-            tools, executors = await _build_pal_agent_provider_tools(
+            tools, executors = await build_pal_agent_provider_tools(
                 session=mock_session,
                 project_id=uuid.uuid4(),
                 caller_id=None,
@@ -2326,7 +2326,7 @@ class TestBuildPalAgentProviderTools:
             "services.agent_service._implementation._resolve_integration_credentials",
             new=AsyncMock(return_value=(None, None, None)),
         ):
-            tools, executors = await _build_pal_agent_provider_tools(
+            tools, executors = await build_pal_agent_provider_tools(
                 session=mock_session,
                 project_id=uuid.uuid4(),
                 caller_id="+15551234567",
