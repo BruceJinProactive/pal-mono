@@ -18,6 +18,10 @@ from db.pal_repository import (
     VisionEntityRepository,
     VisionEntityStateDefinitionRepository,
     VisionEntityTypeRepository,
+    VisionStateChangeEventRepository,
+)
+from db.pal_repository.data_classes.vision_state_change_event import (
+    VisionStateChangeEventData,
 )
 from services.asset_service._constants import AWS_REGION
 from services.asset_service._utils import AWS_ASSET_BUCKET_NAME, init_s3
@@ -378,6 +382,7 @@ async def generate_observation(
         )
 
     if image_relevant:
+        event_repo = VisionStateChangeEventRepository(session)
         for obs in entity_observations:
             if obs.state_id is None:
                 continue
@@ -388,6 +393,18 @@ async def generate_observation(
                 obs.entity_id,
                 current_state_id=obs.state_id,
                 current_state_since=observed_at,
+            )
+            await event_repo.create(
+                VisionStateChangeEventData(
+                    id=uuid.uuid4(),
+                    entity_id=obs.entity_id,
+                    new_state_id=obs.state_id,
+                    observed_at=observed_at,
+                    camera_config_id=camera_config_id,
+                    previous_state_id=info["current_state_id"],
+                    confidence=obs.confidence,
+                    frame_s3_key=image_url,
+                )
             )
 
     token_usage["observed"] = True

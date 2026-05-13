@@ -25,12 +25,16 @@ from db.pal_repository import (
     VisionEntityRepository,
     VisionEntityStateDefinitionRepository,
     VisionEntityTypeRepository,
+    VisionStateChangeEventRepository,
 )
 from db.pal_repository.data_classes.vision_entity import VisionEntityData
 from db.pal_repository.data_classes.vision_entity_state_definition import (
     VisionEntityStateDefinitionData,
 )
 from db.pal_repository.data_classes.vision_entity_type import VisionEntityTypeData
+from db.pal_repository.data_classes.vision_state_change_event import (
+    VisionStateChangeEventData,
+)
 from utils.log import logger
 
 
@@ -511,13 +515,30 @@ async def update_entity_state(
             f"State definition {request.state_definition_id} not found or does not belong to this entity type"
         )
 
+    if request.state_definition_id == data.current_state_id:
+        return _build_entity_response(data)
+
+    now = datetime.now(timezone.utc)
+    previous_state_id = data.current_state_id
+
     updated = await entity_repo.update(
         entity_id,
         current_state_id=request.state_definition_id,
-        current_state_since=datetime.now(timezone.utc),
+        current_state_since=now,
     )
     if not updated:
         raise ValueError(f"Entity {entity_id} not found")
+
+    event_repo = VisionStateChangeEventRepository(session)
+    await event_repo.create(
+        VisionStateChangeEventData(
+            id=uuid.uuid4(),
+            entity_id=entity_id,
+            new_state_id=request.state_definition_id,
+            observed_at=now,
+            previous_state_id=previous_state_id,
+        )
+    )
 
     logger.info(
         "[Vision Entity] Updated entity state",
