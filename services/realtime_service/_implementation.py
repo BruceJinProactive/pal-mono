@@ -463,56 +463,6 @@ class RealtimeSession:
         self.client = None
 
 
-def _build_demo_tools() -> tuple[list[dict], dict[str, Callable[..., str]]]:
-    """Build demo tools for live testing. No credentials required."""
-    import json as _json
-
-    def get_store_hours() -> str:
-        return _json.dumps(
-            {
-                "monday": "10:00 AM - 9:00 PM",
-                "tuesday": "10:00 AM - 9:00 PM",
-                "wednesday": "10:00 AM - 9:00 PM",
-                "thursday": "10:00 AM - 9:00 PM",
-                "friday": "10:00 AM - 10:00 PM",
-                "saturday": "11:00 AM - 10:00 PM",
-                "sunday": "11:00 AM - 8:00 PM",
-            }
-        )
-
-    def get_daily_specials() -> str:
-        return _json.dumps(
-            {
-                "appetizer": "Bruschetta - $8.99",
-                "entree": "Grilled Salmon with lemon butter sauce - $18.99",
-                "dessert": "Tiramisu - $7.99",
-                "drink": "House Red Wine - $6.99",
-            }
-        )
-
-    tools = [
-        {
-            "type": "function",
-            "name": "get_store_hours",
-            "description": "Get the store's opening and closing hours for each day of the week.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-        {
-            "type": "function",
-            "name": "get_daily_specials",
-            "description": "Get today's daily specials including appetizer, entree, dessert, and drink.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    ]
-
-    executors: dict[str, Callable[..., str]] = {
-        "get_store_hours": get_store_hours,
-        "get_daily_specials": get_daily_specials,
-    }
-
-    return tools, executors
-
-
 def _build_realtime_tools(
     tool_config: "ToolConfig",
 ) -> tuple[list[dict], dict[str, "Function"]]:
@@ -871,10 +821,6 @@ async def create_realtime_session(
     )
     tools.extend(pa_tools)
 
-    # Add demo tools (no credentials required)
-    demo_tools, demo_executors = _build_demo_tools()
-    tools.extend(demo_tools)
-
     logger.info(
         "[REALTIME] Total tools registered: %d (%s)",
         len(tools),
@@ -934,7 +880,7 @@ async def create_realtime_session(
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable not set")
 
-    all_executors = {**demo_executors, **pa_executors}
+    all_executors = {**pa_executors}
 
     # Merge Agno tool executors (entrypoint-based)
     for func_name, func in tool_executors.items():

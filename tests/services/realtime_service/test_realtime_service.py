@@ -18,7 +18,6 @@ import pytest
 from services.realtime_service._config import RealtimeConfig
 from services.realtime_service._implementation import (
     RealtimeSession,
-    _build_demo_tools,
     _build_pal_agent_provider_tools,
     create_realtime_session,
 )
@@ -1117,7 +1116,7 @@ class TestCreateRealtimeSession:
 
 
 # ---------------------------------------------------------------------------
-# _build_demo_tools Tests
+# _build_realtime_tools Tests
 # ---------------------------------------------------------------------------
 
 
@@ -1207,47 +1206,6 @@ class TestBuildRealtimeTools:
 
         assert len(tools) == 0
         assert len(executors) == 0
-
-
-# ---------------------------------------------------------------------------
-# _build_demo_tools Tests
-# ---------------------------------------------------------------------------
-
-
-class TestBuildDemoTools:
-    """Test _build_demo_tools() function."""
-
-    def test_returns_two_tools(self) -> None:
-        tools, executors = _build_demo_tools()
-        assert len(tools) == 2
-        assert "get_store_hours" in executors
-        assert "get_daily_specials" in executors
-
-    def test_tool_definitions_have_required_fields(self) -> None:
-        tools, _ = _build_demo_tools()
-        for tool in tools:
-            assert tool["type"] == "function"
-            assert "name" in tool
-            assert "description" in tool
-            assert "parameters" in tool
-
-    def test_get_store_hours_returns_json(self) -> None:
-        import json
-
-        _, executors = _build_demo_tools()
-        result = executors["get_store_hours"]()
-        data = json.loads(result)
-        assert "monday" in data
-        assert "sunday" in data
-
-    def test_get_daily_specials_returns_json(self) -> None:
-        import json
-
-        _, executors = _build_demo_tools()
-        result = executors["get_daily_specials"]()
-        data = json.loads(result)
-        assert "appetizer" in data
-        assert "entree" in data
 
 
 # ---------------------------------------------------------------------------
