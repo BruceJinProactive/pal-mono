@@ -27,6 +27,12 @@ import requests
 from utils.log import logger
 
 
+def _order_hub_url(general_api_endpoint: str, path: str) -> str:
+    """Build a URL under the Adora OrderHub endpoint."""
+    separator = "" if general_api_endpoint.endswith("/") else "/"
+    return f"{general_api_endpoint}{separator}{path}"
+
+
 def get_bearer_token(
     client_id: str,
     client_secret: str,
@@ -94,11 +100,7 @@ def download_menu(
 
     headers = {"Authorization": f"Bearer {token}"}
     params = {"sid": store_id}
-    menu_url = (
-        general_api_endpoint + "menu"
-        if general_api_endpoint.endswith("/")
-        else general_api_endpoint + "/menu"
-    )
+    menu_url = _order_hub_url(general_api_endpoint, "menu")
     try:
         logger.debug(
             f"[adora_client.download_menu] Downloading menu for store {store_id}"
@@ -121,3 +123,31 @@ def download_menu(
         )
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f"Network error downloading menu: {e}")
+
+
+def download_coupons(
+    store_id: str,
+    token: str,
+    general_api_endpoint: str,
+) -> list[Any]:
+    """Downloads raw coupon data from Adora API."""
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {"sid": store_id}
+    coupons_url = _order_hub_url(general_api_endpoint, "coupons")
+
+    try:
+        logger.debug(
+            f"[adora_client.download_coupons] Downloading coupons for store {store_id}"
+        )
+        response = requests.get(coupons_url, headers=headers, params=params, timeout=10)
+        response.raise_for_status()
+        coupons_data = response.json()
+        if not isinstance(coupons_data, list):
+            raise ValueError("Adora coupons response was not a JSON array")
+        return coupons_data
+    except requests.exceptions.HTTPError as err:
+        raise RuntimeError(
+            f"Error downloading coupons: {err.response.status_code} {err.response.reason}"
+        ) from err
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Network error downloading coupons: {e}") from e

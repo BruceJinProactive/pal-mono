@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pal_agents.menu_assets.adora import build_menu_assets, compile_coupons_v1
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -16,12 +17,20 @@ from api.schemas.operations.signal_source import SignalSourceIdResponse
 from db.repositories.project_repository import ProjectRepository
 from db.tables.types import IntegrationProvider, IntegrationType
 from services import project_service, signal_source_service
-from services.adora_v3_menu_service import build_menu_assets
-from services.knowledge_service.adora._client import download_menu, get_bearer_token
+from services.knowledge_service.adora._client import (
+    download_coupons,
+    download_menu,
+    get_bearer_token,
+)
 from utils.log import logger
 from utils.secret import get_client_secret
 
 projects_router = APIRouter(prefix="/projects")
+
+_NO_USABLE_COUPON_DATA_MESSAGES = (
+    "Coupons array must not be empty",
+    "No AI offers found",
+)
 
 
 class UpdateBusinessHoursRequest(BaseModel):
@@ -35,6 +44,27 @@ class UpdateBusinessHoursRequest(BaseModel):
     formatted_phone_number: str | None = None
     phone_number: str | None = None
     website: str | None = None
+
+
+def _compile_adora_coupon_data(
+    *,
+    store_id: str,
+    raw_coupons: list[Any] | None,
+) -> dict[str, Any] | None:
+    """Compile raw Adora coupons when usable coupon data is available."""
+    if not raw_coupons:
+        return None
+
+    try:
+        return compile_coupons_v1({"store_id": store_id, "coupons": raw_coupons})
+    except ValueError as exc:
+        if any(message in str(exc) for message in _NO_USABLE_COUPON_DATA_MESSAGES):
+            logger.info(
+                "[Adora Menu Updater] No usable Adora coupon data found",
+                extra={"store_id": store_id, "error": str(exc)},
+            )
+            return None
+        raise
 
 
 @projects_router.get(
@@ -367,7 +397,21 @@ def update_knowledge(
             raise ValueError("Adora menu response was not a JSON object")
         raw_menu.setdefault("store_id", store_id)
 
-        menu_assets = build_menu_assets(raw_menu)
+        raw_coupons = download_coupons(
+            store_id=store_id,
+            token=bearer_token,
+            general_api_endpoint=general_api_endpoint,
+        )
+        coupon_data = _compile_adora_coupon_data(
+            store_id=store_id,
+            raw_coupons=raw_coupons,
+        )
+
+        menu_assets = build_menu_assets(
+            raw_menu,
+            coupon_data=coupon_data,
+            remove_unused_weights=True,
+        )
 
         # Update project's product_info with the English menu prompt.
         project_repo = ProjectRepository(session)
@@ -384,6 +428,10 @@ def update_knowledge(
 
         updated_config = dict(adora_v3_project_integration.config or {})
         updated_config["menu_data"] = menu_assets.menu_data
+        if coupon_data is None:
+            updated_config.pop("coupon_data", None)
+        else:
+            updated_config["coupon_data"] = coupon_data
         project_integration_repository.update_project_integration(
             adora_v3_project_integration.id, config=updated_config
         )
@@ -430,6 +478,7 @@ def update_knowledge(
             "compiled_items": compiled_item_count,
             "product_info_updated": True,
             "menu_data_updated": True,
+            "coupon_data_updated": coupon_data is not None,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
