@@ -62,10 +62,16 @@ def _build_entity_state_schema(
             "additionalProperties": False,
         }
 
+    properties["image_relevant"] = {
+        "type": "boolean",
+    }
+
+    required_keys = list(properties.keys())
+
     return {
         "type": "object",
         "properties": properties,
-        "required": list(properties.keys()),
+        "required": required_keys,
         "additionalProperties": False,
     }
 
@@ -73,13 +79,30 @@ def _build_entity_state_schema(
 def _format_roi_hint(roi_hint: dict[str, object] | None) -> str | None:
     if not roi_hint:
         return None
-    parts: list[str] = []
-    for key in ("x", "y", "w", "h", "width", "height"):
-        if key in roi_hint:
-            parts.append(f"{key}={roi_hint[key]}")
-    if parts:
-        return f"ROI at {', '.join(parts)}"
-    return str(roi_hint)
+
+    x_val = roi_hint.get("x")
+    y_val = roi_hint.get("y")
+    w_val = roi_hint.get("width") or roi_hint.get("w")
+    h_val = roi_hint.get("height") or roi_hint.get("h")
+
+    if x_val is None or y_val is None or w_val is None or h_val is None:
+        return None
+
+    x = float(str(x_val))
+    y = float(str(y_val))
+    width = float(str(w_val))
+    height = float(str(h_val))
+
+    left_start = round(x * 100)
+    left_end = round((x + width) * 100)
+    top_start = round(y * 100)
+    top_end = round((y + height) * 100)
+
+    return (
+        f"Look at the area between {left_start}%-{left_end}% from the left "
+        f"and {top_start}%-{top_end}% from the top of the image, "
+        f"ignore other area"
+    )
 
 
 def _build_system_prompt(
@@ -101,6 +124,10 @@ def _build_system_prompt(
         "- Confidence should be 0.0-1.0 where 1.0 means absolute certainty",
         "- If an entity is not visible in the frame at all, use confidence 0.0 "
         "and pick the most reasonable default state",
+        "- Set image_relevant to false if the camera image is completely "
+        "irrelevant to the reference images or the monitored environment "
+        "(e.g. a broken feed, black screen, unrelated scene). "
+        "Otherwise set image_relevant to true",
     ]
 
     if user_prompt:
@@ -109,23 +136,28 @@ def _build_system_prompt(
         lines.append(user_prompt)
 
     lines.append("")
-    lines.append("Entity Type Definitions:")
-    for type_name, type_info in entity_type_definitions.items():
-        display = type_info.get("display_name", type_name)
-        lines.append(f"- {display} ({type_name})")
-        states_str = ", ".join(type_info["state_names"])
-        lines.append(f"  - States: {states_str}")
-        state_criteria = type_info.get("state_criteria", {})
-        if state_criteria:
-            for state_name, criteria in state_criteria.items():
-                lines.append(f"    - {state_name}: {criteria}")
-
-    lines.append("")
     lines.append("Entities to Observe:")
+    lines.append(
+        "Each entity below is an item you need to observe in the image. "
+        "For each one, you must select exactly one state from its list of "
+        "possible states."
+    )
     for entity_info in entities_with_states:
-        lines.append(f'- "{entity_info["name"]}" (type: {entity_info["type_name"]})')
+        type_name = entity_info["type_name"]
+        type_info = entity_type_definitions.get(type_name, {})
+        display = type_info.get("display_name", type_name)
+        lines.append("")
+        lines.append(f'- "{entity_info["name"]}" (a {display})')
         if entity_info.get("roi_hint_text"):
             lines.append(f"  - Location hint: {entity_info['roi_hint_text']}")
+        lines.append("  - Possible states (pick one):")
+        state_criteria = type_info.get("state_criteria", {})
+        for state_name in entity_info["state_names"]:
+            criteria = state_criteria.get(state_name)
+            if criteria:
+                lines.append(f'    - "{state_name}": {criteria}')
+            else:
+                lines.append(f'    - "{state_name}"')
 
     lines.append("")
     lines.append("Respond ONLY with valid JSON matching the provided schema.")
@@ -133,28 +165,51 @@ def _build_system_prompt(
     return "\n".join(lines)
 
 
+def _extract_camera_name_from_s3_key(image_url: str) -> str | None:
+    parts = image_url.strip("/").split("/")
+    if len(parts) >= 2 and parts[0] == "cameras":
+        return parts[1]
+    return None
+
+
 async def generate_observation(
     session: AsyncSession,
     camera_id: uuid.UUID,
     image_url: str | None = None,
     image_bytes: bytes | None = None,
-) -> GenerateObservationResponse:
+) -> GenerateObservationResponse | None:
     config_repo = VisionCameraConfigurationRepository(session)
     config = await config_repo.get_by_signal_source(camera_id)
+
+    if not config and image_url:
+        camera_name = _extract_camera_name_from_s3_key(image_url)
+        if camera_name:
+            config = await config_repo.get_by_name(camera_name)
+
     if not config:
-        raise ValueError(f"Camera configuration for camera {camera_id} not found")
+        logger.info(
+            "[Vision Observation] No camera configuration found, skipping",
+            extra={"camera_id": str(camera_id)},
+        )
+        return None
 
     if not config.enabled:
-        raise ValueError(f"Camera configuration for camera {camera_id} is disabled")
+        logger.info(
+            "[Vision Observation] Camera configuration is disabled, skipping",
+            extra={"camera_id": str(camera_id)},
+        )
+        return None
 
     camera_config_id = config.id
 
     mapping_repo = VisionCameraEntityRepository(session)
     mappings = await mapping_repo.list_by_camera(camera_config_id)
     if not mappings:
-        raise ValueError(
-            f"No entities assigned to camera configuration for camera {camera_id}"
+        logger.info(
+            "[Vision Observation] No entities assigned, skipping",
+            extra={"camera_id": str(camera_id), "config_id": str(camera_config_id)},
         )
+        return None
 
     entity_repo = VisionEntityRepository(session)
     sd_repo = VisionEntityStateDefinitionRepository(session)
@@ -203,7 +258,11 @@ async def generate_observation(
         }
 
     if not entities_with_states:
-        raise ValueError("No active entities with state definitions found")
+        logger.info(
+            "[Vision Observation] No active entities with state definitions, skipping",
+            extra={"camera_id": str(camera_id), "config_id": str(camera_config_id)},
+        )
+        return None
 
     response_schema = _build_entity_state_schema(entities_with_states)
 
@@ -283,8 +342,21 @@ async def generate_observation(
     token_usage = llm_result.get("token_usage", {})
     observed_at = datetime.now(timezone.utc)
 
+    image_relevant = raw_response.get("image_relevant", True)
+    if not image_relevant:
+        logger.warning(
+            "[Vision Observation] Image flagged as irrelevant by LLM, "
+            "skipping state updates",
+            extra={
+                "camera_id": str(camera_id),
+                "config_id": str(camera_config_id),
+            },
+        )
+
     entity_observations: list[EntityObservation] = []
     for entity_name, observation in raw_response.items():
+        if entity_name == "image_relevant":
+            continue
         if entity_name not in entity_lookup:
             continue
         if not isinstance(observation, dict):
@@ -305,17 +377,21 @@ async def generate_observation(
             )
         )
 
-    for obs in entity_observations:
-        if obs.state_id is None:
-            continue
-        info = entity_lookup[obs.entity_name]
-        if obs.state_id == info["current_state_id"]:
-            continue
-        await entity_repo.update(
-            obs.entity_id,
-            current_state_id=obs.state_id,
-            current_state_since=observed_at,
-        )
+    if image_relevant:
+        for obs in entity_observations:
+            if obs.state_id is None:
+                continue
+            info = entity_lookup[obs.entity_name]
+            if obs.state_id == info["current_state_id"]:
+                continue
+            await entity_repo.update(
+                obs.entity_id,
+                current_state_id=obs.state_id,
+                current_state_since=observed_at,
+            )
+
+    token_usage["observed"] = True
+    token_usage["image_relevant"] = image_relevant
 
     return GenerateObservationResponse(
         camera_id=camera_id,

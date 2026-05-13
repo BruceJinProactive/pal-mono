@@ -8,6 +8,7 @@ import pytest
 from services.vision_observation_service._implementation import (
     _build_entity_state_schema,
     _build_system_prompt,
+    _extract_camera_name_from_s3_key,
     _format_roi_hint,
     generate_observation,
 )
@@ -33,7 +34,8 @@ class TestBuildEntityStateSchema:
             "minimum": 0.0,
             "maximum": 1.0,
         }
-        assert schema["required"] == ["front_door"]
+        assert set(schema["required"]) == {"front_door", "image_relevant"}
+        assert schema["properties"]["image_relevant"] == {"type": "boolean"}
         assert schema["additionalProperties"] is False
 
     def test_multiple_entities(self):
@@ -43,8 +45,8 @@ class TestBuildEntityStateSchema:
         ]
         schema = _build_entity_state_schema(entities)
 
-        assert set(schema["required"]) == {"door_a", "light_1"}
-        assert len(schema["properties"]) == 2
+        assert set(schema["required"]) == {"door_a", "light_1", "image_relevant"}
+        assert len(schema["properties"]) == 3
         assert schema["properties"]["light_1"]["properties"]["state"]["enum"] == [
             "on",
             "off",
@@ -54,8 +56,8 @@ class TestBuildEntityStateSchema:
     def test_empty_entities(self):
         schema = _build_entity_state_schema([])
         assert schema["type"] == "object"
-        assert schema["properties"] == {}
-        assert schema["required"] == []
+        assert schema["properties"] == {"image_relevant": {"type": "boolean"}}
+        assert schema["required"] == ["image_relevant"]
 
 
 class TestFormatRoiHint:
@@ -67,20 +69,64 @@ class TestFormatRoiHint:
     def test_empty_dict(self):
         assert _format_roi_hint({}) is None
 
-    def test_with_coordinates(self):
-        roi: dict[str, object] = {"x": 10, "y": 20, "w": 100, "h": 50}
+    def test_with_normalized_coordinates(self):
+        roi: dict[str, object] = {
+            "x": 0.411,
+            "y": 0.249,
+            "width": 0.207,
+            "height": 0.234,
+        }
         result = _format_roi_hint(roi)
-        assert result == "ROI at x=10, y=20, w=100, h=50"
+        assert result == (
+            "Look at the area between 41%-62% from the left "
+            "and 25%-48% from the top of the image, "
+            "ignore other area"
+        )
 
-    def test_with_width_height(self):
-        roi: dict[str, object] = {"x": 0, "y": 0, "width": 200, "height": 150}
+    def test_with_w_h_keys(self):
+        roi: dict[str, object] = {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}
         result = _format_roi_hint(roi)
-        assert result == "ROI at x=0, y=0, width=200, height=150"
+        assert result == (
+            "Look at the area between 10%-40% from the left "
+            "and 20%-60% from the top of the image, "
+            "ignore other area"
+        )
 
-    def test_with_unknown_keys_only(self):
-        roi: dict[str, object] = {"label": "zone-1"}
+    def test_with_missing_keys(self):
+        roi: dict[str, object] = {"x": 0.5, "label": "zone-1"}
         result = _format_roi_hint(roi)
-        assert result == "{'label': 'zone-1'}"
+        assert result is None
+
+
+class TestExtractCameraNameFromS3Key:
+    """Tests for camera name extraction from S3 key."""
+
+    def test_valid_cameras_path(self):
+        assert (
+            _extract_camera_name_from_s3_key("cameras/my-camera/frame.jpg")
+            == "my-camera"
+        )
+
+    def test_valid_cameras_path_deeper(self):
+        assert (
+            _extract_camera_name_from_s3_key("cameras/kitchen-cam/2026/05/13/frame.jpg")
+            == "kitchen-cam"
+        )
+
+    def test_leading_slash(self):
+        assert (
+            _extract_camera_name_from_s3_key("/cameras/lobby-cam/img.png")
+            == "lobby-cam"
+        )
+
+    def test_non_cameras_prefix(self):
+        assert _extract_camera_name_from_s3_key("uploads/my-camera/frame.jpg") is None
+
+    def test_too_few_parts(self):
+        assert _extract_camera_name_from_s3_key("cameras") is None
+
+    def test_empty_string(self):
+        assert _extract_camera_name_from_s3_key("") is None
 
 
 class TestBuildSystemPrompt:
@@ -88,7 +134,11 @@ class TestBuildSystemPrompt:
 
     def test_includes_entity_types(self):
         entity_type_defs = {
-            "door": {"display_name": "Door", "state_names": ["open", "closed"]},
+            "door": {
+                "display_name": "Door",
+                "state_names": ["open", "closed"],
+                "state_criteria": {"open": "Door is visibly open"},
+            },
         }
         entities = [
             {
@@ -100,8 +150,10 @@ class TestBuildSystemPrompt:
         ]
         prompt = _build_system_prompt("", entity_type_defs, entities)
 
-        assert "Door (door)" in prompt
-        assert "open, closed" in prompt
+        assert "(a Door)" in prompt
+        assert "Possible states (pick one):" in prompt
+        assert '"open": Door is visibly open' in prompt
+        assert '"closed"' in prompt
 
     def test_includes_user_context(self):
         prompt = _build_system_prompt(
@@ -135,12 +187,17 @@ class TestBuildSystemPrompt:
         assert "Context:" not in prompt
 
     def test_includes_roi_hint(self):
+        hint_text = (
+            "Look at the area between 10%-40% from the left "
+            "and 20%-60% from the top of the image, "
+            "ignore other area"
+        )
         entities = [
             {
                 "name": "door_1",
                 "type_name": "door",
                 "state_names": ["open", "closed"],
-                "roi_hint_text": "ROI at x=10, y=20, w=100, h=50",
+                "roi_hint_text": hint_text,
             },
         ]
         prompt = _build_system_prompt(
@@ -148,7 +205,7 @@ class TestBuildSystemPrompt:
             {"door": {"display_name": "Door", "state_names": ["open", "closed"]}},
             entities,
         )
-        assert "Location hint: ROI at x=10, y=20, w=100, h=50" in prompt
+        assert f"Location hint: {hint_text}" in prompt
 
     def test_includes_entity_names(self):
         entities = [
@@ -165,14 +222,14 @@ class TestBuildSystemPrompt:
             entities,
         )
         assert '"parking_lot_gate"' in prompt
-        assert "(type: gate)" in prompt
+        assert "(a Gate)" in prompt
 
 
 class TestGenerateObservation:
     """Tests for the main generate_observation function."""
 
     @pytest.mark.asyncio
-    async def test_config_not_found_raises(self):
+    async def test_config_not_found_returns_none(self):
         session = AsyncMock()
 
         with patch(
@@ -181,12 +238,121 @@ class TestGenerateObservation:
             mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=None
             )
+            mock_config_repo_cls.return_value.get_by_name = AsyncMock(return_value=None)
 
-            with pytest.raises(ValueError, match="not found"):
-                await generate_observation(session, uuid.uuid4())
+            result = await generate_observation(session, uuid.uuid4())
+            assert result is None
 
     @pytest.mark.asyncio
-    async def test_config_disabled_raises(self):
+    async def test_fallback_to_name_lookup_from_image_url(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.enabled = True
+        mock_config.llm_prompt = "test"
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.name = "door_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
+
+        mock_state_def = MagicMock()
+        mock_state_def.id = uuid.uuid4()
+        mock_state_def.name = "open"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "door"
+        mock_entity_type.display_name = "Door"
+
+        llm_result = {
+            "result": {"door_1": {"state": "open", "confidence": 0.9}},
+            "token_usage": {},
+        }
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = llm_result
+
+        fake_image_bytes = b"fake-s3-image"
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation._fetch_s3_bytes",
+                AsyncMock(return_value=fake_image_bytes),
+            ),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=None
+            )
+            mock_config_repo_cls.return_value.get_by_name = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+
+            camera_id = uuid.uuid4()
+            result = await generate_observation(
+                session, camera_id, image_url="cameras/my-kitchen-cam/frame.jpg"
+            )
+
+            assert result is not None
+            assert result.camera_id == camera_id
+            assert len(result.entity_observations) == 1
+            mock_config_repo_cls.return_value.get_by_name.assert_awaited_once_with(
+                "my-kitchen-cam"
+            )
+
+    @pytest.mark.asyncio
+    async def test_config_disabled_returns_none(self):
         session = AsyncMock()
         mock_config = MagicMock()
         mock_config.enabled = False
@@ -198,11 +364,11 @@ class TestGenerateObservation:
                 return_value=mock_config
             )
 
-            with pytest.raises(ValueError, match="disabled"):
-                await generate_observation(session, uuid.uuid4())
+            result = await generate_observation(session, uuid.uuid4())
+            assert result is None
 
     @pytest.mark.asyncio
-    async def test_no_entities_assigned_raises(self):
+    async def test_no_entities_assigned_returns_none(self):
         session = AsyncMock()
         config_id = uuid.uuid4()
 
@@ -224,11 +390,11 @@ class TestGenerateObservation:
                 return_value=[]
             )
 
-            with pytest.raises(ValueError, match="No entities assigned"):
-                await generate_observation(session, config_id)
+            result = await generate_observation(session, config_id)
+            assert result is None
 
     @pytest.mark.asyncio
-    async def test_no_active_entities_raises(self):
+    async def test_no_active_entities_returns_none(self):
         session = AsyncMock()
         config_id = uuid.uuid4()
 
@@ -269,8 +435,8 @@ class TestGenerateObservation:
                 return_value=mock_entity
             )
 
-            with pytest.raises(ValueError, match="No active entities"):
-                await generate_observation(session, config_id)
+            result = await generate_observation(session, config_id)
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_no_image_provided_raises(self):
@@ -424,7 +590,7 @@ class TestGenerateObservation:
 
         mock_mapping = MagicMock()
         mock_mapping.entity_id = entity_id
-        mock_mapping.roi_hint = {"x": 10, "y": 20, "w": 100, "h": 50}
+        mock_mapping.roi_hint = {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}
 
         state_id_on = uuid.uuid4()
         state_id_off = uuid.uuid4()
@@ -504,6 +670,7 @@ class TestGenerateObservation:
                 session, config_id, image_bytes=b"fake-image-data"
             )
 
+            assert result is not None
             assert result.camera_id == config_id
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].entity_name == "oven_1"
@@ -514,7 +681,12 @@ class TestGenerateObservation:
             assert result.raw_llm_response == {
                 "oven_1": {"state": "on", "confidence": 0.95}
             }
-            assert result.token_usage == {"prompt_tokens": 100, "completion_tokens": 20}
+            assert result.token_usage == {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "observed": True,
+                "image_relevant": True,
+            }
             mock_entity_repo_cls.return_value.update.assert_awaited_once_with(
                 entity_id,
                 current_state_id=state_id_on,
@@ -623,6 +795,7 @@ class TestGenerateObservation:
                 session, config_id, image_url="cameras/test/frame.jpg"
             )
 
+            assert result is not None
             assert result.camera_id == config_id
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].state == "closed"
@@ -728,6 +901,7 @@ class TestGenerateObservation:
                 session, config_id, image_bytes=b"camera-frame"
             )
 
+            assert result is not None
             assert result.camera_id == config_id
             assert len(result.entity_observations) == 1
 
@@ -824,6 +998,7 @@ class TestGenerateObservation:
                 session, config_id, image_bytes=b"frame-data"
             )
 
+            assert result is not None
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].entity_name == "light_1"
 

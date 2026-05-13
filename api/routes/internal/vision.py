@@ -4,12 +4,14 @@ These endpoints are called by the Vision Frame Processor Lambda to:
 1. Generate entity state observations from camera frames
 """
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
+from api.schemas.operations.vision_observation import GenerateObservationResponse
 from services import vision_observation_service
 from utils.log import logger
 
@@ -89,6 +91,15 @@ async def create_observation(
             image_url=image_url,
             image_bytes=image_bytes,
         )
+
+        if result is None:
+            return GenerateObservationResponse(
+                camera_id=camera_id,
+                observed_at=datetime.now(timezone.utc),
+                entity_observations=[],
+                raw_llm_response={},
+                token_usage={"observed": False, "image_relevant": None},
+            )
 
         logger.info(
             "[Internal Vision] Observation completed",

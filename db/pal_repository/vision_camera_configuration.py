@@ -94,6 +94,23 @@ class VisionCameraConfigurationRepository:
             )
             return None
 
+    async def get_by_name(self, name: str) -> VisionCameraConfigurationData | None:
+        try:
+            result = await self.session.execute(
+                select(VisionCameraConfiguration).filter(
+                    VisionCameraConfiguration.name == name
+                )
+            )
+            row = result.scalar_one_or_none()
+            return _to_data(row) if row else None
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision Config] DB error getting camera config by name",
+                exc_info=True,
+            )
+            return None
+
     async def list_by_project(
         self, project_id: uuid.UUID
     ) -> list[VisionCameraConfigurationData]:
