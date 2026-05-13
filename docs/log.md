@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-05-13
 
+- **[PAL-10592] Vision state change event CRUD API.** Added account-scoped GET/POST/DELETE endpoints for `vision_state_change_event` at `/accounts/{account_name}/state-change-events`. GET supports optional `project_id` and `entity_id` filters and defaults to the past 24 hours. New repository, service, and schema layers following existing vision entity patterns.
 - **Arrears billing: finalize invoices at end of billing cycle.** Invoice drafts now stay open during the billing period (`auto_advance=False` set via `invoice.created` webhook). When the next period starts, the webhook finalizes and sends the previous period's draft (which by then includes metered usage from Stripe Meters). On subscription deletion, remaining drafts are also finalized. Accrual filter tightened to skip invoices with no `due_date`. Added `total_orders`, `order_total_dollars`, and `total_reservations` fields to `SendInvoiceEmailRequest` and passed through to Postmark template model for analytics emails.
 
 ---

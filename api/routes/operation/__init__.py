@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -97,6 +97,11 @@ from api.schemas.operations.vision_entity import (
     UpdateEntityTypeRequest,
     UpdateStateDefinitionRequest,
 )
+from api.schemas.operations.vision_state_change_event import (
+    CreateStateChangeEventRequest,
+    ListStateChangeEventsResponse,
+    StateChangeEventResponse,
+)
 from db.pal_repository.project import ProjectRepository
 from db.tables.types import ExecutionStatus
 from services import signal_source_service
@@ -120,6 +125,7 @@ from . import (
     _video_upload,
     _vision_camera_configs,
     _vision_entities,
+    _vision_state_change_events,
 )
 
 operation_router = APIRouter(prefix=endpoints.OPERATION, tags=["Operation"])
@@ -3676,3 +3682,159 @@ async def reset_to_draft(
     - SubmissionResponse with draft status
     """
     return await _routines.reset_to_draft(submission_id, context, session)
+
+
+# ==============================================================================
+# VISION STATE CHANGE EVENT ENDPOINTS
+# ==============================================================================
+
+
+@operation_router.post(
+    "/accounts/{account_name}/state-change-events",
+    status_code=status.HTTP_201_CREATED,
+    response_model=StateChangeEventResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_state_change_event(
+    account_name: str,
+    request: CreateStateChangeEventRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> StateChangeEventResponse:
+    """
+    Create a vision state change event.
+
+    Records that an entity transitioned from one state to another.
+
+    Path Parameters:
+    - account_name: Account identifier
+    """
+    _ = context
+    return await _vision_state_change_events.create_state_change_event(
+        session=session,
+        request=request,
+        account_name=account_name,
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_name}/state-change-events",
+    response_model=ListStateChangeEventsResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_state_change_events(
+    account_name: str,
+    project_id: uuid.UUID | None = Query(default=None, description="Filter by project"),
+    entity_id: uuid.UUID | None = Query(default=None, description="Filter by entity"),
+    start: datetime | None = Query(
+        default=None, description="Start time filter (defaults to 24 hours ago)"
+    ),
+    end: datetime | None = Query(default=None, description="End time filter"),
+    limit: int = Query(default=100, ge=1, le=1000, description="Max results"),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListStateChangeEventsResponse:
+    """
+    List state change events.
+
+    Returns events ordered by observed_at descending.
+    Defaults to the past 24 hours if no start time is provided.
+
+    Path Parameters:
+    - account_name: Account identifier
+
+    Query Parameters:
+    - project_id (optional): Filter by project
+    - entity_id (optional): Filter by entity
+    - start (optional): Filter events observed after this time (default: 24h ago)
+    - end (optional): Filter events observed before this time
+    - limit (optional): Max results (default 100, max 1000)
+    """
+    _ = context
+    effective_start = (
+        start if start is not None else datetime.now(timezone.utc) - timedelta(hours=24)
+    )
+    return await _vision_state_change_events.list_state_change_events(
+        session=session,
+        account_name=account_name,
+        project_id=project_id,
+        entity_id=entity_id,
+        start=effective_start,
+        end=end,
+        limit=limit,
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_name}/state-change-events/{event_id}",
+    response_model=StateChangeEventResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_state_change_event(
+    account_name: str,
+    event_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> StateChangeEventResponse:
+    """
+    Get a state change event by ID.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - event_id: UUID of the event
+    """
+    _ = context
+    return await _vision_state_change_events.get_state_change_event(
+        session=session,
+        event_id=event_id,
+        account_name=account_name,
+    )
+
+
+@operation_router.delete(
+    "/accounts/{account_name}/state-change-events/{event_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_state_change_event(
+    account_name: str,
+    event_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a state change event.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - event_id: UUID of the event
+    """
+    _ = context
+    return await _vision_state_change_events.delete_state_change_event(
+        session=session,
+        event_id=event_id,
+        account_name=account_name,
+    )

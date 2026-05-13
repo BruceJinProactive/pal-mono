@@ -1,0 +1,264 @@
+"""Tests for api.routes.operation._vision_state_change_events API handlers."""
+
+import uuid
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from fastapi import HTTPException
+
+from api.schemas.operations.vision_state_change_event import (
+    CreateStateChangeEventRequest,
+    ListStateChangeEventsResponse,
+    StateChangeEventResponse,
+)
+
+MODULE = "api.routes.operation._vision_state_change_events"
+
+ACCOUNT_NAME = "test-account"
+ENTITY_ID = uuid.uuid4()
+NEW_STATE_ID = uuid.uuid4()
+
+
+def _make_response(**overrides: object) -> StateChangeEventResponse:
+    defaults: dict[str, object] = {
+        "id": uuid.uuid4(),
+        "entity_id": ENTITY_ID,
+        "new_state_id": NEW_STATE_ID,
+        "observed_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
+        "camera_config_id": None,
+        "previous_state_id": None,
+        "confidence": None,
+        "frame_s3_key": None,
+        "event_metadata": {},
+    }
+    defaults.update(overrides)
+    return StateChangeEventResponse(**defaults)  # type: ignore[arg-type]
+
+
+class TestCreateStateChangeEvent:
+
+    @pytest.mark.asyncio
+    async def test_success(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            create_state_change_event,
+        )
+
+        session = AsyncMock()
+        request = CreateStateChangeEventRequest(
+            entity_id=ENTITY_ID, new_state_id=NEW_STATE_ID
+        )
+        expected = _make_response()
+
+        with patch(
+            f"{MODULE}.vision_event_service.create_state_change_event",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ):
+            result = await create_state_change_event(session, request, ACCOUNT_NAME)
+
+        assert result.entity_id == ENTITY_ID
+
+    @pytest.mark.asyncio
+    async def test_value_error_returns_400(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            create_state_change_event,
+        )
+
+        session = AsyncMock()
+        request = CreateStateChangeEventRequest(
+            entity_id=ENTITY_ID, new_state_id=NEW_STATE_ID
+        )
+
+        with patch(
+            f"{MODULE}.vision_event_service.create_state_change_event",
+            new_callable=AsyncMock,
+            side_effect=ValueError("invalid entity"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_state_change_event(session, request, ACCOUNT_NAME)
+            assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_generic_error_returns_500(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            create_state_change_event,
+        )
+
+        session = AsyncMock()
+        request = CreateStateChangeEventRequest(
+            entity_id=ENTITY_ID, new_state_id=NEW_STATE_ID
+        )
+
+        with patch(
+            f"{MODULE}.vision_event_service.create_state_change_event",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await create_state_change_event(session, request, ACCOUNT_NAME)
+            assert exc_info.value.status_code == 500
+
+
+class TestGetStateChangeEvent:
+
+    @pytest.mark.asyncio
+    async def test_success(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            get_state_change_event,
+        )
+
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        expected = _make_response(id=event_id)
+
+        with patch(
+            f"{MODULE}.vision_event_service.get_state_change_event",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ):
+            result = await get_state_change_event(session, event_id, ACCOUNT_NAME)
+
+        assert result.id == event_id
+
+    @pytest.mark.asyncio
+    async def test_not_found_returns_404(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            get_state_change_event,
+        )
+
+        session = AsyncMock()
+
+        with patch(
+            f"{MODULE}.vision_event_service.get_state_change_event",
+            new_callable=AsyncMock,
+            side_effect=ValueError("not found"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_state_change_event(session, uuid.uuid4(), ACCOUNT_NAME)
+            assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_generic_error_returns_500(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            get_state_change_event,
+        )
+
+        session = AsyncMock()
+
+        with patch(
+            f"{MODULE}.vision_event_service.get_state_change_event",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_state_change_event(session, uuid.uuid4(), ACCOUNT_NAME)
+            assert exc_info.value.status_code == 500
+
+
+class TestListStateChangeEvents:
+
+    @pytest.mark.asyncio
+    async def test_success(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            list_state_change_events,
+        )
+
+        session = AsyncMock()
+        expected = ListStateChangeEventsResponse(items=[], total=0)
+
+        with patch(
+            f"{MODULE}.vision_event_service.list_state_change_events",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ):
+            result = await list_state_change_events(session, "test-account")
+
+        assert result.total == 0
+
+    @pytest.mark.asyncio
+    async def test_not_found_returns_404(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            list_state_change_events,
+        )
+
+        session = AsyncMock()
+
+        with patch(
+            f"{MODULE}.vision_event_service.list_state_change_events",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Account not found"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await list_state_change_events(session, "bad-account")
+            assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_generic_error_returns_500(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            list_state_change_events,
+        )
+
+        session = AsyncMock()
+
+        with patch(
+            f"{MODULE}.vision_event_service.list_state_change_events",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await list_state_change_events(session, "test-account")
+            assert exc_info.value.status_code == 500
+
+
+class TestDeleteStateChangeEvent:
+
+    @pytest.mark.asyncio
+    async def test_success(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            delete_state_change_event,
+        )
+
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+
+        with patch(
+            f"{MODULE}.vision_event_service.delete_state_change_event",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            await delete_state_change_event(session, event_id, ACCOUNT_NAME)
+
+    @pytest.mark.asyncio
+    async def test_not_found_returns_404(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            delete_state_change_event,
+        )
+
+        session = AsyncMock()
+
+        with patch(
+            f"{MODULE}.vision_event_service.delete_state_change_event",
+            new_callable=AsyncMock,
+            side_effect=ValueError("not found"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await delete_state_change_event(session, uuid.uuid4(), ACCOUNT_NAME)
+            assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_generic_error_returns_500(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            delete_state_change_event,
+        )
+
+        session = AsyncMock()
+
+        with patch(
+            f"{MODULE}.vision_event_service.delete_state_change_event",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await delete_state_change_event(session, uuid.uuid4(), ACCOUNT_NAME)
+            assert exc_info.value.status_code == 500
