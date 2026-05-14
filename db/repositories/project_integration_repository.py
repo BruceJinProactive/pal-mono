@@ -1,11 +1,39 @@
 import uuid
 from typing import List, Optional
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from db.tables.integration import ProjectIntegration
+from db.tables.integration import Integration, ProjectIntegration
+from db.tables.types import IntegrationProvider
 from utils.log import logger
+
+
+class ProjectIntegrationRepositoryAsync:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_project_integrations_by_store_identifier_and_provider(
+        self, store_identifier: str, provider: IntegrationProvider
+    ) -> List[ProjectIntegration]:
+        """Retrieve project integrations by store identifier and integration provider."""
+        try:
+            result = await self.session.execute(
+                select(ProjectIntegration)
+                .join(Integration, ProjectIntegration.integration_id == Integration.id)
+                .filter(ProjectIntegration.store_identifier == store_identifier)
+                .filter(Integration.provider == provider)
+            )
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(
+                "Error retrieving project integrations by store identifier and provider: %s",
+                e,
+            )
+            return []
 
 
 class ProjectIntegrationRepository:
@@ -57,6 +85,26 @@ class ProjectIntegrationRepository:
             self.session.rollback()
             logger.error(
                 f"Error retrieving project integrations by integration ID: {e}"
+            )
+            return []
+
+    def get_project_integrations_by_store_identifier_and_provider(
+        self, store_identifier: str, provider: IntegrationProvider
+    ) -> List[ProjectIntegration]:
+        """Retrieve project integrations by store identifier and integration provider."""
+        try:
+            return (
+                self.session.query(ProjectIntegration)
+                .join(Integration, ProjectIntegration.integration_id == Integration.id)
+                .filter(ProjectIntegration.store_identifier == store_identifier)
+                .filter(Integration.provider == provider)
+                .all()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(
+                "Error retrieving project integrations by store identifier and provider: %s",
+                e,
             )
             return []
 

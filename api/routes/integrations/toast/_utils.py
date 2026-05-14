@@ -1,14 +1,23 @@
 import json
 import re
+from datetime import datetime
+from typing import Any
 
+from pal_agents.menu_assets.toast import (
+    build_toast_lookup_prompt_context_markdown,
+    compile_toast_menu_v2,
+)
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from db.repositories.project_integration_repository import ProjectIntegrationRepository
+from db.repositories.project_repository import ProjectRepository
 from db.session import SyncSessionLocal
 from db.tables.integration import Integration, ProjectIntegration
 from db.tables.projects import Project
 from db.tables.types import IntegrationProvider
+from services.knowledge_service.toast._client import download_menu
 from tools.toast_tool._apis import connect_toast_order_hub
 from tools.toast_tool._utils import get_toast_access_token_from_aws
 from tools.utils.ordering.classes import HttpMethod
@@ -73,6 +82,50 @@ def _find_projects_by_restaurant_guid(
             f"[ToastWebhook._find_projects_by_restaurant_guid] Error finding projects via ProjectIntegration for restaurant_guid {restaurant_guid}: {e}"
         )
         return []
+
+
+def _find_toast_project_integrations_by_restaurant_guid(
+    restaurant_guid: str, session: Session
+) -> list[tuple[Project, ProjectIntegration]]:
+    """Find Toast project integrations for a restaurant GUID."""
+    project_integration_repository = ProjectIntegrationRepository(
+        session, auto_commit=False
+    )
+    project_repository = ProjectRepository(session, auto_commit=False)
+
+    project_integrations = project_integration_repository.get_project_integrations_by_store_identifier_and_provider(
+        restaurant_guid,
+        IntegrationProvider.toast,
+    )
+    if not project_integrations:
+        logger.warning(
+            "[ToastWebhook._find_toast_project_integrations_by_restaurant_guid] "
+            "No Toast project integrations found with store_identifier: %s",
+            restaurant_guid,
+        )
+        return []
+
+    if len(project_integrations) > 1:
+        logger.warning(
+            "[ToastWebhook._find_toast_project_integrations_by_restaurant_guid] "
+            "Multiple Toast project integrations found with store_identifier: %s",
+            restaurant_guid,
+        )
+
+    project_pairs: list[tuple[Project, ProjectIntegration]] = []
+    for project_integration in project_integrations:
+        project = project_repository.get_project(project_integration.project_id)
+        if project is None:
+            logger.warning(
+                "[ToastWebhook._find_toast_project_integrations_by_restaurant_guid] "
+                "Project %s not found for project integration %s",
+                project_integration.project_id,
+                project_integration.id,
+            )
+            continue
+        project_pairs.append((project, project_integration))
+
+    return project_pairs
 
 
 def _update_stock_section(
@@ -376,10 +429,100 @@ async def update_menu_content(webhook_request: ToastWebhookRequest) -> None:
         webhook_request: The webhook request containing the menu content
     """
     try:
-        ToastWebhookMenuDetails(**webhook_request.details)
+        menu_details = ToastWebhookMenuDetails(**webhook_request.details)
     except ValidationError as e:
         logger.error("[ToastWebhook.update_menu_content] Invalid menu details: %s", e)
         return
+
+    await run_in_threadpool(_process_menu_update_sync, menu_details)
+
+
+def _process_menu_update_sync(menu_details: ToastWebhookMenuDetails) -> None:
+    """Download, compile, and persist Toast menu assets for a menu webhook."""
+    with SyncSessionLocal() as session:
+        try:
+            project_integrations = _find_toast_project_integrations_by_restaurant_guid(
+                menu_details.restaurantGuid, session
+            )
+
+            project_integrations_to_update = [
+                (project, project_integration)
+                for project, project_integration in project_integrations
+                if _is_incoming_menu_newer(
+                    _get_menu_last_updated(project_integration.config),
+                    menu_details.publishedDate,
+                )
+            ]
+
+            if not project_integrations_to_update:
+                return
+
+            bearer_token = get_toast_access_token_from_aws()
+            raw_menu = download_menu(bearer_token, menu_details.restaurantGuid)
+            compiled_menu = compile_toast_menu_v2(raw_menu)
+            prompt_context = build_toast_lookup_prompt_context_markdown(compiled_menu)
+
+            for project, project_integration in project_integrations_to_update:
+                project.product_info = prompt_context
+                project_integration.config = _update_toast_menu_config(
+                    project_integration.config,
+                    compiled_menu,
+                    menu_details.publishedDate,
+                )
+                session.add(project)
+                session.add(project_integration)
+
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            logger.error(
+                "[ToastWebhook._process_menu_update_sync] Error processing menu update "
+                "for restaurant %s: %s",
+                menu_details.restaurantGuid,
+                e,
+            )
+            raise
+
+
+def _get_menu_last_updated(config: dict[str, Any] | None) -> str | None:
+    """Read the last Toast menu webhook published date from integration config."""
+    if not config:
+        return None
+    menu_last_updated = config.get("menu_last_updated")
+    if not isinstance(menu_last_updated, str):
+        return None
+    return menu_last_updated
+
+
+def _is_incoming_menu_newer(
+    existing_last_updated: str | None, incoming_published_date: str
+) -> bool:
+    """Return whether a Toast menu webhook should replace stored menu assets."""
+    if existing_last_updated is None:
+        return True
+
+    try:
+        existing_dt = datetime.fromisoformat(
+            existing_last_updated.replace("Z", "+00:00")
+        )
+        incoming_dt = datetime.fromisoformat(
+            incoming_published_date.replace("Z", "+00:00")
+        )
+        return incoming_dt > existing_dt
+    except (TypeError, ValueError):
+        return existing_last_updated != incoming_published_date
+
+
+def _update_toast_menu_config(
+    config: dict[str, Any] | None,
+    menu_data: dict[str, Any],
+    menu_last_updated: str,
+) -> dict[str, Any]:
+    """Return updated Toast integration config with compiled menu assets."""
+    updated_config = dict(config or {})
+    updated_config["menu_data"] = menu_data
+    updated_config["menu_last_updated"] = menu_last_updated
+    return updated_config
 
 
 def _process_stock_item_status_sync(webhook_request: ToastWebhookRequest) -> None:

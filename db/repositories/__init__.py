@@ -20,7 +20,10 @@ from .monitoring_run_repository import MonitoringRunRepositoryAsync
 from .order_repository import OrderRepository
 from .permission_repository import PermissionRepository
 from .phone_call_repository import PhoneCallRepository, PhoneCallRepositoryAsync
-from .project_integration_repository import ProjectIntegrationRepository
+from .project_integration_repository import (
+    ProjectIntegrationRepository,
+    ProjectIntegrationRepositoryAsync,
+)
 from .project_repository import ProjectRepository, ProjectRepositoryAsync
 from .prompt_repository import PromptRepository
 from .reservation_repository import ReservationRepository
