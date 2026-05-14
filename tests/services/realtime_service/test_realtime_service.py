@@ -19,6 +19,7 @@ from services.realtime_service._config import RealtimeConfig
 from services.realtime_service._implementation import (
     RealtimeSession,
     _append_realtime_call_context,
+    _append_realtime_response_preamble_guidance,
     build_pal_agent_provider_tools,
     create_realtime_session,
 )
@@ -735,6 +736,23 @@ class TestRealtimeCallContextPrompt:
         prompt = _append_realtime_call_context("Base prompt", caller_id=None)
 
         assert prompt == "Base prompt"
+
+
+class TestRealtimeResponsePreamblePrompt:
+    """Test realtime response preamble guidance."""
+
+    def test_appends_contextual_filler_guidance(self) -> None:
+        prompt = _append_realtime_response_preamble_guidance("Base prompt")
+
+        assert "# Tools" in prompt
+        assert "# Chat Preambles" in prompt
+        assert "Use a short filler or preamble only when you need a moment" in prompt
+        assert "Do not add filler before direct answers" in prompt
+        assert "Before any tool call" in prompt
+        assert "for example, before looking up details" in prompt
+        assert "Let me think for a second." in prompt
+        assert "I can check that for you." in prompt
+        assert "Do not stack multiple filler phrases" in prompt
 
 
 class TestCreateRealtimeSession:
