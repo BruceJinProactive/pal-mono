@@ -11,6 +11,7 @@ from db.session import SyncSessionLocal
 from services import email_service
 from services.subscription_service import stripe_invoice
 from utils.log import logger
+from utils.phone import get_test_phone_numbers
 
 # Postmark template IDs for invoice emails based on activity
 TEMPLATE_ID_ANSWERING = 42569088
@@ -106,6 +107,9 @@ def send_automated_invoice_email(
                 "account_id": account_id
             }
 
+            # Get test phone numbers to exclude from billing analytics
+            test_numbers = list(get_test_phone_numbers())
+
             # Extend end date to end-of-day
             query_end = period_end_dt.replace(hour=23, minute=59, second=59)
 
@@ -114,6 +118,8 @@ def send_automated_invoice_email(
                 end_date=query_end,
                 group_by=[],
                 filter_by=filter_by,
+                exclude_eval_calls=True,
+                exclude_caller_numbers=test_numbers or None,
             )
             total_calls = int(call_data[0][0]) if call_data else 0
             avg_duration = (
@@ -126,6 +132,8 @@ def send_automated_invoice_email(
                 end_date=query_end,
                 group_by=[],
                 filter_by=filter_by,
+                exclude_eval_calls=True,
+                exclude_caller_numbers=test_numbers or None,
             )
             paid_orders = int(conversion_data[0][2]) if conversion_data else 0
             paid_total = (

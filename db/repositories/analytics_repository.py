@@ -2,7 +2,7 @@ import datetime
 import time
 import uuid
 
-from sqlalchemy import Float, case, exists, func, or_, select
+from sqlalchemy import Float, case, exists, func, not_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -341,9 +341,19 @@ class AnalyticsRepository:
         end_date: datetime.datetime,
         group_by: list[str] | None = None,
         filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+        exclude_eval_calls: bool = False,
+        exclude_caller_numbers: list[str] | None = None,
     ) -> list[tuple]:
         """
         Get essential call metrics following the same pattern as get_turns_summary.
+
+        Args:
+            start_date: Start date for filtering
+            end_date: End date for filtering
+            group_by: List of fields to group by
+            filter_by: Dict of filters
+            exclude_eval_calls: If True, exclude calls with call_id starting with 'eval-'
+            exclude_caller_numbers: List of phone numbers to exclude (test numbers)
 
         Returns:
             list[tuple]: (group_fields...,
@@ -449,6 +459,19 @@ class AnalyticsRepository:
                         PhoneCall.created_at.between(start_date, end_date),
                         ~Conversation.is_test,
                     )
+                )
+
+            # Exclude eval pipeline calls (call_id starts with 'eval-')
+            if exclude_eval_calls:
+                query = query.where(
+                    not_(Conversation.call_id.like("eval-%"))
+                    | Conversation.call_id.is_(None)
+                )
+
+            # Exclude calls from test phone numbers
+            if exclude_caller_numbers:
+                query = query.where(
+                    ~User.channel_identifiers.overlap(exclude_caller_numbers)
                 )
 
             # Add Project join if needed for grouping
@@ -605,10 +628,20 @@ class AnalyticsRepository:
         end_date: datetime.datetime,
         group_by: list[str] | None = None,
         filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+        exclude_eval_calls: bool = False,
+        exclude_caller_numbers: list[str] | None = None,
     ) -> list[tuple]:
         """
         Get conversion metrics showing how many conversations lead to orders,
         reservations, and waitlist entries.
+
+        Args:
+            start_date: Start date for filtering
+            end_date: End date for filtering
+            group_by: List of fields to group by
+            filter_by: Dict of filters
+            exclude_eval_calls: If True, exclude conversations with call_id starting with 'eval-'
+            exclude_caller_numbers: List of phone numbers to exclude (test numbers)
 
         Returns:
             list[tuple]: (group_fields...,
@@ -734,6 +767,19 @@ class AnalyticsRepository:
                             )
                         ),
                     )
+                )
+
+            # Exclude eval pipeline calls (call_id starts with 'eval-')
+            if exclude_eval_calls:
+                query = query.where(
+                    not_(Conversation.call_id.like("eval-%"))
+                    | Conversation.call_id.is_(None)
+                )
+
+            # Exclude conversations from test phone numbers
+            if exclude_caller_numbers:
+                query = query.where(
+                    ~User.channel_identifiers.overlap(exclude_caller_numbers)
                 )
 
             # Add Project join if needed for grouping

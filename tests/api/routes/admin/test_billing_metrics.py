@@ -143,6 +143,83 @@ class TestGetBillingMetrics:
         assert exc_info.value.status_code == 400
         assert "start_date must be before end_date" in exc_info.value.detail
 
+    def test_excludes_eval_and_test_calls(self) -> None:
+        """Should pass exclude_eval_calls=True and test numbers to analytics queries."""
+        account = _make_account()
+        session = MagicMock()
+        context = _make_context()
+
+        mock_call_data = [(10, 30.0, 1.0, 1, 0, 0, 0.0, 5, 4, 1)]
+        mock_conversion_data = [(10, 3, 2, 100.0, 80.0, 1, 0)]
+
+        with (
+            patch(
+                "api.routes.admin._billing.AccountRepository"
+            ) as mock_account_repo_cls,
+            patch(
+                "api.routes.admin._billing.AnalyticsRepository"
+            ) as mock_analytics_repo_cls,
+            patch(
+                "api.routes.admin._billing.get_test_phone_numbers",
+                return_value={"+18889738742", "+15551234567"},
+            ),
+        ):
+            mock_account_repo_cls.return_value.get_account.return_value = account
+            mock_analytics_repo = mock_analytics_repo_cls.return_value
+            mock_analytics_repo.get_calls_time_summary.return_value = mock_call_data
+            mock_analytics_repo.get_conversion_summary.return_value = (
+                mock_conversion_data
+            )
+
+            get_billing_metrics(
+                "bobs-pizza", "2026-04-01", "2026-04-30", context, session
+            )
+
+            # Verify exclude_eval_calls=True is passed
+            calls_kwargs = mock_analytics_repo.get_calls_time_summary.call_args[1]
+            assert calls_kwargs["exclude_eval_calls"] is True
+            assert set(calls_kwargs["exclude_caller_numbers"]) == {
+                "+18889738742",
+                "+15551234567",
+            }
+
+            conversion_kwargs = mock_analytics_repo.get_conversion_summary.call_args[1]
+            assert conversion_kwargs["exclude_eval_calls"] is True
+            assert set(conversion_kwargs["exclude_caller_numbers"]) == {
+                "+18889738742",
+                "+15551234567",
+            }
+
+    def test_passes_none_when_no_test_numbers(self) -> None:
+        """Should pass exclude_caller_numbers=None when no test numbers configured."""
+        account = _make_account()
+        session = MagicMock()
+        context = _make_context()
+
+        with (
+            patch(
+                "api.routes.admin._billing.AccountRepository"
+            ) as mock_account_repo_cls,
+            patch(
+                "api.routes.admin._billing.AnalyticsRepository"
+            ) as mock_analytics_repo_cls,
+            patch(
+                "api.routes.admin._billing.get_test_phone_numbers",
+                return_value=set(),
+            ),
+        ):
+            mock_account_repo_cls.return_value.get_account.return_value = account
+            mock_analytics_repo = mock_analytics_repo_cls.return_value
+            mock_analytics_repo.get_calls_time_summary.return_value = []
+            mock_analytics_repo.get_conversion_summary.return_value = []
+
+            get_billing_metrics(
+                "bobs-pizza", "2026-04-01", "2026-04-30", context, session
+            )
+
+            calls_kwargs = mock_analytics_repo.get_calls_time_summary.call_args[1]
+            assert calls_kwargs["exclude_caller_numbers"] is None
+
 
 class TestSendInvoiceEmailTemplateId:
     """Tests for template_id passthrough in send_invoice_email_with_analytics."""

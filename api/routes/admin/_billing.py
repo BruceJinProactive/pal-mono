@@ -31,6 +31,7 @@ from services.subscription_service import (
     stripe_invoice,
 )
 from utils.log import logger
+from utils.phone import get_test_phone_numbers
 
 
 async def update_payment_method(
@@ -679,12 +680,17 @@ def get_billing_metrics(
         analytics_repo = AnalyticsRepository(session)
         filter_by: dict[str, uuid.UUID | list[uuid.UUID]] = {"account_id": account.id}
 
+        # Get test phone numbers to exclude from billing metrics
+        test_numbers = list(get_test_phone_numbers())
+
         # Call metrics (total_calls, avg_duration, ...)
         call_data = analytics_repo.get_calls_time_summary(
             start_date=parsed_start,
             end_date=parsed_end,
             group_by=[],
             filter_by=filter_by,
+            exclude_eval_calls=True,
+            exclude_caller_numbers=test_numbers or None,
         )
         total_calls = int(call_data[0][0]) if call_data else 0
         avg_duration = float(call_data[0][1]) if call_data and call_data[0][1] else 0.0
@@ -696,6 +702,8 @@ def get_billing_metrics(
             end_date=parsed_end,
             group_by=[],
             filter_by=filter_by,
+            exclude_eval_calls=True,
+            exclude_caller_numbers=test_numbers or None,
         )
         paid_orders = int(conversion_data[0][2]) if conversion_data else 0
         paid_total = (

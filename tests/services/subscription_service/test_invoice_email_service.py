@@ -230,6 +230,57 @@ class TestSendAutomatedInvoiceEmail:
     @patch(f"{MODULE}.stripe_invoice")
     @patch(f"{MODULE}.SyncSessionLocal")
     @patch(f"{MODULE}.stripe")
+    def test_excludes_eval_and_test_calls_from_analytics(
+        self,
+        mock_stripe: MagicMock,
+        mock_session_local: MagicMock,
+        mock_stripe_invoice: MagicMock,
+        mock_send_email: MagicMock,
+    ) -> None:
+        """Should pass exclude_eval_calls and test numbers to analytics queries."""
+        mock_stripe.Invoice.retrieve.return_value = self._mock_invoice()
+
+        account = self._mock_account()
+        mock_session = MagicMock()
+        mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_local.return_value.__exit__ = MagicMock(return_value=False)
+        mock_account_repo = MagicMock()
+        mock_account_repo.get_account_by_stripe_customer_id.return_value = account
+        mock_analytics_repo = MagicMock()
+        mock_analytics_repo.get_calls_time_summary.return_value = [(50, 120.0)]
+        mock_analytics_repo.get_conversion_summary.return_value = [
+            (30, 10, 5, 500.0, 400.0, 2, 0)
+        ]
+
+        with (
+            patch(f"{MODULE}.AccountRepository", return_value=mock_account_repo),
+            patch(f"{MODULE}.AnalyticsRepository", return_value=mock_analytics_repo),
+            patch(
+                f"{MODULE}.get_test_phone_numbers",
+                return_value={"+18889738742"},
+            ),
+        ):
+            mock_stripe_invoice.get_invoice_pdf.return_value = b"fake-pdf"
+
+            send_automated_invoice_email(
+                finalized_invoice_id="in_123",
+                stripe_customer_id="cus_456",
+            )
+
+        # Verify exclusion params passed to calls query
+        calls_kwargs = mock_analytics_repo.get_calls_time_summary.call_args[1]
+        assert calls_kwargs["exclude_eval_calls"] is True
+        assert calls_kwargs["exclude_caller_numbers"] == ["+18889738742"]
+
+        # Verify exclusion params passed to conversion query
+        conv_kwargs = mock_analytics_repo.get_conversion_summary.call_args[1]
+        assert conv_kwargs["exclude_eval_calls"] is True
+        assert conv_kwargs["exclude_caller_numbers"] == ["+18889738742"]
+
+    @patch(f"{MODULE}.send_invoice_email_with_analytics")
+    @patch(f"{MODULE}.stripe_invoice")
+    @patch(f"{MODULE}.SyncSessionLocal")
+    @patch(f"{MODULE}.stripe")
     def test_uses_account_name_when_no_display_name(
         self,
         mock_stripe: MagicMock,
