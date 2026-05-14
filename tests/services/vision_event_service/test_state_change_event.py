@@ -13,6 +13,7 @@ from api.schemas.operations.vision_state_change_event import (
 from db.pal_repository.data_classes.vision_state_change_event import (
     VisionStateChangeEventData,
 )
+from services.vision_event_service._implementation import _presign_frame_s3_key
 
 MODULE = "services.vision_event_service._implementation"
 
@@ -336,3 +337,35 @@ class TestDeleteStateChangeEvent:
 
             with pytest.raises(ValueError, match="not found"):
                 await delete_state_change_event(session, event_id, ACCOUNT_NAME)
+
+
+class TestPresignFrameS3Key:
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_key_is_none(self) -> None:
+        result = await _presign_frame_s3_key(None)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_presigned_url(self) -> None:
+        with patch(
+            f"{MODULE}.map_uri_to_s3_url",
+            return_value="https://s3.amazonaws.com/bucket/key?X-Amz-Signature=abc",
+        ):
+            result = await _presign_frame_s3_key("vision/frames/test.jpg")
+            assert result == "https://s3.amazonaws.com/bucket/key?X-Amz-Signature=abc"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_map_returns_empty(self) -> None:
+        with patch(f"{MODULE}.map_uri_to_s3_url", return_value=""):
+            result = await _presign_frame_s3_key("vision/frames/test.jpg")
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_exception(self) -> None:
+        with patch(
+            f"{MODULE}.map_uri_to_s3_url",
+            side_effect=RuntimeError("S3 error"),
+        ):
+            result = await _presign_frame_s3_key("vision/frames/test.jpg")
+            assert result is None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -15,10 +16,22 @@ from db.pal_repository.data_classes.vision_state_change_event import (
     VisionStateChangeEventData,
 )
 from services import account_service
+from services.asset_service._utils import map_uri_to_s3_url
 from utils.log import logger
 
 
-def _build_response(data: VisionStateChangeEventData) -> StateChangeEventResponse:
+async def _presign_frame_s3_key(frame_s3_key: str | None) -> str | None:
+    if not frame_s3_key:
+        return None
+    try:
+        url = await asyncio.to_thread(map_uri_to_s3_url, frame_s3_key)
+        return url or None
+    except Exception:
+        return None
+
+
+async def _build_response(data: VisionStateChangeEventData) -> StateChangeEventResponse:
+    frame_url = await _presign_frame_s3_key(data.frame_s3_key)
     return StateChangeEventResponse(
         id=data.id,
         entity_id=data.entity_id,
@@ -27,7 +40,7 @@ def _build_response(data: VisionStateChangeEventData) -> StateChangeEventRespons
         camera_config_id=data.camera_config_id,
         previous_state_id=data.previous_state_id,
         confidence=data.confidence,
-        frame_s3_key=data.frame_s3_key,
+        frame_s3_key=frame_url,
         event_metadata=data.event_metadata,
     )
 
@@ -68,7 +81,7 @@ async def create_state_change_event(
         "[Vision Event] Created state change event",
         extra={"event_id": str(record.id), "entity_id": str(record.entity_id)},
     )
-    return _build_response(record)
+    return await _build_response(record)
 
 
 async def get_state_change_event(
@@ -84,7 +97,7 @@ async def get_state_change_event(
     data = await repo.get_by_id_for_account(event_id, account.id)
     if not data:
         raise ValueError(f"State change event {event_id} not found")
-    return _build_response(data)
+    return await _build_response(data)
 
 
 async def list_state_change_events(
@@ -109,9 +122,10 @@ async def list_state_change_events(
         end=end,
         limit=limit,
     )
+    items = await asyncio.gather(*[_build_response(e) for e in events])
     return ListStateChangeEventsResponse(
-        items=[_build_response(e) for e in events],
-        total=len(events),
+        items=list(items),
+        total=len(items),
     )
 
 
