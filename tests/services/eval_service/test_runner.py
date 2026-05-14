@@ -1,5 +1,7 @@
 """Tests for the eval runner (_runner.py)."""
 
+from __future__ import annotations
+
 import asyncio
 import uuid
 from collections.abc import Sequence
@@ -11,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from db.tables import EvalRun
+from services.eval_service.schema import EvalScenario, UserTurn
 
 RUNNER_MODULE = "services.eval_service._runner"
 
@@ -2279,3 +2282,125 @@ class TestScenarioParallelism:
             "Persistence failure should have marked the run 'failed'; "
             f"got status calls: {mock_run_repo.update_status.await_args_list}"
         )
+
+
+class TestRunConversationAcloseHook:
+    """Validate the ``aclose`` hook added to support HttpVoiceDriver."""
+
+    def _make_scenario(self, turns: list[str | UserTurn]) -> EvalScenario:
+        from services.eval_service.schema import EvalScenario, ExpectedToolCall
+
+        return EvalScenario(
+            scenario_id="s-aclose",
+            scenario="sc",
+            test_category="order",
+            persona="p",
+            max_turns=5,
+            user_turns=turns,
+            expected_tool_calls=[ExpectedToolCall(tool="x", args={}, optional=False)],
+        )
+
+    def _make_simulator(self) -> MagicMock:
+        return MagicMock()
+
+    @pytest.mark.asyncio
+    async def test_aclose_called_before_tool_extraction(self) -> None:
+        from services.eval_service.schema import UserTurn
+
+        scenario = self._make_scenario([UserTurn(text="hi")])
+        order: list[str] = []
+
+        # Build a driver where aclose populates last_conversation_id so we
+        # can prove the runner called aclose *before* extracting tool calls.
+        import uuid as _uuid
+
+        conversation_id = _uuid.uuid4()
+
+        class _Driver:
+            def __init__(self) -> None:
+                self.last_conversation_id = None
+
+            async def send_turn(self, message: str, history: list[object]) -> MagicMock:
+                tr = MagicMock()
+                tr.content = "ok"
+                order.append("send_turn")
+                return tr
+
+            async def aclose(self) -> None:
+                order.append("aclose")
+                self.last_conversation_id = str(conversation_id)
+
+        driver = _Driver()
+
+        async def fake_extract(cid):
+            order.append(f"extract:{cid}")
+            return [{"tool_name": "x", "arguments": {}}]
+
+        from services.eval_service._runner import _run_conversation
+
+        with patch(
+            f"{RUNNER_MODULE}._extract_tool_calls_from_db", side_effect=fake_extract
+        ):
+            record = await _run_conversation(driver, scenario, self._make_simulator())
+
+        # Exact ordering: all turns finish, then aclose, then extract.
+        assert order == ["send_turn", "aclose", f"extract:{conversation_id}"]
+        assert len(record.tool_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_aclose_absent_driver_still_works(self) -> None:
+        from services.eval_service.schema import UserTurn
+
+        scenario = self._make_scenario([UserTurn(text="hi")])
+
+        # Real object, no ``aclose`` attribute, no ``last_conversation_id``.
+        class _LegacyDriver:
+            async def send_turn(self, message: str, history: list[object]) -> MagicMock:
+                tr = MagicMock()
+                tr.content = "ok"
+                return tr
+
+        driver = _LegacyDriver()
+
+        from services.eval_service._runner import _run_conversation
+
+        record = await _run_conversation(driver, scenario, self._make_simulator())
+
+        # No aclose means tool-call extraction skips (no last_conversation_id).
+        assert record.tool_calls == []
+
+    @pytest.mark.asyncio
+    async def test_aclose_failure_does_not_block_extraction(self) -> None:
+        from services.eval_service.schema import UserTurn
+
+        scenario = self._make_scenario([UserTurn(text="hi")])
+
+        class _Driver:
+            def __init__(self) -> None:
+                # Pre-populated so extraction can still run even if aclose
+                # raises (e.g. partial run where end-call hit a timeout).
+                import uuid as _uuid
+
+                self.last_conversation_id = str(_uuid.uuid4())
+
+            async def send_turn(self, message: str, history: list[object]) -> MagicMock:
+                tr = MagicMock()
+                tr.content = "ok"
+                return tr
+
+            async def aclose(self) -> None:
+                raise RuntimeError("end-call unreachable")
+
+        driver = _Driver()
+
+        async def fake_extract(cid):
+            return [{"tool_name": "x", "arguments": {}}]
+
+        from services.eval_service._runner import _run_conversation
+
+        with patch(
+            f"{RUNNER_MODULE}._extract_tool_calls_from_db", side_effect=fake_extract
+        ):
+            record = await _run_conversation(driver, scenario, self._make_simulator())
+
+        assert len(record.tool_calls) == 1

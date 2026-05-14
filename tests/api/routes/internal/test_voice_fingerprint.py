@@ -1,6 +1,7 @@
 """Tests for fingerprint wiring in voice init + evaluation event (P1-B1d)."""
 
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,8 +22,8 @@ VOICE_MODULE = "api.routes.internal._voice"
 # ---------------------------------------------------------------------------
 
 
-def _make_request(**overrides) -> VoiceInitRequest:
-    defaults = {
+def _make_request(**overrides: Any) -> VoiceInitRequest:
+    defaults: dict[str, Any] = {
         "caller_number": "+15551234567",
         "dialed_number": "+15559876543",
         "call_id": "call-fp-test",

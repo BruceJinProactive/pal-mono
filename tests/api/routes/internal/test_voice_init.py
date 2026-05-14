@@ -1,6 +1,7 @@
 """Tests for the LiveKit voice init endpoint (api/routes/internal/_voice.py)."""
 
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,8 +16,8 @@ from db.tables.types import SpeechRate
 # ---------------------------------------------------------------------------
 
 
-def _make_request(**overrides) -> VoiceInitRequest:
-    defaults = {
+def _make_request(**overrides: Any) -> VoiceInitRequest:
+    defaults: dict[str, Any] = {
         "caller_number": "+15551234567",
         "dialed_number": "+15559876543",
         "call_id": "call-abc-123",

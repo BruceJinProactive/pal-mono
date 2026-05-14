@@ -39,6 +39,7 @@ from services import (
     transaction_service,
     user_service,
 )
+from utils.eval_safety import apply_eval_safety
 from utils.log import logger
 from utils.otel import record_duration, trace_async_block
 from utils.request_context import RequestContext
@@ -140,6 +141,57 @@ def get_filler_message(message: Message) -> Message:
     return filler_message
 
 
+async def _apply_test_safety_if_needed(
+    session: AsyncSession,
+    conversation_id: uuid.UUID,
+    spec: Spec,
+) -> None:
+    """Auto-apply :func:`utils.eval_safety.apply_eval_safety` for test convos.
+
+    Runs once per spec construction, immediately after
+    :func:`agent_service.construct_agent_spec`. When the conversation is
+    flagged ``is_test=True`` (set by ``metadata.testing=True`` on the
+    first message), side-effecting providers are hardened in place:
+
+    * ``spec.toast.submit_orders=False``
+    * ``spec.adora.force_payment_link=True``
+
+    This closes the long-standing gap where eval drivers that hit
+    ``get_chat_response_stream`` via HTTP had no way to install a
+    ``spec_modifier``. By gating on the persisted ``Conversation.is_test``
+    rather than an in-memory flag, the safety applies uniformly to every
+    caller path (InProcessDriver, HttpVoiceDriver, LiveKit real-voice
+    evals, direct HTTP) without each needing to plumb its own modifier.
+
+    Errors (e.g. conversation row not found) are logged and swallowed —
+    a fetch failure must not turn into a safety bypass, so we err on the
+    side of continuing with whatever the spec already is.
+    """
+    try:
+        conversation = await db.ConversationRepositoryAsync(
+            session
+        ).get_conversation_by_id(conversation_id=conversation_id)
+        is_test = bool(conversation and conversation.is_test)
+    except ValueError:
+        # get_conversation_by_id raises when the row is missing; nothing
+        # to harden against.
+        return
+    except Exception:
+        logger.exception(
+            "Failed to look up conversation for eval-safety check "
+            "(conversation_id=%s); skipping auto-apply",
+            conversation_id,
+        )
+        return
+
+    if is_test:
+        apply_eval_safety(spec)
+        logger.debug(
+            "Applied eval safety to Spec for test conversation %s",
+            conversation_id,
+        )
+
+
 async def _dispatch_agent_async(
     *,
     session: AsyncSession,
@@ -171,6 +223,12 @@ async def _dispatch_agent_async(
             sender_identifier=message.sender_identifier,
             raw_config=project_raw_config,
         )
+
+        # Auto-harden Spec whenever the Conversation is flagged as test.
+        # Runs BEFORE the caller-provided ``spec_modifier`` so deliberate
+        # overrides (e.g. integration tests that want submit_orders=True
+        # against a mocked HTTP client) still win.
+        await _apply_test_safety_if_needed(session, conversation_id, spec)
 
         if spec_modifier:
             spec_modifier(spec)
@@ -714,6 +772,11 @@ async def get_chat_response_stream(
                         room_name=room_name,
                         participant_identity=participant_identity,
                         sip_provider=sip_provider,
+                    )
+                    # Auto-harden Spec when the conversation is a test /
+                    # eval run. See ``_apply_test_safety_if_needed``.
+                    await _apply_test_safety_if_needed(
+                        session, request_conversation_id, spec
                     )
                     pal_agent = PalAgent(spec=spec)
 

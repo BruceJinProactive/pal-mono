@@ -15,6 +15,16 @@ class VoiceInitRequest(BaseModel):
         ..., description="Business phone number (sip.trunkPhoneNumber)"
     )
     call_id: str = Field(..., description="SIP call identifier (sip.callID)")
+    testing: bool = Field(
+        default=False,
+        description=(
+            "When True, the created Conversation is flagged ``is_test=True`` and "
+            "downstream spec construction auto-applies :func:`utils.eval_safety."
+            "apply_eval_safety` to block real side-effects (Toast order "
+            "submission, Adora non-payment-link orders). Eval drivers that "
+            "replay phone calls over the HTTP contract should set this."
+        ),
+    )
 
 
 class VoiceInitResponse(BaseModel):

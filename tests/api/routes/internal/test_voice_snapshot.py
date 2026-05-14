@@ -1,6 +1,7 @@
 """Tests for agent config snapshot wiring in voice init (P1-E1)."""
 
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,8 +13,8 @@ from db.tables.types import SpeechRate
 VOICE_MODULE = "api.routes.internal._voice"
 
 
-def _make_request(**overrides: str) -> VoiceInitRequest:
-    defaults: dict[str, str] = {
+def _make_request(**overrides: Any) -> VoiceInitRequest:
+    defaults: dict[str, Any] = {
         "caller_number": "+15551234567",
         "dialed_number": "+15559876543",
         "call_id": "call-snapshot-test",

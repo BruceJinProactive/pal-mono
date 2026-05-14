@@ -632,6 +632,22 @@ async def _run_conversation(
         record.turns.append({"user": message, "assistant": result.content})
         record.agent_responses.append(result.content)
 
+    # After all turns complete, finalize the driver (if it supports an
+    # ``aclose`` hook) before extracting tool calls. ``HttpVoiceDriver``
+    # only sets ``last_conversation_id`` when end-call completes, so the
+    # close must happen first. ``InProcessDriver`` has no ``aclose`` and
+    # is unaffected.
+    aclose = getattr(driver, "aclose", None)
+    if aclose is not None:
+        try:
+            await aclose()
+        except Exception:
+            logger.exception(
+                "driver.aclose() failed for scenario %s; continuing with "
+                "tool-call extraction using last known conversation id",
+                scenario.scenario_id,
+            )
+
     # After all turns complete, read tool_calls from DB
     if hasattr(driver, "last_conversation_id") and driver.last_conversation_id:
         record.tool_calls = await _extract_tool_calls_from_db(

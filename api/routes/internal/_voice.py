@@ -236,7 +236,7 @@ async def init_voice_call(
         text=TextObject(body="[Call initiated]"),
         context="",
         extras=Extras(),
-        metadata=Metadata(),
+        metadata=Metadata(testing=request.testing),
         timestamp=datetime.now(timezone.utc),
     )
 
