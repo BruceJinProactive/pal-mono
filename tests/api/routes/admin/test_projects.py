@@ -13,7 +13,7 @@ from services.auth_types import UserContext, UserRole
 
 
 @pytest.fixture
-def mock_context():
+def mock_context() -> UserContext:
     return UserContext(
         username=str(uuid.uuid4()),
         email="test@example.com",
@@ -24,7 +24,7 @@ def mock_context():
 
 
 @pytest.fixture
-def mock_async_session():
+def mock_async_session() -> AsyncMock:
     session = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -35,15 +35,14 @@ def mock_async_session():
 class TestCreateProjectSubscriptionHandling:
     """Test subscription handling in create_project.
 
-    Note: The internal wrapper function (_add_project_to_subscription) creates
-    SyncSessionLocal inside the thread and is difficult to unit test. Full coverage
-    requires integration tests with a real database.
+    The route delegates subscription writes to async pal-repository-backed service
+    helpers so it does not need a threadpool bridge.
     """
 
-    async def test_with_subscription_calls_run_in_threadpool(
-        self, mock_context, mock_async_session
-    ):
-        """Test that subscription_id triggers run_in_threadpool with correct IDs."""
+    async def test_with_subscription_calls_async_subscription_service(
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
+        """Test that subscription_id triggers the async subscription helper."""
         project_id = uuid.uuid4()
         subscription_id = uuid.uuid4()
 
@@ -74,23 +73,24 @@ class TestCreateProjectSubscriptionHandling:
                 return_value=mock_voice_repo,
             ),
             patch(
-                "api.routes.admin._projects.run_in_threadpool", new_callable=AsyncMock
-            ) as mock_threadpool,
+                "api.routes.admin._projects.subscription_service.create_project_subscription_data_async",
+                new_callable=AsyncMock,
+            ) as mock_create_project_subscription,
             patch("api.routes.admin._projects.build_project", return_value={}),
         ):
             await create_project(create_request, mock_context, mock_async_session)
 
-            # Verify threadpool was called with wrapper function and IDs
-            mock_threadpool.assert_called_once()
-            call_args = mock_threadpool.call_args[0]
-            assert callable(call_args[0])  # Wrapper function
-            assert call_args[1] == project_id  # project_id
-            assert call_args[2] == subscription_id  # subscription_id
+            mock_create_project_subscription.assert_awaited_once_with(
+                mock_async_session,
+                mock_project,
+                subscription_id,
+                "test-account",
+            )
 
-    async def test_without_subscription_skips_threadpool(
-        self, mock_context, mock_async_session
-    ):
-        """Test that no subscription_id skips run_in_threadpool."""
+    async def test_without_subscription_skips_subscription_service(
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
+        """Test that no subscription_id skips subscription writes."""
         create_request = CreateProjectRequest(
             account_name="test-account",
             name="test-project",
@@ -115,16 +115,19 @@ class TestCreateProjectSubscriptionHandling:
                 "api.routes.admin._projects.VoiceConfigRepositoryNew",
                 return_value=mock_voice_repo,
             ),
-            patch("api.routes.admin._projects.run_in_threadpool") as mock_threadpool,
+            patch(
+                "api.routes.admin._projects.subscription_service.create_project_subscription_data_async",
+                new_callable=AsyncMock,
+            ) as mock_create_project_subscription,
             patch("api.routes.admin._projects.build_project", return_value={}),
         ):
             await create_project(create_request, mock_context, mock_async_session)
 
-            mock_threadpool.assert_not_called()
+            mock_create_project_subscription.assert_not_awaited()
 
     async def test_subscription_value_error_raises_http_400(
-        self, mock_context, mock_async_session
-    ):
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
         """Test ValueError in subscription raises HTTP 400."""
         create_request = CreateProjectRequest(
             account_name="test-account",
@@ -146,7 +149,8 @@ class TestCreateProjectSubscriptionHandling:
                 "api.routes.admin._projects.VoiceConfigRepositoryNew"
             ) as mock_voice_cls,
             patch(
-                "api.routes.admin._projects.run_in_threadpool",
+                "api.routes.admin._projects.subscription_service.create_project_subscription_data_async",
+                new_callable=AsyncMock,
                 side_effect=ValueError("Invalid subscription"),
             ),
         ):
@@ -159,8 +163,8 @@ class TestCreateProjectSubscriptionHandling:
             assert "failed to add to subscription" in exc_info.value.detail
 
     async def test_subscription_runtime_error_raises_http_500(
-        self, mock_context, mock_async_session
-    ):
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
         """Test RuntimeError in subscription raises HTTP 500."""
         create_request = CreateProjectRequest(
             account_name="test-account",
@@ -182,7 +186,8 @@ class TestCreateProjectSubscriptionHandling:
                 "api.routes.admin._projects.VoiceConfigRepositoryNew"
             ) as mock_voice_cls,
             patch(
-                "api.routes.admin._projects.run_in_threadpool",
+                "api.routes.admin._projects.subscription_service.create_project_subscription_data_async",
+                new_callable=AsyncMock,
                 side_effect=RuntimeError("Database error"),
             ),
         ):
@@ -200,8 +205,8 @@ class TestCreateProjectVoiceConfig:
     """Test voice config creation in create_project."""
 
     async def test_creates_default_voice_config_when_none_exist(
-        self, mock_context, mock_async_session
-    ):
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
         """Test default voice config is created when project has none."""
         project_id = uuid.uuid4()
 
@@ -242,8 +247,8 @@ class TestCreateProjectVoiceConfig:
             assert "test-project" in voice_config_data.first_message
 
     async def test_skips_voice_config_when_already_exists(
-        self, mock_context, mock_async_session
-    ):
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
         """Test voice config creation is skipped when configs exist."""
         create_request = CreateProjectRequest(
             account_name="test-account",
@@ -281,22 +286,26 @@ class TestCreateProjectVoiceConfig:
 class TestDeleteProjectSubscriptionHandling:
     """Test subscription handling in delete_project.
 
-    Note: The internal wrapper function (_remove_project_from_subscription) creates
-    SyncSessionLocal inside the thread and is difficult to unit test. Full coverage
-    requires integration tests with a real database.
+    The route delegates subscription cleanup to async pal-repository-backed service
+    helpers so it does not need a threadpool bridge.
     """
 
-    async def test_calls_run_in_threadpool_with_correct_ids(
-        self, mock_context, mock_async_session
-    ):
-        """Verify subscription removal calls threadpool with correct IDs."""
+    async def test_calls_async_subscription_cleanup_with_correct_ids(
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
+        """Verify subscription removal calls async helpers with correct IDs."""
         project_id = uuid.uuid4()
         account_id = uuid.uuid4()
+        subscription_id = uuid.uuid4()
 
         mock_project = MagicMock()
         mock_project.id = project_id
         mock_project.account_id = account_id
         mock_project.name = "test-project"
+        mock_project.account = MagicMock()
+
+        mock_current_subscription = MagicMock()
+        mock_current_subscription.external_id = subscription_id
 
         mock_voice_repo = MagicMock()
         mock_voice_repo.delete_by_project_id = AsyncMock(return_value=2)
@@ -312,21 +321,31 @@ class TestDeleteProjectSubscriptionHandling:
                 return_value=mock_voice_repo,
             ),
             patch(
-                "api.routes.admin._projects.run_in_threadpool", new_callable=AsyncMock
-            ) as mock_threadpool,
+                "api.routes.admin._projects.subscription_service.get_current_subscription_data_async",
+                new_callable=AsyncMock,
+                return_value=mock_current_subscription,
+            ) as mock_get_current_subscription,
+            patch(
+                "api.routes.admin._projects.subscription_service.remove_project_subscription_data_async",
+                new_callable=AsyncMock,
+            ) as mock_remove_project_subscription,
         ):
             await delete_project(project_id, mock_context, mock_async_session)
 
-            # Verify threadpool was called with wrapper and IDs
-            mock_threadpool.assert_called_once()
-            call_args = mock_threadpool.call_args[0]
-            assert callable(call_args[0])  # Wrapper function
-            assert call_args[1] == account_id  # account_id
-            assert call_args[2] == project_id  # project_id
+            mock_get_current_subscription.assert_awaited_once_with(
+                mock_async_session,
+                mock_project.account,
+            )
+            mock_remove_project_subscription.assert_awaited_once_with(
+                mock_async_session,
+                account_id,
+                project_id,
+                subscription_id,
+            )
 
     async def test_delete_nonexistent_project_returns_early(
-        self, mock_context, mock_async_session
-    ):
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
         """Test deleting non-existent project returns None."""
         project_id = uuid.uuid4()
 
@@ -340,8 +359,8 @@ class TestDeleteProjectSubscriptionHandling:
             mock_async_session.commit.assert_not_called()
 
     async def test_delete_project_error_triggers_rollback(
-        self, mock_context, mock_async_session
-    ):
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
         """Test error during deletion triggers rollback."""
         project_id = uuid.uuid4()
 
@@ -356,7 +375,8 @@ class TestDeleteProjectSubscriptionHandling:
                 return_value=mock_project,
             ),
             patch(
-                "api.routes.admin._projects.run_in_threadpool",
+                "api.routes.admin._projects.subscription_service.get_current_subscription_data_async",
+                new_callable=AsyncMock,
                 side_effect=Exception("Database error"),
             ),
             pytest.raises(Exception),
@@ -365,7 +385,9 @@ class TestDeleteProjectSubscriptionHandling:
 
         mock_async_session.rollback.assert_called_once()
 
-    async def test_delete_removes_voice_configs(self, mock_context, mock_async_session):
+    async def test_delete_removes_voice_configs(
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
         """Test voice configs are deleted."""
         project_id = uuid.uuid4()
 
@@ -388,7 +410,9 @@ class TestDeleteProjectSubscriptionHandling:
                 return_value=mock_voice_repo,
             ),
             patch(
-                "api.routes.admin._projects.run_in_threadpool", new_callable=AsyncMock
+                "api.routes.admin._projects.subscription_service.get_current_subscription_data_async",
+                new_callable=AsyncMock,
+                return_value=None,
             ),
         ):
             await delete_project(project_id, mock_context, mock_async_session)

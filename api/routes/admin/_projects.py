@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from starlette.concurrency import run_in_threadpool
 
 from api.schemas.admin.project import (
     BatchCreateProjectsRequest,
@@ -308,36 +307,13 @@ async def create_project(
             project_params,
         )
 
-        # If subscription_id is provided, add the project to the subscription
-        # NOTE: subscription_service is sync-only, using run_in_threadpool to bridge async/sync
         if create_request.subscription_id:
             try:
-                # Wrapper to handle sync session in thread - pass only scalar IDs
-                def _add_project_to_subscription(
-                    project_id: uuid.UUID, subscription_id: uuid.UUID
-                ):
-                    from db.session import SyncSessionLocal
-
-                    sync_session = SyncSessionLocal()
-                    try:
-                        # Load project within sync session
-                        project_obj = project_service.get_project(
-                            sync_session, project_id
-                        )
-                        if not project_obj:
-                            raise ValueError(f"Project {project_id} not found")
-
-                        subscription_service.create_project_subscription(
-                            sync_session, project_obj, subscription_id
-                        )
-                        sync_session.commit()
-                    finally:
-                        sync_session.close()
-
-                await run_in_threadpool(
-                    _add_project_to_subscription,
-                    db_project.id,
+                await subscription_service.create_project_subscription_data_async(
+                    session,
+                    db_project,
                     create_request.subscription_id,
+                    create_request.account_name,
                 )
 
             except ValueError as subscription_err:
@@ -443,30 +419,21 @@ async def delete_project(
         return
 
     try:
-        # Handle subscription cleanup - subscription_service is sync-only
-        # Use run_in_threadpool to bridge async/sync
-        # Wrapper to handle sync session in thread - pass only scalar IDs
-        def _remove_project_from_subscription(
-            account_id: uuid.UUID, project_id: uuid.UUID
-        ):
-            from db.session import SyncSessionLocal
-
-            sync_session = SyncSessionLocal()
-            try:
-                curr_sub, _ = subscription_service.get_account_subscriptions(
-                    sync_session, account_id
+        current_subscription = None
+        if project.account:
+            current_subscription = (
+                await subscription_service.get_current_subscription_data_async(
+                    session,
+                    project.account,
                 )
-                if curr_sub:
-                    subscription_service.remove_project_subscription(
-                        sync_session, project_id, curr_sub.external_id
-                    )
-                sync_session.commit()
-            finally:
-                sync_session.close()
-
-        await run_in_threadpool(
-            _remove_project_from_subscription, project.account_id, project.id
-        )
+            )
+        if current_subscription:
+            await subscription_service.remove_project_subscription_data_async(
+                session,
+                project.account_id,
+                project.id,
+                current_subscription.external_id,
+            )
 
         # Delete all voice configs for this project
         voice_repo = VoiceConfigRepositoryNew(session)

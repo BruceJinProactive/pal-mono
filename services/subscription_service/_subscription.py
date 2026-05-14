@@ -9,6 +9,15 @@ from sqlalchemy.orm import Session
 
 import db
 from db import ConversationRepositoryAsync
+from db.pal_repository.account_subscription import (
+    AccountSubscriptionRepository as PalAccountSubscriptionRepository,
+)
+from db.pal_repository.data_classes.account_subscription import AccountSubscriptionData
+from db.pal_repository.data_classes.project_subscription import ProjectSubscriptionData
+from db.pal_repository.data_classes.subscription_plan import SubscriptionPlanData
+from db.pal_repository.project_subscription import (
+    ProjectSubscriptionRepository as PalProjectSubscriptionRepository,
+)
 from db.repositories.subscription_repository import (
     AccountSubscriptionRepository,
     AsyncAccountSubscriptionRepository,
@@ -578,7 +587,9 @@ def add_project_to_subscription(
     return project_subscription
 
 
-def _build_call_tiers(plan: db.SubscriptionPlan):
+def _build_call_tiers(
+    plan: db.SubscriptionPlan | SubscriptionPlanData,
+) -> list[MeterTier]:
     has_call_quota = plan.call_quota and plan.call_quota > 0
     tiers = [
         MeterTier(
@@ -597,7 +608,9 @@ def _build_call_tiers(plan: db.SubscriptionPlan):
     return tiers
 
 
-def _build_order_tiers(plan: db.SubscriptionPlan):
+def _build_order_tiers(
+    plan: db.SubscriptionPlan | SubscriptionPlanData,
+) -> list[MeterTier]:
     has_order_quota = plan.order_quota and plan.order_quota > 0
     tiers = [
         MeterTier(
@@ -664,6 +677,263 @@ async def get_current_subscription_async(
             },
         )
     return subscription
+
+
+async def get_account_subscription_data_async(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    external_id: uuid.UUID,
+) -> AccountSubscriptionData | None:
+    """
+    Get the latest version of an account subscription by account_id and external_id.
+
+    Uses the async pal repository, which returns immutable data objects instead of
+    leaking ORM rows into the service layer.
+    """
+    account_subscription_repository = PalAccountSubscriptionRepository(session)
+    return await account_subscription_repository.get_by_account_and_external_id(
+        account_id,
+        external_id,
+    )
+
+
+async def get_current_subscription_data_async(
+    session: AsyncSession, account: db.Account
+) -> AccountSubscriptionData | None:
+    if account.current_subscription_id is None:
+        return None
+
+    subscription = await get_account_subscription_data_async(
+        session,
+        account.id,
+        account.current_subscription_id,
+    )
+
+    if not subscription:
+        logger.error(
+            "Referenced subscription does not exist, account data is polluted!",
+            extra={
+                "account_id": account.id,
+                "subscription_external_id": account.current_subscription_id,
+            },
+        )
+    return subscription
+
+
+async def add_project_to_subscription_data_async(
+    session: AsyncSession,
+    subscription: AccountSubscriptionData,
+    project: db.Project,
+    account_name: str,
+) -> ProjectSubscriptionData:
+    if not subscription.subscription_plan:
+        raise ValueError("Subscription Plan not found.")
+
+    plan = subscription.subscription_plan
+    project_subscription_repository = PalProjectSubscriptionRepository(session)
+
+    stripe_product_id = _stripe_product.create_product_for_project(
+        project, account_name, plan.name
+    )
+
+    await project_subscription_repository.create(
+        project.id,
+        subscription.external_id,
+        stripe_product_id=stripe_product_id,
+    )
+    project_subscription = await project_subscription_repository.get(
+        project.id,
+        subscription.external_id,
+    )
+    if not project_subscription:
+        raise ValueError(
+            f"Failed to create project subscription for project {project.id}"
+        )
+
+    if plan.monthly_fee and plan.monthly_fee > 0:
+        base_price_id = _stripe_product.create_product_price(
+            stripe_product_id,
+            nickname=f"Flat fee - {project.display_name}",
+            project=project,
+            flat_fee=plan.monthly_fee,
+        )
+        updated_project_subscription = await project_subscription_repository.update(
+            project_subscription.id,
+            base_price_id=base_price_id,
+        )
+        if not updated_project_subscription:
+            raise ValueError(
+                f"Failed to update base price for project subscription {project_subscription.id}"
+            )
+        project_subscription = updated_project_subscription
+        if subscription.stripe_subscription_id:
+            _stripe_subscription.add_subscription_item(
+                subscription.stripe_subscription_id,
+                base_price_id,
+            )
+    else:
+        logger.debug(
+            "Subscription plan has no monthly fee, skipping base price creation"
+        )
+
+    call_meter_id = _stripe_product.create_billing_meter(
+        f"{project.name} calls",
+        _stripe_product.get_call_meter_event_name(project.id),
+    )
+    call_price_id = _stripe_product.create_product_price(
+        stripe_product_id,
+        nickname=f"Calls - {project.display_name}",
+        project=project,
+        meter_tiers=_build_call_tiers(plan),
+        meter_id=call_meter_id,
+    )
+    updated_project_subscription = await project_subscription_repository.update(
+        project_subscription.id,
+        call_price_id=call_price_id,
+    )
+    if not updated_project_subscription:
+        raise ValueError(
+            f"Failed to update call price for project subscription {project_subscription.id}"
+        )
+    project_subscription = updated_project_subscription
+    if subscription.stripe_subscription_id:
+        _stripe_subscription.add_subscription_item(
+            subscription.stripe_subscription_id,
+            call_price_id,
+        )
+
+    if plan.order_overage_charge and plan.order_overage_charge > 0:
+        order_meter_id = _stripe_product.create_billing_meter(
+            f"{project.name} orders",
+            _stripe_product.get_order_meter_event_name(project.id),
+        )
+        order_price_id = _stripe_product.create_product_price(
+            stripe_product_id,
+            nickname=f"Orders - {project.display_name}",
+            meter_tiers=_build_order_tiers(plan),
+            project=project,
+            meter_id=order_meter_id,
+        )
+        updated_project_subscription = await project_subscription_repository.update(
+            project_subscription.id,
+            order_price_id=order_price_id,
+        )
+        if not updated_project_subscription:
+            raise ValueError(
+                f"Failed to update order price for project subscription {project_subscription.id}"
+            )
+        project_subscription = updated_project_subscription
+        if subscription.stripe_subscription_id:
+            _stripe_subscription.add_subscription_item(
+                subscription.stripe_subscription_id,
+                order_price_id,
+            )
+
+    logger.info(
+        "Created project subscription",
+        extra={
+            "project_id": str(project.id),
+            "subscription_id": str(subscription.external_id),
+            "project_subscription_id": str(project_subscription.id),
+        },
+    )
+    return project_subscription
+
+
+async def create_project_subscription_data_async(
+    session: AsyncSession,
+    project: db.Project,
+    subscription_id: uuid.UUID,
+    account_name: str,
+) -> ProjectSubscriptionData:
+    """
+    Create a new project subscription using async pal repositories.
+    """
+    project_subscription_repository = PalProjectSubscriptionRepository(session)
+
+    subscription = await get_account_subscription_data_async(
+        session,
+        project.account_id,
+        subscription_id,
+    )
+    if not subscription:
+        raise ValueError(f"Subscription {subscription_id} does not exist")
+
+    existing_project_subscription = await project_subscription_repository.get(
+        project.id,
+        subscription_id,
+    )
+    if existing_project_subscription:
+        raise ValueError(
+            f"Project subscription already exists for project {project.id} and subscription {subscription_id}"
+        )
+
+    return await add_project_to_subscription_data_async(
+        session,
+        subscription,
+        project,
+        account_name,
+    )
+
+
+async def remove_project_subscription_data_async(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    project_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+    remove_subscription_item: bool = True,
+) -> None:
+    """
+    Remove a project subscription using async pal repositories.
+    """
+    project_subscription_repository = PalProjectSubscriptionRepository(session)
+
+    project_subscription = await project_subscription_repository.get(
+        project_id,
+        subscription_id,
+    )
+    if not project_subscription:
+        logger.debug(
+            "Project subscription already removed or does not exist for project %s and subscription %s",
+            project_id,
+            subscription_id,
+        )
+        return
+
+    subscription = await get_account_subscription_data_async(
+        session,
+        account_id,
+        subscription_id,
+    )
+    if not subscription:
+        raise ValueError(f"Subscription {subscription_id} does not exist")
+
+    if remove_subscription_item and subscription.stripe_subscription_id:
+        if project_subscription.base_price_id:
+            _stripe_subscription.remove_subscription_item(
+                subscription.stripe_subscription_id,
+                project_subscription.base_price_id,
+            )
+        if project_subscription.call_price_id:
+            _stripe_subscription.remove_subscription_item(
+                subscription.stripe_subscription_id,
+                project_subscription.call_price_id,
+            )
+        if project_subscription.order_price_id:
+            _stripe_subscription.remove_subscription_item(
+                subscription.stripe_subscription_id,
+                project_subscription.order_price_id,
+            )
+
+    await project_subscription_repository.soft_delete(project_id, subscription_id)
+
+    logger.info(
+        "Successfully removed project from subscription!",
+        extra={
+            "project_id": project_id,
+            "account_subscription_id": subscription.external_id,
+        },
+    )
 
 
 def get_account_subscriptions(
