@@ -175,6 +175,7 @@ async def generate_observation(
     camera_id: uuid.UUID,
     image_url: str | None = None,
     image_bytes: bytes | None = None,
+    is_test: bool = False,
 ) -> GenerateObservationResponse | None:
     config_repo = VisionCameraConfigurationRepository(session)
     config = await config_repo.get_by_signal_source(camera_id)
@@ -375,7 +376,7 @@ async def generate_observation(
             )
         )
 
-    if image_relevant:
+    if image_relevant and not is_test:
         event_repo = VisionStateChangeEventRepository(session)
         for obs in entity_observations:
             if obs.state_id is None:

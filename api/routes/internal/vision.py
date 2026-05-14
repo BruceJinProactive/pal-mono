@@ -34,6 +34,10 @@ async def create_observation(
         default=None,
         description="Optional image file upload for testing. Takes precedence over image_url.",
     ),
+    is_test: bool = Form(
+        default=False,
+        description="If true, run observation without updating entity state or creating events.",
+    ),
     session: AsyncSession = Depends(db.get_db_async),
 ):
     """
@@ -90,6 +94,7 @@ async def create_observation(
             camera_id=camera_id,
             image_url=image_url,
             image_bytes=image_bytes,
+            is_test=is_test,
         )
 
         if result is None:
