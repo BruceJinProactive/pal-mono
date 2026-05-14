@@ -69,31 +69,29 @@ class TestFormatRoiHint:
     def test_empty_dict(self):
         assert _format_roi_hint({}) is None
 
-    def test_with_normalized_coordinates(self):
+    def test_with_coordinates(self):
         roi: dict[str, object] = {
-            "x": 0.411,
-            "y": 0.249,
-            "width": 0.207,
-            "height": 0.234,
+            "x": 411,
+            "y": 249,
+            "width": 207,
+            "height": 234,
         }
         result = _format_roi_hint(roi)
         assert result == (
-            "Look at the area between 41%-62% from the left "
-            "and 25%-48% from the top of the image, "
-            "ignore other area"
+            "Focus on the specific area defined by the normalized coordinates "
+            "[411, 249, 207, 234] (scale 0-1000). Investigate this region only."
         )
 
     def test_with_w_h_keys(self):
-        roi: dict[str, object] = {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}
+        roi: dict[str, object] = {"x": 100, "y": 200, "w": 300, "h": 400}
         result = _format_roi_hint(roi)
         assert result == (
-            "Look at the area between 10%-40% from the left "
-            "and 20%-60% from the top of the image, "
-            "ignore other area"
+            "Focus on the specific area defined by the normalized coordinates "
+            "[100, 200, 300, 400] (scale 0-1000). Investigate this region only."
         )
 
     def test_with_missing_keys(self):
-        roi: dict[str, object] = {"x": 0.5, "label": "zone-1"}
+        roi: dict[str, object] = {"x": 500, "label": "zone-1"}
         result = _format_roi_hint(roi)
         assert result is None
 

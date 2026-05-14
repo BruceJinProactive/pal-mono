@@ -92,20 +92,14 @@ def _format_roi_hint(roi_hint: dict[str, object] | None) -> str | None:
     if x_val is None or y_val is None or w_val is None or h_val is None:
         return None
 
-    x = float(str(x_val))
-    y = float(str(y_val))
-    width = float(str(w_val))
-    height = float(str(h_val))
-
-    left_start = round(x * 100)
-    left_end = round((x + width) * 100)
-    top_start = round(y * 100)
-    top_end = round((y + height) * 100)
+    x = int(float(str(x_val)))
+    y = int(float(str(y_val)))
+    w = int(float(str(w_val)))
+    h = int(float(str(h_val)))
 
     return (
-        f"Look at the area between {left_start}%-{left_end}% from the left "
-        f"and {top_start}%-{top_end}% from the top of the image, "
-        f"ignore other area"
+        f"Focus on the specific area defined by the normalized coordinates "
+        f"[{x}, {y}, {w}, {h}] (scale 0-1000). Investigate this region only."
     )
 
 
