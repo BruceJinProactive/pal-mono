@@ -642,11 +642,14 @@ async def create_realtime_session(
     # Append tool-call preamble instruction.
     system_prompt += (
         "\n\n# Tools\n"
-        "- Before any tool call, you MUST say one short preamble like "
-        '"I\'m checking that now.", "Let me look that up.", '
-        '"One moment.", "Sure, let me check.", or '
-        '"I can check that for you." Then call the tool immediately. '
-        "Do not silently call tools without a spoken preamble."
+        "- Before any tool call, you MUST briefly signal that you need a moment, "
+        "then call the tool immediately.\n"
+        "- Prefer short, natural preambles such as "
+        '"one moment", "one second", "hang on", "let me check", '
+        '"I can check that", or a brief thinking sound like "hmm" or "mhm" '
+        "when appropriate.\n"
+        "- Keep it to one short phrase. Do not silently call tools without a "
+        "spoken preamble. Do not overuse filler."
     )
 
     # Load voice configuration for this project

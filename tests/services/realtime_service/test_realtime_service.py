@@ -886,8 +886,13 @@ class TestCreateRealtimeSession:
         assert "Customer Phone: +15559876543" in config.system_prompt
         assert "Do not ask the customer for their phone number" in config.system_prompt
         assert "# Tools" in config.system_prompt
-        assert "MUST say one short preamble" in config.system_prompt
+        assert "MUST briefly signal that you need a moment" in config.system_prompt
         assert "Before any tool call" in config.system_prompt
+        assert '"one second"' in config.system_prompt
+        assert '"hang on"' in config.system_prompt
+        assert '"hmm"' in config.system_prompt
+        assert '"mhm"' in config.system_prompt
+        assert "Do not overuse filler" in config.system_prompt
         assert "# Chat Preambles" not in config.system_prompt
 
     @pytest.mark.asyncio
