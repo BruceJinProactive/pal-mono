@@ -19,7 +19,6 @@ from services.realtime_service._config import RealtimeConfig
 from services.realtime_service._implementation import (
     RealtimeSession,
     _append_realtime_call_context,
-    _append_realtime_response_preamble_guidance,
     build_pal_agent_provider_tools,
     create_realtime_session,
 )
@@ -738,23 +737,6 @@ class TestRealtimeCallContextPrompt:
         assert prompt == "Base prompt"
 
 
-class TestRealtimeResponsePreamblePrompt:
-    """Test realtime response preamble guidance."""
-
-    def test_appends_contextual_filler_guidance(self) -> None:
-        prompt = _append_realtime_response_preamble_guidance("Base prompt")
-
-        assert "# Tools" in prompt
-        assert "# Chat Preambles" in prompt
-        assert "Use a short filler or preamble only when you need a moment" in prompt
-        assert "Do not add filler before direct answers" in prompt
-        assert "Before any tool call" in prompt
-        assert "for example, before looking up details" in prompt
-        assert "Let me think for a second." in prompt
-        assert "I can check that for you." in prompt
-        assert "Do not stack multiple filler phrases" in prompt
-
-
 class TestCreateRealtimeSession:
     """Test create_realtime_session factory function."""
 
@@ -903,6 +885,10 @@ class TestCreateRealtimeSession:
         config = mock_session_cls.call_args.kwargs["config"]
         assert "Customer Phone: +15559876543" in config.system_prompt
         assert "Do not ask the customer for their phone number" in config.system_prompt
+        assert "# Tools" in config.system_prompt
+        assert "MUST say one short preamble" in config.system_prompt
+        assert "Before any tool call" in config.system_prompt
+        assert "# Chat Preambles" not in config.system_prompt
 
     @pytest.mark.asyncio
     async def test_create_realtime_session_project_not_found(self) -> None:

@@ -71,31 +71,6 @@ def _append_realtime_call_context(system_prompt: str, caller_id: str | None) -> 
     )
 
 
-def _append_realtime_response_preamble_guidance(system_prompt: str) -> str:
-    """Append realtime-only guidance for when to use audible preambles."""
-    return (
-        f"{system_prompt}\n\n"
-        "# Tools\n"
-        "- Before any tool call, say one short natural line such as "
-        '"I\'m checking that now.", "Let me look that up.", "One moment.", '
-        '"Sure, let me check.", or "I can check that for you.", then call the '
-        "tool immediately.\n\n"
-        "# Chat Preambles\n"
-        "- Use a short filler or preamble only when you need a moment, "
-        "for example, before looking up details, checking pricing or availability, "
-        "submitting or changing an order, confirming store information, or "
-        "thinking through a non-trivial answer.\n"
-        "- Do not add filler before direct answers, greetings, confirmations, or "
-        "simple yes/no responses.\n"
-        "- Use one short natural line such as "
-        '"Let me think for a second.", "Give me just a moment.", '
-        '"I can check that for you.", or "Let me make sure I have that right."\n'
-        "- Match the preamble to the task; for example, use order, menu, or store "
-        "detail wording when that is what you are checking.\n"
-        "- Do not stack multiple filler phrases or narrate internal reasoning."
-    )
-
-
 class RealtimeSession:
     """
     Manages OpenAI Realtime API connection for voice conversations.
@@ -664,7 +639,15 @@ async def create_realtime_session(
         [t["name"] for t in tools],
     )
 
-    system_prompt = _append_realtime_response_preamble_guidance(system_prompt)
+    # Append tool-call preamble instruction.
+    system_prompt += (
+        "\n\n# Tools\n"
+        "- Before any tool call, you MUST say one short preamble like "
+        '"I\'m checking that now.", "Let me look that up.", '
+        '"One moment.", "Sure, let me check.", or '
+        '"I can check that for you." Then call the tool immediately. '
+        "Do not silently call tools without a spoken preamble."
+    )
 
     # Load voice configuration for this project
     vc_result = await session.execute(
