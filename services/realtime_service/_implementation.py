@@ -55,6 +55,22 @@ _SPEECH_RATE_TO_SPEED: dict[SpeechRate, float] = {
 }
 
 
+def _append_realtime_call_context(system_prompt: str, caller_id: str | None) -> str:
+    """Append caller metadata that is known outside the realtime transcript."""
+    if not caller_id:
+        return system_prompt
+
+    return (
+        f"{system_prompt}\n\n"
+        "# Realtime Call Context\n"
+        f"- Customer Phone: {caller_id}\n"
+        "- The customer phone comes from the active realtime call context.\n"
+        "- Do not ask the customer for their phone number when this value is present.\n"
+        "- For tools that require digits-only US phone numbers, strip a leading +1 "
+        "before passing the phone."
+    )
+
+
 class RealtimeSession:
     """
     Manages OpenAI Realtime API connection for voice conversations.
@@ -594,6 +610,8 @@ async def create_realtime_session(
 
     if not system_prompt:
         raise ValueError(f"Agent prompt is empty for agent: {agent.id}")
+
+    system_prompt = _append_realtime_call_context(system_prompt, caller_id)
 
     # Load tools for this agent
     tool_config = await raw_config._get_agent_tools(session)

@@ -18,6 +18,7 @@ import pytest
 from services.realtime_service._config import RealtimeConfig
 from services.realtime_service._implementation import (
     RealtimeSession,
+    _append_realtime_call_context,
     build_pal_agent_provider_tools,
     create_realtime_session,
 )
@@ -716,6 +717,26 @@ class TestRealtimeSessionClose:
 # ---------------------------------------------------------------------------
 
 
+class TestRealtimeCallContextPrompt:
+    """Test realtime call context prompt injection."""
+
+    def test_appends_customer_phone_context_when_caller_id_present(self) -> None:
+        prompt = _append_realtime_call_context(
+            "Base prompt",
+            caller_id="+15551234567",
+        )
+
+        assert "# Realtime Call Context" in prompt
+        assert "Customer Phone: +15551234567" in prompt
+        assert "Do not ask the customer for their phone number" in prompt
+        assert "strip a leading +1" in prompt
+
+    def test_leaves_prompt_unchanged_when_caller_id_missing(self) -> None:
+        prompt = _append_realtime_call_context("Base prompt", caller_id=None)
+
+        assert prompt == "Base prompt"
+
+
 class TestCreateRealtimeSession:
     """Test create_realtime_session factory function."""
 
@@ -793,6 +814,77 @@ class TestCreateRealtimeSession:
 
         assert result == mock_realtime_session
         mock_realtime_session.connect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_realtime_session_includes_caller_phone_in_prompt(
+        self,
+    ) -> None:
+        """create_realtime_session passes caller phone context to RealtimeConfig."""
+        mock_agent = MagicMock()
+        mock_agent.id = uuid.uuid4()
+        mock_agent.raw_config = {}
+        mock_agent.memory_enabled = False
+        mock_agent.filler_words = {}
+
+        mock_project = MagicMock()
+        mock_project.id = uuid.uuid4()
+        mock_project.name = "Test Project"
+        mock_project.timezone = "America/New_York"
+        mock_project.agent = mock_agent
+        mock_project.raw_config = {}
+
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+        mock_account.name = "Test Account"
+        mock_project.account = mock_account
+
+        mock_project_result = MagicMock()
+        mock_project_result.scalar_one_or_none.return_value = mock_project
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([])
+
+        mock_vc_scalars = MagicMock()
+        mock_vc_scalars.first.return_value = None
+        mock_vc_result = MagicMock()
+        mock_vc_result.scalars.return_value = mock_vc_scalars
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(
+            side_effect=[mock_project_result, mock_pi_result, mock_vc_result]
+        )
+
+        with (
+            patch(
+                "services.realtime_service._implementation.RawConfig"
+            ) as mock_raw_config_cls,
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test-api-key"}),
+            patch(
+                "services.realtime_service._implementation.RealtimeSession"
+            ) as mock_session_cls,
+        ):
+            mock_raw_config_instance = AsyncMock()
+            mock_raw_config_instance._build_agent_prompt = AsyncMock(
+                return_value="Test system prompt"
+            )
+            mock_raw_config_instance._get_agent_tools = AsyncMock(
+                return_value=MagicMock(identifiers=[])
+            )
+            mock_raw_config_cls.return_value = mock_raw_config_instance
+
+            mock_realtime_session = AsyncMock()
+            mock_realtime_session.connect = AsyncMock()
+            mock_session_cls.return_value = mock_realtime_session
+
+            await create_realtime_session(
+                mock_session,
+                recipient_id="+15551234567",
+                caller_id="+15559876543",
+            )
+
+        config = mock_session_cls.call_args.kwargs["config"]
+        assert "Customer Phone: +15559876543" in config.system_prompt
+        assert "Do not ask the customer for their phone number" in config.system_prompt
 
     @pytest.mark.asyncio
     async def test_create_realtime_session_project_not_found(self) -> None:
