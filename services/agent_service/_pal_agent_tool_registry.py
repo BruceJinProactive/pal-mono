@@ -178,6 +178,7 @@ _TOAST_SPEC_FIELDS = [
     "enable_hosted_checkout",
     "revenue_center_id",
     "seed_force_show_defaults",
+    "require_payment_before_kitchen",
 ]
 
 _TOAST_DEFAULT_TOKEN_URL = (
