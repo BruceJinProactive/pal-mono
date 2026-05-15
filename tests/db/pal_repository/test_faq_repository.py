@@ -110,6 +110,8 @@ class TestGetByAccountId:
         mock_session.execute.return_value = mock_result
         results = await repo.get_by_account_id(uuid.uuid4())
         assert len(results) == 1
+        statement = mock_session.execute.call_args.args[0]
+        assert "faq.project_id IS NULL" in str(statement)
 
     @pytest.mark.asyncio
     async def test_exception_propagates(

@@ -25,6 +25,7 @@ from api.schemas.admin.subscription import (
     Subscription,
     SubscriptionPlan,
 )
+from db.pal_repository.data_classes.faq import FAQData
 from db.repositories.prompt_repository import PromptRepository
 from db.tables.accounts import OnboardingMethod
 from services.admin_service.schema import CreatedProjectInfo
@@ -546,8 +547,8 @@ def build_stripe_customer(customer_info: CustomerInfo) -> StripeCustomer:
     )
 
 
-def build_faq(faq: db.FAQ) -> FAQ:
-    """Build FAQ response from database FAQ."""
+def build_faq(faq: FAQData) -> FAQ:
+    """Build FAQ response from FAQ data."""
     return FAQ(
         id=str(faq.id),
         account_id=str(faq.account_id),

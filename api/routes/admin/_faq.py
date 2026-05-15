@@ -1,9 +1,8 @@
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-import db
 from api.schemas.admin.faq import (
     FAQ,
     CreateFAQRequest,
@@ -19,10 +18,10 @@ async def create_faq(
     account_name: str,
     faq_create: CreateFAQRequest,
     context: UserContext,
-    session: Session,
+    session: AsyncSession,
 ) -> FAQ:
     """Authorization is handled by require_account_permission in route decorator."""
-    account = account_service.get_account(session, account_name)
+    account = await account_service.get_account_async(session, account_name)
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -31,24 +30,24 @@ async def create_faq(
 
     project_uuid = UUID(faq_create.project_id) if faq_create.project_id else None
 
-    faq = db.FAQ(
+    persisted_faq = await faq_service.create_faq(
+        session,
         account_id=account.id,
         project_id=project_uuid,
         question=faq_create.question,
         answer=faq_create.answer,
     )
-    persisted_faq = faq_service.create_faq(session, faq)
     return _builder.build_faq(persisted_faq)
 
 
 async def get_faqs(
     account_name: str,
     context: UserContext,
-    session: Session,
+    session: AsyncSession,
     project_id: str | None = None,
 ) -> ListFAQsResponse:
     """Authorization is handled by require_account_permission in route decorator."""
-    account = account_service.get_account(session, account_name)
+    account = await account_service.get_account_async(session, account_name)
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -57,7 +56,7 @@ async def get_faqs(
 
     project_uuid = UUID(project_id) if project_id else None
 
-    faqs = faq_service.get_faqs_by_account_id(session, account.id, project_uuid)
+    faqs = await faq_service.get_faqs_by_account_id(session, account.id, project_uuid)
     return ListFAQsResponse(
         faqs=[_builder.build_faq(faq) for faq in faqs],
         total=len(faqs),
@@ -69,17 +68,17 @@ async def update_faq(
     faq_id: UUID,
     faq_update: UpdateFAQRequest,
     context: UserContext,
-    session: Session,
+    session: AsyncSession,
 ) -> FAQ:
     """Authorization is handled by require_account_permission in route decorator."""
-    account = account_service.get_account(session, account_name)
+    account = await account_service.get_account_async(session, account_name)
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Account {account_name} does not exist.",
         )
 
-    existing_faq = faq_service.get_faq_by_id(session, faq_id)
+    existing_faq = await faq_service.get_faq_by_id(session, faq_id)
     if not existing_faq:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -91,8 +90,11 @@ async def update_faq(
             detail=f"FAQ {faq_id} does not belong to account {account_name}.",
         )
 
-    updates = faq_update.model_dump(exclude_unset=True)
-    updated_faq = faq_service.update_faq(session, faq_id, updates)
+    updates: dict[str, object] = faq_update.model_dump(exclude_unset=True)
+    if "project_id" in updates and updates["project_id"] is not None:
+        updates["project_id"] = UUID(str(updates["project_id"]))
+
+    updated_faq = await faq_service.update_faq(session, faq_id, updates)
     if not updated_faq:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -106,17 +108,17 @@ async def delete_faq(
     account_name: str,
     faq_id: UUID,
     context: UserContext,
-    session: Session,
+    session: AsyncSession,
 ) -> None:
     """Authorization is handled by require_account_permission in route decorator."""
-    account = account_service.get_account(session, account_name)
+    account = await account_service.get_account_async(session, account_name)
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Account {account_name} does not exist.",
         )
 
-    existing_faq = faq_service.get_faq_by_id(session, faq_id)
+    existing_faq = await faq_service.get_faq_by_id(session, faq_id)
     if not existing_faq:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -128,7 +130,7 @@ async def delete_faq(
             detail=f"FAQ {faq_id} does not belong to account {account_name}.",
         )
 
-    deleted = faq_service.delete_faq(session, faq_id)
+    deleted = await faq_service.delete_faq(session, faq_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

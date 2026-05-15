@@ -1,32 +1,50 @@
-from uuid import UUID
+import uuid
+from datetime import UTC, datetime
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-import db
-
-
-def create_faq(session: Session, faq: db.FAQ) -> db.FAQ:
-    faq_repository = db.FAQRepository(session)
-    return faq_repository.create_faq(faq)
+from db.pal_repository.data_classes.faq import FAQData
+from db.pal_repository.faq import FAQRepository
 
 
-def get_faq_by_id(session: Session, faq_id: UUID) -> db.FAQ | None:
-    faq_repository = db.FAQRepository(session)
-    return faq_repository.get_faq_by_id(faq_id)
+async def create_faq(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    question: str,
+    answer: str,
+    project_id: uuid.UUID | None = None,
+) -> FAQData:
+    faq_repository = FAQRepository(session)
+    record = FAQData(
+        id=uuid.uuid4(),
+        account_id=account_id,
+        project_id=project_id,
+        question=question,
+        answer=answer,
+        created_at=datetime.now(UTC),
+    )
+    return await faq_repository.create(record)
 
 
-def get_faqs_by_account_id(
-    session: Session, account_id: UUID, project_id: UUID | None = None
-) -> list[db.FAQ]:
-    faq_repository = db.FAQRepository(session)
-    return faq_repository.get_faqs_by_account_id(account_id, project_id)
+async def get_faq_by_id(session: AsyncSession, faq_id: uuid.UUID) -> FAQData | None:
+    faq_repository = FAQRepository(session)
+    return await faq_repository.get_by_id(faq_id)
 
 
-def update_faq(session: Session, faq_id: UUID, updates: dict) -> db.FAQ | None:
-    faq_repository = db.FAQRepository(session)
-    return faq_repository.update_faq(faq_id, updates)
+async def get_faqs_by_account_id(
+    session: AsyncSession, account_id: uuid.UUID, project_id: uuid.UUID | None = None
+) -> list[FAQData]:
+    faq_repository = FAQRepository(session)
+    return await faq_repository.get_by_account_id(account_id, project_id)
 
 
-def delete_faq(session: Session, faq_id: UUID) -> bool:
-    faq_repository = db.FAQRepository(session)
-    return faq_repository.delete_faq(faq_id)
+async def update_faq(
+    session: AsyncSession, faq_id: uuid.UUID, updates: dict[str, object]
+) -> FAQData | None:
+    faq_repository = FAQRepository(session)
+    return await faq_repository.update(faq_id, **updates)
+
+
+async def delete_faq(session: AsyncSession, faq_id: uuid.UUID) -> bool:
+    faq_repository = FAQRepository(session)
+    return await faq_repository.delete(faq_id)

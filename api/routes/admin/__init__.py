@@ -1282,7 +1282,7 @@ async def get_faqs(
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
     ),
-    session: Session = Depends(db.get_db),
+    session: AsyncSession = Depends(db.get_db_async),
     project_id: str | None = Query(None, description="Optional project ID"),
 ) -> ListFAQsResponse:
     """
@@ -1298,7 +1298,7 @@ async def create_faq(
     context: UserContext = Depends(
         require_account_permission("account.write", authenticate_user)
     ),
-    session: Session = Depends(db.get_db),
+    session: AsyncSession = Depends(db.get_db_async),
 ) -> FAQ:
     """
     Create an FAQ for an account.
@@ -1314,7 +1314,7 @@ async def update_faq(
     context: UserContext = Depends(
         require_account_permission("account.write", authenticate_user)
     ),
-    session: Session = Depends(db.get_db),
+    session: AsyncSession = Depends(db.get_db_async),
 ) -> FAQ:
     """
     Update an FAQ
@@ -1329,7 +1329,7 @@ async def delete_faq(
     context: UserContext = Depends(
         require_account_permission("account.write", authenticate_user)
     ),
-    session: Session = Depends(db.get_db),
+    session: AsyncSession = Depends(db.get_db_async),
 ) -> None:
     """
     Delete an FAQ

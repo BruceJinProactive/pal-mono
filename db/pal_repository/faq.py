@@ -49,6 +49,8 @@ class FAQRepository:
             query = select(FAQ).filter(FAQ.account_id == account_id)
             if project_id is not None:
                 query = query.filter(FAQ.project_id == project_id)
+            else:
+                query = query.filter(FAQ.project_id.is_(None))
             result = await self.session.execute(query)
             rows = result.scalars().all()
             return [_to_data(row) for row in rows]
