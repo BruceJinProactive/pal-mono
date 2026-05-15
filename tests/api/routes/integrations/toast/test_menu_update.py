@@ -131,9 +131,16 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
     project = SimpleNamespace(name="Pepperonis", product_info="old menu")
     project_integration = SimpleNamespace(
         id=uuid4(),
-        config={"submit_orders": False},
+        config={"submit_orders": False, "menus": ["Dine-In Menu"]},
     )
-    raw_menu = {"menus": [{"guid": "menu-guid"}]}
+    raw_menu = {
+        "menus": [
+            {"name": "Dine-In Menu", "guid": "menu-guid"},
+            {"name": "Hidden Menu", "guid": "menu-guid"},
+            {"name": "dine-in menu", "guid": "lowercase-menu-guid"},
+        ]
+    }
+    filtered_raw_menu = {"menus": [{"name": "Dine-In Menu", "guid": "menu-guid"}]}
     compiled_menu = {"menus": {"menu-guid": {"name": "Main"}}}
     prompt_context = "compiled prompt context"
 
@@ -161,17 +168,96 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
     mock_find.assert_called_once_with("restaurant-guid", session)
     mock_token.assert_called_once_with()
     mock_download_menu.assert_called_once_with("token", "restaurant-guid")
-    mock_compile.assert_called_once_with(raw_menu)
+    mock_compile.assert_called_once_with(filtered_raw_menu)
     mock_prompt.assert_called_once_with(compiled_menu)
     assert project.product_info == prompt_context
     assert project_integration.config == {
         "submit_orders": False,
+        "menus": ["Dine-In Menu"],
         "menu_data": compiled_menu,
         "menu_last_updated": "2026-05-14T12:00:00.000Z",
     }
     session.add.assert_any_call(project)
     session.add.assert_any_call(project_integration)
     session.commit.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_update_menu_content_raises_when_configured_menu_is_missing() -> None:
+    from api.routes.integrations.toast._utils import update_menu_content
+
+    session = MagicMock()
+    session_context = MagicMock()
+    session_context.__enter__.return_value = session
+    session_context.__exit__.return_value = False
+
+    project = SimpleNamespace(name="Pepperonis", product_info="old menu")
+    project_integration = SimpleNamespace(
+        id=uuid4(),
+        config={"menus": ["Missing Menu"]},
+    )
+    raw_menu = {"menus": [{"name": "Dine-In Menu", "guid": "menu-guid"}]}
+
+    with (
+        patch(f"{MODULE}.run_in_threadpool", _run_in_threadpool_now),
+        patch(f"{MODULE}.SyncSessionLocal", return_value=session_context),
+        patch(
+            f"{MODULE}._find_toast_project_integrations_by_restaurant_guid",
+            return_value=[(project, project_integration)],
+        ),
+        patch(f"{MODULE}.get_toast_access_token_from_aws", return_value="token"),
+        patch(f"{MODULE}.download_menu", return_value=raw_menu),
+        patch(f"{MODULE}.compile_toast_menu_v2") as mock_compile,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Requested menu names not found",
+        ):
+            await update_menu_content(_toast_menu_request())
+
+    mock_compile.assert_not_called()
+    session.rollback.assert_called_once_with()
+    session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_menu_content_raises_when_configured_filter_has_malformed_menu_payload() -> (
+    None
+):
+    from api.routes.integrations.toast._utils import update_menu_content
+
+    session = MagicMock()
+    session_context = MagicMock()
+    session_context.__enter__.return_value = session
+    session_context.__exit__.return_value = False
+
+    project = SimpleNamespace(name="Pepperonis", product_info="old menu")
+    project_integration = SimpleNamespace(
+        id=uuid4(),
+        config={"menus": ["Dine-In Menu"]},
+    )
+    raw_menu = {"menus": {"name": "Dine-In Menu", "guid": "menu-guid"}}
+
+    with (
+        patch(f"{MODULE}.run_in_threadpool", _run_in_threadpool_now),
+        patch(f"{MODULE}.SyncSessionLocal", return_value=session_context),
+        patch(
+            f"{MODULE}._find_toast_project_integrations_by_restaurant_guid",
+            return_value=[(project, project_integration)],
+        ),
+        patch(f"{MODULE}.get_toast_access_token_from_aws", return_value="token"),
+        patch(f"{MODULE}.download_menu", return_value=raw_menu),
+        patch(f"{MODULE}.compile_toast_menu_v2") as mock_compile,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="Toast menu payload field 'menus' must be a list",
+        ):
+            await update_menu_content(_toast_menu_request())
+
+    mock_compile.assert_not_called()
+    session.rollback.assert_called_once_with()
+    session.commit.assert_not_called()
 
 
 @pytest.mark.asyncio

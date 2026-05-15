@@ -459,10 +459,34 @@ def _process_menu_update_sync(menu_details: ToastWebhookMenuDetails) -> None:
 
             bearer_token = get_toast_access_token_from_aws()
             raw_menu = download_menu(bearer_token, menu_details.restaurantGuid)
-            compiled_menu = compile_toast_menu_v2(raw_menu)
-            prompt_context = build_toast_lookup_prompt_context_markdown(compiled_menu)
+
+            compiled_assets_by_menu_config: dict[
+                tuple[str, ...], tuple[dict[str, Any], str]
+            ] = {}
 
             for project, project_integration in project_integrations_to_update:
+                included_menu_names = _get_included_menu_names(
+                    project_integration.config
+                )
+                menu_config_key = tuple(included_menu_names or [])
+
+                if menu_config_key not in compiled_assets_by_menu_config:
+                    compile_input = _filter_raw_menu_by_names(
+                        raw_menu,
+                        included_menu_names,
+                    )
+                    compiled_menu = compile_toast_menu_v2(compile_input)
+                    prompt_context = build_toast_lookup_prompt_context_markdown(
+                        compiled_menu
+                    )
+                    compiled_assets_by_menu_config[menu_config_key] = (
+                        compiled_menu,
+                        prompt_context,
+                    )
+
+                compiled_menu, prompt_context = compiled_assets_by_menu_config[
+                    menu_config_key
+                ]
                 project.product_info = prompt_context
                 project_integration.config = _update_toast_menu_config(
                     project_integration.config,
@@ -482,6 +506,61 @@ def _process_menu_update_sync(menu_details: ToastWebhookMenuDetails) -> None:
                 e,
             )
             raise
+
+
+def _get_included_menu_names(config: dict[str, Any] | None) -> list[str] | None:
+    """Return configured Toast menu names to include in compiled menu assets."""
+    config = config or {}
+    raw_value = None
+    for key in ("menus", "menu", "included_menus", "visible_menus"):
+        if key in config:
+            raw_value = config[key]
+            break
+
+    if isinstance(raw_value, str):
+        raw_value = [raw_value]
+    if not isinstance(raw_value, list):
+        return None
+
+    menu_names = [menu for menu in raw_value if isinstance(menu, str) and menu]
+    if menu_names:
+        return menu_names
+
+    return None
+
+
+def _filter_raw_menu_by_names(
+    raw_menu: dict[str, Any],
+    included_menu_names: list[str] | None,
+) -> dict[str, Any]:
+    """Return a raw Toast menu payload containing only configured menu names."""
+    if not included_menu_names:
+        return raw_menu
+
+    raw_menus = raw_menu.get("menus")
+    if not isinstance(raw_menus, list):
+        raise ValueError("Toast menu payload field 'menus' must be a list.")
+
+    allowed_names = set(included_menu_names)
+    filtered_menus = [
+        menu
+        for menu in raw_menus
+        if isinstance(menu, dict) and menu.get("name") in allowed_names
+    ]
+
+    included_names = {menu["name"] for menu in filtered_menus}
+    missing = [
+        menu_name for menu_name in allowed_names if menu_name not in included_names
+    ]
+    if missing:
+        missing_display = ", ".join(sorted(set(missing)))
+        raise ValueError(
+            f"Requested menu names not found (exact match required): {missing_display}"
+        )
+
+    filtered_menu = dict(raw_menu)
+    filtered_menu["menus"] = filtered_menus
+    return filtered_menu
 
 
 def _get_menu_last_updated(config: dict[str, Any] | None) -> str | None:
