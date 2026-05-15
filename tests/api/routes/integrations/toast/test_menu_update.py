@@ -119,6 +119,20 @@ def test_get_menu_last_updated_returns_none_for_empty_config() -> None:
     assert _get_menu_last_updated({}) is None
 
 
+def test_get_selected_menus_reads_legacy_menus_key() -> None:
+    from api.routes.integrations.toast._utils import _get_selected_menus
+
+    assert _get_selected_menus({"menus": ["Lunch Menu"]}) == ["Lunch Menu"]
+
+
+def test_get_selected_menus_prefers_selected_menus_over_legacy_menus() -> None:
+    from api.routes.integrations.toast._utils import _get_selected_menus
+
+    assert _get_selected_menus(
+        {"selected_menus": ["Dinner Menu"], "menus": ["Lunch Menu"]}
+    ) == ["Dinner Menu"]
+
+
 @pytest.mark.asyncio
 async def test_update_menu_content_generates_and_persists_toast_menu_assets() -> None:
     from api.routes.integrations.toast._utils import update_menu_content
@@ -131,7 +145,7 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
     project = SimpleNamespace(name="Pepperonis", product_info="old menu")
     project_integration = SimpleNamespace(
         id=uuid4(),
-        config={"submit_orders": False, "menus": ["Dine-In Menu"]},
+        config={"submit_orders": False, "selected_menus": ["Dine-In Menu"]},
     )
     raw_menu = {
         "menus": [
@@ -140,7 +154,6 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
             {"name": "dine-in menu", "guid": "lowercase-menu-guid"},
         ]
     }
-    filtered_raw_menu = {"menus": [{"name": "Dine-In Menu", "guid": "menu-guid"}]}
     compiled_menu = {"menus": {"menu-guid": {"name": "Main"}}}
     prompt_context = "compiled prompt context"
 
@@ -168,12 +181,16 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
     mock_find.assert_called_once_with("restaurant-guid", session)
     mock_token.assert_called_once_with()
     mock_download_menu.assert_called_once_with("token", "restaurant-guid")
-    mock_compile.assert_called_once_with(filtered_raw_menu)
+    mock_compile.assert_called_once_with(
+        raw_menu,
+        selected_menus=["Dine-In Menu"],
+        remove_unused_weights=True,
+    )
     mock_prompt.assert_called_once_with(compiled_menu)
     assert project.product_info == prompt_context
     assert project_integration.config == {
         "submit_orders": False,
-        "menus": ["Dine-In Menu"],
+        "selected_menus": ["Dine-In Menu"],
         "menu_data": compiled_menu,
         "menu_last_updated": "2026-05-14T12:00:00.000Z",
     }
@@ -194,7 +211,7 @@ async def test_update_menu_content_raises_when_configured_menu_is_missing() -> N
     project = SimpleNamespace(name="Pepperonis", product_info="old menu")
     project_integration = SimpleNamespace(
         id=uuid4(),
-        config={"menus": ["Missing Menu"]},
+        config={"selected_menus": ["Missing Menu"]},
     )
     raw_menu = {"menus": [{"name": "Dine-In Menu", "guid": "menu-guid"}]}
 
@@ -207,15 +224,22 @@ async def test_update_menu_content_raises_when_configured_menu_is_missing() -> N
         ),
         patch(f"{MODULE}.get_toast_access_token_from_aws", return_value="token"),
         patch(f"{MODULE}.download_menu", return_value=raw_menu),
-        patch(f"{MODULE}.compile_toast_menu_v2") as mock_compile,
+        patch(
+            f"{MODULE}.compile_toast_menu_v2",
+            side_effect=ValueError("Selected menu names not found"),
+        ) as mock_compile,
     ):
         with pytest.raises(
             ValueError,
-            match="Requested menu names not found",
+            match="Selected menu names not found",
         ):
             await update_menu_content(_toast_menu_request())
 
-    mock_compile.assert_not_called()
+    mock_compile.assert_called_once_with(
+        raw_menu,
+        selected_menus=["Missing Menu"],
+        remove_unused_weights=True,
+    )
     session.rollback.assert_called_once_with()
     session.commit.assert_not_called()
 
@@ -234,7 +258,7 @@ async def test_update_menu_content_raises_when_configured_filter_has_malformed_m
     project = SimpleNamespace(name="Pepperonis", product_info="old menu")
     project_integration = SimpleNamespace(
         id=uuid4(),
-        config={"menus": ["Dine-In Menu"]},
+        config={"selected_menus": ["Dine-In Menu"]},
     )
     raw_menu = {"menus": {"name": "Dine-In Menu", "guid": "menu-guid"}}
 
@@ -247,15 +271,22 @@ async def test_update_menu_content_raises_when_configured_filter_has_malformed_m
         ),
         patch(f"{MODULE}.get_toast_access_token_from_aws", return_value="token"),
         patch(f"{MODULE}.download_menu", return_value=raw_menu),
-        patch(f"{MODULE}.compile_toast_menu_v2") as mock_compile,
+        patch(
+            f"{MODULE}.compile_toast_menu_v2",
+            side_effect=ValueError("Field 'menus' must be an array"),
+        ) as mock_compile,
     ):
         with pytest.raises(
             ValueError,
-            match="Toast menu payload field 'menus' must be a list",
+            match="Field 'menus' must be an array",
         ):
             await update_menu_content(_toast_menu_request())
 
-    mock_compile.assert_not_called()
+    mock_compile.assert_called_once_with(
+        raw_menu,
+        selected_menus=["Dine-In Menu"],
+        remove_unused_weights=True,
+    )
     session.rollback.assert_called_once_with()
     session.commit.assert_not_called()
 
