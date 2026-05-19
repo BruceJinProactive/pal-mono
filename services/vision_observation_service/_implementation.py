@@ -97,10 +97,7 @@ def _format_roi_hint(roi_hint: dict[str, object] | None) -> str | None:
     w = int(float(str(w_val)))
     h = int(float(str(h_val)))
 
-    return (
-        f"Focus on the specific area defined by the normalized coordinates "
-        f"[{x}, {y}, {w}, {h}] (scale 0-1000). Investigate this region only."
-    )
+    return f"[{x}, {y}, {w}, {h}]"
 
 
 def _build_system_prompt(
@@ -126,6 +123,9 @@ def _build_system_prompt(
         "irrelevant to the reference images or the monitored environment "
         "(e.g. a broken feed, black screen, unrelated scene). "
         "Otherwise set image_relevant to true",
+        "- For entities with ROI coordinates, focus on the specific area defined "
+        "by the normalized coordinates [x, y, width, height] (scale 0-1000). "
+        "Investigate this region only",
     ]
 
     if user_prompt:
@@ -135,27 +135,38 @@ def _build_system_prompt(
 
     lines.append("")
     lines.append("Entities to Observe:")
-    lines.append(
-        "Each entity below is an item you need to observe in the image. "
-        "For each one, you must select exactly one state from its list of "
-        "possible states."
-    )
+
+    entities_by_type: dict[str, list[dict[str, Any]]] = {}
     for entity_info in entities_with_states:
         type_name = entity_info["type_name"]
+        if type_name not in entities_by_type:
+            entities_by_type[type_name] = []
+        entities_by_type[type_name].append(entity_info)
+
+    for type_name, entities in entities_by_type.items():
         type_info = entity_type_definitions.get(type_name, {})
         display = type_info.get("display_name", type_name)
-        lines.append("")
-        lines.append(f'- "{entity_info["name"]}" (a {display})')
-        if entity_info.get("roi_hint_text"):
-            lines.append(f"  - Location hint: {entity_info['roi_hint_text']}")
-        lines.append("  - Possible states (pick one):")
         state_criteria = type_info.get("state_criteria", {})
-        for state_name in entity_info["state_names"]:
+        state_names = type_info.get("state_names", [])
+
+        lines.append("")
+        lines.append(display)
+
+        states_parts: list[str] = []
+        for state_name in state_names:
             criteria = state_criteria.get(state_name)
             if criteria:
-                lines.append(f'    - "{state_name}": {criteria}')
+                states_parts.append(f'"{state_name}" ({criteria})')
             else:
-                lines.append(f'    - "{state_name}"')
+                states_parts.append(f'"{state_name}"')
+        lines.append(f"  States (pick one): {' | '.join(states_parts)}")
+
+        for entity_info in entities:
+            roi_text = _format_roi_hint(entity_info.get("roi_hint"))
+            if roi_text:
+                lines.append(f'  - "{entity_info["name"]}" — ROI: {roi_text}')
+            else:
+                lines.append(f'  - "{entity_info["name"]}"')
 
     lines.append("")
     lines.append("Respond ONLY with valid JSON matching the provided schema.")
@@ -240,14 +251,12 @@ async def generate_observation(
                 },
             }
 
-        roi_hint_text = _format_roi_hint(mapping.roi_hint)
-
         entities_with_states.append(
             {
                 "name": entity.name,
                 "type_name": type_name,
                 "state_names": [sd.name for sd in state_defs],
-                "roi_hint_text": roi_hint_text,
+                "roi_hint": mapping.roi_hint,
             }
         )
         entity_lookup[entity.name] = {

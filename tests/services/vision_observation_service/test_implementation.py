@@ -77,18 +77,12 @@ class TestFormatRoiHint:
             "height": 234,
         }
         result = _format_roi_hint(roi)
-        assert result == (
-            "Focus on the specific area defined by the normalized coordinates "
-            "[411, 249, 207, 234] (scale 0-1000). Investigate this region only."
-        )
+        assert result == "[411, 249, 207, 234]"
 
     def test_with_w_h_keys(self):
         roi: dict[str, object] = {"x": 100, "y": 200, "w": 300, "h": 400}
         result = _format_roi_hint(roi)
-        assert result == (
-            "Focus on the specific area defined by the normalized coordinates "
-            "[100, 200, 300, 400] (scale 0-1000). Investigate this region only."
-        )
+        assert result == "[100, 200, 300, 400]"
 
     def test_with_missing_keys(self):
         roi: dict[str, object] = {"x": 500, "label": "zone-1"}
@@ -143,14 +137,14 @@ class TestBuildSystemPrompt:
                 "name": "front_door",
                 "type_name": "door",
                 "state_names": ["open", "closed"],
-                "roi_hint_text": None,
+                "roi_hint": None,
             },
         ]
         prompt = _build_system_prompt("", entity_type_defs, entities)
 
-        assert "(a Door)" in prompt
-        assert "Possible states (pick one):" in prompt
-        assert '"open": Door is visibly open' in prompt
+        assert "Door" in prompt
+        assert "States (pick one):" in prompt
+        assert '"open" (Door is visibly open)' in prompt
         assert '"closed"' in prompt
 
     def test_includes_user_context(self):
@@ -162,7 +156,7 @@ class TestBuildSystemPrompt:
                     "name": "oven_1",
                     "type_name": "oven",
                     "state_names": ["on", "off"],
-                    "roi_hint_text": None,
+                    "roi_hint": None,
                 }
             ],
         )
@@ -178,24 +172,20 @@ class TestBuildSystemPrompt:
                     "name": "light_1",
                     "type_name": "light",
                     "state_names": ["on", "off"],
-                    "roi_hint_text": None,
+                    "roi_hint": None,
                 }
             ],
         )
         assert "Context:" not in prompt
 
     def test_includes_roi_hint(self):
-        hint_text = (
-            "Look at the area between 10%-40% from the left "
-            "and 20%-60% from the top of the image, "
-            "ignore other area"
-        )
+        roi = {"x": 100, "y": 200, "width": 300, "height": 400}
         entities = [
             {
                 "name": "door_1",
                 "type_name": "door",
                 "state_names": ["open", "closed"],
-                "roi_hint_text": hint_text,
+                "roi_hint": roi,
             },
         ]
         prompt = _build_system_prompt(
@@ -203,7 +193,7 @@ class TestBuildSystemPrompt:
             {"door": {"display_name": "Door", "state_names": ["open", "closed"]}},
             entities,
         )
-        assert f"Location hint: {hint_text}" in prompt
+        assert "ROI: [100, 200, 300, 400]" in prompt
 
     def test_includes_entity_names(self):
         entities = [
@@ -211,7 +201,7 @@ class TestBuildSystemPrompt:
                 "name": "parking_lot_gate",
                 "type_name": "gate",
                 "state_names": ["open", "closed"],
-                "roi_hint_text": None,
+                "roi_hint": None,
             },
         ]
         prompt = _build_system_prompt(
@@ -220,7 +210,40 @@ class TestBuildSystemPrompt:
             entities,
         )
         assert '"parking_lot_gate"' in prompt
-        assert "(a Gate)" in prompt
+        assert "Gate" in prompt
+
+    def test_groups_entities_by_type(self):
+        entity_type_defs = {
+            "lane": {
+                "display_name": "Drive-Through Lane",
+                "state_names": ["occupied", "empty"],
+                "state_criteria": {
+                    "occupied": "vehicle present",
+                    "empty": "no vehicle",
+                },
+            },
+        }
+        entities = [
+            {
+                "name": "Lane 1",
+                "type_name": "lane",
+                "state_names": ["occupied", "empty"],
+                "roi_hint": {"x": 100, "y": 0, "width": 200, "height": 1000},
+            },
+            {
+                "name": "Lane 2",
+                "type_name": "lane",
+                "state_names": ["occupied", "empty"],
+                "roi_hint": {"x": 400, "y": 0, "width": 200, "height": 1000},
+            },
+        ]
+        prompt = _build_system_prompt("", entity_type_defs, entities)
+
+        assert prompt.count("States (pick one):") == 1
+        assert '"Lane 1"' in prompt
+        assert '"Lane 2"' in prompt
+        assert "ROI: [100, 0, 200, 1000]" in prompt
+        assert "ROI: [400, 0, 200, 1000]" in prompt
 
 
 class TestGenerateObservation:
