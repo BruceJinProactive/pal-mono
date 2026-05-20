@@ -3,6 +3,7 @@ from ._implementation import (
     delete_state_change_event,
     get_state_change_event,
     list_state_change_events,
+    update_state_change_event,
 )
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "delete_state_change_event",
     "get_state_change_event",
     "list_state_change_events",
+    "update_state_change_event",
 ]

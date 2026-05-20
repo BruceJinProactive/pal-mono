@@ -2,6 +2,7 @@
 
 These endpoints are called by the Vision Frame Processor Lambda to:
 1. Generate entity state observations from camera frames
+2. Retrieve the full system prompt for a camera configuration
 """
 
 from datetime import datetime, timezone
@@ -11,7 +12,18 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
-from api.schemas.operations.vision_observation import GenerateObservationResponse
+from api.schemas.operations.vision_observation import (
+    ConfigurationPromptResponse,
+    EntityRoiInfo,
+    GenerateObservationResponse,
+    TestEventInfo,
+    TestGroupSummary,
+)
+from db.pal_repository import (
+    VisionEntityRepository,
+    VisionEntityStateDefinitionRepository,
+    VisionStateChangeEventRepository,
+)
 from services import vision_observation_service
 from utils.log import logger
 
@@ -139,3 +151,91 @@ async def create_observation(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate observation: {str(e)}",
         ) from e
+
+
+@vision_router.get(
+    "/accounts/{account_id}/projects/{project_id}/camera-configs/{config_id}/prompt",
+    response_model=ConfigurationPromptResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_configuration_prompt(
+    account_id: UUID,
+    project_id: UUID,
+    config_id: UUID,
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ConfigurationPromptResponse:
+    """
+    Get the full system prompt for a camera configuration.
+
+    Builds the complete prompt including entity definitions, ROI hints,
+    and output format instructions — exactly what the LLM would receive
+    during observation.
+
+    Path Parameters:
+    - account_id: UUID of the account
+    - project_id: UUID of the project
+    - config_id: UUID of the camera configuration
+    """
+    _ = account_id, project_id
+
+    result = await vision_observation_service.get_configuration_prompt(
+        session=session,
+        config_id=config_id,
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Camera configuration {config_id} not found",
+        )
+
+    event_repo = VisionStateChangeEventRepository(session)
+    test_events = await event_repo.list_test_events_by_config(config_id)
+
+    entity_repo = VisionEntityRepository(session)
+    sd_repo = VisionEntityStateDefinitionRepository(session)
+
+    groups: dict[str | None, list[TestEventInfo]] = {}
+    for evt in test_events:
+        group_key = evt.event_metadata.get("test_group")
+
+        entity = await entity_repo.get_by_id(evt.entity_id)
+        entity_name = entity.name if entity else None
+
+        state_def = await sd_repo.get_by_id(evt.new_state_id)
+        new_state_name = state_def.name if state_def else None
+
+        info = TestEventInfo(
+            id=evt.id,
+            entity_id=evt.entity_id,
+            entity_name=entity_name,
+            new_state_id=evt.new_state_id,
+            new_state_name=new_state_name,
+            observed_at=evt.observed_at,
+            confidence=evt.confidence,
+            test_group=group_key,
+        )
+        groups.setdefault(group_key, []).append(info)
+
+    test_group_summaries = [
+        TestGroupSummary(test_group=key, events=events)
+        for key, events in groups.items()
+    ]
+
+    entity_roi_hints = [
+        EntityRoiInfo(
+            entity_name=entity["name"],
+            roi_hint=entity.get("roi_hint"),
+        )
+        for entity in result.entities_with_states
+    ]
+
+    return ConfigurationPromptResponse(
+        config_id=config_id,
+        llm_provider=result.llm_provider,
+        llm_model=result.llm_model,
+        system_prompt=result.system_prompt,
+        structured_output=result.structured_output,
+        entity_roi_hints=entity_roi_hints,
+        test_events=test_group_summaries,
+    )

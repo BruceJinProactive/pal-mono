@@ -2,14 +2,21 @@
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
-from api.routes.internal.vision import create_observation
+from api.routes.internal.vision import create_observation, get_configuration_prompt
 from api.schemas.operations.vision_observation import (
     EntityObservation,
     GenerateObservationResponse,
+)
+from db.pal_repository.data_classes.vision_state_change_event import (
+    VisionStateChangeEventData,
+)
+from services.vision_observation_service._implementation import (
+    ConfigurationPromptResult,
 )
 
 
@@ -205,3 +212,154 @@ class TestCreateObservation:
 
             call_kwargs = mock_gen.call_args.kwargs
             assert call_kwargs["image_bytes"] == b"uploaded-bytes"
+
+
+class TestGetConfigurationPrompt:
+    """Tests for GET /internal/vision/.../prompt."""
+
+    @pytest.mark.asyncio
+    async def test_config_not_found_raises_404(self):
+        session = AsyncMock()
+
+        with patch(
+            "services.vision_observation_service.get_configuration_prompt",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_configuration_prompt(
+                    account_id=uuid.uuid4(),
+                    project_id=uuid.uuid4(),
+                    config_id=uuid.uuid4(),
+                    session=session,
+                )
+            assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_success_no_test_events(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        prompt_result = ConfigurationPromptResult(
+            llm_provider="google",
+            llm_model="gemini-2.0-flash",
+            system_prompt="You are a monitoring assistant...",
+            structured_output={"type": "object", "properties": {}},
+            entities_with_states=[
+                {
+                    "name": "door_1",
+                    "roi_hint": {"x": 10, "y": 20, "width": 100, "height": 200},
+                },
+                {"name": "door_2", "roi_hint": None},
+            ],
+        )
+
+        with (
+            patch(
+                "services.vision_observation_service.get_configuration_prompt",
+                new_callable=AsyncMock,
+                return_value=prompt_result,
+            ),
+            patch(
+                "api.routes.internal.vision.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch("api.routes.internal.vision.VisionEntityRepository"),
+            patch("api.routes.internal.vision.VisionEntityStateDefinitionRepository"),
+        ):
+            mock_event_repo_cls.return_value.list_test_events_by_config = AsyncMock(
+                return_value=[]
+            )
+
+            result = await get_configuration_prompt(
+                account_id=uuid.uuid4(),
+                project_id=uuid.uuid4(),
+                config_id=config_id,
+                session=session,
+            )
+
+            assert result.config_id == config_id
+            assert result.llm_provider == "google"
+            assert result.llm_model == "gemini-2.0-flash"
+            assert len(result.entity_roi_hints) == 2
+            assert result.entity_roi_hints[0].entity_name == "door_1"
+            assert result.entity_roi_hints[0].roi_hint == {
+                "x": 10,
+                "y": 20,
+                "width": 100,
+                "height": 200,
+            }
+            assert result.entity_roi_hints[1].entity_name == "door_2"
+            assert result.entity_roi_hints[1].roi_hint is None
+            assert result.test_events == []
+
+    @pytest.mark.asyncio
+    async def test_success_with_test_events_grouped(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        state_id = uuid.uuid4()
+
+        prompt_result = ConfigurationPromptResult(
+            llm_provider="azure",
+            llm_model="gpt-4o",
+            system_prompt="prompt",
+            structured_output={"type": "object", "properties": {}},
+            entities_with_states=[],
+        )
+
+        test_event = VisionStateChangeEventData(
+            id=uuid.uuid4(),
+            entity_id=entity_id,
+            new_state_id=state_id,
+            observed_at=datetime(2026, 5, 19, 10, 0, 0, tzinfo=timezone.utc),
+            event_metadata={"is_test": True, "test_group": "group-a"},
+            camera_config_id=config_id,
+            confidence=0.9,
+        )
+
+        mock_entity = MagicMock()
+        mock_entity.name = "main_gate"
+
+        mock_state_def = MagicMock()
+        mock_state_def.name = "open"
+
+        with (
+            patch(
+                "services.vision_observation_service.get_configuration_prompt",
+                new_callable=AsyncMock,
+                return_value=prompt_result,
+            ),
+            patch(
+                "api.routes.internal.vision.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch(
+                "api.routes.internal.vision.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "api.routes.internal.vision.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+        ):
+            mock_event_repo_cls.return_value.list_test_events_by_config = AsyncMock(
+                return_value=[test_event]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_state_def
+            )
+
+            result = await get_configuration_prompt(
+                account_id=uuid.uuid4(),
+                project_id=uuid.uuid4(),
+                config_id=config_id,
+                session=session,
+            )
+
+            assert len(result.test_events) == 1
+            assert result.test_events[0].test_group == "group-a"
+            assert len(result.test_events[0].events) == 1
+            event_info = result.test_events[0].events[0]
+            assert event_info.entity_name == "main_gate"
+            assert event_info.new_state_name == "open"
+            assert event_info.confidence == 0.9

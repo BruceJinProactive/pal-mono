@@ -101,6 +101,7 @@ from api.schemas.operations.vision_state_change_event import (
     CreateStateChangeEventRequest,
     ListStateChangeEventsResponse,
     StateChangeEventResponse,
+    UpdateStateChangeEventRequest,
 )
 from db.pal_repository.project import ProjectRepository
 from db.tables.types import ExecutionStatus
@@ -3804,6 +3805,40 @@ async def get_state_change_event(
     return await _vision_state_change_events.get_state_change_event(
         session=session,
         event_id=event_id,
+        account_name=account_name,
+    )
+
+
+@operation_router.put(
+    "/accounts/{account_name}/state-change-events/{event_id}",
+    response_model=StateChangeEventResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_state_change_event(
+    account_name: str,
+    event_id: uuid.UUID,
+    request: UpdateStateChangeEventRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> StateChangeEventResponse:
+    """
+    Update a state change event's metadata.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - event_id: UUID of the event
+    """
+    _ = context
+    return await _vision_state_change_events.update_state_change_event(
+        session=session,
+        event_id=event_id,
+        request=request,
         account_name=account_name,
     )
 

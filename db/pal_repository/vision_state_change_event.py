@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.pal_repository.data_classes.vision_state_change_event import (
@@ -141,6 +142,30 @@ class VisionStateChangeEventRepository:
             )
             return []
 
+    async def update_metadata(
+        self,
+        event_id: uuid.UUID,
+        observed_at: datetime,
+        metadata: dict[str, Any],
+    ) -> bool:
+        try:
+            result = await self.session.execute(
+                update(VisionStateChangeEvent)
+                .where(
+                    VisionStateChangeEvent.id == event_id,
+                    VisionStateChangeEvent.observed_at == observed_at,
+                )
+                .values(event_metadata=metadata)
+            )
+            await self.session.commit()
+            return (result.rowcount or 0) > 0
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision StateChangeEvent] DB error updating metadata", exc_info=True
+            )
+            raise
+
     async def delete(self, event_id: uuid.UUID) -> bool:
         try:
             result = await self.session.execute(
@@ -190,6 +215,33 @@ class VisionStateChangeEventRepository:
                 exc_info=True,
             )
             raise
+
+    async def list_test_events_by_config(
+        self,
+        camera_config_id: uuid.UUID,
+        limit: int = 100,
+    ) -> list[VisionStateChangeEventData]:
+        try:
+            query = (
+                select(VisionStateChangeEvent)
+                .filter(
+                    VisionStateChangeEvent.camera_config_id == camera_config_id,
+                    VisionStateChangeEvent.event_metadata["is_test"]
+                    .as_boolean()
+                    .is_(True),
+                )
+                .order_by(VisionStateChangeEvent.observed_at.desc())
+                .limit(limit)
+            )
+            result = await self.session.execute(query)
+            return [_to_data(row) for row in result.scalars().all()]
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision StateChangeEvent] DB error listing test events by config",
+                exc_info=True,
+            )
+            return []
 
     async def verify_entity_belongs_to_account(
         self, entity_id: uuid.UUID, account_id: uuid.UUID

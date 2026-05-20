@@ -32,6 +32,26 @@ class CreateStateChangeEventRequest(BaseModel):
     event_metadata: dict[str, Any] = Field(
         default_factory=dict, description="Arbitrary event metadata"
     )
+    is_test: bool | None = Field(
+        default=None, description="Whether this event is from a test run"
+    )
+    test_group: str | None = Field(
+        default=None, description="Test group identifier for grouping test events"
+    )
+
+
+class UpdateStateChangeEventRequest(BaseModel):
+    """Request to update a vision state change event's metadata."""
+
+    is_test: bool | None = Field(
+        default=None, description="Whether this event is from a test run"
+    )
+    test_group: str | None = Field(
+        default=None, description="Test group identifier for grouping test events"
+    )
+    event_metadata: dict[str, Any] | None = Field(
+        default=None, description="Arbitrary event metadata to merge"
+    )
 
 
 class StateChangeEventResponse(BaseModel):
@@ -48,6 +68,12 @@ class StateChangeEventResponse(BaseModel):
     confidence: float | None
     frame_s3_key: str | None
     event_metadata: dict[str, Any]
+    is_test: bool | None = Field(
+        default=None, description="Whether this event is from a test run"
+    )
+    test_group: str | None = Field(
+        default=None, description="Test group identifier for grouping test events"
+    )
 
 
 class ListStateChangeEventsResponse(BaseModel):

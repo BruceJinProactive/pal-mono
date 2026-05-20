@@ -10,6 +10,7 @@ from api.schemas.operations.vision_state_change_event import (
     CreateStateChangeEventRequest,
     ListStateChangeEventsResponse,
     StateChangeEventResponse,
+    UpdateStateChangeEventRequest,
 )
 from db.pal_repository import VisionStateChangeEventRepository
 from db.pal_repository.data_classes.vision_state_change_event import (
@@ -32,6 +33,7 @@ async def _presign_frame_s3_key(frame_s3_key: str | None) -> str | None:
 
 async def _build_response(data: VisionStateChangeEventData) -> StateChangeEventResponse:
     frame_url = await _presign_frame_s3_key(data.frame_s3_key)
+    metadata = data.event_metadata
     return StateChangeEventResponse(
         id=data.id,
         entity_id=data.entity_id,
@@ -41,7 +43,9 @@ async def _build_response(data: VisionStateChangeEventData) -> StateChangeEventR
         previous_state_id=data.previous_state_id,
         confidence=data.confidence,
         frame_s3_key=frame_url,
-        event_metadata=data.event_metadata,
+        event_metadata=metadata,
+        is_test=metadata.get("is_test"),
+        test_group=metadata.get("test_group"),
     )
 
 
@@ -64,12 +68,18 @@ async def create_state_change_event(
             f"Entity {request.entity_id} does not belong to account {account_name}"
         )
 
+    metadata = dict(request.event_metadata)
+    if request.is_test is not None:
+        metadata["is_test"] = request.is_test
+    if request.test_group is not None:
+        metadata["test_group"] = request.test_group
+
     record = VisionStateChangeEventData(
         id=uuid.uuid4(),
         entity_id=request.entity_id,
         new_state_id=request.new_state_id,
         observed_at=request.observed_at or datetime.now(timezone.utc),
-        event_metadata=request.event_metadata,
+        event_metadata=metadata,
         camera_config_id=request.camera_config_id,
         previous_state_id=request.previous_state_id,
         confidence=request.confidence,
@@ -127,6 +137,41 @@ async def list_state_change_events(
         items=list(items),
         total=len(items),
     )
+
+
+async def update_state_change_event(
+    session: AsyncSession,
+    event_id: uuid.UUID,
+    request: UpdateStateChangeEventRequest,
+    account_name: str,
+) -> StateChangeEventResponse:
+    account = await account_service.get_account_async(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} not found")
+
+    repo = VisionStateChangeEventRepository(session)
+    data = await repo.get_by_id_for_account(event_id, account.id)
+    if not data:
+        raise ValueError(f"State change event {event_id} not found")
+
+    updated_metadata = dict(data.event_metadata)
+    if request.event_metadata is not None:
+        updated_metadata.update(request.event_metadata)
+    if request.is_test is not None:
+        updated_metadata["is_test"] = request.is_test
+    if request.test_group is not None:
+        updated_metadata["test_group"] = request.test_group
+
+    await repo.update_metadata(event_id, data.observed_at, updated_metadata)
+    updated_data = await repo.get_by_id_for_account(event_id, account.id)
+    if not updated_data:
+        raise ValueError(f"State change event {event_id} not found after update")
+
+    logger.info(
+        "[Vision Event] Updated state change event metadata",
+        extra={"event_id": str(event_id)},
+    )
+    return await _build_response(updated_data)
 
 
 async def delete_state_change_event(

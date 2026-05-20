@@ -12,6 +12,7 @@ from api.schemas.operations.vision_state_change_event import (
     CreateStateChangeEventRequest,
     ListStateChangeEventsResponse,
     StateChangeEventResponse,
+    UpdateStateChangeEventRequest,
 )
 from services import vision_event_service
 from utils.log import logger
@@ -118,6 +119,39 @@ async def list_state_change_events(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list state change events",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+@traced("vision_state_change_event.update")
+async def update_state_change_event(
+    session: AsyncSession,
+    event_id: uuid.UUID,
+    request: UpdateStateChangeEventRequest,
+    account_name: str,
+) -> StateChangeEventResponse:
+    try:
+        return await vision_event_service.update_state_change_event(
+            session=session,
+            event_id=event_id,
+            request=request,
+            account_name=account_name,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception:
+        logger.error(
+            "[Vision StateChangeEvent] Failed to update event",
+            exc_info=True,
+            extra={"event_id": str(event_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update state change event",
             headers={"Content-Type": "application/json"},
         )
 

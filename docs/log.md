@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-19
+
+- **[PAL-10669] Configuration prompt endpoint and test event metadata.** Added `GET /vision/accounts/{account_id}/projects/{project_id}/camera-configs/{config_id}/prompt` internal endpoint that returns the full system prompt, structured output schema, entity ROI hints, and test events grouped by `test_group`. Added `is_test` (bool) and `test_group` (str) fields to state-change event create/update/response schemas (stored in existing `event_metadata` JSONB). Added `PUT /accounts/{account_name}/state-change-events/{event_id}` endpoint for updating event metadata.
+
+---
+
 ## 2026-05-13
 
 - **[PAL-10592] Vision state change event CRUD API.** Added account-scoped GET/POST/DELETE endpoints for `vision_state_change_event` at `/accounts/{account_name}/state-change-events`. GET supports optional `project_id` and `entity_id` filters and defaults to the past 24 hours. New repository, service, and schema layers following existing vision entity patterns.

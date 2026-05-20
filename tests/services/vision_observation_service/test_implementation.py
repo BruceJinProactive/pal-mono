@@ -11,6 +11,7 @@ from services.vision_observation_service._implementation import (
     _extract_camera_name_from_s3_key,
     _format_roi_hint,
     generate_observation,
+    get_configuration_prompt,
 )
 
 
@@ -1022,6 +1023,252 @@ class TestGenerateObservation:
             assert result is not None
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].entity_name == "light_1"
+
+
+class TestGetConfigurationPrompt:
+    """Tests for getting the full system prompt for a camera configuration."""
+
+    @pytest.mark.asyncio
+    async def test_config_not_found_returns_none(self):
+        session = AsyncMock()
+
+        with patch(
+            "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+        ) as mock_config_repo_cls:
+            mock_config_repo_cls.return_value.get_by_id = AsyncMock(return_value=None)
+
+            result = await get_configuration_prompt(session, uuid.uuid4())
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_no_entities_returns_prompt_with_user_context(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.llm_prompt = "Monitor the parking lot"
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = [
+            {"url": "vision/ref/img1.jpg", "description": "Empty lot"},
+        ]
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+        ):
+            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[]
+            )
+
+            result = await get_configuration_prompt(session, config_id)
+            assert result is not None
+            assert result.llm_provider == "azure"
+            assert result.llm_model == "gpt-4o"
+            assert "Monitor the parking lot" in result.system_prompt
+            assert result.structured_output["type"] == "object"
+            assert "image_relevant" in result.structured_output["properties"]
+
+    @pytest.mark.asyncio
+    async def test_returns_full_prompt_with_entities(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.llm_prompt = "Watch the gate"
+        mock_config.llm_provider = "google"
+        mock_config.llm_model = "gemini-2.0-flash"
+        mock_config.reference_images = [
+            {"url": "vision/ref/gate_open.jpg", "description": "Gate fully open"},
+            {"url": "vision/ref/gate_closed.jpg", "description": "Gate closed"},
+        ]
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = {"x": 100, "y": 200, "width": 300, "height": 400}
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.name = "main_gate"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+
+        mock_state_def = MagicMock()
+        mock_state_def.id = uuid.uuid4()
+        mock_state_def.name = "open"
+        mock_state_def.criteria = "gate is raised"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "gate"
+        mock_entity_type.display_name = "Gate"
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+        ):
+            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+
+            result = await get_configuration_prompt(session, config_id)
+            assert result is not None
+            assert result.llm_provider == "google"
+            assert result.llm_model == "gemini-2.0-flash"
+            assert "Watch the gate" in result.system_prompt
+            assert '"main_gate"' in result.system_prompt
+            assert "Gate" in result.system_prompt
+            assert "ROI: [100, 200, 300, 400]" in result.system_prompt
+            assert '"open"' in result.system_prompt
+            assert "main_gate" in result.structured_output["properties"]
+            assert result.structured_output["properties"]["main_gate"]["properties"][
+                "state"
+            ]["enum"] == ["open"]
+
+    @pytest.mark.asyncio
+    async def test_skips_inactive_entities(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.llm_prompt = ""
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = uuid.uuid4()
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = mock_mapping.entity_id
+        mock_entity.name = "inactive_door"
+        mock_entity.is_active = False
+        mock_entity.entity_type_id = uuid.uuid4()
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ),
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+
+            result = await get_configuration_prompt(session, config_id)
+            assert result is not None
+            assert "inactive_door" not in result.system_prompt
+
+    @pytest.mark.asyncio
+    async def test_skips_entities_with_no_state_defs(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.llm_prompt = ""
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = uuid.uuid4()
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = mock_mapping.entity_id
+        mock_entity.name = "no_states_entity"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = uuid.uuid4()
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[]
+            )
+
+            result = await get_configuration_prompt(session, config_id)
+            assert result is not None
+            assert "no_states_entity" not in result.system_prompt
+            assert result.entities_with_states == []
 
 
 async def _sync_to_thread(func, *args, **kwargs):

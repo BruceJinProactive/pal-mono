@@ -339,6 +339,221 @@ class TestDeleteStateChangeEvent:
                 await delete_state_change_event(session, event_id, ACCOUNT_NAME)
 
 
+class TestCreateWithTestMetadata:
+
+    @pytest.mark.asyncio
+    async def test_is_test_merged_into_metadata(self) -> None:
+        session = AsyncMock()
+        request = CreateStateChangeEventRequest(
+            entity_id=ENTITY_ID,
+            new_state_id=NEW_STATE_ID,
+            is_test=True,
+            test_group="group-a",
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.verify_entity_belongs_to_account.return_value = True
+            repo.create.return_value = None
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                create_state_change_event,
+            )
+
+            result = await create_state_change_event(session, request, ACCOUNT_NAME)
+
+            assert result.is_test is True
+            assert result.test_group == "group-a"
+            assert result.event_metadata["is_test"] is True
+            assert result.event_metadata["test_group"] == "group-a"
+
+    @pytest.mark.asyncio
+    async def test_is_test_none_not_merged(self) -> None:
+        session = AsyncMock()
+        request = CreateStateChangeEventRequest(
+            entity_id=ENTITY_ID,
+            new_state_id=NEW_STATE_ID,
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.verify_entity_belongs_to_account.return_value = True
+            repo.create.return_value = None
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                create_state_change_event,
+            )
+
+            result = await create_state_change_event(session, request, ACCOUNT_NAME)
+
+            assert result.is_test is None
+            assert result.test_group is None
+            assert "is_test" not in result.event_metadata
+
+
+class TestUpdateStateChangeEvent:
+
+    @pytest.mark.asyncio
+    async def test_updates_metadata(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        original_data = _make_event_data(id=event_id, event_metadata={"foo": "bar"})
+        updated_data = _make_event_data(
+            id=event_id,
+            event_metadata={"foo": "bar", "is_test": True, "test_group": "g1"},
+        )
+
+        from api.schemas.operations.vision_state_change_event import (
+            UpdateStateChangeEventRequest,
+        )
+
+        request = UpdateStateChangeEventRequest(is_test=True, test_group="g1")
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.side_effect = [original_data, updated_data]
+            repo.update_metadata.return_value = True
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                update_state_change_event,
+            )
+
+            result = await update_state_change_event(
+                session, event_id, request, ACCOUNT_NAME
+            )
+
+            assert result.is_test is True
+            assert result.test_group == "g1"
+            repo.update_metadata.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_account_not_found_raises(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+
+        from api.schemas.operations.vision_state_change_event import (
+            UpdateStateChangeEventRequest,
+        )
+
+        request = UpdateStateChangeEventRequest(is_test=True)
+
+        with patch(
+            f"{MODULE}.account_service.get_account_async",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            from services.vision_event_service._implementation import (
+                update_state_change_event,
+            )
+
+            with pytest.raises(ValueError, match="not found"):
+                await update_state_change_event(
+                    session, event_id, request, ACCOUNT_NAME
+                )
+
+    @pytest.mark.asyncio
+    async def test_event_not_found_raises(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+
+        from api.schemas.operations.vision_state_change_event import (
+            UpdateStateChangeEventRequest,
+        )
+
+        request = UpdateStateChangeEventRequest(is_test=True)
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = None
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                update_state_change_event,
+            )
+
+            with pytest.raises(ValueError, match="not found"):
+                await update_state_change_event(
+                    session, event_id, request, ACCOUNT_NAME
+                )
+
+    @pytest.mark.asyncio
+    async def test_merges_event_metadata(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        original_data = _make_event_data(id=event_id, event_metadata={"existing": 1})
+        updated_data = _make_event_data(
+            id=event_id,
+            event_metadata={"existing": 1, "new_key": "val", "is_test": True},
+        )
+
+        from api.schemas.operations.vision_state_change_event import (
+            UpdateStateChangeEventRequest,
+        )
+
+        request = UpdateStateChangeEventRequest(
+            is_test=True, event_metadata={"new_key": "val"}
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.side_effect = [original_data, updated_data]
+            repo.update_metadata.return_value = True
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                update_state_change_event,
+            )
+
+            result = await update_state_change_event(
+                session, event_id, request, ACCOUNT_NAME
+            )
+
+            assert result.is_test is True
+            call_args = repo.update_metadata.call_args[0]
+            merged = call_args[2]
+            assert merged["existing"] == 1
+            assert merged["new_key"] == "val"
+            assert merged["is_test"] is True
+
+
 class TestPresignFrameS3Key:
 
     @pytest.mark.asyncio

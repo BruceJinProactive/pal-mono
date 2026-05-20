@@ -181,6 +181,100 @@ def _extract_camera_name_from_s3_key(image_url: str) -> str | None:
     return None
 
 
+class ConfigurationPromptResult:
+    def __init__(
+        self,
+        llm_provider: str,
+        llm_model: str,
+        system_prompt: str,
+        structured_output: dict[str, Any],
+        entities_with_states: list[dict[str, Any]],
+    ) -> None:
+        self.llm_provider = llm_provider
+        self.llm_model = llm_model
+        self.system_prompt = system_prompt
+        self.structured_output = structured_output
+        self.entities_with_states = entities_with_states
+
+
+async def get_configuration_prompt(
+    session: AsyncSession,
+    config_id: uuid.UUID,
+) -> ConfigurationPromptResult | None:
+    config_repo = VisionCameraConfigurationRepository(session)
+    config = await config_repo.get_by_id(config_id)
+
+    if not config:
+        return None
+
+    mapping_repo = VisionCameraEntityRepository(session)
+    mappings = await mapping_repo.list_by_camera(config.id)
+    if not mappings:
+        prompt = _build_system_prompt(
+            user_prompt=config.llm_prompt,
+            entity_type_definitions={},
+            entities_with_states=[],
+        )
+        return ConfigurationPromptResult(
+            llm_provider=config.llm_provider,
+            llm_model=config.llm_model,
+            system_prompt=prompt,
+            structured_output=_build_entity_state_schema([]),
+            entities_with_states=[],
+        )
+
+    entity_repo = VisionEntityRepository(session)
+    sd_repo = VisionEntityStateDefinitionRepository(session)
+    type_repo = VisionEntityTypeRepository(session)
+
+    entity_type_definitions: dict[str, dict[str, Any]] = {}
+    entities_with_states: list[dict[str, Any]] = []
+
+    for mapping in mappings:
+        entity = await entity_repo.get_by_id(mapping.entity_id)
+        if not entity or not entity.is_active:
+            continue
+
+        state_defs = await sd_repo.list_by_entity_type(entity.entity_type_id)
+        if not state_defs:
+            continue
+
+        entity_type = await type_repo.get_by_id(entity.entity_type_id)
+        type_name = entity_type.name if entity_type else "unknown"
+        type_display = entity_type.display_name if entity_type else type_name
+
+        if type_name not in entity_type_definitions:
+            entity_type_definitions[type_name] = {
+                "display_name": type_display,
+                "state_names": [sd.name for sd in state_defs],
+                "state_criteria": {
+                    sd.name: sd.criteria for sd in state_defs if sd.criteria
+                },
+            }
+
+        entities_with_states.append(
+            {
+                "name": entity.name,
+                "type_name": type_name,
+                "state_names": [sd.name for sd in state_defs],
+                "roi_hint": mapping.roi_hint,
+            }
+        )
+
+    prompt = _build_system_prompt(
+        user_prompt=config.llm_prompt,
+        entity_type_definitions=entity_type_definitions,
+        entities_with_states=entities_with_states,
+    )
+    return ConfigurationPromptResult(
+        llm_provider=config.llm_provider,
+        llm_model=config.llm_model,
+        system_prompt=prompt,
+        structured_output=_build_entity_state_schema(entities_with_states),
+        entities_with_states=entities_with_states,
+    )
+
+
 async def generate_observation(
     session: AsyncSession,
     camera_id: uuid.UUID,
