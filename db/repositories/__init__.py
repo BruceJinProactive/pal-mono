@@ -10,7 +10,6 @@ from .conversation_repository import ConversationRepository, ConversationReposit
 from .eval_result_repository import EvalResultRepositoryAsync
 from .eval_run_repository import EvalRunRepositoryAsync
 from .faq_repository import FAQRepository
-from .feature_repository import FeatureRepositoryAsync
 from .feedback_repository import FeedbackRepository
 from .integration_repository import IntegrationAsyncRepository, IntegrationRepository
 from .lead_repository import LeadFilter, LeadRepository
