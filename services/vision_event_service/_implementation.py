@@ -149,8 +149,9 @@ async def update_state_change_event(
     if not account:
         raise ValueError(f"Account {account_name} not found")
 
+    account_id = account.id
     repo = VisionStateChangeEventRepository(session)
-    data = await repo.get_by_id_for_account(event_id, account.id)
+    data = await repo.get_by_id_for_account(event_id, account_id)
     if not data:
         raise ValueError(f"State change event {event_id} not found")
 
@@ -163,7 +164,7 @@ async def update_state_change_event(
         updated_metadata["test_group"] = request.test_group
 
     await repo.update_metadata(event_id, data.observed_at, updated_metadata)
-    updated_data = await repo.get_by_id_for_account(event_id, account.id)
+    updated_data = await repo.get_by_id_for_account(event_id, account_id)
     if not updated_data:
         raise ValueError(f"State change event {event_id} not found after update")
 
