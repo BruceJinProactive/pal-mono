@@ -76,7 +76,9 @@ async def _handle_invoice_created(
     invoice = event_data.get("object", {})
     invoice_id: str | None = invoice.get("id")
     stripe_customer_id: str | None = invoice.get("customer")
-    subscription_id: str | None = invoice.get("subscription")
+    subscription_id: str | None = invoice.get("subscription") or (
+        (invoice.get("parent") or {}).get("subscription_details") or {}
+    ).get("subscription")
 
     # Skip non-subscription invoices (e.g. one-off invoices)
     if not subscription_id:
