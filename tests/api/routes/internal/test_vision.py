@@ -228,8 +228,6 @@ class TestGetConfigurationPrompt:
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await get_configuration_prompt(
-                    account_id=uuid.uuid4(),
-                    project_id=uuid.uuid4(),
                     config_id=uuid.uuid4(),
                     session=session,
                 )
@@ -271,8 +269,6 @@ class TestGetConfigurationPrompt:
             )
 
             result = await get_configuration_prompt(
-                account_id=uuid.uuid4(),
-                project_id=uuid.uuid4(),
                 config_id=config_id,
                 session=session,
             )
@@ -350,8 +346,6 @@ class TestGetConfigurationPrompt:
             )
 
             result = await get_configuration_prompt(
-                account_id=uuid.uuid4(),
-                project_id=uuid.uuid4(),
                 config_id=config_id,
                 session=session,
             )

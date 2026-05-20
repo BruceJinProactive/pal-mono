@@ -154,13 +154,11 @@ async def create_observation(
 
 
 @vision_router.get(
-    "/accounts/{account_id}/projects/{project_id}/camera-configs/{config_id}/prompt",
+    "/camera-configs/{config_id}/prompt",
     response_model=ConfigurationPromptResponse,
     status_code=status.HTTP_200_OK,
 )
 async def get_configuration_prompt(
-    account_id: UUID,
-    project_id: UUID,
     config_id: UUID,
     session: AsyncSession = Depends(db.get_db_async),
 ) -> ConfigurationPromptResponse:
@@ -172,11 +170,8 @@ async def get_configuration_prompt(
     during observation.
 
     Path Parameters:
-    - account_id: UUID of the account
-    - project_id: UUID of the project
     - config_id: UUID of the camera configuration
     """
-    _ = account_id, project_id
 
     result = await vision_observation_service.get_configuration_prompt(
         session=session,
