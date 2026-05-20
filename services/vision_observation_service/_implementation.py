@@ -484,8 +484,9 @@ async def generate_observation(
         for obs in entity_observations:
             if obs.state_id is None:
                 continue
-            info = entity_lookup[obs.entity_name]
-            if obs.state_id == info["current_state_id"]:
+            session.expire_all()
+            fresh_entity = await entity_repo.get_by_id(obs.entity_id)
+            if not fresh_entity or obs.state_id == fresh_entity.current_state_id:
                 continue
             await entity_repo.update(
                 obs.entity_id,
@@ -499,7 +500,7 @@ async def generate_observation(
                     new_state_id=obs.state_id,
                     observed_at=observed_at,
                     camera_config_id=camera_config_id,
-                    previous_state_id=info["current_state_id"],
+                    previous_state_id=fresh_entity.current_state_id,
                     confidence=obs.confidence,
                     frame_s3_key=image_url,
                 )
