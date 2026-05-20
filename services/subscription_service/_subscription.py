@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal as D
 from typing import Any, List, Optional
 
+import stripe
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -1019,6 +1020,23 @@ def update_account_subscription(
     }
     new_subscription = cls(**data)
 
+    # Handle trial_end (Stripe pattern): sets start_date and ensures trial_start_date exists
+    trial_end = update_data.pop("trial_end", None)
+    if trial_end is not None:
+        if trial_end.tzinfo is None:
+            trial_end = trial_end.replace(tzinfo=UTC)
+        update_data["start_date"] = trial_end
+        if (
+            not current_subscription.trial_start_date
+            and "trial_start_date" not in update_data
+        ):
+            update_data["trial_start_date"] = datetime.now(UTC)
+        if (
+            current_subscription.status == SubscriptionStatus.active
+            and trial_end > datetime.now(UTC)
+        ):
+            update_data["status"] = SubscriptionStatus.trialing
+
     allowed_fields = {
         "payment_method",
         "trial_start_date",
@@ -1060,6 +1078,19 @@ def update_account_subscription(
     except Exception as err:
         logger.error(f"Failed to update account subscription due to error: {err}")
         raise err
+
+    # Sync trial_end to Stripe if the subscription has a Stripe ID
+    if trial_end is not None and new_subscription.stripe_subscription_id:
+        try:
+            stripe.Subscription.modify(
+                new_subscription.stripe_subscription_id,
+                trial_end=int(trial_end.timestamp()),
+            )
+        except stripe.StripeError as e:
+            logger.error(
+                f"Failed to sync trial_end to Stripe for subscription "
+                f"{new_subscription.stripe_subscription_id}: {e}"
+            )
 
     return new_subscription
 

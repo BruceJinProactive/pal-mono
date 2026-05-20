@@ -4,6 +4,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-20
+
+- **Add `trial_end` field to update subscription endpoint (Stripe pattern).** The PATCH `/accounts/{account_name}/subscriptions/{external_id}` endpoint now accepts an optional `trial_end` datetime. When provided, it sets `start_date` to that value (extending/adding a trial), auto-sets `trial_start_date` if missing, flips status to `trialing` for active subscriptions, and syncs the change to Stripe via `stripe.Subscription.modify(trial_end=...)`. Cannot be combined with explicit `start_date` in the same request.
 ## 2026-05-19
 
 - **[PAL-10669] Configuration prompt endpoint and test event metadata.** Added `GET /vision/accounts/{account_id}/projects/{project_id}/camera-configs/{config_id}/prompt` internal endpoint that returns the full system prompt, structured output schema, entity ROI hints, and test events grouped by `test_group`. Added `is_test` (bool) and `test_group` (str) fields to state-change event create/update/response schemas (stored in existing `event_metadata` JSONB). Added `PUT /accounts/{account_name}/state-change-events/{event_id}` endpoint for updating event metadata.

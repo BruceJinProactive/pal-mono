@@ -2,7 +2,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import List, Optional
 
-from pydantic import AnyHttpUrl, BaseModel, EmailStr, Field, field_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 from pydantic_core.core_schema import ValidationInfo
 
 from api.schemas.admin.project import ProjectSummary
@@ -263,6 +270,10 @@ class UpdateAccountSubscriptionRequest(BaseModel):
     trial_start_date: Optional[datetime] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+    trial_end: Optional[datetime] = Field(
+        None,
+        description="Absolute datetime when the trial ends. Sets start_date to this value (Stripe pattern). Cannot be combined with start_date.",
+    )
 
     @field_validator("start_date")
     def validate_start_date(cls, v, info):
@@ -297,6 +308,15 @@ class UpdateAccountSubscriptionRequest(BaseModel):
             raise ValueError("End date cannot be in the past")
 
         return v
+
+    @model_validator(mode="after")
+    def validate_trial_end_conflicts(self) -> "UpdateAccountSubscriptionRequest":
+        if self.trial_end is not None and self.start_date is not None:
+            raise ValueError(
+                "Cannot specify both trial_end and start_date. "
+                "trial_end automatically sets start_date."
+            )
+        return self
 
 
 class UpdateAccountSubscriptionResponse(BaseModel):
