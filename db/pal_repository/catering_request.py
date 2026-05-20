@@ -89,8 +89,8 @@ class CateringRequestRepository:
             logger.exception("Error retrieving catering request by idempotency key")
             raise
 
-    async def create(self, data: CateringRequestData) -> None:
-        """Create a new catering request."""
+    async def create(self, data: CateringRequestData) -> uuid.UUID:
+        """Create a new catering request and return its persisted ID."""
         try:
             row = CateringRequest(
                 project_id=data.project_id,
@@ -109,7 +109,10 @@ class CateringRequestRepository:
                 ),
             )
             self.session.add(row)
+            await self.session.flush()
+            request_id = row.id
             await self.session.commit()
+            return request_id
         except Exception:
             await self.session.rollback()
             logger.exception("Error creating catering request")

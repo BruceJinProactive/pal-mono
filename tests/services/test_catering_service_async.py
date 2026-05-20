@@ -65,7 +65,8 @@ async def test_creates_new_request_when_no_existing() -> None:
 
     repo = AsyncMock()
     repo.get_by_idempotency_key.return_value = None
-    repo.create.return_value = None
+    persisted_request_id = uuid.uuid4()
+    repo.create.return_value = persisted_request_id
 
     project_repo = AsyncMock()
     project_repo.get_project.return_value = SimpleNamespace(
@@ -101,10 +102,12 @@ async def test_creates_new_request_when_no_existing() -> None:
         )
 
     assert isinstance(result, CateringRequestData)
+    assert result.id == persisted_request_id
     assert result.project_id == project_id
     assert result.event_date == date(2025, 12, 25)
     repo.create.assert_called_once()
     mock_publish.assert_called_once()
+    assert mock_publish.call_args.args[0].catering_request_id == persisted_request_id
 
 
 @pytest.mark.asyncio
@@ -114,7 +117,7 @@ async def test_generates_idempotency_key_when_none() -> None:
 
     repo = AsyncMock()
     repo.get_by_idempotency_key.return_value = None
-    repo.create.return_value = None
+    repo.create.return_value = uuid.uuid4()
 
     project_repo = AsyncMock()
     project_repo.get_project.return_value = SimpleNamespace(
@@ -225,7 +228,7 @@ async def test_skips_event_publishing_when_project_not_found() -> None:
 
     repo = AsyncMock()
     repo.get_by_idempotency_key.return_value = None
-    repo.create.return_value = None
+    repo.create.return_value = uuid.uuid4()
 
     project_repo = AsyncMock()
     project_repo.get_project.return_value = None
@@ -264,7 +267,7 @@ async def test_logs_warning_when_event_publish_fails() -> None:
 
     repo = AsyncMock()
     repo.get_by_idempotency_key.return_value = None
-    repo.create.return_value = None
+    repo.create.return_value = uuid.uuid4()
 
     project_repo = AsyncMock()
     project_repo.get_project.return_value = SimpleNamespace(

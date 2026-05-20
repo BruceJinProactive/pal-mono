@@ -225,7 +225,8 @@ async def create_catering_request_async(
         party_size=party_size,
     )
 
-    await repo.create(data)
+    created_request_id = await repo.create(data)
+    data = dataclasses.replace(data, id=created_request_id)
 
     project_repo = ProjectRepositoryAsync(session)
     project = await project_repo.get_project(project_id)

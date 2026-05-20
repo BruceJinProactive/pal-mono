@@ -18,7 +18,9 @@ from db.tables.catering_requests import CateringRequest
 
 @pytest.fixture
 def mock_session() -> AsyncMock:
-    return AsyncMock()
+    session = AsyncMock()
+    session.add = MagicMock()
+    return session
 
 
 @pytest.fixture
@@ -268,6 +270,7 @@ class TestCreate:
         mock_session: AsyncMock,
         sample_id: uuid.UUID,
     ) -> None:
+        persisted_id = uuid.uuid4()
         data = CateringRequestData(
             id=sample_id,
             project_id=uuid.uuid4(),
@@ -282,9 +285,17 @@ class TestCreate:
             party_size=50,
         )
 
-        await repo.create(data)
+        async def assign_persisted_id() -> None:
+            row = mock_session.add.call_args.args[0]
+            row.id = persisted_id
 
+        mock_session.flush.side_effect = assign_persisted_id
+
+        result = await repo.create(data)
+
+        assert result == persisted_id
         mock_session.add.assert_called_once()
+        mock_session.flush.assert_awaited_once()
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
