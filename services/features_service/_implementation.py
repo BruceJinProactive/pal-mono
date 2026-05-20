@@ -7,7 +7,8 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import db
+from db.pal_repository.data_classes.feature import FeatureData
+from db.pal_repository.feature import FeatureRepository
 from db.tables.types import IdentifierType
 from utils.log import logger
 from utils.otel import traced
@@ -81,10 +82,10 @@ async def check_feature_enabled(
         return cached
 
     try:
-        feature_repo = db.FeatureRepositoryAsync(session)
+        feature_repo = FeatureRepository(session)
         result = await feature_repo.check_enablement(
             feature=feature,
-            identifier_type=identifier_type,
+            identifier_type=identifier_type.value,
             identifier=identifier,
         )
         _set_cached(cache_key, result)
@@ -104,7 +105,7 @@ async def upsert_feature(
     identifier_type: IdentifierType,
     identifier: str,
     enabled: bool,
-) -> Optional[db.Feature]:
+) -> Optional[FeatureData]:
     """
     Create or update a feature flag entry.
 
@@ -122,10 +123,10 @@ async def upsert_feature(
     invalidate_feature_cache(feature, identifier_type, identifier)
 
     try:
-        feature_repo = db.FeatureRepositoryAsync(session)
+        feature_repo = FeatureRepository(session)
         return await feature_repo.upsert(
             feature=feature,
-            identifier_type=identifier_type,
+            identifier_type=identifier_type.value,
             identifier=identifier,
             enabled=enabled,
         )
