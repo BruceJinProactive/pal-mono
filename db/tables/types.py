@@ -324,3 +324,9 @@ class OnboardingStatus(str, enum.Enum):
     processing = "processing"
     completed = "completed"
     failed = "failed"
+
+
+class VisionRuleType(str, enum.Enum):
+    """Type of vision rule."""
+
+    table_cleanness = "table_cleanness"

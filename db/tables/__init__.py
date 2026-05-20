@@ -78,6 +78,7 @@ from .types import (
     SubscriptionStatus,
     TargetTier,
     UserSatisfaction,
+    VisionRuleType,
 )
 from .user_invitation import UserInvitation
 from .users import User
@@ -86,5 +87,6 @@ from .vision_camera_entities import VisionCameraEntity
 from .vision_entities import VisionEntity
 from .vision_entity_state_definitions import VisionEntityStateDefinition
 from .vision_entity_types import VisionEntityType
+from .vision_rules import VisionRule
 from .vision_state_change_events import VisionStateChangeEvent
 from .voice_configs import VoiceConfig
