@@ -5,6 +5,7 @@ These endpoints are called by the Vision Frame Processor Lambda to:
 2. Retrieve the full system prompt for a camera configuration
 """
 
+import asyncio
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from db.pal_repository import (
     VisionStateChangeEventRepository,
 )
 from services import vision_observation_service
+from services.asset_service._utils import map_uri_to_s3_url
 from utils.log import logger
 
 vision_router = APIRouter(prefix="/vision", tags=["internal-vision"])
@@ -200,6 +202,13 @@ async def get_configuration_prompt(
         state_def = await sd_repo.get_by_id(evt.new_state_id)
         new_state_name = state_def.name if state_def else None
 
+        frame_url: str | None = None
+        if evt.frame_s3_key:
+            try:
+                frame_url = await asyncio.to_thread(map_uri_to_s3_url, evt.frame_s3_key)
+            except Exception:
+                frame_url = None
+
         info = TestEventInfo(
             id=evt.id,
             entity_id=evt.entity_id,
@@ -209,6 +218,7 @@ async def get_configuration_prompt(
             observed_at=evt.observed_at,
             confidence=evt.confidence,
             test_group=group_key,
+            frame_url=frame_url,
         )
         groups.setdefault(group_key, []).append(info)
 

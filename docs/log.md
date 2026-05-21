@@ -6,6 +6,8 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-05-20
 
+- **[PAL-10735] Include presigned frame_url in prompt API test events.** Added `frame_url` field to `TestEventInfo` schema so the configuration prompt endpoint (`GET /vision/camera-configs/{config_id}/prompt`) returns a presigned S3 URL for each test event's captured frame.
+
 - **[PAL-10702] Add vision_rule table.** New `vision_rule` table scoped to projects for defining camera observation rules (e.g. table cleanness). Uses a PostgreSQL enum type (`visionruletype`) for the `type` column. Simplified the configuration prompt endpoint path from `/vision/accounts/{account_id}/projects/{project_id}/camera-configs/{config_id}/prompt` to `/vision/camera-configs/{config_id}/prompt`.
 
 ---

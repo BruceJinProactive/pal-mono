@@ -41,6 +41,9 @@ class TestEventInfo(BaseModel):
     test_group: str | None = Field(
         default=None, description="Test group this event belongs to"
     )
+    frame_url: str | None = Field(
+        default=None, description="Presigned URL for the frame that triggered the event"
+    )
 
 
 class TestGroupSummary(BaseModel):

@@ -311,6 +311,7 @@ class TestGetConfigurationPrompt:
             event_metadata={"is_test": True, "test_group": "group-a"},
             camera_config_id=config_id,
             confidence=0.9,
+            frame_s3_key="s3://bucket/frames/test-frame.jpg",
         )
 
         mock_entity = MagicMock()
@@ -334,6 +335,10 @@ class TestGetConfigurationPrompt:
             patch(
                 "api.routes.internal.vision.VisionEntityStateDefinitionRepository"
             ) as mock_sd_repo_cls,
+            patch(
+                "api.routes.internal.vision.map_uri_to_s3_url",
+                return_value="https://s3.amazonaws.com/bucket/presigned-url",
+            ),
         ):
             mock_event_repo_cls.return_value.list_test_events_by_config = AsyncMock(
                 return_value=[test_event]
@@ -357,3 +362,76 @@ class TestGetConfigurationPrompt:
             assert event_info.entity_name == "main_gate"
             assert event_info.new_state_name == "open"
             assert event_info.confidence == 0.9
+            assert (
+                event_info.frame_url == "https://s3.amazonaws.com/bucket/presigned-url"
+            )
+
+    @pytest.mark.asyncio
+    async def test_frame_url_graceful_on_presign_failure(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        state_id = uuid.uuid4()
+
+        prompt_result = ConfigurationPromptResult(
+            llm_provider="azure",
+            llm_model="gpt-4o",
+            system_prompt="prompt",
+            structured_output={"type": "object", "properties": {}},
+            entities_with_states=[],
+        )
+
+        test_event = VisionStateChangeEventData(
+            id=uuid.uuid4(),
+            entity_id=entity_id,
+            new_state_id=state_id,
+            observed_at=datetime(2026, 5, 19, 10, 0, 0, tzinfo=timezone.utc),
+            event_metadata={"is_test": True, "test_group": "group-b"},
+            camera_config_id=config_id,
+            confidence=0.8,
+            frame_s3_key="s3://bucket/frames/bad-frame.jpg",
+        )
+
+        mock_entity = MagicMock()
+        mock_entity.name = "counter"
+
+        mock_state_def = MagicMock()
+        mock_state_def.name = "dirty"
+
+        with (
+            patch(
+                "services.vision_observation_service.get_configuration_prompt",
+                new_callable=AsyncMock,
+                return_value=prompt_result,
+            ),
+            patch(
+                "api.routes.internal.vision.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch(
+                "api.routes.internal.vision.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "api.routes.internal.vision.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "api.routes.internal.vision.map_uri_to_s3_url",
+                side_effect=Exception("S3 presign failed"),
+            ),
+        ):
+            mock_event_repo_cls.return_value.list_test_events_by_config = AsyncMock(
+                return_value=[test_event]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_state_def
+            )
+
+            result = await get_configuration_prompt(
+                config_id=config_id,
+                session=session,
+            )
+
+            event_info = result.test_events[0].events[0]
+            assert event_info.frame_url is None
