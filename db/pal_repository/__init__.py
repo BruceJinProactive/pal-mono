@@ -51,6 +51,8 @@ from .vision_camera_entity import VisionCameraEntityRepository
 from .vision_entity import VisionEntityRepository
 from .vision_entity_state_definition import VisionEntityStateDefinitionRepository
 from .vision_entity_type import VisionEntityTypeRepository
+from .vision_rule import VisionRuleRepository
+from .vision_rule_event import VisionRuleEventRepository
 from .vision_state_change_event import VisionStateChangeEventRepository
 from .voice_config import VoiceConfigRepository
 
@@ -107,6 +109,8 @@ __all__ = [
     "VisionEntityRepository",
     "VisionEntityStateDefinitionRepository",
     "VisionEntityTypeRepository",
+    "VisionRuleEventRepository",
+    "VisionRuleRepository",
     "VisionStateChangeEventRepository",
     "VoiceConfigRepository",
     "UserRepository",

@@ -97,6 +97,16 @@ from api.schemas.operations.vision_entity import (
     UpdateEntityTypeRequest,
     UpdateStateDefinitionRequest,
 )
+from api.schemas.operations.vision_rule import (
+    CreateVisionRuleRequest,
+    ListVisionRulesResponse,
+    UpdateVisionRuleRequest,
+    VisionRuleResponse,
+)
+from api.schemas.operations.vision_rule_event import (
+    ListVisionRuleEventsResponse,
+    VisionRuleEventResponse,
+)
 from api.schemas.operations.vision_state_change_event import (
     CreateStateChangeEventRequest,
     ListStateChangeEventsResponse,
@@ -126,6 +136,8 @@ from . import (
     _video_upload,
     _vision_camera_configs,
     _vision_entities,
+    _vision_rule_events,
+    _vision_rules,
     _vision_state_change_events,
 )
 
@@ -3869,6 +3881,302 @@ async def delete_state_change_event(
     """
     _ = context
     return await _vision_state_change_events.delete_state_change_event(
+        session=session,
+        event_id=event_id,
+        account_name=account_name,
+    )
+
+
+# ==============================================================================
+# Vision Rules
+# ==============================================================================
+
+
+@operation_router.post(
+    "/accounts/{account_name}/vision-rules",
+    status_code=status.HTTP_201_CREATED,
+    response_model=VisionRuleResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def create_vision_rule(
+    account_name: str,
+    request: CreateVisionRuleRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> VisionRuleResponse:
+    """
+    Create a vision rule.
+
+    Path Parameters:
+    - account_name: Account identifier
+    """
+    _ = context
+    return await _vision_rules.create_vision_rule(
+        session=session,
+        request=request,
+        account_name=account_name,
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_name}/vision-rules",
+    response_model=ListVisionRulesResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_vision_rules(
+    account_name: str,
+    project_id: uuid.UUID | None = Query(default=None, description="Filter by project"),
+    is_active: bool | None = Query(default=None, description="Filter by active status"),
+    limit: int = Query(default=100, ge=1, le=1000, description="Max results"),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListVisionRulesResponse:
+    """
+    List vision rules.
+
+    Path Parameters:
+    - account_name: Account identifier
+
+    Query Parameters:
+    - project_id (optional): Filter by project
+    - is_active (optional): Filter by active status
+    - limit (optional): Max results (default 100, max 1000)
+    """
+    _ = context
+    return await _vision_rules.list_vision_rules(
+        session=session,
+        account_name=account_name,
+        project_id=project_id,
+        is_active=is_active,
+        limit=limit,
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_name}/vision-rules/{rule_id}",
+    response_model=VisionRuleResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_vision_rule(
+    account_name: str,
+    rule_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> VisionRuleResponse:
+    """
+    Get a vision rule by ID.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - rule_id: UUID of the rule
+    """
+    _ = context
+    return await _vision_rules.get_vision_rule(
+        session=session,
+        rule_id=rule_id,
+        account_name=account_name,
+    )
+
+
+@operation_router.patch(
+    "/accounts/{account_name}/vision-rules/{rule_id}",
+    response_model=VisionRuleResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_vision_rule(
+    account_name: str,
+    rule_id: uuid.UUID,
+    request: UpdateVisionRuleRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> VisionRuleResponse:
+    """
+    Update a vision rule.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - rule_id: UUID of the rule
+    """
+    _ = context
+    return await _vision_rules.update_vision_rule(
+        session=session,
+        rule_id=rule_id,
+        request=request,
+        account_name=account_name,
+    )
+
+
+@operation_router.delete(
+    "/accounts/{account_name}/vision-rules/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_vision_rule(
+    account_name: str,
+    rule_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a vision rule.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - rule_id: UUID of the rule
+    """
+    _ = context
+    return await _vision_rules.delete_vision_rule(
+        session=session,
+        rule_id=rule_id,
+        account_name=account_name,
+    )
+
+
+# ==============================================================================
+# Vision Rule Events
+# ==============================================================================
+
+
+@operation_router.get(
+    "/accounts/{account_name}/rule-events",
+    response_model=ListVisionRuleEventsResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_rule_events(
+    account_name: str,
+    rule_id: uuid.UUID | None = Query(default=None, description="Filter by rule"),
+    entity_id: uuid.UUID | None = Query(default=None, description="Filter by entity"),
+    start: datetime | None = Query(
+        default=None, description="Start time filter (defaults to 24 hours ago)"
+    ),
+    end: datetime | None = Query(default=None, description="End time filter"),
+    limit: int = Query(default=100, ge=1, le=1000, description="Max results"),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> ListVisionRuleEventsResponse:
+    """
+    List vision rule events.
+
+    Returns rule events ordered by triggered_at descending.
+    Defaults to the past 24 hours if no start time is provided.
+
+    Path Parameters:
+    - account_name: Account identifier
+
+    Query Parameters:
+    - rule_id (optional): Filter by rule
+    - entity_id (optional): Filter by entity
+    - start (optional): Filter events triggered after this time (default: 24h ago)
+    - end (optional): Filter events triggered before this time
+    - limit (optional): Max results (default 100, max 1000)
+    """
+    _ = context
+    effective_start = (
+        start if start is not None else datetime.now(timezone.utc) - timedelta(hours=24)
+    )
+    return await _vision_rule_events.list_rule_events(
+        session=session,
+        account_name=account_name,
+        rule_id=rule_id,
+        entity_id=entity_id,
+        start=effective_start,
+        end=end,
+        limit=limit,
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_name}/rule-events/{event_id}",
+    response_model=VisionRuleEventResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def get_rule_event(
+    account_name: str,
+    event_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> VisionRuleEventResponse:
+    """
+    Get a vision rule event by ID.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - event_id: UUID of the rule event
+    """
+    _ = context
+    return await _vision_rule_events.get_rule_event(
+        session=session,
+        event_id=event_id,
+        account_name=account_name,
+    )
+
+
+@operation_router.delete(
+    "/accounts/{account_name}/rule-events/{event_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_rule_event(
+    account_name: str,
+    event_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Delete a vision rule event.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - event_id: UUID of the rule event
+    """
+    _ = context
+    return await _vision_rule_events.delete_rule_event(
         session=session,
         event_id=event_id,
         account_name=account_name,
