@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -100,6 +100,44 @@ class TestUpsert:
         assert data.feature == "dark_mode"
         assert data.enabled is True
         mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_converts_row_to_data_before_commit(
+        self,
+        repo: FeatureRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+        call_order: list[str] = []
+
+        expected_data = FeatureData(
+            id=sample_orm_row.id,
+            feature=sample_orm_row.feature,
+            identifier_type=sample_orm_row.identifier_type.value,
+            identifier=sample_orm_row.identifier,
+            enabled=sample_orm_row.enabled,
+            created_at=sample_orm_row.created_at,
+            updated_at=sample_orm_row.updated_at,
+        )
+
+        def to_data(row: MagicMock) -> FeatureData:
+            assert row is sample_orm_row
+            call_order.append("to_data")
+            return expected_data
+
+        async def commit() -> None:
+            call_order.append("commit")
+
+        mock_session.commit = AsyncMock(side_effect=commit)
+
+        with patch("db.pal_repository.feature._to_data", side_effect=to_data):
+            data = await repo.upsert("dark_mode", "account", "acct_123", True)
+
+        assert data == expected_data
+        assert call_order == ["to_data", "commit"]
 
     @pytest.mark.asyncio
     async def test_exception_rolls_back(

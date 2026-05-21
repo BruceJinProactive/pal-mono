@@ -69,8 +69,9 @@ class FeatureRepository:
             ).returning(Feature)
             result = await self.session.execute(stmt)
             row = result.scalar_one()
+            data = _to_data(row)
             await self.session.commit()
-            return _to_data(row)
+            return data
         except Exception:
             await self.session.rollback()
             logger.exception("Error upserting feature")
