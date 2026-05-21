@@ -20,6 +20,11 @@ class FulfillmentType(str, Enum):
 
 
 class RequestStatus(str, Enum):
+    LEAD = "LEAD"
+    PROPOSAL = "PROPOSAL"
+    LOCKED = "LOCKED"
+    IN_PREPARATION = "IN_PREPARATION"
+    CLOSED = "CLOSED"
     INQUIRY = "INQUIRY"
     QUOTE_SENT = "QUOTE_SENT"
     CONFIRMED = "CONFIRMED"
