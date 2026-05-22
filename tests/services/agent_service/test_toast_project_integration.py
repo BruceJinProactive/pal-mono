@@ -252,6 +252,25 @@ class TestBuildToastV3Spec:
 
         assert result.expose_lookup_qualifiers is False
 
+    def test_checkout_behavior_flags_are_preserved(self):
+        config = {
+            "menu_data": {"version": "v2"},
+            "takeout_dining_option_guid": "takeout-guid-1",
+            "tax_exempt_checks": True,
+            "set_asap_promised_date_to_submission_time": True,
+        }
+
+        result = _build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "cid",
+            "csecret",
+            None,
+        )
+
+        assert result.tax_exempt_checks is True
+        assert result.set_asap_promised_date_to_submission_time is True
+
     def test_hosted_checkout_builds_without_embedding_credentials(self):
         config = {
             "menu_data": {"version": "v2"},

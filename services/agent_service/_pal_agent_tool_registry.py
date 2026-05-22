@@ -179,6 +179,8 @@ _TOAST_SPEC_FIELDS = [
     "revenue_center_id",
     "seed_force_show_defaults",
     "require_payment_before_kitchen",
+    "tax_exempt_checks",
+    "set_asap_promised_date_to_submission_time",
 ]
 
 _TOAST_DEFAULT_TOKEN_URL = (
