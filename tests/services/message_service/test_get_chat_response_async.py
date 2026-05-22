@@ -170,6 +170,34 @@ class _FakeAgentRepo:
         return SimpleNamespace(language=None)
 
 
+class _ExpiringValueObject:
+    def __init__(
+        self,
+        *,
+        id_: uuid.UUID | None = None,
+        conversation_id: uuid.UUID | None = None,
+    ) -> None:
+        self._id = id_
+        self._conversation_id = conversation_id
+        self.expired = False
+
+    @property
+    def id(self) -> uuid.UUID:
+        if self.expired:
+            raise RuntimeError("expired id accessed")
+        if self._id is None:
+            raise AttributeError("id")
+        return self._id
+
+    @property
+    def conversation_id(self) -> uuid.UUID:
+        if self.expired:
+            raise RuntimeError("expired conversation_id accessed")
+        if self._conversation_id is None:
+            raise AttributeError("conversation_id")
+        return self._conversation_id
+
+
 @pytest.mark.asyncio
 async def test_get_chat_response_async_captures_project_attributes_early(monkeypatch):
     """
@@ -281,6 +309,156 @@ async def test_get_chat_response_async_captures_project_attributes_early(monkeyp
     assert rc.account_id == str(project.account_id)
     assert rc.timezone == project.timezone
     assert rc.agent_id == str(project.agent_id)
+
+
+@pytest.mark.asyncio
+async def test_get_chat_response_async_uses_captured_ids_after_order_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SMS order turns still return a response after order persistence expires ORM attrs."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    user_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    user = _ExpiringValueObject(id_=user_id)
+    request_message = _ExpiringValueObject(conversation_id=conversation_id)
+
+    class _MessageRepo:
+        def __init__(self) -> None:
+            self.created_messages: list[dict[str, object]] = []
+
+        async def create_message(self, **kwargs: object) -> object:
+            self.created_messages.append(kwargs)
+            if len(self.created_messages) == 1:
+                return request_message
+            return SimpleNamespace(conversation_id=conversation_id)
+
+    message_repo = _MessageRepo()
+    conversation_repo = _FakeConversationRepo()
+    agent_repo = _FakeAgentRepo()
+    project = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="test-project",
+        account_id=uuid.uuid4(),
+        raw_config={"use_pal_agents": True},
+        agent_id=uuid.uuid4(),
+        timezone="America/Los_Angeles",
+        account=SimpleNamespace(name="test-account"),
+    )
+
+    async def _fake_get_project_async(
+        session: object, message: Message
+    ) -> SimpleNamespace:
+        return project
+
+    async def _fake_get_user_async(
+        session: object, project: SimpleNamespace, message: Message
+    ) -> tuple[_ExpiringValueObject, bool]:
+        return user, False
+
+    async def _fake_construct_agent_spec(**kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    class _OrderPalAgent:
+        def __init__(self, spec: object | None = None) -> None:
+            self.spec = spec
+
+        async def run(self, pal_input: object, stream: bool = False) -> SimpleNamespace:
+            return SimpleNamespace(
+                content="Great news, your order has been placed.",
+                escalated=False,
+                closing_conversation=False,
+                order_details=SimpleNamespace(
+                    vendor="adora",
+                    order_id="ORDER-123",
+                    store_id="STORE-456",
+                    user_phone_number="+15550001111",
+                    tracking_link="https://pay.example.com/order",
+                    status="pending",
+                    fulfillment_strategy="TakeOut",
+                    subtotal=17.0,
+                    tax=0.0,
+                    service_charge=0.0,
+                    delivery_charge=0.0,
+                    discount=0.0,
+                    total=17.0,
+                    order_items=[],
+                    order_time=None,
+                ),
+            )
+
+    async def _fake_query_history_messages(
+        *args: object, **kwargs: object
+    ) -> list[object]:
+        return []
+
+    async def _fake_create_order_from_agent_async(
+        session: object, order_details: object, conversation_id: uuid.UUID
+    ) -> SimpleNamespace:
+        user.expired = True
+        request_message.expired = True
+        return SimpleNamespace(id=uuid.uuid4())
+
+    fake_session = AsyncMock()
+    fake_session.refresh = AsyncMock()
+
+    monkeypatch.setattr(
+        _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db,
+        "ConversationRepositoryAsync",
+        lambda session: conversation_repo,
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
+    )
+    monkeypatch.setattr(
+        _implementation.project_service, "get_project_async", _fake_get_project_async
+    )
+    monkeypatch.setattr(
+        _implementation.user_service, "get_user_async", _fake_get_user_async
+    )
+    monkeypatch.setattr(
+        _implementation.agent_service,
+        "construct_agent_spec",
+        _fake_construct_agent_spec,
+    )
+    monkeypatch.setattr(_implementation, "PalAgent", _OrderPalAgent)
+    monkeypatch.setattr(
+        _implementation, "query_history_messages", _fake_query_history_messages
+    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        _implementation.transaction_service,
+        "create_order_from_agent_async",
+        _fake_create_order_from_agent_async,
+    )
+
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.SMS,
+        text=TextObject(body="Place the order"),
+        metadata=Metadata(testing=True),
+    )
+
+    result = await _implementation.get_chat_response_async(
+        session=fake_session,
+        message=message,
+        request_context=RequestContext(),
+    )
+
+    assert len(result) == 1
+    response_message = result[0]
+    assert response_message.text is not None
+    assert response_message.text.body == "Great news, your order has been placed."
+    assert len(message_repo.created_messages) == 2
+    assert message_repo.created_messages[1]["user_id"] == user_id
 
 
 @pytest.mark.asyncio

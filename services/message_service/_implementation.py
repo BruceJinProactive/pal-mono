@@ -507,6 +507,11 @@ async def get_chat_response_async(
         if not request_message:
             raise ValueError("Failed to create request message")
 
+        # Capture scalar IDs before downstream order persistence can commit the
+        # async session and expire ORM attributes.
+        user_id = user.id
+        request_conversation_id = request_message.conversation_id
+
         # Get agent_id (needed for metadata regardless of which flow)
         agent_id = project_agent_id
         if agent_id is None:
@@ -515,8 +520,8 @@ async def get_chat_response_async(
         # **************** Step 2: Construct agent, get input, and generate output ****************
         current_message = message.text.body if message.text else ""
         with langfuse_message_span(
-            conversation_id=request_message.conversation_id,
-            user_id=user.id,
+            conversation_id=request_conversation_id,
+            user_id=user_id,
             agent_id=agent_id,
             account_name=account_name,
             project_name=project_name,
@@ -529,13 +534,13 @@ async def get_chat_response_async(
                 request_context=request_context,
                 use_pal_agents=use_pal_agents,
                 agent_id=agent_id,
-                user_id=user.id,
+                user_id=user_id,
                 project_id=project_id,
                 project_account_id=project_account_id,
                 project_raw_config=project_raw_config,
                 project_timezone=project_timezone,
                 account_name=account_name,
-                conversation_id=request_message.conversation_id,
+                conversation_id=request_conversation_id,
                 context_modifier=context_modifier,
                 spec_modifier=spec_modifier,
             )
@@ -546,8 +551,8 @@ async def get_chat_response_async(
             _fingerprint_conversation(
                 agent_id=agent_id,
                 project_id=project_id,
-                user_id=user.id,
-                conversation_id=request_message.conversation_id,
+                user_id=user_id,
+                conversation_id=request_conversation_id,
                 channel=message.channel,
             )
         )
@@ -560,8 +565,8 @@ async def get_chat_response_async(
             account_name=account_name,
             project_name=project_name,
             agent_id=str(agent_id),
-            user_id=str(user.id),
-            session_id=str(request_message.conversation_id),
+            user_id=str(user_id),
+            session_id=str(request_conversation_id),
             testing=testing,
         )
 
@@ -572,7 +577,7 @@ async def get_chat_response_async(
                 if user:
                     # Save the opt-in message to the database
                     await message_repo.create_message(
-                        user_id=user.id,
+                        user_id=user_id,
                         project_id=project_id,
                         message_body=opt_in_message.to_dict(),
                         channel=(
@@ -604,7 +609,6 @@ async def get_chat_response_async(
                 sub_message.text = TextObject(body=text.strip())
                 final_output_messages.append(sub_message)
 
-        user_id = user.id
         for i, message in enumerate(final_output_messages):
             # Append response message to list of response messages
             response_messages.append(message)
@@ -617,7 +621,7 @@ async def get_chat_response_async(
                     len(collected_events_sync),
                     extra={
                         "event_count": len(collected_events_sync),
-                        "conversation_id": str(request_message.conversation_id),
+                        "conversation_id": str(request_conversation_id),
                     },
                 )
             await message_repo.create_message(
@@ -635,7 +639,7 @@ async def get_chat_response_async(
         if output.closing_conversation:
             conversation = await db.ConversationRepositoryAsync(
                 session
-            ).get_conversation_by_id(conversation_id=request_message.conversation_id)
+            ).get_conversation_by_id(conversation_id=request_conversation_id)
             if conversation:
                 conversation.status = db.ConversationStatus.CLOSING
                 await session.flush()
