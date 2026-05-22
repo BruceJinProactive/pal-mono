@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-22
+
+- **Catering request status lifecycle.** Documented the planned lifecycle `LEAD` -> `PROPOSAL` -> `CONFIRMED` -> `LOCKED` -> `IN_PREPARATION` -> `READY` -> `COMPLETED` -> `CLOSED` and exposed `COMPLETED` as a distinct `RequestStatus` value. `COMPLETED` is operational fulfillment; `CLOSED` is administrative closure. → `docs/state/architecture.md`
+
+---
+
 ## 2026-05-21
 
 - **[PAL-10722] Add CRUD API for vision rules and get/delete API for rule events.** Full CRUD endpoints for `vision_rule` at `/accounts/{account_name}/vision-rules`. List/get/delete endpoints for `vision_rule_event` at `/accounts/{account_name}/rule-events` served by the existing `vision_event_service`. New `vision_rule_service` handles rule business logic.

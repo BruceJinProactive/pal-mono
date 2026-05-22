@@ -31,11 +31,11 @@ class RequestStatus(str, Enum):
     IN_PREP = "IN_PREP"
     READY = "READY"
     FULFILLED = "FULFILLED"
+    COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
     ISSUE = "ISSUE"
     # Backward-compatible aliases for in-flight code paths.
     PENDING = INQUIRY
-    COMPLETED = FULFILLED
 
 
 class CateringRequest(Base):

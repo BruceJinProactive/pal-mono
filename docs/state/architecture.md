@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-03-23
+> **Last updated:** 2026-05-22
 
 ## Quick Reference
 
@@ -243,6 +243,14 @@ The core AI agent implementation providing conversational capabilities.
 *Communication*: `conversations`, `messages`, `phonecalls`
 
 *Transactions*: `orders`, `adora_orders`, `reservations`, `catering_requests`
+
+`catering_requests.status` uses the `RequestStatus` enum to track the
+request lifecycle. Planned catering requests move through:
+`LEAD` -> `PROPOSAL` -> `CONFIRMED` -> `LOCKED` -> `IN_PREPARATION` ->
+`READY` -> `COMPLETED` -> `CLOSED`. `COMPLETED` means the catering request has
+been operationally fulfilled, while `CLOSED` means the request is
+administratively closed with no further action expected. Legacy status values
+remain available for older rows and compatibility paths.
 
 *Business*: `campaigns`, `credit_grants`, `faqs`, `features`, `feedback`, `integration`, `lead`, `subscriptions`, `affiliates`
 
