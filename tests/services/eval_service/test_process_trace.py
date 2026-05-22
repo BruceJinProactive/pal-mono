@@ -212,7 +212,44 @@ class TestBuildProcessTraceVoice:
         assert user_event.content.transcript == "Hello"
         assert user_event.content.uri == "s3://bucket/recording.ogg"
         assert user_event.content.duration_ms == 1500.0
+        assert user_event.content.start_ms == 0.0
+        assert user_event.content.end_ms == 1500.0
+        assert user_event.content.speaker == "user"
         assert user_event.timestamp_ms == 0.0
+
+        assistant_event = trace.get_events(EventType.AGENT_MESSAGE)[0]
+        assert isinstance(assistant_event.content, AudioContent)
+        assert assistant_event.content.transcript == "Hi there!"
+        assert assistant_event.content.uri == "s3://bucket/recording.ogg"
+        assert assistant_event.content.duration_ms == 1500.0
+        assert assistant_event.content.start_ms == 2000.0
+        assert assistant_event.content.end_ms == 3500.0
+        assert assistant_event.content.speaker == "assistant"
+        assert assistant_event.timestamp_ms == 2000.0
+
+    def test_voice_audio_content_preserves_optional_channel(self) -> None:
+        scenario = _make_scenario()
+        record = ConversationRecord(
+            scenario=scenario,
+            turns=[],
+            is_voice=True,
+            voice_transcript=[
+                {
+                    "role": "assistant",
+                    "content": "Hi there!",
+                    "start_time": 2.0,
+                    "end_time": 3.5,
+                    "channel": "left",
+                },
+            ],
+            audio_recording_s3_uri="s3://bucket/recording.ogg",
+        )
+
+        trace = build_process_trace(record)
+
+        assistant_event = trace.get_events(EventType.AGENT_MESSAGE)[0]
+        assert isinstance(assistant_event.content, AudioContent)
+        assert assistant_event.content.channel == "left"
 
     def test_voice_with_tool_calls(self) -> None:
         scenario = _make_scenario()
@@ -333,7 +370,7 @@ class TestToolTurnAssignment:
         # No agent messages means fallback to turn 0
         assert turn_idx == 0
 
-    def test_msg_index_maps_to_correct_agent_turn(self) -> None:
+    def test_turn_index_maps_to_correct_agent_turn(self) -> None:
         scenario = _make_scenario()
         record = ConversationRecord(
             scenario=scenario,
@@ -342,8 +379,8 @@ class TestToolTurnAssignment:
                 {"user": "Order pizza", "assistant": "Done!"},
             ],
             tool_calls=[
-                {"tool_name": "lookup", "arguments": {}, "_msg_index": 0},
-                {"tool_name": "create_order", "arguments": {}, "_msg_index": 1},
+                {"tool_name": "lookup", "arguments": {}, "_turn_index": 0},
+                {"tool_name": "create_order", "arguments": {}, "_turn_index": 1},
             ],
         )
 
@@ -354,6 +391,27 @@ class TestToolTurnAssignment:
         # First tool call maps to agent turn 0
         assert actions[0][0] == 0
         # Second tool call maps to agent turn 1
+        assert actions[1][0] == 1
+
+    def test_db_msg_index_maps_agent_messages_to_turns(self) -> None:
+        scenario = _make_scenario()
+        record = ConversationRecord(
+            scenario=scenario,
+            turns=[
+                {"user": "Hi", "assistant": "Hello"},
+                {"user": "Order pizza", "assistant": "Done!"},
+            ],
+            tool_calls=[
+                {"tool_name": "lookup", "arguments": {}, "_msg_index": 1},
+                {"tool_name": "create_order", "arguments": {}, "_msg_index": 3},
+            ],
+        )
+
+        trace = build_process_trace(record)
+
+        actions = trace.get_actions()
+        assert len(actions) == 2
+        assert actions[0][0] == 0
         assert actions[1][0] == 1
 
     def test_multiple_tool_calls_same_msg_index(self) -> None:

@@ -26,6 +26,10 @@ class AudioContent:
     duration_ms: float | None = None
     format: str | None = None
     transcript: str | None = None
+    start_ms: float | None = None
+    end_ms: float | None = None
+    speaker: str | None = None
+    channel: str | None = None
 
 
 Content = TextContent | AudioContent | None
@@ -237,24 +241,32 @@ def _build_from_voice(trace: ProcessTrace, record: Any) -> None:
         start_time = entry.get("start_time")
         end_time = entry.get("end_time")
 
-        timestamp_ms = start_time * 1000 if start_time is not None else None
+        start_ms = start_time * 1000 if start_time is not None else None
+        end_ms = end_time * 1000 if end_time is not None else None
+        timestamp_ms = start_ms
         duration_ms = None
-        if start_time is not None and end_time is not None:
-            duration_ms = (end_time - start_time) * 1000
+        if start_ms is not None and end_ms is not None:
+            duration_ms = end_ms - start_ms
+
+        if role == "user":
+            event_type = EventType.USER_MESSAGE
+            speaker = "user"
+        elif role == "assistant":
+            event_type = EventType.AGENT_MESSAGE
+            speaker = "assistant"
+        else:
+            continue
 
         content = AudioContent(
             uri=audio_uri,
             duration_ms=duration_ms,
             format="ogg",
             transcript=content_text,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            speaker=speaker,
+            channel=entry.get("channel"),
         )
-
-        if role == "user":
-            event_type = EventType.USER_MESSAGE
-        elif role == "assistant":
-            event_type = EventType.AGENT_MESSAGE
-        else:
-            continue
 
         trace.events.append(
             TraceEvent(
@@ -272,19 +284,28 @@ def _build_from_voice(trace: ProcessTrace, record: Any) -> None:
 def _resolve_tool_turn(tc: dict[str, Any], agent_turn_indices: list[int]) -> int:
     """Determine which turn a tool call belongs to.
 
-    Uses _msg_index metadata (set by the runner) to find the closest preceding
-    agent turn. Falls back to the last agent turn if no metadata is present.
+    Uses _turn_index metadata (set by the runner) when available. Falls back to
+    legacy _msg_index best-effort mapping, then to the last agent turn.
     """
     if not agent_turn_indices:
         return 0
 
+    turn_index = tc.get("_turn_index")
+    if isinstance(turn_index, int):
+        if turn_index in agent_turn_indices:
+            return turn_index
+        if 0 <= turn_index < len(agent_turn_indices):
+            return agent_turn_indices[turn_index]
+
     msg_index = tc.get("_msg_index")
     if isinstance(msg_index, int) and agent_turn_indices:
-        # Map message index to the closest agent turn that is <= msg_index
-        preceding = [idx for idx in agent_turn_indices if idx <= msg_index]
-        if preceding:
-            return preceding[-1]
-        return agent_turn_indices[0]
+        # Legacy fallback for tool calls extracted before _turn_index existed.
+        # DB messages normally alternate user/agent, so assistant messages have
+        # indexes 1, 3, 5... and map to turns 0, 1, 2....
+        inferred_position = max(0, msg_index // 2)
+        if inferred_position < len(agent_turn_indices):
+            return agent_turn_indices[inferred_position]
+        return agent_turn_indices[-1]
 
     # Fallback: assign to last agent turn
     return agent_turn_indices[-1]
@@ -294,8 +315,8 @@ def _attach_tool_calls(trace: ProcessTrace, tool_calls: list[dict[str, Any]]) ->
     """Attach tool calls to the trace as ACTION events.
 
     Tool calls are assigned to the agent turn that triggered them. When
-    ``_msg_index`` metadata is present (set by the runner), it maps to the
-    closest preceding agent turn. Otherwise falls back to the last agent turn.
+    ``_turn_index`` metadata is present (set by the runner), it is used
+    directly. Otherwise, legacy ``_msg_index`` metadata is mapped best-effort.
     """
     if not tool_calls:
         return

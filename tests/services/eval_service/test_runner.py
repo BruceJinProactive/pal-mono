@@ -1242,6 +1242,8 @@ class TestRunConversation:
         assert len(record.tool_calls) == 2
         assert record.tool_calls[0]["payload"]["tool_name"] == "reserve"
         assert record.tool_calls[1]["payload"]["tool_name"] == "confirm"
+        assert record.tool_calls[0]["_turn_index"] == 0
+        assert record.tool_calls[1]["_turn_index"] == 0
         mock_repo.get_messages_by_conversation.assert_awaited_once_with(conversation_id)
 
     @pytest.mark.asyncio

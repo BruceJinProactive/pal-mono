@@ -530,13 +530,18 @@ async def _extract_tool_calls_from_db(
         db_messages = await repo.get_messages_by_conversation(conversation_id)
 
     tool_calls: list[dict[str, Any]] = []
+    agent_turn_index = -1
     for msg_idx, msg in enumerate(db_messages):
         if not (msg.body and isinstance(msg.body, dict)):
             continue
+        if msg.body.get("author_type") == "agent":
+            agent_turn_index += 1
         for tc in msg.body.get("tool_calls", []):
             if not isinstance(tc, dict):
                 continue
             tc["_msg_index"] = msg_idx
+            if agent_turn_index >= 0:
+                tc["_turn_index"] = agent_turn_index
             tool_calls.append(tc)
     return tool_calls
 

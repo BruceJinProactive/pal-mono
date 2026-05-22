@@ -96,6 +96,11 @@ async def evaluate_scenario(
             "tool_call_accuracy: score=%s passed=%s", result.score, result.passed
         )
 
+    # Phase 1b: Process verification evaluators (deterministic + judge)
+    if record.scenario.expected_process is not None:
+        process_results = await _run_process_evaluators(record)
+        results.extend(process_results)
+
     # Phase 2: LLM judge + voice-specific evaluators in parallel
     metric_tasks: list[asyncio.Task[EvaluatorResult]] = []
 
@@ -131,6 +136,62 @@ async def evaluate_scenario(
                         reason=f"Evaluator error: {task_result}",
                     )
                 )
+
+    return results
+
+
+async def _run_process_evaluators(
+    record: ConversationRecord,
+) -> list[EvaluatorResult]:
+    """Run process verification evaluators when expected_process is defined."""
+    from services.eval_service.evaluators.output_use import evaluate_output_use
+    from services.eval_service.evaluators.param_collection import (
+        evaluate_param_collection,
+    )
+    from services.eval_service.evaluators.tool_timing import evaluate_tool_timing
+    from services.eval_service.process_trace import build_process_trace
+
+    expected_process = record.scenario.expected_process
+    assert expected_process is not None
+
+    trace = build_process_trace(record)
+    results: list[EvaluatorResult] = []
+
+    # tool_timing (deterministic)
+    if expected_process.tool_timing:
+        result = evaluate_tool_timing(trace, expected_process.tool_timing)
+        results.append(result)
+        logger.debug("tool_timing: score=%s passed=%s", result.score, result.passed)
+
+    # param_collection (deterministic, always runs when expected_process is set)
+    param_result = evaluate_param_collection(trace, record.tool_calls)
+    results.append(param_result)
+    logger.debug(
+        "param_collection: score=%s passed=%s",
+        param_result.score,
+        param_result.passed,
+    )
+
+    # output_use (LLM judge)
+    if expected_process.output_use:
+        try:
+            output_result = await evaluate_output_use(
+                trace, expected_process.output_use
+            )
+        except Exception as exc:
+            logger.exception("output_use evaluator failed")
+            output_result = EvaluatorResult(
+                metric_name="output_use",
+                score=0.0,
+                passed=False,
+                reason=f"Evaluator error: {exc}",
+            )
+        results.append(output_result)
+        logger.debug(
+            "output_use: score=%s passed=%s",
+            output_result.score,
+            output_result.passed,
+        )
 
     return results
 
