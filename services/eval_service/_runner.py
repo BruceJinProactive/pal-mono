@@ -530,10 +530,14 @@ async def _extract_tool_calls_from_db(
         db_messages = await repo.get_messages_by_conversation(conversation_id)
 
     tool_calls: list[dict[str, Any]] = []
-    for msg in db_messages:
-        if msg.body and isinstance(msg.body, dict):
-            tc = msg.body.get("tool_calls", [])
-            tool_calls.extend(tc)
+    for msg_idx, msg in enumerate(db_messages):
+        if not (msg.body and isinstance(msg.body, dict)):
+            continue
+        for tc in msg.body.get("tool_calls", []):
+            if not isinstance(tc, dict):
+                continue
+            tc["_msg_index"] = msg_idx
+            tool_calls.append(tc)
     return tool_calls
 
 

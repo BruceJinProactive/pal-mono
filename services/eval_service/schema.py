@@ -28,6 +28,24 @@ class ExpectedOutcomes(BaseModel):
     hallucination: bool | None = None
 
 
+class ToolTimingConstraint(BaseModel):
+    tool: str
+    must_precede: str | None = None
+    must_follow: str | None = None
+    requires_params: list[str] = Field(default_factory=list)
+
+
+class OutputUseConstraint(BaseModel):
+    tool: str
+    on_success: str | None = None
+    on_error: str | None = None
+
+
+class ExpectedProcess(BaseModel):
+    tool_timing: list[ToolTimingConstraint] = Field(default_factory=list)
+    output_use: list[OutputUseConstraint] = Field(default_factory=list)
+
+
 class EvalScenario(BaseModel):
     scenario_id: str
     scenario: str
@@ -37,6 +55,7 @@ class EvalScenario(BaseModel):
     user_turns: list[str | UserTurn]
     expected_tool_calls: list[ExpectedToolCall] = Field(default_factory=list)
     expected_outcomes: ExpectedOutcomes = Field(default_factory=ExpectedOutcomes)
+    expected_process: ExpectedProcess | None = None
     context: list[str] = Field(default_factory=list)
 
 
