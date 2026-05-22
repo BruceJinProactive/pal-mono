@@ -192,6 +192,8 @@ def update_subscription_plan(
         "free_trial_days",
         "active",
         "hidden",
+        "call_overage_charge",
+        "order_overage_charge",
     }
 
     # Get the fields that are being updated (non-None values in params)
