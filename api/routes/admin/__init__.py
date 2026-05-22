@@ -137,6 +137,7 @@ from api.schemas.admin.phone_number import (
     ReleaseProjectNumberRequest,
     ReserveProjectNumberRequest,
 )
+from api.schemas.admin.pos_onboarding import ToastOptionsResponse
 from api.schemas.admin.project import (
     BatchCreateProjectsRequest,
     BatchCreateProjectsResponse,
@@ -230,6 +231,7 @@ from api.schemas.admin.voice_config import (
     UpdateVoiceConfigRequest,
     VoiceConfig,
 )
+from api.schemas.error.error import ErrorResponse
 from db.tables.accounts import AccountStatus
 from db.tables.change_log import ChangeResourceType
 from db.tables.lead import BusinessSegment, LeadStatus, TargetTier
@@ -288,6 +290,7 @@ from . import (
     _prompt,
     _subscription,
     _team,
+    _toast_integration,
     _users,
     _voice_config,
 )
@@ -753,6 +756,29 @@ async def delete_project_integration(
     """
     return await _integration.delete_project_integration(
         project_id, project_integration_id, context, session
+    )
+
+
+@admin_router.get(
+    "/accounts/{account_name}/integrations/{integration_id}/toast/options",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_toast_options(
+    account_name: str,
+    integration_id: uuid.UUID,
+    restaurant_guid: str,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> ToastOptionsResponse:
+    """Fetch available menus and dining options for a Toast restaurant.
+
+    Reads credentials from the stored Integration — no secrets in the URL.
+    No database writes.
+    """
+    return _toast_integration.get_toast_options(
+        account_name, integration_id, restaurant_guid, context, session
     )
 
 

@@ -43,17 +43,34 @@ Steps 1, 2, and 3 (shell) require no new code for account, project, and agent cr
 ## Step 3: POS integration setup
 
 The existing `ProjectIntegrations` form currently requires the operator to
-paste compiled menu JSON. This plan replaces that with two new endpoints and
-a checkbox-driven UI.
+paste compiled menu JSON. This plan extends the existing endpoints to
+eliminate the manual paste — no new setup endpoint is needed.
 
-**Options** — preview only, no DB writes. Auto-called when the operator
-finishes entering credentials and restaurant GUID. Uses POST to keep
-credentials out of query strings, browser history, and access logs.
-Request body must be redacted in error logging middleware:
+**Current flow (unchanged):**
+1. `PUT /accounts/{account_name}/integrations` — store credentials → `Integration` row
+2. `PUT /projects/{project_id}/integrations` — caller supplies compiled `menu_data` in `config` → `ProjectIntegration` row
 
-```
-POST /pos/toast/options
-  body → { client_id, client_secret, restaurant_guid }
+When `tool_name == "toast_v3"` and `restaurant_guid` is present, the handler
+reads credentials from the already-stored `Integration`, fetches the raw menu,
+compiles it, and populates `config.menu_data` automatically — any `menu_data`
+in `config` is ignored. `takeout_dining_option_guid` and `selected_menus` are
+optional and wired into the compiled config when provided. When
+`restaurant_guid` is omitted, `menu_data` in `config` is used as-is
+(backward-compatible manual path).
+
+New fields added to `CreateProjectIntegrationRequest`:
+- `restaurant_guid` — required when auto-compiling; also becomes `store_identifier`
+- `selected_menus` — which menus to compile (from `GET /accounts/{account_name}/integrations/{integration_id}/toast/options`'s `available_menus`)
+- `takeout_dining_option_guid` — required when auto-compiling; triggers auto-fetch together with `restaurant_guid`
+- `delivery_dining_option_guid` — optional
+
+**New options endpoint** — no DB writes. Called in the
+UI once the operator has created the account-level integration (step 1 stores
+credentials). The GET reads credentials from the stored integration so no
+secrets appear in the URL:
+
+```http
+GET /accounts/{account_name}/integrations/{integration_id}/toast/options?restaurant_guid=...
   → { available_menus: string[], dining_options, suggested_takeout_guid? }
 ```
 
@@ -62,24 +79,8 @@ default; operator unchecks test/operational menus — names like `Disposables`,
 `Test Menu`, `Integration Requirements` are common in production), a dining
 option picker if ambiguous, and optional feature flags.
 
-**Setup** — one save action that does everything:
-
-```
-POST /projects/{project_id}/integrations/toast
-  body → { client_id, client_secret, restaurant_guid,
-            selected_menus, takeout_dining_option_guid,
-            delivery_dining_option_guid?, options }
-  → stores credentials in secret manager
-  → fetches raw menu + compiles via compile_toast_menu_v2
-  → writes Integration + ProjectIntegration with menu_data in one transaction
-  → returns { integration_id, project_integration_id, warnings }
-```
-
-Reuses the same fetch/compile pipeline as the Toast menu-update webhook.
 Phase 1 supports Toast only; Adora is visible in the UI but disabled with a
 "Phase 2" label.
-
----
 
 ## Step 5: Generate test cases
 
@@ -104,8 +105,8 @@ spec modifier).
 
 | What | Notes |
 |---|---|
-| `POST /pos/toast/options` | New endpoint; POST body keeps credentials out of query strings/browser history/access logs; request body must be redacted in error logging; no DB writes |
-| `POST /projects/{project_id}/integrations/toast` | New endpoint; existing `PUT /projects/{project_id}/integrations` only writes a raw config dict — it does not call Toast APIs or compile menus; this endpoint orchestrates credentials + fetch + compile + write in one call |
+| `GET /accounts/{account_name}/integrations/{integration_id}/toast/options` | New endpoint; reads credentials from stored integration — no secrets in URL; no DB writes |
+| Extend `PUT /projects/{project_id}/integrations` | Add `restaurant_guid`, `selected_menus`, `takeout_dining_option_guid`, `delivery_dining_option_guid` to `CreateProjectIntegrationRequest`; both `restaurant_guid` + `takeout_dining_option_guid` required to trigger auto-fetch; when omitted, `menu_data` in `config` is used as-is (backward-compatible manual path) |
 | Menu checkbox UI in `ProjectIntegrations` | Replace free-text `SelectedMenusField` with fetched checkbox list |
 | `eval_scenario_repository` | Table exists; repository class missing |
 | Eval runner: load scenarios by project | Active work tracked in `docs/memory/short-term.md` |

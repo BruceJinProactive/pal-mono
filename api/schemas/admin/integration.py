@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+from typing_extensions import Self
 
 from db.tables.types import AuthType, IntegrationProvider, IntegrationType
 from services.integration_service.schema import (
@@ -165,6 +166,42 @@ class CreateProjectIntegrationRequest(BaseModel):
         default=None, description="Name of the tool being linked"
     )
     config: Dict = Field(default_factory=dict, description="Integration configuration")
+    auto_fetch: bool = Field(
+        default=False,
+        description="When True and tool_name=toast_v3, fetch and compile menu from Toast; "
+        "config.selected_menus filters which menus to compile (empty or absent = all).",
+    )
+
+    @model_validator(mode="after")
+    def validate_toast_v3_config(self) -> Self:
+        if self.tool_name != "toast_v3":
+            return self
+        config = self.config
+        restaurant_guid = config.get("restaurant_guid", "")
+        menu_data = config.get("menu_data")
+
+        if not restaurant_guid or not str(restaurant_guid).strip():
+            raise ValueError("toast_v3 config requires restaurant_guid")
+
+        if self.auto_fetch:
+            # auto_fetch path: menu_data must be absent (will be populated by fetch)
+            if menu_data is not None:
+                raise ValueError(
+                    "toast_v3 config.menu_data must not be set when auto_fetch=True"
+                )
+        else:
+            # manual path: menu_data required and must be a non-empty dict
+            if not isinstance(menu_data, dict) or not menu_data:
+                raise ValueError(
+                    "toast_v3 config requires a non-empty menu_data when auto_fetch=False"
+                )
+            takeout_guid = config.get("takeout_dining_option_guid", "")
+            if not takeout_guid or not str(takeout_guid).strip():
+                raise ValueError(
+                    "toast_v3 config requires takeout_dining_option_guid when auto_fetch=False"
+                )
+
+        return self
 
     def to_project_integration_params(self, project_id: uuid.UUID):
         from services.integration_service.schema import ProjectIntegrationParams
