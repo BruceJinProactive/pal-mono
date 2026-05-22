@@ -11,6 +11,8 @@ from db.tables import CateringRequest
 from db.tables.catering_requests import RequestStatus
 from utils.log import logger
 
+LEAD_REQUEST_STATUSES = (RequestStatus.LEAD, RequestStatus.INQUIRY)
+
 
 class CateringRequestRepositoryAsync:
     def __init__(self, session: AsyncSession):
@@ -104,7 +106,7 @@ class CateringRequestRepositoryAsync:
         created_before: datetime,
     ) -> list[CateringRequest]:
         """
-        List all INQUIRY catering requests created within a UTC date range.
+        List all lead-stage catering requests created within a UTC date range.
 
         Args:
             created_after: Start of the UTC window (inclusive).
@@ -115,7 +117,7 @@ class CateringRequestRepositoryAsync:
         """
         try:
             query = select(CateringRequest).filter(
-                CateringRequest.status == RequestStatus.INQUIRY,
+                CateringRequest.status.in_(LEAD_REQUEST_STATUSES),
                 CateringRequest.created_at >= created_after,
                 CateringRequest.created_at < created_before,
             )
@@ -132,7 +134,7 @@ class CateringRequestRepositoryAsync:
         event_date_end: date,
     ) -> list[CateringRequest]:
         """
-        List all INQUIRY catering requests whose event_date falls within a range.
+        List all lead-stage catering requests whose event_date falls within a range.
 
         Args:
             event_date_start: Start of the event date range (inclusive).
@@ -143,7 +145,7 @@ class CateringRequestRepositoryAsync:
         """
         try:
             query = select(CateringRequest).filter(
-                CateringRequest.status == RequestStatus.INQUIRY,
+                CateringRequest.status.in_(LEAD_REQUEST_STATUSES),
                 CateringRequest.event_date >= event_date_start,
                 CateringRequest.event_date <= event_date_end,
             )

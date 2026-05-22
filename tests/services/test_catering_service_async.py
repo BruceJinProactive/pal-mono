@@ -48,7 +48,7 @@ def _make_catering_request_data(**overrides) -> CateringRequestData:
         "contact_phone_number": "+15551234567",
         "party_size": 30,
         "contact_id": None,
-        "status": RequestStatus.INQUIRY.value,
+        "status": RequestStatus.LEAD.value,
         "idempotency_key": "idem-key-1",
         "created_at": datetime(2025, 6, 1, tzinfo=timezone.utc),
         "updated_at": datetime(2025, 6, 1, tzinfo=timezone.utc),

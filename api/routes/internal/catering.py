@@ -38,11 +38,11 @@ async def process_inquiry_reminders(
     session: AsyncSession = Depends(db.get_db_async),
 ) -> CateringReminderResponse:
     """
-    Send reminder SMS for catering inquiries that are exactly 2 days old.
+    Send reminder SMS for lead-stage catering requests that are exactly 2 days old.
 
     Called daily by EventBridge Scheduler. Processes all projects in one pass,
     sending one reminder SMS per project to the catering manager for any
-    INQUIRY requests whose event hasn't passed.
+    LEAD or legacy INQUIRY requests whose event hasn't passed.
     """
     reminder_result = await send_catering_inquiry_reminders(session)
     apology_result = await send_catering_inquiry_apologies(session)

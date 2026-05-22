@@ -126,7 +126,7 @@ def create_catering_request(
                 contact_phone_number=contact_phone_number,
                 party_size=party_size,
                 contact_id=None,
-                status=RequestStatus.INQUIRY,
+                status=RequestStatus.LEAD,
                 idempotency_key=idempotency_key,
             )
 
@@ -214,7 +214,7 @@ async def create_catering_request_async(
         event_date=event_date,
         contact_name=contact_name,
         contact_phone_number=contact_phone_number,
-        status=RequestStatus.INQUIRY.value,
+        status=RequestStatus.LEAD.value,
         idempotency_key=idempotency_key,
         created_at=datetime.now(tz=timezone.utc),
         updated_at=datetime.now(tz=timezone.utc),
@@ -525,10 +525,11 @@ def _should_send_customer_status_sms(
         return False
 
     return next_status in {
-        RequestStatus.QUOTE_SENT,
+        RequestStatus.PROPOSAL,
         RequestStatus.CONFIRMED,
         RequestStatus.CANCELLED,
         RequestStatus.READY,
+        RequestStatus.QUOTE_SENT,
     }
 
 
@@ -536,10 +537,11 @@ def _get_customer_status_sms_skip_reason(next_status: RequestStatus | None) -> s
     if next_status is None:
         return "no_status_requested"
     if next_status not in {
-        RequestStatus.QUOTE_SENT,
+        RequestStatus.PROPOSAL,
         RequestStatus.CONFIRMED,
         RequestStatus.CANCELLED,
         RequestStatus.READY,
+        RequestStatus.QUOTE_SENT,
     }:
         return "status_not_supported"
     return "eligible"
@@ -572,10 +574,10 @@ def _build_customer_status_sms_message(
     )
     event_phrase = f" for {event_date}" if event_date else ""
 
-    if catering_request.status == RequestStatus.QUOTE_SENT:
+    if catering_request.status in {RequestStatus.PROPOSAL, RequestStatus.QUOTE_SENT}:
         return (
             f"Hi, your catering request with {business_name} has been reviewed "
-            "and the status has been updated to 'Quote Sent'."
+            "and the status has been updated to Proposal."
         )
 
     if catering_request.status == RequestStatus.CONFIRMED:
@@ -919,7 +921,7 @@ def format_catering_reminder_message(
     if len(requests) == 1:
         req = requests[0]
         parts = [
-            "A catering request from 2 days ago is still at 'inquiry' status.",
+            "A catering request from 2 days ago is still at lead status.",
             f"Date: {req.event_date.strftime('%B %d, %Y')}",
             f"Contact: {req.contact_name} ({req.contact_phone_number})",
         ]
@@ -929,7 +931,7 @@ def format_catering_reminder_message(
         return "\n".join(parts)
 
     parts = [
-        f"There are {len(requests)} catering requests from 2 days ago that are still at 'inquiry' status.",
+        f"There are {len(requests)} catering requests from 2 days ago that are still at lead status.",
         "",
     ]
     for i, req in enumerate(requests, 1):
@@ -950,7 +952,7 @@ async def send_catering_inquiry_reminders(
 
     For each project with qualifying requests, sends ONE reminder SMS to the
     catering manager. A request qualifies if:
-    - Status is INQUIRY
+    - Status is LEAD or legacy INQUIRY
     - created_at date (in the project's timezone) is exactly 2 days ago
     - The event date/time has not yet passed
 
@@ -1072,7 +1074,7 @@ def format_catering_apology_message(
 ) -> str:
     """
     Format an apology message for a requester whose catering event has passed
-    while still at inquiry status.
+    while still at lead status.
 
     Args:
         request: The catering request.
@@ -1095,10 +1097,10 @@ async def send_catering_inquiry_apologies(
 ) -> CateringReminderResult:
     """
     Send apology SMS to requesters whose catering event has passed while still
-    at INQUIRY status.
+    at lead status.
 
     A request qualifies if:
-    - Status is INQUIRY
+    - Status is LEAD or legacy INQUIRY
     - event_date (calendar date) was yesterday in the project's timezone
 
     Sends one apology SMS per qualifying request to the requester's phone number.

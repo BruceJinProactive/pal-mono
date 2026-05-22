@@ -51,9 +51,40 @@ def _build_request(
     )
 
 
+def test_request_status_plan_lifecycle_values() -> None:
+    assert [
+        RequestStatus.LEAD.value,
+        RequestStatus.PROPOSAL.value,
+        RequestStatus.CONFIRMED.value,
+        RequestStatus.LOCKED.value,
+        RequestStatus.IN_PREPARATION.value,
+        RequestStatus.READY.value,
+        RequestStatus.COMPLETED.value,
+        RequestStatus.CLOSED.value,
+    ] == [
+        "LEAD",
+        "PROPOSAL",
+        "CONFIRMED",
+        "LOCKED",
+        "IN_PREPARATION",
+        "READY",
+        "COMPLETED",
+        "CLOSED",
+    ]
+
+
+def test_request_status_legacy_values_remain_supported() -> None:
+    assert RequestStatus("INQUIRY") == RequestStatus.INQUIRY
+    assert RequestStatus("QUOTE_SENT") == RequestStatus.QUOTE_SENT
+    assert RequestStatus("IN_PREP") == RequestStatus.IN_PREP
+    assert RequestStatus("FULFILLED") == RequestStatus.FULFILLED
+    assert RequestStatus("CANCELLED") == RequestStatus.CANCELLED
+    assert RequestStatus("ISSUE") == RequestStatus.ISSUE
+
+
 def test_update_catering_request_sends_sms_for_tracked_status_transition() -> None:
     session = AsyncMock()
-    existing_request = _build_request(status=RequestStatus.INQUIRY)
+    existing_request = _build_request(status=RequestStatus.LEAD)
     updated_request = _build_request(status=RequestStatus.CONFIRMED)
     updated_request.id = existing_request.id
     updated_request.project_id = existing_request.project_id
@@ -142,8 +173,8 @@ def test_update_catering_request_sends_sms_when_status_is_re_requested() -> None
 
 def test_update_catering_request_skips_sms_for_untracked_status_transition() -> None:
     session = AsyncMock()
-    existing_request = _build_request(status=RequestStatus.INQUIRY)
-    updated_request = _build_request(status=RequestStatus.IN_PREP)
+    existing_request = _build_request(status=RequestStatus.LEAD)
+    updated_request = _build_request(status=RequestStatus.IN_PREPARATION)
     updated_request.id = existing_request.id
     updated_request.project_id = existing_request.project_id
     updated_request.idempotency_key = existing_request.idempotency_key
@@ -166,7 +197,7 @@ def test_update_catering_request_skips_sms_for_untracked_status_transition() -> 
             update_catering_request(
                 session=session,
                 catering_request_id=existing_request.id,
-                status=RequestStatus.IN_PREP,
+                status=RequestStatus.IN_PREPARATION,
             )
         )
 
@@ -175,7 +206,7 @@ def test_update_catering_request_skips_sms_for_untracked_status_transition() -> 
 
 def test_update_catering_request_skips_sms_when_status_not_requested() -> None:
     session = AsyncMock()
-    existing_request = _build_request(status=RequestStatus.INQUIRY)
+    existing_request = _build_request(status=RequestStatus.LEAD)
     updated_request = _build_request(status=RequestStatus.CONFIRMED)
     updated_request.id = existing_request.id
     updated_request.project_id = existing_request.project_id
@@ -232,7 +263,7 @@ def test_update_catering_request_raises_when_request_is_missing() -> None:
 
 def test_update_catering_request_logs_warning_when_sms_send_fails() -> None:
     session = AsyncMock()
-    existing_request = _build_request(status=RequestStatus.INQUIRY)
+    existing_request = _build_request(status=RequestStatus.LEAD)
     updated_request = _build_request(status=RequestStatus.CONFIRMED)
     updated_request.id = existing_request.id
     updated_request.project_id = existing_request.project_id
@@ -276,7 +307,7 @@ def test_update_catering_request_logs_warning_when_sms_send_fails() -> None:
 
 def test_update_catering_request_swallows_notification_exceptions() -> None:
     session = AsyncMock()
-    existing_request = _build_request(status=RequestStatus.INQUIRY)
+    existing_request = _build_request(status=RequestStatus.LEAD)
     updated_request = _build_request(status=RequestStatus.CONFIRMED)
     updated_request.id = existing_request.id
     updated_request.project_id = existing_request.project_id
@@ -312,12 +343,12 @@ def test_update_catering_request_swallows_notification_exceptions() -> None:
 
 
 def test_should_send_customer_status_sms_returns_false_for_none_next_status() -> None:
-    assert _should_send_customer_status_sms(RequestStatus.INQUIRY, None) is False
+    assert _should_send_customer_status_sms(RequestStatus.LEAD, None) is False
 
 
 def test_should_send_customer_status_sms_returns_true_for_supported_status() -> None:
     assert (
-        _should_send_customer_status_sms(RequestStatus.INQUIRY, RequestStatus.CONFIRMED)
+        _should_send_customer_status_sms(RequestStatus.LEAD, RequestStatus.CONFIRMED)
         is True
     )
 
@@ -408,14 +439,25 @@ def test_get_catering_business_name_returns_fallback_for_blank_project_names() -
     assert business_name == "the business"
 
 
-def test_build_customer_status_sms_message_for_quote_sent() -> None:
+def test_build_customer_status_sms_message_for_proposal() -> None:
+    request = _build_request(status=RequestStatus.PROPOSAL)
+
+    message = _build_customer_status_sms_message(request, "Pal Bistro")
+
+    assert (
+        message
+        == "Hi, your catering request with Pal Bistro has been reviewed and the status has been updated to Proposal."
+    )
+
+
+def test_build_customer_status_sms_message_for_legacy_quote_sent() -> None:
     request = _build_request(status=RequestStatus.QUOTE_SENT)
 
     message = _build_customer_status_sms_message(request, "Pal Bistro")
 
     assert (
         message
-        == "Hi, your catering request with Pal Bistro has been reviewed and the status has been updated to 'Quote Sent'."
+        == "Hi, your catering request with Pal Bistro has been reviewed and the status has been updated to Proposal."
     )
 
 
@@ -459,7 +501,7 @@ def test_build_customer_status_sms_message_for_missing_event_date() -> None:
 
 
 def test_build_customer_status_sms_message_raises_for_unsupported_status() -> None:
-    request = _build_request(status=RequestStatus.IN_PREP)
+    request = _build_request(status=RequestStatus.IN_PREPARATION)
 
     with pytest.raises(
         ValueError, match="Unsupported catering status for customer SMS"

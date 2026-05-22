@@ -105,7 +105,7 @@ class CateringRequestRepository:
                 party_size=data.party_size,
                 contact_id=data.contact_id,
                 status=(
-                    RequestStatus(data.status) if data.status else RequestStatus.INQUIRY
+                    RequestStatus(data.status) if data.status else RequestStatus.LEAD
                 ),
             )
             self.session.add(row)

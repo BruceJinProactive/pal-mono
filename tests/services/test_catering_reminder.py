@@ -47,7 +47,7 @@ def _make_request(
     created_at: datetime = TWO_DAYS_AGO_UTC,
     event_date: date = date(2026, 3, 28),
     event_time: time | None = None,
-    status: RequestStatus = RequestStatus.INQUIRY,
+    status: RequestStatus = RequestStatus.LEAD,
 ) -> CateringRequest:
     return CateringRequest(
         id=uuid.uuid4(),
@@ -93,7 +93,7 @@ SERVICE_MODULE = "services.catering_service._implementation"
 
 @pytest.mark.asyncio
 async def test_happy_path_sends_reminder() -> None:
-    """2-day-old INQUIRY request with future event -> sends SMS."""
+    """2-day-old lead request with future event -> sends SMS."""
     session = AsyncMock()
     req = _make_request()
     project = _make_project()
@@ -136,7 +136,7 @@ async def test_happy_path_sends_reminder() -> None:
 
 @pytest.mark.asyncio
 async def test_no_candidates_returns_empty() -> None:
-    """No INQUIRY requests in date range -> no SMS sent."""
+    """No lead requests in date range -> no SMS sent."""
     session = AsyncMock()
     catering_repo = AsyncMock()
     catering_repo.list_inquiry_requests_in_date_range.return_value = []
@@ -551,7 +551,7 @@ def _make_apology_request(
         contact_name="Taylor",
         contact_phone_number="5551234567",
         party_size=25,
-        status=RequestStatus.INQUIRY,
+        status=RequestStatus.LEAD,
         idempotency_key=str(uuid.uuid4()),
         created_at=NOW_UTC - timedelta(days=7),  # created a week ago
     )
@@ -559,7 +559,7 @@ def _make_apology_request(
 
 @pytest.mark.asyncio
 async def test_apology_happy_path_sends_sms() -> None:
-    """INQUIRY request with event_date yesterday -> sends apology to requester."""
+    """Lead request with event_date yesterday -> sends apology to requester."""
     session = AsyncMock()
     req = _make_apology_request()
     project = _make_project()
@@ -600,7 +600,7 @@ async def test_apology_happy_path_sends_sms() -> None:
 
 @pytest.mark.asyncio
 async def test_apology_no_candidates_returns_empty() -> None:
-    """No INQUIRY requests with recent event dates -> no apologies sent."""
+    """No lead requests with recent event dates -> no apologies sent."""
     session = AsyncMock()
     catering_repo = AsyncMock()
     catering_repo.list_inquiry_requests_by_event_date_range.return_value = []

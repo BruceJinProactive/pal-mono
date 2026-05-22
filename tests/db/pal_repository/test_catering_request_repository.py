@@ -41,7 +41,7 @@ def sample_orm_row(sample_id: uuid.UUID) -> MagicMock:
     row.event_date = date(2025, 7, 1)
     row.contact_name = "John"
     row.contact_phone_number = "+1234567890"
-    row.status = MagicMock(value="INQUIRY")
+    row.status = MagicMock(value="LEAD")
     row.idempotency_key = "key_123"
     row.created_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
     row.updated_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
@@ -68,7 +68,7 @@ class TestToData:
         assert data.event_date == date(2025, 7, 1)
         assert data.contact_name == "John"
         assert data.contact_phone_number == "+1234567890"
-        assert data.status == "INQUIRY"
+        assert data.status == "LEAD"
         assert data.idempotency_key == "key_123"
         assert data.event_time == time(12, 0)
         assert data.event_address == "123 Main St"
@@ -118,7 +118,7 @@ class TestDataImmutability:
             event_date=date(2025, 7, 1),
             contact_name="John",
             contact_phone_number="+1234567890",
-            status="INQUIRY",
+            status="LEAD",
             idempotency_key="key_123",
             created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
             updated_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
@@ -277,7 +277,7 @@ class TestCreate:
             event_date=date(2025, 7, 1),
             contact_name="John",
             contact_phone_number="+1234567890",
-            status="INQUIRY",
+            status="LEAD",
             idempotency_key="key_123",
             created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
             updated_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
@@ -311,7 +311,7 @@ class TestCreate:
             event_date=date(2025, 7, 1),
             contact_name="John",
             contact_phone_number="+1234567890",
-            status="INQUIRY",
+            status="LEAD",
             idempotency_key="key_456",
             created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
             updated_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
