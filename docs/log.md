@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-05-22
 
+- **[PAL-10712 / PAL-10797] Process verification pipeline for voice eval.** Added the verifiable-process eval pipeline: `ProcessTrace` with HTTP and voice trace building, process evaluators for `tool_timing`, `param_collection`, and `output_use`, and the `ExpectedProcess` scenario schema. Voice traces preserve audio spans (`start_ms`, `end_ms`), speaker, and channel metadata so future S2S evals can judge tool timing, tool params, output use, and silence gaps without depending on transcription quality.
 - **Catering request status lifecycle.** Documented the planned lifecycle `LEAD` -> `PROPOSAL` -> `CONFIRMED` -> `LOCKED` -> `IN_PREPARATION` -> `READY` -> `COMPLETED` -> `CLOSED` and exposed `COMPLETED` as a distinct `RequestStatus` value. `COMPLETED` is operational fulfillment; `CLOSED` is administrative closure. → `docs/state/architecture.md`
 
 ---
