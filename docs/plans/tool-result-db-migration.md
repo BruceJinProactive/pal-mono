@@ -65,29 +65,37 @@ The existing event emission already includes tool results in the payload:
 
 - `pal-agents/src/pal_agents/executor/openai/__init__.py` — verify event payload includes result
 
-#### Step 1.3: Persist tool results from streaming chunks in pal-mono
+#### Step 1.3: Persist tool results from pal-agents outputs in pal-mono
 
-When pal-mono receives `Output(content="", events=[...])` chunks during streaming, persist each tool_call event to the `tool_call_records` table.
+When pal-mono receives pal-agents `tool_call` events, persist each event to the `tool_call_records` table.
 
 **Current flow:**
 
-1. Events are collected during streaming
+1. Events are collected during pal-agents response handling
 2. Attached to message body as `response_message_body["tool_calls"]`
 
 **New flow (additive):**
 
-1. Events are collected during streaming (unchanged)
+1. Events are collected during pal-agents response handling (unchanged)
 2. Attached to message body (unchanged)
 3. **NEW:** For each tool_call event, fire-and-forget insert into `tool_call_records` with the full result
 
+Apply the same persistence treatment to both pal-agents execution paths:
+
+- Non-streaming: `_dispatch_agent_async(...)` collects `pal_output.events` after `pal_agent.run(pal_input)`
+- Streaming: `get_chat_response_stream(...)` collects `chunk.events` from empty-content chunks during `pal_agent.run(pal_input, stream=True)`
+
+Both non-streaming and streaming pal-agents paths live in `services/message_service/_implementation.py`, so update both paths in the same PR.
+
 **Files to modify:**
 
-- `pal-mono/services/message_service/_implementation.py` — add DB persistence call in streaming event handler
-- `pal-mono/db/pal_repository/tool_call_record.py` — ensure `add_tool_call_record` accepts and stores the result field
+- `pal-mono/services/message_service/_implementation.py` — add DB persistence calls for both non-streaming and streaming pal-agents event handlers
+- `pal-mono/db/pal_repository/tool_call_record.py` — ensure the create/persist path stores the full result field
 
 **Key decisions:**
 
 - **DECIDED:** Store ALL tool calls (successes + errors), no allowlist filter on write
+- **DECIDED:** The old allowlist source-of-truth question is obsolete for DB persistence; pal-mono should persist all pal-agents `tool_call` events from this point forward
 - **DECIDED:** No truncation/sanitization needed now — rely on TTL-based data retention (2 days or 1 week) to avoid permanent PII storage
 - Fire-and-forget pattern (don't block streaming on DB write)
 
@@ -133,7 +141,7 @@ tool_results = await tool_call_record_repo.get_tool_calls_by_conversation(conver
 **Files to modify:**
 
 - `pal-mono/services/message_service/_implementation.py` — query before `pal_agent.run()`
-- `pal-mono/db/pal_repository/tool_call_record.py` — potentially add filtered query method
+- `pal-mono/db/pal_repository/tool_call_record.py` — ensure the conversation query returns all records without allowlist or max-count filtering
 
 #### Step 2.3: Render DB results in pal-agents engine
 
@@ -234,8 +242,8 @@ Turn N+1 (possibly different pod):
 | File                                          | Change                                                             |
 | --------------------------------------------- | ------------------------------------------------------------------ |
 | `db/tables/tool_call_records.py`              | Possibly expand `result` column                                    |
-| `db/pal_repository/tool_call_record.py`       | Ensure result is stored; add filtered query                        |
-| `services/message_service/_implementation.py` | Persist tool events to DB during streaming; query before agent run |
+| `db/pal_repository/tool_call_record.py`       | Ensure full result is stored; query all records by conversation    |
+| `services/message_service/_implementation.py` | Persist tool events to DB during non-streaming + streaming pal-agents paths; query before agent run |
 | `services/agent_service/_implementation.py`   | Pass previous_tool_results when building Input                     |
 | `db/migrations/versions/`                     | New migration if schema changes                                    |
 
@@ -268,8 +276,5 @@ Turn N+1 (possibly different pod):
 
 ## Remaining Open Questions
 
-1. **Non-streaming path:** The non-streaming `get_chat_response` also needs the same treatment — verify both paths persist.
-2. **Allowlist source of truth:** Should the allowlist live in pal-mono (since it controls persistence) or remain in pal-agents config? (Less relevant now that we store all tool calls.)
-3. **DB migration approval:** Shuo to confirm the VARCHAR(1000) → TEXT migration on `result` column.
-4. **TTL cleanup mechanism:** How to implement the data retention policy (2 days or 1 week)? Cron job, pg_cron, or application-level cleanup?
-
+1. **DB migration approval:** Shuo to confirm the VARCHAR(1000) → TEXT migration on `result` column.
+2. **TTL cleanup mechanism:** How to implement the data retention policy (2 days or 1 week)? Cron job, pg_cron, or application-level cleanup?
