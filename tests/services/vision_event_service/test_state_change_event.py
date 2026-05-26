@@ -81,6 +81,66 @@ class TestCreateStateChangeEvent:
             repo.create.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_creates_rule_events_for_matching_state_definition(self) -> None:
+        session = AsyncMock()
+        entity_type_id = uuid.uuid4()
+        entity = MagicMock()
+        entity.id = ENTITY_ID
+        entity.entity_type_id = entity_type_id
+        state_def = MagicMock()
+        state_def.id = NEW_STATE_ID
+        state_def.entity_type_id = entity_type_id
+        state_def.name = "clean"
+        previous_state_id = uuid.uuid4()
+        previous_state_def = MagicMock()
+        previous_state_def.id = previous_state_id
+        previous_state_def.entity_type_id = entity_type_id
+        previous_state_def.name = "dirty"
+        request = CreateStateChangeEventRequest(
+            entity_id=ENTITY_ID,
+            new_state_id=NEW_STATE_ID,
+            previous_state_id=previous_state_id,
+            confidence=0.95,
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(f"{MODULE}.VisionEntityRepository") as mock_entity_repo_cls,
+            patch(
+                f"{MODULE}.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                f"{MODULE}.handle_state_change_rules",
+                new_callable=AsyncMock,
+            ) as mock_handle_rules,
+        ):
+            repo = AsyncMock()
+            repo.verify_entity_belongs_to_account.return_value = True
+            repo.create.return_value = None
+            mock_repo_cls.return_value = repo
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(return_value=entity)
+            mock_sd_repo_cls.return_value.get_by_id = AsyncMock(
+                side_effect=[state_def, previous_state_def]
+            )
+
+            from services.vision_event_service._implementation import (
+                create_state_change_event,
+            )
+
+            await create_state_change_event(session, request, ACCOUNT_NAME)
+
+            mock_handle_rules.assert_awaited_once()
+            call_kwargs = mock_handle_rules.call_args.kwargs
+            assert call_kwargs["entity"] == entity
+            assert call_kwargs["state_name"] == "clean"
+            assert call_kwargs["previous_state_name"] == "dirty"
+
+    @pytest.mark.asyncio
     async def test_uses_provided_observed_at(self) -> None:
         session = AsyncMock()
         ts = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)

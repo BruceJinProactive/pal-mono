@@ -35,6 +35,7 @@ from db.pal_repository.data_classes.vision_entity_type import VisionEntityTypeDa
 from db.pal_repository.data_classes.vision_state_change_event import (
     VisionStateChangeEventData,
 )
+from services.vision_observation_service._workflow import handle_state_change_rules
 from utils.log import logger
 
 
@@ -520,6 +521,9 @@ async def update_entity_state(
 
     now = datetime.now(timezone.utc)
     previous_state_id = data.current_state_id
+    previous_state_def = (
+        await sd_repo.get_by_id(previous_state_id) if previous_state_id else None
+    )
 
     updated = await entity_repo.update(
         entity_id,
@@ -530,14 +534,20 @@ async def update_entity_state(
         raise ValueError(f"Entity {entity_id} not found")
 
     event_repo = VisionStateChangeEventRepository(session)
-    await event_repo.create(
-        VisionStateChangeEventData(
-            id=uuid.uuid4(),
-            entity_id=entity_id,
-            new_state_id=request.state_definition_id,
-            observed_at=now,
-            previous_state_id=previous_state_id,
-        )
+    state_change_event = VisionStateChangeEventData(
+        id=uuid.uuid4(),
+        entity_id=entity_id,
+        new_state_id=request.state_definition_id,
+        observed_at=now,
+        previous_state_id=previous_state_id,
+    )
+    await event_repo.create(state_change_event)
+    await handle_state_change_rules(
+        session=session,
+        entity=updated,
+        state_change_event=state_change_event,
+        state_name=state_def.name,
+        previous_state_name=previous_state_def.name if previous_state_def else None,
     )
 
     logger.info(

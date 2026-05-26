@@ -12,12 +12,17 @@ from api.schemas.operations.vision_state_change_event import (
     StateChangeEventResponse,
     UpdateStateChangeEventRequest,
 )
-from db.pal_repository import VisionStateChangeEventRepository
+from db.pal_repository import (
+    VisionEntityRepository,
+    VisionEntityStateDefinitionRepository,
+    VisionStateChangeEventRepository,
+)
 from db.pal_repository.data_classes.vision_state_change_event import (
     VisionStateChangeEventData,
 )
 from services import account_service
 from services.asset_service._utils import map_uri_to_s3_url
+from services.vision_observation_service._workflow import handle_state_change_rules
 from utils.log import logger
 
 
@@ -68,6 +73,17 @@ async def create_state_change_event(
             f"Entity {request.entity_id} does not belong to account {account_name}"
         )
 
+    entity_repo = VisionEntityRepository(session)
+    entity = await entity_repo.get_by_id(request.entity_id)
+
+    sd_repo = VisionEntityStateDefinitionRepository(session)
+    state_def = await sd_repo.get_by_id(request.new_state_id) if entity else None
+    previous_state_def = (
+        await sd_repo.get_by_id(request.previous_state_id)
+        if entity and request.previous_state_id
+        else None
+    )
+
     metadata = dict(request.event_metadata)
     if request.is_test is not None:
         metadata["is_test"] = request.is_test
@@ -87,6 +103,23 @@ async def create_state_change_event(
     )
 
     await repo.create(record)
+    if (
+        entity is not None
+        and state_def is not None
+        and state_def.entity_type_id == entity.entity_type_id
+    ):
+        await handle_state_change_rules(
+            session=session,
+            entity=entity,
+            state_change_event=record,
+            state_name=state_def.name,
+            previous_state_name=(
+                previous_state_def.name
+                if previous_state_def
+                and previous_state_def.entity_type_id == entity.entity_type_id
+                else None
+            ),
+        )
     logger.info(
         "[Vision Event] Created state change event",
         extra={"event_id": str(record.id), "entity_id": str(record.entity_id)},

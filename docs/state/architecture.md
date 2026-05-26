@@ -225,6 +225,14 @@ The core AI agent implementation providing conversational capabilities.
 | `number_service` | External | Phone number management |
 | `slack_service` | External | Slack notifications |
 
+Vision state-change events also drive lightweight rule workflows in
+`services/vision_observation_service/_workflow.py`. Each workflow is selected by
+`vision_rule.type` and owns its entity-type and transition validation. The
+initial `table_cleanness` workflow fires only when a `table` entity moves from
+`dirty` to `clean`, then writes a linked `vision_rule_event` row through the
+repository layer. Test events marked with `event_metadata.is_test == True` are
+persisted as state changes but skipped by rule workflows.
+
 ### 4. Database Layer (`/db`)
 
 **Technology**: PostgreSQL with pgvector extension

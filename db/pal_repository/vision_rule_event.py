@@ -28,6 +28,24 @@ class VisionRuleEventRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def create(self, record: VisionRuleEventData) -> None:
+        try:
+            row = VisionRuleEvent(
+                id=record.id,
+                rule_id=record.rule_id,
+                entity_id=record.entity_id,
+                state_change_event_id=record.state_change_event_id,
+                severity=record.severity,
+                triggered_at=record.triggered_at,
+                event_metadata=record.event_metadata,
+            )
+            self.session.add(row)
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            logger.error("[Vision RuleEvent] DB error creating event", exc_info=True)
+            raise
+
     async def get_by_id_for_account(
         self, event_id: uuid.UUID, account_id: uuid.UUID
     ) -> VisionRuleEventData | None:

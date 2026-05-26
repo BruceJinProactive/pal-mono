@@ -44,6 +44,47 @@ def sample_orm_row(sample_id: uuid.UUID, sample_rule_id: uuid.UUID) -> MagicMock
     return row
 
 
+@pytest.fixture
+def sample_data(sample_id: uuid.UUID, sample_rule_id: uuid.UUID) -> VisionRuleEventData:
+    return VisionRuleEventData(
+        id=sample_id,
+        rule_id=sample_rule_id,
+        entity_id=uuid.uuid4(),
+        state_change_event_id=uuid.uuid4(),
+        severity="high",
+        triggered_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        event_metadata={"detail": "dirty"},
+    )
+
+
+class TestCreate:
+
+    @pytest.mark.asyncio
+    async def test_create_commits(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_data: VisionRuleEventData,
+    ) -> None:
+        await repo.create(sample_data)
+
+        mock_session.add.assert_called_once()
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_create_raises_on_db_error(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_data: VisionRuleEventData,
+    ) -> None:
+        mock_session.commit.side_effect = Exception("insert failed")
+
+        with pytest.raises(Exception):
+            await repo.create(sample_data)
+        mock_session.rollback.assert_awaited_once()
+
+
 class TestGetByIdForAccount:
 
     @pytest.mark.asyncio

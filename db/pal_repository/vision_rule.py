@@ -108,6 +108,26 @@ class VisionRuleRepository:
             logger.error("[Vision Rule] DB error listing rules", exc_info=True)
             return []
 
+    async def list_by_project(
+        self,
+        project_id: uuid.UUID,
+        is_active: bool | None = None,
+        limit: int = 100,
+    ) -> list[VisionRuleData]:
+        try:
+            query = select(VisionRule).filter(VisionRule.project_id == project_id)
+            if is_active is not None:
+                query = query.filter(VisionRule.is_active == is_active)
+            query = query.order_by(VisionRule.created_at.desc()).limit(limit)
+            result = await self.session.execute(query)
+            return [_to_data(row) for row in result.scalars().all()]
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision Rule] DB error listing rules by project", exc_info=True
+            )
+            return []
+
     async def update(self, rule_id: uuid.UUID, **kwargs: Any) -> VisionRuleData | None:
         try:
             await self.session.execute(

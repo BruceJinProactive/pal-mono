@@ -30,6 +30,7 @@ from services.monitoring_service._providers import (
     MonitoringLLMProvider,
     create_monitoring_llm_provider,
 )
+from services.vision_observation_service._workflow import handle_state_change_rules
 from utils.log import logger
 
 
@@ -356,7 +357,9 @@ async def generate_observation(
         entity_lookup[entity.name] = {
             "entity_id": entity.id,
             "current_state_id": entity.current_state_id,
+            "entity_type_name": type_name,
             "state_name_to_id": {sd.name: sd.id for sd in state_defs},
+            "state_id_to_name": {sd.id: sd.name for sd in state_defs},
         }
 
     if not entities_with_states:
@@ -484,6 +487,7 @@ async def generate_observation(
         for obs in entity_observations:
             if obs.state_id is None:
                 continue
+            lookup_info = entity_lookup[obs.entity_name]
             session.expire_all()
             fresh_entity = await entity_repo.get_by_id(obs.entity_id)
             if not fresh_entity or obs.state_id == fresh_entity.current_state_id:
@@ -493,17 +497,29 @@ async def generate_observation(
                 current_state_id=obs.state_id,
                 current_state_since=observed_at,
             )
-            await event_repo.create(
-                VisionStateChangeEventData(
-                    id=uuid.uuid4(),
-                    entity_id=obs.entity_id,
-                    new_state_id=obs.state_id,
-                    observed_at=observed_at,
-                    camera_config_id=camera_config_id,
-                    previous_state_id=fresh_entity.current_state_id,
-                    confidence=obs.confidence,
-                    frame_s3_key=image_url,
+            state_change_event = VisionStateChangeEventData(
+                id=uuid.uuid4(),
+                entity_id=obs.entity_id,
+                new_state_id=obs.state_id,
+                observed_at=observed_at,
+                camera_config_id=camera_config_id,
+                previous_state_id=fresh_entity.current_state_id,
+                confidence=obs.confidence,
+                frame_s3_key=image_url,
+            )
+            await event_repo.create(state_change_event)
+            previous_state_name = None
+            if fresh_entity.current_state_id is not None:
+                previous_state_name = lookup_info["state_id_to_name"].get(
+                    fresh_entity.current_state_id
                 )
+            await handle_state_change_rules(
+                session=session,
+                entity=fresh_entity,
+                state_change_event=state_change_event,
+                state_name=obs.state,
+                previous_state_name=previous_state_name,
+                entity_type_name=lookup_info["entity_type_name"],
             )
 
     token_usage["observed"] = True

@@ -245,6 +245,40 @@ class TestListByAccount:
         mock_session.rollback.assert_awaited_once()
 
 
+class TestListByProject:
+
+    @pytest.mark.asyncio
+    async def test_returns_list(
+        self,
+        repo: VisionRuleRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [sample_orm_row]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        results = await repo.list_by_project(uuid.uuid4(), is_active=True)
+
+        assert len(results) == 1
+        assert isinstance(results[0], VisionRuleData)
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_on_db_error(
+        self,
+        repo: VisionRuleRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        mock_session.execute.side_effect = Exception("timeout")
+
+        results = await repo.list_by_project(uuid.uuid4())
+
+        assert results == []
+        mock_session.rollback.assert_awaited_once()
+
+
 class TestUpdate:
 
     @pytest.mark.asyncio
