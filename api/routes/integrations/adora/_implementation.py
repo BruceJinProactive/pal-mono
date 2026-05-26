@@ -124,7 +124,7 @@ async def api_adora_webhook(request: Request) -> JSONResponse:
                         await send_order_notification(order)
                     except Exception as e:
                         logger.error(
-                            f"[AdoraWebhook] Failed to send notification for order {order.order_number} "
+                            f"[AdoraWebhook] Failed to send notification for order {order.order_id} "
                             f"(store: {order.store_id}, status: {order.status}): {e}",
                             exc_info=True,
                         )

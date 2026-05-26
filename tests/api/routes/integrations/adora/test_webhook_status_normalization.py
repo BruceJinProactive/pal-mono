@@ -1,37 +1,25 @@
-# pyright: reportGeneralTypeIssues=false, reportAttributeAccessIssue=false
-"""Tests for Adora webhook status normalization.
-
-Tests cover:
-- Status normalization when Event == "Paid" -> "paid"
-- Status normalization for non-Paid events (passthrough)
-- update_order_by_phone called with normalized status
-- order.status set to normalized value
-"""
+"""Tests for Adora webhook status normalization and generic order updates."""
 
 import uuid
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.integrations.adora._utils import update_order_status
+from api.routes.integrations.adora._utils import (
+    _generate_notification_text,
+    send_order_notification,
+    update_order_status,
+)
 from api.routes.integrations.adora.schemas import AdoraWebhookRequest
-from db.tables.adora_orders import AdoraOrder
 from db.tables.types import IntegrationProvider
-
-# ---------------------------------------------------------------------------
-# Test Fixtures
-# ---------------------------------------------------------------------------
+from services.transaction_service import OrderStatusUpdateResult
 
 
 @pytest.fixture
 def mock_session() -> AsyncMock:
     """Create a mock AsyncSession."""
-    session = AsyncMock(spec=AsyncSession)
-    session.commit = AsyncMock()
-    session.refresh = AsyncMock()
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -64,224 +52,157 @@ def webhook_request_ready() -> AdoraWebhookRequest:
     )
 
 
-@pytest.fixture
-def webhook_request_delivered() -> AdoraWebhookRequest:
-    """Create a webhook request with Event == 'Delivered'."""
-    return AdoraWebhookRequest(
-        Event="Delivered",
-        storeId="test-store-123",
-        PhoneNumber="5551234567",
-        transactionId="txn-456",
-        OrderNumber="ORD-789",
-        OrderDate="03/19/2026 12:30:00 PM",
-        trackingLink=None,
-        brandId=None,
+def _order_result(
+    *,
+    order_id: str | None = "ORD-789",
+    status: str = "paid",
+    tracking_link: str | None = None,
+    user_phone_number: str | None = "+15551234567",
+    store_phone_number: str | None = "+15559876543",
+) -> OrderStatusUpdateResult:
+    """Build an updated order snapshot for webhook tests."""
+    return OrderStatusUpdateResult(
+        id=uuid.uuid4(),
+        order_id=order_id,
+        store_id="test-store-123",
+        user_phone_number=user_phone_number,
+        store_phone_number=store_phone_number,
+        tracking_link=tracking_link,
+        status=status,
+        vendor=IntegrationProvider.adora,
     )
 
 
-@pytest.fixture
-def mock_adora_order() -> AdoraOrder:
-    """Create a mock AdoraOrder with pending status."""
-    order = AdoraOrder()
-    order.id = uuid.uuid4()
-    order.user_phone_number = "+15551234567"
-    order.store_phone_number = "+15559876543"
-    order.order_number = "ORD-789"
-    order.transaction_id = "txn-456"
-    order.store_id = "test-store-123"
-    order.tracking_link = None
-    order.status = "pending"
-    order.vendor = IntegrationProvider.adora
-    order.order_date = datetime(2026, 3, 19, 12, 30, 0)
-    order.created_at = datetime(2026, 3, 19, 12, 25, 0)
-    order.updated_at = datetime(2026, 3, 19, 12, 25, 0)
-    return order
-
-
-# ---------------------------------------------------------------------------
-# Status Normalization Tests
-# ---------------------------------------------------------------------------
-
-
 class TestUpdateOrderStatusNormalization:
-    """Test status normalization in update_order_status function."""
+    """Test status normalization in update_order_status."""
 
     @pytest.mark.asyncio
     async def test_paid_event_normalizes_to_lowercase(
         self,
         mock_session: AsyncMock,
         webhook_request_paid: AdoraWebhookRequest,
-        mock_adora_order: AdoraOrder,
     ) -> None:
-        """When Event == 'Paid', order.status should be set to 'paid' (lowercase)."""
-        # Mock the database query to return a single order
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_adora_order]
-        mock_session.execute.return_value = mock_result
-
-        # Mock update_order_by_phone
+        """When Event == 'Paid', order.status should be lowercase."""
         with patch(
-            "api.routes.integrations.adora._utils.update_order_by_phone"
-        ) as mock_update:
-            mock_update.return_value = True
-
-            # Call the function
+            "api.routes.integrations.adora._utils.update_order_from_webhook",
+            return_value=_order_result(status="paid"),
+        ):
             result = await update_order_status(mock_session, webhook_request_paid)
 
-            # Assert order.status was set to lowercase "paid"
-            assert result.status == "paid", f"Expected 'paid', got '{result.status}'"
-            assert result.status != "Paid", "Status should not be capitalized 'Paid'"
+        assert result.status == "paid"
 
     @pytest.mark.asyncio
-    async def test_paid_event_calls_update_with_lowercase(
+    async def test_paid_event_calls_update_with_identifiers(
         self,
         mock_session: AsyncMock,
         webhook_request_paid: AdoraWebhookRequest,
-        mock_adora_order: AdoraOrder,
     ) -> None:
-        """When Event == 'Paid', update_order_by_phone should be called with new_status='paid'."""
-        # Mock the database query
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_adora_order]
-        mock_session.execute.return_value = mock_result
-
-        # Mock update_order_by_phone and capture its call
+        """Paid webhooks should update generic orders by stable IDs first."""
         with patch(
-            "api.routes.integrations.adora._utils.update_order_by_phone"
+            "api.routes.integrations.adora._utils.update_order_from_webhook",
+            return_value=_order_result(status="paid"),
         ) as mock_update:
-            mock_update.return_value = True
-
-            # Call the function
             await update_order_status(mock_session, webhook_request_paid)
 
-            # Assert update_order_by_phone was called with normalized status
-            mock_update.assert_called_once()
-            call_kwargs = mock_update.call_args[1]
-            assert (
-                call_kwargs["new_status"] == "paid"
-            ), f"Expected new_status='paid', got '{call_kwargs['new_status']}'"
-            assert call_kwargs["vendor"] == IntegrationProvider.adora
-            assert call_kwargs["store_id"] == "test-store-123"
+        mock_update.assert_called_once()
+        call_kwargs = mock_update.call_args.kwargs
+        assert call_kwargs["new_status"] == "paid"
+        assert call_kwargs["vendor"] == IntegrationProvider.adora
+        assert call_kwargs["store_id"] == "test-store-123"
+        assert call_kwargs["order_id"] == "ORD-789"
+        assert call_kwargs["alternate_order_id"] == "txn-456"
+        assert call_kwargs["user_phone_number"] == "5551234567"
 
     @pytest.mark.asyncio
     async def test_non_paid_event_passthrough(
         self,
         mock_session: AsyncMock,
         webhook_request_ready: AdoraWebhookRequest,
-        mock_adora_order: AdoraOrder,
     ) -> None:
-        """Non-'Paid' events should pass through unchanged to order.status."""
-        # Mock the database query
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_adora_order]
-        mock_session.execute.return_value = mock_result
-
-        # Mock update_order_by_phone
+        """Non-'Paid' events should pass through unchanged."""
         with patch(
-            "api.routes.integrations.adora._utils.update_order_by_phone"
-        ) as mock_update:
-            mock_update.return_value = True
-
-            # Call the function
+            "api.routes.integrations.adora._utils.update_order_from_webhook",
+            return_value=_order_result(status="Ready to pick up"),
+        ):
             result = await update_order_status(mock_session, webhook_request_ready)
 
-            # Assert order.status was set to the original Event value
-            assert (
-                result.status == "Ready to pick up"
-            ), f"Expected 'Ready to pick up', got '{result.status}'"
+        assert result.status == "Ready to pick up"
 
     @pytest.mark.asyncio
-    async def test_non_paid_event_calls_update_with_original(
-        self,
-        mock_session: AsyncMock,
-        webhook_request_delivered: AdoraWebhookRequest,
-        mock_adora_order: AdoraOrder,
-    ) -> None:
-        """Non-'Paid' events should call update_order_by_phone with original Event."""
-        # Mock the database query
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_adora_order]
-        mock_session.execute.return_value = mock_result
-
-        # Mock update_order_by_phone and capture its call
-        with patch(
-            "api.routes.integrations.adora._utils.update_order_by_phone"
-        ) as mock_update:
-            mock_update.return_value = True
-
-            # Call the function
-            await update_order_status(mock_session, webhook_request_delivered)
-
-            # Assert update_order_by_phone was called with original event string
-            mock_update.assert_called_once()
-            call_kwargs = mock_update.call_args[1]
-            assert (
-                call_kwargs["new_status"] == "Delivered"
-            ), f"Expected new_status='Delivered', got '{call_kwargs['new_status']}'"
-
-    @pytest.mark.asyncio
-    async def test_tracking_link_updated(
+    async def test_tracking_link_forwarded(
         self,
         mock_session: AsyncMock,
         webhook_request_paid: AdoraWebhookRequest,
-        mock_adora_order: AdoraOrder,
     ) -> None:
-        """Tracking link should be updated when provided in webhook."""
-        # Mock the database query
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_adora_order]
-        mock_session.execute.return_value = mock_result
-
-        # Mock update_order_by_phone
+        """Tracking link should be forwarded to the generic order updater."""
         with patch(
-            "api.routes.integrations.adora._utils.update_order_by_phone"
+            "api.routes.integrations.adora._utils.update_order_from_webhook",
+            return_value=_order_result(
+                status="paid",
+                tracking_link="https://example.com/track/123",
+            ),
         ) as mock_update:
-            mock_update.return_value = True
-
-            # Call the function
             result = await update_order_status(mock_session, webhook_request_paid)
 
-            # Assert tracking link was updated
-            assert (
-                result.tracking_link == "https://example.com/track/123"
-            ), f"Expected tracking link to be updated, got '{result.tracking_link}'"
+        call_kwargs = mock_update.call_args.kwargs
+        assert call_kwargs["tracking_link"] == "https://example.com/track/123"
+        assert result.tracking_link == "https://example.com/track/123"
 
     @pytest.mark.asyncio
-    async def test_multiple_orders_uses_first(
-        self, mock_session: AsyncMock, webhook_request_paid: AdoraWebhookRequest
+    async def test_missing_generic_order_raises_value_error(
+        self,
+        mock_session: AsyncMock,
+        webhook_request_paid: AdoraWebhookRequest,
     ) -> None:
-        """When multiple orders match, the first one should be updated."""
-        # Create multiple mock orders
-        order1 = AdoraOrder()
-        order1.id = uuid.uuid4()
-        order1.status = "pending"
-        order1.user_phone_number = "+15551234567"
-        order1.store_id = "test-store-123"
-        order1.order_number = "ORD-001"
-        order1.transaction_id = "txn-001"
-
-        order2 = AdoraOrder()
-        order2.id = uuid.uuid4()
-        order2.status = "pending"
-        order2.user_phone_number = "+15551234567"
-        order2.store_id = "test-store-123"
-        order2.order_number = "ORD-002"
-        order2.transaction_id = "txn-002"
-
-        # Mock the database query to return multiple orders
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [order1, order2]
-        mock_session.execute.return_value = mock_result
-
-        # Mock update_order_by_phone
+        """Webhook fails clearly when no generic order can be matched."""
         with patch(
-            "api.routes.integrations.adora._utils.update_order_by_phone"
-        ) as mock_update:
-            mock_update.return_value = True
+            "api.routes.integrations.adora._utils.update_order_from_webhook",
+            return_value=None,
+        ):
+            with pytest.raises(ValueError, match="Order not found in orders table"):
+                await update_order_status(mock_session, webhook_request_paid)
 
-            # Call the function
-            result = await update_order_status(mock_session, webhook_request_paid)
+    @pytest.mark.asyncio
+    async def test_missing_event_raises_value_error(
+        self,
+        mock_session: AsyncMock,
+    ) -> None:
+        """Webhook status updates require an event value."""
+        webhook_request = AdoraWebhookRequest.model_construct(
+            Event=None,
+            storeId="test-store-123",
+            PhoneNumber="5551234567",
+            transactionId="txn-456",
+            OrderNumber="ORD-789",
+            OrderDate="03/19/2026 12:30:00 PM",
+            trackingLink=None,
+            brandId=None,
+        )
 
-            # Assert the first order was updated
-            assert result.id == order1.id, "Expected first order to be returned"
-            assert result.status == "paid", "Expected status to be normalized to 'paid'"
+        with pytest.raises(ValueError, match="Event must not be None"):
+            await update_order_status(mock_session, webhook_request)
+
+
+def test_generate_notification_text_uses_db_id_when_order_id_missing() -> None:
+    """Notification text should still identify orders without external IDs."""
+    order = _order_result(order_id=None, status="paid")
+
+    assert _generate_notification_text(order) == f"Order #{order.id} status: paid"
+
+
+@pytest.mark.asyncio
+async def test_send_order_notification_rejects_missing_store_phone() -> None:
+    """Notification send should fail before relay when store phone is absent."""
+    order = _order_result(store_phone_number=None)
+
+    with pytest.raises(ValueError, match="Invalid store phone number"):
+        await send_order_notification(order)
+
+
+@pytest.mark.asyncio
+async def test_send_order_notification_rejects_missing_user_phone() -> None:
+    """Notification send should fail before relay when user phone is absent."""
+    order = _order_result(user_phone_number="")
+
+    with pytest.raises(ValueError, match="Invalid user phone number"):
+        await send_order_notification(order)

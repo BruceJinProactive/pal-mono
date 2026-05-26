@@ -1,8 +1,6 @@
 import asyncio
-from datetime import datetime
 
 from fastapi import Request
-from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import services.relay_service as relay_service
@@ -14,9 +12,11 @@ from api.schemas.chat.message import (
     Metadata,
     TextObject,
 )
-from db.tables.adora_orders import AdoraOrder
 from db.tables.types import Channel, IntegrationProvider
-from services.transaction_service import update_order_by_phone
+from services.transaction_service import (
+    OrderStatusUpdateResult,
+    update_order_from_webhook,
+)
 from utils.log import logger
 
 from .schemas import AdoraWebhookRequest
@@ -38,134 +38,57 @@ def is_dev_mode(request: Request) -> bool:
     return dev_header == "true"
 
 
-def format_phone_number(phone_number: str | None) -> str:
-    # Remove non-digit characters
-    if not phone_number or not phone_number.isdigit() or len(phone_number) != 10:
-        logger.warning(f"[AdoraWebhook] Invalid phone number: {phone_number}")
-        return ""
-
-    return "+1" + phone_number
-
-
 async def update_order_status(
     session: AsyncSession, webhook_request: AdoraWebhookRequest
-) -> AdoraOrder:
+) -> OrderStatusUpdateResult:
     """
-    Update the status of an existing order in both orders and transactions tables.
+    Update the status of an existing order in the generic orders table.
 
     Args:
         session: The database session
         webhook_request: The validated webhook request data
 
     Returns:
-        AdoraOrder: The updated order object
+        OrderStatusUpdateResult: The updated order snapshot
 
     Raises:
         ValueError: If the order is not found or has invalid store phone number
     """
-    # Find the existing order using store_id and order_number
-
+    del session
     logger.debug(f"[AdoraWebhook]Update order status: {webhook_request.OrderNumber}")
 
-    phone_number = format_phone_number(webhook_request.PhoneNumber)
-    if not phone_number:
-        raise ValueError(
-            f"[AdoraWebhook] PhoneNumber must be valid: {webhook_request.PhoneNumber}"
-        )
-
-    raw_date = webhook_request.OrderDate
-    if raw_date is None:
-        raise ValueError("[AdoraWebhook] OrderDate must not be None")
-    dt = datetime.strptime(raw_date, "%m/%d/%Y %I:%M:%S %p")
-    order_date = dt.date()
-    start = datetime.combine(order_date, datetime.min.time())
-
-    pending_order_query = (
-        select(AdoraOrder)
-        .where(
-            AdoraOrder.store_id == webhook_request.storeId,
-            AdoraOrder.status == "pending",
-            AdoraOrder.user_phone_number == phone_number,
-            AdoraOrder.order_date >= start,
-        )
-        .order_by(desc(AdoraOrder.created_at))
+    normalized_status = (
+        "paid" if webhook_request.Event == "Paid" else webhook_request.Event
     )
-    result = await session.execute(pending_order_query)
-    rows = result.scalars().all()
-    if len(rows) == 0:
+    if normalized_status is None:
+        raise ValueError("[AdoraWebhook] Event must not be None")
+
+    order = await asyncio.to_thread(
+        update_order_from_webhook,
+        store_id=webhook_request.storeId,
+        vendor=IntegrationProvider.adora,
+        new_status=normalized_status,
+        order_id=webhook_request.OrderNumber,
+        alternate_order_id=webhook_request.transactionId,
+        user_phone_number=webhook_request.PhoneNumber,
+        order_date=webhook_request.OrderDate,
+        tracking_link=webhook_request.trackingLink,
+    )
+
+    if order is None:
         raise ValueError(
-            f"Order not found with store_id: {webhook_request.storeId} "
+            "Order not found in orders table with "
+            f"store_id: {webhook_request.storeId} "
+            f"order_number: {webhook_request.OrderNumber} "
+            f"transaction_id: {webhook_request.transactionId} "
             f"and phone_number: {webhook_request.PhoneNumber} "
             f"and OrderDate: {webhook_request.OrderDate}"
         )
-    elif len(rows) == 1:
-        order = rows[0]
-    else:
-        logger.warning(
-            f"[AdoraWebhook] found multiple matched orders: {len(rows)}",
-            extra={
-                "store_id": webhook_request.storeId,
-                "phone_number": webhook_request.PhoneNumber,
-                "OrderDate": webhook_request.OrderDate,
-            },
-        )
-        order = rows[0]
-
-    # Update the order status in orders table (event should not be None for order type)
-    if webhook_request.Event is not None:
-        # Normalize "Paid" to lowercase "paid" for consistency
-        order.status = (
-            "paid" if webhook_request.Event == "Paid" else webhook_request.Event
-        )
-
-    # If there's a tracking link in the webhook, update it
-    if webhook_request.trackingLink:
-        order.tracking_link = webhook_request.trackingLink
-
-    # Also update the corresponding transaction in transactions table
-    # Note: Using sync helper function, but the session will be committed later
-    try:
-        # Normalize "Paid" to lowercase "paid" for consistency
-        normalized_status = (
-            "paid" if webhook_request.Event == "Paid" else webhook_request.Event
-        )
-        success = await asyncio.to_thread(
-            update_order_by_phone,
-            store_id=webhook_request.storeId,
-            vendor=IntegrationProvider.adora,
-            new_status=normalized_status,
-            user_phone_number=webhook_request.PhoneNumber,
-            order_date=webhook_request.OrderDate,
-            tracking_link=webhook_request.trackingLink,
-        )
-
-        if success:
-            logger.debug(
-                f"[AdoraWebhook] Successfully updated transaction for order {order.order_number}"
-            )
-        else:
-            logger.warning(
-                f"[AdoraWebhook] No transaction found for order {order.order_number} "
-                f"with external_transaction_id {order.transaction_id}"
-            )
-
-    except Exception as e:
-        logger.error(
-            f"[AdoraWebhook] Error updating transaction for order {order.order_number}: {e}",
-            exc_info=True,
-        )
-        # Don't fail the entire operation if transaction update fails
-
-    await session.commit()
-
-    # Refresh order to ensure we have the latest state from database
-    await session.refresh(order)
 
     logger.info(
-        f"[AdoraWebhook] Successfully updated order {order.order_number} status to {webhook_request.Event}"
+        f"[AdoraWebhook] Successfully updated order {order.order_id} status to {normalized_status}"
     )
 
-    # Return the complete order object
     return order
 
 
@@ -193,7 +116,7 @@ async def handle_menu_update(
     return {"status": "success", "message": "Menu update processed successfully"}
 
 
-def _generate_notification_text(order: AdoraOrder) -> str:
+def _generate_notification_text(order: OrderStatusUpdateResult) -> str:
     """
     Generate notification text based on the event type. Currently, only use a single message format for simplicity, later we may want to create different messages case by case.
 
@@ -204,7 +127,8 @@ def _generate_notification_text(order: AdoraOrder) -> str:
     Returns:
         str: The generated notification text
     """
-    base_msg = f"Order #{order.order_number} status: {order.status}"
+    order_label = order.order_id or str(order.id)
+    base_msg = f"Order #{order_label} status: {order.status}"
 
     if order.tracking_link:
         return f"{base_msg} - Track here: {order.tracking_link}"
@@ -213,7 +137,7 @@ def _generate_notification_text(order: AdoraOrder) -> str:
 
 
 async def send_order_notification(
-    order: AdoraOrder,
+    order: OrderStatusUpdateResult,
 ) -> None:
     """
     Send order notification through the relay service.
@@ -226,10 +150,10 @@ async def send_order_notification(
     """
     # Validate phone numbers before sending notification
     if not order.store_phone_number or not order.store_phone_number.strip():
-        raise ValueError(f"Invalid store phone number for order {order.order_number}")
+        raise ValueError(f"Invalid store phone number for order {order.order_id}")
 
     if not order.user_phone_number or not order.user_phone_number.strip():
-        raise ValueError(f"Invalid user phone number for order {order.order_number}")
+        raise ValueError(f"Invalid user phone number for order {order.order_id}")
 
     # Generate notification text using the order's current status
     notification_text = _generate_notification_text(order)
@@ -250,7 +174,7 @@ async def send_order_notification(
         logger.debug(
             "[AdoraWebhook]Send order status update message",
             extra={
-                "order_number": order.order_number,
+                "order_id": order.order_id,
                 "from": order.store_phone_number,
                 "to": order.user_phone_number,
             },

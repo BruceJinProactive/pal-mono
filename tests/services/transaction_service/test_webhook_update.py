@@ -1,0 +1,447 @@
+"""Tests for webhook-driven generic order updates."""
+
+import uuid
+from datetime import datetime
+from decimal import Decimal
+from types import SimpleNamespace
+from typing import Sequence
+from unittest.mock import MagicMock, patch
+
+import pytest
+from sqlalchemy.exc import SQLAlchemyError
+
+import services.transaction_service as transaction_service
+from db.repositories.order_repository import OrderRepository
+from db.tables.types import IntegrationProvider
+from services.transaction_service._implementation import (
+    _normalize_us_phone_number,
+    _parse_order_date_start,
+    update_order_from_webhook,
+)
+
+
+class _FakeOrderRepository:
+    """Fake repository for webhook update matching tests."""
+
+    def __init__(
+        self,
+        external_order: SimpleNamespace | None = None,
+        phone_order: SimpleNamespace | None = None,
+    ) -> None:
+        self.external_order = external_order
+        self.phone_order = phone_order
+        self.external_calls: list[dict] = []
+        self.phone_calls: list[dict] = []
+
+    def get_latest_order_by_external_ids(
+        self,
+        *,
+        store_id: str,
+        vendor: IntegrationProvider,
+        order_ids: Sequence[str],
+    ) -> SimpleNamespace | None:
+        self.external_calls.append(
+            {"store_id": store_id, "vendor": vendor, "order_ids": list(order_ids)}
+        )
+        return self.external_order
+
+    def get_latest_order_by_phone_since(
+        self,
+        *,
+        store_id: str,
+        vendor: IntegrationProvider,
+        user_phone_number: str,
+        order_time_start: datetime,
+        pending_only: bool,
+    ) -> SimpleNamespace | None:
+        self.phone_calls.append(
+            {
+                "store_id": store_id,
+                "vendor": vendor,
+                "user_phone_number": user_phone_number,
+                "order_time_start": order_time_start,
+                "pending_only": pending_only,
+            }
+        )
+        return self.phone_order if pending_only else None
+
+
+def _order() -> SimpleNamespace:
+    """Build an order-like object for service tests."""
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        order_id="ORD-789",
+        store_id="STORE-1",
+        user_phone_number="+15551234567",
+        store_phone_number="+15559876543",
+        tracking_link=None,
+        status="pending",
+        vendor=IntegrationProvider.adora,
+        subtotal=Decimal("12.34"),
+        conversation_id=uuid.uuid4(),
+    )
+
+
+def test_update_order_from_webhook_prefers_external_order_ids() -> None:
+    """Stable webhook IDs should be tried before phone/date fallback."""
+    session = MagicMock()
+    order = _order()
+    fake_repo = _FakeOrderRepository(external_order=order)
+
+    with (
+        patch(
+            "services.transaction_service._implementation.SyncSessionLocal",
+            return_value=session,
+        ),
+        patch(
+            "services.transaction_service._implementation.OrderRepository",
+            return_value=fake_repo,
+        ),
+        patch(
+            "services.transaction_service._implementation._update_customer_converted",
+            return_value=True,
+        ),
+    ):
+        result = update_order_from_webhook(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            new_status="paid",
+            order_id="ORD-789",
+            alternate_order_id="txn-456",
+            user_phone_number="5551234567",
+            order_date="03/19/2026 12:30:00 PM",
+            tracking_link="https://example.com/track",
+        )
+
+    assert result is not None
+    assert result.id == order.id
+    assert order.status == "paid"
+    assert order.tracking_link == "https://example.com/track"
+    assert fake_repo.external_calls[0]["order_ids"] == ["ORD-789", "txn-456"]
+    assert fake_repo.phone_calls == []
+    session.commit.assert_called_once()
+
+
+def test_update_order_from_webhook_falls_back_to_normalized_phone() -> None:
+    """Phone/date matching remains as fallback for webhooks without matching IDs."""
+    session = MagicMock()
+    order = _order()
+    fake_repo = _FakeOrderRepository(phone_order=order)
+
+    with (
+        patch(
+            "services.transaction_service._implementation.SyncSessionLocal",
+            return_value=session,
+        ),
+        patch(
+            "services.transaction_service._implementation.OrderRepository",
+            return_value=fake_repo,
+        ),
+        patch(
+            "services.transaction_service._implementation._update_customer_converted",
+            return_value=True,
+        ),
+    ):
+        result = update_order_from_webhook(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            new_status="paid",
+            order_id="missing-order",
+            alternate_order_id=None,
+            user_phone_number="(555) 123-4567",
+            order_date="03/19/2026 12:30:00 PM",
+        )
+
+    assert result is not None
+    assert fake_repo.phone_calls[0]["user_phone_number"] == "+15551234567"
+    assert fake_repo.phone_calls[0]["pending_only"] is True
+    assert fake_repo.phone_calls[0]["order_time_start"] == datetime(2026, 3, 19)
+
+
+def test_update_order_from_webhook_returns_none_when_no_order_matches() -> None:
+    """No match should return None so the webhook can raise a clear 400."""
+    session = MagicMock()
+    fake_repo = _FakeOrderRepository()
+
+    with (
+        patch(
+            "services.transaction_service._implementation.SyncSessionLocal",
+            return_value=session,
+        ),
+        patch(
+            "services.transaction_service._implementation.OrderRepository",
+            return_value=fake_repo,
+        ),
+    ):
+        result = update_order_from_webhook(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            new_status="paid",
+            order_id="missing-order",
+            alternate_order_id=None,
+            user_phone_number="5551234567",
+            order_date="03/19/2026 12:30:00 PM",
+        )
+
+    assert result is None
+    session.commit.assert_not_called()
+
+
+def test_update_order_from_webhook_rolls_back_on_parse_error() -> None:
+    """Webhook parse errors should rollback and return None."""
+    session = MagicMock()
+    fake_repo = _FakeOrderRepository()
+
+    with (
+        patch(
+            "services.transaction_service._implementation.SyncSessionLocal",
+            return_value=session,
+        ),
+        patch(
+            "services.transaction_service._implementation.OrderRepository",
+            return_value=fake_repo,
+        ),
+    ):
+        result = update_order_from_webhook(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            new_status="paid",
+            order_id=None,
+            alternate_order_id=None,
+            user_phone_number="5551234567",
+            order_date=object(),
+        )
+
+    assert result is None
+    session.rollback.assert_called_once()
+    session.close.assert_called_once()
+
+
+def test_update_order_from_webhook_rolls_back_on_database_error() -> None:
+    """Database errors should rollback and return None."""
+    session = MagicMock()
+    repository = MagicMock()
+    repository.get_latest_order_by_external_ids.side_effect = SQLAlchemyError("db down")
+
+    with (
+        patch(
+            "services.transaction_service._implementation.SyncSessionLocal",
+            return_value=session,
+        ),
+        patch(
+            "services.transaction_service._implementation.OrderRepository",
+            return_value=repository,
+        ),
+    ):
+        result = update_order_from_webhook(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            new_status="paid",
+            order_id="ORD-789",
+        )
+
+    assert result is None
+    session.rollback.assert_called_once()
+    session.close.assert_called_once()
+
+
+def test_update_order_from_webhook_reraises_unexpected_errors() -> None:
+    """Unexpected errors should surface instead of being converted to no-match."""
+    session = MagicMock()
+    repository = MagicMock()
+    repository.get_latest_order_by_external_ids.side_effect = RuntimeError("boom")
+
+    with (
+        patch(
+            "services.transaction_service._implementation.SyncSessionLocal",
+            return_value=session,
+        ),
+        patch(
+            "services.transaction_service._implementation.OrderRepository",
+            return_value=repository,
+        ),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        update_order_from_webhook(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            new_status="paid",
+            order_id="ORD-789",
+        )
+
+    session.rollback.assert_not_called()
+    session.close.assert_called_once()
+
+
+def test_transaction_service_wrapper_delegates_webhook_update() -> None:
+    """The public transaction service wrapper should delegate to implementation."""
+    sentinel = object()
+
+    with patch(
+        "services.transaction_service._implementation.update_order_from_webhook",
+        return_value=sentinel,
+    ) as mock_update:
+        result = transaction_service.update_order_from_webhook(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            new_status="paid",
+            order_id="ORD-789",
+            alternate_order_id="txn-456",
+            user_phone_number="5551234567",
+            order_date="03/19/2026 12:30:00 PM",
+            tracking_link="https://example.com/track",
+        )
+
+    assert result is sentinel
+    mock_update.assert_called_once_with(
+        store_id="STORE-1",
+        vendor=IntegrationProvider.adora,
+        new_status="paid",
+        order_id="ORD-789",
+        alternate_order_id="txn-456",
+        user_phone_number="5551234567",
+        order_date="03/19/2026 12:30:00 PM",
+        tracking_link="https://example.com/track",
+    )
+
+
+def test_normalize_us_phone_number_handles_empty_country_code_and_invalid() -> None:
+    """Phone normalization supports webhook formats and rejects unusable values."""
+    assert _normalize_us_phone_number(None) is None
+    assert _normalize_us_phone_number("15551234567") == "+15551234567"
+    assert _normalize_us_phone_number("555") is None
+
+
+def test_parse_order_date_start_handles_none_datetime_and_invalid_type() -> None:
+    """Date parsing should support webhook strings, datetimes, and clear failures."""
+    parsed_datetime = datetime(2026, 3, 19, 12, 30)
+
+    assert _parse_order_date_start(None) is None
+    assert _parse_order_date_start(parsed_datetime) == datetime(2026, 3, 19)
+    with pytest.raises(ValueError, match="order_date must be a string or datetime"):
+        _parse_order_date_start(object())
+
+
+def test_order_repository_external_ids_returns_none_for_empty_ids() -> None:
+    """Empty external ID lists should not query the database."""
+    session = MagicMock()
+    repository = OrderRepository(session)
+
+    result = repository.get_latest_order_by_external_ids(
+        store_id="STORE-1",
+        vendor=IntegrationProvider.adora,
+        order_ids=[""],
+    )
+
+    assert result is None
+    session.query.assert_not_called()
+
+
+def test_order_repository_external_ids_queries_newest_matching_order() -> None:
+    """External ID lookup should filter and return the newest matching order."""
+    session = MagicMock()
+    query = MagicMock()
+    expected_order = MagicMock()
+    session.query.return_value = query
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.first.return_value = expected_order
+    repository = OrderRepository(session)
+
+    result = repository.get_latest_order_by_external_ids(
+        store_id="STORE-1",
+        vendor=IntegrationProvider.adora,
+        order_ids=["ORD-789", ""],
+    )
+
+    assert result is expected_order
+    session.query.assert_called_once()
+    query.filter.assert_called_once()
+    query.order_by.assert_called_once()
+    query.first.assert_called_once()
+
+
+def test_order_repository_external_ids_rolls_back_and_reraises_db_error() -> None:
+    """External ID lookup should rollback dirty sessions on database errors."""
+    session = MagicMock()
+    session.query.side_effect = SQLAlchemyError("db down")
+    repository = OrderRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repository.get_latest_order_by_external_ids(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            order_ids=["ORD-789"],
+        )
+
+    session.rollback.assert_called_once()
+
+
+def test_order_repository_phone_since_applies_pending_filter() -> None:
+    """Phone/date fallback should optionally limit matches to pending orders."""
+    session = MagicMock()
+    query = MagicMock()
+    expected_order = MagicMock()
+    session.query.return_value = query
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.first.return_value = expected_order
+    repository = OrderRepository(session)
+
+    result = repository.get_latest_order_by_phone_since(
+        store_id="STORE-1",
+        vendor=IntegrationProvider.adora,
+        user_phone_number="+15551234567",
+        order_time_start=datetime(2026, 3, 19),
+        pending_only=True,
+    )
+
+    assert result is expected_order
+    assert query.filter.call_count == 2
+    query.order_by.assert_called_once()
+    query.first.assert_called_once()
+
+
+def test_order_repository_phone_since_rolls_back_and_reraises_db_error() -> None:
+    """Phone/date lookup should rollback dirty sessions on database errors."""
+    session = MagicMock()
+    query = MagicMock()
+    session.query.return_value = query
+    query.filter.side_effect = SQLAlchemyError("db down")
+    repository = OrderRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repository.get_latest_order_by_phone_since(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            user_phone_number="+15551234567",
+            order_time_start=datetime(2026, 3, 19),
+            pending_only=True,
+        )
+
+    session.rollback.assert_called_once()
+
+
+def test_order_repository_phone_since_can_include_non_pending_orders() -> None:
+    """The second phone/date lookup should include already-updated orders."""
+    session = MagicMock()
+    query = MagicMock()
+    expected_order = MagicMock()
+    session.query.return_value = query
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.first.return_value = expected_order
+    repository = OrderRepository(session)
+
+    result = repository.get_latest_order_by_phone_since(
+        store_id="STORE-1",
+        vendor=IntegrationProvider.adora,
+        user_phone_number="+15551234567",
+        order_time_start=datetime(2026, 3, 19),
+        pending_only=False,
+    )
+
+    assert result is expected_order
+    query.filter.assert_called_once()
+    query.order_by.assert_called_once()
+    query.first.assert_called_once()

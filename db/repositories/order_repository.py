@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, Sequence
 
 from sqlalchemy import case, func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -99,6 +99,78 @@ class OrderRepository:
             Order.store_id == store_id,
         ]
         return self.session.query(Order).filter(*filters).first()
+
+    def get_latest_order_by_external_ids(
+        self,
+        store_id: str,
+        vendor: IntegrationProvider,
+        order_ids: Sequence[str],
+    ) -> Optional[Order]:
+        """
+        Get the newest order matching any external order identifier.
+
+        Args:
+            store_id: Store/location identifier.
+            vendor: Integration provider.
+            order_ids: Candidate external order identifiers.
+
+        Returns:
+            Order: The newest matching order, or None if not found.
+        """
+        sanitized_order_ids = [order_id for order_id in order_ids if order_id]
+        if not sanitized_order_ids:
+            return None
+
+        try:
+            return (
+                self.session.query(Order)
+                .filter(
+                    Order.store_id == store_id,
+                    Order.vendor == vendor,
+                    Order.order_id.in_(sanitized_order_ids),
+                )
+                .order_by(Order.created_at.desc())
+                .first()
+            )
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise
+
+    def get_latest_order_by_phone_since(
+        self,
+        store_id: str,
+        vendor: IntegrationProvider,
+        user_phone_number: str,
+        order_time_start: datetime,
+        pending_only: bool,
+    ) -> Optional[Order]:
+        """
+        Get the newest order matching store, vendor, phone, and order date floor.
+
+        Args:
+            store_id: Store/location identifier.
+            vendor: Integration provider.
+            user_phone_number: Normalized customer phone number.
+            order_time_start: Start of the order date window.
+            pending_only: Whether to only consider pending orders.
+
+        Returns:
+            Order: The newest matching order, or None if not found.
+        """
+        try:
+            query = self.session.query(Order).filter(
+                Order.store_id == store_id,
+                Order.vendor == vendor,
+                Order.user_phone_number == user_phone_number,
+                Order.order_time >= order_time_start,
+            )
+            if pending_only:
+                query = query.filter(Order.status == "pending")
+
+            return query.order_by(Order.created_at.desc()).first()
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise
 
     def update_order_by_order_id(
         self,

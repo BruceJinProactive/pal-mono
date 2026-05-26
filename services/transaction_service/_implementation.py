@@ -1,9 +1,12 @@
+import re
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, List, Optional
 
 from sqlalchemy import and_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -18,6 +21,73 @@ from utils.log import logger
 
 from ._utils import reconstruct_order_items
 from .schema import OrderData
+
+
+@dataclass(frozen=True)
+class OrderStatusUpdateResult:
+    """Order fields needed by webhook callers after a status update."""
+
+    id: uuid.UUID
+    order_id: Optional[str]
+    store_id: Optional[str]
+    user_phone_number: Optional[str]
+    store_phone_number: Optional[str]
+    tracking_link: Optional[str]
+    status: Optional[str]
+    vendor: Optional[IntegrationProvider]
+
+
+def _to_order_status_update_result(order: Order) -> OrderStatusUpdateResult:
+    """Convert an ORM Order to a webhook-safe status update result."""
+    return OrderStatusUpdateResult(
+        id=order.id,
+        order_id=order.order_id,
+        store_id=order.store_id,
+        user_phone_number=order.user_phone_number,
+        store_phone_number=order.store_phone_number,
+        tracking_link=order.tracking_link,
+        status=order.status,
+        vendor=order.vendor,
+    )
+
+
+def _normalize_us_phone_number(phone_number: str | None) -> str | None:
+    """Normalize a US phone number for matching stored order phone numbers."""
+    if not phone_number:
+        return None
+
+    digits = re.sub(r"\D", "", phone_number)
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    return None
+
+
+def _parse_order_date_start(order_date: Any) -> datetime | None:
+    """Parse a webhook order date into a midnight date floor."""
+    if order_date is None:
+        return None
+    if isinstance(order_date, datetime):
+        parsed = order_date
+    elif isinstance(order_date, str):
+        parsed = datetime.strptime(order_date, "%m/%d/%Y %I:%M:%S %p")
+    else:
+        raise ValueError("order_date must be a string or datetime")
+
+    return datetime.combine(parsed.date(), datetime.min.time())
+
+
+def _unique_non_empty_values(*values: str | None) -> list[str]:
+    """Return unique non-empty strings while preserving order."""
+    unique_values: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        stripped = value.strip()
+        if stripped and stripped not in unique_values:
+            unique_values.append(stripped)
+    return unique_values
 
 
 def _update_customer_converted(
@@ -512,6 +582,106 @@ def update_order_by_phone(
             exc_info=True,
         )
         return False
+
+    finally:
+        db_session.close()
+
+
+def update_order_from_webhook(
+    store_id: str,
+    vendor: IntegrationProvider,
+    new_status: str,
+    order_id: str | None = None,
+    alternate_order_id: str | None = None,
+    user_phone_number: str | None = None,
+    order_date: Any = None,
+    tracking_link: str | None = None,
+) -> OrderStatusUpdateResult | None:
+    """
+    Update an order from a POS webhook using stable IDs before phone/date fallback.
+
+    This is primarily used by Adora webhooks, where the phone number in the
+    webhook can differ from legacy adora_orders rows. The generic orders table
+    is the source of truth for order status updates.
+    """
+    db_session = SyncSessionLocal()
+
+    try:
+        repository = OrderRepository(db_session, auto_commit=False)
+        candidate_order_ids = _unique_non_empty_values(order_id, alternate_order_id)
+
+        order = repository.get_latest_order_by_external_ids(
+            store_id=store_id,
+            vendor=vendor,
+            order_ids=candidate_order_ids,
+        )
+
+        normalized_phone = _normalize_us_phone_number(user_phone_number)
+        order_time_start = _parse_order_date_start(order_date)
+
+        if order is None and normalized_phone and order_time_start:
+            order = repository.get_latest_order_by_phone_since(
+                store_id=store_id,
+                vendor=vendor,
+                user_phone_number=normalized_phone,
+                order_time_start=order_time_start,
+                pending_only=True,
+            )
+            if order is None:
+                order = repository.get_latest_order_by_phone_since(
+                    store_id=store_id,
+                    vendor=vendor,
+                    user_phone_number=normalized_phone,
+                    order_time_start=order_time_start,
+                    pending_only=False,
+                )
+
+        if order is None:
+            logger.warning(
+                "[TransactionService] No order found from webhook",
+                extra={
+                    "store_id": store_id,
+                    "vendor": vendor.value,
+                    "order_id": order_id,
+                    "alternate_order_id": alternate_order_id,
+                    "user_phone_number": user_phone_number,
+                    "normalized_phone": normalized_phone,
+                    "order_date": order_date,
+                },
+            )
+            return None
+
+        order.status = new_status
+        if tracking_link is not None:
+            order.tracking_link = tracking_link
+
+        order_key = order.id
+        conversation_id = order.conversation_id
+        result = _to_order_status_update_result(order)
+
+        db_session.commit()
+
+        logger.info(
+            f"[TransactionService] Successfully updated order {order_key} "
+            f"(order_id: {order.order_id}) status to {new_status}"
+        )
+
+        if new_status and new_status.lower() == "paid":
+            _update_customer_converted(
+                session=db_session,
+                conversation_id=conversation_id,
+                order_id=order_key,
+            )
+
+        return result
+
+    except (SQLAlchemyError, ValueError, KeyError) as e:
+        db_session.rollback()
+        logger.error(
+            f"[TransactionService] Error updating order from webhook {order_id}: {e}",
+            exc_info=True,
+        )
+        return None
 
     finally:
         db_session.close()

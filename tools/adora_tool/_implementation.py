@@ -12,7 +12,6 @@ from langfuse import get_client, observe
 from agent.tool import ToolMetadata
 from agent.tool.internal.query_messages_tool import QueryMessagesTool
 from db.session import SyncSessionLocal
-from db.tables.adora_orders import AdoraOrder as DBOrder
 from db.tables.types import IntegrationProvider
 from services.transaction_service import save_order
 from tools.adora_tool.classes import (
@@ -507,89 +506,30 @@ class AdoraTool(Toolkit):
         session = SyncSessionLocal()
         store_tz = self.tool_metadata.timezone or "America/Los_Angeles"
 
-        # Get and format customer phone from the validated order object
-        customer_phone_raw = None
-        if order.customer and order.customer.phone_number:
-            customer_phone_raw = order.customer.phone_number
-        else:
-            # This should not happen as _fulfill_order validates this
-            logger.error(
-                "[AdoraTool._save_order_to_db] Customer phone missing from order object. "
-                "This is unexpected as order should have been validated."
-            )
-
-        customer_phone = self._format_phone_for_db(customer_phone_raw)
-        if customer_phone == "+10000000000" and customer_phone_raw:
-            logger.error(
-                f"[AdoraTool._save_order_to_db] Invalid customer phone format: {customer_phone_raw}. "
-                "Expected 10-digit phone number."
-            )
-
-        # Get and format store phone from tool metadata
-        store_phone_raw = self.tool_metadata.store_phone
-        if not store_phone_raw:
-            logger.error(
-                f"[AdoraTool._save_order_to_db] store_phone not configured for store_id: {self.store_id}. "
-                "This should be set in project configuration."
-            )
-
-        store_phone = self._format_phone_for_db(store_phone_raw)
-        if store_phone == "+10000000000" and store_phone_raw:
-            logger.error(
-                f"[AdoraTool._save_order_to_db] Invalid store phone format: {store_phone_raw}. "
-                "Expected 10-digit phone number."
-            )
-
         try:
-            # Create a new order record
-            db_order = DBOrder(
-                user_phone_number=customer_phone,
-                store_phone_number=store_phone,
-                order_number=str(validated_order.key) if validated_order.key else "",
-                transaction_id=(
-                    str(validated_order.key) if validated_order.key else ""
-                ),  # Using order key as transaction_id
-                store_id=self.store_id,
-                tracking_link=None,  # Tracking link will be updated later when available
-                status="pending",
+            order_db_id = save_order(
+                tool_metadata=self.tool_metadata,
                 vendor=IntegrationProvider.adora,
-                order_date=datetime.now(ZoneInfo(store_tz)),
+                order_id=(str(validated_order.key) if validated_order.key else ""),
+                store_id=self.store_id,
+                status="pending",
+                fulfillment_strategy=order.order_type,
+                subtotal=(
+                    validated_order.subTotal
+                    if getattr(validated_order, "subTotal", None) is not None
+                    else None
+                ),
+                order_items=order.order_items if order.order_items else None,
+                order_time=datetime.now(ZoneInfo(store_tz)),
+                session=session,
             )
-
-            # Add and commit the order
-            session.add(db_order)
-            session.commit()
-            logger.debug(
-                f"[AdoraTool._save_order_to_db] Saved order to database: {db_order.id}"
-            )
-
-            # Also save to transactions table for enhanced tracking
-            try:
-                transaction_id = save_order(
-                    tool_metadata=self.tool_metadata,
-                    vendor=IntegrationProvider.adora,
-                    order_id=(str(validated_order.key) if validated_order.key else ""),
-                    store_id=self.store_id,
-                    status="pending",
-                    fulfillment_strategy=order.order_type,
-                    subtotal=(
-                        validated_order.subTotal
-                        if getattr(validated_order, "subTotal", None) is not None
-                        else None
-                    ),
-                    order_items=order.order_items if order.order_items else None,
-                    order_time=datetime.now(),
-                    session=session,  # Reuse the same session
+            if order_db_id:
+                logger.debug(
+                    f"[AdoraTool._save_order_to_db] Saved order to database: {order_db_id}"
                 )
-                if transaction_id:
-                    logger.debug(
-                        f"[AdoraTool._save_order_to_db] Saved transaction to database: {transaction_id}"
-                    )
-            except Exception as transaction_error:
-                # Log transaction save error but don't fail the entire operation
+            else:
                 logger.warning(
-                    f"[AdoraTool._save_order_to_db] Failed to save transaction data: {transaction_error}",
-                    exc_info=True,
+                    "[AdoraTool._save_order_to_db] Failed to save order data"
                 )
         except Exception as e:
             session.rollback()

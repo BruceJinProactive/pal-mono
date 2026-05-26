@@ -7,15 +7,18 @@ from tools like Adora, Square, Toast, Olo, OpenTable, etc.
 """
 
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
 from db.tables.orders import Order
+from db.tables.types import IntegrationProvider
 
 from . import _implementation
 from ._utils import reconstruct_order_items
 from .schema import OrderData
+
+OrderStatusUpdateResult = _implementation.OrderStatusUpdateResult
 
 
 def create_order(
@@ -149,6 +152,44 @@ def update_order_by_phone(
     )
 
 
+def update_order_from_webhook(
+    store_id: str,
+    vendor: IntegrationProvider,
+    new_status: str,
+    order_id: str | None = None,
+    alternate_order_id: str | None = None,
+    user_phone_number: str | None = None,
+    order_date: Any = None,
+    tracking_link: str | None = None,
+) -> OrderStatusUpdateResult | None:
+    """
+    Update an order from a POS webhook using external IDs first.
+
+    Args:
+        store_id: Store/location identifier.
+        vendor: Integration provider.
+        new_status: New status to set.
+        order_id: Primary external order identifier.
+        alternate_order_id: Secondary external order identifier.
+        user_phone_number: Customer phone fallback.
+        order_date: Order date fallback.
+        tracking_link: Optional tracking link to set.
+
+    Returns:
+        OrderStatusUpdateResult | None: Updated order snapshot, if found.
+    """
+    return _implementation.update_order_from_webhook(
+        store_id=store_id,
+        vendor=vendor,
+        new_status=new_status,
+        order_id=order_id,
+        alternate_order_id=alternate_order_id,
+        user_phone_number=user_phone_number,
+        order_date=order_date,
+        tracking_link=tracking_link,
+    )
+
+
 def get_order_by_id(
     session: Session,
     order_id: uuid.UUID,
@@ -226,8 +267,10 @@ __all__ = [
     # Helper functions for tools
     "save_order",
     "update_order_by_order_id",
+    "update_order_from_webhook",
     "update_order_by_phone",
     "reconstruct_order_items",
     # Data schemas
     "OrderData",
+    "OrderStatusUpdateResult",
 ]
