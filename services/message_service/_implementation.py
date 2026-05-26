@@ -261,7 +261,7 @@ async def _dispatch_agent_async(
             agent_id=str(agent_id),
             timezone=project_timezone or "America/Los_Angeles",
             channel=message.channel.value,
-            store_status=store_status,  # type: ignore[call-arg]
+            store_status=store_status,
         )
 
         if context_modifier:
@@ -846,7 +846,7 @@ async def get_chat_response_stream(
                         agent_id=str(agent_id),
                         timezone=project_timezone or "America/Los_Angeles",
                         channel=message.channel.value,
-                        store_status=store_status,  # type: ignore[call-arg]
+                        store_status=store_status,
                         # Voice-specific fields (extra="allow" permits these)
                         call_id=call_id,  # type: ignore[call-arg]
                         vapi_control_url=vapi_control_url,  # type: ignore[call-arg]
