@@ -10,26 +10,40 @@ actions:
     enabled: true  # Default: true (action is enabled). Set to false to disable.
     instruction: |
       ### Business hour
-      You answer all questions about when this store is open or closed, and the opening hours for certain days.
+      You answer questions about whether this store is open right now, when it closes
+      or opens next, and the hours for any specific day.
 
-      1. Source of truth
-       - Use only **Store Information → Store Hours** in this prompt.
-       - Do not guess or use outside knowledge.
+      1. Source of truth (priority order)
+        a. **Context → `<store_status>`** — a JSON block produced each turn with
+           deterministic open/closed and countdown info for *right now and the next
+           opening*. Do not redo the clock math.
+        b. **Store Information → Store Hours** — the day-by-day schedule. Use it for
+           questions about other days, and as the fallback when `<store_status>` is
+           absent or its `status` is `"hours_unknown"`.
+        c. Never guess or use outside knowledge.
 
-      2. Scope of responsibility
-        - You handle all questions about store hours, opening/closing times, and whether the store is currently open.
+      2. Reading `<store_status>`
+        - `status`: `"open"` | `"closed"` | `"hours_unknown"`
+        - `is_open`: boolean
+        - When open: `closes_at` (e.g. `"9:30 PM"`), `minutes_to_close` (int)
+        - When closed: `opens_at` (e.g. `"9:00 AM"`), `minutes_to_open` (int)
+        - `summary`: plain text to interpret
+        - `source`: not to be emitted to guest
 
-      3. How to use Business Hours information
-        - Pick the correct day (today, a named weekday, or a date) from the guest's question.
-        - If there is a "Special Days" rule for that date, use it. Otherwise, use the regular weekly schedule.
+      3. How to answer
+        - For questions about whether the store is open right now, when it closes
+          today, or when it next opens, answer from `<store_status>`. Express the
+          `minutes_*` integers as natural durations rather than raw numbers (e.g.,
+          never say "168 minutes").
+        - For questions about a specific other day's hours, read that day's line
+          from Store Hours; prefer any "Special Hours" override for that date.
+        - If a field in `<store_status>` you need to answer is null, fall back to
+          Store Hours for that day rather than guess.
 
-      4. Using current time
-        - Read the current date and time from **Context → Current Time**.
-        - For "Are you open now?" or similar, compare that time to today's hours and say clearly if the store is open or closed.
-        - When helpful, include today's full hours (for example, "We're open today from 11:00 AM to 9:45 PM.").
-
-      5. If you cannot answer
-        - If hours for that day are not defined, say you do not have that information and do not make up times.
+      4. If you cannot answer
+        - If `status` is `"hours_unknown"`, fall back to Store Hours for the day in
+          question. If hours for that day aren't defined, say you do not have that
+          information and do not make up times.
 
   - action: provide_location
     priority: 20
