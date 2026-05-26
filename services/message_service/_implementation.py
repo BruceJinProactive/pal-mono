@@ -45,6 +45,7 @@ from utils.otel import record_duration, trace_async_block
 from utils.request_context import RequestContext
 
 from . import _utils
+from ._store_status import compute_store_status
 from ._tracing import langfuse_message_span
 
 _background_tasks: set[asyncio.Task[None]] = set()
@@ -204,6 +205,8 @@ async def _dispatch_agent_async(
     project_account_id: uuid.UUID,
     project_raw_config: dict,
     project_timezone: str | None,
+    project_business_hours: dict | None = None,
+    project_store_hours: str | None = None,
     account_name: str,
     conversation_id: uuid.UUID,
     context_modifier: Callable[[RuntimeContext], None] | None = None,
@@ -244,6 +247,10 @@ async def _dispatch_agent_async(
         ]:
             customer_phone = message.sender_identifier
 
+        store_status = compute_store_status(
+            project_business_hours, project_store_hours, project_timezone
+        )
+
         runtime_context = RuntimeContext(
             user_id=str(user_id),
             session_id=str(conversation_id),
@@ -254,6 +261,7 @@ async def _dispatch_agent_async(
             agent_id=str(agent_id),
             timezone=project_timezone or "America/Los_Angeles",
             channel=message.channel.value,
+            store_status=store_status,  # type: ignore[call-arg]
         )
 
         if context_modifier:
@@ -476,6 +484,8 @@ async def get_chat_response_async(
         project_agent_id = project.agent_id
         project_account_id = project.account_id
         project_timezone = project.timezone
+        project_business_hours = getattr(project, "business_hours", None)
+        project_store_hours = getattr(project, "store_hours", None)
 
         # Check if project uses pal-agents framework (from raw_config)
         use_pal_agents = project_raw_config.get("use_pal_agents", False)
@@ -539,6 +549,8 @@ async def get_chat_response_async(
                 project_account_id=project_account_id,
                 project_raw_config=project_raw_config,
                 project_timezone=project_timezone,
+                project_business_hours=project_business_hours,
+                project_store_hours=project_store_hours,
                 account_name=account_name,
                 conversation_id=request_conversation_id,
                 context_modifier=context_modifier,
@@ -675,6 +687,8 @@ async def get_chat_response_stream(
             project_agent_id = project.agent_id
             project_account_id = project.account_id
             project_timezone = project.timezone
+            project_business_hours = getattr(project, "business_hours", None)
+            project_store_hours = getattr(project, "store_hours", None)
 
             # Check if project uses pal-agents framework (from raw_config)
             use_pal_agents = project_raw_config.get("use_pal_agents", False)
@@ -816,6 +830,12 @@ async def get_chat_response_stream(
                                 },
                             )
 
+                    store_status = compute_store_status(
+                        project_business_hours,
+                        project_store_hours,
+                        project_timezone,
+                    )
+
                     runtime_context = RuntimeContext(
                         user_id=str(user_id),
                         session_id=str(request_conversation_id),
@@ -826,6 +846,7 @@ async def get_chat_response_stream(
                         agent_id=str(agent_id),
                         timezone=project_timezone or "America/Los_Angeles",
                         channel=message.channel.value,
+                        store_status=store_status,  # type: ignore[call-arg]
                         # Voice-specific fields (extra="allow" permits these)
                         call_id=call_id,  # type: ignore[call-arg]
                         vapi_control_url=vapi_control_url,  # type: ignore[call-arg]

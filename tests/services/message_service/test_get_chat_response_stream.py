@@ -873,3 +873,124 @@ async def test_get_chat_response_stream_legacy_agent_closing_conversation_update
     assert session.flush.called
     # Verify chunks were produced
     assert len(chunks) >= 1
+
+
+@pytest.mark.asyncio
+async def test_get_chat_response_stream_wires_store_status_into_runtime_context(
+    monkeypatch,
+):
+    """compute_store_status output is attached to the RuntimeContext (streaming)."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
+        yield None
+
+    user = SimpleNamespace(id=uuid.uuid4())
+    project = SimpleNamespace(
+        id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        raw_config={"use_pal_agents": True},
+        agent_id=uuid.uuid4(),
+        account=SimpleNamespace(name="test-account"),
+        agent=SimpleNamespace(filler_words=None),
+        timezone="America/Los_Angeles",
+        name="test-project",
+        # True 24/7: each day's close is the NEXT day's 00:00 (no 23:59 end-of-day
+        # gap), so it's open at every instant -> deterministic despite real now.
+        business_hours={
+            "regular_hours": {
+                "periods": [
+                    {
+                        "open": {"day": d, "time": "0000"},
+                        "close": {"day": (d + 1) % 7, "time": "0000"},
+                    }
+                    for d in range(7)
+                ]
+            }
+        },
+        store_hours=None,
+    )
+
+    async def _fake_get_project_async(session, message):
+        return project
+
+    async def _fake_get_user_async(session, project, message):
+        return user, False
+
+    async def _fake_construct_agent_spec(**kwargs):
+        return SimpleNamespace()
+
+    captured_inputs: list = []
+
+    class _CapturingPalAgent:
+        def __init__(self, spec=None):
+            self.spec = spec
+
+        async def run(self, pal_input, stream=False):
+            captured_inputs.append(pal_input)
+
+            async def _stream():
+                yield SimpleNamespace(content="hello")
+
+            return _stream()
+
+    monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(
+        _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
+    )
+    monkeypatch.setattr(
+        _implementation.project_service, "get_project_async", _fake_get_project_async
+    )
+    monkeypatch.setattr(
+        _implementation.user_service, "get_user_async", _fake_get_user_async
+    )
+    monkeypatch.setattr(
+        _implementation.agent_service,
+        "construct_agent_spec",
+        _fake_construct_agent_spec,
+    )
+    monkeypatch.setattr(_implementation, "PalAgent", _CapturingPalAgent)
+
+    async def _fake_query_history_messages(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(
+        _implementation, "query_history_messages", _fake_query_history_messages
+    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
+
+    session = AsyncMock()
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.VOICE,
+        text=TextObject(body="Hello there"),
+        metadata=Metadata(testing=True),
+    )
+
+    _chunks = [
+        chunk
+        async for chunk in _implementation.get_chat_response_stream(
+            session=session,
+            message=message,
+            request_context=RequestContext(),
+            call_id=None,
+        )
+    ]
+
+    assert len(captured_inputs) == 1
+    store_status = captured_inputs[0].runtime_context.store_status
+    assert store_status["status"] == "open"
+    assert store_status["is_open"] is True
+    assert store_status["source"] == "business_hours"

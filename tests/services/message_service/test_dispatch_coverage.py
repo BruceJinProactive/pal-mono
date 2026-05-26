@@ -883,3 +883,79 @@ async def test_legacy_path_end_to_end(monkeypatch):
     assert result[0].author_type == AuthorType.AGENT
     assert result[0].metadata.account_name == "test-account"
     assert result[0].metadata.project_name == "test-project"
+
+
+# ---------------------------------------------------------------------------
+# Test: store_status (computed from project hours) lands on the RuntimeContext
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_store_status_wired_into_runtime_context(monkeypatch):
+    """compute_store_status output is attached to the RuntimeContext (non-streaming)."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+    project = _make_project(use_pal_agents=True)
+    # True 24/7: each day's close is the NEXT day's 00:00, so the schedule covers
+    # every instant with no end-of-day gap. (A close of "2359" would leave the store
+    # "closed" for the 23:59:00-23:59:59 minute.) The production path uses real
+    # wall-clock now, so this keeps the assertion deterministic.
+    project.business_hours = {
+        "regular_hours": {
+            "periods": [
+                {
+                    "open": {"day": d, "time": "0000"},
+                    "close": {"day": (d + 1) % 7, "time": "0000"},
+                }
+                for d in range(7)
+            ]
+        }
+    }
+    project.store_hours = None
+    user = SimpleNamespace(id=uuid.uuid4())
+    message_repo = _FakeMessageRepo()
+
+    _impl, _ = _setup_common_mocks(
+        monkeypatch, project=project, user=user, message_repo=message_repo
+    )
+
+    captured_runtime_contexts: list = []
+
+    async def _fake_construct_agent_spec(**kwargs):
+        return SimpleNamespace()
+
+    class _CapturePalAgent:
+        def __init__(self, spec=None):
+            self.spec = spec
+
+        async def run(self, pal_input, stream=False):
+            captured_runtime_contexts.append(pal_input.runtime_context)
+            return SimpleNamespace(
+                content="response", escalated=False, closing_conversation=False
+            )
+
+    async def _fake_query_history_messages(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(
+        _impl.agent_service, "construct_agent_spec", _fake_construct_agent_spec
+    )
+    monkeypatch.setattr(_impl, "PalAgent", _CapturePalAgent)
+    monkeypatch.setattr(_impl, "query_history_messages", _fake_query_history_messages)
+
+    session = AsyncMock()
+    session.refresh = AsyncMock()
+
+    await _impl.get_chat_response_async(
+        session=session,
+        message=_make_message("Hello"),
+        request_context=RequestContext(),
+    )
+
+    assert len(captured_runtime_contexts) == 1
+    store_status = captured_runtime_contexts[0].store_status
+    assert store_status["status"] == "open"
+    assert store_status["is_open"] is True
+    assert store_status["source"] == "business_hours"

@@ -15,6 +15,7 @@ from utils.otel import traced
 from utils.request_context import RequestContext
 
 from . import _implementation
+from ._store_status import compute_store_status
 
 
 def get_filler_message(message: Message) -> Message:
@@ -257,4 +258,5 @@ __all__ = [
     "get_conversations_by_users",
     "create_conversation",
     "create_voice_call_conversation",
+    "compute_store_status",
 ]
