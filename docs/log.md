@@ -4,6 +4,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-26
+
+- **Vision v2 event generation voting/hysteresis plan.** Documented runtime last-N-frame voting and hysteresis for v2 vision event generation, plus the manual `pal-research` golden-labeling workflow used for evaluation. -> `docs/plans/golden-label-manage-app.md`
 ## 2026-05-22
 
 - **[PAL-10712 / PAL-10797] Process verification pipeline for voice eval.** Added the verifiable-process eval pipeline: `ProcessTrace` with HTTP and voice trace building, process evaluators for `tool_timing`, `param_collection`, and `output_use`, and the `ExpectedProcess` scenario schema. Voice traces preserve audio spans (`start_ms`, `end_ms`), speaker, and channel metadata so future S2S evals can judge tool timing, tool params, output use, and silence gaps without depending on transcription quality.
