@@ -1,7 +1,7 @@
 import asyncio
 import sys
 import uuid
-from datetime import date
+from datetime import date, datetime
 from types import ModuleType, SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, patch
@@ -26,10 +26,12 @@ sqlalchemy.ext.asyncio.async_sessionmaker = (
     lambda *args, **kwargs: lambda *a, **kw: None
 )
 
+from db.pal_repository.data_classes.contact import ContactData  # noqa: E402
 from db.tables.catering_requests import CateringRequest, RequestStatus  # noqa: E402
 from services.catering_service._implementation import (  # noqa: E402
     _build_customer_status_sms_message,
     _get_catering_business_name,
+    _get_catering_store_phone_number,
     _should_send_customer_status_sms,
     update_catering_request,
 )
@@ -48,6 +50,20 @@ def _build_request(
         contact_phone_number=phone_number,
         status=status,
         idempotency_key=str(uuid.uuid4()),
+    )
+
+
+def _build_contact(
+    *,
+    role: str,
+    phone_number: str,
+) -> ContactData:
+    return ContactData(
+        id=uuid.uuid4(),
+        name=f"{role} contact",
+        phone_number=phone_number,
+        role=role,
+        created_at=datetime(2026, 3, 1),
     )
 
 
@@ -108,6 +124,10 @@ def test_update_catering_request_sends_sms_for_confirmed_status() -> None:
             return_value=project_repo,
         ),
         patch(
+            "services.catering_service._implementation._get_catering_store_phone_number",
+            return_value="+15551234567",
+        ),
+        patch(
             "services.catering_service._implementation.send_sms_notification",
             return_value=True,
         ) as mock_send_sms,
@@ -123,7 +143,7 @@ def test_update_catering_request_sends_sms_for_confirmed_status() -> None:
     assert result is updated_request
     mock_send_sms.assert_called_once_with(
         updated_request.contact_phone_number,
-        "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Confirmed.",
+        "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Confirmed. Please call +15551234567 if you have any questions.",
     )
 
 
@@ -153,6 +173,10 @@ def test_update_catering_request_sends_sms_when_status_is_re_requested() -> None
             return_value=project_repo,
         ),
         patch(
+            "services.catering_service._implementation._get_catering_store_phone_number",
+            return_value=None,
+        ),
+        patch(
             "services.catering_service._implementation.send_sms_notification",
             return_value=True,
         ) as mock_send_sms,
@@ -169,6 +193,59 @@ def test_update_catering_request_sends_sms_when_status_is_re_requested() -> None
         updated_request.contact_phone_number,
         "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Confirmed.",
     )
+
+
+def test_update_catering_request_sends_sms_when_store_phone_lookup_fails() -> None:
+    session = AsyncMock()
+    existing_request = _build_request(status=RequestStatus.LEAD)
+    updated_request = _build_request(status=RequestStatus.CONFIRMED)
+    updated_request.id = existing_request.id
+    updated_request.project_id = existing_request.project_id
+    updated_request.idempotency_key = existing_request.idempotency_key
+
+    repo = AsyncMock()
+    repo.get_catering_request_by_id.return_value = existing_request
+    repo.update_catering_request.return_value = updated_request
+    project_repo = AsyncMock()
+    project_repo.get_project.return_value = SimpleNamespace(
+        display_name="Pal Bistro", name="pal-bistro"
+    )
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryAsync",
+            return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.ProjectRepositoryAsync",
+            return_value=project_repo,
+        ),
+        patch(
+            "services.catering_service._implementation._get_catering_store_phone_number",
+            side_effect=RuntimeError("contact lookup failed"),
+        ),
+        patch(
+            "services.catering_service._implementation.send_sms_notification",
+            return_value=True,
+        ) as mock_send_sms,
+        patch(
+            "services.catering_service._implementation.logger.warning"
+        ) as mock_warning,
+    ):
+        result = asyncio.run(
+            update_catering_request(
+                session=session,
+                catering_request_id=existing_request.id,
+                status=RequestStatus.CONFIRMED,
+            )
+        )
+
+    assert result is updated_request
+    mock_send_sms.assert_called_once_with(
+        updated_request.contact_phone_number,
+        "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Confirmed.",
+    )
+    mock_warning.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -205,6 +282,10 @@ def test_update_catering_request_sends_sms_for_new_lifecycle_statuses(
         patch(
             "services.catering_service._implementation.ProjectRepositoryAsync",
             return_value=project_repo,
+        ),
+        patch(
+            "services.catering_service._implementation._get_catering_store_phone_number",
+            return_value=None,
         ),
         patch(
             "services.catering_service._implementation.send_sms_notification",
@@ -357,6 +438,10 @@ def test_update_catering_request_logs_warning_when_sms_send_fails() -> None:
         patch(
             "services.catering_service._implementation.ProjectRepositoryAsync",
             return_value=project_repo,
+        ),
+        patch(
+            "services.catering_service._implementation._get_catering_store_phone_number",
+            return_value=None,
         ),
         patch(
             "services.catering_service._implementation.send_sms_notification",
@@ -540,6 +625,75 @@ def test_get_catering_business_name_returns_fallback_for_blank_project_names() -
     assert business_name == "the business"
 
 
+def test_get_catering_store_phone_number_prefers_catering_manager() -> None:
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+
+    with patch(
+        "services.catering_service._implementation.contact_service.list_by_project",
+        return_value=[
+            _build_contact(role="general", phone_number="+15550000000"),
+            _build_contact(role="catering_manager", phone_number="+15551111111"),
+        ],
+    ) as mock_list_contacts:
+        phone_number = asyncio.run(
+            _get_catering_store_phone_number(session, project_id)
+        )
+
+    assert phone_number == "+15551111111"
+    mock_list_contacts.assert_called_once_with(session, project_id)
+
+
+def test_get_catering_store_phone_number_uses_single_contact_any_role() -> None:
+    session = AsyncMock()
+
+    with patch(
+        "services.catering_service._implementation.contact_service.list_by_project",
+        return_value=[
+            _build_contact(role="manager", phone_number=" +15553333333 "),
+        ],
+    ):
+        phone_number = asyncio.run(
+            _get_catering_store_phone_number(session, uuid.uuid4())
+        )
+
+    assert phone_number == "+15553333333"
+
+
+def test_get_catering_store_phone_number_falls_back_to_general() -> None:
+    session = AsyncMock()
+
+    with patch(
+        "services.catering_service._implementation.contact_service.list_by_project",
+        return_value=[
+            _build_contact(role="manager", phone_number="+15550000000"),
+            _build_contact(role="general", phone_number="+15552222222"),
+        ],
+    ):
+        phone_number = asyncio.run(
+            _get_catering_store_phone_number(session, uuid.uuid4())
+        )
+
+    assert phone_number == "+15552222222"
+
+
+def test_get_catering_store_phone_number_returns_none_without_matching_role() -> None:
+    session = AsyncMock()
+
+    with patch(
+        "services.catering_service._implementation.contact_service.list_by_project",
+        return_value=[
+            _build_contact(role="manager", phone_number="+15550000000"),
+            _build_contact(role="owner", phone_number="+15551111111"),
+        ],
+    ):
+        phone_number = asyncio.run(
+            _get_catering_store_phone_number(session, uuid.uuid4())
+        )
+
+    assert phone_number is None
+
+
 def test_build_customer_status_sms_message_for_in_prep() -> None:
     request = _build_request(status=RequestStatus.IN_PREPARATION)
 
@@ -548,6 +702,17 @@ def test_build_customer_status_sms_message_for_in_prep() -> None:
     assert (
         message
         == "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to In Prep."
+    )
+
+
+def test_build_customer_status_sms_message_includes_store_phone_number() -> None:
+    request = _build_request(status=RequestStatus.READY)
+
+    message = _build_customer_status_sms_message(request, "Pal Bistro", "+15551234567")
+
+    assert (
+        message
+        == "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Ready. Please call +15551234567 if you have any questions."
     )
 
 

@@ -484,10 +484,26 @@ async def update_catering_request(
             business_name = await _get_catering_business_name(
                 session, updated_request.project_id
             )
+            try:
+                store_phone_number = await _get_catering_store_phone_number(
+                    session, updated_request.project_id
+                )
+            except Exception as exc:
+                store_phone_number = None
+                logger.warning(
+                    "[catering] Failed to resolve store phone number for customer status SMS.",
+                    extra={
+                        "request_id": str(updated_request.id),
+                        "project_id": str(updated_request.project_id),
+                        "error": str(exc),
+                    },
+                )
             sms_sent = await asyncio.to_thread(
                 send_sms_notification,
                 updated_request.contact_phone_number,
-                _build_customer_status_sms_message(updated_request, business_name),
+                _build_customer_status_sms_message(
+                    updated_request, business_name, store_phone_number
+                ),
             )
             if not sms_sent:
                 logger.warning(
@@ -558,8 +574,27 @@ async def _get_catering_business_name(
     return "the business"
 
 
+async def _get_catering_store_phone_number(
+    session: AsyncSession, project_id: uuid.UUID
+) -> str | None:
+    contacts = await contact_service.list_by_project(session, project_id)
+    contacts_with_phone = [
+        contact for contact in contacts if contact.phone_number.strip()
+    ]
+    if len(contacts_with_phone) == 1:
+        return contacts_with_phone[0].phone_number.strip()
+
+    for preferred_role in ("catering_manager", "general"):
+        for contact in contacts_with_phone:
+            if contact.role.strip().lower() == preferred_role:
+                return contact.phone_number.strip()
+    return None
+
+
 def _build_customer_status_sms_message(
-    catering_request: CateringRequest, business_name: str
+    catering_request: CateringRequest,
+    business_name: str,
+    store_phone_number: str | None = None,
 ) -> str:
     event_date = (
         catering_request.event_date.strftime("%B %d, %Y")
@@ -567,23 +602,28 @@ def _build_customer_status_sms_message(
         else None
     )
     event_phrase = f" for {event_date}" if event_date else ""
+    contact_sentence = (
+        f" Please call {store_phone_number} if you have any questions."
+        if store_phone_number
+        else ""
+    )
 
     if catering_request.status == RequestStatus.CONFIRMED:
         return (
             f"Hi, your catering request with {business_name}{event_phrase} "
-            "has been updated to Confirmed."
+            f"has been updated to Confirmed.{contact_sentence}"
         )
 
     if catering_request.status == RequestStatus.IN_PREPARATION:
         return (
             f"Hi, your catering request with {business_name}{event_phrase} "
-            "has been updated to In Prep."
+            f"has been updated to In Prep.{contact_sentence}"
         )
 
     if catering_request.status == RequestStatus.READY:
         return (
             f"Hi, your catering request with {business_name}{event_phrase} "
-            "has been updated to Ready."
+            f"has been updated to Ready.{contact_sentence}"
         )
 
     raise ValueError(
