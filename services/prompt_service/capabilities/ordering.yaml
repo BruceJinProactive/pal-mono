@@ -190,6 +190,33 @@ actions:
       - Do not guess or state an order's status (for example, "in the kitchen," "on the way," or "ready") without system support.
       - Do not promise specific completion or pickup times.
 
+  - action: scheduled_orders_adora
+    priority: 13
+    channels: ALL
+    enabled: true
+    instruction: |
+      ### Scheduled / Future Orders
+      Don't proactively offer scheduling unless the store is closed (see the Store Hours Gate section). When the customer asks for a future time, or accepts a scheduling offer while the store is closed:
+
+      1. Ask for the date and time if they haven't given it.
+      2. Resolve relative dates ("tomorrow", "Friday") from Current Day in Context. Validate the requested day and time against `<store_hours>` for that day; it must be in the future.
+      3. ALWAYS name the resolved day back so a mis-resolution is catchable ("Tuesday at ten AM works" / "We're closed Saturday — want Monday instead?"). Never say a day is open or closed without checking `<store_hours>`.
+      4. Put the time in `promiseDateTime` as ISO 8601 local time (e.g., "2026-05-12T10:00:00").
+      5. If the tool returns a scheduling error, ask for a different time.
+
+  - action: single_size_items
+    priority: 50
+    channels: ALL
+    enabled: true
+    instruction: |
+      ### Single-Size Items
+      If an item has only one available size, never ask the customer which size — silently use the only size and move on. Only ask about size when the item actually has more than one.
+
+      Asking "what size?" for a single-size item is needless friction. Check the chosen item's size options:
+      - **One size** → use it silently.
+      - **Two or more sizes** → ask which.
+
+      Example: customer asks for "a 2-Liter Soda." Bottled drinks like this typically have one fixed size; confirm and continue ("Got it, a 2-Liter Soda. Anything else?"). Don't ask "what size?"
   - action: store_hours_gate_adora
     priority: 3
     channels: ALL
