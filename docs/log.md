@@ -13,6 +13,14 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-05-26
 
 - **Vision v2 event generation voting/hysteresis plan.** Documented runtime last-N-frame voting and hysteresis for v2 vision event generation, plus the manual `pal-research` golden-labeling workflow used for evaluation. -> `docs/plans/golden-label-manage-app.md`
+
+---
+
+## 2026-05-25
+
+- **Local Docker startup reliability.** Updated the OTel collector image from unavailable `otel/opentelemetry-collector-contrib:0.115.0` to published patch tag `0.115.1`, removed the obsolete Compose `version` field, and made `scripts/docker_build.sh` exit instead of printing success when `docker-compose up` fails.
+
+---
 ## 2026-05-22
 
 - **[PAL-10712 / PAL-10797] Process verification pipeline for voice eval.** Added the verifiable-process eval pipeline: `ProcessTrace` with HTTP and voice trace building, process evaluators for `tool_timing`, `param_collection`, and `output_use`, and the `ExpectedProcess` scenario schema. Voice traces preserve audio spans (`start_ms`, `end_ms`), speaker, and channel metadata so future S2S evals can judge tool timing, tool params, output use, and silence gaps without depending on transcription quality.

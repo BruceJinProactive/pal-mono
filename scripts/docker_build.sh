@@ -68,8 +68,18 @@ main() {
   # Check if user wants logs
   if [ "$1" = "--logs" ]; then
     docker-compose up
+    start_status=$?
   else
     docker-compose up -d
+    start_status=$?
+  fi
+
+  if [ ${start_status} -ne 0 ]; then
+    echo "❌ ERROR: Docker container startup failed"
+    exit ${start_status}
+  fi
+
+  if [ "$1" != "--logs" ]; then
     print_heading "✅ Build complete! Containers running in background"
     echo ""
     echo "View logs with:"
