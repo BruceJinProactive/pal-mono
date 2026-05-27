@@ -30,6 +30,12 @@ from services import contact_service
 from services.relay_service import send_message
 from utils.log import logger
 
+CUSTOMER_STATUS_SMS_STATUSES: set[RequestStatus] = {
+    RequestStatus.CONFIRMED,
+    RequestStatus.IN_PREPARATION,
+    RequestStatus.READY,
+}
+
 
 def create_catering_request(
     project_id: uuid.UUID,
@@ -524,25 +530,13 @@ def _should_send_customer_status_sms(
     if next_status is None:
         return False
 
-    return next_status in {
-        RequestStatus.PROPOSAL,
-        RequestStatus.CONFIRMED,
-        RequestStatus.CANCELLED,
-        RequestStatus.READY,
-        RequestStatus.QUOTE_SENT,
-    }
+    return next_status in CUSTOMER_STATUS_SMS_STATUSES
 
 
 def _get_customer_status_sms_skip_reason(next_status: RequestStatus | None) -> str:
     if next_status is None:
         return "no_status_requested"
-    if next_status not in {
-        RequestStatus.PROPOSAL,
-        RequestStatus.CONFIRMED,
-        RequestStatus.CANCELLED,
-        RequestStatus.READY,
-        RequestStatus.QUOTE_SENT,
-    }:
+    if next_status not in CUSTOMER_STATUS_SMS_STATUSES:
         return "status_not_supported"
     return "eligible"
 
@@ -574,22 +568,16 @@ def _build_customer_status_sms_message(
     )
     event_phrase = f" for {event_date}" if event_date else ""
 
-    if catering_request.status in {RequestStatus.PROPOSAL, RequestStatus.QUOTE_SENT}:
-        return (
-            f"Hi, your catering request with {business_name} has been reviewed "
-            "and the status has been updated to Proposal."
-        )
-
     if catering_request.status == RequestStatus.CONFIRMED:
         return (
             f"Hi, your catering request with {business_name}{event_phrase} "
             "has been updated to Confirmed."
         )
 
-    if catering_request.status == RequestStatus.CANCELLED:
+    if catering_request.status == RequestStatus.IN_PREPARATION:
         return (
             f"Hi, your catering request with {business_name}{event_phrase} "
-            "has been updated to Cancelled. Please reach out if you have any questions."
+            "has been updated to In Prep."
         )
 
     if catering_request.status == RequestStatus.READY:

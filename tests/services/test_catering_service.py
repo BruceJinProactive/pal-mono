@@ -82,7 +82,7 @@ def test_request_status_legacy_values_remain_supported() -> None:
     assert RequestStatus("ISSUE") == RequestStatus.ISSUE
 
 
-def test_update_catering_request_sends_sms_for_tracked_status_transition() -> None:
+def test_update_catering_request_sends_sms_for_confirmed_status() -> None:
     session = AsyncMock()
     existing_request = _build_request(status=RequestStatus.LEAD)
     updated_request = _build_request(status=RequestStatus.CONFIRMED)
@@ -171,10 +171,82 @@ def test_update_catering_request_sends_sms_when_status_is_re_requested() -> None
     )
 
 
-def test_update_catering_request_skips_sms_for_untracked_status_transition() -> None:
+@pytest.mark.parametrize(
+    ("status", "status_label"),
+    [
+        (RequestStatus.IN_PREPARATION, "In Prep"),
+        (RequestStatus.READY, "Ready"),
+    ],
+)
+def test_update_catering_request_sends_sms_for_new_lifecycle_statuses(
+    status: RequestStatus,
+    status_label: str,
+) -> None:
     session = AsyncMock()
     existing_request = _build_request(status=RequestStatus.LEAD)
-    updated_request = _build_request(status=RequestStatus.IN_PREPARATION)
+    updated_request = _build_request(status=status)
+    updated_request.id = existing_request.id
+    updated_request.project_id = existing_request.project_id
+    updated_request.idempotency_key = existing_request.idempotency_key
+
+    repo = AsyncMock()
+    repo.get_catering_request_by_id.return_value = existing_request
+    repo.update_catering_request.return_value = updated_request
+    project_repo = AsyncMock()
+    project_repo.get_project.return_value = SimpleNamespace(
+        display_name="Pal Bistro", name="pal-bistro"
+    )
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryAsync",
+            return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.ProjectRepositoryAsync",
+            return_value=project_repo,
+        ),
+        patch(
+            "services.catering_service._implementation.send_sms_notification",
+            return_value=True,
+        ) as mock_send_sms,
+    ):
+        asyncio.run(
+            update_catering_request(
+                session=session,
+                catering_request_id=existing_request.id,
+                status=status,
+            )
+        )
+
+    mock_send_sms.assert_called_once_with(
+        updated_request.contact_phone_number,
+        f"Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to {status_label}.",
+    )
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        RequestStatus.LEAD,
+        RequestStatus.PROPOSAL,
+        RequestStatus.LOCKED,
+        RequestStatus.COMPLETED,
+        RequestStatus.FULFILLED,
+        RequestStatus.CLOSED,
+        RequestStatus.INQUIRY,
+        RequestStatus.QUOTE_SENT,
+        RequestStatus.IN_PREP,
+        RequestStatus.CANCELLED,
+        RequestStatus.ISSUE,
+    ],
+)
+def test_update_catering_request_skips_sms_for_unsupported_status(
+    status: RequestStatus,
+) -> None:
+    session = AsyncMock()
+    existing_request = _build_request(status=RequestStatus.LEAD)
+    updated_request = _build_request(status=status)
     updated_request.id = existing_request.id
     updated_request.project_id = existing_request.project_id
     updated_request.idempotency_key = existing_request.idempotency_key
@@ -197,7 +269,7 @@ def test_update_catering_request_skips_sms_for_untracked_status_transition() -> 
             update_catering_request(
                 session=session,
                 catering_request_id=existing_request.id,
-                status=RequestStatus.IN_PREPARATION,
+                status=status,
             )
         )
 
@@ -346,11 +418,40 @@ def test_should_send_customer_status_sms_returns_false_for_none_next_status() ->
     assert _should_send_customer_status_sms(RequestStatus.LEAD, None) is False
 
 
-def test_should_send_customer_status_sms_returns_true_for_supported_status() -> None:
-    assert (
-        _should_send_customer_status_sms(RequestStatus.LEAD, RequestStatus.CONFIRMED)
-        is True
-    )
+@pytest.mark.parametrize(
+    "next_status",
+    [
+        RequestStatus.CONFIRMED,
+        RequestStatus.IN_PREPARATION,
+        RequestStatus.READY,
+    ],
+)
+def test_should_send_customer_status_sms_returns_true_for_supported_status(
+    next_status: RequestStatus,
+) -> None:
+    assert _should_send_customer_status_sms(RequestStatus.LEAD, next_status) is True
+
+
+@pytest.mark.parametrize(
+    "next_status",
+    [
+        RequestStatus.LEAD,
+        RequestStatus.PROPOSAL,
+        RequestStatus.LOCKED,
+        RequestStatus.COMPLETED,
+        RequestStatus.FULFILLED,
+        RequestStatus.CLOSED,
+        RequestStatus.INQUIRY,
+        RequestStatus.QUOTE_SENT,
+        RequestStatus.IN_PREP,
+        RequestStatus.CANCELLED,
+        RequestStatus.ISSUE,
+    ],
+)
+def test_should_send_customer_status_sms_returns_false_for_unsupported_status(
+    next_status: RequestStatus,
+) -> None:
+    assert _should_send_customer_status_sms(RequestStatus.LEAD, next_status) is False
 
 
 def test_get_catering_business_name_returns_fallback_when_project_missing() -> None:
@@ -439,36 +540,14 @@ def test_get_catering_business_name_returns_fallback_for_blank_project_names() -
     assert business_name == "the business"
 
 
-def test_build_customer_status_sms_message_for_proposal() -> None:
-    request = _build_request(status=RequestStatus.PROPOSAL)
+def test_build_customer_status_sms_message_for_in_prep() -> None:
+    request = _build_request(status=RequestStatus.IN_PREPARATION)
 
     message = _build_customer_status_sms_message(request, "Pal Bistro")
 
     assert (
         message
-        == "Hi, your catering request with Pal Bistro has been reviewed and the status has been updated to Proposal."
-    )
-
-
-def test_build_customer_status_sms_message_for_legacy_quote_sent() -> None:
-    request = _build_request(status=RequestStatus.QUOTE_SENT)
-
-    message = _build_customer_status_sms_message(request, "Pal Bistro")
-
-    assert (
-        message
-        == "Hi, your catering request with Pal Bistro has been reviewed and the status has been updated to Proposal."
-    )
-
-
-def test_build_customer_status_sms_message_for_cancelled() -> None:
-    request = _build_request(status=RequestStatus.CANCELLED)
-
-    message = _build_customer_status_sms_message(request, "Pal Bistro")
-
-    assert (
-        message
-        == "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Cancelled. Please reach out if you have any questions."
+        == "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to In Prep."
     )
 
 
@@ -500,8 +579,19 @@ def test_build_customer_status_sms_message_for_missing_event_date() -> None:
     )
 
 
-def test_build_customer_status_sms_message_raises_for_unsupported_status() -> None:
-    request = _build_request(status=RequestStatus.IN_PREPARATION)
+@pytest.mark.parametrize(
+    "status",
+    [
+        RequestStatus.PROPOSAL,
+        RequestStatus.IN_PREP,
+        RequestStatus.QUOTE_SENT,
+        RequestStatus.CANCELLED,
+    ],
+)
+def test_build_customer_status_sms_message_raises_for_unsupported_status(
+    status: RequestStatus,
+) -> None:
+    request = _build_request(status=status)
 
     with pytest.raises(
         ValueError, match="Unsupported catering status for customer SMS"
