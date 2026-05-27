@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-27
+
+- **[PAL-10801] Add default partition for vision rule events.** Added the missing `vision_rule_event_default` partition so matched rule events can be inserted when no date-specific `triggered_at` partition exists. This mirrors the existing `vision_state_change_event_default` fallback partition. -> `docs/state/architecture.md`
+
+---
+
 ## 2026-05-26
 
 - **Vision v2 event generation voting/hysteresis plan.** Documented runtime last-N-frame voting and hysteresis for v2 vision event generation, plus the manual `pal-research` golden-labeling workflow used for evaluation. -> `docs/plans/golden-label-manage-app.md`

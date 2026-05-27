@@ -264,6 +264,12 @@ remain available for older rows and compatibility paths.
 
 *Operations*: `checklists`, `checkpoints`, `checkpoint_runs`, `monitoring_configs`, `monitoring_runs`, `routines`, `routine_items`, `routine_item_responses`, `routine_executions`, `routine_schedules`, `routine_submissions`, `signal_feeds`, `signal_sources`
 
+Vision event tables are time partitioned: `vision_state_change_event` by
+`observed_at` and `vision_rule_event` by `triggered_at`. Both tables keep a
+default partition (`vision_state_change_event_default` and
+`vision_rule_event_default`) so event writes still succeed before date-specific
+partitions are created.
+
 *Auth & Security*: `permission`, `role_permission`, `resource_role_assignment`, `tos_acceptance`
 
 *System*: `change_log`, `onboarding_webhook_event`
