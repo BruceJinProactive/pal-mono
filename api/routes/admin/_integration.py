@@ -55,6 +55,9 @@ def _compile_toast_config(
     config = req.config
     restaurant_guid: str = config["restaurant_guid"]
     selected_menus: list[str] | None = config.get("selected_menus") or None
+    make_unique_menus = (
+        selected_menus if config.get("make_unique", True) is not False else None
+    )
     takeout_guid: str | None = config.get("takeout_dining_option_guid")
     delivery_guid: str | None = config.get("delivery_dining_option_guid")
 
@@ -124,6 +127,7 @@ def _compile_toast_config(
         compiled_menu = compile_toast_menu_v2(
             raw_menu,
             selected_menus=selected_menus,  # None → compile all menus
+            make_unique_menus=make_unique_menus,
             remove_unused_weights=True,
         )
     except Exception as exc:

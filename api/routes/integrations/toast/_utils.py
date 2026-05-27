@@ -51,7 +51,6 @@ def _find_projects_by_restaurant_guid(
         List of Project objects or empty list if none found
     """
     try:
-
         toast_projects = (
             session.query(Project)
             .join(ProjectIntegration, Project.id == ProjectIntegration.project_id)
@@ -462,9 +461,15 @@ def _process_menu_update_sync(menu_details: ToastWebhookMenuDetails) -> None:
 
             for project, project_integration in project_integrations_to_update:
                 selected_menus = _get_selected_menus(project_integration.config)
+                make_unique_menus = (
+                    selected_menus
+                    if _get_make_unique(project_integration.config)
+                    else None
+                )
                 compiled_menu = compile_toast_menu_v2(
                     raw_menu,
                     selected_menus=selected_menus,
+                    make_unique_menus=make_unique_menus,
                     remove_unused_weights=True,
                 )
                 prompt_context = build_toast_lookup_prompt_context_markdown(
@@ -509,6 +514,15 @@ def _get_selected_menus(config: dict[str, Any] | None) -> list[str] | None:
         return menu_names
 
     return None
+
+
+def _get_make_unique(config: dict[str, Any] | None) -> bool:
+    """Return whether selected Toast menus should keep duplicate items unique."""
+    config = config or {}
+    make_unique = config.get("make_unique")
+    if isinstance(make_unique, bool):
+        return make_unique
+    return True
 
 
 def _get_menu_last_updated(config: dict[str, Any] | None) -> str | None:

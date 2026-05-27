@@ -346,6 +346,7 @@ class TestCompileToastConfig:
         takeout_dining_option_guid: str | None = "t-guid",
         delivery_dining_option_guid: str | None = None,
         selected_menus: list[str] | None = None,
+        make_unique: bool | None = None,
         menu_data: dict | None = None,
     ) -> CreateProjectIntegrationRequest:
         config: dict = {}
@@ -357,6 +358,8 @@ class TestCompileToastConfig:
             config["delivery_dining_option_guid"] = delivery_dining_option_guid
         if selected_menus:
             config["selected_menus"] = selected_menus
+        if make_unique is not None:
+            config["make_unique"] = make_unique
         if menu_data:
             config["menu_data"] = menu_data
         return CreateProjectIntegrationRequest(
@@ -409,6 +412,75 @@ class TestCompileToastConfig:
         mock_compile.assert_called_once()
         _, kwargs = mock_compile.call_args
         assert kwargs.get("selected_menus") is None
+        assert kwargs.get("make_unique_menus") is None
+
+    def test_selected_menus_are_used_for_make_unique(self) -> None:
+        req = self._make_request(selected_menus=["Lunch Menu"])
+        integration = _make_integration("SK3")
+        compiled = {"restaurant_guid": "rest-guid-123", "items": []}
+
+        with (
+            patch(
+                "db.session.SyncSessionLocal",
+                return_value=self._mock_session(integration),
+            ),
+            patch(
+                "api.routes.admin._integration._get_integration_credentials",
+                return_value={"client_id": "cid", "client_secret": "csec"},
+            ),
+            patch(
+                "api.routes.admin._integration.get_toast_access_token",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "api.routes.admin._integration.download_menu",
+                return_value={"menus": []},
+            ),
+            patch(
+                "api.routes.admin._integration.compile_toast_menu_v2",
+                return_value=compiled,
+            ) as mock_compile,
+        ):
+            _compile_toast_config(req, uuid.uuid4())
+
+        mock_compile.assert_called_once()
+        _, kwargs = mock_compile.call_args
+        assert kwargs.get("selected_menus") == ["Lunch Menu"]
+        assert kwargs.get("make_unique_menus") == ["Lunch Menu"]
+
+    def test_make_unique_false_disables_make_unique_menus(self) -> None:
+        req = self._make_request(selected_menus=["Lunch Menu"], make_unique=False)
+        integration = _make_integration("SK3")
+        compiled = {"restaurant_guid": "rest-guid-123", "items": []}
+
+        with (
+            patch(
+                "db.session.SyncSessionLocal",
+                return_value=self._mock_session(integration),
+            ),
+            patch(
+                "api.routes.admin._integration._get_integration_credentials",
+                return_value={"client_id": "cid", "client_secret": "csec"},
+            ),
+            patch(
+                "api.routes.admin._integration.get_toast_access_token",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "api.routes.admin._integration.download_menu",
+                return_value={"menus": []},
+            ),
+            patch(
+                "api.routes.admin._integration.compile_toast_menu_v2",
+                return_value=compiled,
+            ) as mock_compile,
+        ):
+            _compile_toast_config(req, uuid.uuid4())
+
+        mock_compile.assert_called_once()
+        _, kwargs = mock_compile.call_args
+        assert kwargs.get("selected_menus") == ["Lunch Menu"]
+        assert kwargs.get("make_unique_menus") is None
 
     def test_populates_menu_data_in_config(self) -> None:
         req = self._make_request()

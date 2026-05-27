@@ -133,6 +133,20 @@ def test_get_selected_menus_prefers_selected_menus_over_legacy_menus() -> None:
     ) == ["Dinner Menu"]
 
 
+def test_get_make_unique_defaults_to_true() -> None:
+    from api.routes.integrations.toast._utils import _get_make_unique
+
+    assert _get_make_unique({}) is True
+    assert _get_make_unique({"selected_menus": ["Dinner Menu"]}) is True
+
+
+def test_get_make_unique_reads_boolean_config() -> None:
+    from api.routes.integrations.toast._utils import _get_make_unique
+
+    assert _get_make_unique({"make_unique": False}) is False
+    assert _get_make_unique({"make_unique": True}) is True
+
+
 @pytest.mark.asyncio
 async def test_update_menu_content_generates_and_persists_toast_menu_assets() -> None:
     from api.routes.integrations.toast._utils import update_menu_content
@@ -145,7 +159,11 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
     project = SimpleNamespace(name="Pepperonis", product_info="old menu")
     project_integration = SimpleNamespace(
         id=uuid4(),
-        config={"submit_orders": False, "selected_menus": ["Dine-In Menu"]},
+        config={
+            "submit_orders": False,
+            "selected_menus": ["Dine-In Menu"],
+            "make_unique": False,
+        },
     )
     raw_menu = {
         "menus": [
@@ -184,6 +202,7 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
     mock_compile.assert_called_once_with(
         raw_menu,
         selected_menus=["Dine-In Menu"],
+        make_unique_menus=None,
         remove_unused_weights=True,
     )
     mock_prompt.assert_called_once_with(compiled_menu)
@@ -191,6 +210,7 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
     assert project_integration.config == {
         "submit_orders": False,
         "selected_menus": ["Dine-In Menu"],
+        "make_unique": False,
         "menu_data": compiled_menu,
         "menu_last_updated": "2026-05-14T12:00:00.000Z",
     }
@@ -238,6 +258,7 @@ async def test_update_menu_content_raises_when_configured_menu_is_missing() -> N
     mock_compile.assert_called_once_with(
         raw_menu,
         selected_menus=["Missing Menu"],
+        make_unique_menus=["Missing Menu"],
         remove_unused_weights=True,
     )
     session.rollback.assert_called_once_with()
@@ -285,6 +306,7 @@ async def test_update_menu_content_raises_when_configured_filter_has_malformed_m
     mock_compile.assert_called_once_with(
         raw_menu,
         selected_menus=["Dine-In Menu"],
+        make_unique_menus=["Dine-In Menu"],
         remove_unused_weights=True,
     )
     session.rollback.assert_called_once_with()
