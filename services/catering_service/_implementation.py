@@ -30,6 +30,7 @@ from services import contact_service
 from services.relay_service import send_message
 from utils.log import logger
 
+CATERING_MANAGER_ROLE = "catering"
 CUSTOMER_STATUS_SMS_STATUSES: set[RequestStatus] = {
     RequestStatus.CONFIRMED,
     RequestStatus.IN_PREPARATION,
@@ -584,7 +585,7 @@ async def _get_catering_store_phone_number(
     if len(contacts_with_phone) == 1:
         return contacts_with_phone[0].phone_number.strip()
 
-    for preferred_role in ("catering_manager", "general"):
+    for preferred_role in (CATERING_MANAGER_ROLE, "general"):
         for contact in contacts_with_phone:
             if contact.role.strip().lower() == preferred_role:
                 return contact.phone_number.strip()
@@ -631,6 +632,10 @@ def _build_customer_status_sms_message(
     )
 
 
+def _is_catering_manager_role(role: str | None) -> bool:
+    return bool(role) and role.strip().lower() == CATERING_MANAGER_ROLE
+
+
 async def _find_and_assign_catering_manager(
     session: AsyncSession,
     catering_request,
@@ -671,7 +676,7 @@ async def _find_and_assign_catering_manager(
 
     # Find the first catering manager
     catering_manager = next(
-        (contact for contact in contacts if contact.role.lower() == "catering_manager"),
+        (contact for contact in contacts if _is_catering_manager_role(contact.role)),
         None,
     )
 
@@ -929,7 +934,7 @@ async def _find_catering_manager_for_project(
         return None
 
     return next(
-        (c for c in contacts if c.role.lower() == "catering_manager"),
+        (c for c in contacts if _is_catering_manager_role(c.role)),
         None,
     )
 

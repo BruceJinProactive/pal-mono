@@ -30,8 +30,10 @@ from db.pal_repository.data_classes.contact import ContactData  # noqa: E402
 from db.tables.catering_requests import CateringRequest, RequestStatus  # noqa: E402
 from services.catering_service._implementation import (  # noqa: E402
     _build_customer_status_sms_message,
+    _find_and_assign_catering_manager,
     _get_catering_business_name,
     _get_catering_store_phone_number,
+    _is_catering_manager_role,
     _should_send_customer_status_sms,
     send_sms_notification,
     update_catering_request,
@@ -325,7 +327,6 @@ def test_update_catering_request_sends_sms_for_new_lifecycle_statuses(
 @pytest.mark.parametrize(
     "status",
     [
-        RequestStatus.LEAD,
         RequestStatus.PROPOSAL,
         RequestStatus.LOCKED,
         RequestStatus.COMPLETED,
@@ -555,6 +556,39 @@ def test_should_send_customer_status_sms_returns_false_for_unsupported_status(
     assert _should_send_customer_status_sms(RequestStatus.LEAD, next_status) is False
 
 
+def test_is_catering_manager_role_accepts_admin_console_catering_role() -> None:
+    assert _is_catering_manager_role("catering") is True
+    assert _is_catering_manager_role("catering_manager") is False
+    assert _is_catering_manager_role(" general ") is False
+
+
+def test_find_and_assign_catering_manager_accepts_catering_role() -> None:
+    session = AsyncMock()
+    request_id = uuid.uuid4()
+    catering_request = _build_request(status=RequestStatus.LEAD)
+    manager = _build_contact(role="catering", phone_number="+15551111111")
+    repo = AsyncMock()
+
+    with (
+        patch(
+            "services.catering_service._implementation.contact_service.list_by_project",
+            return_value=[manager],
+        ),
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryAsync",
+            return_value=repo,
+        ),
+    ):
+        result = asyncio.run(
+            _find_and_assign_catering_manager(
+                session, catering_request, str(request_id)
+            )
+        )
+
+    assert result is manager
+    repo.update_catering_request.assert_called_once()
+
+
 def test_get_catering_business_name_returns_fallback_when_project_missing() -> None:
     session = AsyncMock()
     project_repo = AsyncMock()
@@ -641,7 +675,7 @@ def test_get_catering_business_name_returns_fallback_for_blank_project_names() -
     assert business_name == "the business"
 
 
-def test_get_catering_store_phone_number_prefers_catering_manager() -> None:
+def test_get_catering_store_phone_number_prefers_catering_role() -> None:
     session = AsyncMock()
     project_id = uuid.uuid4()
 
@@ -649,7 +683,7 @@ def test_get_catering_store_phone_number_prefers_catering_manager() -> None:
         "services.catering_service._implementation.contact_service.list_by_project",
         return_value=[
             _build_contact(role="general", phone_number="+15550000000"),
-            _build_contact(role="catering_manager", phone_number="+15551111111"),
+            _build_contact(role="catering", phone_number="+15551111111"),
         ],
     ) as mock_list_contacts:
         phone_number = asyncio.run(
@@ -658,6 +692,23 @@ def test_get_catering_store_phone_number_prefers_catering_manager() -> None:
 
     assert phone_number == "+15551111111"
     mock_list_contacts.assert_called_once_with(session, project_id)
+
+
+def test_get_catering_store_phone_number_ignores_catering_manager_role() -> None:
+    session = AsyncMock()
+
+    with patch(
+        "services.catering_service._implementation.contact_service.list_by_project",
+        return_value=[
+            _build_contact(role="general", phone_number="+15550000000"),
+            _build_contact(role="catering_manager", phone_number="+15552222222"),
+        ],
+    ):
+        phone_number = asyncio.run(
+            _get_catering_store_phone_number(session, uuid.uuid4())
+        )
+
+    assert phone_number == "+15550000000"
 
 
 def test_get_catering_store_phone_number_uses_single_contact_any_role() -> None:
@@ -763,6 +814,7 @@ def test_build_customer_status_sms_message_for_missing_event_date() -> None:
 @pytest.mark.parametrize(
     "status",
     [
+        RequestStatus.LEAD,
         RequestStatus.PROPOSAL,
         RequestStatus.IN_PREP,
         RequestStatus.QUOTE_SENT,
