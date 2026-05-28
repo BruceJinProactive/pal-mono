@@ -258,6 +258,7 @@ class TestBuildToastV3Spec:
             "takeout_dining_option_guid": "takeout-guid-1",
             "tax_exempt_checks": True,
             "set_asap_promised_date_to_submission_time": True,
+            "asap_future_prep_time_minutes": 30,
         }
 
         result = _build_toast_v3_spec(
@@ -270,6 +271,7 @@ class TestBuildToastV3Spec:
 
         assert result.tax_exempt_checks is True
         assert result.set_asap_promised_date_to_submission_time is True
+        assert result.asap_future_prep_time_minutes == 30
 
     def test_hosted_checkout_builds_without_embedding_credentials(self):
         config = {

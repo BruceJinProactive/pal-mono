@@ -181,6 +181,7 @@ _TOAST_SPEC_FIELDS = [
     "require_payment_before_kitchen",
     "tax_exempt_checks",
     "set_asap_promised_date_to_submission_time",
+    "asap_future_prep_time_minutes",
 ]
 
 _TOAST_DEFAULT_TOKEN_URL = (
