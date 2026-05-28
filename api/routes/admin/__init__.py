@@ -3785,6 +3785,38 @@ async def slack_events(request: Request):
     return await slack_service.handle_slack_events(request)
 
 
+@admin_router.get("/accounts/reports", status_code=status.HTTP_200_OK)
+async def get_reports(
+    start_date: datetime | None = Query(
+        default=None,
+        description="Start date for the report data. If not provided, defaults to 7 days ago.",
+    ),
+    end_date: datetime | None = Query(
+        default=None,
+        description="End date for the report data. If not provided, defaults to today.",
+    ),
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+    group_by: Optional[list[str]] = Query(
+        default=None,
+        description="List of fields to group the report data by (e.g., ['account_id', 'project_id']).",
+    ),
+) -> GetAllReportsResponse:
+    """
+    Retrieve unified analytics reports for this account.
+    Data is filtered by the specified date range (default: last 7 days).
+    """
+
+    # Get unified reports using async session
+    return await _analytics.get_company_reports(
+        context,
+        session,
+        start_date,
+        end_date,
+        group_by=group_by if group_by else None,
+    )
+
+
 @admin_router.get("/accounts/{account_name}/reports", status_code=status.HTTP_200_OK)
 async def get_account_reports(
     account_name: str,
@@ -3823,38 +3855,6 @@ async def get_account_reports(
         end_date,
         group_by=group_by if group_by else None,
         filter_by={"project_id": project_ids} if project_ids else None,
-    )
-
-
-@admin_router.get("/accounts/reports", status_code=status.HTTP_200_OK)
-async def get_reports(
-    start_date: datetime | None = Query(
-        default=None,
-        description="Start date for the report data. If not provided, defaults to 7 days ago.",
-    ),
-    end_date: datetime | None = Query(
-        default=None,
-        description="End date for the report data. If not provided, defaults to today.",
-    ),
-    context: UserContext = Depends(authenticate_user),
-    session: Session = Depends(db.get_db),
-    group_by: Optional[list[str]] = Query(
-        default=None,
-        description="List of fields to group the report data by (e.g., ['account_id', 'project_id']).",
-    ),
-) -> GetAllReportsResponse:
-    """
-    Retrieve unified analytics reports for this account.
-    Data is filtered by the specified date range (default: last 7 days).
-    """
-
-    # Get unified reports using async session
-    return await _analytics.get_company_reports(
-        context,
-        session,
-        start_date,
-        end_date,
-        group_by=group_by if group_by else None,
     )
 
 
