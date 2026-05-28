@@ -33,6 +33,7 @@ from services.catering_service._implementation import (  # noqa: E402
     _get_catering_business_name,
     _get_catering_store_phone_number,
     _should_send_customer_status_sms,
+    send_sms_notification,
     update_catering_request,
 )
 
@@ -96,6 +97,21 @@ def test_request_status_legacy_values_remain_supported() -> None:
     assert RequestStatus("FULFILLED") == RequestStatus.FULFILLED
     assert RequestStatus("CANCELLED") == RequestStatus.CANCELLED
     assert RequestStatus("ISSUE") == RequestStatus.ISSUE
+
+
+def test_send_sms_notification_uses_default_catering_sender(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CATERING_SMS_SENDER_NUMBER", raising=False)
+
+    with patch(
+        "services.catering_service._implementation.send_message",
+        return_value={"status": "scheduled"},
+    ) as mock_send_message:
+        assert send_sms_notification("4165550100", "Your catering order is ready")
+
+    relay_message = mock_send_message.call_args.args[0]
+    assert relay_message.sender_identifier == "+19803725662"
 
 
 def test_update_catering_request_sends_sms_for_confirmed_status() -> None:

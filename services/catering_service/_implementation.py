@@ -858,7 +858,7 @@ def send_sms_notification(phone_number: str, message: str) -> bool:
     """
     try:
         formatted_phone_number = _validate_and_format_phone_number(phone_number)
-        sender_number = os.getenv("CATERING_SMS_SENDER_NUMBER", "+18338725662")
+        sender_number = os.getenv("CATERING_SMS_SENDER_NUMBER", "+19803725662")
         logger.debug(
             f"[catering] Sending SMS from ****{sender_number[-4:]} to ****{formatted_phone_number[-4:]}"
         )
