@@ -7,6 +7,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-05-27
 
 - **[PAL-10801] Add default partition for vision rule events.** Added the missing `vision_rule_event_default` partition so matched rule events can be inserted when no date-specific `triggered_at` partition exists. This mirrors the existing `vision_state_change_event_default` fallback partition. -> `docs/state/architecture.md`
+- **Auto-billing invoice flow doc.** Added a current-state walkthrough for the arrears billing invoice lifecycle: invoice draft creation, previous-draft finalization, analytics invoice email delivery, credit application, payment webhooks, unpaid balance accrual, and cancellation cleanup. -> `docs/state/auto-billing-invoice-flow.md`
 
 ---
 
