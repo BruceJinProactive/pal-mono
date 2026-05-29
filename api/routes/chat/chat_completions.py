@@ -4,7 +4,7 @@ import json
 import os
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from fastapi import HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -22,8 +22,11 @@ from db.tables.types import Channel
 from services.message_service import get_chat_response_stream
 from services.relay_service import send_message
 from utils.log import logger
-from utils.otel import record_duration
+from utils.otel import increment_counter, record_duration
 from utils.request_context import RequestContext
+
+_CHAT_COMPLETIONS_TURN_BRIDGE_METRIC = "chat.completions.turn.bridge"
+_CHAT_COMPLETIONS_TURN_BRIDGE_DURATION_METRIC = "chat.completions.turn.bridge.duration"
 
 
 def resolve_outbound_tn(sender_tn: str, broker: Broker) -> str:
@@ -76,10 +79,31 @@ class ChatCompletionRequest(BaseModel):
     user: Optional[str] = None
 
 
+def _record_chat_turn_bridge_outcome(
+    outcome: str,
+    reason: str,
+    start_time: datetime.datetime,
+    framework: str,
+) -> None:
+    """Record the voice chat bridge SLO outcome."""
+    # Migration label: remove once Agno is gone and dashboards no longer split by backend.
+    attributes = {
+        "outcome": outcome,
+        "reason": reason,
+        "framework": framework,
+    }
+    increment_counter(_CHAT_COMPLETIONS_TURN_BRIDGE_METRIC, attributes=attributes)
+    record_duration(
+        _CHAT_COMPLETIONS_TURN_BRIDGE_DURATION_METRIC,
+        start_time,
+        attributes=attributes,
+    )
+
+
 @asynccontextmanager
 async def _managed_session(
     session: AsyncSession | None,
-):
+) -> AsyncIterator[AsyncSession]:
     if session is not None:
         yield session
         return
@@ -541,8 +565,25 @@ async def chat_completions_agno(
 
         fallback_content = "I apologize, but I'm unable to process your request at the moment. Please try again later."
 
-        async def generate_stream():
+        async def generate_stream() -> AsyncIterator[str]:
             async with _managed_session(session) as active_session:
+                bridge_outcome_recorded = False
+                bridge_had_content = False
+                bridge_error_chunk_seen = False
+                bridge_framework = "unknown"
+
+                def record_bridge_outcome(outcome: str, reason: str) -> None:
+                    nonlocal bridge_outcome_recorded
+                    if bridge_outcome_recorded:
+                        return
+                    bridge_outcome_recorded = True
+                    _record_chat_turn_bridge_outcome(
+                        outcome,
+                        reason,
+                        request_context.request_time,
+                        bridge_framework,
+                    )
+
                 try:
                     record_duration(
                         "chat.streaming.start.duration", request_context.request_time
@@ -551,12 +592,22 @@ async def chat_completions_agno(
                     sms_item_recap: str | None = None
 
                     def collect_stream_event(event: Dict[str, Any]) -> None:
-                        nonlocal sms_item_recap
+                        nonlocal bridge_framework, sms_item_recap
+                        if event.get("type") == "bridge_framework":
+                            framework = event.get("framework")
+                            if isinstance(framework, str) and framework:
+                                bridge_framework = framework
+                            return
                         if event.get("type") != "sms_followup" or sms_item_recap:
                             return
                         sms_item_recap = _extract_item_recap_from_sms_followup_event(
                             event
                         )
+
+                    def collect_bridge_framework(framework: str) -> None:
+                        nonlocal bridge_framework
+                        if framework:
+                            bridge_framework = framework
 
                     response_stream = await get_chat_response_stream(
                         session=active_session,
@@ -567,6 +618,7 @@ async def chat_completions_agno(
                         participant_identity=participant_identity,
                         sip_provider=sip_provider,
                         event_collector=collect_stream_event,
+                        framework_collector=collect_bridge_framework,
                     )
 
                     collected_content = []
@@ -589,6 +641,11 @@ async def chat_completions_agno(
                                 if choices
                                 else ""
                             )
+                            finish_reason = (
+                                choices[0].get("finish_reason") if choices else None
+                            )
+                            if finish_reason == "stop" and not content:
+                                bridge_error_chunk_seen = True
 
                             # Collect content for URL extraction later
                             collected_content.append(content)
@@ -598,6 +655,8 @@ async def chat_completions_agno(
 
                             # Yield chunk immediately if content passes filter
                             if filtered_content is not None:
+                                if filtered_content.strip():
+                                    bridge_had_content = True
                                 if (
                                     chunk_data.get("choices")
                                     and len(chunk_data["choices"]) > 0
@@ -644,18 +703,35 @@ async def chat_completions_agno(
                             item_recap=sms_item_recap,
                         )
 
+                        if bridge_error_chunk_seen:
+                            if bridge_had_content:
+                                record_bridge_outcome(
+                                    "failure", "response_persist_failed"
+                                )
+                            else:
+                                record_bridge_outcome(
+                                    "failure", "request_persist_failed"
+                                )
+                        elif bridge_had_content:
+                            record_bridge_outcome("success", "completed")
+                        else:
+                            record_bridge_outcome("failure", "empty_output")
                         yield "data: [DONE]\n\n"
+                    else:
+                        record_bridge_outcome("failure", "empty_output")
 
                 except asyncio.CancelledError:
                     logger.debug(
                         "[ChatCompletions] Stream cancelled (client disconnect)"
                     )
+                    record_bridge_outcome("failure", "client_cancelled")
                     return
 
                 except Exception as e:
                     logger.error(f"Error in streaming response: {str(e)}")
                     fallback_chunk = _create_fallback_chunk(model, fallback_content)
                     yield f"data: {json.dumps(fallback_chunk)}\n\n"
+                    record_bridge_outcome("failure", "fallback_response")
                     yield "data: [DONE]\n\n"
 
         return StreamingResponse(

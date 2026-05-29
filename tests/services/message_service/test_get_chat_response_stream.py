@@ -2,10 +2,11 @@ import asyncio
 import re
 import sys
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -290,6 +291,111 @@ async def test_get_chat_response_stream_generates_chatcmpl_stream_id_and_reuses_
     assert stream_id.startswith("chatcmpl-")
     assert re.fullmatch(r"chatcmpl-[0-9a-f]{32}", stream_id)
     assert all(chunk.choices[0].index == 0 for chunk in chunks)
+
+
+@pytest.mark.asyncio
+async def test_get_chat_response_stream_framework_collector_failure_is_best_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
+    logged_exception = Mock()
+    user = SimpleNamespace(id=uuid.uuid4())
+    project = SimpleNamespace(
+        id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        raw_config={"use_pal_agents": False},
+        agent_id=uuid.uuid4(),
+        account=SimpleNamespace(name="test-account"),
+        agent=SimpleNamespace(),
+        timezone="America/Los_Angeles",
+        name="test-project",
+    )
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(
+        name: str,
+        resource: str | None = None,
+        service: str | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> AsyncIterator[None]:
+        yield None
+
+    async def _fake_get_project_async(
+        session: object, message: Message
+    ) -> SimpleNamespace:
+        return project
+
+    async def _fake_get_user_async(
+        session: object, project: SimpleNamespace, message: Message
+    ) -> tuple[SimpleNamespace, bool]:
+        return user, False
+
+    async def _fake_construct_agent_config(**kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(stream=False)
+
+    async def _fake_get_agent_input_from_message(
+        **kwargs: object,
+    ) -> dict[str, str]:
+        return {"input": "ok"}
+
+    def _failing_framework_collector(framework: str) -> None:
+        raise RuntimeError(f"collector failed for {framework}")
+
+    monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(
+        _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
+    )
+    monkeypatch.setattr(
+        _implementation.project_service, "get_project_async", _fake_get_project_async
+    )
+    monkeypatch.setattr(
+        _implementation.user_service, "get_user_async", _fake_get_user_async
+    )
+    monkeypatch.setattr(
+        _implementation.agent_service,
+        "construct_agent_config",
+        _fake_construct_agent_config,
+    )
+    monkeypatch.setattr(
+        _implementation._utils,
+        "get_agent_input_from_message",
+        _fake_get_agent_input_from_message,
+    )
+    monkeypatch.setattr(_implementation, "Agent", _FakeAgent)
+    monkeypatch.setattr(_implementation.logger, "exception", logged_exception)
+
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.SMS,
+        text=TextObject(body="Can you help me?"),
+        metadata=Metadata(testing=True),
+    )
+
+    chunks = [
+        chunk
+        async for chunk in _implementation.get_chat_response_stream(
+            session=AsyncMock(),
+            message=message,
+            request_context=RequestContext(),
+            framework_collector=_failing_framework_collector,
+        )
+    ]
+
+    assert len(chunks) == 2
+    logged_exception.assert_called_once_with(
+        "framework_collector callback failed; continuing stream setup"
+    )
 
 
 @pytest.mark.asyncio

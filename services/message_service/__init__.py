@@ -69,6 +69,7 @@ async def get_chat_response_stream(
     participant_identity: str | None = None,
     sip_provider: str | None = None,
     event_collector: Callable[[dict[str, Any]], None] | None = None,
+    framework_collector: Callable[[str], None] | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
     """
      Get a stream of chat responses for a given message.
@@ -88,6 +89,8 @@ async def get_chat_response_stream(
          sip_provider (str | None): SIP provider: "pizzacloud", "twilio", or "snet".
          event_collector: Optional callback for streaming-only events that callers
              need after the stream completes.
+         framework_collector: Optional callback receiving "pal_agents" or "agno" once
+             the project framework has been resolved.
 
      Returns:
         AsyncIterator[Message]: A stream of response messages from the agent.
@@ -105,6 +108,7 @@ async def get_chat_response_stream(
         participant_identity,
         sip_provider,
         event_collector,
+        framework_collector,
     )
 
 

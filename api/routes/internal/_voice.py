@@ -45,6 +45,7 @@ from services import message_service, project_service, user_service
 from services.agent_service._raw_config import RawConfig
 from services.eval_service._snapshot import upsert_agent_config_snapshot
 from utils.log import logger
+from utils.otel import increment_counter, record_duration
 from utils.secret import get_server_secret_with_fallback
 
 # Track background tasks so they aren't garbage-collected before completion.
@@ -52,6 +53,9 @@ _background_tasks: set[asyncio.Task[object]] = set()
 
 # S3 URI validation pattern
 _S3_URI_PATTERN = re.compile(r"^s3://[a-z0-9][a-z0-9.-]*[a-z0-9]/.+$")
+
+_VOICE_CALL_CLOSE_METRIC = "voice.call.close"
+_VOICE_CALL_CLOSE_DURATION_METRIC = "voice.call.close.duration"
 
 
 # Numeric speed mapping for Cartesia TTS (Sonic-3 voice model)
@@ -164,6 +168,24 @@ def _should_track_call_usage(
 
     # All checks passed
     return True, ""
+
+
+def _record_voice_call_close_outcome(
+    outcome: str,
+    reason: str,
+    start_time: datetime,
+) -> None:
+    """Record the user-facing voice close SLO outcome."""
+    attributes = {
+        "outcome": outcome,
+        "reason": reason,
+    }
+    increment_counter(_VOICE_CALL_CLOSE_METRIC, attributes=attributes)
+    record_duration(
+        _VOICE_CALL_CLOSE_DURATION_METRIC,
+        start_time,
+        attributes=attributes,
+    )
 
 
 def _resolve_greeting(first_message: str, timezone_str: str, language: str) -> str:
@@ -445,6 +467,7 @@ async def end_voice_call(
     from db.tables.conversations import ConversationStatus
     from services.subscription_service.stripe_usage_billing import send_meter_event
 
+    close_start_time = datetime.now(timezone.utc)
     call_id = request.call_id
     caller_number = request.caller_number
     dialed_number = request.dialed_number
@@ -478,6 +501,11 @@ async def end_voice_call(
                     "dialed_number": dialed_number,
                 }
             },
+        )
+        _record_voice_call_close_outcome(
+            "failure",
+            "conversation_not_found",
+            close_start_time,
         )
         return {
             "status": "error",
@@ -629,8 +657,12 @@ async def end_voice_call(
                 f"[end_voice_call] Phone call record not found for call_id: {call_id}",
                 extra={"conversation_id": str(conversation_id)},
             )
+            close_outcome = "failure"
+            close_reason_metric = "phone_call_missing"
         else:
             phone_call_id = phone_call.id
+            close_outcome = "success"
+            close_reason_metric = "completed"
 
         # Commit both updates together atomically
         await session.commit()
@@ -642,6 +674,11 @@ async def end_voice_call(
                 "phone_call_id": str(phone_call_id) if phone_call_id else None,
             },
         )
+        _record_voice_call_close_outcome(
+            close_outcome,
+            close_reason_metric,
+            close_start_time,
+        )
     except Exception as e:
         await session.rollback()
         logger.error(
@@ -649,6 +686,11 @@ async def end_voice_call(
             extra={"conversation_id": str(conversation_id), "error": str(e)},
         )
         # Return error - transaction failed
+        _record_voice_call_close_outcome(
+            "failure",
+            "db_close_failed",
+            close_start_time,
+        )
         return {
             "status": "error",
             "conversation_id": str(conversation_id),

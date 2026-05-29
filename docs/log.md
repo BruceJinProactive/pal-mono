@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-28
+
+- **Voice SLO metrics.** Added explicit OTel counters and duration histograms for the `Voice call close` and `Chat turn bridge` SLO boundaries, so Grafana/Mimir can distinguish true SLO success from HTTP 2xx, fallback, empty-output, and persistence-failure proxy signals. -> `docs/records/2026-05-28-voice-slo-metrics.md`
+
+---
+
 ## 2026-05-27
 
 - **Tool-result ElastiCache implementation notes.** Documented how shared cross-pod tool-result storage could be implemented with AWS ElastiCache, including app dependency, key shape, read/write paths, connection management, and rollout steps. -> `docs/plans/tool-result-elasticache.md`

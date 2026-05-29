@@ -33,6 +33,7 @@ from api.routes.chat.chat_completions import (
     _extract_item_recap_from_sms_followup_event,
     _managed_session,
     _parse_caller_info,
+    _record_chat_turn_bridge_outcome,
     _send_urls_via_sms,
     chat_completions,
     chat_completions_agno,
@@ -42,6 +43,70 @@ from api.routes.chat.chat_completions import (
 from api.schemas.chat.message import Broker
 from db.tables.types import Channel
 from utils.request_context import RequestContext
+
+
+def _make_stream_chunk(
+    content: str,
+    finish_reason: str | None = None,
+) -> SimpleNamespace:
+    choice = SimpleNamespace(
+        index=0,
+        delta=SimpleNamespace(content=content),
+        finish_reason=finish_reason,
+    )
+    chunk = SimpleNamespace(
+        id="chatcmpl-123",
+        object="chat.completion.chunk",
+        created=1234567890,
+        model="gpt-4",
+        choices=[choice],
+    )
+    chunk.model_dump = lambda: {
+        "id": "chatcmpl-123",
+        "object": "chat.completion.chunk",
+        "created": 1234567890,
+        "model": "gpt-4",
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"content": content},
+                "finish_reason": finish_reason,
+            }
+        ],
+    }
+    return chunk
+
+
+def test_record_chat_turn_bridge_outcome_uses_chat_completions_metric_names() -> None:
+    """Emit the bridge SLO under the chat completions metric namespace."""
+    start_time = datetime.datetime.now(datetime.timezone.utc)
+    attributes = {
+        "outcome": "success",
+        "reason": "completed",
+        "framework": "pal_agents",
+    }
+
+    with (
+        patch("api.routes.chat.chat_completions.increment_counter") as mock_increment,
+        patch("api.routes.chat.chat_completions.record_duration") as mock_duration,
+    ):
+        _record_chat_turn_bridge_outcome(
+            "success",
+            "completed",
+            start_time,
+            "pal_agents",
+        )
+
+    mock_increment.assert_called_once_with(
+        "chat.completions.turn.bridge",
+        attributes=attributes,
+    )
+    mock_duration.assert_called_once_with(
+        "chat.completions.turn.bridge.duration",
+        start_time,
+        attributes=attributes,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Content Extraction Tests
@@ -987,6 +1052,127 @@ class TestChatCompletionsAgno:
                 full_stream = "".join(chunks)
                 assert "data: " in full_stream
                 assert "[DONE]" in full_stream
+
+    @pytest.mark.asyncio
+    async def test_stream_records_chat_turn_bridge_success_metric(self) -> None:
+        """Record success when the voice stream emits content and completes."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        async def mock_get_chat_response_stream(
+            *args: Any, **kwargs: Any
+        ) -> AsyncGenerator[SimpleNamespace, None]:
+            framework_collector: Callable[[str], None] = kwargs["framework_collector"]
+            framework_collector("pal_agents")
+
+            async def mock_stream() -> AsyncGenerator[SimpleNamespace, None]:
+                yield _make_stream_chunk("Hello")
+
+            return mock_stream()
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                side_effect=mock_get_chat_response_stream,
+            ),
+            patch("api.routes.chat.chat_completions._send_urls_via_sms"),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "success",
+            "completed",
+            request_context.request_time,
+            "pal_agents",
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_records_response_persist_failure_metric(self) -> None:
+        """Record failure when the service emits an error chunk after content."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        async def mock_stream() -> AsyncGenerator[SimpleNamespace, None]:
+            yield _make_stream_chunk("Hello")
+            yield _make_stream_chunk("", finish_reason="stop")
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                return_value=mock_stream(),
+            ),
+            patch("api.routes.chat.chat_completions._send_urls_via_sms"),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "failure",
+            "response_persist_failed",
+            request_context.request_time,
+            "unknown",
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_records_fallback_metric_on_exception(self) -> None:
+        """Record failure when the API bridge falls back after stream errors."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        async def mock_stream_with_error() -> AsyncGenerator[SimpleNamespace, None]:
+            raise RuntimeError("Streaming error")
+            if False:
+                yield _make_stream_chunk("unreachable")
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                return_value=mock_stream_with_error(),
+            ),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "failure",
+            "fallback_response",
+            request_context.request_time,
+            "unknown",
+        )
 
     @pytest.mark.asyncio
     async def test_stream_passes_sms_followup_item_recap_to_sms_sender(

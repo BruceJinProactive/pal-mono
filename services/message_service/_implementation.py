@@ -672,6 +672,7 @@ async def get_chat_response_stream(
     participant_identity: str | None = None,
     sip_provider: str | None = None,
     event_collector: Callable[[dict[str, Any]], None] | None = None,
+    framework_collector: Callable[[str], None] | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
     async with trace_async_block("Message Service Stream Processing"):
         message_repo = db.MessageRepositoryAsync(session)
@@ -692,6 +693,13 @@ async def get_chat_response_stream(
 
             # Check if project uses pal-agents framework (from raw_config)
             use_pal_agents = project_raw_config.get("use_pal_agents", False)
+            if framework_collector:
+                try:
+                    framework_collector("pal_agents" if use_pal_agents else "agno")
+                except Exception:
+                    logger.exception(
+                        "framework_collector callback failed; continuing stream setup"
+                    )
 
             user, is_new_sms_user = await user_service.get_user_async(
                 session, project, message

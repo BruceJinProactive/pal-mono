@@ -2,7 +2,7 @@
 
 Current project context. Read this before starting any work.
 
-Last updated: 2026-05-05
+Last updated: 2026-05-28
 
 ---
 
@@ -20,6 +20,7 @@ Last updated: 2026-05-05
 
 ## Recently Landed
 
+- 2026-05-28: **Voice SLO metrics.** Added OTel SLO counters and duration histograms for `Voice call close` and `Chat turn bridge`: `voice.call.close`, `voice.call.close.duration`, `chat.completions.turn.bridge`, and `chat.completions.turn.bridge.duration`. Voice close now distinguishes `conversation_not_found`, `db_close_failed`, and `phone_call_missing` from true close success; chat bridge distinguishes success from empty output, fallback, cancellation, and request/response persistence failures. → `docs/records/2026-05-28-voice-slo-metrics.md`
 - 2026-05-05: **Eval Langfuse trace boundary per scenario** (PAL-10344). Every scenario (test case) in an eval run now produces its own Langfuse trace; all turns of a scenario nest under a single "Eval Scenario" root observation and share one `trace_id`. Filterable via `eval_run:<uuid>` / `scenario:<id>` tags. Fixes a silent trace-leak caused by `asyncio.create_task` snapshotting the originating FastAPI request's auto-instrumented OTel span context. New helper: `services/eval_service/_tracing.py::scenario_trace_boundary`. → `docs/records/2026-05-05-eval-langfuse-trace-boundary.md`. Long-term memory updated with the `asyncio.create_task` + OTel footgun pattern — likely recurs elsewhere.
 - 2026-05-01: **Eval case-spec converter** (PAL-10278). `services/eval_service/scripts/convert_case_specs.py` turns pal-agents case-spec JSON into `EvalScenario` YAML; generated `services/eval_service/scenarios/ordering/sonnys_bbq.yaml` (5,288 lines, do not hand-edit). Pure/stateless, reusable by the future `eval_scenarios` seed script. → `docs/records/2026-05-01-eval-case-spec-converter.md`
 - 2026-04-28: **StatsD → OTel metrics migration**. Removed `utils/dd.py` (DogStatsd). All metrics now use OTel `increment_counter` / `record_histogram` / `record_duration` from `utils/otel.py`, exported via OTLP. `datadog` package removal is a separate PR.
