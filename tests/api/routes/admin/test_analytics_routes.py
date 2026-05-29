@@ -5,14 +5,22 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi.routing import APIRoute
 
 from api.routes.admin import _analytics as analytics_routes
-from api.routes.admin import get_account_reports, get_reports
+from api.routes.admin import admin_router, get_account_reports, get_reports
 from api.schemas.admin.analytics import GetAllReportsResponse
 
 
 def _make_response() -> GetAllReportsResponse:
     return GetAllReportsResponse(reports=[])
+
+
+def test_company_reports_route_is_not_nested_under_accounts() -> None:
+    paths = {route.path for route in admin_router.routes if isinstance(route, APIRoute)}
+
+    assert "/admin/reports" in paths
+    assert "/admin/accounts/reports" not in paths
 
 
 @pytest.mark.asyncio

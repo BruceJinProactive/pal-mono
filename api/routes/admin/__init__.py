@@ -3785,7 +3785,7 @@ async def slack_events(request: Request):
     return await slack_service.handle_slack_events(request)
 
 
-@admin_router.get("/accounts/reports", status_code=status.HTTP_200_OK)
+@admin_router.get("/reports", status_code=status.HTTP_200_OK)
 async def get_reports(
     start_date: datetime | None = Query(
         default=None,
@@ -3803,7 +3803,7 @@ async def get_reports(
     ),
 ) -> GetAllReportsResponse:
     """
-    Retrieve unified analytics reports for this account.
+    Retrieve unified company-wide analytics reports.
     Data is filtered by the specified date range (default: last 7 days).
     """
 
