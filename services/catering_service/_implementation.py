@@ -597,39 +597,102 @@ def _build_customer_status_sms_message(
     business_name: str,
     store_phone_number: str | None = None,
 ) -> str:
-    event_date = (
-        catering_request.event_date.strftime("%B %d, %Y")
-        if catering_request.event_date is not None
-        else None
+    raw_contact_name = getattr(catering_request, "contact_name", None)
+    raw_event_fulfillment = getattr(catering_request, "event_fulfillment", None)
+    contact_name = raw_contact_name if isinstance(raw_contact_name, str) else None
+    event_fulfillment: FulfillmentType | str | None
+    if isinstance(raw_event_fulfillment, (FulfillmentType, str)):
+        event_fulfillment = raw_event_fulfillment
+    else:
+        event_fulfillment = None
+
+    greeting = _build_customer_sms_greeting(contact_name)
+    event_phrase = _build_customer_sms_event_phrase(catering_request.event_date)
+    contact_sentence = _build_customer_sms_contact_sentence(store_phone_number)
+    preparation_followup_sentence = _build_preparation_followup_sentence(
+        event_fulfillment,
+        bool(event_phrase),
     )
-    event_phrase = f" for {event_date}" if event_date else ""
-    contact_sentence = (
-        f" Please call {store_phone_number} if you have any questions."
-        if store_phone_number
-        else ""
-    )
+    ready_fulfillment_phrase = _build_ready_fulfillment_phrase(event_fulfillment)
 
     if catering_request.status == RequestStatus.CONFIRMED:
         return (
-            f"Hi, your catering request with {business_name}{event_phrase} "
-            f"has been updated to Confirmed.{contact_sentence}"
+            f"{greeting} your catering request with {business_name}{event_phrase} "
+            f"is confirmed. We'll reach out if we need any final details."
+            f"{contact_sentence}"
         )
 
     if catering_request.status == RequestStatus.IN_PREPARATION:
         return (
-            f"Hi, your catering request with {business_name}{event_phrase} "
-            f"has been updated to In Prep.{contact_sentence}"
+            f"{greeting} {business_name} has started preparing your catering order"
+            f"{event_phrase}.{preparation_followup_sentence}"
+            f"{contact_sentence}"
         )
 
     if catering_request.status == RequestStatus.READY:
         return (
-            f"Hi, your catering request with {business_name}{event_phrase} "
-            f"has been updated to Ready.{contact_sentence}"
+            f"{greeting} your catering order from {business_name}{event_phrase} "
+            f"is ready{ready_fulfillment_phrase}."
+            f"{contact_sentence}"
         )
 
     raise ValueError(
         f"Unsupported catering status for customer SMS: {catering_request.status}"
     )
+
+
+def _build_customer_sms_greeting(contact_name: str | None) -> str:
+    if contact_name and contact_name.strip():
+        return f"Hi {contact_name.strip()},"
+    return "Hi,"
+
+
+def _build_customer_sms_event_phrase(event_date: date | None) -> str:
+    if event_date is None:
+        return ""
+    return f" for {event_date.strftime('%B %d, %Y')}"
+
+
+def _build_customer_sms_contact_sentence(store_phone_number: str | None) -> str:
+    if store_phone_number and store_phone_number.strip():
+        return f" Questions? Call {store_phone_number.strip()}."
+    return ""
+
+
+def _get_customer_sms_fulfillment_label(
+    event_fulfillment: FulfillmentType | str | None,
+) -> str | None:
+    fulfillment_value = (
+        event_fulfillment.value
+        if isinstance(event_fulfillment, FulfillmentType)
+        else event_fulfillment
+    )
+    if fulfillment_value == FulfillmentType.DELIVERY.value:
+        return "delivery"
+    if fulfillment_value == FulfillmentType.PICKUP.value:
+        return "pickup"
+    return None
+
+
+def _build_preparation_followup_sentence(
+    event_fulfillment: FulfillmentType | str | None,
+    has_event_date: bool,
+) -> str:
+    fulfillment_label = _get_customer_sms_fulfillment_label(event_fulfillment)
+    if fulfillment_label:
+        return f" We'll keep you posted as it gets closer to {fulfillment_label}."
+    if has_event_date:
+        return " We'll keep you posted as your event gets closer."
+    return " We'll keep you posted."
+
+
+def _build_ready_fulfillment_phrase(
+    event_fulfillment: FulfillmentType | str | None,
+) -> str:
+    fulfillment_label = _get_customer_sms_fulfillment_label(event_fulfillment)
+    if fulfillment_label:
+        return f" for {fulfillment_label}"
+    return ""
 
 
 def _is_catering_manager_role(role: str | None) -> bool:

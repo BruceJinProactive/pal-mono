@@ -27,7 +27,11 @@ sqlalchemy.ext.asyncio.async_sessionmaker = (
 )
 
 from db.pal_repository.data_classes.contact import ContactData  # noqa: E402
-from db.tables.catering_requests import CateringRequest, RequestStatus  # noqa: E402
+from db.tables.catering_requests import (  # noqa: E402
+    CateringRequest,
+    FulfillmentType,
+    RequestStatus,
+)
 from services.catering_service._implementation import (  # noqa: E402
     _build_customer_status_sms_message,
     _find_and_assign_catering_manager,
@@ -44,6 +48,7 @@ def _build_request(
     *,
     status: RequestStatus,
     phone_number: str = "4165550100",
+    event_fulfillment: FulfillmentType | None = None,
 ) -> CateringRequest:
     return CateringRequest(
         id=uuid.uuid4(),
@@ -51,6 +56,7 @@ def _build_request(
         event_date=date(2026, 3, 12),
         contact_name="Taylor",
         contact_phone_number=phone_number,
+        event_fulfillment=event_fulfillment,
         status=status,
         idempotency_key=str(uuid.uuid4()),
     )
@@ -159,9 +165,14 @@ def test_update_catering_request_sends_sms_for_confirmed_status() -> None:
         )
 
     assert result is updated_request
+    expected_message = (
+        "Hi Taylor, your catering request with Pal Bistro for March 12, 2026 "
+        "is confirmed. We'll reach out if we need any final details. "
+        "Questions? Call +15551234567."
+    )
     mock_send_sms.assert_called_once_with(
         updated_request.contact_phone_number,
-        "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Confirmed. Please call +15551234567 if you have any questions.",
+        expected_message,
     )
 
 
@@ -207,9 +218,13 @@ def test_update_catering_request_sends_sms_when_status_is_re_requested() -> None
             )
         )
 
+    expected_message = (
+        "Hi Taylor, your catering request with Pal Bistro for March 12, 2026 "
+        "is confirmed. We'll reach out if we need any final details."
+    )
     mock_send_sms.assert_called_once_with(
         updated_request.contact_phone_number,
-        "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Confirmed.",
+        expected_message,
     )
 
 
@@ -259,23 +274,40 @@ def test_update_catering_request_sends_sms_when_store_phone_lookup_fails() -> No
         )
 
     assert result is updated_request
+    expected_message = (
+        "Hi Taylor, your catering request with Pal Bistro for March 12, 2026 "
+        "is confirmed. We'll reach out if we need any final details."
+    )
     mock_send_sms.assert_called_once_with(
         updated_request.contact_phone_number,
-        "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Confirmed.",
+        expected_message,
     )
     mock_warning.assert_called_once()
 
 
 @pytest.mark.parametrize(
-    ("status", "status_label"),
+    ("status", "expected_message"),
     [
-        (RequestStatus.IN_PREPARATION, "In Prep"),
-        (RequestStatus.READY, "Ready"),
+        (
+            RequestStatus.IN_PREPARATION,
+            (
+                "Hi Taylor, Pal Bistro has started preparing your catering order "
+                "for March 12, 2026. We'll keep you posted as your event gets "
+                "closer."
+            ),
+        ),
+        (
+            RequestStatus.READY,
+            (
+                "Hi Taylor, your catering order from Pal Bistro for March 12, "
+                "2026 is ready."
+            ),
+        ),
     ],
 )
 def test_update_catering_request_sends_sms_for_new_lifecycle_statuses(
     status: RequestStatus,
-    status_label: str,
+    expected_message: str,
 ) -> None:
     session = AsyncMock()
     existing_request = _build_request(status=RequestStatus.LEAD)
@@ -320,7 +352,7 @@ def test_update_catering_request_sends_sms_for_new_lifecycle_statuses(
 
     mock_send_sms.assert_called_once_with(
         updated_request.contact_phone_number,
-        f"Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to {status_label}.",
+        expected_message,
     )
 
 
@@ -762,25 +794,33 @@ def test_get_catering_store_phone_number_returns_none_without_matching_role() ->
 
 
 def test_build_customer_status_sms_message_for_in_prep() -> None:
-    request = _build_request(status=RequestStatus.IN_PREPARATION)
+    request = _build_request(
+        status=RequestStatus.IN_PREPARATION,
+        event_fulfillment=FulfillmentType.DELIVERY,
+    )
 
     message = _build_customer_status_sms_message(request, "Pal Bistro")
 
-    assert (
-        message
-        == "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to In Prep."
+    expected_message = (
+        "Hi Taylor, Pal Bistro has started preparing your catering order for "
+        "March 12, 2026. We'll keep you posted as it gets closer to delivery."
     )
+    assert message == expected_message
 
 
 def test_build_customer_status_sms_message_includes_store_phone_number() -> None:
-    request = _build_request(status=RequestStatus.READY)
+    request = _build_request(
+        status=RequestStatus.READY,
+        event_fulfillment=FulfillmentType.PICKUP,
+    )
 
     message = _build_customer_status_sms_message(request, "Pal Bistro", "+15551234567")
 
-    assert (
-        message
-        == "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Ready. Please call +15551234567 if you have any questions."
+    expected_message = (
+        "Hi Taylor, your catering order from Pal Bistro for March 12, 2026 "
+        "is ready for pickup. Questions? Call +15551234567."
     )
+    assert message == expected_message
 
 
 def test_build_customer_status_sms_message_for_ready() -> None:
@@ -788,10 +828,10 @@ def test_build_customer_status_sms_message_for_ready() -> None:
 
     message = _build_customer_status_sms_message(request, "Pal Bistro")
 
-    assert (
-        message
-        == "Hi, your catering request with Pal Bistro for March 12, 2026 has been updated to Ready."
+    expected_message = (
+        "Hi Taylor, your catering order from Pal Bistro for March 12, 2026 is ready."
     )
+    assert message == expected_message
 
 
 def test_build_customer_status_sms_message_for_missing_event_date() -> None:
@@ -805,10 +845,11 @@ def test_build_customer_status_sms_message_for_missing_event_date() -> None:
 
     message = _build_customer_status_sms_message(request, "Pal Bistro")
 
-    assert (
-        message
-        == "Hi, your catering request with Pal Bistro has been updated to Confirmed."
+    expected_message = (
+        "Hi, your catering request with Pal Bistro is confirmed. "
+        "We'll reach out if we need any final details."
     )
+    assert message == expected_message
 
 
 @pytest.mark.parametrize(
