@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-29
+
+- **Toast webhook menu update toggle.** Toast menu webhooks now respect `project_integration.config.auto_update_menu_on_webhook`, defaulting to enabled for existing stores and skipping menu refresh when explicitly disabled.
+
+---
+
 ## 2026-05-28
 
 - **Voice SLO metrics.** Added explicit OTel counters and duration histograms for the `Voice call close` and `Chat turn bridge` SLO boundaries, so Grafana/Mimir can distinguish true SLO success from HTTP 2xx, fallback, empty-output, and persistence-failure proxy signals. -> `docs/records/2026-05-28-voice-slo-metrics.md`

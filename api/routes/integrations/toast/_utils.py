@@ -447,7 +447,8 @@ def _process_menu_update_sync(menu_details: ToastWebhookMenuDetails) -> None:
             project_integrations_to_update = [
                 (project, project_integration)
                 for project, project_integration in project_integrations
-                if _is_incoming_menu_newer(
+                if _get_auto_update_menu_on_webhook(project_integration.config)
+                and _is_incoming_menu_newer(
                     _get_menu_last_updated(project_integration.config),
                     menu_details.publishedDate,
                 )
@@ -522,6 +523,15 @@ def _get_make_unique(config: dict[str, Any] | None) -> bool:
     make_unique = config.get("make_unique")
     if isinstance(make_unique, bool):
         return make_unique
+    return True
+
+
+def _get_auto_update_menu_on_webhook(config: dict[str, Any] | None) -> bool:
+    """Return whether Toast menu webhooks should update stored menu assets."""
+    config = config or {}
+    auto_update_menu_on_webhook = config.get("auto_update_menu_on_webhook")
+    if isinstance(auto_update_menu_on_webhook, bool):
+        return auto_update_menu_on_webhook
     return True
 
 

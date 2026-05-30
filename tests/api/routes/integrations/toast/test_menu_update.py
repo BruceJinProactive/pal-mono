@@ -147,6 +147,26 @@ def test_get_make_unique_reads_boolean_config() -> None:
     assert _get_make_unique({"make_unique": True}) is True
 
 
+def test_get_auto_update_menu_on_webhook_defaults_to_enabled() -> None:
+    from api.routes.integrations.toast._utils import _get_auto_update_menu_on_webhook
+
+    assert _get_auto_update_menu_on_webhook(None) is True
+    assert _get_auto_update_menu_on_webhook({}) is True
+    assert _get_auto_update_menu_on_webhook({"selected_menus": ["Dinner"]}) is True
+
+
+def test_get_auto_update_menu_on_webhook_reads_boolean_config() -> None:
+    from api.routes.integrations.toast._utils import _get_auto_update_menu_on_webhook
+
+    assert (
+        _get_auto_update_menu_on_webhook({"auto_update_menu_on_webhook": False})
+        is False
+    )
+    assert (
+        _get_auto_update_menu_on_webhook({"auto_update_menu_on_webhook": True}) is True
+    )
+
+
 @pytest.mark.asyncio
 async def test_update_menu_content_generates_and_persists_toast_menu_assets() -> None:
     from api.routes.integrations.toast._utils import update_menu_content
@@ -216,6 +236,66 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
     }
     session.add.assert_any_call(project)
     session.add.assert_any_call(project_integration)
+    session.commit.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_update_menu_content_skips_disabled_project_integrations() -> None:
+    from api.routes.integrations.toast._utils import update_menu_content
+
+    session = MagicMock()
+    session_context = MagicMock()
+    session_context.__enter__.return_value = session
+    session_context.__exit__.return_value = False
+
+    enabled_project = SimpleNamespace(name="Enabled", product_info="old menu")
+    enabled_integration = SimpleNamespace(
+        id=uuid4(),
+        config={"auto_update_menu_on_webhook": True},
+    )
+    disabled_project = SimpleNamespace(name="Disabled", product_info="old menu")
+    disabled_integration = SimpleNamespace(
+        id=uuid4(),
+        config={"auto_update_menu_on_webhook": False},
+    )
+    raw_menu = {"menus": [{"name": "Dine-In Menu", "guid": "menu-guid"}]}
+    compiled_menu = {"menus": {"menu-guid": {"name": "Main"}}}
+    prompt_context = "compiled prompt context"
+
+    with (
+        patch(f"{MODULE}.run_in_threadpool", _run_in_threadpool_now),
+        patch(f"{MODULE}.SyncSessionLocal", return_value=session_context),
+        patch(
+            f"{MODULE}._find_toast_project_integrations_by_restaurant_guid",
+            return_value=[
+                (enabled_project, enabled_integration),
+                (disabled_project, disabled_integration),
+            ],
+        ),
+        patch(f"{MODULE}.get_toast_access_token_from_aws", return_value="token"),
+        patch(f"{MODULE}.download_menu", return_value=raw_menu),
+        patch(f"{MODULE}.compile_toast_menu_v2", return_value=compiled_menu),
+        patch(
+            f"{MODULE}.build_toast_lookup_prompt_context_markdown",
+            return_value=prompt_context,
+        ),
+    ):
+        await update_menu_content(_toast_menu_request())
+
+    assert enabled_project.product_info == prompt_context
+    assert enabled_integration.config == {
+        "auto_update_menu_on_webhook": True,
+        "menu_data": compiled_menu,
+        "menu_last_updated": "2026-05-14T12:00:00.000Z",
+    }
+    assert disabled_project.product_info == "old menu"
+    assert disabled_integration.config == {"auto_update_menu_on_webhook": False}
+    session.add.assert_any_call(enabled_project)
+    session.add.assert_any_call(enabled_integration)
+    assert disabled_project not in [call.args[0] for call in session.add.call_args_list]
+    assert disabled_integration not in [
+        call.args[0] for call in session.add.call_args_list
+    ]
     session.commit.assert_called_once_with()
 
 
