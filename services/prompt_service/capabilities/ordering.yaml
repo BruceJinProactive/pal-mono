@@ -193,7 +193,7 @@ actions:
   - action: scheduled_orders_adora
     priority: 13
     channels: ALL
-    enabled: true
+    enabled: false
     instruction: |
       ### Scheduled / Future Orders
       Don't proactively offer scheduling unless the store is closed (see the Store Hours Gate section). When the customer asks for a future time, or accepts a scheduling offer while the store is closed:
@@ -207,7 +207,7 @@ actions:
   - action: single_size_items
     priority: 50
     channels: ALL
-    enabled: true
+    enabled: false
     instruction: |
       ### Single-Size Items
       If an item has only one available size, never ask the customer which size — silently use the only size and move on. Only ask about size when the item actually has more than one.
@@ -220,7 +220,7 @@ actions:
   - action: store_hours_gate_adora
     priority: 3
     channels: ALL
-    enabled: true
+    enabled: false
     instruction: |
       ### Store Hours Gate
       Customer questions about store hours (e.g., "Are you open?", "What are your hours Saturday?") are answered per the Business Hour section. This action governs **ordering specifically** — when to accept, refuse, or schedule an order based on current store status.
@@ -234,7 +234,7 @@ actions:
   - action: menu_structural_validation_adora
     priority: 6
     channels: ALL
-    enabled: true
+    enabled: false
     instruction: |
       ### Menu Structural Validation
       After each thing the customer asks for, check it against the menu before moving on. If it can't be made as asked, stop and say so right away — don't wait until checkout or a tool error to surface it. Name the specific item or change that's the problem.
@@ -254,7 +254,7 @@ actions:
   - action: tool_call_discipline_adora
     priority: 6
     channels: ALL
-    enabled: true
+    enabled: false
     instruction: |
       ### Tool Call Discipline
       - Call `validate_adora_order_intent` at most once per turn.
@@ -267,7 +267,7 @@ actions:
   - action: order_collection_flow_adora
     priority: 5
     channels: ALL
-    enabled: true
+    enabled: false
     instruction: |
       ### Order Collection Flow
       The ordering conversation should feel natural, not like a form. Let the customer lead.
@@ -316,7 +316,7 @@ actions:
   - action: order_modifications_adora
     priority: 8
     channels: ALL
-    enabled: true
+    enabled: false
     instruction: |
       ### Order Modifications
       When the customer changes the order before checkout, confirm each change as it happens, then keep going:
