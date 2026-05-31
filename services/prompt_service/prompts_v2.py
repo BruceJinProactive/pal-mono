@@ -289,6 +289,11 @@ class PromptFactoryV2:
                     (action.action, action.channel): action
                     for action in db_capability.actions
                 }
+                db_all_channel_action_names = {
+                    action.action
+                    for action in db_capability.actions
+                    if action.channel == "ALL"
+                }
 
                 # Build merged actions list
                 merged_actions = []
@@ -299,8 +304,11 @@ class PromptFactoryV2:
 
                 # Add default actions that weren't overridden
                 for key, default_action in default_actions_map.items():
-                    if key not in db_actions_map:
-                        merged_actions.append(deepcopy(default_action))
+                    if key in db_actions_map:
+                        continue
+                    if default_action.action in db_all_channel_action_names:
+                        continue
+                    merged_actions.append(deepcopy(default_action))
 
                 default_cap.actions = merged_actions
 
