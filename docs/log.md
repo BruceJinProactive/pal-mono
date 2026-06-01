@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-01
+
+- **[PAL-10949] Add state definition metadata columns.** Added `definition_type` and `is_active` to `vision_entity_state_definition` so state definitions can be grouped by purpose and toggled active/inactive. The existing text `criteria` column remains unchanged. Migration: `3742a24deea6`.
+
+---
+
 ## 2026-05-30
 
 - **Catering customer SMS copy refresh.** Updated catering status SMS messages to use warmer customer-facing wording, include the requester name when available, explain confirmed/preparation/ready states, and make pickup/delivery and callback context clearer.

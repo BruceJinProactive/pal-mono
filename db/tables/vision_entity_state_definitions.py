@@ -30,6 +30,9 @@ class VisionEntityStateDefinition(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    definition_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, server_default=text("'cleanliness'")
+    )
 
     sort_order: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
@@ -37,6 +40,9 @@ class VisionEntityStateDefinition(Base):
 
     is_default: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
     )
 
     criteria: Mapped[str | None] = mapped_column(String(500), nullable=True)
