@@ -329,4 +329,10 @@ class OnboardingStatus(str, enum.Enum):
 class VisionRuleType(str, enum.Enum):
     """Type of vision rule."""
 
+    table_occupied = "table_occupied"
+    table_touch = "table_touch"
     table_cleanness = "table_cleanness"
+    glove_usage = "glove_usage"
+    food_container_on_ground = "food_container_on_ground"
+    manager_in_room = "manager_in_room"
+    staff_at_front_desk = "staff_at_front_desk"
