@@ -1,6 +1,6 @@
 # Tool Result Storage With AWS ElastiCache
 
-**Last updated:** 2026-05-28
+**Last updated:** 2026-06-01
 
 This doc describes how tool-call results could be stored in AWS ElastiCache so
 multiple `pal-mono` pods can share recent tool outputs across turns.
@@ -87,6 +87,20 @@ verbatim. The cache writer must redact or drop secrets, auth tokens, payment
 details, customer contact PII, addresses, free-form notes, and any integration
 payload fields that are not needed for the next-turn prompt.
 
+Do not inject the full cache item into the model context. The cache item may
+carry metadata for storage/debugging, but prompt rendering should strip it down
+to the same compact shape used by the current cache:
+
+```json
+{"tool_name":"toast_takeout_create_order_v1","tool_result":{"status":"success","order_state":"pending_payment"}}
+```
+
+If no compact structured result is available, use the sanitized result summary:
+
+```json
+{"tool_name":"toast_takeout_create_order_v1","tool_result":"Order was created and is pending payment."}
+```
+
 Keep the list ephemeral:
 
 - `RPUSH` new result.
@@ -131,6 +145,11 @@ Before each `PalAgent.run(...)`, `pal-mono` reads:
 items = await redis.lrange(f"tool-results:v1:{conversation_id}", 0, -1)
 previous_tool_results = [json.loads(item) for item in items]
 ```
+
+Before those results are injected into prompt context, strip cache-only fields
+such as `captured_at`, `status`, `error_type`, and `input_summary` unless a
+specific tool needs a sanitized input summary. The default context item should
+contain only `tool_name` and `tool_result`.
 
 Then pass the parsed list into `pal-agents`, either as:
 
