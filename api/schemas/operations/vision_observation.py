@@ -15,6 +15,9 @@ class EntityObservation(BaseModel):
     entity_id: uuid.UUID = Field(..., description="ID of the observed entity")
     entity_name: str = Field(..., description="Name of the observed entity")
     camera_id: uuid.UUID = Field(..., description="ID of the camera (signal source)")
+    definition_type: str | None = Field(
+        default=None, description="State definition group that was evaluated"
+    )
     state: str = Field(..., description="Detected state name")
     state_id: uuid.UUID | None = Field(
         default=None, description="ID of the matched state definition"

@@ -35,8 +35,10 @@ def _make_state_def_mock(**overrides: object) -> MagicMock:
     sd.name = overrides.get("name", "dirty")
     sd.display_name = overrides.get("display_name", "Dirty")
     sd.color = overrides.get("color", "#FF0000")
+    sd.definition_type = overrides.get("definition_type", "cleanliness")
     sd.sort_order = overrides.get("sort_order", 0)
     sd.is_default = overrides.get("is_default", False)
+    sd.is_active = overrides.get("is_active", True)
     sd.criteria = overrides.get("criteria", None)
     sd.created_at = overrides.get("created_at", datetime.now(timezone.utc))
     return sd

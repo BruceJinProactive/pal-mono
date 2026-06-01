@@ -25,6 +25,8 @@ def _to_data(
         is_default=row.is_default,
         created_at=row.created_at,
         criteria=row.criteria,
+        definition_type=row.definition_type,
+        is_active=row.is_active,
     )
 
 
@@ -44,6 +46,8 @@ class VisionEntityStateDefinitionRepository:
                 sort_order=record.sort_order,
                 is_default=record.is_default,
                 criteria=record.criteria,
+                definition_type=record.definition_type,
+                is_active=record.is_active,
             )
             self.session.add(row)
             await self.session.commit()
@@ -74,13 +78,19 @@ class VisionEntityStateDefinitionRepository:
             return None
 
     async def list_by_entity_type(
-        self, entity_type_id: uuid.UUID
+        self, entity_type_id: uuid.UUID, is_active: bool | None = None
     ) -> list[VisionEntityStateDefinitionData]:
         try:
+            stmt = select(VisionEntityStateDefinition).filter(
+                VisionEntityStateDefinition.entity_type_id == entity_type_id
+            )
+            if is_active is not None:
+                stmt = stmt.filter(VisionEntityStateDefinition.is_active == is_active)
             result = await self.session.execute(
-                select(VisionEntityStateDefinition)
-                .filter(VisionEntityStateDefinition.entity_type_id == entity_type_id)
-                .order_by(VisionEntityStateDefinition.sort_order)
+                stmt.order_by(
+                    VisionEntityStateDefinition.definition_type,
+                    VisionEntityStateDefinition.sort_order,
+                )
             )
             return [_to_data(row) for row in result.scalars().all()]
         except Exception:
@@ -215,7 +225,7 @@ class VisionEntityStateDefinitionRepository:
                 )
             )
             await self.session.commit()
-            return del_result.rowcount > 0  # type: ignore[union-attr]
+            return (del_result.rowcount or 0) > 0
         except Exception:
             await self.session.rollback()
             logger.error(

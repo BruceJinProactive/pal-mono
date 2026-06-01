@@ -16,3 +16,5 @@ class VisionEntityStateDefinitionData:
     created_at: datetime
     color: str | None = None
     criteria: str | None = None
+    definition_type: str = "cleanliness"
+    is_active: bool = True

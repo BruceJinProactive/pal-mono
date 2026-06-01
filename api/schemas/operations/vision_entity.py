@@ -92,9 +92,18 @@ class UpdateStateDefinitionRequest(BaseModel):
     color: str | None = Field(
         default=None, max_length=7, description="Hex color code (e.g. #FF0000)"
     )
+    definition_type: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+        description="State definition group, such as cleanliness or occupation",
+    )
     sort_order: int | None = Field(default=None, ge=0, description="Display ordering")
     is_default: bool | None = Field(
         default=None, description="Whether this is the default state"
+    )
+    is_active: bool | None = Field(
+        default=None, description="Whether this state definition is active"
     )
     criteria: str | None = Field(
         default=None,
@@ -115,9 +124,18 @@ class CreateStateDefinitionRequest(BaseModel):
     color: str | None = Field(
         default=None, max_length=7, description="Hex color code (e.g. #FF0000)"
     )
+    definition_type: str = Field(
+        default="cleanliness",
+        min_length=1,
+        max_length=50,
+        description="State definition group, such as cleanliness or occupation",
+    )
     sort_order: int = Field(default=0, ge=0, description="Display ordering")
     is_default: bool = Field(
         default=False, description="Whether this is the default state"
+    )
+    is_active: bool = Field(
+        default=True, description="Whether this state definition is active"
     )
     criteria: str | None = Field(
         default=None,
@@ -136,8 +154,10 @@ class StateDefinitionResponse(BaseModel):
     name: str
     display_name: str
     color: str | None
+    definition_type: str
     sort_order: int
     is_default: bool
+    is_active: bool
     criteria: str | None
     created_at: datetime
 

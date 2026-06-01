@@ -6,7 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-01
 
-- **[PAL-10949] Add state definition metadata columns.** Added `definition_type` and `is_active` to `vision_entity_state_definition` so state definitions can be grouped by purpose and toggled active/inactive. The existing text `criteria` column remains unchanged. Migration: `3742a24deea6`.
+- **[PAL-10949] Add state definition metadata columns and typed prompt grouping.** Added `definition_type` and `is_active` to `vision_entity_state_definition` so state definitions can be grouped by purpose and toggled active/inactive. Vision observation prompts now load only active state definitions and group options by `definition_type` so the LLM judges each active group separately. The existing text `criteria` column remains unchanged. Migration: `3742a24deea6`.
 
 ---
 

@@ -38,8 +38,10 @@ def _make_sd_response(**overrides: object) -> StateDefinitionResponse:
         "name": "clean",
         "display_name": "Clean",
         "color": None,
+        "definition_type": "cleanliness",
         "sort_order": 0,
         "is_default": False,
+        "is_active": True,
         "criteria": None,
         "created_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
     }

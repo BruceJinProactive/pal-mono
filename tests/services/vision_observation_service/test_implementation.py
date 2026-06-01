@@ -60,6 +60,33 @@ class TestBuildEntityStateSchema:
         assert schema["properties"] == {"image_relevant": {"type": "boolean"}}
         assert schema["required"] == ["image_relevant"]
 
+    def test_entity_states_grouped_by_definition_type(self):
+        entities = [
+            {
+                "name": "table_1",
+                "state_definition_groups": {
+                    "cleanliness": {
+                        "state_names": ["clean", "dirty"],
+                        "state_criteria": {},
+                    },
+                    "occupation": {
+                        "state_names": ["occupied", "empty"],
+                        "state_criteria": {},
+                    },
+                },
+            },
+        ]
+        schema = _build_entity_state_schema(entities)
+
+        table_schema = schema["properties"]["table_1"]
+        assert set(table_schema["required"]) == {"cleanliness", "occupation"}
+        assert table_schema["properties"]["cleanliness"]["properties"]["state"][
+            "enum"
+        ] == ["clean", "dirty"]
+        assert table_schema["properties"]["occupation"]["properties"]["state"][
+            "enum"
+        ] == ["occupied", "empty"]
+
 
 class TestFormatRoiHint:
     """Tests for ROI hint formatting."""
@@ -245,6 +272,41 @@ class TestBuildSystemPrompt:
         assert '"Lane 2"' in prompt
         assert "ROI: [100, 0, 200, 1000]" in prompt
         assert "ROI: [400, 0, 200, 1000]" in prompt
+
+    def test_groups_state_options_by_definition_type(self):
+        state_definition_groups = {
+            "cleanliness": {
+                "state_names": ["clean", "dirty"],
+                "state_criteria": {"dirty": "dishes or trash are visible"},
+            },
+            "occupation": {
+                "state_names": ["occupied", "empty"],
+                "state_criteria": {"occupied": "a customer is seated"},
+            },
+        }
+        entity_type_defs = {
+            "table": {
+                "display_name": "Table",
+                "state_definition_groups": state_definition_groups,
+            },
+        }
+        entities = [
+            {
+                "name": "Table 1",
+                "type_name": "table",
+                "state_definition_groups": state_definition_groups,
+                "state_names": ["clean", "dirty", "occupied", "empty"],
+                "roi_hint": None,
+            },
+        ]
+
+        prompt = _build_system_prompt("", entity_type_defs, entities)
+
+        assert "State definition types (pick one state in each type):" in prompt
+        assert (
+            '- cleanliness: "clean" | "dirty" (dishes or trash are visible)' in prompt
+        )
+        assert '- occupation: "occupied" (a customer is seated) | "empty"' in prompt
 
 
 class TestGenerateObservation:
@@ -716,6 +778,120 @@ class TestGenerateObservation:
             )
 
     @pytest.mark.asyncio
+    async def test_observation_uses_active_state_definitions_grouped_by_type(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_config.llm_prompt = "Watch tables"
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.name = "table_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
+
+        clean_id = uuid.uuid4()
+        occupied_id = uuid.uuid4()
+        clean_state = MagicMock()
+        clean_state.id = clean_id
+        clean_state.name = "clean"
+        clean_state.definition_type = "cleanliness"
+        occupied_state = MagicMock()
+        occupied_state.id = occupied_id
+        occupied_state.name = "occupied"
+        occupied_state.definition_type = "occupation"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "table"
+        mock_entity_type.display_name = "Table"
+
+        llm_result = {
+            "result": {
+                "table_1": {
+                    "cleanliness": {"state": "clean", "confidence": 0.9},
+                    "occupation": {"state": "occupied", "confidence": 0.8},
+                },
+                "image_relevant": True,
+            },
+            "token_usage": {},
+        }
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = llm_result
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock()
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[clean_state, occupied_state]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+
+            result = await generate_observation(
+                session, config_id, image_bytes=b"frame-data"
+            )
+
+            assert result is not None
+            assert [
+                (obs.definition_type, obs.state, obs.state_id, obs.confidence)
+                for obs in result.entity_observations
+            ] == [
+                ("cleanliness", "clean", clean_id, 0.9),
+                ("occupation", "occupied", occupied_id, 0.8),
+            ]
+            mock_sd_repo_cls.return_value.list_by_entity_type.assert_awaited_once_with(
+                entity_type_id, is_active=True
+            )
+            mock_entity_repo_cls.return_value.update.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_successful_observation_with_image_url(self):
         session = AsyncMock()
         config_id = uuid.uuid4()
@@ -1157,8 +1333,11 @@ class TestGetConfigurationPrompt:
             assert '"open"' in result.system_prompt
             assert "main_gate" in result.structured_output["properties"]
             assert result.structured_output["properties"]["main_gate"]["properties"][
-                "state"
-            ]["enum"] == ["open"]
+                "cleanliness"
+            ]["properties"]["state"]["enum"] == ["open"]
+            mock_sd_repo_cls.return_value.list_by_entity_type.assert_awaited_once_with(
+                entity_type_id, is_active=True
+            )
 
     @pytest.mark.asyncio
     async def test_skips_inactive_entities(self):

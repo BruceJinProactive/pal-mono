@@ -210,8 +210,10 @@ def _build_state_definition_response(
         name=data.name,
         display_name=data.display_name,
         color=data.color,
+        definition_type=data.definition_type,
         sort_order=data.sort_order,
         is_default=data.is_default,
+        is_active=data.is_active,
         criteria=data.criteria,
         created_at=data.created_at,
     )
@@ -253,8 +255,10 @@ async def create_state_definition(
         name=request.name,
         display_name=request.display_name,
         color=request.color,
+        definition_type=request.definition_type,
         sort_order=request.sort_order,
         is_default=request.is_default,
+        is_active=request.is_active,
         criteria=request.criteria,
         created_at=datetime.now(timezone.utc),
     )
@@ -312,10 +316,14 @@ async def update_state_definition(
         updates["display_name"] = request.display_name
     if "color" in provided:
         updates["color"] = request.color
+    if "definition_type" in provided:
+        updates["definition_type"] = request.definition_type
     if "sort_order" in provided:
         updates["sort_order"] = request.sort_order
     if "is_default" in provided:
         updates["is_default"] = request.is_default
+    if "is_active" in provided:
+        updates["is_active"] = request.is_active
     if "criteria" in provided:
         updates["criteria"] = request.criteria
 
@@ -400,7 +408,9 @@ async def create_entity(
             f"Entity with name '{request.name}' already exists for this type in this project"
         )
 
-    default_states = await sd_repo.list_by_entity_type(request.entity_type_id)
+    default_states = await sd_repo.list_by_entity_type(
+        request.entity_type_id, is_active=True
+    )
     default_state = next((s for s in default_states if s.is_default), None)
 
     now = datetime.now(timezone.utc)
@@ -511,7 +521,11 @@ async def update_entity_state(
         raise ValueError(f"Entity {entity_id} not found")
 
     state_def = await sd_repo.get_by_id(request.state_definition_id)
-    if not state_def or state_def.entity_type_id != data.entity_type_id:
+    if (
+        not state_def
+        or state_def.entity_type_id != data.entity_type_id
+        or not state_def.is_active
+    ):
         raise ValueError(
             f"State definition {request.state_definition_id} not found or does not belong to this entity type"
         )

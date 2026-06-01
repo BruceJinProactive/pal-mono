@@ -48,8 +48,37 @@ def _build_entity_state_schema(
 
     for entity_info in entities_with_states:
         entity_name = entity_info["name"]
-        state_names = entity_info["state_names"]
+        state_definition_groups = entity_info.get("state_definition_groups", {})
 
+        if state_definition_groups:
+            group_properties: dict[str, Any] = {}
+            for definition_type, group_info in state_definition_groups.items():
+                group_properties[definition_type] = {
+                    "type": "object",
+                    "properties": {
+                        "state": {
+                            "type": "string",
+                            "enum": group_info["state_names"],
+                        },
+                        "confidence": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                        },
+                    },
+                    "required": ["state", "confidence"],
+                    "additionalProperties": False,
+                }
+
+            properties[entity_name] = {
+                "type": "object",
+                "properties": group_properties,
+                "required": list(group_properties.keys()),
+                "additionalProperties": False,
+            }
+            continue
+
+        state_names = entity_info["state_names"]
         properties[entity_name] = {
             "type": "object",
             "properties": {
@@ -79,6 +108,41 @@ def _build_entity_state_schema(
         "required": required_keys,
         "additionalProperties": False,
     }
+
+
+def _state_definition_type(state_def: Any) -> str:
+    definition_type = getattr(state_def, "definition_type", None)
+    if isinstance(definition_type, str) and definition_type.strip():
+        return definition_type.strip()
+    return "cleanliness"
+
+
+def _state_definition_criteria(state_def: Any) -> str | None:
+    criteria = getattr(state_def, "criteria", None)
+    if isinstance(criteria, str) and criteria.strip():
+        return criteria.strip()
+    return None
+
+
+def _build_state_definition_groups(
+    state_defs: list[Any],
+) -> dict[str, dict[str, Any]]:
+    groups: dict[str, dict[str, Any]] = {}
+    for state_def in state_defs:
+        definition_type = _state_definition_type(state_def)
+        group = groups.setdefault(
+            definition_type,
+            {
+                "state_names": [],
+                "state_criteria": {},
+            },
+        )
+        state_name = state_def.name
+        group["state_names"].append(state_name)
+        criteria = _state_definition_criteria(state_def)
+        if criteria:
+            group["state_criteria"][state_name] = criteria
+    return groups
 
 
 def _format_roi_hint(roi_hint: dict[str, object] | None) -> str | None:
@@ -111,12 +175,13 @@ def _build_system_prompt(
         "to determine the current state of entities in the monitored environment.",
         "",
         "For each entity, select exactly ONE state from its allowed states "
-        "based on what you see in the image.",
+        "for each state definition type based on what you see in the image.",
         "",
         "Rules:",
-        "- Only use the allowed states listed for each entity",
-        "- If you cannot clearly determine the state, pick the most likely one "
-        "and reflect that in your confidence score",
+        "- Only use active state definitions listed for each entity",
+        "- Judge each state definition type independently",
+        "- If you cannot clearly determine a state, pick the most likely one "
+        "for that type and reflect that in your confidence score",
         "- Confidence should be 0.0-1.0 where 1.0 means absolute certainty",
         "- If an entity is not visible in the frame at all, use confidence 0.0 "
         "and pick the most reasonable default state",
@@ -147,20 +212,33 @@ def _build_system_prompt(
     for type_name, entities in entities_by_type.items():
         type_info = entity_type_definitions.get(type_name, {})
         display = type_info.get("display_name", type_name)
+        state_definition_groups = type_info.get("state_definition_groups", {})
         state_criteria = type_info.get("state_criteria", {})
         state_names = type_info.get("state_names", [])
 
         lines.append("")
         lines.append(display)
 
-        states_parts: list[str] = []
-        for state_name in state_names:
-            criteria = state_criteria.get(state_name)
-            if criteria:
-                states_parts.append(f'"{state_name}" ({criteria})')
-            else:
-                states_parts.append(f'"{state_name}"')
-        lines.append(f"  States (pick one): {' | '.join(states_parts)}")
+        if state_definition_groups:
+            lines.append("  State definition types (pick one state in each type):")
+            for definition_type, group_info in state_definition_groups.items():
+                states_parts: list[str] = []
+                for state_name in group_info["state_names"]:
+                    criteria = group_info["state_criteria"].get(state_name)
+                    if criteria:
+                        states_parts.append(f'"{state_name}" ({criteria})')
+                    else:
+                        states_parts.append(f'"{state_name}"')
+                lines.append(f"  - {definition_type}: {' | '.join(states_parts)}")
+        else:
+            states_parts = []
+            for state_name in state_names:
+                criteria = state_criteria.get(state_name)
+                if criteria:
+                    states_parts.append(f'"{state_name}" ({criteria})')
+                else:
+                    states_parts.append(f'"{state_name}"')
+            lines.append(f"  States (pick one): {' | '.join(states_parts)}")
 
         for entity_info in entities:
             roi_text = _format_roi_hint(entity_info.get("roi_hint"))
@@ -236,9 +314,12 @@ async def get_configuration_prompt(
         if not entity or not entity.is_active:
             continue
 
-        state_defs = await sd_repo.list_by_entity_type(entity.entity_type_id)
+        state_defs = await sd_repo.list_by_entity_type(
+            entity.entity_type_id, is_active=True
+        )
         if not state_defs:
             continue
+        state_definition_groups = _build_state_definition_groups(state_defs)
 
         entity_type = await type_repo.get_by_id(entity.entity_type_id)
         type_name = entity_type.name if entity_type else "unknown"
@@ -247,6 +328,7 @@ async def get_configuration_prompt(
         if type_name not in entity_type_definitions:
             entity_type_definitions[type_name] = {
                 "display_name": type_display,
+                "state_definition_groups": state_definition_groups,
                 "state_names": [sd.name for sd in state_defs],
                 "state_criteria": {
                     sd.name: sd.criteria for sd in state_defs if sd.criteria
@@ -257,6 +339,7 @@ async def get_configuration_prompt(
             {
                 "name": entity.name,
                 "type_name": type_name,
+                "state_definition_groups": state_definition_groups,
                 "state_names": [sd.name for sd in state_defs],
                 "roi_hint": mapping.roi_hint,
             }
@@ -329,9 +412,20 @@ async def generate_observation(
         if not entity or not entity.is_active:
             continue
 
-        state_defs = await sd_repo.list_by_entity_type(entity.entity_type_id)
+        state_defs = await sd_repo.list_by_entity_type(
+            entity.entity_type_id, is_active=True
+        )
         if not state_defs:
             continue
+        state_definition_groups = _build_state_definition_groups(state_defs)
+        state_name_to_id_by_type = {
+            definition_type: {
+                state_def.name: state_def.id
+                for state_def in state_defs
+                if _state_definition_type(state_def) == definition_type
+            }
+            for definition_type in state_definition_groups
+        }
 
         entity_type = await type_repo.get_by_id(entity.entity_type_id)
         type_name = entity_type.name if entity_type else "unknown"
@@ -340,6 +434,7 @@ async def generate_observation(
         if type_name not in entity_type_definitions:
             entity_type_definitions[type_name] = {
                 "display_name": type_display,
+                "state_definition_groups": state_definition_groups,
                 "state_names": [sd.name for sd in state_defs],
                 "state_criteria": {
                     sd.name: sd.criteria for sd in state_defs if sd.criteria
@@ -350,6 +445,7 @@ async def generate_observation(
             {
                 "name": entity.name,
                 "type_name": type_name,
+                "state_definition_groups": state_definition_groups,
                 "state_names": [sd.name for sd in state_defs],
                 "roi_hint": mapping.roi_hint,
             }
@@ -358,6 +454,7 @@ async def generate_observation(
             "entity_id": entity.id,
             "current_state_id": entity.current_state_id,
             "entity_type_name": type_name,
+            "state_name_to_id_by_type": state_name_to_id_by_type,
             "state_name_to_id": {sd.name: sd.id for sd in state_defs},
             "state_id_to_name": {sd.id: sd.name for sd in state_defs},
         }
@@ -468,19 +565,37 @@ async def generate_observation(
             continue
 
         info = entity_lookup[entity_name]
-        state_name = observation.get("state", "unknown")
-        state_id = info["state_name_to_id"].get(state_name)
+        typed_observations: list[tuple[str | None, dict[str, Any]]] = []
+        if "state" in observation:
+            typed_observations.append((None, observation))
+        else:
+            for definition_type, typed_observation in observation.items():
+                if definition_type not in info[
+                    "state_name_to_id_by_type"
+                ] or not isinstance(typed_observation, dict):
+                    continue
+                typed_observations.append((definition_type, typed_observation))
 
-        entity_observations.append(
-            EntityObservation(
-                entity_id=info["entity_id"],
-                entity_name=entity_name,
-                camera_id=camera_id,
-                state=state_name,
-                state_id=state_id,
-                confidence=observation.get("confidence", 0.0),
+        for definition_type, typed_observation in typed_observations:
+            state_name = typed_observation.get("state", "unknown")
+            if definition_type is None:
+                state_id = info["state_name_to_id"].get(state_name)
+            else:
+                state_id = info["state_name_to_id_by_type"][definition_type].get(
+                    state_name
+                )
+
+            entity_observations.append(
+                EntityObservation(
+                    entity_id=info["entity_id"],
+                    entity_name=entity_name,
+                    camera_id=camera_id,
+                    definition_type=definition_type,
+                    state=state_name,
+                    state_id=state_id,
+                    confidence=typed_observation.get("confidence", 0.0),
+                )
             )
-        )
 
     if image_relevant and not is_test:
         event_repo = VisionStateChangeEventRepository(session)
@@ -488,6 +603,10 @@ async def generate_observation(
             if obs.state_id is None:
                 continue
             lookup_info = entity_lookup[obs.entity_name]
+            # current_state_id can store only one state, so do not collapse
+            # multi-type observations into a lossy single current state.
+            if len(lookup_info["state_name_to_id_by_type"]) > 1:
+                continue
             session.expire_all()
             fresh_entity = await entity_repo.get_by_id(obs.entity_id)
             if not fresh_entity or obs.state_id == fresh_entity.current_state_id:
