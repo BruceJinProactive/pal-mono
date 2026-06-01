@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,7 @@ from api.schemas.operations.vision_entity import (
     CreateEntityRequest,
     CreateEntityTypeRequest,
     CreateStateDefinitionRequest,
+    EntityCurrentStateResponse,
     EntityResponse,
     EntityTypeResponse,
     ListEntitiesResponse,
@@ -36,6 +38,12 @@ from db.pal_repository.data_classes.vision_state_change_event import (
     VisionStateChangeEventData,
 )
 from services.vision_observation_service._workflow import handle_state_change_rules
+from services.vision_state_metadata import (
+    current_state_id_from_metadata,
+    current_state_metadata_key,
+    get_current_states_metadata,
+    set_current_state_metadata,
+)
 from utils.log import logger
 
 
@@ -247,7 +255,9 @@ async def create_state_definition(
         )
 
     if request.is_default:
-        await repo.clear_default_for_entity_type(entity_type_id)
+        await repo.clear_default_for_entity_type(
+            entity_type_id, request.definition_type
+        )
 
     record = VisionEntityStateDefinitionData(
         id=uuid.uuid4(),
@@ -330,8 +340,22 @@ async def update_state_definition(
     if not updates:
         return _build_state_definition_response(data)
 
-    if updates.get("is_default") is True:
-        await repo.clear_default_for_entity_type(entity_type_id)
+    resulting_definition_type = (
+        request.definition_type
+        if request.definition_type is not None
+        else data.definition_type
+    )
+    resulting_is_default = (
+        request.is_default if request.is_default is not None else data.is_default
+    )
+    if resulting_is_default and (
+        updates.get("is_default") is True or "definition_type" in updates
+    ):
+        await repo.clear_default_for_entity_type(
+            entity_type_id,
+            resulting_definition_type,
+            except_state_definition_id=state_definition_id,
+        )
 
     updated = await repo.update(state_definition_id, **updates)
     if not updated:
@@ -377,6 +401,70 @@ async def delete_state_definition(
 # ---------------------------------------------------------------------------
 
 
+def _metadata_uuid(value: object) -> uuid.UUID | None:
+    if isinstance(value, uuid.UUID):
+        return value
+    if isinstance(value, str):
+        try:
+            return uuid.UUID(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _metadata_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def _metadata_confidence(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _build_current_state_response(
+    current_state: object,
+) -> EntityCurrentStateResponse | None:
+    if not isinstance(current_state, Mapping):
+        return None
+
+    state_definition_id = _metadata_uuid(current_state.get("state_definition_id"))
+    if state_definition_id is None:
+        return None
+
+    raw_state = current_state.get("state")
+    return EntityCurrentStateResponse(
+        state_definition_id=state_definition_id,
+        state=raw_state if isinstance(raw_state, str) else None,
+        current_state_since=_metadata_datetime(
+            current_state.get("current_state_since")
+        ),
+        observed_at=_metadata_datetime(current_state.get("observed_at")),
+        confidence=_metadata_confidence(current_state.get("confidence")),
+    )
+
+
+def _build_current_states_response(
+    entity_metadata: dict[str, object],
+) -> dict[str, EntityCurrentStateResponse]:
+    current_states = get_current_states_metadata(entity_metadata)
+    response: dict[str, EntityCurrentStateResponse] = {}
+    for definition_type, current_state in current_states.items():
+        current_state_response = _build_current_state_response(current_state)
+        if current_state_response is not None:
+            response[definition_type] = current_state_response
+    return response
+
+
 def _build_entity_response(data: VisionEntityData) -> EntityResponse:
     return EntityResponse(
         id=data.id,
@@ -385,6 +473,7 @@ def _build_entity_response(data: VisionEntityData) -> EntityResponse:
         name=data.name,
         current_state_id=data.current_state_id,
         current_state_since=data.current_state_since,
+        current_states=_build_current_states_response(data.entity_metadata),
         entity_metadata=data.entity_metadata,
         is_active=data.is_active,
         created_at=data.created_at,
@@ -411,17 +500,34 @@ async def create_entity(
     default_states = await sd_repo.list_by_entity_type(
         request.entity_type_id, is_active=True
     )
-    default_state = next((s for s in default_states if s.is_default), None)
+    default_states_by_type: dict[str, VisionEntityStateDefinitionData] = {}
+    for state_def in default_states:
+        if not state_def.is_default:
+            continue
+        definition_type = current_state_metadata_key(state_def.definition_type)
+        default_states_by_type.setdefault(definition_type, state_def)
+    legacy_default_state = next(iter(default_states_by_type.values()), None)
 
     now = datetime.now(timezone.utc)
+    entity_metadata = dict(request.entity_metadata)
+    for definition_type, default_state in default_states_by_type.items():
+        entity_metadata = set_current_state_metadata(
+            entity_metadata,
+            definition_type,
+            default_state.id,
+            default_state.name,
+            now,
+            now,
+            None,
+        )
     record = VisionEntityData(
         id=uuid.uuid4(),
         project_id=project_id,
         entity_type_id=request.entity_type_id,
         name=request.name,
-        current_state_id=default_state.id if default_state else None,
-        current_state_since=now if default_state else None,
-        entity_metadata=request.entity_metadata,
+        current_state_id=legacy_default_state.id if legacy_default_state else None,
+        current_state_since=now if legacy_default_state else None,
+        entity_metadata=entity_metadata,
         is_active=True,
         created_at=now,
     )
@@ -530,19 +636,42 @@ async def update_entity_state(
             f"State definition {request.state_definition_id} not found or does not belong to this entity type"
         )
 
-    if request.state_definition_id == data.current_state_id:
+    now = datetime.now(timezone.utc)
+    definition_type = current_state_metadata_key(state_def.definition_type)
+    entity_metadata = dict(data.entity_metadata)
+    current_states = get_current_states_metadata(entity_metadata)
+    previous_state_id = current_state_id_from_metadata(current_states, definition_type)
+    previous_state_def = None
+    if previous_state_id is not None:
+        previous_state_def = await sd_repo.get_by_id(previous_state_id)
+    elif data.current_state_id is not None:
+        legacy_previous_state_def = await sd_repo.get_by_id(data.current_state_id)
+        if (
+            legacy_previous_state_def
+            and current_state_metadata_key(legacy_previous_state_def.definition_type)
+            == definition_type
+        ):
+            previous_state_id = data.current_state_id
+            previous_state_def = legacy_previous_state_def
+
+    if request.state_definition_id == previous_state_id:
         return _build_entity_response(data)
 
-    now = datetime.now(timezone.utc)
-    previous_state_id = data.current_state_id
-    previous_state_def = (
-        await sd_repo.get_by_id(previous_state_id) if previous_state_id else None
+    entity_metadata = set_current_state_metadata(
+        entity_metadata,
+        definition_type,
+        request.state_definition_id,
+        state_def.name,
+        now,
+        now,
+        None,
     )
 
     updated = await entity_repo.update(
         entity_id,
         current_state_id=request.state_definition_id,
         current_state_since=now,
+        entity_metadata=entity_metadata,
     )
     if not updated:
         raise ValueError(f"Entity {entity_id} not found")
@@ -553,6 +682,7 @@ async def update_entity_state(
         entity_id=entity_id,
         new_state_id=request.state_definition_id,
         observed_at=now,
+        event_metadata={"definition_type": definition_type},
         previous_state_id=previous_state_id,
     )
     await event_repo.create(state_change_event)

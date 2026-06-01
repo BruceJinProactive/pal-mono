@@ -186,6 +186,34 @@ class TestHandleStateChangeRules:
             event_repo_cls.return_value.create.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_mismatched_definition_type_does_not_create_rule_event(self) -> None:
+        session = AsyncMock()
+        entity = _make_entity()
+        rule = _make_rule(project_id=entity.project_id)
+        state_change = _make_state_change(entity_id=entity.id)
+        object.__setattr__(
+            state_change, "event_metadata", {"definition_type": "occupation"}
+        )
+
+        with (
+            patch(f"{MODULE}.VisionRuleRepository") as rule_repo_cls,
+            patch(f"{MODULE}.VisionRuleEventRepository") as event_repo_cls,
+        ):
+            rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
+            event_repo_cls.return_value.create = AsyncMock()
+
+            await handle_state_change_rules(
+                session,
+                entity,
+                state_change,
+                "clean",
+                previous_state_name="dirty",
+                entity_type_name="table",
+            )
+
+            event_repo_cls.return_value.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_null_event_metadata_is_treated_as_not_test(self) -> None:
         session = AsyncMock()
         entity = _make_entity()

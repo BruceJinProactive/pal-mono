@@ -1,6 +1,7 @@
 """Tests for vision observation service implementation."""
 
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +11,8 @@ from services.vision_observation_service._implementation import (
     _build_system_prompt,
     _extract_camera_name_from_s3_key,
     _format_roi_hint,
+    _is_legacy_observation,
+    _state_definition_type,
     generate_observation,
     get_configuration_prompt,
 )
@@ -147,6 +150,32 @@ class TestExtractCameraNameFromS3Key:
 
     def test_empty_string(self):
         assert _extract_camera_name_from_s3_key("") is None
+
+
+class TestLegacyObservationParsing:
+
+    def test_top_level_state_without_marker_is_not_legacy(self):
+        assert _is_legacy_observation({"state": "clean", "confidence": 0.9}) is False
+
+    def test_explicit_legacy_marker_is_legacy(self):
+        assert (
+            _is_legacy_observation(
+                {"definition_type": "state", "state": "clean", "confidence": 0.9}
+            )
+            is True
+        )
+
+
+class TestStateDefinitionType:
+
+    def test_missing_or_blank_definition_type_returns_none(self):
+        missing_type = MagicMock()
+        missing_type.definition_type = None
+        blank_type = MagicMock()
+        blank_type.definition_type = "  "
+
+        assert _state_definition_type(missing_type) is None
+        assert _state_definition_type(blank_type) is None
 
 
 class TestBuildSystemPrompt:
@@ -356,13 +385,14 @@ class TestGenerateObservation:
         mock_state_def = MagicMock()
         mock_state_def.id = uuid.uuid4()
         mock_state_def.name = "open"
+        mock_state_def.definition_type = "cleanliness"
 
         mock_entity_type = MagicMock()
         mock_entity_type.name = "door"
         mock_entity_type.display_name = "Door"
 
         llm_result = {
-            "result": {"door_1": {"state": "open", "confidence": 0.9}},
+            "result": {"door_1": {"cleanliness": {"state": "open", "confidence": 0.9}}},
             "token_usage": {},
         }
 
@@ -548,6 +578,7 @@ class TestGenerateObservation:
 
         mock_state_def = MagicMock()
         mock_state_def.name = "open"
+        mock_state_def.definition_type = "cleanliness"
 
         mock_entity_type = MagicMock()
         mock_entity_type.name = "door"
@@ -616,6 +647,7 @@ class TestGenerateObservation:
 
         mock_state_def = MagicMock()
         mock_state_def.name = "open"
+        mock_state_def.definition_type = "cleanliness"
 
         mock_entity_type = MagicMock()
         mock_entity_type.name = "door"
@@ -685,20 +717,23 @@ class TestGenerateObservation:
         mock_entity.is_active = True
         mock_entity.entity_type_id = entity_type_id
         mock_entity.current_state_id = state_id_off
+        mock_entity.entity_metadata = {}
 
         mock_state_def_on = MagicMock()
         mock_state_def_on.id = state_id_on
         mock_state_def_on.name = "on"
+        mock_state_def_on.definition_type = "cleanliness"
         mock_state_def_off = MagicMock()
         mock_state_def_off.id = state_id_off
         mock_state_def_off.name = "off"
+        mock_state_def_off.definition_type = "cleanliness"
 
         mock_entity_type = MagicMock()
         mock_entity_type.name = "oven"
         mock_entity_type.display_name = "Oven"
 
         llm_result = {
-            "result": {"oven_1": {"state": "on", "confidence": 0.95}},
+            "result": {"oven_1": {"cleanliness": {"state": "on", "confidence": 0.95}}},
             "token_usage": {"prompt_tokens": 100, "completion_tokens": 20},
         }
 
@@ -721,6 +756,157 @@ class TestGenerateObservation:
             patch(
                 "services.vision_observation_service._implementation.VisionEntityTypeRepository"
             ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+
+            async def update_entity(
+                entity_id_arg: uuid.UUID, **kwargs: object
+            ) -> MagicMock:
+                assert entity_id_arg == entity_id
+                for key, value in kwargs.items():
+                    setattr(mock_entity, key, value)
+                return mock_entity
+
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                side_effect=update_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def_on, mock_state_def_off]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+            mock_event_repo_cls.return_value.create = AsyncMock()
+
+            result = await generate_observation(
+                session, config_id, image_bytes=b"fake-image-data"
+            )
+
+            assert result is not None
+            assert result.camera_id == config_id
+            assert len(result.entity_observations) == 1
+            assert result.entity_observations[0].entity_name == "oven_1"
+            assert result.entity_observations[0].state == "on"
+            assert result.entity_observations[0].state_id == state_id_on
+            assert result.entity_observations[0].confidence == 0.95
+            assert result.entity_observations[0].entity_id == entity_id
+            assert result.raw_llm_response == {
+                "oven_1": {"cleanliness": {"state": "on", "confidence": 0.95}}
+            }
+            assert result.token_usage == {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "observed": True,
+                "image_relevant": True,
+            }
+            update_args = mock_entity_repo_cls.return_value.update.await_args
+            assert update_args is not None
+            update_kwargs = update_args.kwargs
+            assert update_kwargs["current_state_id"] == state_id_on
+            assert update_kwargs["current_state_since"] == result.observed_at
+            assert update_kwargs["entity_metadata"] == {
+                "current_states": {
+                    "cleanliness": {
+                        "state_definition_id": str(state_id_on),
+                        "state": "on",
+                        "current_state_since": result.observed_at.isoformat(),
+                        "observed_at": result.observed_at.isoformat(),
+                        "confidence": 0.95,
+                    }
+                }
+            }
+
+    @pytest.mark.asyncio
+    async def test_observation_skips_when_current_metadata_matches(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        state_id_on = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_config.llm_prompt = "Kitchen camera"
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.name = "oven_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = state_id_on
+        mock_entity.current_state_since = None
+        mock_entity.entity_metadata = {
+            "current_states": {
+                "cleanliness": {
+                    "state_definition_id": str(state_id_on),
+                    "state": "on",
+                    "current_state_since": "2026-06-01T12:00:00+00:00",
+                    "observed_at": "2026-06-01T12:00:00+00:00",
+                }
+            }
+        }
+
+        mock_state_def_on = MagicMock()
+        mock_state_def_on.id = state_id_on
+        mock_state_def_on.name = "on"
+        mock_state_def_on.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "oven"
+        mock_entity_type.display_name = "Oven"
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = {
+            "result": {"oven_1": {"cleanliness": {"state": "on", "confidence": 0.95}}},
+            "token_usage": {},
+        }
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
             patch("services.vision_observation_service._implementation.init_s3"),
             patch(
                 "services.vision_observation_service._implementation.create_monitoring_llm_provider",
@@ -744,38 +930,120 @@ class TestGenerateObservation:
                 return_value=mock_entity
             )
             mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
-                return_value=[mock_state_def_on, mock_state_def_off]
+                return_value=[mock_state_def_on]
             )
             mock_type_repo_cls.return_value.get_by_id = AsyncMock(
                 return_value=mock_entity_type
             )
+            mock_event_repo_cls.return_value.create = AsyncMock()
 
-            result = await generate_observation(
-                session, config_id, image_bytes=b"fake-image-data"
-            )
+            await generate_observation(session, config_id, image_bytes=b"frame")
 
-            assert result is not None
-            assert result.camera_id == config_id
-            assert len(result.entity_observations) == 1
-            assert result.entity_observations[0].entity_name == "oven_1"
-            assert result.entity_observations[0].state == "on"
-            assert result.entity_observations[0].state_id == state_id_on
-            assert result.entity_observations[0].confidence == 0.95
-            assert result.entity_observations[0].entity_id == entity_id
-            assert result.raw_llm_response == {
-                "oven_1": {"state": "on", "confidence": 0.95}
-            }
-            assert result.token_usage == {
-                "prompt_tokens": 100,
-                "completion_tokens": 20,
-                "observed": True,
-                "image_relevant": True,
-            }
-            mock_entity_repo_cls.return_value.update.assert_awaited_once_with(
-                entity_id,
-                current_state_id=state_id_on,
-                current_state_since=result.observed_at,
+            mock_entity_repo_cls.return_value.update.assert_not_awaited()
+            mock_event_repo_cls.return_value.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_observation_backfills_missing_metadata_without_event(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        state_id_on = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_config.llm_prompt = "Kitchen camera"
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        current_state_since = datetime(2026, 6, 1, 12, tzinfo=timezone.utc)
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.name = "oven_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = state_id_on
+        mock_entity.current_state_since = current_state_since
+        mock_entity.entity_metadata = {}
+
+        mock_state_def_on = MagicMock()
+        mock_state_def_on.id = state_id_on
+        mock_state_def_on.name = "on"
+        mock_state_def_on.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "oven"
+        mock_entity_type.display_name = "Oven"
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = {
+            "result": {"oven_1": {"cleanliness": {"state": "on", "confidence": 0.95}}},
+            "token_usage": {},
+        }
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
             )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def_on]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+            mock_event_repo_cls.return_value.create = AsyncMock()
+
+            await generate_observation(session, config_id, image_bytes=b"frame")
+
+            update_args = mock_entity_repo_cls.return_value.update.await_args
+            assert update_args is not None
+            update_kwargs = update_args.kwargs
+            assert update_kwargs["entity_metadata"]["current_states"]["cleanliness"][
+                "state_definition_id"
+            ] == str(state_id_on)
+            mock_event_repo_cls.return_value.create.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_observation_uses_active_state_definitions_grouped_by_type(self):
@@ -801,6 +1069,7 @@ class TestGenerateObservation:
         mock_entity.is_active = True
         mock_entity.entity_type_id = entity_type_id
         mock_entity.current_state_id = None
+        mock_entity.entity_metadata = {}
 
         clean_id = uuid.uuid4()
         occupied_id = uuid.uuid4()
@@ -847,6 +1116,9 @@ class TestGenerateObservation:
             patch(
                 "services.vision_observation_service._implementation.VisionEntityTypeRepository"
             ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
             patch("services.vision_observation_service._implementation.init_s3"),
             patch(
                 "services.vision_observation_service._implementation.create_monitoring_llm_provider",
@@ -866,13 +1138,25 @@ class TestGenerateObservation:
             mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
                 return_value=mock_entity
             )
-            mock_entity_repo_cls.return_value.update = AsyncMock()
+
+            async def update_entity(
+                entity_id_arg: uuid.UUID, **kwargs: object
+            ) -> MagicMock:
+                assert entity_id_arg == entity_id
+                for key, value in kwargs.items():
+                    setattr(mock_entity, key, value)
+                return mock_entity
+
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                side_effect=update_entity
+            )
             mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
                 return_value=[clean_state, occupied_state]
             )
             mock_type_repo_cls.return_value.get_by_id = AsyncMock(
                 return_value=mock_entity_type
             )
+            mock_event_repo_cls.return_value.create = AsyncMock()
 
             result = await generate_observation(
                 session, config_id, image_bytes=b"frame-data"
@@ -889,7 +1173,31 @@ class TestGenerateObservation:
             mock_sd_repo_cls.return_value.list_by_entity_type.assert_awaited_once_with(
                 entity_type_id, is_active=True
             )
-            mock_entity_repo_cls.return_value.update.assert_not_awaited()
+            assert mock_entity_repo_cls.return_value.update.await_count == 2
+            assert mock_entity.entity_metadata == {
+                "current_states": {
+                    "cleanliness": {
+                        "state_definition_id": str(clean_id),
+                        "state": "clean",
+                        "current_state_since": result.observed_at.isoformat(),
+                        "observed_at": result.observed_at.isoformat(),
+                        "confidence": 0.9,
+                    },
+                    "occupation": {
+                        "state_definition_id": str(occupied_id),
+                        "state": "occupied",
+                        "current_state_since": result.observed_at.isoformat(),
+                        "observed_at": result.observed_at.isoformat(),
+                        "confidence": 0.8,
+                    },
+                }
+            }
+            assert mock_event_repo_cls.return_value.create.await_count == 2
+            event_definition_types = [
+                call.args[0].event_metadata["definition_type"]
+                for call in mock_event_repo_cls.return_value.create.await_args_list
+            ]
+            assert event_definition_types == ["cleanliness", "occupation"]
 
     @pytest.mark.asyncio
     async def test_successful_observation_with_image_url(self):
@@ -922,16 +1230,20 @@ class TestGenerateObservation:
         mock_state_def = MagicMock()
         mock_state_def.id = state_id_open
         mock_state_def.name = "open"
+        mock_state_def.definition_type = "cleanliness"
         mock_state_def_closed = MagicMock()
         mock_state_def_closed.id = state_id_closed
         mock_state_def_closed.name = "closed"
+        mock_state_def_closed.definition_type = "cleanliness"
 
         mock_entity_type = MagicMock()
         mock_entity_type.name = "door"
         mock_entity_type.display_name = "Door"
 
         llm_result = {
-            "result": {"door_1": {"state": "closed", "confidence": 0.88}},
+            "result": {
+                "door_1": {"cleanliness": {"state": "closed", "confidence": 0.88}}
+            },
             "token_usage": {"prompt_tokens": 80, "completion_tokens": 15},
         }
 
@@ -1031,13 +1343,16 @@ class TestGenerateObservation:
         mock_state_def = MagicMock()
         mock_state_def.id = uuid.uuid4()
         mock_state_def.name = "normal"
+        mock_state_def.definition_type = "cleanliness"
 
         mock_entity_type = MagicMock()
         mock_entity_type.name = "zone"
         mock_entity_type.display_name = "Zone"
 
         llm_result = {
-            "result": {"entity_1": {"state": "normal", "confidence": 0.9}},
+            "result": {
+                "entity_1": {"cleanliness": {"state": "normal", "confidence": 0.9}}
+            },
             "token_usage": {},
         }
 
@@ -1131,6 +1446,7 @@ class TestGenerateObservation:
         mock_state_def = MagicMock()
         mock_state_def.id = uuid.uuid4()
         mock_state_def.name = "on"
+        mock_state_def.definition_type = "cleanliness"
 
         mock_entity_type = MagicMock()
         mock_entity_type.name = "light"
@@ -1138,7 +1454,7 @@ class TestGenerateObservation:
 
         llm_result = {
             "result": {
-                "light_1": {"state": "on", "confidence": 0.99},
+                "light_1": {"cleanliness": {"state": "on", "confidence": 0.99}},
                 "unknown_entity": {"state": "active", "confidence": 0.5},
             },
             "token_usage": {},
@@ -1283,6 +1599,7 @@ class TestGetConfigurationPrompt:
         mock_state_def = MagicMock()
         mock_state_def.id = uuid.uuid4()
         mock_state_def.name = "open"
+        mock_state_def.definition_type = "cleanliness"
         mock_state_def.criteria = "gate is raised"
 
         mock_entity_type = MagicMock()

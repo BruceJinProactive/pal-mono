@@ -25,6 +25,7 @@ class RuleWorkflow:
     entity_type_name: str
     previous_state: str
     trigger_state: str
+    state_definition_type: str | None
     handler: Callable[
         [
             VisionRuleEventRepository,
@@ -80,6 +81,7 @@ RULE_TYPE_WORKFLOWS: dict[str, RuleWorkflow] = {
         entity_type_name="table",
         previous_state="dirty",
         trigger_state="clean",
+        state_definition_type="cleanliness",
         handler=_handle_table_cleanness_rule,
     )
 }
@@ -130,6 +132,14 @@ async def handle_state_change_rules(
             continue
 
         if resolved_entity_type_name != workflow.entity_type_name:
+            continue
+
+        event_definition_type = event_metadata.get("definition_type")
+        if (
+            workflow.state_definition_type is not None
+            and isinstance(event_definition_type, str)
+            and event_definition_type != workflow.state_definition_type
+        ):
             continue
 
         await workflow.handler(

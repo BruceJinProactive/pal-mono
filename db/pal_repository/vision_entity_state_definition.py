@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import delete, select
+from sqlalchemy import cast, delete, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import JSONPATH
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.pal_repository.data_classes.vision_entity_state_definition import (
@@ -193,9 +194,22 @@ class VisionEntityStateDefinitionRepository:
         from db.tables import VisionEntity
 
         try:
+            metadata_uses_state = func.jsonb_path_exists(
+                VisionEntity.entity_metadata,
+                cast(
+                    literal(
+                        "$.current_states.* ? (@.state_definition_id == $state_id)"
+                    ),
+                    JSONPATH,
+                ),
+                func.jsonb_build_object("state_id", str(state_definition_id)),
+            )
             result = await self.session.execute(
                 select(VisionEntity.id).filter(
-                    VisionEntity.current_state_id == state_definition_id
+                    or_(
+                        VisionEntity.current_state_id == state_definition_id,
+                        metadata_uses_state,
+                    )
                 )
             )
             return len(result.all())
@@ -211,9 +225,24 @@ class VisionEntityStateDefinitionRepository:
         from db.tables import VisionEntity
 
         try:
+            metadata_uses_state = func.jsonb_path_exists(
+                VisionEntity.entity_metadata,
+                cast(
+                    literal(
+                        "$.current_states.* ? (@.state_definition_id == $state_id)"
+                    ),
+                    JSONPATH,
+                ),
+                func.jsonb_build_object("state_id", str(state_definition_id)),
+            )
             result = await self.session.execute(
                 select(VisionEntity.id)
-                .filter(VisionEntity.current_state_id == state_definition_id)
+                .filter(
+                    or_(
+                        VisionEntity.current_state_id == state_definition_id,
+                        metadata_uses_state,
+                    )
+                )
                 .limit(1)
             )
             if result.first() is not None:
@@ -234,14 +263,23 @@ class VisionEntityStateDefinitionRepository:
             )
             raise
 
-    async def clear_default_for_entity_type(self, entity_type_id: uuid.UUID) -> None:
+    async def clear_default_for_entity_type(
+        self,
+        entity_type_id: uuid.UUID,
+        definition_type: str,
+        except_state_definition_id: uuid.UUID | None = None,
+    ) -> None:
         try:
-            result = await self.session.execute(
-                select(VisionEntityStateDefinition).filter(
-                    VisionEntityStateDefinition.entity_type_id == entity_type_id,
-                    VisionEntityStateDefinition.is_default.is_(True),
-                )
+            stmt = select(VisionEntityStateDefinition).filter(
+                VisionEntityStateDefinition.entity_type_id == entity_type_id,
+                VisionEntityStateDefinition.definition_type == definition_type,
+                VisionEntityStateDefinition.is_default.is_(True),
             )
+            if except_state_definition_id is not None:
+                stmt = stmt.filter(
+                    VisionEntityStateDefinition.id != except_state_definition_id
+                )
+            result = await self.session.execute(stmt)
             for row in result.scalars().all():
                 row.is_default = False
             await self.session.commit()

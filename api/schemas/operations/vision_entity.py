@@ -208,6 +208,16 @@ class UpdateEntityStateRequest(BaseModel):
     )
 
 
+class EntityCurrentStateResponse(BaseModel):
+    """Current state for one state definition type."""
+
+    state_definition_id: uuid.UUID
+    state: str | None = None
+    current_state_since: datetime | None = None
+    observed_at: datetime | None = None
+    confidence: float | None = None
+
+
 class EntityResponse(BaseModel):
     """Response model for a vision entity."""
 
@@ -219,6 +229,7 @@ class EntityResponse(BaseModel):
     name: str
     current_state_id: uuid.UUID | None
     current_state_since: datetime | None
+    current_states: dict[str, EntityCurrentStateResponse] = Field(default_factory=dict)
     entity_metadata: dict[str, Any]
     is_active: bool
     created_at: datetime

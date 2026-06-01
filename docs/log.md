@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-01
 
+- **[PAL-10984] Track typed current states on vision entities.** Vision entity state updates now maintain `metadata.current_states` keyed by state-definition type, emit one state-change event per changed type, and expose the parsed map on entity responses. Default entity creation initializes every default state type, observation parsing no longer treats a top-level `state` key as legacy without an explicit marker, and state-definition delete guards check both legacy columns and typed metadata. -> `docs/state/architecture.md`
 - **[PAL-10949] Add state definition metadata columns and typed prompt grouping.** Added `definition_type` and `is_active` to `vision_entity_state_definition` so state definitions can be grouped by purpose and toggled active/inactive. Vision observation prompts now load only active state definitions and group options by `definition_type` so the LLM judges each active group separately. The existing text `criteria` column remains unchanged. Migration: `3742a24deea6`.
 
 ---

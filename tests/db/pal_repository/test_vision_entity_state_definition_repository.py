@@ -420,6 +420,81 @@ class TestCountEntitiesUsingState:
         mock_session.rollback.assert_awaited_once()
 
 
+class TestClearDefaultForEntityType:
+
+    @pytest.mark.asyncio
+    async def test_clears_defaults_for_definition_type(
+        self,
+        repo: VisionEntityStateDefinitionRepository,
+        mock_session: AsyncMock,
+        sample_entity_type_id: uuid.UUID,
+    ) -> None:
+        row = MagicMock(spec=VisionEntityStateDefinition)
+        row.is_default = True
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [row]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        await repo.clear_default_for_entity_type(
+            sample_entity_type_id, "occupation", except_state_definition_id=uuid.uuid4()
+        )
+
+        assert row.is_default is False
+        mock_session.execute.assert_awaited_once()
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_on_db_error(
+        self,
+        repo: VisionEntityStateDefinitionRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        mock_session.execute.side_effect = Exception("error")
+
+        with pytest.raises(Exception):
+            await repo.clear_default_for_entity_type(uuid.uuid4(), "cleanliness")
+        mock_session.rollback.assert_awaited_once()
+
+
+class TestDeleteIfUnused:
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_state_is_in_use(
+        self,
+        repo: VisionEntityStateDefinitionRepository,
+        mock_session: AsyncMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        in_use_result = MagicMock()
+        in_use_result.first.return_value = (uuid.uuid4(),)
+        mock_session.execute.return_value = in_use_result
+
+        deleted = await repo.delete_if_unused(sample_id)
+
+        assert deleted is False
+        mock_session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_deletes_when_state_is_unused(
+        self,
+        repo: VisionEntityStateDefinitionRepository,
+        mock_session: AsyncMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        in_use_result = MagicMock()
+        in_use_result.first.return_value = None
+        delete_result = MagicMock()
+        delete_result.rowcount = 1
+        mock_session.execute.side_effect = [in_use_result, delete_result]
+
+        deleted = await repo.delete_if_unused(sample_id)
+
+        assert deleted is True
+        mock_session.commit.assert_awaited_once()
+
+
 class TestDataImmutability:
 
     def test_data_is_frozen(self) -> None:

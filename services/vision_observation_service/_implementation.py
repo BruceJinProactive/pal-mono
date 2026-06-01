@@ -31,6 +31,13 @@ from services.monitoring_service._providers import (
     create_monitoring_llm_provider,
 )
 from services.vision_observation_service._workflow import handle_state_change_rules
+from services.vision_state_metadata import (
+    LEGACY_CURRENT_STATE_TYPE,
+    current_state_id_from_metadata,
+    current_state_metadata_key,
+    get_current_states_metadata,
+    set_current_state_metadata,
+)
 from utils.log import logger
 
 
@@ -110,11 +117,15 @@ def _build_entity_state_schema(
     }
 
 
-def _state_definition_type(state_def: Any) -> str:
+def _state_definition_type(state_def: Any) -> str | None:
     definition_type = getattr(state_def, "definition_type", None)
     if isinstance(definition_type, str) and definition_type.strip():
         return definition_type.strip()
-    return "cleanliness"
+    return None
+
+
+def _state_definition_group_key(state_def: Any) -> str:
+    return current_state_metadata_key(_state_definition_type(state_def))
 
 
 def _state_definition_criteria(state_def: Any) -> str | None:
@@ -129,7 +140,7 @@ def _build_state_definition_groups(
 ) -> dict[str, dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
     for state_def in state_defs:
-        definition_type = _state_definition_type(state_def)
+        definition_type = _state_definition_group_key(state_def)
         group = groups.setdefault(
             definition_type,
             {
@@ -143,6 +154,16 @@ def _build_state_definition_groups(
         if criteria:
             group["state_criteria"][state_name] = criteria
     return groups
+
+
+def _is_legacy_observation(observation: dict[str, Any]) -> bool:
+    definition_type = observation.get("definition_type")
+    return (
+        observation.get("legacy") is True
+        or observation.get("is_legacy") is True
+        or observation.get("format") == "legacy"
+        or definition_type == LEGACY_CURRENT_STATE_TYPE
+    )
 
 
 def _format_roi_hint(roi_hint: dict[str, object] | None) -> str | None:
@@ -422,7 +443,7 @@ async def generate_observation(
             definition_type: {
                 state_def.name: state_def.id
                 for state_def in state_defs
-                if _state_definition_type(state_def) == definition_type
+                if _state_definition_group_key(state_def) == definition_type
             }
             for definition_type in state_definition_groups
         }
@@ -457,6 +478,9 @@ async def generate_observation(
             "state_name_to_id_by_type": state_name_to_id_by_type,
             "state_name_to_id": {sd.name: sd.id for sd in state_defs},
             "state_id_to_name": {sd.id: sd.name for sd in state_defs},
+            "state_id_to_definition_type": {
+                sd.id: _state_definition_type(sd) for sd in state_defs
+            },
         }
 
     if not entities_with_states:
@@ -566,7 +590,7 @@ async def generate_observation(
 
         info = entity_lookup[entity_name]
         typed_observations: list[tuple[str | None, dict[str, Any]]] = []
-        if "state" in observation:
+        if _is_legacy_observation(observation):
             typed_observations.append((None, observation))
         else:
             for definition_type, typed_observation in observation.items():
@@ -603,34 +627,75 @@ async def generate_observation(
             if obs.state_id is None:
                 continue
             lookup_info = entity_lookup[obs.entity_name]
-            # current_state_id can store only one state, so do not collapse
-            # multi-type observations into a lossy single current state.
-            if len(lookup_info["state_name_to_id_by_type"]) > 1:
-                continue
             session.expire_all()
             fresh_entity = await entity_repo.get_by_id(obs.entity_id)
-            if not fresh_entity or obs.state_id == fresh_entity.current_state_id:
+            if not fresh_entity:
                 continue
+
+            definition_type = current_state_metadata_key(
+                obs.definition_type,
+                obs.state_id,
+                lookup_info["state_id_to_definition_type"],
+            )
+            current_states = get_current_states_metadata(fresh_entity.entity_metadata)
+            previous_state_id = current_state_id_from_metadata(
+                current_states, definition_type
+            )
+            if (
+                previous_state_id is None
+                and fresh_entity.current_state_id is not None
+                and lookup_info["state_id_to_definition_type"].get(
+                    fresh_entity.current_state_id
+                )
+                == definition_type
+            ):
+                previous_state_id = fresh_entity.current_state_id
+
+            state_changed = obs.state_id != previous_state_id
+            metadata_missing = definition_type not in current_states
+            if not state_changed and not metadata_missing:
+                continue
+
+            current_state_since = (
+                observed_at
+                if state_changed
+                else fresh_entity.current_state_since or observed_at
+            )
+            entity_metadata = set_current_state_metadata(
+                fresh_entity.entity_metadata,
+                definition_type,
+                obs.state_id,
+                obs.state,
+                current_state_since,
+                observed_at,
+                obs.confidence,
+            )
+            updates: dict[str, object] = {"entity_metadata": entity_metadata}
+            if len(lookup_info["state_name_to_id_by_type"]) == 1:
+                updates["current_state_id"] = obs.state_id
+                updates["current_state_since"] = current_state_since
             await entity_repo.update(
                 obs.entity_id,
-                current_state_id=obs.state_id,
-                current_state_since=observed_at,
+                **updates,
             )
+            if not state_changed:
+                continue
             state_change_event = VisionStateChangeEventData(
                 id=uuid.uuid4(),
                 entity_id=obs.entity_id,
                 new_state_id=obs.state_id,
                 observed_at=observed_at,
+                event_metadata={"definition_type": definition_type},
                 camera_config_id=camera_config_id,
-                previous_state_id=fresh_entity.current_state_id,
+                previous_state_id=previous_state_id,
                 confidence=obs.confidence,
                 frame_s3_key=image_url,
             )
             await event_repo.create(state_change_event)
             previous_state_name = None
-            if fresh_entity.current_state_id is not None:
+            if previous_state_id is not None:
                 previous_state_name = lookup_info["state_id_to_name"].get(
-                    fresh_entity.current_state_id
+                    previous_state_id
                 )
             await handle_state_change_rules(
                 session=session,

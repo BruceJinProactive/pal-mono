@@ -151,6 +151,43 @@ class TestCreateStateDefinition:
             assert created_record.criteria == "No dishes or trash on the surface"
 
     @pytest.mark.asyncio
+    async def test_default_create_clears_same_definition_type(self) -> None:
+        session = AsyncMock()
+        account_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        request = CreateStateDefinitionRequest(
+            name="empty",
+            display_name="Empty",
+            definition_type="occupation",
+            is_default=True,
+        )
+
+        et_mock = _make_entity_type_mock(id=entity_type_id, account_id=account_id)
+
+        with (
+            patch(f"{MODULE}.VisionEntityTypeRepository") as mock_et_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_sd_cls,
+        ):
+            et_repo = AsyncMock()
+            et_repo.get_by_id.return_value = et_mock
+            mock_et_cls.return_value = et_repo
+
+            sd_repo = AsyncMock()
+            sd_repo.get_by_entity_type_and_name.return_value = None
+            sd_repo.create.return_value = None
+            mock_sd_cls.return_value = sd_repo
+
+            from services.vision_entity_service._implementation import (
+                create_state_definition,
+            )
+
+            await create_state_definition(session, account_id, entity_type_id, request)
+
+            sd_repo.clear_default_for_entity_type.assert_awaited_once_with(
+                entity_type_id, "occupation"
+            )
+
+    @pytest.mark.asyncio
     async def test_entity_type_not_found_raises(self) -> None:
         session = AsyncMock()
         account_id = uuid.uuid4()
@@ -399,6 +436,62 @@ class TestUpdateStateDefinition:
             assert result.color == "#0000FF"
             assert result.sort_order == 5
             assert result.is_default is True
+            sd_repo.clear_default_for_entity_type.assert_awaited_once_with(
+                entity_type_id,
+                "cleanliness",
+                except_state_definition_id=state_def_id,
+            )
+
+    @pytest.mark.asyncio
+    async def test_default_type_rename_clears_target_definition_type(self) -> None:
+        session = AsyncMock()
+        account_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        state_def_id = uuid.uuid4()
+
+        et_mock = _make_entity_type_mock(id=entity_type_id, account_id=account_id)
+        state_def = _make_state_def_mock(
+            id=state_def_id,
+            entity_type_id=entity_type_id,
+            definition_type="cleanliness",
+            is_default=True,
+        )
+        updated = _make_state_def_mock(
+            id=state_def_id,
+            entity_type_id=entity_type_id,
+            definition_type="hygiene",
+            is_default=True,
+        )
+
+        request = UpdateStateDefinitionRequest(definition_type="hygiene")
+
+        with (
+            patch(f"{MODULE}.VisionEntityTypeRepository") as mock_et_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_sd_cls,
+        ):
+            et_repo = AsyncMock()
+            et_repo.get_by_id.return_value = et_mock
+            mock_et_cls.return_value = et_repo
+
+            sd_repo = AsyncMock()
+            sd_repo.get_by_id.return_value = state_def
+            sd_repo.update.return_value = updated
+            mock_sd_cls.return_value = sd_repo
+
+            from services.vision_entity_service._implementation import (
+                update_state_definition,
+            )
+
+            result = await update_state_definition(
+                session, account_id, entity_type_id, state_def_id, request
+            )
+
+            assert result.definition_type == "hygiene"
+            sd_repo.clear_default_for_entity_type.assert_awaited_once_with(
+                entity_type_id,
+                "hygiene",
+                except_state_definition_id=state_def_id,
+            )
 
     @pytest.mark.asyncio
     async def test_update_returns_none_raises(self) -> None:
