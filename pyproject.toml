@@ -80,6 +80,7 @@ dependencies = [
   "pytest>=9.0.3", # Python testing framework with fixtures and plugins
   "python-json-logger==2.0.7", # JSON formatter for Python's logging module
   "python-multipart>=0.0.27", # HTTP multipart form data parser
+  "redis>=5,<7", # Redis/Valkey client for the tool-result cache
   "requests>=2.33.0", # Simple HTTP library for human beings
   "shapely==2.1.0", # Geometric operations and spatial analysis library
   "slack-bolt==1.20.1", # Slack Bolt framework for building Slack apps
