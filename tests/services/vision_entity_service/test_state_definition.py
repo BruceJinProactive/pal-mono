@@ -82,6 +82,50 @@ class TestCreateStateDefinition:
             sd_repo.create.assert_awaited_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "definition_type",
+        ["touch", "glove_usage", "location", "presence"],
+    )
+    async def test_creates_supported_workflow_definition_types(
+        self, definition_type: str
+    ) -> None:
+        session = AsyncMock()
+        account_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        request = CreateStateDefinitionRequest(
+            name=f"{definition_type}_state",
+            display_name="Workflow State",
+            definition_type=definition_type,
+        )
+
+        et_mock = _make_entity_type_mock(id=entity_type_id, account_id=account_id)
+
+        with (
+            patch(f"{MODULE}.VisionEntityTypeRepository") as mock_et_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_sd_cls,
+        ):
+            et_repo = AsyncMock()
+            et_repo.get_by_id.return_value = et_mock
+            mock_et_cls.return_value = et_repo
+
+            sd_repo = AsyncMock()
+            sd_repo.get_by_entity_type_and_name.return_value = None
+            sd_repo.create.return_value = None
+            mock_sd_cls.return_value = sd_repo
+
+            from services.vision_entity_service._implementation import (
+                create_state_definition,
+            )
+
+            result = await create_state_definition(
+                session, account_id, entity_type_id, request
+            )
+
+            created_record = sd_repo.create.call_args[0][0]
+            assert result.definition_type == definition_type
+            assert created_record.definition_type == definition_type
+
+    @pytest.mark.asyncio
     async def test_duplicate_name_raises(self) -> None:
         session = AsyncMock()
         account_id = uuid.uuid4()
