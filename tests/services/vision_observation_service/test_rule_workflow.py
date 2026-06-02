@@ -105,6 +105,48 @@ class TestHandleStateChangeRules:
         assert event.event_metadata == {}
 
     @pytest.mark.asyncio
+    async def test_table_occupied_empty_to_occupied_creates_rule_event(self) -> None:
+        session = AsyncMock()
+        entity = _make_entity()
+        rule = _make_rule(project_id=entity.project_id, rule_type="table_occupied")
+        state_change = _make_state_change(entity_id=entity.id)
+        object.__setattr__(
+            state_change, "event_metadata", {"definition_type": "occupation"}
+        )
+        event: object | None = None
+
+        with (
+            patch(f"{MODULE}.VisionRuleRepository") as rule_repo_cls,
+            patch(f"{MODULE}.VisionRuleEventRepository") as event_repo_cls,
+        ):
+            rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
+            event_repo_cls.return_value.create = AsyncMock()
+
+            await handle_state_change_rules(
+                session,
+                entity,
+                state_change,
+                "occupied",
+                previous_state_name="empty",
+                entity_type_name="table",
+            )
+
+            rule_repo_cls.return_value.list_by_project.assert_awaited_once_with(
+                entity.project_id,
+                is_active=True,
+            )
+            event_repo_cls.return_value.create.assert_awaited_once()
+            event = event_repo_cls.return_value.create.call_args.args[0]
+
+        assert isinstance(event, VisionRuleEventData)
+        assert event.rule_id == rule.id
+        assert event.entity_id == entity.id
+        assert event.state_change_event_id == state_change.id
+        assert event.severity == rule.severity
+        assert event.triggered_at == state_change.observed_at
+        assert event.event_metadata == {}
+
+    @pytest.mark.asyncio
     async def test_clean_without_dirty_previous_state_does_not_create_rule_event(
         self,
     ) -> None:

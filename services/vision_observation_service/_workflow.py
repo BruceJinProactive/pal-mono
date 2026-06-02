@@ -40,7 +40,7 @@ class RuleWorkflow:
     ]
 
 
-async def _handle_table_cleanness_rule(
+async def _handle_state_transition_rule(
     rule_event_repo: VisionRuleEventRepository,
     entity: VisionEntityData,
     state_change_event: VisionStateChangeEventData,
@@ -66,11 +66,13 @@ async def _handle_table_cleanness_rule(
         )
     )
     logger.info(
-        "[Vision RuleWorkflow] Table cleanness rule triggered",
+        "[Vision RuleWorkflow] State transition rule triggered",
         extra={
             "rule_id": str(rule.id),
+            "rule_type": rule.type,
             "entity_id": str(entity.id),
             "state_change_event_id": str(state_change_event.id),
+            "previous_state_name": previous_state_name,
             "state_name": state_name,
         },
     )
@@ -82,8 +84,15 @@ RULE_TYPE_WORKFLOWS: dict[str, RuleWorkflow] = {
         previous_state="dirty",
         trigger_state="clean",
         state_definition_type="cleanliness",
-        handler=_handle_table_cleanness_rule,
-    )
+        handler=_handle_state_transition_rule,
+    ),
+    "table_occupied": RuleWorkflow(
+        entity_type_name="table",
+        previous_state="empty",
+        trigger_state="occupied",
+        state_definition_type="occupation",
+        handler=_handle_state_transition_rule,
+    ),
 }
 
 
