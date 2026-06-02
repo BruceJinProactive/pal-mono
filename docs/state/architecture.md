@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-01
+> **Last updated:** 2026-06-02
 
 ## Quick Reference
 
@@ -228,11 +228,10 @@ The core AI agent implementation providing conversational capabilities.
 Vision state-change events also drive lightweight rule workflows in
 `services/vision_observation_service/_workflow.py`. Each workflow is selected by
 `vision_rule.type` and owns its entity-type, state-definition type, and
-transition validation. `table_cleanness` fires only when a `table` entity moves
-from `dirty` to `clean` in the `cleanliness` state group, and `table_occupied`
-fires only when a `table` entity moves from `empty` to `occupied` in the
-`occupation` state group. Matched workflows write linked `vision_rule_event`
-rows through the repository layer. Test events marked with
+transition validation. Current workflows cover `table_cleanness`,
+`table_occupied`, `table_touch`, `glove_usage`, `food_container_on_ground`,
+`manager_in_room`, and `staff_at_front_desk`. Matched workflows write linked
+`vision_rule_event` rows through the repository layer. Test events marked with
 `event_metadata.is_test == True` are persisted as state changes but skipped by
 rule workflows.
 

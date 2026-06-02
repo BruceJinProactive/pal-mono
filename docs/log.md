@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-02
+
+- **Expand vision rule workflows.** Added state-transition workflows for `table_touch`, `glove_usage`, `food_container_on_ground`, `manager_in_room`, and `staff_at_front_desk`, joining the existing `table_cleanness` and `table_occupied` workflows. -> `docs/state/architecture.md`
+
+---
+
 ## 2026-06-01
 
 - **Tool-result cache migration plan switched to ElastiCache.** Updated the existing tool-result migration plan to target AWS ElastiCache instead of DB-backed persistence, matching the ElastiCache implementation notes and covering sanitized result shape, TTL-only list retention, read/write flow, rollout, and testing. -> `docs/plans/tool-result-elasticache-migration.md`

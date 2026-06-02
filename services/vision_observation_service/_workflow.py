@@ -93,6 +93,41 @@ RULE_TYPE_WORKFLOWS: dict[str, RuleWorkflow] = {
         state_definition_type="occupation",
         handler=_handle_state_transition_rule,
     ),
+    "table_touch": RuleWorkflow(
+        entity_type_name="table",
+        previous_state="no_table_touch",
+        trigger_state="table_touch",
+        state_definition_type="touch",
+        handler=_handle_state_transition_rule,
+    ),
+    "glove_usage": RuleWorkflow(
+        entity_type_name="staff",
+        previous_state="with_gloves",
+        trigger_state="without_gloves",
+        state_definition_type="glove_usage",
+        handler=_handle_state_transition_rule,
+    ),
+    "food_container_on_ground": RuleWorkflow(
+        entity_type_name="container",
+        previous_state="not_on_ground",
+        trigger_state="container_on_ground",
+        state_definition_type="location",
+        handler=_handle_state_transition_rule,
+    ),
+    "manager_in_room": RuleWorkflow(
+        entity_type_name="manager_office",
+        previous_state="no_person",
+        trigger_state="person_present",
+        state_definition_type="presence",
+        handler=_handle_state_transition_rule,
+    ),
+    "staff_at_front_desk": RuleWorkflow(
+        entity_type_name="front_desk",
+        previous_state="no_people",
+        trigger_state="people_present",
+        state_definition_type="presence",
+        handler=_handle_state_transition_rule,
+    ),
 }
 
 

@@ -104,14 +104,74 @@ class TestHandleStateChangeRules:
         assert event.triggered_at == state_change.observed_at
         assert event.event_metadata == {}
 
+    @pytest.mark.parametrize(
+        (
+            "rule_type",
+            "entity_type_name",
+            "previous_state_name",
+            "state_name",
+            "definition_type",
+        ),
+        [
+            (
+                "table_occupied",
+                "table",
+                "empty",
+                "occupied",
+                "occupation",
+            ),
+            (
+                "table_touch",
+                "table",
+                "no_table_touch",
+                "table_touch",
+                "touch",
+            ),
+            (
+                "glove_usage",
+                "staff",
+                "with_gloves",
+                "without_gloves",
+                "glove_usage",
+            ),
+            (
+                "food_container_on_ground",
+                "container",
+                "not_on_ground",
+                "container_on_ground",
+                "location",
+            ),
+            (
+                "manager_in_room",
+                "manager_office",
+                "no_person",
+                "person_present",
+                "presence",
+            ),
+            (
+                "staff_at_front_desk",
+                "front_desk",
+                "no_people",
+                "people_present",
+                "presence",
+            ),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_table_occupied_empty_to_occupied_creates_rule_event(self) -> None:
+    async def test_state_transition_workflows_create_rule_event(
+        self,
+        rule_type: str,
+        entity_type_name: str,
+        previous_state_name: str,
+        state_name: str,
+        definition_type: str,
+    ) -> None:
         session = AsyncMock()
         entity = _make_entity()
-        rule = _make_rule(project_id=entity.project_id, rule_type="table_occupied")
+        rule = _make_rule(project_id=entity.project_id, rule_type=rule_type)
         state_change = _make_state_change(entity_id=entity.id)
         object.__setattr__(
-            state_change, "event_metadata", {"definition_type": "occupation"}
+            state_change, "event_metadata", {"definition_type": definition_type}
         )
         event: object | None = None
 
@@ -126,9 +186,9 @@ class TestHandleStateChangeRules:
                 session,
                 entity,
                 state_change,
-                "occupied",
-                previous_state_name="empty",
-                entity_type_name="table",
+                state_name,
+                previous_state_name=previous_state_name,
+                entity_type_name=entity_type_name,
             )
 
             rule_repo_cls.return_value.list_by_project.assert_awaited_once_with(
