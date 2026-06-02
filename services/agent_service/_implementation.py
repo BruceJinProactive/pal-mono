@@ -11,6 +11,7 @@ from pal_agents.spec import (
     GenericAPISpec,
     KnowledgeSpec,
     ModelSpec,
+    OloSpec,
     PromptSpec,
     ToastSpec,
     ToolSpec,
@@ -504,6 +505,7 @@ def _agent_config_to_spec(
         generic_api=generic_api_spec or GenericAPISpec(),
         adora=adora_spec or AdoraSpec(),
         toast=toast_spec or ToastSpec(),
+        olo=OloSpec(),
         filler_words=filler_words_spec,
         **({"catering_enabled": catering_enabled} if catering_enabled else {}),
     )
