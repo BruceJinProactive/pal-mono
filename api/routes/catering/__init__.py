@@ -14,6 +14,7 @@ from api.schemas.catering.catering import (
     CreateCateringRequestRequest,
     CreateContactRequest,
     EventBridgeEvent,
+    PublicCateringRequest,
     UpdateCateringRequestRequest,
     UpdateContactRequest,
 )
@@ -64,6 +65,19 @@ def list_project_catering_requests(
     List all catering requests for a project.
     """
     return _implementation.list_project_catering_requests(project_id, context)
+
+
+@catering_router.get("/requests/{catering_request_id}/public")
+async def get_public_catering_request(
+    catering_request_id: uuid.UUID,
+    session: AsyncSession = Depends(db.get_db_async),
+) -> PublicCateringRequest:
+    """
+    Get public-safe details for a catering request.
+    """
+    return await _implementation.get_public_catering_request(
+        catering_request_id, session
+    )
 
 
 @catering_router.patch(

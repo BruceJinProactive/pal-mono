@@ -92,6 +92,24 @@ class CateringRequestListResponse(BaseModel):
     catering_requests: List[CateringRequest]
 
 
+class PublicCateringRequest(BaseModel):
+    """
+    Public response schema for catering request detail pages.
+    """
+
+    id: uuid.UUID
+    event_date: date
+    contact_name: str
+    event_time: Optional[time] = None
+    event_address: Optional[str] = None
+    event_detail: Optional[str] = None
+    event_fulfillment: Optional[FulfillmentType] = None
+    party_size: Optional[int] = None
+    status: RequestStatus
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class UpdateContactRequest(BaseModel):
     """
     Request schema for updating a contact.

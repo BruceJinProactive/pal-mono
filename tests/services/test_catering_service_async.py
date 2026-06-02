@@ -19,6 +19,11 @@ botocore_exceptions_stub = ModuleType("botocore.exceptions")
 setattr(botocore_exceptions_stub, "ClientError", Exception)
 sys.modules.setdefault("botocore.exceptions", botocore_exceptions_stub)
 
+original_create_engine = sqlalchemy.engine.create_engine
+original_create_async_engine = sqlalchemy.ext.asyncio.create_async_engine
+original_sessionmaker = sqlalchemy.orm.sessionmaker
+original_async_sessionmaker = sqlalchemy.ext.asyncio.async_sessionmaker
+
 sqlalchemy.engine.create_engine = lambda *args, **kwargs: object()
 sqlalchemy.ext.asyncio.create_async_engine = lambda *args, **kwargs: object()
 sqlalchemy.orm.sessionmaker = lambda *args, **kwargs: lambda *a, **kw: None
@@ -32,7 +37,13 @@ from db.pal_repository.data_classes.catering_request import (  # noqa: E402
 from db.tables.catering_requests import FulfillmentType, RequestStatus  # noqa: E402
 from services.catering_service._implementation import (  # noqa: E402
     create_catering_request_async,
+    get_public_catering_request_by_id,
 )
+
+sqlalchemy.engine.create_engine = original_create_engine
+sqlalchemy.ext.asyncio.create_async_engine = original_create_async_engine
+sqlalchemy.orm.sessionmaker = original_sessionmaker
+sqlalchemy.ext.asyncio.async_sessionmaker = original_async_sessionmaker
 
 
 def _make_catering_request_data(**overrides) -> CateringRequestData:
@@ -108,6 +119,49 @@ async def test_creates_new_request_when_no_existing() -> None:
     repo.create.assert_called_once()
     mock_publish.assert_called_once()
     assert mock_publish.call_args.args[0].catering_request_id == persisted_request_id
+
+
+@pytest.mark.asyncio
+async def test_get_public_catering_request_by_id_returns_request() -> None:
+    session = AsyncMock()
+    catering_request_id = uuid.uuid4()
+    catering_request = _make_catering_request_data(id=catering_request_id)
+
+    repo = AsyncMock()
+    repo.get_by_id.return_value = catering_request
+
+    with patch(
+        "services.catering_service._implementation.CateringRequestRepositoryNew",
+        return_value=repo,
+    ):
+        result = await get_public_catering_request_by_id(
+            session=session,
+            catering_request_id=catering_request_id,
+        )
+
+    assert result == catering_request
+    repo.get_by_id.assert_awaited_once_with(catering_request_id)
+
+
+@pytest.mark.asyncio
+async def test_get_public_catering_request_by_id_returns_none_when_missing() -> None:
+    session = AsyncMock()
+    catering_request_id = uuid.uuid4()
+
+    repo = AsyncMock()
+    repo.get_by_id.return_value = None
+
+    with patch(
+        "services.catering_service._implementation.CateringRequestRepositoryNew",
+        return_value=repo,
+    ):
+        result = await get_public_catering_request_by_id(
+            session=session,
+            catering_request_id=catering_request_id,
+        )
+
+    assert result is None
+    repo.get_by_id.assert_awaited_once_with(catering_request_id)
 
 
 @pytest.mark.asyncio

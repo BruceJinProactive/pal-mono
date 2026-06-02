@@ -258,6 +258,15 @@ async def create_catering_request_async(
     return data
 
 
+async def get_public_catering_request_by_id(
+    session: AsyncSession,
+    catering_request_id: uuid.UUID,
+) -> CateringRequestData | None:
+    """Fetch a catering request for a public detail page."""
+    repo = CateringRequestRepositoryNew(session)
+    return await repo.get_by_id(catering_request_id)
+
+
 def list_catering_requests_by_project_id(
     project_id: uuid.UUID,
 ) -> List[CateringRequest]:

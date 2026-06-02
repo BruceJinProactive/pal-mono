@@ -12,6 +12,7 @@ from api.schemas.catering.catering import (
     CreateCateringRequestRequest,
     CreateContactRequest,
     EventBridgeEvent,
+    PublicCateringRequest,
     UpdateCateringRequestRequest,
     UpdateContactRequest,
 )
@@ -20,6 +21,7 @@ from services.catering_service._implementation import (
     create_catering_request,
     create_contact,
     delete_contact,
+    get_public_catering_request_by_id,
     handle_catering_request_created_event,
     list_catering_requests_by_project_id,
     list_contacts,
@@ -139,6 +141,28 @@ def list_project_catering_requests(
             CateringRequest.model_validate(request) for request in catering_requests
         ]
     )
+
+
+async def get_public_catering_request(
+    catering_request_id: uuid.UUID,
+    session: AsyncSession,
+) -> PublicCateringRequest:
+    """
+    Get public-safe catering request details by ID.
+    """
+    catering_request = await get_public_catering_request_by_id(
+        session=session,
+        catering_request_id=catering_request_id,
+    )
+
+    if catering_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Catering request {catering_request_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    return PublicCateringRequest.model_validate(catering_request)
 
 
 async def update_catering_request(
