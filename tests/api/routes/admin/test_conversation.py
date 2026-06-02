@@ -3,11 +3,13 @@
 import datetime
 import math
 import uuid
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
+from api.routes.admin import _builder
 from api.routes.admin._conversation import (
     list_conversation_messages,
     lookup_conversation_account,
@@ -54,6 +56,112 @@ def _make_context() -> MagicMock:
     context.email = "admin@test.com"
     context.username = str(uuid.uuid4())
     return context
+
+
+def _make_conversation_for_sender_identifier(
+    channel_value: str | None,
+    channel_identifiers: list[str] | None,
+) -> MagicMock:
+    conversation = MagicMock()
+    conversation.user.channel_identifiers = channel_identifiers
+    conversation.channel = (
+        SimpleNamespace(value=channel_value) if channel_value else None
+    )
+    return conversation
+
+
+def _make_builder_conversation(
+    channel_value: str | None,
+    channel_identifiers: list[str] | None,
+) -> MagicMock:
+    conversation = _make_conversation_for_sender_identifier(
+        channel_value,
+        channel_identifiers,
+    )
+    conversation.id = uuid.uuid4()
+    conversation.status = SimpleNamespace(value="active")
+    conversation.project_id = uuid.uuid4()
+    conversation.created_at = datetime.datetime(
+        2026, 4, 21, tzinfo=datetime.timezone.utc
+    )
+    conversation.purpose = None
+    conversation.language = None
+    conversation.ended_reason = None
+    conversation.customer_converted = None
+    conversation.transfer_purpose = None
+    conversation.agent_fingerprint = None
+    conversation.prompt_fingerprint = None
+
+    conversation.user_id = uuid.uuid4()
+    conversation.is_test = False
+    conversation.vapi_control_url = None
+    conversation.call_id = None
+    conversation.updated_at = None
+    return conversation
+
+
+class TestConversationSenderIdentifier:
+    """Verify admin conversation responses can expose caller identifiers."""
+
+    def test_returns_none_when_user_has_no_channel_identifiers(self) -> None:
+        conversation = _make_conversation_for_sender_identifier("voice", None)
+
+        result = _builder._get_conversation_sender_identifier(conversation)
+
+        assert result is None
+
+    def test_prefers_identifier_matching_conversation_channel(self) -> None:
+        conversation = _make_conversation_for_sender_identifier(
+            "voice",
+            ["sms:+15550000000", "voice:+15551112222"],
+        )
+
+        result = _builder._get_conversation_sender_identifier(conversation)
+
+        assert result == "+15551112222"
+
+    def test_falls_back_to_first_prefixed_identifier_without_channel_match(
+        self,
+    ) -> None:
+        conversation = _make_conversation_for_sender_identifier(
+            "voice",
+            ["sms:+15550000000"],
+        )
+
+        result = _builder._get_conversation_sender_identifier(conversation)
+
+        assert result == "+15550000000"
+
+    def test_falls_back_to_prefixed_identifier_before_raw_identifier(self) -> None:
+        conversation = _make_conversation_for_sender_identifier(
+            "voice",
+            ["customer-123", "phone:+15550000000"],
+        )
+
+        result = _builder._get_conversation_sender_identifier(conversation)
+
+        assert result == "+15550000000"
+
+    def test_falls_back_to_first_raw_identifier(self) -> None:
+        conversation = _make_conversation_for_sender_identifier(
+            None,
+            ["customer-123"],
+        )
+
+        result = _builder._get_conversation_sender_identifier(conversation)
+
+        assert result == "customer-123"
+
+    def test_build_conversation_response_includes_sender_identifier(self) -> None:
+        conversation = _make_builder_conversation("voice", ["voice:+15551112222"])
+
+        result = _builder.build_conversation(
+            conversation=conversation,
+            message_count=1,
+            last_message=None,
+        )
+
+        assert result.sender_identifier == "+15551112222"
 
 
 class TestListConversationMessagesFiltering:

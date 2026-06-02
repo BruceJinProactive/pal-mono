@@ -29,6 +29,7 @@ class Conversation(BaseModel):
     id: uuid.UUID
     status: str
     project_id: uuid.UUID | None
+    sender_identifier: str | None = None
     last_message: Message | None
     total_messages: int
     created_at: datetime.datetime
@@ -87,6 +88,7 @@ class ConversationDetail(BaseModel):
     status: str
     project_id: uuid.UUID | None
     user_id: uuid.UUID
+    sender_identifier: str | None = None
     is_test: bool
     vapi_control_url: str | None
     call_id: str | None

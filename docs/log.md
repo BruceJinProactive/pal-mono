@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-02
 
+- **Conversation caller identifier in admin responses.** Admin conversation list/detail responses now include a stable `sender_identifier` derived from the conversation user's channel identifiers, so voice calls with no user transcript can still display the caller number when the latest persisted message lacks sender metadata.
 - **Expand vision rule workflows.** Added state-transition workflows for `table_touch`, `glove_usage`, `food_container_on_ground`, `manager_in_room`, and `staff_at_front_desk`, joining the existing `table_cleanness` and `table_occupied` workflows. -> `docs/state/architecture.md`
 
 ---

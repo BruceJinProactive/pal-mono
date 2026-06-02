@@ -212,6 +212,27 @@ def build_message(message: db.Message) -> Message:
     )
 
 
+def _get_conversation_sender_identifier(conversation: db.Conversation) -> str | None:
+    channel_identifiers = conversation.user.channel_identifiers or []
+    if not channel_identifiers:
+        return None
+
+    if conversation.channel:
+        channel_prefix = f"{conversation.channel.value}:"
+        for identifier in channel_identifiers:
+            if identifier.startswith(channel_prefix):
+                return identifier.removeprefix(channel_prefix)
+
+    raw_identifier = None
+    for identifier in channel_identifiers:
+        if ":" in identifier:
+            return identifier.split(":", 1)[1]
+        if raw_identifier is None:
+            raw_identifier = identifier
+
+    return raw_identifier
+
+
 def build_feedback(
     feedback: db.Feedback,
     message: db.Message | None = None,
@@ -242,6 +263,7 @@ def build_conversation(
         id=conversation.id,
         status=conversation.status.value,
         project_id=conversation.project_id,
+        sender_identifier=_get_conversation_sender_identifier(conversation),
         created_at=conversation.created_at,
         last_message=build_message(last_message) if last_message else None,
         total_messages=message_count,
@@ -262,6 +284,7 @@ def build_conversation_detail(conversation: db.Conversation) -> ConversationDeta
         status=conversation.status.value,
         project_id=conversation.project_id,
         user_id=conversation.user_id,
+        sender_identifier=_get_conversation_sender_identifier(conversation),
         is_test=conversation.is_test,
         vapi_control_url=conversation.vapi_control_url,
         call_id=conversation.call_id,
