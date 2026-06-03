@@ -791,9 +791,14 @@ async def delete_project_async(
     if not existing_project:
         return
 
+    project_account_id = existing_project.account_id
+    project_channel_identifiers = list(existing_project.channel_identifiers or [])
+    project_data_snapshot = _create_project_data_snapshot(existing_project)
+    sync_engine = async_session.bind.sync_engine
+
     # Release phone numbers in background (fire-and-forget)
     unique_numbers = set()
-    for identifier in existing_project.channel_identifiers or []:
+    for identifier in project_channel_identifiers:
         if identifier.startswith(("sms:", "voice:", "phone:")):
             number = identifier.split(":", 1)[1]
             unique_numbers.add(number)
@@ -825,9 +830,6 @@ async def delete_project_async(
         },
     )
 
-    # Capture project data before deletion for change logging
-    project_data_snapshot = _create_project_data_snapshot(existing_project)
-
     # Delete the project using async repository
     await project_repository.delete_project(project_id)
 
@@ -835,9 +837,9 @@ async def delete_project_async(
     asyncio.get_event_loop().run_in_executor(
         None,
         _log_project_change_sync,
-        async_session.bind.sync_engine,
+        sync_engine,
         context.email,
-        existing_project.account_id,
+        project_account_id,
         project_id,
         "delete",  # operation type
         project_data_snapshot,  # captured project data

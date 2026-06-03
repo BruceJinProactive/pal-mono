@@ -419,3 +419,63 @@ class TestDeleteProjectSubscriptionHandling:
 
             mock_voice_repo.delete_by_project_id.assert_called_once_with(project_id)
             mock_async_session.commit.assert_called_once()
+
+    async def test_delete_uses_project_snapshot_after_voice_config_commit(
+        self, mock_context: UserContext, mock_async_session: AsyncMock
+    ) -> None:
+        """Deleting voice configs may expire ORM attrs; route uses snapshots."""
+        project_id = uuid.uuid4()
+        account_id = uuid.uuid4()
+
+        class ExpiringProject:
+            expired = False
+
+            def __init__(self) -> None:
+                self.account = None
+
+            def _raise_if_expired(self) -> None:
+                if self.expired:
+                    raise AssertionError("project ORM attribute accessed after commit")
+
+            @property
+            def id(self) -> uuid.UUID:
+                self._raise_if_expired()
+                return project_id
+
+            @property
+            def account_id(self) -> uuid.UUID:
+                self._raise_if_expired()
+                return account_id
+
+            @property
+            def name(self) -> str:
+                self._raise_if_expired()
+                return "test-project"
+
+        mock_project = ExpiringProject()
+
+        mock_voice_repo = MagicMock()
+
+        async def delete_voice_configs(_: uuid.UUID) -> int:
+            mock_project.expired = True
+            return 3
+
+        mock_voice_repo.delete_by_project_id = AsyncMock(
+            side_effect=delete_voice_configs
+        )
+
+        with (
+            patch(
+                "api.routes.admin._projects.project_service.get_project_by_id_async",
+                return_value=mock_project,
+            ),
+            patch("api.routes.admin._projects.project_service.delete_project_async"),
+            patch(
+                "api.routes.admin._projects.VoiceConfigRepositoryNew",
+                return_value=mock_voice_repo,
+            ),
+        ):
+            await delete_project(project_id, mock_context, mock_async_session)
+
+            mock_voice_repo.delete_by_project_id.assert_called_once_with(project_id)
+            mock_async_session.commit.assert_called_once()

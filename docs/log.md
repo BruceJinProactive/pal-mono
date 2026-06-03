@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-02
 
+- **Project delete MissingGreenlet guard.** Admin project deletion now snapshots project scalar fields before subscription, voice-config, or project delete commits can expire async ORM objects, preventing `greenlet_spawn has not been called` failures during delete cleanup. -> `docs/log.md`
 - **Conversation caller identifier in admin responses.** Admin conversation list/detail responses now include a stable `sender_identifier` derived from the conversation user's channel identifiers, so voice calls with no user transcript can still display the caller number when the latest persisted message lacks sender metadata.
 - **Public catering request details endpoint.** Added unauthenticated `GET /v1/catering/requests/{catering_request_id}/public` for guest-facing catering detail pages. The public response omits project IDs, phone numbers, contact assignment, idempotency keys, and timestamps while returning event details, fulfillment, party size, contact name, and status.
 - **Expand vision rule workflows.** Added state-transition workflows for `table_touch`, `glove_usage`, `food_container_on_ground`, `manager_in_room`, and `staff_at_front_desk`, joining the existing `table_cleanness` and `table_occupied` workflows. -> `docs/state/architecture.md`

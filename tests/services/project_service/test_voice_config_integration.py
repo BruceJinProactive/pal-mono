@@ -166,6 +166,111 @@ class TestVoiceConfigIntegration:
             # Assert: Project was deleted
             mock_project_repo.delete_project.assert_called_once_with(project_id)
 
+    async def test_delete_project_async_snapshots_project_before_commit(self) -> None:
+        """Project data is captured before helper commits expire ORM attrs."""
+        mock_session = AsyncMock()
+        mock_session.bind.sync_engine = MagicMock()
+
+        context = UserContext(
+            username="test-user",
+            email="test@example.com",
+            groups=[],
+            display_name="Test User",
+            role=UserRole.Admin,
+        )
+
+        project_id = uuid.uuid4()
+        account_id = uuid.uuid4()
+        agent_id = uuid.uuid4()
+
+        class ExpiringProject:
+            expired = False
+
+            def _raise_if_expired(self) -> None:
+                if self.expired:
+                    raise AssertionError("project ORM attribute accessed after commit")
+
+            def __getattribute__(self, name: str) -> object:
+                guarded_names = {
+                    "id",
+                    "name",
+                    "display_name",
+                    "raw_config",
+                    "config",
+                    "channel_identifiers",
+                    "store_hours",
+                    "address",
+                    "product_info",
+                    "service_instruction",
+                    "order_integration_id",
+                    "timezone",
+                    "transfer_message",
+                    "reservation_link",
+                    "ordering_link",
+                    "call_forwarding_setup_completed",
+                    "created_at",
+                    "updated_at",
+                    "account_id",
+                    "agent_id",
+                }
+                if name in guarded_names:
+                    self._raise_if_expired()
+                return object.__getattribute__(self, name)
+
+            def __init__(self) -> None:
+                self.id = project_id
+                self.name = "test-project"
+                self.display_name = "Test Project"
+                self.raw_config = {}
+                self.channel_identifiers = ["voice:+15551234567"]
+                self.store_hours = None
+                self.address = None
+                self.product_info = None
+                self.service_instruction = None
+                self.order_integration_id = None
+                self.timezone = "America/Toronto"
+                self.transfer_message = None
+                self.reservation_link = None
+                self.ordering_link = None
+                self.call_forwarding_setup_completed = False
+                self.created_at = None
+                self.updated_at = None
+                self.account_id = account_id
+                self.agent_id = agent_id
+
+        mock_project = ExpiringProject()
+        mock_voice_repo_instance = MagicMock()
+
+        async def delete_voice_configs(_: uuid.UUID) -> int:
+            mock_project.expired = True
+            return 2
+
+        mock_voice_repo_instance.delete_by_project_id = AsyncMock(
+            side_effect=delete_voice_configs
+        )
+
+        with (
+            patch(
+                "services.project_service._implementation.ProjectRepositoryAsync"
+            ) as mock_project_repo_cls,
+            patch(
+                "services.project_service._implementation.VoiceConfigRepository",
+                return_value=mock_voice_repo_instance,
+            ),
+            patch("asyncio.get_event_loop"),
+        ):
+            mock_project_repo = mock_project_repo_cls.return_value
+            mock_project_repo.get_project = AsyncMock(return_value=mock_project)
+            mock_project_repo.delete_project = AsyncMock()
+
+            await delete_project_async(
+                async_session=mock_session,
+                context=context,
+                project_id=project_id,
+            )
+
+            mock_project_repo.delete_project.assert_called_once_with(project_id)
+
     async def test_delete_project_async_handles_nonexistent_project(self) -> None:
         """Deleting a non-existent project returns early without errors."""
         mock_session = AsyncMock()

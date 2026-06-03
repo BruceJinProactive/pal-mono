@@ -411,27 +411,32 @@ async def delete_project(
     project_id: uuid.UUID,
     context: UserContext,
     session: AsyncSession,
-):
+) -> None:
     authorize_admin(context)
 
     project = await project_service.get_project_by_id_async(session, project_id)
     if not project:
         return
 
+    project_id_snapshot = project.id
+    project_name = project.name
+    project_account_id = project.account_id
+    project_account = project.account
+
     try:
         current_subscription = None
-        if project.account:
+        if project_account:
             current_subscription = (
                 await subscription_service.get_current_subscription_data_async(
                     session,
-                    project.account,
+                    project_account,
                 )
             )
         if current_subscription:
             await subscription_service.remove_project_subscription_data_async(
                 session,
-                project.account_id,
-                project.id,
+                project_account_id,
+                project_id_snapshot,
                 current_subscription.external_id,
             )
 
@@ -439,18 +444,20 @@ async def delete_project(
         voice_repo = VoiceConfigRepositoryNew(session)
         deleted_voice_configs = await voice_repo.delete_by_project_id(project_id)
         logger.info(
-            f"Deleted {deleted_voice_configs} voice configs for project {project.name}"
+            f"Deleted {deleted_voice_configs} voice configs for project {project_name}"
         )
 
-        await project_service.delete_project_async(session, context, project_id)
+        await project_service.delete_project_async(
+            session, context, project_id_snapshot
+        )
         await session.commit()
     except Exception as e:
         await session.rollback()
         logger.error(
-            f"Failed to delete project {project.name}: {e}",
+            f"Failed to delete project {project_name}: {e}",
             extra={
-                "project_id": str(project.id),
-                "account_id": str(project.account_id),
+                "project_id": str(project_id_snapshot),
+                "account_id": str(project_account_id),
             },
             exc_info=True,
         )
