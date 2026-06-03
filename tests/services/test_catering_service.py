@@ -36,6 +36,7 @@ from services.catering_service._implementation import (  # noqa: E402
     _build_customer_status_sms_message,
     _find_and_assign_catering_manager,
     _get_catering_business_name,
+    _get_catering_request_confirmation_url,
     _get_catering_store_phone_number,
     _is_catering_manager_role,
     _should_send_customer_status_sms,
@@ -74,6 +75,18 @@ def _build_contact(
         role=role,
         created_at=datetime(2026, 3, 1),
     )
+
+
+def _expected_confirmation_link(catering_request: CateringRequest) -> str:
+    return (
+        " View details: "
+        f"https://console.palona.ai/catering-request/{catering_request.id}"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _set_default_runtime_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RUNTIME_ENV", raising=False)
 
 
 def test_request_status_plan_lifecycle_values() -> None:
@@ -168,6 +181,7 @@ def test_update_catering_request_sends_sms_for_confirmed_status() -> None:
     expected_message = (
         "Hi Taylor, your catering request with Pal Bistro for March 12, 2026 "
         "is confirmed. We'll reach out if we need any final details. "
+        f"View details: https://console.palona.ai/catering-request/{updated_request.id} "
         "Questions? Call +15551234567."
     )
     mock_send_sms.assert_called_once_with(
@@ -221,6 +235,7 @@ def test_update_catering_request_sends_sms_when_status_is_re_requested() -> None
     expected_message = (
         "Hi Taylor, your catering request with Pal Bistro for March 12, 2026 "
         "is confirmed. We'll reach out if we need any final details."
+        f"{_expected_confirmation_link(updated_request)}"
     )
     mock_send_sms.assert_called_once_with(
         updated_request.contact_phone_number,
@@ -277,6 +292,7 @@ def test_update_catering_request_sends_sms_when_store_phone_lookup_fails() -> No
     expected_message = (
         "Hi Taylor, your catering request with Pal Bistro for March 12, 2026 "
         "is confirmed. We'll reach out if we need any final details."
+        f"{_expected_confirmation_link(updated_request)}"
     )
     mock_send_sms.assert_called_once_with(
         updated_request.contact_phone_number,
@@ -352,7 +368,7 @@ def test_update_catering_request_sends_sms_for_new_lifecycle_statuses(
 
     mock_send_sms.assert_called_once_with(
         updated_request.contact_phone_number,
-        expected_message,
+        f"{expected_message}{_expected_confirmation_link(updated_request)}",
     )
 
 
@@ -804,6 +820,7 @@ def test_build_customer_status_sms_message_for_in_prep() -> None:
     expected_message = (
         "Hi Taylor, Pal Bistro has started preparing your catering order for "
         "March 12, 2026. We'll keep you posted as it gets closer to delivery."
+        f"{_expected_confirmation_link(request)}"
     )
     assert message == expected_message
 
@@ -818,7 +835,9 @@ def test_build_customer_status_sms_message_includes_store_phone_number() -> None
 
     expected_message = (
         "Hi Taylor, your catering order from Pal Bistro for March 12, 2026 "
-        "is ready for pickup. Questions? Call +15551234567."
+        "is ready for pickup."
+        f"{_expected_confirmation_link(request)}"
+        " Questions? Call +15551234567."
     )
     assert message == expected_message
 
@@ -830,6 +849,7 @@ def test_build_customer_status_sms_message_for_ready() -> None:
 
     expected_message = (
         "Hi Taylor, your catering order from Pal Bistro for March 12, 2026 is ready."
+        f"{_expected_confirmation_link(request)}"
     )
     assert message == expected_message
 
@@ -838,6 +858,7 @@ def test_build_customer_status_sms_message_for_missing_event_date() -> None:
     request = cast(
         CateringRequest,
         SimpleNamespace(
+            id=uuid.uuid4(),
             status=RequestStatus.CONFIRMED,
             event_date=None,
         ),
@@ -848,8 +869,30 @@ def test_build_customer_status_sms_message_for_missing_event_date() -> None:
     expected_message = (
         "Hi, your catering request with Pal Bistro is confirmed. "
         "We'll reach out if we need any final details."
+        f"{_expected_confirmation_link(request)}"
     )
     assert message == expected_message
+
+
+@pytest.mark.parametrize(
+    ("runtime_env", "expected_host"),
+    [
+        ("prd", "console.palona.ai"),
+        ("lat", "lat-console.palona.ai"),
+        ("stg", "stg-console.palona.ai"),
+        ("dev", "console.palona.ai"),
+    ],
+)
+def test_get_catering_request_confirmation_url_uses_environment_host(
+    runtime_env: str,
+    expected_host: str,
+) -> None:
+    request_id = uuid.uuid4()
+
+    with patch.dict("os.environ", {"RUNTIME_ENV": runtime_env}):
+        url = _get_catering_request_confirmation_url(request_id)
+
+    assert url == f"https://{expected_host}/catering-request/{request_id}"
 
 
 @pytest.mark.parametrize(

@@ -36,6 +36,11 @@ CUSTOMER_STATUS_SMS_STATUSES: set[RequestStatus] = {
     RequestStatus.IN_PREPARATION,
     RequestStatus.READY,
 }
+CATERING_REQUEST_CONFIRMATION_HOSTS: dict[str, str] = {
+    "prd": "console.palona.ai",
+    "lat": "lat-console.palona.ai",
+    "stg": "stg-console.palona.ai",
+}
 
 
 def create_catering_request(
@@ -617,6 +622,9 @@ def _build_customer_status_sms_message(
 
     greeting = _build_customer_sms_greeting(contact_name)
     event_phrase = _build_customer_sms_event_phrase(catering_request.event_date)
+    confirmation_link_sentence = _build_customer_sms_confirmation_link_sentence(
+        catering_request.id
+    )
     contact_sentence = _build_customer_sms_contact_sentence(store_phone_number)
     preparation_followup_sentence = _build_preparation_followup_sentence(
         event_fulfillment,
@@ -628,6 +636,7 @@ def _build_customer_status_sms_message(
         return (
             f"{greeting} your catering request with {business_name}{event_phrase} "
             f"is confirmed. We'll reach out if we need any final details."
+            f"{confirmation_link_sentence}"
             f"{contact_sentence}"
         )
 
@@ -635,6 +644,7 @@ def _build_customer_status_sms_message(
         return (
             f"{greeting} {business_name} has started preparing your catering order"
             f"{event_phrase}.{preparation_followup_sentence}"
+            f"{confirmation_link_sentence}"
             f"{contact_sentence}"
         )
 
@@ -642,6 +652,7 @@ def _build_customer_status_sms_message(
         return (
             f"{greeting} your catering order from {business_name}{event_phrase} "
             f"is ready{ready_fulfillment_phrase}."
+            f"{confirmation_link_sentence}"
             f"{contact_sentence}"
         )
 
@@ -666,6 +677,22 @@ def _build_customer_sms_contact_sentence(store_phone_number: str | None) -> str:
     if store_phone_number and store_phone_number.strip():
         return f" Questions? Call {store_phone_number.strip()}."
     return ""
+
+
+def _build_customer_sms_confirmation_link_sentence(
+    catering_request_id: uuid.UUID,
+) -> str:
+    url = _get_catering_request_confirmation_url(catering_request_id)
+    return f" View details: {url}"
+
+
+def _get_catering_request_confirmation_url(catering_request_id: uuid.UUID) -> str:
+    runtime_env = os.getenv("RUNTIME_ENV", "prd").strip().lower()
+    host = CATERING_REQUEST_CONFIRMATION_HOSTS.get(
+        runtime_env,
+        CATERING_REQUEST_CONFIRMATION_HOSTS["prd"],
+    )
+    return f"https://{host}/catering-request/{catering_request_id}"
 
 
 def _get_customer_sms_fulfillment_label(
