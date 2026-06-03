@@ -23,8 +23,16 @@ if [[ "$WAIT_FOR_DB" = true || "$WAIT_FOR_DB" = True ]]; then
 fi
 
 if [[ "$WAIT_FOR_REDIS" = true || "$WAIT_FOR_REDIS" = True ]]; then
+  REDIS_WAIT_HOST="${REDIS_HOST:-$REDIS_CACHE_HOST}"
+  REDIS_WAIT_PORT="${REDIS_PORT:-${REDIS_CACHE_PORT:-6379}}"
+
+  if [[ -z "$REDIS_WAIT_HOST" ]]; then
+    echo "ERROR: WAIT_FOR_REDIS requires REDIS_HOST or REDIS_CACHE_HOST" >&2
+    exit 1
+  fi
+
   dockerize \
-    -wait tcp://$REDIS_HOST:$REDIS_PORT \
+    -wait "tcp://$REDIS_WAIT_HOST:$REDIS_WAIT_PORT" \
     -timeout 300s
 fi
 

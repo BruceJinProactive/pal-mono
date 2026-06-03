@@ -10,6 +10,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-02
 
+- **Shared Redis cache client config.** Added reusable pal-mono Redis/Valkey cache settings, Redis client factory, local env examples, Redis wait support, and docs clarifying Secrets Manager versus IAM auth for ElastiCache. -> `docs/plans/tool-result-elasticache.md`
 - **Project delete MissingGreenlet guard.** Admin project deletion now snapshots project scalar fields before subscription, voice-config, or project delete commits can expire async ORM objects, preventing `greenlet_spawn has not been called` failures during delete cleanup. -> `docs/log.md`
 - **Conversation caller identifier in admin responses.** Admin conversation list/detail responses now include a stable `sender_identifier` derived from the conversation user's channel identifiers, so voice calls with no user transcript can still display the caller number when the latest persisted message lacks sender metadata.
 - **Public catering request details endpoint.** Added unauthenticated `GET /v1/catering/requests/{catering_request_id}/public` for guest-facing catering detail pages. The public response omits project IDs, phone numbers, contact assignment, idempotency keys, and timestamps while returning event details, fulfillment, party size, contact name, and status.

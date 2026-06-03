@@ -5,7 +5,7 @@ shared AWS ElastiCache-backed storage so recent tool outputs survive pod changes
 
 **Status:** Planning
 **Created:** 2026-05-19
-**Last updated:** 2026-06-01
+**Last updated:** 2026-06-02
 
 This plan supersedes the earlier DB-backed direction. Detailed
 ElastiCache implementation notes live in
@@ -108,25 +108,34 @@ pods.
 Add app configuration:
 
 ```text
-TOOL_RESULT_CACHE_ENABLED=true
-TOOL_RESULT_CACHE_HOST=...
-TOOL_RESULT_CACHE_PORT=6379
-TOOL_RESULT_CACHE_USERNAME=...
-TOOL_RESULT_CACHE_SECRET_KEY=...
-TOOL_RESULT_CACHE_TTL_SECONDS=1800
-TOOL_RESULT_CACHE_MAX_ITEM_BYTES=32768
+REDIS_CACHE_ENABLED=true
+REDIS_CACHE_HOST=...
+REDIS_CACHE_PORT=6379
+REDIS_CACHE_USERNAME=...
+REDIS_CACHE_AUTH_MODE=secrets_manager
+REDIS_CACHE_SECRET_KEY=REDIS_CACHE_AUTH_TOKEN
+REDIS_CACHE_SSL=true
+REDIS_CACHE_DEFAULT_TTL_SECONDS=1800
+REDIS_CACHE_MAX_ITEM_BYTES=32768
+REDIS_CACHE_SOCKET_CONNECT_TIMEOUT_SECONDS=2.0
+REDIS_CACHE_SOCKET_TIMEOUT_SECONDS=2.0
+REDIS_CACHE_HEALTH_CHECK_INTERVAL_SECONDS=30
 ```
 
 Authentication options:
 
-- Redis/Valkey username and password from AWS Secrets Manager.
-- IAM auth for Valkey 7.2+ or Redis OSS 7+ with TLS enabled.
+- Redis/Valkey username plus an auth token loaded from AWS Secrets Manager.
+  `REDIS_CACHE_SECRET_KEY` names the secret key; deployment config should
+  not contain the raw password.
+- IAM auth for Valkey 7.2+ or Redis OSS 7+ with TLS enabled. This path needs an
+  IAM auth-token provider in the Redis client instead of a static password.
 
 Files to modify:
 
 - `pyproject.toml` - add `redis>=5,<7`
 - `local.env.example` - document cache config
 - deployment/config files - provide ElastiCache endpoint and secret keys
+- `utils/cache/redis.py` - parse env config and create the Redis client
 
 ### Phase 2: Add A Cache Adapter In pal-mono
 
@@ -135,7 +144,7 @@ operations.
 
 Suggested file:
 
-- `services/tool_result_cache.py`
+- `utils/cache/redis.py`
 
 Responsibilities:
 
@@ -143,9 +152,9 @@ Responsibilities:
 - Close the client on application shutdown.
 - `append_tool_result(conversation_id, payload)`:
   - sanitize/allowlist payload via `build_cacheable_tool_result(...)`
-  - reject entries over `TOOL_RESULT_CACHE_MAX_ITEM_BYTES`
+  - reject entries over `REDIS_CACHE_MAX_ITEM_BYTES`
   - `RPUSH` the compact JSON item
-  - `EXPIRE` the key using `TOOL_RESULT_CACHE_TTL_SECONDS`
+  - `EXPIRE` the key using `REDIS_CACHE_DEFAULT_TTL_SECONDS`
 - `get_tool_results(conversation_id)`:
   - `LRANGE` the list
   - parse JSON
@@ -288,7 +297,7 @@ Turn N+1, possibly on another pod:
 | ---- | ------ |
 | `pyproject.toml` | Add Redis Python client |
 | `local.env.example` | Add cache configuration |
-| `services/tool_result_cache.py` | New ElastiCache adapter |
+| `utils/cache/redis.py` | New shared ElastiCache client/config module |
 | `services/message_service/_implementation.py` | Write sanitized tool events and read previous results before agent run |
 | `tests/services/message_service/test_tool_call_events.py` | Cover cache write hooks |
 

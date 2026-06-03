@@ -2,11 +2,19 @@
 
 Current project context. Read this before starting any work.
 
-Last updated: 2026-05-28
+Last updated: 2026-06-02
 
 ---
 
 ## Active Work
+
+- **Tool-result ElastiCache migration** (started 2026-06-01) - Moving recent
+  tool-result context from process-local `pal-agents` memory to shared
+  ElastiCache so cross-pod follow-up turns can see prior tool outputs.
+  Current pal-mono slice adds reusable Redis/Valkey env-backed cache settings
+  and a Redis client factory only; later slices will wire event writes, reads
+  before `PalAgent.run(...)`, and the pal-agents prompt handoff. ->
+  `docs/plans/tool-result-elasticache-migration.md`
 
 - **Eval runner parallel scenarios** (2026-04-29) — Scenarios within an eval run now execute concurrently, bounded by `max_concurrency` (request parameter on `RunEvalRequest` / `create_eval_run`; default 4). Applies uniformly to all driver modes including voice — each voice scenario owns an isolated LiveKit room, orchestrator, TTS engine, and egress pipeline, so concurrency is bounded by caller infra (worker pool, rate limits), not by shared in-process state. Each worker owns its own `AsyncSession`; counter updates on the outer session are serialised via `asyncio.Lock`. → `docs/plans/conversation-eval/parallel-scenario-execution-plan.md`
 

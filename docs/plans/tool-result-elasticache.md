@@ -1,6 +1,6 @@
 # Tool Result Storage With AWS ElastiCache
 
-**Last updated:** 2026-06-01
+**Last updated:** 2026-06-02
 
 This doc describes how tool-call results could be stored in AWS ElastiCache so
 multiple `pal-mono` pods can share recent tool outputs across turns.
@@ -39,18 +39,32 @@ mode, use the Redis cluster client instead of the single-endpoint client.
 Add environment variables such as:
 
 ```text
-TOOL_RESULT_CACHE_ENABLED=true
-TOOL_RESULT_CACHE_HOST=...
-TOOL_RESULT_CACHE_PORT=6379
-TOOL_RESULT_CACHE_USERNAME=...
-TOOL_RESULT_CACHE_SECRET_KEY=...
-TOOL_RESULT_CACHE_TTL_SECONDS=1800
-TOOL_RESULT_CACHE_MAX_ITEM_BYTES=32768
+REDIS_CACHE_ENABLED=true
+REDIS_CACHE_HOST=...
+REDIS_CACHE_PORT=6379
+REDIS_CACHE_USERNAME=...
+REDIS_CACHE_AUTH_MODE=secrets_manager
+REDIS_CACHE_SECRET_KEY=REDIS_CACHE_AUTH_TOKEN
+REDIS_CACHE_SSL=true
+REDIS_CACHE_DEFAULT_TTL_SECONDS=1800
+REDIS_CACHE_MAX_ITEM_BYTES=32768
+REDIS_CACHE_SOCKET_CONNECT_TIMEOUT_SECONDS=2.0
+REDIS_CACHE_SOCKET_TIMEOUT_SECONDS=2.0
+REDIS_CACHE_HEALTH_CHECK_INTERVAL_SECONDS=30
 ```
 
-The password can be loaded via the existing secret helper pattern. If IAM auth
-is used, the client needs a short-lived auth token provider instead of a static
-password.
+These Redis cache settings are intentionally not tool-result-specific so other
+cache-backed features can reuse the same ElastiCache client. For
+`REDIS_CACHE_AUTH_MODE=secrets_manager`, `REDIS_CACHE_SECRET_KEY` is the key
+name looked up through the existing AWS Secrets Manager helper, with an
+environment variable fallback for local development. Store the Redis/Valkey auth
+token under that key in deployed environments; do not put the raw password in
+deployment config.
+
+For `REDIS_CACHE_AUTH_MODE=iam`, keep TLS enabled and use an IAM
+auth-token provider instead of a static password. The IAM path requires Valkey
+7.2+ or Redis OSS 7+ and should be wired when the runtime adapter starts using
+IAM auth.
 
 ## Data Model
 
@@ -104,7 +118,7 @@ If no compact structured result is available, use the sanitized result summary:
 Keep the list ephemeral:
 
 - `RPUSH` new result.
-- `EXPIRE` the key for `TOOL_RESULT_CACHE_TTL_SECONDS`.
+- `EXPIRE` the key for `REDIS_CACHE_DEFAULT_TTL_SECONDS`.
 
 Do not trim the list by count by default. Long ordering conversations may need
 early tool results later in the same conversation. Rely on TTL for expiry and on
@@ -177,7 +191,7 @@ Recommended client settings:
 
 1. Provision ElastiCache and network access.
 2. Add Redis client dependency and cache config.
-3. Add a small cache adapter, e.g. `services/tool_result_cache.py`.
+3. Add a small shared cache adapter, e.g. `utils/cache/redis.py`.
 4. Dual-write: keep the current in-memory cache and also write ElastiCache.
 5. Read ElastiCache results before agent runs and compare with local cache.
 6. Switch `pal-agents` to prefer externally supplied results.
