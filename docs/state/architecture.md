@@ -235,7 +235,9 @@ transition validation. Current workflows cover `table_cleanness`,
 `manager_in_room`, and `staff_at_front_desk`. Matched workflows write linked
 `vision_rule_event` rows through the repository layer. Test events marked with
 `event_metadata.is_test == True` are persisted as state changes but skipped by
-rule workflows.
+rule workflows. Rules can carry empty-default text-array `label` values, and
+rule events store a non-null fixed-scale numeric `duration` in minutes that
+defaults to `0.0`.
 
 Vision entities can track one current state per state-definition type. The
 legacy `vision_entity.current_state_id` and `current_state_since` columns remain

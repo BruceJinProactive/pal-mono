@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Dict
 
 from sqlalchemy import Index, PrimaryKeyConstraint
@@ -9,7 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, String
+from sqlalchemy.types import DateTime, Numeric, String
 
 from .base import Base
 
@@ -45,6 +46,10 @@ class VisionRuleEvent(Base):
     )
 
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
+
+    duration: Mapped[Decimal] = mapped_column(
+        Numeric(12, 4), nullable=False, server_default=text("0.0")
+    )
 
     triggered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False

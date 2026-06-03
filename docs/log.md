@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-03
 
+- **Add vision rule label and event duration columns.** Added `vision_rule.label` as an empty-default text-array column and `vision_rule_event.duration` as a non-null fixed-scale numeric duration in minutes with default `0.0`. Migration: `3b581347a98c`. -> `docs/state/architecture.md`
 - **Vision entity current-state delete contract.** The per-entity current-state DELETE endpoint now returns 204 No Content and clears typed current-state metadata by definition type even when the stored state ID is malformed. -> `docs/state/architecture.md`
 
 ## 2026-06-02

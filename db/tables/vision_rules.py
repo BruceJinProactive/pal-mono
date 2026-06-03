@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from sqlalchemy import Enum
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -46,6 +46,10 @@ class VisionRule(Base):
         MutableDict.as_mutable(JSONB()),
         nullable=False,
         server_default=text("'{}'::jsonb"),
+    )
+
+    label: Mapped[List[str]] = mapped_column(
+        ARRAY(Text()), nullable=False, server_default=text("'{}'::text[]")
     )
 
     created_at: Mapped[datetime] = mapped_column(
