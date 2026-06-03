@@ -139,27 +139,30 @@ Files to modify:
 
 ### Phase 2: Add A Cache Adapter In pal-mono
 
-Add a small async adapter responsible for Redis client lifecycle and cache
-operations.
+Add a small async adapter responsible for tool-result key shape, sanitization,
+Redis list operations, and best-effort telemetry. The shared Redis client
+lifecycle remains in `utils/cache/redis.py`.
 
 Suggested file:
 
-- `utils/cache/redis.py`
+- `utils/cache/tool_result_cache.py`
 
 Responsibilities:
 
-- Build a singleton async Redis client or connection pool per process.
-- Close the client on application shutdown.
+- Reuse the shared singleton async Redis client from `utils/cache/redis.py`.
+- Expose a close helper that delegates to the shared Redis client shutdown.
 - `append_tool_result(conversation_id, payload)`:
   - sanitize/allowlist payload via `build_cacheable_tool_result(...)`
   - reject entries over `REDIS_CACHE_MAX_ITEM_BYTES`
   - `RPUSH` the compact JSON item
   - `EXPIRE` the key using `REDIS_CACHE_DEFAULT_TTL_SECONDS`
+  - log/metric success, skips, and errors without raising
 - `get_tool_results(conversation_id)`:
   - `LRANGE` the list
   - parse JSON
   - drop malformed entries
   - return oldest-to-newest results
+  - log/metric hit/miss and result counts without raising
 
 ### Phase 3: Write Tool Results From pal-mono
 
@@ -298,7 +301,9 @@ Turn N+1, possibly on another pod:
 | `pyproject.toml` | Add Redis Python client |
 | `local.env.example` | Add cache configuration |
 | `utils/cache/redis.py` | New shared ElastiCache client/config module |
+| `utils/cache/tool_result_cache.py` | Tool-result cache adapter with sanitization, write/read, and best-effort telemetry |
 | `services/message_service/_implementation.py` | Write sanitized tool events and read previous results before agent run |
+| `tests/utils/cache/test_tool_result_cache.py` | Cover adapter sanitization, write/read behavior, malformed entries, and failure handling |
 | `tests/services/message_service/test_tool_call_events.py` | Cover cache write hooks |
 
 ### pal-agents

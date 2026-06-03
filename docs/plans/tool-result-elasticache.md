@@ -191,7 +191,8 @@ Recommended client settings:
 
 1. Provision ElastiCache and network access.
 2. Add Redis client dependency and cache config.
-3. Add a small shared cache adapter, e.g. `utils/cache/redis.py`.
+3. Add the shared Redis client in `utils/cache/redis.py` and the tool-result
+   adapter in `utils/cache/tool_result_cache.py`.
 4. Dual-write: keep the current in-memory cache and also write ElastiCache.
 5. Read ElastiCache results before agent runs and compare with local cache.
 6. Switch `pal-agents` to prefer externally supplied results.
