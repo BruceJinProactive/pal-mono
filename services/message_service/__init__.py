@@ -68,6 +68,7 @@ async def get_chat_response_stream(
     room_name: str | None = None,
     participant_identity: str | None = None,
     sip_provider: str | None = None,
+    language: str | None = None,
     event_collector: Callable[[dict[str, Any]], None] | None = None,
     framework_collector: Callable[[str], None] | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
@@ -87,6 +88,7 @@ async def get_chat_response_stream(
          room_name (str | None): The LiveKit room name for LiveKit voice calls.
          participant_identity (str | None): The LiveKit participant identity for LiveKit voice calls.
          sip_provider (str | None): SIP provider: "pizzacloud", "twilio", or "snet".
+         language (str | None): Runtime voice language selected by the voice worker.
          event_collector: Optional callback for streaming-only events that callers
              need after the stream completes.
          framework_collector: Optional callback receiving "pal_agents" or "agno" once
@@ -107,6 +109,7 @@ async def get_chat_response_stream(
         room_name,
         participant_identity,
         sip_provider,
+        language,
         event_collector,
         framework_collector,
     )

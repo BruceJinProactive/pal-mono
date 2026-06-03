@@ -671,6 +671,7 @@ async def get_chat_response_stream(
     room_name: str | None = None,
     participant_identity: str | None = None,
     sip_provider: str | None = None,
+    language: str | None = None,
     event_collector: Callable[[dict[str, Any]], None] | None = None,
     framework_collector: Callable[[str], None] | None = None,
 ) -> AsyncIterator[ChatCompletionChunk]:
@@ -797,6 +798,7 @@ async def get_chat_response_stream(
                         raw_config=project_raw_config,
                         room_name=room_name,
                         participant_identity=participant_identity,
+                        language=language,
                         sip_provider=sip_provider,
                     )
                     # Auto-harden Spec when the conversation is a test /

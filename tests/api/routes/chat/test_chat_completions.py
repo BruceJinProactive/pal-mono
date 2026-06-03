@@ -252,7 +252,7 @@ class TestParseCallerInfo:
                 "participant_identity": "participant-xyz",
             }
         )
-        sender, recipient, call_id, room_name, participant, sip_provider = (
+        sender, recipient, call_id, room_name, participant, sip_provider, language = (
             _parse_caller_info(model)
         )
 
@@ -261,6 +261,7 @@ class TestParseCallerInfo:
         assert call_id == "call-123"
         assert room_name == "room-abc"
         assert participant == "participant-xyz"
+        assert language is None
 
     def test_parse_valid_json_with_required_fields_only(self) -> None:
         """Parse valid JSON with only required fields."""
@@ -270,7 +271,7 @@ class TestParseCallerInfo:
                 "recipient_identifier": "agent-001",
             }
         )
-        sender, recipient, call_id, room_name, participant, sip_provider = (
+        sender, recipient, call_id, room_name, participant, sip_provider, language = (
             _parse_caller_info(model)
         )
 
@@ -279,6 +280,7 @@ class TestParseCallerInfo:
         assert call_id is None
         assert room_name is None
         assert participant is None
+        assert language is None
 
     def test_parse_missing_sender_uses_default(self) -> None:
         """Use default 'user' when sender_identifier missing."""
@@ -287,12 +289,13 @@ class TestParseCallerInfo:
                 "recipient_identifier": "agent-001",
             }
         )
-        sender, recipient, call_id, room_name, participant, sip_provider = (
+        sender, recipient, call_id, room_name, participant, sip_provider, language = (
             _parse_caller_info(model)
         )
 
         assert sender == "user"
         assert recipient == "agent-001"
+        assert language is None
 
     def test_parse_missing_recipient_uses_model_string(self) -> None:
         """Use model string when recipient_identifier missing."""
@@ -301,12 +304,13 @@ class TestParseCallerInfo:
                 "sender_identifier": "user@example.com",
             }
         )
-        sender, recipient, call_id, room_name, participant, sip_provider = (
+        sender, recipient, call_id, room_name, participant, sip_provider, language = (
             _parse_caller_info(model)
         )
 
         assert sender == "user@example.com"
         assert recipient == model  # Falls back to original model string
+        assert language is None
 
     def test_parse_missing_both_uses_defaults(self) -> None:
         """Use defaults when both identifiers missing."""
@@ -315,13 +319,26 @@ class TestParseCallerInfo:
                 "call_id": "call-123",
             }
         )
-        sender, recipient, call_id, room_name, participant, sip_provider = (
+        sender, recipient, call_id, room_name, participant, sip_provider, language = (
             _parse_caller_info(model)
         )
 
         assert sender == "user"
         assert recipient == model  # Falls back to model string
         assert call_id == "call-123"
+        assert language is None
+
+    def test_parse_language(self) -> None:
+        """Parse runtime language when present."""
+        model = json.dumps(
+            {
+                "sender_identifier": "user@example.com",
+                "recipient_identifier": "agent-001",
+                "language": "chinese",
+            }
+        )
+        *_, language = _parse_caller_info(model)
+        assert language == "chinese"
 
     def test_parse_invalid_json_raises_exception(self) -> None:
         """Raise exception for invalid JSON."""

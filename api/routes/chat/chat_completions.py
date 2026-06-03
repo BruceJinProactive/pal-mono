@@ -160,8 +160,8 @@ def _extract_content_from_request(request: ChatCompletionRequest) -> str:
 
 def _parse_caller_info(
     model: str,
-) -> tuple[str, str, str | None, str | None, str | None, str | None]:
-    """Parse model string to extract sender, recipient, call_id, room_name, participant_identity, and sip_provider."""
+) -> tuple[str, str, str | None, str | None, str | None, str | None, str | None]:
+    """Parse model string to extract voice caller context."""
     try:
         # Parse model as JSON, it could be a string representation of JSON
         caller_info = json.loads(model) if isinstance(model, str) else model
@@ -191,6 +191,7 @@ def _parse_caller_info(
 
         # SIP provider: "pizzacloud", "twilio", or "snet"
         sip_provider = caller_info.get("sip_provider")
+        language = caller_info.get("language")
 
         return (
             sender_identifier,
@@ -199,6 +200,7 @@ def _parse_caller_info(
             room_name,
             participant_identity,
             sip_provider,
+            language,
         )
     except (json.JSONDecodeError, TypeError, ValueError) as e:
         # Handle case where model isn't valid JSON
@@ -550,6 +552,7 @@ async def chat_completions_agno(
             room_name,
             participant_identity,
             sip_provider,
+            language,
         ) = _parse_caller_info(model)
 
         # Create a Message object
@@ -617,6 +620,7 @@ async def chat_completions_agno(
                         room_name=room_name,
                         participant_identity=participant_identity,
                         sip_provider=sip_provider,
+                        language=language,
                         event_collector=collect_stream_event,
                         framework_collector=collect_bridge_framework,
                     )

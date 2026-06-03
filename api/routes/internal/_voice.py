@@ -348,6 +348,9 @@ async def init_voice_call(
         ]
         vc = english_configs[0] if english_configs else voice_configs[0]
 
+    if len(languages) == 1:
+        caller_info["language"] = vc.language
+
     logger.info(
         "[init_voice_call] Step 6 done: found %s voice_configs, languages=%s",
         len(voice_configs),

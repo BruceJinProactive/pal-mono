@@ -263,6 +263,7 @@ class TestInitVoiceCallSuccess:
         assert result.caller_info["recipient_identifier"] == "+15552222222"
         assert result.caller_info["call_id"] == "call-999"
         assert result.caller_info["timezone"] == "US/Pacific"
+        assert result.caller_info["language"] == "english"
 
     @pytest.mark.asyncio
     async def test_null_first_message_uses_default(self) -> None:
@@ -286,6 +287,7 @@ class TestInitVoiceCallSuccess:
         )
         assert result.voice_id == "english-voice"
         assert result.languages == ["spanish", "english"]
+        assert "language" not in result.caller_info
 
     @pytest.mark.asyncio
     async def test_multiple_configs_no_english_uses_first(self) -> None:
@@ -297,6 +299,7 @@ class TestInitVoiceCallSuccess:
         )
         assert result.voice_id == "spanish-voice"
         assert result.languages == ["spanish", "chinese"]
+        assert "language" not in result.caller_info
 
     @pytest.mark.asyncio
     async def test_languages_deduplicated(self) -> None:

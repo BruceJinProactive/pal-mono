@@ -435,7 +435,10 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
     async def _fake_get_user_async(session, project, message):
         return user, False
 
+    captured_spec_kwargs: list[dict] = []
+
     async def _fake_construct_agent_spec(**kwargs):
+        captured_spec_kwargs.append(kwargs)
         return SimpleNamespace()
 
     # Capture the PalInput passed to pal_agent.run() so we can inspect runtime_context
@@ -504,6 +507,7 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
             call_id=None,
             room_name=room_name,
             participant_identity=participant_identity,
+            language="chinese",
         )
     ]
 
@@ -516,6 +520,7 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
     assert rc.channel == "voice"
     assert rc.room_name == room_name
     assert rc.participant_identity == participant_identity
+    assert captured_spec_kwargs[0]["language"] == "chinese"
 
 
 @pytest.mark.asyncio

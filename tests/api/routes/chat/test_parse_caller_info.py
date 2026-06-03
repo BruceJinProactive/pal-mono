@@ -28,11 +28,18 @@ class TestParseCallerInfoLiveKit:
                 "participant_identity": "participant-xyz",
             }
         )
-        sender, recipient, call_id, room_name, participant_identity, sip_provider = (
-            _parse_caller_info(model)
-        )
+        (
+            sender,
+            recipient,
+            call_id,
+            room_name,
+            participant_identity,
+            sip_provider,
+            language,
+        ) = _parse_caller_info(model)
         assert room_name == "room-abc"
         assert participant_identity == "participant-xyz"
+        assert language is None
 
     def test_missing_room_name_returns_none(self) -> None:
         """caller_info without room_name returns None for room_name."""
@@ -43,9 +50,12 @@ class TestParseCallerInfoLiveKit:
                 "participant_identity": "participant-xyz",
             }
         )
-        _, _, _, room_name, participant_identity, _ = _parse_caller_info(model)
+        _, _, _, room_name, participant_identity, _, language = _parse_caller_info(
+            model
+        )
         assert room_name is None
         assert participant_identity == "participant-xyz"
+        assert language is None
 
     def test_missing_participant_identity_returns_none(self) -> None:
         """caller_info without participant_identity returns None for it."""
@@ -56,9 +66,12 @@ class TestParseCallerInfoLiveKit:
                 "room_name": "room-abc",
             }
         )
-        _, _, _, room_name, participant_identity, _ = _parse_caller_info(model)
+        _, _, _, room_name, participant_identity, _, language = _parse_caller_info(
+            model
+        )
         assert room_name == "room-abc"
         assert participant_identity is None
+        assert language is None
 
     def test_missing_both_livekit_fields_returns_none(self) -> None:
         """Caller info without LiveKit fields returns None for both room and participant."""
@@ -69,9 +82,12 @@ class TestParseCallerInfoLiveKit:
                 "call_id": "call-123",
             }
         )
-        _, _, _, room_name, participant_identity, _ = _parse_caller_info(model)
+        _, _, _, room_name, participant_identity, _, language = _parse_caller_info(
+            model
+        )
         assert room_name is None
         assert participant_identity is None
+        assert language is None
 
     def test_existing_fields_still_parsed(self) -> None:
         """sender_identifier, recipient_identifier, call_id extracted alongside LiveKit fields."""
@@ -84,14 +100,21 @@ class TestParseCallerInfoLiveKit:
                 "participant_identity": "participant-xyz",
             }
         )
-        sender, recipient, call_id, room_name, participant_identity, sip_provider = (
-            _parse_caller_info(model)
-        )
+        (
+            sender,
+            recipient,
+            call_id,
+            room_name,
+            participant_identity,
+            sip_provider,
+            language,
+        ) = _parse_caller_info(model)
         assert sender == "+15551111111"
         assert recipient == "+15552222222"
         assert call_id == "call-456"
         assert room_name == "room-abc"
         assert participant_identity == "participant-xyz"
+        assert language is None
 
     def test_empty_string_livekit_fields(self) -> None:
         """Empty string values are returned as empty strings (not None)."""
@@ -103,6 +126,21 @@ class TestParseCallerInfoLiveKit:
                 "participant_identity": "",
             }
         )
-        _, _, _, room_name, participant_identity, _ = _parse_caller_info(model)
+        _, _, _, room_name, participant_identity, _, language = _parse_caller_info(
+            model
+        )
         assert room_name == ""
         assert participant_identity == ""
+        assert language is None
+
+    def test_extracts_language(self) -> None:
+        """caller_info language is returned when present."""
+        model = json.dumps(
+            {
+                "sender_identifier": "+15551111111",
+                "recipient_identifier": "+15552222222",
+                "language": "chinese",
+            }
+        )
+        _, _, _, _, _, _, language = _parse_caller_info(model)
+        assert language == "chinese"
