@@ -239,6 +239,10 @@ rule workflows. Rules can carry empty-default text-array `label` values, and
 rule events store a non-null fixed-scale numeric `duration` in minutes that
 defaults to `0.0`.
 
+The `visionruletype` database enum also accepts `empty_tray`,
+`people_queued_up`, and `floor_cleanness` rule records for manage-app
+configuration.
+
 Vision entities can track one current state per state-definition type. The
 legacy `vision_entity.current_state_id` and `current_state_since` columns remain
 for compatibility with single-state clients, but multi-state data is stored in

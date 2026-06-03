@@ -336,3 +336,6 @@ class VisionRuleType(str, enum.Enum):
     food_container_on_ground = "food_container_on_ground"
     manager_in_room = "manager_in_room"
     staff_at_front_desk = "staff_at_front_desk"
+    empty_tray = "empty_tray"
+    people_queued_up = "people_queued_up"
+    floor_cleanness = "floor_cleanness"
