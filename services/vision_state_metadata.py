@@ -76,3 +76,19 @@ def set_current_state_metadata(
     current_states[definition_type] = current_state
     updated_metadata[CURRENT_STATES_METADATA_KEY] = current_states
     return updated_metadata
+
+
+def clear_current_state_metadata(
+    entity_metadata: dict[str, object],
+    definition_type: str,
+) -> dict[str, object]:
+    updated_metadata = dict(entity_metadata)
+    current_states = get_current_states_metadata(updated_metadata)
+    current_states.pop(definition_type, None)
+
+    if current_states:
+        updated_metadata[CURRENT_STATES_METADATA_KEY] = current_states
+    else:
+        updated_metadata.pop(CURRENT_STATES_METADATA_KEY, None)
+
+    return updated_metadata

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from services.vision_state_metadata import (
     CURRENT_STATES_METADATA_KEY,
     UNSPECIFIED_CURRENT_STATE_TYPE,
+    clear_current_state_metadata,
     current_state_id_from_metadata,
     current_state_metadata_key,
     get_current_states_metadata,
@@ -94,3 +95,37 @@ def test_set_current_state_metadata_preserves_existing_metadata() -> None:
         "confidence": 0.8,
     }
     assert CURRENT_STATES_METADATA_KEY in result
+
+
+def test_clear_current_state_metadata_removes_one_state_type() -> None:
+    cleanliness_id = uuid.uuid4()
+    occupation_id = uuid.uuid4()
+    metadata = {
+        "label": "patio",
+        CURRENT_STATES_METADATA_KEY: {
+            "cleanliness": {"state_definition_id": str(cleanliness_id)},
+            "occupation": {"state_definition_id": str(occupation_id)},
+        },
+    }
+
+    result = clear_current_state_metadata(metadata, "cleanliness")
+
+    assert result["label"] == "patio"
+    assert get_current_states_metadata(result) == {
+        "occupation": {"state_definition_id": str(occupation_id)}
+    }
+
+
+def test_clear_current_state_metadata_removes_metadata_key_for_last_state() -> None:
+    cleanliness_id = uuid.uuid4()
+    metadata = {
+        "label": "patio",
+        CURRENT_STATES_METADATA_KEY: {
+            "cleanliness": {"state_definition_id": str(cleanliness_id)},
+        },
+    }
+
+    result = clear_current_state_metadata(metadata, "cleanliness")
+
+    assert result == {"label": "patio"}
+    assert get_current_states_metadata(result) == {}

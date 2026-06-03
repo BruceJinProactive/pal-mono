@@ -1186,6 +1186,42 @@ async def update_entity_state(
 
 
 @operation_router.delete(
+    "/projects/{project_id}/entities/{entity_id}/states/{definition_type}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def delete_entity_state(
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    definition_type: str,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> None:
+    """
+    Remove one current state type from an entity.
+
+    Path Parameters:
+    - project_id: UUID of the project
+    - entity_id: UUID of the entity
+    - definition_type: State definition type to remove, such as cleanliness
+    """
+    _ = context
+    await _vision_entities.delete_entity_state(
+        session=session,
+        project_id=project_id,
+        entity_id=entity_id,
+        definition_type=definition_type,
+    )
+
+
+@operation_router.delete(
     "/projects/{project_id}/entities/{entity_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={

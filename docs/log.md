@@ -4,6 +4,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-03
+
+- **Vision entity current-state delete contract.** The per-entity current-state DELETE endpoint now returns 204 No Content and clears typed current-state metadata by definition type even when the stored state ID is malformed. -> `docs/state/architecture.md`
+
 ## 2026-06-02
 
 - **Project delete MissingGreenlet guard.** Admin project deletion now snapshots project scalar fields before subscription, voice-config, or project delete commits can expire async ORM objects, preventing `greenlet_spawn has not been called` failures during delete cleanup. -> `docs/log.md`

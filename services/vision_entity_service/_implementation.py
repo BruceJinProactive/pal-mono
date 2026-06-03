@@ -39,6 +39,7 @@ from db.pal_repository.data_classes.vision_state_change_event import (
 )
 from services.vision_observation_service._workflow import handle_state_change_rules
 from services.vision_state_metadata import (
+    clear_current_state_metadata,
     current_state_id_from_metadata,
     current_state_metadata_key,
     get_current_states_metadata,
@@ -465,6 +466,27 @@ def _build_current_states_response(
     return response
 
 
+def _first_current_state_metadata(
+    current_states: dict[str, object],
+) -> tuple[uuid.UUID | None, datetime | None]:
+    for definition_type, current_state in current_states.items():
+        state_definition_id = current_state_id_from_metadata(
+            current_states, definition_type
+        )
+        if state_definition_id is None:
+            continue
+
+        current_state_since = None
+        if isinstance(current_state, Mapping):
+            current_state_since = _metadata_datetime(
+                current_state.get("current_state_since")
+            )
+
+        return state_definition_id, current_state_since
+
+    return None, None
+
+
 def _build_entity_response(data: VisionEntityData) -> EntityResponse:
     return EntityResponse(
         id=data.id,
@@ -699,6 +721,71 @@ async def update_entity_state(
         extra={
             "entity_id": str(entity_id),
             "state_definition_id": str(request.state_definition_id),
+        },
+    )
+    return _build_entity_response(updated)
+
+
+async def delete_entity_state(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    definition_type: str,
+) -> EntityResponse:
+    entity_repo = VisionEntityRepository(session)
+    sd_repo = VisionEntityStateDefinitionRepository(session)
+
+    data = await entity_repo.get_by_id(entity_id)
+    if not data or data.project_id != project_id:
+        raise ValueError(f"Entity {entity_id} not found")
+
+    normalized_definition_type = current_state_metadata_key(definition_type)
+    entity_metadata = dict(data.entity_metadata)
+    current_states = get_current_states_metadata(entity_metadata)
+    has_current_state_metadata = normalized_definition_type in current_states
+    previous_state_id = current_state_id_from_metadata(
+        current_states, normalized_definition_type
+    )
+
+    if previous_state_id is None and data.current_state_id is not None:
+        legacy_previous_state_def = await sd_repo.get_by_id(data.current_state_id)
+        if (
+            legacy_previous_state_def
+            and current_state_metadata_key(legacy_previous_state_def.definition_type)
+            == normalized_definition_type
+        ):
+            previous_state_id = data.current_state_id
+
+    if previous_state_id is None and not has_current_state_metadata:
+        return _build_entity_response(data)
+
+    entity_metadata = clear_current_state_metadata(
+        entity_metadata,
+        normalized_definition_type,
+    )
+    remaining_current_states = get_current_states_metadata(entity_metadata)
+    current_state_id = data.current_state_id
+    current_state_since = data.current_state_since
+
+    if previous_state_id is not None and current_state_id == previous_state_id:
+        current_state_id, current_state_since = _first_current_state_metadata(
+            remaining_current_states
+        )
+
+    updated = await entity_repo.update(
+        entity_id,
+        current_state_id=current_state_id,
+        current_state_since=current_state_since,
+        entity_metadata=entity_metadata,
+    )
+    if not updated:
+        raise ValueError(f"Entity {entity_id} not found")
+
+    logger.info(
+        "[Vision Entity] Deleted entity state",
+        extra={
+            "entity_id": str(entity_id),
+            "definition_type": normalized_definition_type,
         },
     )
     return _build_entity_response(updated)

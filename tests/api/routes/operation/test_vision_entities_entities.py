@@ -313,6 +313,86 @@ class TestUpdateEntityState:
             assert exc_info.value.status_code == 500
 
 
+class TestDeleteEntityState:
+
+    @pytest.mark.asyncio
+    async def test_success_commits(self) -> None:
+        from api.routes.operation._vision_entities import delete_entity_state
+
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        expected = _make_entity_response(id=entity_id)
+
+        with patch(
+            f"{MODULE}.vision_entity_service.delete_entity_state",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ) as mock_delete:
+            result = await delete_entity_state(
+                session, project_id, entity_id, "glove_usage"
+            )
+
+        assert result is None
+        mock_delete.assert_awaited_once_with(
+            session=session,
+            project_id=project_id,
+            entity_id=entity_id,
+            definition_type="glove_usage",
+        )
+
+    @pytest.mark.asyncio
+    async def test_not_found_returns_404(self) -> None:
+        from api.routes.operation._vision_entities import delete_entity_state
+
+        session = AsyncMock()
+
+        with patch(
+            f"{MODULE}.vision_entity_service.delete_entity_state",
+            new_callable=AsyncMock,
+            side_effect=ValueError("not found"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await delete_entity_state(
+                    session, uuid.uuid4(), uuid.uuid4(), "glove_usage"
+                )
+            assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_value_error_returns_400(self) -> None:
+        from api.routes.operation._vision_entities import delete_entity_state
+
+        session = AsyncMock()
+
+        with patch(
+            f"{MODULE}.vision_entity_service.delete_entity_state",
+            new_callable=AsyncMock,
+            side_effect=ValueError("bad definition type"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await delete_entity_state(
+                    session, uuid.uuid4(), uuid.uuid4(), "glove_usage"
+                )
+            assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_generic_error_returns_500(self) -> None:
+        from api.routes.operation._vision_entities import delete_entity_state
+
+        session = AsyncMock()
+
+        with patch(
+            f"{MODULE}.vision_entity_service.delete_entity_state",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await delete_entity_state(
+                    session, uuid.uuid4(), uuid.uuid4(), "glove_usage"
+                )
+            assert exc_info.value.status_code == 500
+
+
 class TestDeleteEntity:
 
     @pytest.mark.asyncio

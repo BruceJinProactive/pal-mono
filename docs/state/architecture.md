@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-02
+> **Last updated:** 2026-06-03
 
 ## Quick Reference
 
@@ -243,7 +243,10 @@ for compatibility with single-state clients, but multi-state data is stored in
 alongside the legacy fields. Observation prompts group active state definitions
 by `definition_type`, state-change events include `event_metadata.definition_type`,
 and state-definition delete guards check both the legacy current-state column and
-the metadata map before removing a state definition.
+the metadata map before removing a state definition. Deleting one entity
+current-state type uses the `definition_type` key and removes the metadata entry
+even if its stored state UUID is malformed, so stale typed metadata can be
+cleaned up without deleting the state definition itself.
 
 ### 4. Database Layer (`/db`)
 

@@ -567,6 +567,50 @@ async def update_entity_state(
         )
 
 
+@traced("vision_entity.delete_entity_state")
+async def delete_entity_state(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    definition_type: str,
+) -> None:
+    try:
+        await vision_entity_service.delete_entity_state(
+            session=session,
+            project_id=project_id,
+            entity_id=entity_id,
+            definition_type=definition_type,
+        )
+    except ValueError as e:
+        detail = str(e)
+        if "not found" in detail:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=detail,
+                headers={"Content-Type": "application/json"},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception:
+        logger.error(
+            "[Vision Entity] Failed to delete entity state",
+            exc_info=True,
+            extra={
+                "project_id": str(project_id),
+                "entity_id": str(entity_id),
+                "definition_type": definition_type,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete entity state",
+            headers={"Content-Type": "application/json"},
+        )
+
+
 @traced("vision_entity.delete_entity")
 async def delete_entity(
     session: AsyncSession,

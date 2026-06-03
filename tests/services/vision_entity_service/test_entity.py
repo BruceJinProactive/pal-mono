@@ -793,6 +793,177 @@ class TestUpdateEntityState:
                 await update_entity_state(session, uuid.uuid4(), uuid.uuid4(), request)
 
 
+class TestDeleteEntityState:
+
+    @pytest.mark.asyncio
+    async def test_removes_state_type_and_keeps_remaining_state(self) -> None:
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        removed_state_id = uuid.uuid4()
+        remaining_state_id = uuid.uuid4()
+        removed_since = datetime(2026, 6, 3, 12, tzinfo=timezone.utc)
+        remaining_since = datetime(2026, 6, 3, 11, tzinfo=timezone.utc)
+
+        entity = _make_entity_mock(
+            id=entity_id,
+            project_id=project_id,
+            entity_type_id=entity_type_id,
+            current_state_id=removed_state_id,
+            current_state_since=removed_since,
+            entity_metadata={
+                "current_states": {
+                    "glove_usage": {
+                        "state_definition_id": str(removed_state_id),
+                        "state": "gloves_off",
+                        "current_state_since": removed_since.isoformat(),
+                        "observed_at": removed_since.isoformat(),
+                    },
+                    "location": {
+                        "state_definition_id": str(remaining_state_id),
+                        "state": "food_container_on_floor",
+                        "current_state_since": remaining_since.isoformat(),
+                        "observed_at": remaining_since.isoformat(),
+                    },
+                }
+            },
+        )
+
+        with (
+            patch(f"{MODULE}.VisionEntityRepository") as mock_entity_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_sd_cls,
+        ):
+            entity_repo = AsyncMock()
+            entity_repo.get_by_id.return_value = entity
+
+            async def update_entity(
+                entity_id_arg: uuid.UUID, **kwargs: object
+            ) -> MagicMock:
+                assert entity_id_arg == entity_id
+                for key, value in kwargs.items():
+                    setattr(entity, key, value)
+                return entity
+
+            entity_repo.update = AsyncMock(side_effect=update_entity)
+            mock_entity_cls.return_value = entity_repo
+            mock_sd_cls.return_value = AsyncMock()
+
+            from services.vision_entity_service._implementation import (
+                delete_entity_state,
+            )
+
+            result = await delete_entity_state(
+                session, project_id, entity_id, "glove_usage"
+            )
+
+        assert "glove_usage" not in result.current_states
+        assert result.current_states["location"].state_definition_id == (
+            remaining_state_id
+        )
+        assert result.current_state_id == remaining_state_id
+        assert result.current_state_since == remaining_since
+        update_kwargs = entity_repo.update.await_args.kwargs
+        assert "glove_usage" not in update_kwargs["entity_metadata"]["current_states"]
+        assert update_kwargs["current_state_id"] == remaining_state_id
+
+    @pytest.mark.asyncio
+    async def test_missing_state_type_is_noop(self) -> None:
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity = _make_entity_mock(id=entity_id, project_id=project_id)
+
+        with (
+            patch(f"{MODULE}.VisionEntityRepository") as mock_entity_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_sd_cls,
+        ):
+            entity_repo = AsyncMock()
+            entity_repo.get_by_id.return_value = entity
+            mock_entity_cls.return_value = entity_repo
+            mock_sd_cls.return_value = AsyncMock()
+
+            from services.vision_entity_service._implementation import (
+                delete_entity_state,
+            )
+
+            result = await delete_entity_state(
+                session, project_id, entity_id, "glove_usage"
+            )
+
+        assert result.id == entity_id
+        entity_repo.update.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_removes_state_type_with_invalid_metadata_state_id(self) -> None:
+        session = AsyncMock()
+        project_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity = _make_entity_mock(
+            id=entity_id,
+            project_id=project_id,
+            entity_metadata={
+                "label": "Area 1",
+                "current_states": {
+                    "glove_usage": {
+                        "state_definition_id": "not-a-uuid",
+                        "state": "gloves_off",
+                    }
+                },
+            },
+        )
+
+        with (
+            patch(f"{MODULE}.VisionEntityRepository") as mock_entity_cls,
+            patch(f"{MODULE}.VisionEntityStateDefinitionRepository") as mock_sd_cls,
+        ):
+            entity_repo = AsyncMock()
+            entity_repo.get_by_id.return_value = entity
+
+            async def update_entity(
+                entity_id_arg: uuid.UUID, **kwargs: object
+            ) -> MagicMock:
+                assert entity_id_arg == entity_id
+                for key, value in kwargs.items():
+                    setattr(entity, key, value)
+                return entity
+
+            entity_repo.update = AsyncMock(side_effect=update_entity)
+            mock_entity_cls.return_value = entity_repo
+            mock_sd_cls.return_value = AsyncMock()
+
+            from services.vision_entity_service._implementation import (
+                delete_entity_state,
+            )
+
+            result = await delete_entity_state(
+                session, project_id, entity_id, "glove_usage"
+            )
+
+        assert result.current_states == {}
+        update_kwargs = entity_repo.update.await_args.kwargs
+        assert update_kwargs["entity_metadata"] == {"label": "Area 1"}
+        assert update_kwargs["current_state_id"] is None
+
+    @pytest.mark.asyncio
+    async def test_entity_not_found_raises(self) -> None:
+        session = AsyncMock()
+
+        with patch(f"{MODULE}.VisionEntityRepository") as mock_entity_cls:
+            entity_repo = AsyncMock()
+            entity_repo.get_by_id.return_value = None
+            mock_entity_cls.return_value = entity_repo
+
+            from services.vision_entity_service._implementation import (
+                delete_entity_state,
+            )
+
+            with pytest.raises(ValueError, match="not found"):
+                await delete_entity_state(
+                    session, uuid.uuid4(), uuid.uuid4(), "glove_usage"
+                )
+
+
 class TestDeleteEntity:
 
     @pytest.mark.asyncio
