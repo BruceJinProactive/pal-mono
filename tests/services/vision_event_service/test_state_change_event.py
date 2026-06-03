@@ -333,7 +333,6 @@ class TestListStateChangeEvents:
                 entity_id=entity_id,
                 start=start,
                 end=end,
-                limit=50,
             )
 
             assert result.total == 0
@@ -343,7 +342,6 @@ class TestListStateChangeEvents:
                 entity_id=entity_id,
                 start=start,
                 end=end,
-                limit=50,
             )
 
 

@@ -3788,7 +3788,6 @@ async def list_state_change_events(
         default=None, description="Start time filter (defaults to 24 hours ago)"
     ),
     end: datetime | None = Query(default=None, description="End time filter"),
-    limit: int = Query(default=100, ge=1, le=1000, description="Max results"),
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
     ),
@@ -3808,7 +3807,6 @@ async def list_state_change_events(
     - entity_id (optional): Filter by entity
     - start (optional): Filter events observed after this time (default: 24h ago)
     - end (optional): Filter events observed before this time
-    - limit (optional): Max results (default 100, max 1000)
     """
     _ = context
     effective_start = (
@@ -3821,7 +3819,6 @@ async def list_state_change_events(
         entity_id=entity_id,
         start=effective_start,
         end=end,
-        limit=limit,
     )
 
 

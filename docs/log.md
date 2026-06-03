@@ -10,6 +10,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-02
 
+- **Vision state-change events list is uncapped.** Removed the `limit` query parameter from `GET /accounts/{account_name}/state-change-events`; the endpoint now returns all events matching the account, project/entity, and time filters. The default time window remains the past 24 hours when `start` is omitted.
 - **Shared Redis cache client config.** Added reusable pal-mono Redis/Valkey cache settings, Redis client factory, local env examples, Redis wait support, and docs clarifying Secrets Manager versus IAM auth for ElastiCache. -> `docs/plans/tool-result-elasticache.md`
 - **Project delete MissingGreenlet guard.** Admin project deletion now snapshots project scalar fields before subscription, voice-config, or project delete commits can expire async ORM objects, preventing `greenlet_spawn has not been called` failures during delete cleanup. -> `docs/log.md`
 - **Conversation caller identifier in admin responses.** Admin conversation list/detail responses now include a stable `sender_identifier` derived from the conversation user's channel identifiers, so voice calls with no user transcript can still display the caller number when the latest persisted message lacks sender metadata.

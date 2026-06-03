@@ -107,7 +107,6 @@ class VisionStateChangeEventRepository:
         entity_id: uuid.UUID | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
-        limit: int = 100,
     ) -> list[VisionStateChangeEventData]:
         try:
             query = (
@@ -130,9 +129,7 @@ class VisionStateChangeEventRepository:
                 query = query.filter(VisionStateChangeEvent.observed_at >= start)
             if end is not None:
                 query = query.filter(VisionStateChangeEvent.observed_at <= end)
-            query = query.order_by(VisionStateChangeEvent.observed_at.desc()).limit(
-                limit
-            )
+            query = query.order_by(VisionStateChangeEvent.observed_at.desc())
             result = await self.session.execute(query)
             return [_to_data(row) for row in result.scalars().all()]
         except Exception:

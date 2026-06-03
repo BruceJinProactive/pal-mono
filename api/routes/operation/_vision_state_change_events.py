@@ -88,7 +88,6 @@ async def list_state_change_events(
     entity_id: uuid.UUID | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
-    limit: int = 100,
 ) -> ListStateChangeEventsResponse:
     try:
         return await vision_event_service.list_state_change_events(
@@ -98,7 +97,6 @@ async def list_state_change_events(
             entity_id=entity_id,
             start=start,
             end=end,
-            limit=limit,
         )
     except ValueError as e:
         raise HTTPException(
