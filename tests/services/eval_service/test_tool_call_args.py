@@ -5,6 +5,8 @@ from __future__ import annotations
 from services.eval_service.evaluators.tool_call_args import (
     GenericSubsetArgumentEvaluator,
     LookupArgumentEvaluator,
+    OloLookupArgumentEvaluator,
+    OloOrderArgumentEvaluator,
     ToastArgumentEvaluator,
     _extract_args,
     _extract_tool_name,
@@ -1958,6 +1960,332 @@ class TestLookupIntegration:
                     },
                 },
             },
+        ]
+        result = evaluate_tool_call_args(expected, actual)
+        assert result.passed is True
+        assert result.score == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Olo handle-backed lookup evaluator
+# ---------------------------------------------------------------------------
+
+_olo_lookup = OloLookupArgumentEvaluator()
+
+
+class TestOloLookupEvaluator:
+    def test_get_evaluator_returns_olo_lookup(self) -> None:
+        evaluator = _get_evaluator("lookup_olo_order_options_v1")
+        assert isinstance(evaluator, OloLookupArgumentEvaluator)
+
+    def test_item_name_query_matches(self) -> None:
+        expected = {
+            "queries": [
+                {
+                    "item_name": "MOOYAH Cheeseburger",
+                    "targets": [],
+                }
+            ]
+        }
+        actual = {
+            "queries": [
+                {
+                    "item_name": "MOOYAH  Cheeseburger",
+                    "targets": [],
+                }
+            ]
+        }
+        results = _olo_lookup.evaluate(expected, actual)
+        assert all(result.matched for result in results)
+
+    def test_item_handle_query_matches(self) -> None:
+        expected = {
+            "queries": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                    "targets": [],
+                }
+            ]
+        }
+        actual = {
+            "queries": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                    "targets": [],
+                }
+            ]
+        }
+        results = _olo_lookup.evaluate(expected, actual)
+        assert all(result.matched for result in results)
+
+    def test_nested_target_path_prefix_matches(self) -> None:
+        expected = {
+            "queries": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:the-mdc",
+                    "targets": [
+                        {
+                            "group_name": "Toppings",
+                            "option_name": "American Cheese",
+                            "path_prefix": [
+                                {
+                                    "group_name": "Meal",
+                                    "option_name": "Make It A Combo",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "queries": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:the-mdc",
+                    "targets": [
+                        {
+                            "group_name": "Toppings",
+                            "option_name": "American Cheese",
+                            "path_prefix": [
+                                {
+                                    "group_name": "Meal",
+                                    "option_name": "Make It A Combo",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        results = _olo_lookup.evaluate(expected, actual)
+        assert all(result.matched for result in results)
+
+    def test_nested_target_option_mismatch_fails(self) -> None:
+        expected = {
+            "queries": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:the-mdc",
+                    "targets": [
+                        {
+                            "group_name": "Toppings",
+                            "option_name": "American Cheese",
+                            "path_prefix": [],
+                        }
+                    ],
+                }
+            ]
+        }
+        actual = {
+            "queries": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:the-mdc",
+                    "targets": [
+                        {
+                            "group_name": "Toppings",
+                            "option_name": "Swiss Cheese",
+                            "path_prefix": [],
+                        }
+                    ],
+                }
+            ]
+        }
+        results = _olo_lookup.evaluate(expected, actual)
+        assert any(
+            not result.matched and "option_name" in result.field_path
+            for result in results
+        )
+
+
+# ---------------------------------------------------------------------------
+# Olo handle-backed create-order evaluator
+# ---------------------------------------------------------------------------
+
+_olo_order = OloOrderArgumentEvaluator()
+
+
+class TestOloOrderEvaluator:
+    def test_get_evaluator_returns_olo_order(self) -> None:
+        evaluator = _get_evaluator("olo_create_order_v1")
+        assert isinstance(evaluator, OloOrderArgumentEvaluator)
+
+    def test_single_item_with_terminal_selection_handles_matches(self) -> None:
+        expected = {
+            "handoff_mode": "pickup",
+            "customer": {
+                "first_name": "Taylor",
+                "last_name": "Parker",
+                "phone": "5551234567",
+            },
+            "items": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                    "quantity": 1,
+                    "selection_handles": [
+                        "olo_s1:d617745b440b:meal-make-it-a-combo",
+                        "olo_s1:d617745b440b:side-choice-hand-cut-fries",
+                    ],
+                }
+            ],
+        }
+        actual = {
+            "handoff_mode": "pickup",
+            "customer": {
+                "first_name": "Taylor",
+                "last_name": "Parker",
+                "phone": "(555) 123-4567",
+            },
+            "items": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                    "quantity": 1,
+                    "selection_handles": [
+                        "olo_s1:d617745b440b:side-choice-hand-cut-fries",
+                        "olo_s1:d617745b440b:meal-make-it-a-combo",
+                    ],
+                }
+            ],
+        }
+        results = _olo_order.evaluate(expected, actual)
+        assert all(result.matched for result in results)
+
+    def test_multiple_products_match(self) -> None:
+        expected = {
+            "handoff_mode": "pickup",
+            "items": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                    "quantity": 1,
+                },
+                {
+                    "item_handle": "olo_i1:d617745b440b:regular-fries",
+                    "quantity": 2,
+                },
+            ],
+        }
+        actual = {
+            "handoff_mode": "pickup",
+            "items": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                    "quantity": 1,
+                },
+                {
+                    "item_handle": "olo_i1:d617745b440b:regular-fries",
+                    "quantity": 2,
+                },
+            ],
+        }
+        results = _olo_order.evaluate(expected, actual)
+        assert all(result.matched for result in results)
+
+    def test_selection_quantity_matches(self) -> None:
+        expected = {
+            "handoff_mode": "pickup",
+            "items": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                    "quantity": 1,
+                    "selections": [
+                        {
+                            "selection_handle": "olo_s1:d617745b440b:bacon",
+                            "quantity": 2,
+                        }
+                    ],
+                }
+            ],
+        }
+        actual = {
+            "handoff_mode": "pickup",
+            "items": [
+                {
+                    "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                    "quantity": 1,
+                    "selections": [
+                        {
+                            "selection_handle": "olo_s1:d617745b440b:bacon",
+                            "quantity": 2,
+                        }
+                    ],
+                }
+            ],
+        }
+        results = _olo_order.evaluate(expected, actual)
+        assert all(result.matched for result in results)
+
+    def test_missing_handoff_mode_fails(self) -> None:
+        results = _olo_order.evaluate(
+            {},
+            {"items": []},
+        )
+        assert any(
+            not result.matched and result.field_path == "handoff_mode"
+            for result in results
+        )
+
+    def test_customer_email_fails(self) -> None:
+        results = _olo_order.evaluate(
+            {"handoff_mode": "pickup"},
+            {
+                "handoff_mode": "pickup",
+                "customer": {"email": "orderingagent+5551234567@palona.ai"},
+            },
+        )
+        assert any(
+            not result.matched and result.field_path == "customer.email"
+            for result in results
+        )
+
+    def test_raw_olo_ids_fail(self) -> None:
+        results = _olo_order.evaluate(
+            {"handoff_mode": "pickup"},
+            {
+                "handoff_mode": "pickup",
+                "items": [
+                    {
+                        "productid": 82610566,
+                        "quantity": 1,
+                        "selection_handles": ["olo_s1:d617745b440b:bacon"],
+                    }
+                ],
+            },
+        )
+        assert any(
+            not result.matched and result.field_path == "items[0].productid"
+            for result in results
+        )
+
+    def test_integration_with_payload_wrapped_tool_call(self) -> None:
+        expected = [
+            {
+                "tool": "olo_create_order_v1",
+                "args": {
+                    "handoff_mode": "pickup",
+                    "customer": {"phone": "5551234567"},
+                    "items": [
+                        {
+                            "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                            "quantity": 1,
+                        }
+                    ],
+                },
+            }
+        ]
+        actual = [
+            {
+                "payload": {
+                    "tool_name": "olo_create_order_v1",
+                    "arguments": {
+                        "handoff_mode": "pickup",
+                        "customer": {"phone": "555-123-4567"},
+                        "items": [
+                            {
+                                "item_handle": "olo_i1:d617745b440b:mooyah-cheeseburger",
+                                "quantity": 1,
+                            }
+                        ],
+                    },
+                },
+            }
         ]
         result = evaluate_tool_call_args(expected, actual)
         assert result.passed is True
