@@ -121,6 +121,39 @@ class TestUploadCameraVideoRemux:
         mock_s3.upload_fileobj.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_empty_mkv_file_skips_remux(self, mocker):
+        """Should upload original file without remuxing when upload is empty."""
+        from api.routes.operation._video_upload import upload_camera_video
+
+        video_file = BytesIO(b"")
+        upload = UploadFile(filename="recording.mkv", file=video_file, size=0)
+
+        session = AsyncMock()
+        mocker.patch(
+            "api.routes.operation._video_upload.signal_source_service.get_source_by_camera_id",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        )
+
+        mock_remux = mocker.patch(
+            "api.routes.operation._video_upload.remux_to_mp4",
+        )
+
+        mock_s3 = MagicMock()
+        mocker.patch(
+            "api.routes.operation._video_upload.boto3.client",
+            return_value=mock_s3,
+        )
+
+        result = await upload_camera_video("acc-1", "proj-1", "cam-1", upload, session)
+
+        mock_remux.assert_not_called()
+        assert result.url.endswith(".mkv")
+        call_args = mock_s3.upload_fileobj.call_args
+        uploaded_file = call_args[0][0]
+        assert uploaded_file.read() == b""
+
+    @pytest.mark.asyncio
     async def test_avi_file_is_remuxed(self, mocker):
         """Should remux AVI files to MP4."""
         from api.routes.operation._video_upload import upload_camera_video

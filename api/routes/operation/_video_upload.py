@@ -154,35 +154,46 @@ async def upload_camera_video(
     if ext in {".mkv", ".avi", ".webm"}:
         try:
             video_bytes = await run_in_threadpool(video.file.read)
-            mp4_bytes = await run_in_threadpool(remux_to_mp4, video_bytes)
-
-            # Validate remuxed size (re-encoding can inflate the output)
-            if len(mp4_bytes) > MAX_VIDEO_SIZE_BYTES:
+            if not video_bytes:
                 logger.warning(
-                    f"Remuxed MP4 exceeds size limit ({len(mp4_bytes)} bytes), uploading original",
+                    f"Skipping remux for empty {ext} upload; uploading original",
                     extra={
                         "camera_id": camera_id,
-                        "original_size": len(video_bytes),
-                        "mp4_size": len(mp4_bytes),
+                        "video_filename": filename,
                     },
                 )
                 video.file.seek(0)
                 upload_file = video.file
             else:
-                from io import BytesIO
+                mp4_bytes = await run_in_threadpool(remux_to_mp4, video_bytes)
 
-                upload_file = BytesIO(mp4_bytes)
-                filename = os.path.splitext(filename)[0] + ".mp4"
-                content_type = "video/mp4"
-                logger.info(
-                    f"Remuxed {ext} to MP4 for upload",
-                    extra={
-                        "camera_id": camera_id,
-                        "original_ext": ext,
-                        "original_size": len(video_bytes),
-                        "mp4_size": len(mp4_bytes),
-                    },
-                )
+                # Validate remuxed size (re-encoding can inflate the output)
+                if len(mp4_bytes) > MAX_VIDEO_SIZE_BYTES:
+                    logger.warning(
+                        f"Remuxed MP4 exceeds size limit ({len(mp4_bytes)} bytes), uploading original",
+                        extra={
+                            "camera_id": camera_id,
+                            "original_size": len(video_bytes),
+                            "mp4_size": len(mp4_bytes),
+                        },
+                    )
+                    video.file.seek(0)
+                    upload_file = video.file
+                else:
+                    from io import BytesIO
+
+                    upload_file = BytesIO(mp4_bytes)
+                    filename = os.path.splitext(filename)[0] + ".mp4"
+                    content_type = "video/mp4"
+                    logger.info(
+                        f"Remuxed {ext} to MP4 for upload",
+                        extra={
+                            "camera_id": camera_id,
+                            "original_ext": ext,
+                            "original_size": len(video_bytes),
+                            "mp4_size": len(mp4_bytes),
+                        },
+                    )
         except Exception as e:
             logger.error(
                 f"Failed to remux {ext} to MP4, uploading original: {e}",
