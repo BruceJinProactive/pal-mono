@@ -1,6 +1,6 @@
 # Tool Result Storage With AWS ElastiCache
 
-**Last updated:** 2026-06-02
+**Last updated:** 2026-06-04
 
 This doc describes how tool-call results could be stored in AWS ElastiCache so
 multiple `pal-mono` pods can share recent tool outputs across turns.
@@ -96,10 +96,12 @@ Prefer a short `result_summary` plus allowlisted structured fields over a raw
 tool payload. `input_summary` is optional; include it only when the sanitized
 tool input adds meaningful context that is not already in chat history.
 
-Only cache explicitly allowlisted fields. Do not cache raw tool responses
-verbatim. The cache writer must redact or drop secrets, auth tokens, payment
-details, customer contact PII, addresses, free-form notes, and any integration
-payload fields that are not needed for the next-turn prompt.
+Only cache explicitly allowlisted fields. `cacheable_result` should be filtered
+through tool-family field allowlists, such as Toast, Adora, and a conservative
+generic fallback. Do not cache raw tool responses verbatim. The cache writer
+must redact or drop secrets, auth tokens, payment details, customer contact PII,
+addresses, free-form notes, and any integration payload fields that are not
+needed for the next-turn prompt.
 
 Do not inject the full cache item into the model context. The cache item may
 carry metadata for storage/debugging, but prompt rendering should strip it down

@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-04
 
+- **Tool-result cache per-family allowlists.** Strengthened the ElastiCache tool-result cache adapter so `build_cacheable_tool_result(...)` applies explicit Toast, Adora, and generic `cacheable_result` field allowlists before byte-limit checks while retaining recursive sensitive-key redaction. -> `docs/plans/tool-result-elasticache-migration.md`
 - **Vision rule event durations.** State-transition rule workflows now persist `vision_rule_event.duration` as the elapsed minutes spent in the previous state before the trigger state, such as table `dirty` to `clean`; unresolved start times keep the `0.0` default. -> `docs/state/architecture.md`
 - **Vision rule events list is uncapped.** Removed the `limit` query parameter from `GET /accounts/{account_name}/rule-events`; the endpoint now returns all rule events matching account, rule/entity, and time filters, and each response item includes `duration`. -> `docs/state/architecture.md`
 

@@ -5,7 +5,7 @@ shared AWS ElastiCache-backed storage so recent tool outputs survive pod changes
 
 **Status:** Planning
 **Created:** 2026-05-19
-**Last updated:** 2026-06-02
+**Last updated:** 2026-06-04
 
 This plan supersedes the earlier DB-backed direction. Detailed
 ElastiCache implementation notes live in
@@ -77,10 +77,11 @@ Each cached item is compact JSON:
 }
 ```
 
-The cache writer must explicitly allowlist fields. It must redact or drop
-secrets, auth tokens, payment details, customer contact PII, addresses,
-free-form notes, and integration payload fields that are not needed for the
-next-turn prompt.
+The cache writer must explicitly allowlist fields. `cacheable_result` entries
+use tool-family allowlists, currently Toast, Adora, and a conservative generic
+fallback. The writer must also redact or drop secrets, auth tokens, payment
+details, customer contact PII, addresses, free-form notes, and integration
+payload fields that are not needed for the next-turn prompt.
 
 The full cache item should not be injected into context. Cache-only metadata can
 support storage, debugging, and filtering, but the prompt renderer should emit

@@ -61,6 +61,103 @@ def test_build_cacheable_tool_result_allowlists_and_redacts() -> None:
     }
 
 
+def test_build_cacheable_tool_result_uses_toast_family_allowlist() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "result_summary": "Order was created.",
+            "cacheable_result": {
+                "order_state": "pending_payment",
+                "order_number": "10042",
+                "reservation_status": "drop-non-toast-field",
+                "customerName": "Drop Customer",
+                "deliveryAddress": "123 Drop St",
+                "items": [
+                    {
+                        "name": "pizza",
+                        "quantity": 1,
+                        "specialInstructions": "drop free-form text",
+                    },
+                    {
+                        "name": "salad",
+                        "auth_token": "drop-token",
+                    },
+                ],
+            },
+        }
+    )
+
+    assert result == {
+        "tool_name": "toast_takeout_create_order_v1",
+        "result_summary": "Order was created.",
+        "cacheable_result": {
+            "order_state": "pending_payment",
+            "order_number": "10042",
+            "items": [
+                {"name": "pizza", "quantity": 1},
+                {"name": "salad"},
+            ],
+        },
+    }
+
+
+def test_build_cacheable_tool_result_uses_adora_family_allowlist() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "adora_process_order",
+            "status": "success",
+            "cacheable_result": {
+                "orderID": 12345,
+                "orderNo": 67890,
+                "processStatus": "paid",
+                "trackerURL": "https://example.com/track/12345",
+                "reservation_status": "drop-reservation-field",
+                "party_size": 4,
+                "order_state": "drop-toast-field",
+                "guestEmail": "drop@example.com",
+                "guestNotes": "drop free-form text",
+                "paymentUrl": "drop-payment-link",
+            },
+        }
+    )
+
+    assert result == {
+        "tool_name": "adora_process_order",
+        "status": "success",
+        "cacheable_result": {
+            "orderID": 12345,
+            "orderNo": 67890,
+            "processStatus": "paid",
+            "trackerURL": "https://example.com/track/12345",
+        },
+    }
+
+
+def test_build_cacheable_tool_result_uses_generic_family_allowlist() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "check_hours",
+            "result_summary": "The store is open.",
+            "cacheable_result": {
+                "status": "open",
+                "count": 1,
+                "order_state": "drop-toast-field",
+                "reservation_status": "drop-adora-field",
+                "phoneNumber": "drop-phone",
+            },
+        }
+    )
+
+    assert result == {
+        "tool_name": "check_hours",
+        "result_summary": "The store is open.",
+        "cacheable_result": {
+            "status": "open",
+            "count": 1,
+        },
+    }
+
+
 def test_build_cacheable_tool_result_requires_tool_name_and_useful_result() -> None:
     assert build_cacheable_tool_result({"result_summary": "missing tool"}) is None
     assert build_cacheable_tool_result({"tool_name": "toast_v3"}) is None
@@ -243,6 +340,46 @@ async def test_append_tool_result_skips_oversized_payload(
     assert metrics[-1] == (
         "tool_result_cache.operation",
         {"operation": "append", "outcome": "skipped", "reason": "too_large"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_append_tool_result_applies_allowlist_before_size_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = _FakeRedisClient()
+    metrics: list[tuple[str, dict[str, str]]] = []
+    _install_cache_fakes(
+        monkeypatch,
+        fake_client,
+        settings=RedisCacheSettings(
+            enabled=True,
+            host="cache.example.local",
+            max_item_bytes=256,
+        ),
+        metrics=metrics,
+    )
+
+    await append_tool_result(
+        "conversation-1",
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "result_summary": "Order created",
+            "cacheable_result": {
+                "order_state": "created",
+                "raw_payload": "x" * 5000,
+            },
+        },
+    )
+
+    assert json.loads(fake_client.rpush_calls[0][1]) == {
+        "tool_name": "toast_takeout_create_order_v1",
+        "result_summary": "Order created",
+        "cacheable_result": {"order_state": "created"},
+    }
+    assert metrics[-1] == (
+        "tool_result_cache.operation",
+        {"operation": "append", "outcome": "success"},
     )
 
 

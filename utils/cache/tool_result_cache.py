@@ -34,18 +34,102 @@ _SENSITIVE_KEY_PARTS = (
     "api_key",
     "auth",
     "card",
+    "comment",
     "credit",
+    "customer",
     "cvc",
     "cvv",
     "email",
+    "first_name",
+    "full_name",
+    "guest",
+    "instruction",
+    "last_name",
+    "memo",
     "note",
     "password",
     "payment",
     "phone",
+    "remark",
     "secret",
+    "special_request",
+    "specialrequest",
     "token",
 )
 _MAX_SANITIZE_DEPTH = 6
+
+_COMMON_CACHEABLE_RESULT_FIELDS = frozenset(
+    {
+        "count",
+        "error",
+        "error_code",
+        "error_type",
+        "errorCode",
+        "errorType",
+        "message",
+        "ok",
+        "state",
+        "status",
+        "success",
+    }
+)
+_TOAST_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
+    {
+        "cart_id",
+        "cartId",
+        "check_id",
+        "checkId",
+        "dining_option",
+        "diningOption",
+        "estimated_ready_time",
+        "estimatedReadyTime",
+        "fulfillment_state",
+        "fulfillment_status",
+        "fulfillmentState",
+        "fulfillmentStatus",
+        "items",
+        "order_guid",
+        "order_id",
+        "order_number",
+        "order_state",
+        "order_status",
+        "orderGuid",
+        "orderId",
+        "orderNumber",
+        "orderState",
+        "orderStatus",
+        "pickup_time",
+        "pickupTime",
+    }
+)
+_ADORA_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
+    {
+        "available",
+        "availability",
+        "key",
+        "online_ordering_status",
+        "onlineOrderingStatus",
+        "order_id",
+        "order_no",
+        "order_number",
+        "order_status",
+        "orderId",
+        "orderID",
+        "orderNo",
+        "orderNumber",
+        "orderStatus",
+        "process_status",
+        "processStatus",
+        "trackerURL",
+        "tracking_link",
+        "trackingLink",
+    }
+)
+_CACHEABLE_RESULT_FIELDS_BY_TOOL_FAMILY = {
+    "adora": _ADORA_CACHEABLE_RESULT_FIELDS,
+    "generic": _COMMON_CACHEABLE_RESULT_FIELDS,
+    "toast": _TOAST_CACHEABLE_RESULT_FIELDS,
+}
 
 
 class ToolResultRedisClient(Protocol):
@@ -199,7 +283,10 @@ def build_cacheable_tool_result(payload: Mapping[str, Any]) -> dict[str, Any] | 
             result[field] = sanitized_value
 
     if "cacheable_result" in payload:
-        cacheable_result = _sanitize_json_value(payload["cacheable_result"])
+        cacheable_result = _sanitize_cacheable_result(
+            tool_name,
+            payload["cacheable_result"],
+        )
         if cacheable_result is not None:
             result["cacheable_result"] = cacheable_result
 
@@ -223,6 +310,40 @@ def _parse_cached_item(raw_item: str | bytes) -> dict[str, Any] | None:
         return None
 
     return build_cacheable_tool_result(parsed)
+
+
+def _sanitize_cacheable_result(tool_name: str, value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return _sanitize_json_value(value)
+
+    allowed_fields = _cacheable_result_fields_for_tool(tool_name)
+    sanitized_mapping: dict[str, Any] = {}
+    for key, nested_value in value.items():
+        if (
+            not isinstance(key, str)
+            or key not in allowed_fields
+            or _is_sensitive_key(key)
+        ):
+            continue
+        sanitized_value = _sanitize_json_value(nested_value)
+        if sanitized_value is not None:
+            sanitized_mapping[key] = sanitized_value
+
+    return sanitized_mapping or None
+
+
+def _cacheable_result_fields_for_tool(tool_name: str) -> frozenset[str]:
+    family = _tool_family_for_name(tool_name)
+    return _CACHEABLE_RESULT_FIELDS_BY_TOOL_FAMILY[family]
+
+
+def _tool_family_for_name(tool_name: str) -> str:
+    normalized_tool_name = tool_name.lower()
+    if "toast" in normalized_tool_name:
+        return "toast"
+    if "adora" in normalized_tool_name:
+        return "adora"
+    return "generic"
 
 
 def _sanitize_json_value(value: Any, depth: int = 0) -> Any:
@@ -270,7 +391,13 @@ def _sanitize_text(value: Any) -> str:
 
 def _is_sensitive_key(key: str) -> bool:
     normalized_key = key.lower()
-    return any(part in normalized_key for part in _SENSITIVE_KEY_PARTS)
+    compact_key = "".join(
+        character for character in normalized_key if character.isalnum()
+    )
+    return any(
+        part in normalized_key or part.replace("_", "") in compact_key
+        for part in _SENSITIVE_KEY_PARTS
+    )
 
 
 def _log_cache_event(
