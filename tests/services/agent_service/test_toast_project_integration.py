@@ -257,6 +257,7 @@ class TestBuildToastV3Spec:
             "menu_data": {"version": "v2"},
             "takeout_dining_option_guid": "takeout-guid-1",
             "tax_exempt_checks": True,
+            "enable_duplicate_selection_instance_keys": True,
             "set_asap_promised_date_to_submission_time": True,
             "asap_future_prep_time_minutes": 30,
         }
@@ -270,6 +271,7 @@ class TestBuildToastV3Spec:
         )
 
         assert result.tax_exempt_checks is True
+        assert result.enable_duplicate_selection_instance_keys is True
         assert result.set_asap_promised_date_to_submission_time is True
         assert result.asap_future_prep_time_minutes == 30
 

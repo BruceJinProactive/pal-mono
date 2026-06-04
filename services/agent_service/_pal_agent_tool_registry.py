@@ -180,6 +180,7 @@ _TOAST_SPEC_FIELDS = [
     "seed_force_show_defaults",
     "require_payment_before_kitchen",
     "tax_exempt_checks",
+    "enable_duplicate_selection_instance_keys",
     "set_asap_promised_date_to_submission_time",
     "asap_future_prep_time_minutes",
 ]
