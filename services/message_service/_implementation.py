@@ -39,6 +39,7 @@ from services import (
     transaction_service,
     user_service,
 )
+from utils.cache.tool_result_cache import append_tool_result
 from utils.eval_safety import apply_eval_safety
 from utils.log import logger
 from utils.otel import record_duration, trace_async_block
@@ -49,6 +50,48 @@ from ._store_status import compute_store_status
 from ._tracing import langfuse_message_span
 
 _background_tasks: set[asyncio.Task[None]] = set()
+
+
+def _schedule_tool_result_cache_writes(
+    conversation_id: uuid.UUID,
+    events: list[dict[str, Any]],
+) -> None:
+    for event in events:
+        if event.get("type") != "tool_call":
+            continue
+
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            logger.info(
+                "[tool_result_cache] Skipping tool_call event without dict payload",
+                extra={"conversation_id": str(conversation_id)},
+            )
+            continue
+
+        try:
+            task = asyncio.create_task(
+                append_tool_result(str(conversation_id), dict(payload))
+            )
+        except Exception:
+            logger.warning(
+                "Failed to schedule tool result cache write",
+                extra={"conversation_id": str(conversation_id)},
+                exc_info=True,
+            )
+            continue
+
+        _background_tasks.add(task)
+        task.add_done_callback(_handle_tool_result_cache_write_done)
+
+
+def _handle_tool_result_cache_write_done(task: asyncio.Task[None]) -> None:
+    _background_tasks.discard(task)
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        logger.debug("Tool result cache write task was cancelled")
+    except Exception:
+        logger.warning("Tool result cache write task failed", exc_info=True)
 
 
 async def _fingerprint_conversation(
@@ -432,6 +475,7 @@ async def _dispatch_agent_async(
                     "conversation_id": str(conversation_id),
                 },
             )
+            _schedule_tool_result_cache_writes(conversation_id, collected_events)
 
         output = Output(
             content=pal_output.content,
@@ -1136,6 +1180,10 @@ async def get_chat_response_stream(
                                             persistable_events.append(event)
 
                                     collected_events.extend(persistable_events)
+                                    _schedule_tool_result_cache_writes(
+                                        request_conversation_id,
+                                        persistable_events,
+                                    )
                                     logger.info(
                                         "[tool_call_events] Collected %d events from stream chunk",
                                         len(persistable_events),

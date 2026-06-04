@@ -1,10 +1,12 @@
 """Tests for generic tool call event collection and persistence."""
 
+import asyncio
 import sys
 import uuid
 from contextlib import asynccontextmanager
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -117,13 +119,14 @@ def _install_services_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 class _FakeMessageRepo:
     def __init__(self) -> None:
+        self.request_conversation_id = uuid.uuid4()
         self.saved_conversation_id: uuid.UUID | None = None
         self.saved_message_body: dict | None = None
         self.created_messages: list[dict] = []
 
     async def create_message(self, **kwargs) -> SimpleNamespace:  # type: ignore[no-untyped-def]
         self.created_messages.append(kwargs)
-        return SimpleNamespace(conversation_id=uuid.uuid4())
+        return SimpleNamespace(conversation_id=self.request_conversation_id)
 
     async def add_message_to_conversation(
         self, conversation_id: uuid.UUID, message_body: dict
@@ -135,6 +138,120 @@ class _FakeMessageRepo:
 class _FakeAgentRepo:
     async def get_agent(self, agent_id: uuid.UUID) -> SimpleNamespace:
         return SimpleNamespace(language=None)
+
+
+async def _drain_background_tasks(module: Any) -> None:
+    pending_tasks = list(module._background_tasks)
+    if pending_tasks:
+        await asyncio.gather(*pending_tasks, return_exceptions=True)
+    await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_tool_result_cache_write_scheduler_skips_non_tool_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    append_calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def _fake_append_tool_result(
+        conversation_id: str, payload: dict[str, Any]
+    ) -> None:
+        append_calls.append((conversation_id, payload))
+
+    monkeypatch.setattr(
+        _implementation,
+        "append_tool_result",
+        _fake_append_tool_result,
+    )
+    _implementation._background_tasks.clear()
+
+    conversation_id = uuid.uuid4()
+    _implementation._schedule_tool_result_cache_writes(
+        conversation_id,
+        [
+            {"type": "sms_followup", "payload": {"message": "send update"}},
+            {"type": "tool_call", "payload": None},
+        ],
+    )
+    await _drain_background_tasks(_implementation)
+
+    assert append_calls == []
+    assert _implementation._background_tasks == set()
+
+
+def test_tool_result_cache_write_scheduler_handles_schedule_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    def _raise_append_tool_result(
+        conversation_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(
+        _implementation,
+        "append_tool_result",
+        _raise_append_tool_result,
+    )
+    _implementation._background_tasks.clear()
+
+    _implementation._schedule_tool_result_cache_writes(
+        uuid.uuid4(),
+        [{"type": "tool_call", "payload": {"tool_name": "check_hours"}}],
+    )
+
+    assert _implementation._background_tasks == set()
+
+
+@pytest.mark.asyncio
+async def test_tool_result_cache_write_done_callback_handles_cancelled_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    async def _sleep_forever() -> None:
+        await asyncio.sleep(3600)
+
+    task = asyncio.create_task(_sleep_forever())
+    _implementation._background_tasks.clear()
+    _implementation._background_tasks.add(task)
+
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    _implementation._handle_tool_result_cache_write_done(task)
+
+    assert task not in _implementation._background_tasks
+
+
+@pytest.mark.asyncio
+async def test_tool_result_cache_write_done_callback_handles_failed_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    async def _raise_error() -> None:
+        raise RuntimeError("cache write failed")
+
+    task = asyncio.create_task(_raise_error())
+    _implementation._background_tasks.clear()
+    _implementation._background_tasks.add(task)
+
+    await asyncio.gather(task, return_exceptions=True)
+    _implementation._handle_tool_result_cache_write_done(task)
+
+    assert task not in _implementation._background_tasks
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +324,12 @@ async def test_streaming_tool_call_events_attached_to_message(
         "payload": {"item_recap": "1 large pepperoni pizza."},
     }
     collected_sms_events: list[dict] = []
+    append_calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def _fake_append_tool_result(
+        conversation_id: str, payload: dict[str, Any]
+    ) -> None:
+        append_calls.append((conversation_id, payload))
 
     class _EventStreamPalAgent:
         def __init__(self, spec=None):  # type: ignore[no-untyped-def]
@@ -255,6 +378,12 @@ async def test_streaming_tool_call_events_attached_to_message(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
     monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        _implementation,
+        "append_tool_result",
+        _fake_append_tool_result,
+    )
+    _implementation._background_tasks.clear()
 
     message = Message(
         author_type=AuthorType.USER,
@@ -275,6 +404,7 @@ async def test_streaming_tool_call_events_attached_to_message(
             event_collector=collected_sms_events.append,
         )
     ]
+    await _drain_background_tasks(_implementation)
 
     # Verify content chunks were yielded
     assert len(chunks) >= 1
@@ -293,6 +423,11 @@ async def test_streaming_tool_call_events_attached_to_message(
         == "place_order"
     )
     assert collected_sms_events == [sms_followup_event]
+    assert message_repo.saved_conversation_id is not None
+    assert append_calls == [
+        (str(message_repo.saved_conversation_id), tool_events[0]["payload"]),
+        (str(message_repo.saved_conversation_id), tool_events[1]["payload"]),
+    ]
 
 
 @pytest.mark.asyncio
@@ -448,6 +583,12 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
             },
         }
     ]
+    append_calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def _fake_append_tool_result(
+        conversation_id: str, payload: dict[str, Any]
+    ) -> None:
+        append_calls.append((conversation_id, payload))
 
     class _EventPalAgent:
         def __init__(self, spec=None):  # type: ignore[no-untyped-def]
@@ -463,6 +604,9 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
 
     async def _fake_query_history_messages(*args, **kwargs):  # type: ignore[no-untyped-def]
         return []
+
+    async def _fake_fingerprint_conversation(**kwargs: Any) -> None:
+        return None
 
     fake_session = AsyncMock()
     fake_session.refresh = AsyncMock()
@@ -491,6 +635,17 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
         _implementation, "query_history_messages", _fake_query_history_messages
     )
     monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        _implementation,
+        "append_tool_result",
+        _fake_append_tool_result,
+    )
+    monkeypatch.setattr(
+        _implementation,
+        "_fingerprint_conversation",
+        _fake_fingerprint_conversation,
+    )
+    _implementation._background_tasks.clear()
 
     message = Message(
         author_type=AuthorType.USER,
@@ -506,6 +661,7 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
         message=message,
         request_context=RequestContext(),
     )
+    await _drain_background_tasks(_implementation)
 
     # Verify response was returned
     assert len(result) > 0
@@ -521,3 +677,6 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
     assert "tool_calls" in first_agent_body
     assert len(first_agent_body["tool_calls"]) == 1
     assert first_agent_body["tool_calls"][0]["payload"]["tool_name"] == "check_hours"
+    assert append_calls == [
+        (str(message_repo.request_conversation_id), tool_events[0]["payload"])
+    ]

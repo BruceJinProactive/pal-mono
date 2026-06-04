@@ -12,9 +12,10 @@ Last updated: 2026-06-04
   tool-result context from process-local `pal-agents` memory to shared
   ElastiCache so cross-pod follow-up turns can see prior tool outputs.
   Current pal-mono slices add reusable Redis/Valkey env-backed cache settings,
-  a Redis client factory, and a best-effort tool-result cache adapter with
-  per-family allowlists for compact cached payloads; later slices will wire
-  event writes, reads before `PalAgent.run(...)`, and the pal-agents prompt
+  a Redis client factory, a best-effort tool-result cache adapter with
+  per-family allowlists for compact cached payloads, and message-service
+  background writes for streaming/non-streaming `tool_call` events; later
+  slices will wire reads before `PalAgent.run(...)` and the pal-agents prompt
   handoff. ->
   `docs/plans/tool-result-elasticache-migration.md`
 

@@ -167,8 +167,9 @@ Responsibilities:
 
 ### Phase 3: Write Tool Results From pal-mono
 
-`pal-agents` already emits `tool_call` events. `pal-mono` should write those
-events to ElastiCache after sanitization.
+`pal-agents` already emits `tool_call` events. `pal-mono` writes those events
+to ElastiCache after sanitization by passing each event payload to
+`utils.cache.tool_result_cache.append_tool_result(...)`.
 
 Apply this to both pal-agents paths:
 
@@ -177,8 +178,9 @@ Apply this to both pal-agents paths:
 - Streaming: `get_chat_response_stream(...)` when empty-content chunks carry
   `chunk.events`.
 
-Writes should be fire-and-forget or otherwise non-blocking. On failure, log a
-structured warning/metric and continue the user response.
+Writes are scheduled as background tasks so message responses and streaming
+chunks are not delayed by cache I/O. On failure, the cache adapter logs/metrics
+the error and the message service continues the user response.
 
 Files to modify:
 
