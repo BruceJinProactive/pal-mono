@@ -1,0 +1,6 @@
+capability:
+  capability_identifier: adora
+  default_enabled: false
+  priority: 95
+
+actions: []
