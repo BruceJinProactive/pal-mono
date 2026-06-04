@@ -1,8 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-01
-> **Last updated:** 2026-06-02
-> **Last updated:** 2026-06-03
+> **Last updated:** 2026-06-04
 
 ## Quick Reference
 
@@ -237,7 +235,13 @@ transition validation. Current workflows cover `table_cleanness`,
 `event_metadata.is_test == True` are persisted as state changes but skipped by
 rule workflows. Rules can carry empty-default text-array `label` values, and
 rule events store a non-null fixed-scale numeric `duration` in minutes that
-defaults to `0.0`.
+defaults to `0.0`. State-transition workflows set that duration to the elapsed
+time spent in the prior state before the trigger state was observed. For example,
+`table_cleanness` records how many minutes a table stayed `dirty` when it
+transitions to `clean`; if no prior-state start time can be resolved, the event
+keeps the `0.0` default. `GET /accounts/{account_name}/rule-events` returns all
+rule events matching the account, optional rule/entity filters, and the time
+window; it has no pagination or `limit` query parameter.
 
 The `visionruletype` database enum also accepts `empty_tray`,
 `people_queued_up`, and `floor_cleanness` rule records for manage-app

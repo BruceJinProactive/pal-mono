@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -39,6 +40,7 @@ def sample_orm_row(sample_id: uuid.UUID, sample_rule_id: uuid.UUID) -> MagicMock
     row.entity_id = uuid.uuid4()
     row.state_change_event_id = uuid.uuid4()
     row.severity = "high"
+    row.duration = Decimal("2.5000")
     row.triggered_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
     row.event_metadata = {"detail": "dirty"}
     return row
@@ -52,6 +54,7 @@ def sample_data(sample_id: uuid.UUID, sample_rule_id: uuid.UUID) -> VisionRuleEv
         entity_id=uuid.uuid4(),
         state_change_event_id=uuid.uuid4(),
         severity="high",
+        duration=Decimal("2.5000"),
         triggered_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
         event_metadata={"detail": "dirty"},
     )
@@ -69,6 +72,8 @@ class TestCreate:
         await repo.create(sample_data)
 
         mock_session.add.assert_called_once()
+        row = mock_session.add.call_args.args[0]
+        assert row.duration == Decimal("2.5000")
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -103,6 +108,7 @@ class TestGetByIdForAccount:
 
         assert isinstance(data, VisionRuleEventData)
         assert data.id == sample_id
+        assert data.duration == Decimal("2.5000")
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(
@@ -149,6 +155,8 @@ class TestListByAccount:
 
         assert len(results) == 1
         assert isinstance(results[0], VisionRuleEventData)
+        statement = mock_session.execute.await_args.args[0]
+        assert "LIMIT" not in str(statement)
 
     @pytest.mark.asyncio
     async def test_filters_by_rule_id(

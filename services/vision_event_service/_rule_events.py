@@ -22,6 +22,7 @@ def _build_response(data: VisionRuleEventData) -> VisionRuleEventResponse:
         entity_id=data.entity_id,
         state_change_event_id=data.state_change_event_id,
         severity=data.severity,
+        duration=data.duration,
         triggered_at=data.triggered_at,
         event_metadata=data.event_metadata,
     )
@@ -50,7 +51,6 @@ async def list_rule_events(
     entity_id: uuid.UUID | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
-    limit: int = 100,
 ) -> ListVisionRuleEventsResponse:
     account = await account_service.get_account_async(session, account_name)
     if not account:
@@ -63,7 +63,6 @@ async def list_rule_events(
         entity_id=entity_id,
         start=start,
         end=end,
-        limit=limit,
     )
     items = [_build_response(e) for e in events]
     return ListVisionRuleEventsResponse(items=items, total=len(items))

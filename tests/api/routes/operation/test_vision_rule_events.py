@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -26,6 +27,7 @@ def _make_response(**overrides: object) -> VisionRuleEventResponse:
         "entity_id": ENTITY_ID,
         "state_change_event_id": uuid.uuid4(),
         "severity": "high",
+        "duration": Decimal("3.7500"),
         "triggered_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
         "event_metadata": {},
     }
@@ -51,6 +53,7 @@ class TestGetRuleEvent:
             result = await get_rule_event(session, event_id, ACCOUNT_NAME)
 
         assert result.id == event_id
+        assert result.duration == Decimal("3.7500")
 
     @pytest.mark.asyncio
     async def test_not_found_returns_404(self) -> None:
@@ -96,10 +99,18 @@ class TestListRuleEvents:
             f"{MODULE}.vision_event_service.list_rule_events",
             new_callable=AsyncMock,
             return_value=expected,
-        ):
+        ) as mock_list:
             result = await list_rule_events(session, ACCOUNT_NAME)
 
         assert result.total == 0
+        mock_list.assert_awaited_once_with(
+            session=session,
+            account_name=ACCOUNT_NAME,
+            rule_id=None,
+            entity_id=None,
+            start=None,
+            end=None,
+        )
 
     @pytest.mark.asyncio
     async def test_not_found_returns_404(self) -> None:

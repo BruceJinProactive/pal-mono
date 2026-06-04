@@ -4,6 +4,11 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-04
+
+- **Vision rule event durations.** State-transition rule workflows now persist `vision_rule_event.duration` as the elapsed minutes spent in the previous state before the trigger state, such as table `dirty` to `clean`; unresolved start times keep the `0.0` default. -> `docs/state/architecture.md`
+- **Vision rule events list is uncapped.** Removed the `limit` query parameter from `GET /accounts/{account_name}/rule-events`; the endpoint now returns all rule events matching account, rule/entity, and time filters, and each response item includes `duration`. -> `docs/state/architecture.md`
+
 ## 2026-06-03
 
 - **Add Pokeworks vision rule enum values.** Added `empty_tray`, `people_queued_up`, and `floor_cleanness` to the `visionruletype` enum so manage-app rule configuration can create those rule types. Migration: `d3b0731aa483`. -> `docs/state/architecture.md`

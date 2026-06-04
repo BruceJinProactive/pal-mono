@@ -710,7 +710,7 @@ async def update_entity_state(
     await event_repo.create(state_change_event)
     await handle_state_change_rules(
         session=session,
-        entity=updated,
+        entity=data,
         state_change_event=state_change_event,
         state_name=state_def.name,
         previous_state_name=previous_state_def.name if previous_state_def else None,

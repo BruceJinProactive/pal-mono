@@ -1,7 +1,8 @@
 """Tests for vision observation rule workflow."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -63,6 +64,31 @@ def _make_state_change(
     )
 
 
+def _set_current_state_since(
+    entity: VisionEntityData,
+    definition_type: str,
+    state_id: uuid.UUID,
+    state_name: str,
+    since: datetime,
+) -> None:
+    object.__setattr__(entity, "current_state_id", state_id)
+    object.__setattr__(entity, "current_state_since", since)
+    object.__setattr__(
+        entity,
+        "entity_metadata",
+        {
+            "current_states": {
+                definition_type: {
+                    "state_definition_id": str(state_id),
+                    "state": state_name,
+                    "current_state_since": since.isoformat(),
+                    "observed_at": since.isoformat(),
+                }
+            }
+        },
+    )
+
+
 class TestHandleStateChangeRules:
 
     @pytest.mark.asyncio
@@ -71,6 +97,14 @@ class TestHandleStateChangeRules:
         entity = _make_entity()
         rule = _make_rule(project_id=entity.project_id)
         state_change = _make_state_change(entity_id=entity.id)
+        assert state_change.previous_state_id is not None
+        _set_current_state_since(
+            entity=entity,
+            definition_type="cleanliness",
+            state_id=state_change.previous_state_id,
+            state_name="dirty",
+            since=state_change.observed_at - timedelta(minutes=12, seconds=30),
+        )
         event: object | None = None
 
         with (
@@ -102,7 +136,56 @@ class TestHandleStateChangeRules:
         assert event.state_change_event_id == state_change.id
         assert event.severity == rule.severity
         assert event.triggered_at == state_change.observed_at
+        assert event.duration == Decimal("12.5000")
         assert event.event_metadata == {}
+
+    @pytest.mark.asyncio
+    async def test_duration_falls_back_to_previous_state_change_event(self) -> None:
+        session = AsyncMock()
+        entity = _make_entity()
+        rule = _make_rule(project_id=entity.project_id)
+        state_change = _make_state_change(entity_id=entity.id)
+        assert state_change.previous_state_id is not None
+        previous_event = VisionStateChangeEventData(
+            id=uuid.uuid4(),
+            entity_id=entity.id,
+            new_state_id=state_change.previous_state_id,
+            observed_at=state_change.observed_at - timedelta(minutes=7, seconds=30),
+            event_metadata={"definition_type": "cleanliness"},
+        )
+        event: object | None = None
+
+        with (
+            patch(f"{MODULE}.VisionRuleRepository") as rule_repo_cls,
+            patch(f"{MODULE}.VisionRuleEventRepository") as event_repo_cls,
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as state_repo_cls,
+        ):
+            rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
+            event_repo_cls.return_value.create = AsyncMock()
+            state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
+                return_value=previous_event
+            )
+
+            await handle_state_change_rules(
+                session,
+                entity,
+                state_change,
+                "clean",
+                previous_state_name="dirty",
+                entity_type_name="table",
+            )
+
+            state_repo_cls.return_value.get_latest_by_entity_state_before.assert_awaited_once_with(
+                entity_id=entity.id,
+                state_id=state_change.previous_state_id,
+                before=state_change.observed_at,
+                definition_type="cleanliness",
+            )
+            event_repo_cls.return_value.create.assert_awaited_once()
+            event = event_repo_cls.return_value.create.call_args.args[0]
+
+        assert isinstance(event, VisionRuleEventData)
+        assert event.duration == Decimal("7.5000")
 
     @pytest.mark.parametrize(
         (
@@ -170,6 +253,14 @@ class TestHandleStateChangeRules:
         entity = _make_entity()
         rule = _make_rule(project_id=entity.project_id, rule_type=rule_type)
         state_change = _make_state_change(entity_id=entity.id)
+        assert state_change.previous_state_id is not None
+        _set_current_state_since(
+            entity=entity,
+            definition_type=definition_type,
+            state_id=state_change.previous_state_id,
+            state_name=previous_state_name,
+            since=state_change.observed_at - timedelta(minutes=5),
+        )
         object.__setattr__(
             state_change, "event_metadata", {"definition_type": definition_type}
         )
@@ -204,6 +295,7 @@ class TestHandleStateChangeRules:
         assert event.state_change_event_id == state_change.id
         assert event.severity == rule.severity
         assert event.triggered_at == state_change.observed_at
+        assert event.duration == Decimal("5.0000")
         assert event.event_metadata == {}
 
     @pytest.mark.asyncio
@@ -321,6 +413,14 @@ class TestHandleStateChangeRules:
         entity = _make_entity()
         rule = _make_rule(project_id=entity.project_id)
         state_change = _make_state_change(entity_id=entity.id)
+        assert state_change.previous_state_id is not None
+        _set_current_state_since(
+            entity=entity,
+            definition_type="cleanliness",
+            state_id=state_change.previous_state_id,
+            state_name="dirty",
+            since=state_change.observed_at - timedelta(minutes=3),
+        )
         object.__setattr__(state_change, "event_metadata", None)
 
         with (

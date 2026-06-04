@@ -71,6 +71,36 @@ class VisionStateChangeEventRepository:
             )
             return None
 
+    async def get_latest_by_entity_state_before(
+        self,
+        entity_id: uuid.UUID,
+        state_id: uuid.UUID,
+        before: datetime,
+        definition_type: str | None = None,
+    ) -> VisionStateChangeEventData | None:
+        try:
+            query = select(VisionStateChangeEvent).filter(
+                VisionStateChangeEvent.entity_id == entity_id,
+                VisionStateChangeEvent.new_state_id == state_id,
+                VisionStateChangeEvent.observed_at < before,
+            )
+            if definition_type is not None:
+                query = query.filter(
+                    VisionStateChangeEvent.event_metadata["definition_type"].as_string()
+                    == definition_type
+                )
+            query = query.order_by(VisionStateChangeEvent.observed_at.desc()).limit(1)
+            result = await self.session.execute(query)
+            row = result.scalar_one_or_none()
+            return _to_data(row) if row else None
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision StateChangeEvent] DB error getting latest event before time",
+                exc_info=True,
+            )
+            return None
+
     async def get_by_id_for_account(
         self, event_id: uuid.UUID, account_id: uuid.UUID
     ) -> VisionStateChangeEventData | None:

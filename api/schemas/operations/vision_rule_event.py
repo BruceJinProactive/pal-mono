@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,6 +22,10 @@ class VisionRuleEventResponse(BaseModel):
         description="State change event that caused the trigger"
     )
     severity: str = Field(description="Severity level of the triggered rule")
+    duration: Decimal = Field(
+        default=Decimal("0.0"),
+        description="Duration of the prior state in minutes",
+    )
     triggered_at: datetime = Field(description="When the rule was triggered")
     event_metadata: dict[str, Any] = Field(description="Arbitrary event metadata")
 

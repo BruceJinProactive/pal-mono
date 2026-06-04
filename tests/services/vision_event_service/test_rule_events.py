@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -30,6 +31,7 @@ def _make_event_data(**overrides: object) -> VisionRuleEventData:
         "entity_id": ENTITY_ID,
         "state_change_event_id": uuid.uuid4(),
         "severity": "high",
+        "duration": Decimal("4.2500"),
         "triggered_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
         "event_metadata": {},
     }
@@ -63,6 +65,7 @@ class TestGetRuleEvent:
 
             assert result.id == event_id
             assert result.rule_id == RULE_ID
+            assert result.duration == Decimal("4.2500")
 
     @pytest.mark.asyncio
     async def test_raises_when_account_not_found(self) -> None:
@@ -125,6 +128,14 @@ class TestListRuleEvents:
 
             assert result.total == 1
             assert result.items[0].rule_id == RULE_ID
+            assert result.items[0].duration == Decimal("4.2500")
+            repo.list_by_account.assert_awaited_once_with(
+                account_id=ACCOUNT_ID,
+                rule_id=None,
+                entity_id=None,
+                start=None,
+                end=None,
+            )
 
     @pytest.mark.asyncio
     async def test_raises_when_account_not_found(self) -> None:

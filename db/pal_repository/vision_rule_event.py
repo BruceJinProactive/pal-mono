@@ -19,6 +19,7 @@ def _to_data(row: VisionRuleEvent) -> VisionRuleEventData:
         state_change_event_id=row.state_change_event_id,
         severity=row.severity,
         triggered_at=row.triggered_at,
+        duration=row.duration,
         event_metadata=dict(row.event_metadata) if row.event_metadata else {},
     )
 
@@ -36,6 +37,7 @@ class VisionRuleEventRepository:
                 entity_id=record.entity_id,
                 state_change_event_id=record.state_change_event_id,
                 severity=record.severity,
+                duration=record.duration,
                 triggered_at=record.triggered_at,
                 event_metadata=record.event_metadata,
             )
@@ -76,7 +78,6 @@ class VisionRuleEventRepository:
         entity_id: uuid.UUID | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
-        limit: int = 100,
     ) -> list[VisionRuleEventData]:
         try:
             query = (
@@ -93,7 +94,7 @@ class VisionRuleEventRepository:
                 query = query.filter(VisionRuleEvent.triggered_at >= start)
             if end is not None:
                 query = query.filter(VisionRuleEvent.triggered_at <= end)
-            query = query.order_by(VisionRuleEvent.triggered_at.desc()).limit(limit)
+            query = query.order_by(VisionRuleEvent.triggered_at.desc())
             result = await self.session.execute(query)
             return [_to_data(row) for row in result.scalars().all()]
         except Exception:
