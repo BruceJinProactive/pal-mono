@@ -9,12 +9,14 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import SQLAlchemyError
 
 from db.repositories.conversation_repository import (
     ConversationRepository,
     ConversationRepositoryAsync,
     ConversationUpdate,
+    _split_call_purpose_values,
 )
 from db.tables import Conversation, ConversationStatus
 
@@ -275,6 +277,21 @@ class TestConversationUpdateAsync:
 class TestConversationFiltering:
     """Analytics filters must compose correctly for dashboard reporting."""
 
+    def test_split_call_purpose_values_returns_first_level_tokens(self):
+        """Purpose filters accept historical comma-separated combinations."""
+        assert _split_call_purpose_values(
+            [
+                "customer_service,dietary_specific,store_info",
+                "store_info",
+                "ordering",
+            ]
+        ) == [
+            "customer_service",
+            "dietary_specific",
+            "store_info",
+            "ordering",
+        ]
+
     def test_get_conversation_ids_with_date_range(
         self, repo, mock_session, sample_conversation_id
     ):
@@ -308,7 +325,7 @@ class TestConversationFiltering:
     def test_get_conversation_ids_with_purpose_filter(
         self, repo, mock_session, sample_conversation_id
     ):
-        """Analytics: ordering calls vs store info calls."""
+        """Analytics: selected purposes match any purpose token on the call."""
         mock_q = mock_session.query.return_value.filter.return_value
         mock_q.filter.return_value = mock_q
         mock_q.all.return_value = [(sample_conversation_id,)]
@@ -320,6 +337,15 @@ class TestConversationFiltering:
             purpose=["ordering"],
         )
         assert result == [sample_conversation_id]
+
+        compiled_filters = [
+            str(call.args[0].compile(dialect=postgresql.dialect()))
+            for call in mock_q.filter.call_args_list
+        ]
+        assert any(
+            "string_to_array" in compiled_filter and "&&" in compiled_filter
+            for compiled_filter in compiled_filters
+        )
 
     def test_get_conversation_ids_with_ended_reason_filter(
         self, repo, mock_session, sample_conversation_id
@@ -408,11 +434,15 @@ class TestConversationDistinctFilters:
     """Dashboard filter dropdowns populated from distinct conversation values."""
 
     def test_get_distinct_filter_values_returns_all_three(self, repo, mock_session):
-        """Dashboard populates filter dropdowns."""
+        """Dashboard populates filter dropdowns with first-level purposes."""
         mock_q = mock_session.query.return_value
         mock_q.join.return_value.filter.return_value.one.return_value = (
             ["english", "spanish"],
-            ["ordering", "store_info"],
+            [
+                "customer_service,dietary_specific,store_info",
+                "store_info",
+                "delivery",
+            ],
             ["customer_ended"],
         )
 
@@ -420,7 +450,12 @@ class TestConversationDistinctFilters:
             uuid.uuid4()
         )
         assert languages == ["english", "spanish"]
-        assert purposes == ["ordering", "store_info"]
+        assert purposes == [
+            "store_info",
+            "delivery",
+            "customer_service",
+            "dietary_specific",
+        ]
         assert ended_reasons == ["customer_ended"]
 
     def test_get_distinct_filter_values_handles_null_arrays(self, repo, mock_session):

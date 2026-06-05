@@ -3,13 +3,47 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import func, select, update
+from sqlalchemy import Text, cast, func, select, update
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from db.tables import Account, Conversation, ConversationStatus, Message, User
+from db.tables import (
+    Account,
+    CallPurpose,
+    Conversation,
+    ConversationStatus,
+    Message,
+    User,
+)
 from utils.log import logger
+
+
+def _split_call_purpose_values(raw_purposes: list[str]) -> list[str]:
+    """Return unique first-level purpose tokens from raw comma-separated values."""
+    purpose_values: list[str] = []
+    seen_values: set[str] = set()
+
+    for raw_purpose in raw_purposes:
+        for purpose in raw_purpose.split(","):
+            stripped_purpose = purpose.strip()
+            if not stripped_purpose or stripped_purpose in seen_values:
+                continue
+            seen_values.add(stripped_purpose)
+            purpose_values.append(stripped_purpose)
+
+    return purpose_values
+
+
+def _normalize_call_purpose_filter_values(raw_purposes: list[str]) -> list[str]:
+    """Return known first-level call purpose values in enum order."""
+    present_purposes = set(_split_call_purpose_values(raw_purposes))
+    return [
+        call_purpose.value
+        for call_purpose in CallPurpose
+        if call_purpose.value in present_purposes
+    ]
 
 
 class ConversationUpdate(BaseModel):
@@ -369,7 +403,13 @@ class ConversationRepository:
             if language is not None and len(language) > 0:
                 query = query.filter(Conversation.language.in_(language))
             if purpose is not None and len(purpose) > 0:
-                query = query.filter(Conversation.purpose.in_(purpose))
+                purpose_values = _split_call_purpose_values(purpose)
+                if purpose_values:
+                    query = query.filter(
+                        func.string_to_array(Conversation.purpose, ",").op("&&")(
+                            cast(purpose_values, ARRAY(Text))
+                        )
+                    )
             if ended_reason is not None and len(ended_reason) > 0:
                 query = query.filter(Conversation.ended_reason.in_(ended_reason))
             if customer_converted is not None:
@@ -430,7 +470,7 @@ class ConversationRepository:
 
             # array_agg returns None if no rows match, convert to empty list
             languages = result[0] or []
-            purposes = result[1] or []
+            purposes = _normalize_call_purpose_filter_values(result[1] or [])
             ended_reasons = result[2] or []
 
             return (languages, purposes, ended_reasons)
