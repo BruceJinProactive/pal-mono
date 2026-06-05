@@ -1,6 +1,6 @@
 # Billing System & Stripe Integration
 
-> **Last updated:** 2026-03-23
+> **Last updated:** 2026-06-05
 
 ## Overview
 
@@ -165,7 +165,7 @@ Has a unique constraint ensuring one active subscription per project.
 2. Check for date overlaps with existing subscriptions
 3. Create `AccountSubscription` record with `status=pending`
 4. Update `account.current_subscription_id`
-5. For each project, call `add_project_to_subscription()`
+5. For each selected project, call `add_project_to_subscription()`
 6. Send activation notification
 
 **add_project_to_subscription()** creates per-project Stripe artifacts:
@@ -181,17 +181,18 @@ Has a unique constraint ensuring one active subscription per project.
 
 **Path**: `services/subscription_service/_subscription.py:create_stripe_checkout_url()`
 
-1. Retrieve all `ProjectSubscription` records for the subscription
-2. Build `line_items` array from all project prices:
+1. Retrieve `ProjectSubscription` records for the subscription
+2. If `project_ids` are provided on the checkout request, keep only those selected locations; omitted `project_ids` preserves the existing all-attached-projects checkout behavior
+3. Build `line_items` array from the selected project prices:
    - Base fee prices: quantity=1
    - Metered prices: no quantity (usage-based)
-3. Create Stripe Checkout Session with:
+4. Create Stripe Checkout Session with:
    - `mode="subscription"` for recurring billing
    - `subscription_data.trial_end` for trial period
    - `subscription_data.metadata` linking to our `external_id`
    - `client_reference_id` set to our `account_id`
    - Referral code for Rewardful tracking (if provided)
-4. Return checkout URL for redirect
+5. Return checkout URL for redirect
 
 ### 3. Checkout Success Handling
 

@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-05
+
+- **Selected-location subscription checkout.** Account subscription checkout now accepts an optional `project_ids` subset so the admin console can send only the locations selected for purchase; omitted `project_ids` keeps the existing all-attached-projects behavior, while empty or unknown selections fail before Stripe checkout is created. -> `docs/state/billing.md`
+
+---
+
 ## 2026-06-04
 
 - **Message service tool-result cache writes.** `message_service` now schedules best-effort background writes for streaming and non-streaming `tool_call` payloads through `utils.cache.tool_result_cache.append_tool_result(...)`, keeping Redis details inside the cache adapter. -> `docs/plans/tool-result-elasticache-migration.md`

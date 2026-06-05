@@ -350,6 +350,7 @@ class CreateCheckoutSessionRequest(BaseModel):
     customer_email: EmailStr | None = None
     redirect_url_prefix: AnyHttpUrl
     referral_code: str | None = None
+    project_ids: list[uuid.UUID] | None = None
 
 
 class ProjectSubscription(BaseModel):

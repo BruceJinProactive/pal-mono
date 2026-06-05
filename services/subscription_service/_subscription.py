@@ -1273,6 +1273,39 @@ def get_account_subscription_by_external_id(
     )
 
 
+def _select_project_subscriptions_for_checkout(
+    project_subscriptions: list[db.ProjectSubscription],
+    project_ids: list[uuid.UUID] | None,
+) -> list[db.ProjectSubscription]:
+    if project_ids is None:
+        return project_subscriptions
+
+    if not project_ids:
+        raise ValueError("At least one project_id is required for checkout")
+
+    selected_project_ids = set(project_ids)
+    selected_project_subscriptions = [
+        project_subscription
+        for project_subscription in project_subscriptions
+        if project_subscription.project_id in selected_project_ids
+    ]
+    found_project_ids = {
+        project_subscription.project_id
+        for project_subscription in selected_project_subscriptions
+    }
+    missing_project_ids = selected_project_ids - found_project_ids
+
+    if missing_project_ids:
+        missing_ids = ", ".join(
+            sorted(str(project_id) for project_id in missing_project_ids)
+        )
+        raise ValueError(
+            f"Selected projects are not included in this subscription: {missing_ids}"
+        )
+
+    return selected_project_subscriptions
+
+
 def get_account_subscription(
     session: Session,
     account_id: uuid.UUID,
@@ -1304,6 +1337,7 @@ def create_stripe_checkout_url(
     customer_email: str | None,
     redirect_url_prefix: str,
     referral_code: str | None = None,
+    project_ids: list[uuid.UUID] | None = None,
 ) -> str | None:
     """
     Create a Stripe checkout URL for a subscription.
@@ -1312,10 +1346,11 @@ def create_stripe_checkout_url(
         session: Database session
         account_id: UUID of the account creating the subscription
         external_id: External ID of the subscription to create checkout for
-        project_ids: List of project UUIDs to associate with the subscription
         customer_email: Optional email for the customer
         redirect_url_prefix: URL prefix for success/cancel redirects
         referral_code: Optional Rewardful referral token from ?via= parameter
+        project_ids: Optional project UUIDs to include in checkout. If omitted,
+            checkout includes all projects currently attached to the subscription.
 
     Returns:
         Checkout URL string or None if subscription not found
@@ -1347,6 +1382,11 @@ def create_stripe_checkout_url(
         raise RuntimeError(
             "No project subscriptions found for this account subscription"
         )
+
+    project_subscriptions = _select_project_subscriptions_for_checkout(
+        project_subscriptions,
+        project_ids,
+    )
 
     # Collect all line items for the checkout session
     line_items = []

@@ -480,6 +480,7 @@ def create_checkout_session(
             ),
             redirect_url_prefix=str(request.redirect_url_prefix),
             referral_code=request.referral_code,
+            project_ids=request.project_ids,
         )
     except RuntimeError as err:
         logger.exception(str(err))
@@ -664,10 +665,13 @@ def remove_project_subscription(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-def retrieve_projects(session, account_id, project_ids) -> list[db.Project]:
-    projects = []
-    if project_ids:
-        projects = project_service.get_projects_by_ids(session, project_ids)
+def retrieve_projects(
+    session: Session, account_id: uuid.UUID, project_ids: list[uuid.UUID] | None
+) -> list[db.Project]:
+    if not project_ids:
+        return []
+
+    projects = project_service.get_projects_by_ids(session, project_ids)
 
     if len(projects) < len(project_ids):
         found_ids = [p.id for p in projects]
