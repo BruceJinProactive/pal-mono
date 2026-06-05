@@ -285,7 +285,13 @@ the metadata map before removing a state definition.
 
 *Agent & AI*: `agent_capabilities`, `capability_actions`, `prompts`, `voice_configs`
 
-*Communication*: `conversations`, `messages`, `phonecalls`
+*Communication*: `conversations`, `messages`, `phone_calls`
+
+`phone_calls` stores post-call voice analytics such as duration, latency,
+ended reason, call purpose, user satisfaction, language, and transfer reason
+classification. Transfer reason analysis is folded into the same post-call LLM
+analytics pass as call purpose and satisfaction; `transfer_purpose` remains live
+routing metadata on `conversations`.
 
 *Transactions*: `orders`, `adora_orders`, `reservations`, `catering_requests`
 

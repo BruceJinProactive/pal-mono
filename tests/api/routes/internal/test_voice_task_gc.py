@@ -161,6 +161,8 @@ class TestVoiceFireAndForgetTaskLeak:
                 "call_purpose": [MagicMock(value="general_inquiry")],
                 "user_satisfaction": MagicMock(value="neutral"),
                 "language": MagicMock(value="en"),
+                "transfer_reason_category": None,
+                "transfer_agent_was_at_fault": None,
             }
 
             result = await end_voice_call(mock_request, mock_session)

@@ -2,6 +2,23 @@ from datetime import UTC, datetime, timedelta
 
 from utils.log import logger
 
+TRANSFER_REASON_CATEGORIES: tuple[str, ...] = (
+    "cold_opt_out",
+    "capability_specific_person",
+    "user_frustration_in_flow",
+    "capability_reservation",
+    "tool_failure_order",
+    "capability_catering",
+    "other",
+    "post_order_followup",
+    "capability_other_department",
+    "checkout_handoff_not_human",
+    "ambiguous_intent_user_gave_up",
+    "capability_hiring",
+    "failed_transfer_attempt",
+    "capability_off_topic",
+)
+
 
 # =============================================================================
 # TIME RELATED FUNCTIONS
@@ -530,6 +547,29 @@ def _calculate_aggregated_metric(metric_name: str, data: list) -> dict:
 # =============================================================================
 
 
+def _format_message_content(content: object) -> str:
+    """Extract readable text from the message content shapes used by LiveKit."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [_format_message_content(part) for part in content]
+        return " ".join(part for part in parts if part).strip()
+    if isinstance(content, dict):
+        text = content.get("text")
+        if isinstance(text, dict):
+            return _format_message_content(text.get("body"))
+        if text is not None:
+            return _format_message_content(text)
+        for key in ("body", "content"):
+            value = content.get(key)
+            if value is not None:
+                return _format_message_content(value)
+        return ""
+    return str(content)
+
+
 def _format_conversation(conversation_history: list[dict]) -> str:
     """
     Format conversation history into a readable text format for LLM analysis.
@@ -543,25 +583,61 @@ def _format_conversation(conversation_history: list[dict]) -> str:
     formatted_lines = []
     for msg in conversation_history:
         role = msg.get("role", "unknown")
-        content = msg.get("content", "")
+        content = _format_message_content(msg.get("content", ""))
         formatted_lines.append(f"{role.upper()}: {content}")
 
     return "\n".join(formatted_lines)
 
 
-async def extract_call_analytics(conversation_history: list[dict]) -> dict:
+def _normalize_transfer_reason_category(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("transfer_reason_category must be a string or null")
+
+    normalized = value.strip()
+    if normalized.lower() in {"", "none", "null", "not_applicable"}:
+        return None
+    if normalized not in TRANSFER_REASON_CATEGORIES:
+        raise ValueError(f"Invalid transfer_reason_category: {normalized}")
+    return normalized
+
+
+def _normalize_transfer_agent_was_at_fault(value: object) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"", "none", "null", "not_applicable"}:
+            return None
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    raise ValueError("transfer_agent_was_at_fault must be a boolean or null")
+
+
+async def extract_call_analytics(
+    conversation_history: list[dict],
+    transfer_purpose: str | None = None,
+) -> dict:
     """
     Extract analytics from conversation using LLM.
 
     Args:
         conversation_history: List of message dicts in format [{"role": "user/assistant", "content": "..."}]
+        transfer_purpose: Live routing purpose from call_transfer, if one was captured.
 
     Returns:
         dict: {
             "ended_reason": CallEndedReason,
             "call_purpose": list[CallPurpose],
             "user_satisfaction": UserSatisfaction,
-            "language": CallLanguage
+            "language": CallLanguage,
+            "transfer_reason_category": str | None,
+            "transfer_agent_was_at_fault": bool | None
         }
     """
     import json
@@ -574,8 +650,18 @@ async def extract_call_analytics(conversation_history: list[dict]) -> dict:
         UserSatisfaction,
     )
 
+    transfer_categories = ", ".join(TRANSFER_REASON_CATEGORIES)
+    transfer_purpose_context = transfer_purpose or "none"
+
     # Build system prompt with all enum options
-    system_prompt = """Analyze this call conversation and extract the following information:
+    system_prompt = f"""Analyze this restaurant phone-call conversation and extract one unified post-call analytics JSON object.
+
+Use the transcript as the source of truth. Use the live transfer_purpose context only as a signal that the agent invoked call_transfer and how it tried to route the call.
+
+Global transfer signals:
+- If live transfer_purpose is anything other than "none", treat the call as having a transfer signal.
+- Empty speaker lines at the very end of the transcript usually mean the call was already bridged to a human / dead air on the bot side. Ignore them for intent analysis but treat them as a transfer signal.
+- When a transfer signal exists, ended_reason should be assistant_forwarded unless the transcript clearly shows only a checkout/self-service handoff with no human transfer.
 
 1. ended_reason: Choose ONE from:
    - customer_ended: Customer hung up or ended the call normally
@@ -585,10 +671,10 @@ async def extract_call_analytics(conversation_history: list[dict]) -> dict:
    - max_duration_exceeded: Call reached maximum allowed duration
    - other: Any other reason
 
-2. call_purpose: Choose ALL that apply (can be multiple) from:
+2. call_purpose: Choose ALL caller intents that apply (can be multiple) from:
    - store_info: Hours, location/directions, parking, policies
    - menu_info: Menu questions (items, ingredients, pricing)
-   - ordering: User placed an order
+   - ordering: User wanted to place or modify an order, even if checkout failed or the call transferred
    - reservation: Making new reservations
    - waitlist: Waitlist inquiries
    - takeout_issue: Missing pickup items, wrong location
@@ -602,6 +688,10 @@ async def extract_call_analytics(conversation_history: list[dict]) -> dict:
    - reservation_change: Unsupported reservation changes
    - other: Any other call purpose
 
+The call_purpose array must contain at least one of the exact values above. Do not invent adjacent labels such as catering or takeout order. For catering or large-party order requests, use call_purpose ["ordering"] and transfer_reason_category "capability_catering". For new reservation requests, use "reservation"; use "reservation_change" only for changing an existing reservation.
+
+Do not use call_purpose for transfer root cause. Example: an order tool failure should usually have call_purpose ["ordering"] and transfer_reason_category "tool_failure_order".
+
 3. user_satisfaction: Choose ONE from:
    - positive: Customer satisfied, polite close, needs resolved
    - neutral: Mixed signals, partially resolved, or indifferent
@@ -613,16 +703,50 @@ async def extract_call_analytics(conversation_history: list[dict]) -> dict:
    - spanish: Spanish conversation
    - chinese: Chinese conversation
 
-Return ONLY a valid JSON object with these exact keys: ended_reason, call_purpose, user_satisfaction, language.
-The call_purpose value must be an array of strings. All other values must be strings.
+5. transfer_reason_category: Choose ONE from the transfer taxonomy below when the call had a human-transfer signal or transfer-like handoff wording, or null when there was no transfer signal.
+   Valid categories: {transfer_categories}
+
+   Transfer taxonomy decision rules, adapted from VSA:
+   - cold_opt_out: The caller's first substantive utterance is a generic human request, such as "representative" or "speak to a person." Do not use this if the caller first stated another intent, or if the caller asked for a named/specific person or department.
+   - capability_specific_person: Caller asks for a named employee, manager, front desk, or specific person.
+   - capability_reservation: Agent says it cannot book or fully handle reservations and offers transfer.
+   - capability_catering: Catering, large party, or event order the agent cannot fully handle.
+   - capability_hiring: Job, hiring, or employment inquiry.
+   - capability_other_department: Billing, corporate, supplier, accounts payable, or another non-restaurant department.
+   - capability_off_topic: Wrong business or unrelated to restaurant operations.
+   - tool_failure_order: Agent was placing/finalizing an order or checkout and a tool/order/payment/link-delivery error caused transfer. This includes cases where the caller did not receive an ordering or payment link.
+   - user_frustration_in_flow: No explicit tool error, but repetition, missed details, or flow breakdown made the caller ask for a human.
+   - post_order_followup: Order/payment link was already created, then caller asked for a human to confirm, modify, complain, or follow up.
+   - ambiguous_intent_user_gave_up: Caller request was unclear, caller only greeted / checked connection, or agent asked for clarification and the call transferred before the caller gave a usable intent.
+   - failed_transfer_attempt: Agent failed to connect, reported transfer could not happen, or initially refused to transfer before complying.
+   - checkout_handoff_not_human: Transcript says the order/reservation was handed off for checkout, final processing, payment link, or self-service booking, but no human transfer actually occurred. Use this category instead of null when a transfer signal exists but the handoff was not to a human.
+   - other: Use only when the transfer happened but none of the above fit.
+
+   Transfer category precedence:
+   1. If a transfer signal exists but the transcript only shows checkout, payment-link, reservation-link, or final-processing handoff with no human request or human connection, use checkout_handoff_not_human.
+   2. If the first substantive caller utterance asks for a named/specific person or department, use capability_specific_person or capability_other_department, not cold_opt_out.
+   3. If the first substantive caller utterance is a generic human request with no prior task intent, use cold_opt_out.
+   4. If the caller stated an order/reservation/delivery/menu intent before asking for a human, do not use cold_opt_out. Classify the root cause from the later flow.
+   5. If the caller only says hello, checks whether they are connected, gives an unclear request, or never gives a usable intent before the transfer signal, use ambiguous_intent_user_gave_up rather than other.
+
+6. transfer_agent_was_at_fault: boolean or null.
+   - true for agent/tool failures: tool_failure_order, user_frustration_in_flow, failed_transfer_attempt.
+   - false for valid human handoff/product capability gaps: cold_opt_out, capability_* categories, post_order_followup, ambiguous_intent_user_gave_up.
+   - false for checkout_handoff_not_human because it is a data-quality/routing-label issue, not caller-facing agent fault.
+   - null when transfer_reason_category is null.
+
+Return ONLY a valid JSON object with these exact keys: ended_reason, call_purpose, user_satisfaction, language, transfer_reason_category, transfer_agent_was_at_fault.
+The call_purpose value must be an array of strings. ended_reason, user_satisfaction, language, and transfer_reason_category must be strings or null as specified. transfer_agent_was_at_fault must be boolean or null.
 
 Example format:
-{
+{{
   "ended_reason": "customer_ended",
   "call_purpose": ["menu_info", "ordering"],
   "user_satisfaction": "positive",
-  "language": "english"
-}"""
+  "language": "english",
+  "transfer_reason_category": null,
+  "transfer_agent_was_at_fault": null
+}}"""
 
     # Format conversation for LLM
     conversation_text = _format_conversation(conversation_history)
@@ -640,7 +764,13 @@ Example format:
             params={
                 "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": conversation_text},
+                    {
+                        "role": "user",
+                        "content": (
+                            "Live call_transfer purpose captured during the call: "
+                            f"{transfer_purpose_context}\n\nTranscript:\n{conversation_text}"
+                        ),
+                    },
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0,
@@ -665,6 +795,12 @@ Example format:
             "call_purpose": [CallPurpose(p) for p in result["call_purpose"]],
             "user_satisfaction": UserSatisfaction(result["user_satisfaction"]),
             "language": CallLanguage(result["language"]),
+            "transfer_reason_category": _normalize_transfer_reason_category(
+                result.get("transfer_reason_category")
+            ),
+            "transfer_agent_was_at_fault": _normalize_transfer_agent_was_at_fault(
+                result.get("transfer_agent_was_at_fault")
+            ),
         }
 
         # Log the extracted analytics
@@ -679,6 +815,12 @@ Example format:
             f"[Live Kit Analytics]  User satisfaction: {analytics['user_satisfaction'].value}"
         )
         logger.info(f"[Live Kit Analytics]  Language: {analytics['language'].value}")
+        logger.info(
+            f"[Live Kit Analytics]  Transfer reason category: {analytics['transfer_reason_category']}"
+        )
+        logger.info(
+            f"[Live Kit Analytics]  Transfer agent was at fault: {analytics['transfer_agent_was_at_fault']}"
+        )
 
         return analytics
 

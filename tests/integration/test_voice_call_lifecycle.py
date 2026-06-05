@@ -343,6 +343,8 @@ class TestVoiceRepositoryIntegration:
             call_purpose=[CallPurpose.ordering, CallPurpose.store_info],
             user_satisfaction=UserSatisfaction.positive,
             language=CallLanguage.english,
+            transfer_reason_category="tool_failure_order",
+            transfer_agent_was_at_fault=True,
         )
 
         result = db_session.execute(
@@ -359,6 +361,8 @@ class TestVoiceRepositoryIntegration:
         assert result.call_purpose == [CallPurpose.ordering, CallPurpose.store_info]
         assert result.user_satisfaction == UserSatisfaction.positive
         assert result.language == CallLanguage.english
+        assert result.transfer_reason_category == "tool_failure_order"
+        assert result.transfer_agent_was_at_fault is True
 
     def test_phone_call_update_analytics(self, db_session: Session) -> None:
         """PhoneCall analytics can be updated after initial creation (end_voice_call path)."""

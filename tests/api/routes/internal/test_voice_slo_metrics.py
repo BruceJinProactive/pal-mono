@@ -46,6 +46,8 @@ def _make_analytics() -> dict[str, Any]:
         "call_purpose": [SimpleNamespace(value="general_inquiry")],
         "user_satisfaction": SimpleNamespace(value="neutral"),
         "language": SimpleNamespace(value="english"),
+        "transfer_reason_category": None,
+        "transfer_agent_was_at_fault": None,
     }
 
 

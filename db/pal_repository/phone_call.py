@@ -34,6 +34,8 @@ def _to_data(row: PhoneCall) -> PhoneCallData:
             row.user_satisfaction.value if row.user_satisfaction else None
         ),
         language=row.language.value if row.language else None,
+        transfer_reason_category=row.transfer_reason_category,
+        transfer_agent_was_at_fault=row.transfer_agent_was_at_fault,
         created_at=row.created_at,
     )
 
@@ -96,6 +98,8 @@ class PhoneCallRepository:
                     else None
                 ),
                 language=CallLanguage(record.language) if record.language else None,
+                transfer_reason_category=record.transfer_reason_category,
+                transfer_agent_was_at_fault=record.transfer_agent_was_at_fault,
             )
             self.session.add(phone_call)
             await self.session.commit()
@@ -147,6 +151,12 @@ class PhoneCallRepository:
                 )
             if record.language is not None:
                 phone_call.language = CallLanguage(record.language)
+            if record.transfer_reason_category is not None:
+                phone_call.transfer_reason_category = record.transfer_reason_category
+            if record.transfer_agent_was_at_fault is not None:
+                phone_call.transfer_agent_was_at_fault = (
+                    record.transfer_agent_was_at_fault
+                )
 
             await self.session.commit()
             await self.session.refresh(phone_call)

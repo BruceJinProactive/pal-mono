@@ -535,7 +535,10 @@ async def end_voice_call(
     analytics = None
     if conversation_history:
         try:
-            analytics = await _call_analytics_with_retry(conversation_history)
+            analytics = await _call_analytics_with_retry(
+                conversation_history,
+                transfer_purpose=conversation.transfer_purpose,
+            )
             if analytics:
                 logger.info(
                     f"[end_voice_call] Analytics extracted for conversation_id: {conversation_id}",
@@ -548,6 +551,12 @@ async def end_voice_call(
                             ],
                             "user_satisfaction": analytics["user_satisfaction"].value,
                             "language": analytics["language"].value,
+                            "transfer_reason_category": analytics[
+                                "transfer_reason_category"
+                            ],
+                            "transfer_agent_was_at_fault": analytics[
+                                "transfer_agent_was_at_fault"
+                            ],
                         },
                     },
                 )
@@ -650,6 +659,8 @@ async def end_voice_call(
             call_purpose=analytics["call_purpose"],
             user_satisfaction=analytics["user_satisfaction"],
             language=analytics["language"],
+            transfer_reason_category=analytics["transfer_reason_category"],
+            transfer_agent_was_at_fault=analytics["transfer_agent_was_at_fault"],
             **latency_avgs,
         )
 
@@ -914,6 +925,7 @@ async def end_voice_call(
 
 async def _call_analytics_with_retry(
     conversation_history: list[dict],
+    transfer_purpose: str | None = None,
     max_retries: int = 3,
     base_delay: float = 1.0,
 ) -> dict | None:
@@ -921,6 +933,7 @@ async def _call_analytics_with_retry(
 
     Args:
         conversation_history: List of message dicts with 'role' and 'content'
+        transfer_purpose: Live routing purpose from call_transfer, if captured
         max_retries: Maximum number of retry attempts
         base_delay: Base delay in seconds for exponential backoff
 
@@ -931,7 +944,10 @@ async def _call_analytics_with_retry(
 
     for attempt in range(max_retries):
         try:
-            result = await extract_call_analytics(conversation_history)
+            result = await extract_call_analytics(
+                conversation_history,
+                transfer_purpose=transfer_purpose,
+            )
 
             # Validate the response
             if _validate_analytics_response(result):
@@ -974,6 +990,7 @@ def _validate_analytics_response(result: dict) -> bool:
         CallPurpose,
         UserSatisfaction,
     )
+    from services.analytics_service._utils import TRANSFER_REASON_CATEGORIES
 
     try:
         # Check required keys exist
@@ -982,6 +999,8 @@ def _validate_analytics_response(result: dict) -> bool:
             "call_purpose",
             "user_satisfaction",
             "language",
+            "transfer_reason_category",
+            "transfer_agent_was_at_fault",
         ]
         if not all(key in result for key in required_keys):
             logger.warning(
@@ -1001,6 +1020,28 @@ def _validate_analytics_response(result: dict) -> bool:
         _ = [CallPurpose(p) for p in result["call_purpose"]]
         _ = UserSatisfaction(result["user_satisfaction"])
         _ = CallLanguage(result["language"])
+
+        transfer_reason_category = result["transfer_reason_category"]
+        transfer_agent_was_at_fault = result["transfer_agent_was_at_fault"]
+        if transfer_reason_category is not None:
+            if (
+                not isinstance(transfer_reason_category, str)
+                or transfer_reason_category not in TRANSFER_REASON_CATEGORIES
+            ):
+                logger.warning(
+                    f"[_validate_analytics_response] Invalid transfer_reason_category: {transfer_reason_category}"
+                )
+                return False
+            if not isinstance(transfer_agent_was_at_fault, bool):
+                logger.warning(
+                    "[_validate_analytics_response] transfer_agent_was_at_fault must be bool when transfer_reason_category is set"
+                )
+                return False
+        elif transfer_agent_was_at_fault is not None:
+            logger.warning(
+                "[_validate_analytics_response] transfer_agent_was_at_fault must be null when transfer_reason_category is null"
+            )
+            return False
 
         return True
 
@@ -1033,6 +1074,8 @@ def _normalize_analytics_to_enums(result: dict) -> dict:
         "call_purpose": [CallPurpose(p) for p in result["call_purpose"]],
         "user_satisfaction": UserSatisfaction(result["user_satisfaction"]),
         "language": CallLanguage(result["language"]),
+        "transfer_reason_category": result["transfer_reason_category"],
+        "transfer_agent_was_at_fault": result["transfer_agent_was_at_fault"],
     }
 
 
@@ -1054,6 +1097,8 @@ def _get_default_analytics() -> dict:
         "call_purpose": [CallPurpose.other],
         "user_satisfaction": UserSatisfaction.neutral,
         "language": CallLanguage.english,
+        "transfer_reason_category": None,
+        "transfer_agent_was_at_fault": None,
     }
 
 

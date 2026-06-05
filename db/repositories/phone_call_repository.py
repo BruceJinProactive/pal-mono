@@ -48,6 +48,8 @@ class PhoneCallRepositoryAsync:
         call_purpose: list[CallPurpose] | None = None,
         user_satisfaction: UserSatisfaction | None = None,
         language: CallLanguage | None = None,
+        transfer_reason_category: str | None = None,
+        transfer_agent_was_at_fault: bool | None = None,
     ) -> PhoneCall:
         """
         Create a new phone call record.
@@ -65,6 +67,8 @@ class PhoneCallRepositoryAsync:
             call_purpose: List of call purposes identified
             user_satisfaction: User satisfaction level
             language: Language used in the call
+            transfer_reason_category: Retrospective reason the call was transferred
+            transfer_agent_was_at_fault: Whether the transfer was caused by agent fault
 
         Returns:
             PhoneCall: The created phone call record
@@ -85,6 +89,8 @@ class PhoneCallRepositoryAsync:
             call_purpose=call_purpose,
             user_satisfaction=user_satisfaction,
             language=language,
+            transfer_reason_category=transfer_reason_category,
+            transfer_agent_was_at_fault=transfer_agent_was_at_fault,
         )
 
         self.session.add(phone_call)
@@ -108,6 +114,8 @@ class PhoneCallRepositoryAsync:
         call_purpose: list[CallPurpose] | None = None,
         user_satisfaction: UserSatisfaction | None = None,
         language: CallLanguage | None = None,
+        transfer_reason_category: str | None = None,
+        transfer_agent_was_at_fault: bool | None = None,
     ) -> PhoneCall | None:
         """
         Update an existing phone call record by call_id.
@@ -124,6 +132,8 @@ class PhoneCallRepositoryAsync:
             call_purpose: List of call purposes identified
             user_satisfaction: User satisfaction level
             language: Language used in the call
+            transfer_reason_category: Retrospective reason the call was transferred
+            transfer_agent_was_at_fault: Whether the transfer was caused by agent fault
 
         Returns:
             PhoneCall | None: The updated phone call record if found, None otherwise
@@ -164,6 +174,10 @@ class PhoneCallRepositoryAsync:
                 phone_call.user_satisfaction = user_satisfaction
             if language is not None:
                 phone_call.language = language
+            if transfer_reason_category is not None:
+                phone_call.transfer_reason_category = transfer_reason_category
+            if transfer_agent_was_at_fault is not None:
+                phone_call.transfer_agent_was_at_fault = transfer_agent_was_at_fault
 
             await self.session.flush()
 
@@ -197,6 +211,8 @@ class PhoneCallRepository:
         call_purpose: list[CallPurpose] | None = None,
         user_satisfaction: UserSatisfaction | None = None,
         language: CallLanguage | None = None,
+        transfer_reason_category: str | None = None,
+        transfer_agent_was_at_fault: bool | None = None,
     ) -> PhoneCall:
         """
         Create a new phone call record (sync version).
@@ -214,6 +230,8 @@ class PhoneCallRepository:
             call_purpose: List of call purposes identified
             user_satisfaction: User satisfaction level
             language: Language used in the call
+            transfer_reason_category: Retrospective reason the call was transferred
+            transfer_agent_was_at_fault: Whether the transfer was caused by agent fault
 
         Returns:
             PhoneCall: The created phone call record
@@ -235,6 +253,8 @@ class PhoneCallRepository:
                 call_purpose=call_purpose,
                 user_satisfaction=user_satisfaction,
                 language=language,
+                transfer_reason_category=transfer_reason_category,
+                transfer_agent_was_at_fault=transfer_agent_was_at_fault,
             )
 
             self.session.add(phone_call)

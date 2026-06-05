@@ -59,6 +59,8 @@ def sample_orm_row(
     row.call_purpose = [CallPurpose.ordering]
     row.user_satisfaction = UserSatisfaction.positive
     row.language = CallLanguage.english
+    row.transfer_reason_category = "tool_failure_order"
+    row.transfer_agent_was_at_fault = True
     row.created_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
     return row
 
@@ -91,6 +93,8 @@ class TestGetByCallId:
         assert dto.call_purpose == ("ordering",)
         assert dto.user_satisfaction == "positive"
         assert dto.language == "english"
+        assert dto.transfer_reason_category == "tool_failure_order"
+        assert dto.transfer_agent_was_at_fault is True
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(
@@ -156,6 +160,8 @@ class TestCreate:
             conversation_id=sample_conversation_id,
             duration=10.0,
             ended_reason="customer_ended",
+            transfer_reason_category="cold_opt_out",
+            transfer_agent_was_at_fault=False,
         )
 
         dto = await repo.create(input_dto)
@@ -165,6 +171,8 @@ class TestCreate:
         assert dto.conversation_id == sample_conversation_id
         assert dto.duration == 10.0
         assert dto.ended_reason == "customer_ended"
+        assert dto.transfer_reason_category == "cold_opt_out"
+        assert dto.transfer_agent_was_at_fault is False
         mock_session.add.assert_called_once()
         mock_session.commit.assert_awaited_once()
 
@@ -213,12 +221,16 @@ class TestUpdate:
             conversation_id=uuid.uuid4(),
             duration=99.9,
             ended_reason="silence_timeout",
+            transfer_reason_category="failed_transfer_attempt",
+            transfer_agent_was_at_fault=True,
         )
 
         dto = await repo.update(call_id="call-abc-123", record=update_dto)
 
         assert isinstance(dto, PhoneCallData)
         assert dto.call_id == "call-abc-123"
+        assert sample_orm_row.transfer_reason_category == "failed_transfer_attempt"
+        assert sample_orm_row.transfer_agent_was_at_fault is True
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio

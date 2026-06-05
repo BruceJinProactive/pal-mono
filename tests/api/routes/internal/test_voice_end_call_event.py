@@ -8,15 +8,20 @@ import pytest
 
 from api.routes.internal._voice import (
     _build_audio_recording_reference,
+    _call_analytics_with_retry,
     _extract_transcript_text,
+    _get_default_analytics,
+    _normalize_analytics_to_enums,
     _persist_conversation_messages,
     _publish_livekit_evaluation_event,
+    _validate_analytics_response,
 )
 from api.schemas.internal.voice_init import (
     CallMetricsReport,
     InterruptionEvent,
     TurnLatency,
 )
+from db.tables.types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
 from events.schema import (
     AudioRecordingReference,
     BaseEvent,
@@ -43,6 +48,8 @@ def _make_analytics():
         "call_purpose": [MagicMock(value="ordering")],
         "user_satisfaction": MagicMock(value="positive"),
         "language": MagicMock(value="english"),
+        "transfer_reason_category": None,
+        "transfer_agent_was_at_fault": None,
     }
 
 
@@ -66,6 +73,101 @@ def _common_kwargs(**overrides):
     }
     defaults.update(overrides)
     return defaults
+
+
+# ---------------------------------------------------------------------------
+# Analytics helper tests
+# ---------------------------------------------------------------------------
+
+
+def _valid_analytics_payload(**overrides):
+    payload = {
+        "ended_reason": "assistant_forwarded",
+        "call_purpose": ["ordering"],
+        "user_satisfaction": "neutral",
+        "language": "english",
+        "transfer_reason_category": "tool_failure_order",
+        "transfer_agent_was_at_fault": True,
+    }
+    payload.update(overrides)
+    return payload
+
+
+class TestAnalyticsHelpers:
+    def test_validate_accepts_transfer_reason_payload(self) -> None:
+        assert _validate_analytics_response(_valid_analytics_payload()) is True
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"ended_reason": "assistant_forwarded"},
+            _valid_analytics_payload(call_purpose="ordering"),
+            _valid_analytics_payload(transfer_reason_category="not_a_category"),
+            _valid_analytics_payload(
+                transfer_reason_category="tool_failure_order",
+                transfer_agent_was_at_fault=None,
+            ),
+            _valid_analytics_payload(
+                transfer_reason_category=None,
+                transfer_agent_was_at_fault=True,
+            ),
+            _valid_analytics_payload(ended_reason="not_a_reason"),
+        ],
+    )
+    def test_validate_rejects_invalid_transfer_reason_payloads(
+        self, payload: dict
+    ) -> None:
+        assert _validate_analytics_response(payload) is False
+
+    def test_normalize_analytics_to_enums_preserves_transfer_fields(self) -> None:
+        normalized = _normalize_analytics_to_enums(_valid_analytics_payload())
+
+        assert normalized["ended_reason"] is CallEndedReason.assistant_forwarded
+        assert normalized["call_purpose"] == [CallPurpose.ordering]
+        assert normalized["user_satisfaction"] is UserSatisfaction.neutral
+        assert normalized["language"] is CallLanguage.english
+        assert normalized["transfer_reason_category"] == "tool_failure_order"
+        assert normalized["transfer_agent_was_at_fault"] is True
+
+    def test_get_default_analytics_has_null_transfer_fields(self) -> None:
+        analytics = _get_default_analytics()
+
+        assert analytics["ended_reason"] is CallEndedReason.other
+        assert analytics["call_purpose"] == [CallPurpose.other]
+        assert analytics["user_satisfaction"] is UserSatisfaction.neutral
+        assert analytics["language"] is CallLanguage.english
+        assert analytics["transfer_reason_category"] is None
+        assert analytics["transfer_agent_was_at_fault"] is None
+
+    @pytest.mark.asyncio
+    async def test_call_analytics_with_retry_passes_transfer_purpose_and_normalizes(
+        self,
+    ) -> None:
+        with patch(
+            "services.analytics_service._utils.extract_call_analytics",
+            new_callable=AsyncMock,
+        ) as mock_extract:
+            mock_extract.return_value = _valid_analytics_payload(
+                transfer_reason_category="cold_opt_out",
+                transfer_agent_was_at_fault=False,
+            )
+
+            analytics = await _call_analytics_with_retry(
+                [{"role": "user", "content": "representative"}],
+                transfer_purpose="general",
+                max_retries=1,
+                base_delay=0,
+            )
+
+        mock_extract.assert_awaited_once_with(
+            [{"role": "user", "content": "representative"}],
+            transfer_purpose="general",
+        )
+        assert analytics is not None
+        assert analytics["ended_reason"] is CallEndedReason.assistant_forwarded
+        assert analytics["call_purpose"] == [CallPurpose.ordering]
+        assert analytics["transfer_reason_category"] == "cold_opt_out"
+        assert analytics["transfer_agent_was_at_fault"] is False
 
 
 # ---------------------------------------------------------------------------

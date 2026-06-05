@@ -73,6 +73,8 @@ def _make_analytics() -> dict:
         "call_purpose": [MagicMock(value="ordering")],
         "user_satisfaction": MagicMock(value="positive"),
         "language": MagicMock(value="english"),
+        "transfer_reason_category": None,
+        "transfer_agent_was_at_fault": None,
     }
 
 
