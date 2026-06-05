@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import ARRAY, DateTime, Enum, Float, String
+from sqlalchemy.types import ARRAY, Boolean, DateTime, Enum, Float, String
 
 from .base import Base
 from .types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
@@ -54,6 +54,12 @@ class PhoneCall(Base):
     )
     language: Mapped[Optional[CallLanguage]] = mapped_column(
         Enum(CallLanguage), nullable=True
+    )
+    transfer_reason_category: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    transfer_agent_was_at_fault: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True
     )
 
     # Metadata
