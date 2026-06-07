@@ -309,10 +309,12 @@ request. Rows are scoped by `catering_request_id` and denormalized `project_id`,
 with enum columns for activity type, actor type, and source, a stable
 human-readable `description`, and JSONB `metadata` for event-specific payloads
 such as changed fields, proposal snapshots, or SMS content. The table follows
-the no-FK/no-relationship ADRs. Product intent is to embed activity entries in
-the catering request workflow page payload rather than expose a standalone
-activity-log URL; repository, service, and API wiring is deferred to a follow-up
-implementation PR.
+the no-FK/no-relationship ADRs; referential integrity is enforced by repository
+and service queries. The catering service records creation, update, and
+status-change entries, and it verifies project ownership before listing a
+request timeline. The project catering request list supports embedding recent
+activity entries for the workflow page rather than exposing a standalone
+activity-log URL.
 
 *Business*: `campaigns`, `credit_grants`, `faqs`, `features`, `feedback`, `integration`, `lead`, `subscriptions`, `affiliates`
 

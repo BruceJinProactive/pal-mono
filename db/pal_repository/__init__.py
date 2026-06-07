@@ -9,6 +9,7 @@ from .analytics import AnalyticsRepository
 from .campaign import CampaignRepository
 from .capability_action import CapabilityActionRepository
 from .catering_request import CateringRequestRepository
+from .catering_request_activity import CateringRequestActivityRepository
 from .change_field import ChangeFieldRepository
 from .change_log import ChangeLogRepository
 from .contact import ContactRepository
@@ -68,6 +69,7 @@ __all__ = [
     "CampaignRepository",
     "CapabilityActionRepository",
     "CateringRequestRepository",
+    "CateringRequestActivityRepository",
     "ChangeFieldRepository",
     "ChangeLogRepository",
     "ContactRepository",

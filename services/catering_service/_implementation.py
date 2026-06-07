@@ -1,10 +1,11 @@
 import asyncio
 import dataclasses
+import enum
 import os
 import re
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +16,13 @@ from api.schemas.chat.message import Metadata, TextObject, Type
 from db.pal_repository.catering_request import (
     CateringRequestRepository as CateringRequestRepositoryNew,
 )
+from db.pal_repository.catering_request_activity import (
+    CateringRequestActivityRepository,
+)
 from db.pal_repository.data_classes.catering_request import CateringRequestData
+from db.pal_repository.data_classes.catering_request_activity import (
+    CateringRequestActivityData,
+)
 from db.pal_repository.data_classes.contact import ContactData
 from db.repositories.catering_request_repository import (
     CateringRequestRepository,
@@ -23,6 +30,11 @@ from db.repositories.catering_request_repository import (
 )
 from db.repositories.project_repository import ProjectRepository, ProjectRepositoryAsync
 from db.session import SyncSessionLocal
+from db.tables.catering_request_activities import (
+    CateringRequestActivityActorType,
+    CateringRequestActivitySource,
+    CateringRequestActivityType,
+)
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from db.tables.types import Channel
 from events import CateringRequestCreated, publish_event
@@ -41,6 +53,157 @@ CATERING_REQUEST_CONFIRMATION_HOSTS: dict[str, str] = {
     "lat": "lat-console.palona.ai",
     "stg": "stg-console.palona.ai",
 }
+CATERING_REQUEST_ACTIVITY_LIMIT_MAX = 100
+CATERING_REQUEST_ACTIVITY_LIMIT_DEFAULT = 50
+CATERING_REQUEST_ACTIVITY_SYSTEM_ACTOR = "System"
+
+
+def _serialize_activity_value(value: object) -> object:
+    if isinstance(value, enum.Enum):
+        return value.value
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    return value
+
+
+def _snapshot_request_fields(
+    catering_request: CateringRequest | CateringRequestData,
+    fields: list[str],
+) -> dict[str, object]:
+    return {
+        field: _serialize_activity_value(getattr(catering_request, field))
+        for field in fields
+    }
+
+
+def _build_changed_fields_metadata(
+    before: dict[str, object], after: dict[str, object]
+) -> dict[str, dict[str, object]]:
+    changed_fields: dict[str, dict[str, object]] = {}
+    for field, old_value in before.items():
+        new_value = after.get(field)
+        if old_value != new_value:
+            changed_fields[field] = {"old": old_value, "new": new_value}
+    return changed_fields
+
+
+async def record_catering_request_activity(
+    session: AsyncSession,
+    catering_request_id: uuid.UUID,
+    project_id: uuid.UUID,
+    activity_type: CateringRequestActivityType,
+    actor_type: CateringRequestActivityActorType,
+    actor_display_name: str,
+    description: str,
+    source: CateringRequestActivitySource,
+    metadata: dict[str, Any] | None = None,
+    actor_id: uuid.UUID | None = None,
+    occurred_at: datetime | None = None,
+) -> CateringRequestActivityData:
+    now = datetime.now(tz=timezone.utc)
+    activity = CateringRequestActivityData(
+        id=uuid.uuid4(),
+        catering_request_id=catering_request_id,
+        project_id=project_id,
+        activity_type=activity_type,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        actor_display_name=actor_display_name,
+        description=description,
+        metadata=metadata or {},
+        schema_version=1,
+        source=source,
+        occurred_at=occurred_at or now,
+        created_at=now,
+    )
+    return await CateringRequestActivityRepository(session).create(activity)
+
+
+async def _record_catering_request_activity_safely(
+    session: AsyncSession,
+    catering_request_id: uuid.UUID,
+    project_id: uuid.UUID,
+    activity_type: CateringRequestActivityType,
+    actor_type: CateringRequestActivityActorType,
+    actor_display_name: str,
+    description: str,
+    source: CateringRequestActivitySource,
+    metadata: dict[str, Any] | None = None,
+    actor_id: uuid.UUID | None = None,
+    occurred_at: datetime | None = None,
+) -> None:
+    try:
+        await record_catering_request_activity(
+            session=session,
+            catering_request_id=catering_request_id,
+            project_id=project_id,
+            activity_type=activity_type,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            actor_display_name=actor_display_name,
+            description=description,
+            source=source,
+            metadata=metadata,
+            occurred_at=occurred_at,
+        )
+    except Exception:
+        logger.warning(
+            "[catering] Failed to record catering request activity.",
+            extra={
+                "request_id": str(catering_request_id),
+                "project_id": str(project_id),
+                "activity_type": activity_type.value,
+            },
+            exc_info=True,
+        )
+
+
+async def list_catering_request_activities(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    catering_request_id: uuid.UUID,
+    limit: int = CATERING_REQUEST_ACTIVITY_LIMIT_DEFAULT,
+    before: datetime | None = None,
+) -> list[CateringRequestActivityData] | None:
+    request_repo = CateringRequestRepositoryNew(session)
+    catering_request = await request_repo.get_by_id(catering_request_id)
+    if catering_request is None or catering_request.project_id != project_id:
+        return None
+
+    bounded_limit = min(max(limit, 1), CATERING_REQUEST_ACTIVITY_LIMIT_MAX)
+    activity_repo = CateringRequestActivityRepository(session)
+    return await activity_repo.list_by_request(
+        project_id=project_id,
+        catering_request_id=catering_request_id,
+        limit=bounded_limit,
+        before=before,
+    )
+
+
+async def list_catering_requests_with_activities_by_project_id(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    activity_limit: int = CATERING_REQUEST_ACTIVITY_LIMIT_DEFAULT,
+) -> list[tuple[CateringRequestData, list[CateringRequestActivityData]]]:
+    bounded_limit = min(max(activity_limit, 1), CATERING_REQUEST_ACTIVITY_LIMIT_MAX)
+    request_repo = CateringRequestRepositoryNew(session)
+    activity_repo = CateringRequestActivityRepository(session)
+    catering_requests = await request_repo.get_by_project_id(project_id)
+
+    requests_with_activities: list[
+        tuple[CateringRequestData, list[CateringRequestActivityData]]
+    ] = []
+    for catering_request in catering_requests:
+        activities = await activity_repo.list_by_request(
+            project_id=project_id,
+            catering_request_id=catering_request.id,
+            limit=bounded_limit,
+        )
+        requests_with_activities.append((catering_request, activities))
+
+    return requests_with_activities
 
 
 def create_catering_request(
@@ -187,6 +350,12 @@ async def create_catering_request_async(
     event_fulfillment: Optional[FulfillmentType] = None,
     party_size: Optional[int] = None,
     idempotency_key: Optional[str] = None,
+    activity_actor_type: CateringRequestActivityActorType = (
+        CateringRequestActivityActorType.CUSTOMER
+    ),
+    activity_actor_id: uuid.UUID | None = None,
+    activity_actor_display_name: str | None = None,
+    activity_source: CateringRequestActivitySource = CateringRequestActivitySource.AI_AGENT,
 ) -> CateringRequestData:
     """Create or update a catering request asynchronously with idempotency support."""
     repo = CateringRequestRepositoryNew(session)
@@ -214,9 +383,30 @@ async def create_catering_request_async(
                 update_kwargs[field] = new_value
 
         if update_kwargs:
+            fields = list(update_kwargs.keys())
+            before_values = _snapshot_request_fields(existing_request, fields)
             updated = await repo.update(
                 idempotency_key=idempotency_key, **update_kwargs
             )
+            if updated is not None:
+                after_values = _snapshot_request_fields(updated, fields)
+                changed_fields = _build_changed_fields_metadata(
+                    before_values, after_values
+                )
+                if changed_fields:
+                    await _record_catering_request_activity_safely(
+                        session=session,
+                        catering_request_id=updated.id,
+                        project_id=updated.project_id,
+                        activity_type=CateringRequestActivityType.REQUEST_UPDATED,
+                        actor_type=activity_actor_type,
+                        actor_id=activity_actor_id,
+                        actor_display_name=activity_actor_display_name
+                        or updated.contact_name,
+                        description="Catering request updated.",
+                        source=activity_source,
+                        metadata={"changed_fields": changed_fields},
+                    )
             return updated or existing_request
         return existing_request
 
@@ -239,6 +429,34 @@ async def create_catering_request_async(
 
     created_request_id = await repo.create(data)
     data = dataclasses.replace(data, id=created_request_id)
+
+    await _record_catering_request_activity_safely(
+        session=session,
+        catering_request_id=data.id,
+        project_id=data.project_id,
+        activity_type=CateringRequestActivityType.REQUEST_CREATED,
+        actor_type=activity_actor_type,
+        actor_id=activity_actor_id,
+        actor_display_name=activity_actor_display_name or data.contact_name,
+        description="Catering request created.",
+        source=activity_source,
+        metadata={
+            "initial_fields": _snapshot_request_fields(
+                data,
+                [
+                    "event_date",
+                    "event_time",
+                    "event_address",
+                    "event_detail",
+                    "event_fulfillment",
+                    "contact_name",
+                    "contact_phone_number",
+                    "party_size",
+                    "status",
+                ],
+            )
+        },
+    )
 
     project_repo = ProjectRepositoryAsync(session)
     project = await project_repo.get_project(project_id)
@@ -407,6 +625,14 @@ async def update_catering_request(
     event_fulfillment: Optional[FulfillmentType] = None,
     party_size: Optional[int] = None,
     status: Optional[RequestStatus] = None,
+    actor_id: uuid.UUID | None = None,
+    actor_display_name: str | None = None,
+    actor_type: CateringRequestActivityActorType = (
+        CateringRequestActivityActorType.INTERNAL_USER
+    ),
+    activity_source: CateringRequestActivitySource = (
+        CateringRequestActivitySource.ADMIN_CONSOLE
+    ),
 ) -> CateringRequest:
     """
     Update an existing catering request asynchronously.
@@ -434,6 +660,19 @@ async def update_catering_request(
     if existing_request is None:
         raise ValueError(f"Catering request {catering_request_id} not found")
 
+    tracked_fields = [
+        "event_date",
+        "contact_name",
+        "contact_phone_number",
+        "event_time",
+        "event_address",
+        "event_detail",
+        "event_fulfillment",
+        "party_size",
+        "status",
+    ]
+    before_values = _snapshot_request_fields(existing_request, tracked_fields)
+
     # Create an updated catering request object with only the provided fields
     updated_catering_request = CateringRequest()
 
@@ -458,12 +697,41 @@ async def update_catering_request(
     updated_request = await catering_request_repo.update_catering_request(
         catering_request_id, updated_catering_request
     )
+    after_values = _snapshot_request_fields(updated_request, tracked_fields)
+    changed_fields = _build_changed_fields_metadata(before_values, after_values)
 
-    previous_status_value = (
-        existing_request.status.value
-        if isinstance(existing_request.status, RequestStatus)
-        else existing_request.status
-    )
+    if changed_fields:
+        activity_type = CateringRequestActivityType.REQUEST_UPDATED
+        description = "Catering request updated."
+        metadata: dict[str, Any] = {"changed_fields": changed_fields}
+
+        if "status" in changed_fields:
+            activity_type = CateringRequestActivityType.STATUS_CHANGED
+            from_status = changed_fields["status"]["old"]
+            to_status = changed_fields["status"]["new"]
+            description = f"Moved request from {from_status} to {to_status}."
+            metadata = {
+                "from_status": from_status,
+                "to_status": to_status,
+                "changed_fields": changed_fields,
+            }
+
+        await _record_catering_request_activity_safely(
+            session=session,
+            catering_request_id=updated_request.id,
+            project_id=updated_request.project_id,
+            activity_type=activity_type,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            actor_display_name=actor_display_name
+            or CATERING_REQUEST_ACTIVITY_SYSTEM_ACTOR,
+            description=description,
+            source=activity_source,
+            metadata=metadata,
+        )
+        await session.refresh(updated_request)
+
+    previous_status_value = before_values["status"]
     requested_status_value = (
         status.value if isinstance(status, RequestStatus) else status
     )

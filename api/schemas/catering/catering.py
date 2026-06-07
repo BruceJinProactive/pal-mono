@@ -4,6 +4,11 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from db.tables.catering_request_activities import (
+    CateringRequestActivityActorType,
+    CateringRequestActivitySource,
+    CateringRequestActivityType,
+)
 from db.tables.catering_requests import FulfillmentType, RequestStatus
 
 
@@ -60,6 +65,28 @@ class UpdateCateringRequestRequest(BaseModel):
     status: Optional[RequestStatus] = None
 
 
+class CateringRequestActivity(BaseModel):
+    """
+    Response schema for one catering request activity timeline entry.
+    """
+
+    id: uuid.UUID
+    catering_request_id: uuid.UUID
+    project_id: uuid.UUID
+    activity_type: CateringRequestActivityType
+    actor_type: CateringRequestActivityActorType
+    actor_id: Optional[uuid.UUID] = None
+    actor_display_name: str
+    description: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    schema_version: int
+    source: CateringRequestActivitySource
+    occurred_at: datetime
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CateringRequest(BaseModel):
     """
     Response schema for catering request.
@@ -67,6 +94,7 @@ class CateringRequest(BaseModel):
 
     id: uuid.UUID
     project_id: uuid.UUID
+    activities: List[CateringRequestActivity] = Field(default_factory=list)
     event_date: date
     contact_name: str
     contact_phone_number: str
@@ -90,6 +118,14 @@ class CateringRequestListResponse(BaseModel):
     """
 
     catering_requests: List[CateringRequest]
+
+
+class CateringRequestActivityListResponse(BaseModel):
+    """
+    Response schema for listing catering request activities.
+    """
+
+    activities: List[CateringRequestActivity]
 
 
 class PublicCateringRequest(BaseModel):

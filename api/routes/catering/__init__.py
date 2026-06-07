@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import db
@@ -41,30 +41,38 @@ async def handle_catering_event(
 @catering_router.post(
     "/projects/{project_id}/requests", status_code=status.HTTP_201_CREATED
 )
-def create_project_catering_request(
+async def create_project_catering_request(
     project_id: uuid.UUID,
     request: CreateCateringRequestRequest,
     context: UserContext = Depends(
         require_project_permission("project.write", authenticate_user)
     ),
+    session: AsyncSession = Depends(db.get_db_async),
 ) -> CateringRequest:
     """
     Create a new catering request for a project.
     """
-    return _implementation.create_project_catering_request(project_id, request, context)
+    return await _implementation.create_project_catering_request(
+        project_id, request, context, session
+    )
 
 
 @catering_router.get("/projects/{project_id}/requests")
-def list_project_catering_requests(
+async def list_project_catering_requests(
     project_id: uuid.UUID,
+    include_activities: bool = False,
+    activity_limit: int = Query(default=50, ge=1, le=100),
     context: UserContext = Depends(
         require_project_permission("project.read", authenticate_user)
     ),
+    session: AsyncSession = Depends(db.get_db_async),
 ) -> CateringRequestListResponse:
     """
     List all catering requests for a project.
     """
-    return _implementation.list_project_catering_requests(project_id, context)
+    return await _implementation.list_project_catering_requests(
+        project_id, include_activities, activity_limit, context, session
+    )
 
 
 @catering_router.get("/requests/{catering_request_id}/public")

@@ -9,8 +9,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 - **Catering request activity timeline.** Added `catering_request_activities` as
   an append-only per-request timeline with typed actors/sources/activity types,
   JSONB metadata, actor details, timestamps, and lookup indexes. Runtime
-  repository/service/API wiring and automatic activity entries are deferred to a
-  follow-up non-schema PR. Migration: `20cb36ab46c9`. ->
+  repository and service wiring now records request creation, request updates,
+  and status changes; the project request list can embed activities for the
+  catering workflow page when requested. Migration: `20cb36ab46c9`. ->
   `docs/records/2026-06-07-catering-request-activity-log.md`
 - **Invitation links prefill passwords for pending Cognito users.** Team invites now reset and embed a fresh temporary password when the invited email already exists in Cognito with `FORCE_CHANGE_PASSWORD`, matching resend behavior so the admin console can prefill the password field from the invitation token. -> `docs/log.md`
 

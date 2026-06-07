@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.catering.catering import (
     CateringRequest,
+    CateringRequestActivity,
     CateringRequestListResponse,
     Contact,
     ContactListResponse,
@@ -16,14 +17,19 @@ from api.schemas.catering.catering import (
     UpdateCateringRequestRequest,
     UpdateContactRequest,
 )
+from db.tables.catering_request_activities import (
+    CateringRequestActivityActorType,
+    CateringRequestActivitySource,
+)
 from services.auth_types import UserContext
 from services.catering_service._implementation import (
-    create_catering_request,
+    create_catering_request_async,
     create_contact,
     delete_contact,
     get_public_catering_request_by_id,
     handle_catering_request_created_event,
     list_catering_requests_by_project_id,
+    list_catering_requests_with_activities_by_project_id,
     list_contacts,
 )
 from services.catering_service._implementation import (
@@ -31,6 +37,20 @@ from services.catering_service._implementation import (
 )
 from services.catering_service._implementation import update_contact
 from utils.log import logger
+
+
+def _get_actor_id(context: UserContext) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(context.username)
+    except (TypeError, ValueError):
+        return None
+
+
+def _get_actor_display_name(context: UserContext) -> str:
+    for value in (context.display_name, context.email):
+        if value and value.strip():
+            return value.strip()
+    return "Internal user"
 
 
 async def handle_catering_event(
@@ -103,15 +123,17 @@ async def handle_catering_request_created(
     }
 
 
-def create_project_catering_request(
+async def create_project_catering_request(
     project_id: uuid.UUID,
     request: CreateCateringRequestRequest,
     context: UserContext,
+    session: AsyncSession,
 ) -> CateringRequest:
     """
     Create a new catering request for a project.
     """
-    catering_request = create_catering_request(
+    catering_request = await create_catering_request_async(
+        session=session,
         project_id=project_id,
         event_date=request.event_date,
         contact_name=request.contact_name,
@@ -122,25 +144,53 @@ def create_project_catering_request(
         event_fulfillment=request.event_fulfillment,
         party_size=request.party_size,
         idempotency_key=request.idempotency_key,
+        activity_actor_type=CateringRequestActivityActorType.INTERNAL_USER,
+        activity_actor_id=_get_actor_id(context),
+        activity_actor_display_name=_get_actor_display_name(context),
+        activity_source=CateringRequestActivitySource.ADMIN_CONSOLE,
     )
 
     return CateringRequest.model_validate(catering_request)
 
 
-def list_project_catering_requests(
+async def list_project_catering_requests(
     project_id: uuid.UUID,
+    include_activities: bool,
+    activity_limit: int,
     context: UserContext,
+    session: AsyncSession,
 ) -> CateringRequestListResponse:
     """
     List all catering requests for a project.
     """
-    catering_requests = list_catering_requests_by_project_id(project_id)
+    del context
 
-    return CateringRequestListResponse(
-        catering_requests=[
-            CateringRequest.model_validate(request) for request in catering_requests
-        ]
+    if not include_activities:
+        catering_requests = list_catering_requests_by_project_id(project_id)
+
+        return CateringRequestListResponse(
+            catering_requests=[
+                CateringRequest.model_validate(request) for request in catering_requests
+            ]
+        )
+
+    catering_requests_with_activities = (
+        await list_catering_requests_with_activities_by_project_id(
+            session=session,
+            project_id=project_id,
+            activity_limit=activity_limit,
+        )
     )
+
+    response_requests: list[CateringRequest] = []
+    for catering_request, activities in catering_requests_with_activities:
+        response_request = CateringRequest.model_validate(catering_request)
+        response_request.activities = [
+            CateringRequestActivity.model_validate(activity) for activity in activities
+        ]
+        response_requests.append(response_request)
+
+    return CateringRequestListResponse(catering_requests=response_requests)
 
 
 async def get_public_catering_request(
@@ -186,6 +236,8 @@ async def update_catering_request(
         event_fulfillment=request.event_fulfillment,
         party_size=request.party_size,
         status=request.status,
+        actor_id=_get_actor_id(context),
+        actor_display_name=_get_actor_display_name(context),
     )
 
     return CateringRequest.model_validate(updated_request)
