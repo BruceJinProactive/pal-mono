@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-04
+> **Last updated:** 2026-06-07
 
 ## Quick Reference
 
@@ -14,8 +14,8 @@
 **Deployment**: Docker (local), AWS (production)
 
 **Key Metrics**:
-- 47 database tables
-- 56 repository classes
+- 48 database tables
+- 57 repository classes
 - 47 business services
 - 17 registered AI agent tools
 - 9 API route groups
@@ -293,7 +293,8 @@ classification. Transfer reason analysis is folded into the same post-call LLM
 analytics pass as call purpose and satisfaction; `transfer_purpose` remains live
 routing metadata on `conversations`.
 
-*Transactions*: `orders`, `adora_orders`, `reservations`, `catering_requests`
+*Transactions*: `orders`, `adora_orders`, `reservations`, `catering_requests`,
+`catering_request_activities`
 
 `catering_requests.status` uses the `RequestStatus` enum to track the
 request lifecycle. Planned catering requests move through:
@@ -302,6 +303,16 @@ request lifecycle. Planned catering requests move through:
 been operationally fulfilled, while `CLOSED` means the request is
 administratively closed with no further action expected. Legacy status values
 remain available for older rows and compatibility paths.
+
+`catering_request_activities` stores an append-only timeline for each catering
+request. Rows are scoped by `catering_request_id` and denormalized `project_id`,
+with enum columns for activity type, actor type, and source, a stable
+human-readable `description`, and JSONB `metadata` for event-specific payloads
+such as changed fields, proposal snapshots, or SMS content. The table follows
+the no-FK/no-relationship ADRs. Product intent is to embed activity entries in
+the catering request workflow page payload rather than expose a standalone
+activity-log URL; repository, service, and API wiring is deferred to a follow-up
+implementation PR.
 
 *Business*: `campaigns`, `credit_grants`, `faqs`, `features`, `feedback`, `integration`, `lead`, `subscriptions`, `affiliates`
 
