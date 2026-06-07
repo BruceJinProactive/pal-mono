@@ -13,6 +13,7 @@ Routes are responsible for converting to API responses.
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import cast
 from uuid import UUID
 
 import boto3
@@ -308,11 +309,34 @@ def create_invitation(
             else f"https://{os.getenv('RUNTIME_ENV', 'lat')}-console.palona.ai"
         )
 
-        # Generate JWT token that includes temporary password for new users
+        temporary_password = password if cognito_user_created else None
+
+        if user_status == "FORCE_CHANGE_PASSWORD" and not cognito_user_created:
+            # Existing Cognito user has never completed first sign-in. Reset the
+            # temporary password so the invitation link can pre-fill a valid one.
+            cognito_user_pool_id = cast(str, user_pool_id)
+            password = generate_password()
+            try:
+                cognito_client = boto3.client("cognito-idp", region_name=aws_region)
+                cognito_client.admin_set_user_password(
+                    UserPoolId=cognito_user_pool_id,
+                    Username=params.email,
+                    Password=password,
+                    Permanent=False,
+                )
+                temporary_password = password
+                logger.info(
+                    f"Reset temporary password for pending invited user: {params.email}"
+                )
+            except ClientError as e:
+                logger.error(f"Failed to reset temporary password: {e}")
+                raise ValueError(f"Failed to reset temporary password: {e}") from e
+
+        # Generate JWT token that includes temporary password for new/pending users
         jwt_token = generate_invitation_jwt(
             invitation_token=invitation_token,
             email=params.email,
-            temporary_password=password if cognito_user_created else None,
+            temporary_password=temporary_password,
             expires_at=expires_at,
         )
         template_model["invitation_url"] = (
@@ -329,15 +353,12 @@ def create_invitation(
                 f"Sending new user invitation email to {params.email} (password embedded in token)"
             )
         elif user_status == "FORCE_CHANGE_PASSWORD":
-            # Case 2: User created but never logged in - resend password reset instructions
-            template_id = TEAM_INVITATION_PENDING_USER_TEMPLATE_ID
+            # Case 2: User created but never logged in - password embedded in JWT token
+            template_id = TEAM_INVITATION_NEW_USER_TEMPLATE_ID
             template_model["email"] = params.email
             template_model["login_url"] = f"{base_url}/signin?email={params.email}"
-            template_model["reset_password_url"] = (
-                f"{base_url}/forgot-password?email={params.email}"
-            )
             logger.info(
-                f"Sending pending user invitation email to {params.email} (never logged in)"
+                f"Sending pending user invitation email to {params.email} (password embedded in token)"
             )
         else:
             # Case 3: Existing confirmed user - send simpler invitation without credentials

@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-07
+
+- **Invitation links prefill passwords for pending Cognito users.** Team invites now reset and embed a fresh temporary password when the invited email already exists in Cognito with `FORCE_CHANGE_PASSWORD`, matching resend behavior so the admin console can prefill the password field from the invitation token. -> `docs/log.md`
+
+---
+
 ## 2026-06-05
 
 - **Selected-location subscription checkout.** Account subscription checkout now accepts an optional `project_ids` subset so the admin console can send only the locations selected for purchase; omitted `project_ids` keeps the existing all-attached-projects behavior, while empty or unknown selections fail before Stripe checkout is created. -> `docs/state/billing.md`
