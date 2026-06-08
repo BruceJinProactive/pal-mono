@@ -239,6 +239,7 @@ class TestCreateProjectVoiceConfig:
 
             mock_voice_repo.list_by_project_id.assert_called_once_with(project_id)
             mock_voice_repo.create.assert_called_once()
+            mock_async_session.refresh.assert_awaited_once_with(mock_project)
 
             voice_config_data = mock_voice_repo.create.call_args[0][0]
             assert isinstance(voice_config_data, VoiceConfigData)

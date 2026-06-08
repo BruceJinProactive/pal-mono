@@ -348,12 +348,15 @@ async def create_project(
 
         # Create default voice config if project has no voice configs
         voice_repo = VoiceConfigRepositoryNew(session)
-        existing_voice_configs = await voice_repo.list_by_project_id(db_project.id)
+        project_id_snapshot = db_project.id
+        existing_voice_configs = await voice_repo.list_by_project_id(
+            project_id_snapshot
+        )
 
         if not existing_voice_configs:
             default_voice_id = "da69d796-4603-4419-8a95-293bfc5679eb"
             voice_config_data = VoiceConfigData(
-                project_id=db_project.id,
+                project_id=project_id_snapshot,
                 language="english",
                 voice_id=default_voice_id,
                 first_message=f"Hello, this is {create_request.name} AI Agent, how can I help you today?!",
@@ -366,6 +369,7 @@ async def create_project(
                 created_at=datetime.now(UTC),
             )
             await voice_repo.create(voice_config_data)
+            await session.refresh(db_project)
 
     except ValueError as err:
         raise HTTPException(

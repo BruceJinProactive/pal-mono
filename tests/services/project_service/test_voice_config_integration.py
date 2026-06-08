@@ -106,6 +106,132 @@ class TestVoiceConfigIntegration:
             assert voice_config_data.transfer_message == ""
             assert voice_config_data.speech_rate == "normal"
             assert voice_config_data.voice_model == "sonic-2"
+            mock_session.refresh.assert_awaited_once_with(mock_project)
+
+    async def test_create_project_async_refreshes_after_voice_config_commit(
+        self,
+    ) -> None:
+        """Voice config creation may commit; returned project is refreshed."""
+        mock_session = AsyncMock()
+        mock_session.bind.sync_engine = MagicMock()
+
+        context = UserContext(
+            username="test-user",
+            email="test@example.com",
+            groups=[],
+            display_name="Test User",
+            role=UserRole.Admin,
+        )
+
+        params = ProjectParams(
+            agent_id=uuid.uuid4(),
+            display_name="Test Project",
+            channel_identifiers=[],
+        )
+
+        mock_account = MagicMock()
+        mock_account.id = uuid.uuid4()
+
+        mock_agent = MagicMock()
+        mock_agent.id = params.agent_id
+        mock_agent.account_id = mock_account.id
+
+        project_id = uuid.uuid4()
+
+        class ExpiringProject:
+            expired = False
+
+            def _raise_if_expired(self) -> None:
+                if self.expired:
+                    raise AssertionError("project ORM attribute accessed after commit")
+
+            def __getattribute__(self, name: str) -> object:
+                guarded_names = {
+                    "id",
+                    "name",
+                    "display_name",
+                    "raw_config",
+                    "config",
+                    "channel_identifiers",
+                    "store_hours",
+                    "address",
+                    "product_info",
+                    "service_instruction",
+                    "order_integration_id",
+                    "timezone",
+                    "transfer_message",
+                    "reservation_link",
+                    "ordering_link",
+                    "call_forwarding_setup_completed",
+                    "created_at",
+                    "updated_at",
+                    "account_id",
+                    "agent_id",
+                }
+                if name in guarded_names:
+                    self._raise_if_expired()
+                return object.__getattribute__(self, name)
+
+            def __init__(self) -> None:
+                self.id = project_id
+                self.name = "test-project"
+                self.display_name = "Test Project"
+                self.raw_config = {}
+                self.channel_identifiers = []
+                self.store_hours = None
+                self.address = None
+                self.product_info = None
+                self.service_instruction = None
+                self.order_integration_id = None
+                self.timezone = "America/Toronto"
+                self.transfer_message = None
+                self.reservation_link = None
+                self.ordering_link = None
+                self.call_forwarding_setup_completed = False
+                self.created_at = None
+                self.updated_at = None
+                self.account_id = mock_account.id
+                self.agent_id = params.agent_id
+
+        mock_project = ExpiringProject()
+
+        mock_voice_repo_instance = MagicMock()
+
+        async def create_voice_config(_: VoiceConfigData) -> None:
+            mock_project.expired = True
+
+        mock_voice_repo_instance.create = AsyncMock(side_effect=create_voice_config)
+
+        with (
+            patch(
+                "services.project_service._implementation.account_service.get_account_async",
+                return_value=mock_account,
+            ),
+            patch(
+                "services.project_service._implementation.agent_service.get_agent_async",
+                return_value=mock_agent,
+            ),
+            patch(
+                "services.project_service._implementation.ProjectRepositoryAsync"
+            ) as mock_project_repo_cls,
+            patch(
+                "services.project_service._implementation.VoiceConfigRepository",
+                return_value=mock_voice_repo_instance,
+            ),
+            patch("asyncio.get_event_loop"),
+        ):
+            mock_project_repo = mock_project_repo_cls.return_value
+            mock_project_repo.create_project = AsyncMock(return_value=mock_project)
+
+            await create_project_async(
+                async_session=mock_session,
+                context=context,
+                account_name="test-account",
+                project_name="test-project",
+                params=params,
+            )
+
+            mock_session.refresh.assert_awaited_once_with(mock_project)
 
     async def test_delete_project_async_deletes_voice_configs(self) -> None:
         """Deleting a project calls VoiceConfigRepository.delete_by_project_id."""

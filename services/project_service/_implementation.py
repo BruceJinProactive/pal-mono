@@ -758,10 +758,13 @@ async def create_project_async(
         background_sound="",
         voice_model="sonic-2",
     )
-    await voice_repo.create(voice_config_data)
 
     # Capture project data for change logging
+    project_id = project.id
     project_data_snapshot = _create_project_data_snapshot(project)
+
+    await voice_repo.create(voice_config_data)
+    await async_session.refresh(project)
 
     # Schedule background logging (non-blocking) with captured project data
     asyncio.get_event_loop().run_in_executor(
@@ -770,7 +773,7 @@ async def create_project_async(
         async_session.bind.sync_engine,
         context.email,
         account.id,
-        project.id,
+        project_id,
         "create",  # operation type
         project_data_snapshot,  # captured project data
     )
