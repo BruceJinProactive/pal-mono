@@ -144,6 +144,30 @@ class ProjectRepositoryAsync:
         project = result.scalar_one_or_none()
         return project
 
+    async def get_project_by_name(self, project_name: str) -> Project | None:
+        """
+        Retrieve a project by its unique name asynchronously.
+
+        Args:
+            project_name: The unique name of the project.
+
+        Returns:
+            Project, or None if no such Project is found.
+        """
+        try:
+            query = (
+                select(Project)
+                .options(selectinload(Project.account))
+                .filter(Project.name == project_name)
+            )
+            result = await self.session.execute(query)
+            project = result.scalar_one_or_none()
+            return project
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error retrieving project by name: {e}")
+            raise
+
     async def create_project(
         self, account_id: uuid.UUID, project_name: str, **kwargs
     ) -> Project:

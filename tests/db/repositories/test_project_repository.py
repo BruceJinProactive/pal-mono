@@ -130,6 +130,30 @@ class TestProjectChannelRoutingAsync:
         assert result == sample_project
 
     @pytest.mark.asyncio
+    async def test_async_get_project_by_name(
+        self, async_repo, mock_async_session, sample_project
+    ) -> None:
+        """Async name lookup supports duplicate-name resolution."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_project
+        mock_async_session.execute.return_value = mock_result
+
+        result = await async_repo.get_project_by_name("test-store")
+        assert result == sample_project
+
+    @pytest.mark.asyncio
+    async def test_async_get_project_by_name_db_error_rolls_back(
+        self, async_repo, mock_async_session
+    ) -> None:
+        """Name lookup rolls back on SQLAlchemy errors."""
+        mock_async_session.execute.side_effect = SQLAlchemyError("lookup failed")
+
+        with pytest.raises(SQLAlchemyError):
+            await async_repo.get_project_by_name("test-store")
+
+        mock_async_session.rollback.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_async_get_project_by_id_not_found(
         self, async_repo, mock_async_session
     ):

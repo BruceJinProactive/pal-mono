@@ -22,6 +22,7 @@ from .. import account_service, agent_service, subscription_service
 from .schema import ProjectParams
 
 # Helper functions for change logging
+_PROJECT_NAME_CREATE_MAX_ATTEMPTS = 5
 
 
 def _release_number_safe(number: str) -> None:
@@ -375,6 +376,30 @@ def get_projects_by_phone_number(
     """
     repository = ProjectRepository(session)
     return repository.get_projects_by_phone_number(phone_number)
+
+
+async def _resolve_unique_project_name(
+    project_repository: ProjectRepositoryAsync,
+    requested_name: str,
+) -> str:
+    if await project_repository.get_project_by_name(requested_name) is None:
+        return requested_name
+
+    copy_base_name = f"{requested_name}-copy"
+    candidate_name = copy_base_name
+    copy_number = 2
+    while await project_repository.get_project_by_name(candidate_name) is not None:
+        candidate_name = f"{copy_base_name}-{copy_number}"
+        copy_number += 1
+
+    return candidate_name
+
+
+def _is_project_name_conflict_error(error: ValueError) -> bool:
+    error_message = str(error).lower()
+    return "projects_name_key" in error_message or (
+        "duplicate key" in error_message and "project" in error_message
+    )
 
 
 def batch_create_projects(
@@ -731,18 +756,39 @@ async def create_project_async(
 
     account_id = account.id
 
-    # Add API channel with project name as identifier
-    api_channel_identifier = f"api:{project_name}"
-    if params.channel_identifiers is None:
-        params.channel_identifiers = []
-    if api_channel_identifier not in params.channel_identifiers:
-        params.channel_identifiers.append(api_channel_identifier)
-
     # Create project using async repository
     project_repository = ProjectRepositoryAsync(async_session)
-    project = await project_repository.create_project(
-        account_id, project_name, **asdict(params)
-    )
+    requested_project_name = project_name
+    original_channel_identifiers = list(params.channel_identifiers or [])
+    project: db.Project | None = None
+    last_name_conflict: ValueError | None = None
+
+    for _ in range(_PROJECT_NAME_CREATE_MAX_ATTEMPTS):
+        project_name = await _resolve_unique_project_name(
+            project_repository, requested_project_name
+        )
+        params.name = project_name
+
+        # Add API channel with project name as identifier
+        api_channel_identifier = f"api:{project_name}"
+        params.channel_identifiers = list(original_channel_identifiers)
+        if api_channel_identifier not in params.channel_identifiers:
+            params.channel_identifiers.append(api_channel_identifier)
+
+        try:
+            project = await project_repository.create_project(
+                account_id, project_name, **asdict(params)
+            )
+            break
+        except ValueError as err:
+            if not _is_project_name_conflict_error(err):
+                raise
+            last_name_conflict = err
+
+    if project is None:
+        raise ValueError(
+            f"Could not create project with a unique name after {_PROJECT_NAME_CREATE_MAX_ATTEMPTS} attempts."
+        ) from last_name_conflict
 
     # Create default voice_config for the project
     voice_repo = VoiceConfigRepository(async_session)
@@ -772,7 +818,7 @@ async def create_project_async(
         _log_project_change_sync,
         async_session.bind.sync_engine,
         context.email,
-        account.id,
+        account_id,
         project_id,
         "create",  # operation type
         project_data_snapshot,  # captured project data
