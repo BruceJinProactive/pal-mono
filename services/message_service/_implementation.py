@@ -39,7 +39,7 @@ from services import (
     transaction_service,
     user_service,
 )
-from utils.cache.tool_result_cache import append_tool_result
+from utils.cache.tool_result_cache import append_tool_result, get_tool_results
 from utils.eval_safety import apply_eval_safety
 from utils.log import logger
 from utils.otel import record_duration, trace_async_block
@@ -92,6 +92,47 @@ def _handle_tool_result_cache_write_done(task: asyncio.Task[None]) -> None:
         logger.debug("Tool result cache write task was cancelled")
     except Exception:
         logger.warning("Tool result cache write task failed", exc_info=True)
+
+
+async def _hydrate_previous_tool_results(
+    runtime_context: RuntimeContext,
+    conversation_id: uuid.UUID,
+) -> None:
+    try:
+        previous_tool_results = await get_tool_results(str(conversation_id))
+    except Exception:
+        logger.warning(
+            "Failed to read previous tool results from cache",
+            extra={"conversation_id": str(conversation_id)},
+            exc_info=True,
+        )
+        return
+
+    result_count = len(previous_tool_results)
+    logger.info(
+        "[tool_result_cache] Previous tool result cache %s before pal-agents run",
+        "hit" if result_count else "miss",
+        extra={
+            "conversation_id": str(conversation_id),
+            "result_count": result_count,
+            "fallback": "process_local" if result_count == 0 else None,
+        },
+    )
+
+    if result_count == 0:
+        return
+
+    try:
+        setattr(runtime_context, "previous_tool_results", previous_tool_results)
+    except Exception:
+        logger.warning(
+            "Failed to attach previous tool results to RuntimeContext",
+            extra={
+                "conversation_id": str(conversation_id),
+                "result_count": result_count,
+            },
+            exc_info=True,
+        )
 
 
 async def _fingerprint_conversation(
@@ -306,6 +347,8 @@ async def _dispatch_agent_async(
             channel=message.channel.value,
             store_status=store_status,
         )
+
+        await _hydrate_previous_tool_results(runtime_context, conversation_id)
 
         if context_modifier:
             context_modifier(runtime_context)
@@ -906,6 +949,11 @@ async def get_chat_response_stream(
                         vapi_control_url=vapi_control_url,  # type: ignore[call-arg]
                         room_name=room_name,  # type: ignore[call-arg]
                         participant_identity=participant_identity,  # type: ignore[call-arg]
+                    )
+
+                    await _hydrate_previous_tool_results(
+                        runtime_context,
+                        request_conversation_id,
                     )
 
                     # Fetch and format conversation history (same as non-streaming)

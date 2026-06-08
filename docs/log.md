@@ -20,6 +20,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-06-05
 
 - **Selected-location subscription checkout.** Account subscription checkout now accepts an optional `project_ids` subset so the admin console can send only the locations selected for purchase; omitted `project_ids` keeps the existing all-attached-projects behavior, while empty or unknown selections fail before Stripe checkout is created. -> `docs/state/billing.md`
+- **Message service tool-result cache reads.** `message_service` now reads `tool-results:v1:{conversation_id}` through `utils.cache.tool_result_cache.get_tool_results(...)` before `PalAgent.run(...)`, attaches non-empty results to `RuntimeContext.previous_tool_results`, and logs hit/miss counts while leaving pal-agents process-local fallback untouched on misses. -> `docs/plans/tool-result-elasticache-migration.md`
 
 ---
 

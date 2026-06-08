@@ -5,7 +5,7 @@ shared AWS ElastiCache-backed storage so recent tool outputs survive pod changes
 
 **Status:** Planning
 **Created:** 2026-05-19
-**Last updated:** 2026-06-04
+**Last updated:** 2026-06-05
 
 This plan supersedes the earlier DB-backed direction. Detailed
 ElastiCache implementation notes live in
@@ -206,6 +206,12 @@ Files to modify:
 - `services/message_service/_implementation.py`
 - `pal-agents/src/pal_agents/input.py`
 - `pal-agents/src/pal_agents/engine/__init__.py`
+
+Status as of 2026-06-05: the pal-mono read path is wired. Non-empty
+ElastiCache results are attached to `RuntimeContext.previous_tool_results`
+before non-streaming and streaming `PalAgent.run(...)` calls, and misses leave
+the attribute unset so pal-agents can continue using its process-local fallback
+during rollout. The pal-agents prompt rendering handoff remains the next slice.
 
 ### Phase 5: Render External Results In pal-agents
 

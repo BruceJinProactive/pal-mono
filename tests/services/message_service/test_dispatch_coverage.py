@@ -6,9 +6,11 @@ the _dispatch_agent_async extraction and langfuse_message_span wiring.
 
 import sys
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -399,6 +401,249 @@ async def test_pal_agents_path_applies_context_modifier(monkeypatch):
 
     assert len(captured_runtime_contexts) == 1
     assert captured_runtime_contexts[0].custom_field == "injected_value"
+
+
+# ---------------------------------------------------------------------------
+# Test: pal-agents path hydrates previous tool results from external cache
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pal_agents_path_attaches_external_previous_tool_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External cache hits are attached to RuntimeContext before PalAgent.run."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+    project = _make_project(use_pal_agents=True)
+    user = SimpleNamespace(id=uuid.uuid4())
+    message_repo = _FakeMessageRepo()
+
+    _impl, _ = _setup_common_mocks(
+        monkeypatch, project=project, user=user, message_repo=message_repo
+    )
+
+    previous_tool_results: list[dict[str, object]] = [
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "cacheable_result": {"status": "success", "order_state": "created"},
+            "status": "success",
+        }
+    ]
+    captured_previous_results: list[object] = []
+
+    async def _fake_get_tool_results(
+        conversation_id: str,
+    ) -> list[dict[str, object]]:
+        return previous_tool_results
+
+    async def _fake_construct_agent_spec(**kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    class _CapturePalAgent:
+        def __init__(self, spec: object | None = None) -> None:
+            self.spec = spec
+
+        async def run(self, pal_input: Any, stream: bool = False) -> SimpleNamespace:
+            captured_previous_results.append(
+                getattr(pal_input.runtime_context, "previous_tool_results", None)
+            )
+            return SimpleNamespace(
+                content="response", escalated=False, closing_conversation=False
+            )
+
+    async def _fake_query_history_messages(*args: Any, **kwargs: Any) -> list[object]:
+        return []
+
+    monkeypatch.setattr(_impl, "get_tool_results", _fake_get_tool_results)
+    monkeypatch.setattr(
+        _impl.agent_service, "construct_agent_spec", _fake_construct_agent_spec
+    )
+    monkeypatch.setattr(_impl, "PalAgent", _CapturePalAgent)
+    monkeypatch.setattr(_impl, "query_history_messages", _fake_query_history_messages)
+
+    session = AsyncMock()
+    session.refresh = AsyncMock()
+
+    await _impl.get_chat_response_async(
+        session=session,
+        message=_make_message("What happened with my order?"),
+        request_context=RequestContext(),
+    )
+
+    assert captured_previous_results == [previous_tool_results]
+
+
+@pytest.mark.asyncio
+async def test_pal_agents_path_uses_process_local_fallback_on_cache_miss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External cache misses leave RuntimeContext untouched for pal-agents fallback."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+    project = _make_project(use_pal_agents=True)
+    user = SimpleNamespace(id=uuid.uuid4())
+    message_repo = _FakeMessageRepo()
+
+    _impl, _ = _setup_common_mocks(
+        monkeypatch, project=project, user=user, message_repo=message_repo
+    )
+
+    captured_has_previous_results: list[bool] = []
+
+    async def _fake_get_tool_results(
+        conversation_id: str,
+    ) -> list[dict[str, object]]:
+        return []
+
+    async def _fake_construct_agent_spec(**kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    class _CapturePalAgent:
+        def __init__(self, spec: object | None = None) -> None:
+            self.spec = spec
+
+        async def run(self, pal_input: Any, stream: bool = False) -> SimpleNamespace:
+            captured_has_previous_results.append(
+                hasattr(pal_input.runtime_context, "previous_tool_results")
+            )
+            return SimpleNamespace(
+                content="response", escalated=False, closing_conversation=False
+            )
+
+    async def _fake_query_history_messages(*args: Any, **kwargs: Any) -> list[object]:
+        return []
+
+    monkeypatch.setattr(_impl, "get_tool_results", _fake_get_tool_results)
+    monkeypatch.setattr(
+        _impl.agent_service, "construct_agent_spec", _fake_construct_agent_spec
+    )
+    monkeypatch.setattr(_impl, "PalAgent", _CapturePalAgent)
+    monkeypatch.setattr(_impl, "query_history_messages", _fake_query_history_messages)
+
+    session = AsyncMock()
+    session.refresh = AsyncMock()
+
+    await _impl.get_chat_response_async(
+        session=session,
+        message=_make_message("What happened with my order?"),
+        request_context=RequestContext(),
+    )
+
+    assert captured_has_previous_results == [False]
+
+
+@pytest.mark.asyncio
+async def test_previous_tool_result_read_failure_is_best_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cache read failures do not prevent RuntimeContext construction."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+    from services.message_service import _implementation as _impl
+
+    async def _raise_get_tool_results(
+        conversation_id: str,
+    ) -> list[dict[str, object]]:
+        raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(_impl, "get_tool_results", _raise_get_tool_results)
+
+    runtime_context = _impl.RuntimeContext(timezone="UTC", channel="sms")
+
+    await _impl._hydrate_previous_tool_results(runtime_context, uuid.uuid4())
+
+    assert not hasattr(runtime_context, "previous_tool_results")
+
+
+@pytest.mark.asyncio
+async def test_streaming_pal_agents_path_attaches_external_previous_tool_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Streaming pal-agents runs receive external previous tool results too."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+    project = _make_project(use_pal_agents=True)
+    user = SimpleNamespace(id=uuid.uuid4())
+    message_repo = _FakeMessageRepo()
+
+    _impl, _ = _setup_common_mocks(
+        monkeypatch, project=project, user=user, message_repo=message_repo
+    )
+
+    previous_tool_results: list[dict[str, object]] = [
+        {
+            "tool_name": "adora_process_order",
+            "cacheable_result": {"status": "success", "order_status": "pending"},
+            "status": "success",
+        }
+    ]
+    captured_previous_results: list[object] = []
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(
+        name: str,
+        resource: str | None = None,
+        service: str | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> AsyncIterator[None]:
+        yield None
+
+    async def _fake_get_tool_results(
+        conversation_id: str,
+    ) -> list[dict[str, object]]:
+        return previous_tool_results
+
+    async def _fake_construct_agent_spec(**kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    class _CapturePalAgent:
+        def __init__(self, spec: object | None = None) -> None:
+            self.spec = spec
+
+        async def run(self, pal_input: Any, stream: bool = False) -> AsyncIterator[Any]:
+            captured_previous_results.append(
+                getattr(pal_input.runtime_context, "previous_tool_results", None)
+            )
+
+            async def _stream() -> AsyncIterator[SimpleNamespace]:
+                yield SimpleNamespace(content="Got it")
+
+            return _stream()
+
+    async def _fake_query_history_messages(*args: Any, **kwargs: Any) -> list[object]:
+        return []
+
+    monkeypatch.setattr(_impl, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(_impl, "get_tool_results", _fake_get_tool_results)
+    monkeypatch.setattr(
+        _impl.agent_service, "construct_agent_spec", _fake_construct_agent_spec
+    )
+    monkeypatch.setattr(_impl, "PalAgent", _CapturePalAgent)
+    monkeypatch.setattr(_impl, "query_history_messages", _fake_query_history_messages)
+
+    session = AsyncMock()
+    session.refresh = AsyncMock()
+
+    chunks = [
+        chunk
+        async for chunk in _impl.get_chat_response_stream(
+            session=session,
+            message=_make_message("Any update?"),
+            request_context=RequestContext(),
+        )
+    ]
+
+    assert chunks
+    assert captured_previous_results == [previous_tool_results]
 
 
 # ---------------------------------------------------------------------------
