@@ -1,6 +1,5 @@
 """Internal API implementation for knowledge update system."""
 
-import os
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session, selectinload
@@ -11,27 +10,24 @@ from db.tables.types import IntegrationProvider, IntegrationType
 from events import KnowledgeUpdateRequested, publish_event
 from utils.log import logger
 
-# Safe mode: When True, only processes projects specified in env vars
-# Set to False for production to update all stores
-SAFE_MODE = False
 
-
-def _get_safe_mode_project_ids() -> set[str]:
-    """
-    Collect project IDs from ADORA_MENU_PROJECTS_1/2/3 environment variables.
-
-    Each env var can contain a single ID or comma-separated IDs.
-    Returns empty set if no env vars are set.
-    """
-    project_ids: set[str] = set()
-    for env_var in [
-        "ADORA_MENU_PROJECTS_1",
-        "ADORA_MENU_PROJECTS_2",
-        "ADORA_MENU_PROJECTS_3",
-    ]:
-        value = os.getenv(env_var, "")
-        project_ids.update(s.strip() for s in value.split(",") if s.strip())
-    return project_ids
+def _is_auto_update_knowledge_enabled(
+    project_integration: ProjectIntegration,
+) -> bool:
+    """Project integrations are included in knowledge auto-updates by default."""
+    config = project_integration.config or {}
+    auto_update_knowledge = config.get("auto_update_knowledge", True)
+    if not isinstance(auto_update_knowledge, bool):
+        logger.error(
+            "[Adora Menu Updater] Invalid auto_update_knowledge config",
+            extra={
+                "project_integration_id": str(project_integration.id),
+                "project_id": str(project_integration.project_id),
+                "auto_update_knowledge_type": type(auto_update_knowledge).__name__,
+            },
+        )
+        raise ValueError("auto_update_knowledge must be a boolean")
+    return auto_update_knowledge
 
 
 async def start_knowledge_update_process(session: Session) -> dict:
@@ -66,31 +62,34 @@ async def start_knowledge_update_process(session: Session) -> dict:
         )
 
         total_found = len(projects_with_adora_pos)
+        projects_with_auto_update_enabled = [
+            (pi, i, p)
+            for pi, i, p in projects_with_adora_pos
+            if _is_auto_update_knowledge_enabled(pi)
+        ]
+        skipped_auto_update_disabled = total_found - len(
+            projects_with_auto_update_enabled
+        )
+        projects_with_adora_pos = projects_with_auto_update_enabled
 
-        # Safe mode: filter to projects specified in ADORA_MENU_PROJECTS_* env vars
-        if SAFE_MODE:
-            safe_mode_ids = _get_safe_mode_project_ids()
-            if safe_mode_ids:
-                projects_with_adora_pos = [
-                    (pi, i, p)
-                    for pi, i, p in projects_with_adora_pos
-                    if str(p.id) in safe_mode_ids
-                ]
-                logger.warning(
-                    f"[Adora Menu Updater] SAFE_MODE enabled: filtering to {len(safe_mode_ids)} project IDs, found {len(projects_with_adora_pos)} match(es)",
-                    extra={
-                        "safe_mode": True,
-                        "safe_mode_project_ids": list(safe_mode_ids),
-                        "matched_count": len(projects_with_adora_pos),
-                        "total_found": total_found,
-                    },
-                )
-            else:
-                logger.warning(
-                    "[Adora Menu Updater] SAFE_MODE enabled but no project IDs configured in ADORA_MENU_PROJECTS_1/2/3 - processing 0 projects",
-                    extra={"safe_mode": True, "total_found": total_found},
-                )
-                projects_with_adora_pos = []
+        logger.info(
+            "[Adora Menu Updater] Applied Adora knowledge auto-update project config",
+            extra={
+                "total_found": total_found,
+                "total_processed": len(projects_with_adora_pos),
+                "skipped_auto_update_disabled": skipped_auto_update_disabled,
+            },
+        )
+
+        if skipped_auto_update_disabled:
+            logger.info(
+                "[Adora Menu Updater] Skipping projects with knowledge auto-update disabled",
+                extra={
+                    "skipped_auto_update_disabled": skipped_auto_update_disabled,
+                    "total_found": total_found,
+                    "total_processed": len(projects_with_adora_pos),
+                },
+            )
 
         events_published = 0
         errors = []
@@ -144,13 +143,12 @@ async def start_knowledge_update_process(session: Session) -> dict:
         # Return summary
         result = {
             "success": True,
-            "safe_mode": SAFE_MODE,
             "total_found": total_found,
             "total_processed": len(projects_with_adora_pos),
+            "skipped_auto_update_disabled": skipped_auto_update_disabled,
             "events_published": events_published,
             "errors": errors,
-            "summary": f"Submitted {events_published} update knowledge events"
-            + (" (SAFE_MODE enabled)" if SAFE_MODE else ""),
+            "summary": f"Submitted {events_published} update knowledge events",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -168,7 +166,6 @@ async def start_knowledge_update_process(session: Session) -> dict:
         )
         return {
             "success": False,
-            "safe_mode": SAFE_MODE,
             "events_published": 0,
             "errors": [f"Process error: {str(e)}"],
             "summary": "Discovery process failed",

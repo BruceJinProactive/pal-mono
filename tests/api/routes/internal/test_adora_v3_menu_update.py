@@ -88,7 +88,6 @@ async def test_start_knowledge_update_process_discovers_adora_v3_without_legacy_
         patch(
             f"{DISCOVERY_BASE}.publish_event", new_callable=AsyncMock
         ) as mock_publish,
-        patch(f"{DISCOVERY_BASE}.SAFE_MODE", False),
     ):
         mock_publish.return_value = True
         result = await start_knowledge_update_process(session)
@@ -98,6 +97,112 @@ async def test_start_knowledge_update_process_discovers_adora_v3_without_legacy_
     assert event.project_id == project.id
     assert event.integration_id == integration.id
     assert event.project_integration_id == pi.id
+
+
+@pytest.mark.asyncio
+async def test_start_knowledge_update_process_skips_disabled_adora_auto_updates() -> (
+    None
+):
+    account = _make_account()
+    included_project = _make_project(account=account)
+    excluded_project = _make_project(account=account)
+    included_integration = _make_integration()
+    excluded_integration = _make_integration()
+    included_pi = _make_project_integration(
+        integration_id=included_integration.id,
+        project_id=included_project.id,
+        config={"auto_update_knowledge": True},
+    )
+    excluded_pi = _make_project_integration(
+        integration_id=excluded_integration.id,
+        project_id=excluded_project.id,
+        config={"auto_update_knowledge": False},
+    )
+
+    session = MagicMock()
+    query = session.query.return_value
+    query.join.return_value = query
+    query.options.return_value = query
+    query.filter.return_value = query
+    query.all.return_value = [
+        (included_pi, included_integration, included_project),
+        (excluded_pi, excluded_integration, excluded_project),
+    ]
+
+    with patch(
+        f"{DISCOVERY_BASE}.publish_event", new_callable=AsyncMock
+    ) as mock_publish:
+        mock_publish.return_value = True
+        result = await start_knowledge_update_process(session)
+
+    assert result["total_found"] == 2
+    assert result["total_processed"] == 1
+    assert result["events_published"] == 1
+    assert result["skipped_auto_update_disabled"] == 1
+    event = mock_publish.call_args[0][0]
+    assert event.project_id == included_project.id
+
+
+@pytest.mark.asyncio
+async def test_start_knowledge_update_process_defaults_missing_auto_update_flag_to_enabled() -> (
+    None
+):
+    account = _make_account()
+    project = _make_project(account=account)
+    integration = _make_integration()
+    pi = _make_project_integration(
+        integration_id=integration.id,
+        project_id=project.id,
+    )
+
+    session = MagicMock()
+    query = session.query.return_value
+    query.join.return_value = query
+    query.options.return_value = query
+    query.filter.return_value = query
+    query.all.return_value = [(pi, integration, project)]
+
+    with patch(
+        f"{DISCOVERY_BASE}.publish_event", new_callable=AsyncMock
+    ) as mock_publish:
+        mock_publish.return_value = True
+        result = await start_knowledge_update_process(session)
+
+    assert result["total_found"] == 1
+    assert result["total_processed"] == 1
+    assert result["events_published"] == 1
+    assert result["skipped_auto_update_disabled"] == 0
+    mock_publish.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_start_knowledge_update_process_rejects_non_boolean_auto_update_flag(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    account = _make_account()
+    project = _make_project(account=account)
+    integration = _make_integration()
+    pi = _make_project_integration(
+        integration_id=integration.id,
+        project_id=project.id,
+        config={"auto_update_knowledge": "false"},
+    )
+
+    session = MagicMock()
+    query = session.query.return_value
+    query.join.return_value = query
+    query.options.return_value = query
+    query.filter.return_value = query
+    query.all.return_value = [(pi, integration, project)]
+
+    result = await start_knowledge_update_process(session)
+
+    assert result["success"] is False
+    assert result["events_published"] == 0
+    assert result["errors"] == [
+        "Process error: auto_update_knowledge must be a boolean"
+    ]
+    assert "Invalid auto_update_knowledge config" in caplog.text
 
 
 @pytest.mark.asyncio
