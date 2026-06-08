@@ -563,6 +563,71 @@ async def test_previous_tool_result_read_failure_is_best_effort(
 
 
 @pytest.mark.asyncio
+async def test_pal_agents_path_continues_when_previous_tool_result_read_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Redis read failures do not break non-streaming chat responses."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+    project = _make_project(use_pal_agents=True)
+    user = SimpleNamespace(id=uuid.uuid4())
+    message_repo = _FakeMessageRepo()
+
+    _impl, _ = _setup_common_mocks(
+        monkeypatch, project=project, user=user, message_repo=message_repo
+    )
+
+    captured_has_previous_results: list[bool] = []
+
+    async def _raise_get_tool_results(
+        conversation_id: str,
+    ) -> list[dict[str, object]]:
+        raise TimeoutError("redis timed out")
+
+    async def _fake_construct_agent_spec(**kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    class _CapturePalAgent:
+        def __init__(self, spec: object | None = None) -> None:
+            self.spec = spec
+
+        async def run(self, pal_input: Any, stream: bool = False) -> SimpleNamespace:
+            captured_has_previous_results.append(
+                hasattr(pal_input.runtime_context, "previous_tool_results")
+            )
+            return SimpleNamespace(
+                content="response", escalated=False, closing_conversation=False
+            )
+
+    async def _fake_query_history_messages(*args: Any, **kwargs: Any) -> list[object]:
+        return []
+
+    monkeypatch.setattr(_impl, "get_tool_results", _raise_get_tool_results)
+    monkeypatch.setattr(
+        _impl.agent_service, "construct_agent_spec", _fake_construct_agent_spec
+    )
+    monkeypatch.setattr(_impl, "PalAgent", _CapturePalAgent)
+    monkeypatch.setattr(_impl, "query_history_messages", _fake_query_history_messages)
+
+    session = AsyncMock()
+    session.refresh = AsyncMock()
+
+    result = await _impl.get_chat_response_async(
+        session=session,
+        message=_make_message("Can you check my order?"),
+        request_context=RequestContext(),
+    )
+
+    assert captured_has_previous_results == [False]
+    assert any(
+        response_message.text and response_message.text.body == "response"
+        for response_message in result
+    )
+
+
+@pytest.mark.asyncio
 async def test_streaming_pal_agents_path_attaches_external_previous_tool_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -644,6 +709,88 @@ async def test_streaming_pal_agents_path_attaches_external_previous_tool_results
 
     assert chunks
     assert captured_previous_results == [previous_tool_results]
+
+
+@pytest.mark.asyncio
+async def test_streaming_pal_agents_path_continues_when_previous_tool_result_read_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Redis read failures do not break streaming chat responses."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+    project = _make_project(use_pal_agents=True)
+    user = SimpleNamespace(id=uuid.uuid4())
+    message_repo = _FakeMessageRepo()
+
+    _impl, _ = _setup_common_mocks(
+        monkeypatch, project=project, user=user, message_repo=message_repo
+    )
+
+    captured_has_previous_results: list[bool] = []
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(
+        name: str,
+        resource: str | None = None,
+        service: str | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> AsyncIterator[None]:
+        yield None
+
+    async def _raise_get_tool_results(
+        conversation_id: str,
+    ) -> list[dict[str, object]]:
+        raise TimeoutError("redis timed out")
+
+    async def _fake_construct_agent_spec(**kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    class _CapturePalAgent:
+        def __init__(self, spec: object | None = None) -> None:
+            self.spec = spec
+
+        async def run(self, pal_input: Any, stream: bool = False) -> AsyncIterator[Any]:
+            captured_has_previous_results.append(
+                hasattr(pal_input.runtime_context, "previous_tool_results")
+            )
+
+            async def _stream() -> AsyncIterator[SimpleNamespace]:
+                yield SimpleNamespace(content="Still working")
+
+            return _stream()
+
+    async def _fake_query_history_messages(*args: Any, **kwargs: Any) -> list[object]:
+        return []
+
+    monkeypatch.setattr(_impl, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(_impl, "get_tool_results", _raise_get_tool_results)
+    monkeypatch.setattr(
+        _impl.agent_service, "construct_agent_spec", _fake_construct_agent_spec
+    )
+    monkeypatch.setattr(_impl, "PalAgent", _CapturePalAgent)
+    monkeypatch.setattr(_impl, "query_history_messages", _fake_query_history_messages)
+
+    session = AsyncMock()
+    session.refresh = AsyncMock()
+
+    chunks = [
+        chunk
+        async for chunk in _impl.get_chat_response_stream(
+            session=session,
+            message=_make_message("Any update?"),
+            request_context=RequestContext(),
+        )
+    ]
+
+    contents = [
+        chunk.choices[0].delta.content
+        for chunk in chunks
+        if chunk.choices[0].delta.content
+    ]
+    assert captured_has_previous_results == [False]
+    assert "Still working" in contents
 
 
 # ---------------------------------------------------------------------------

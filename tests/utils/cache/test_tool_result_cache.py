@@ -384,6 +384,65 @@ async def test_append_tool_result_applies_allowlist_before_size_limit(
 
 
 @pytest.mark.asyncio
+async def test_tool_results_can_be_written_and_read_by_separate_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Simulate one pod writing a tool result and another pod reading it."""
+    shared_store: dict[str, list[str | bytes]] = {}
+    writer_client = _FakeRedisClient(shared_store=shared_store)
+    reader_client = _FakeRedisClient(shared_store=shared_store)
+    cache_clients = [writer_client, reader_client]
+
+    async def fake_get_tool_result_cache_client() -> _FakeRedisClient | None:
+        return cache_clients.pop(0)
+
+    monkeypatch.setattr(
+        tool_result_cache,
+        "get_tool_result_cache_client",
+        fake_get_tool_result_cache_client,
+    )
+
+    def fake_get_redis_cache_settings() -> RedisCacheSettings:
+        return RedisCacheSettings(enabled=True, host="cache.example.local")
+
+    monkeypatch.setattr(
+        tool_result_cache,
+        "get_redis_cache_settings",
+        fake_get_redis_cache_settings,
+    )
+
+    await append_tool_result(
+        "conversation-1",
+        {
+            "tool_name": "adora_process_order",
+            "result_summary": "Order was submitted.",
+            "status": "success",
+            "cacheable_result": {
+                "orderID": 12345,
+                "processStatus": "paid",
+                "paymentToken": "drop-sensitive-token",
+            },
+        },
+    )
+
+    results = await get_tool_results("conversation-1")
+
+    assert writer_client.rpush_calls
+    assert reader_client.lrange_calls == [("tool-results:v1:conversation-1", 0, -1)]
+    assert results == [
+        {
+            "tool_name": "adora_process_order",
+            "result_summary": "Order was submitted.",
+            "status": "success",
+            "cacheable_result": {
+                "orderID": 12345,
+                "processStatus": "paid",
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_append_tool_result_skips_when_cache_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -606,10 +665,12 @@ class _FakeRedisClient:
         self,
         *,
         lrange_items: list[str | bytes] | None = None,
+        shared_store: dict[str, list[str | bytes]] | None = None,
         raise_on_rpush: bool = False,
         raise_on_lrange: bool = False,
     ) -> None:
         self.lrange_items = lrange_items or []
+        self.shared_store = shared_store
         self.raise_on_rpush = raise_on_rpush
         self.raise_on_lrange = raise_on_lrange
         self.rpush_calls: list[tuple[str, str]] = []
@@ -626,6 +687,9 @@ class _FakeRedisClient:
         if self.raise_on_lrange:
             raise RuntimeError("redis unavailable")
         self.lrange_calls.append((name, start, end))
+        if self.shared_store is not None:
+            stop = None if end == -1 else end + 1
+            return self.shared_store.get(name, [])[start:stop]
         return self.lrange_items
 
 
@@ -649,6 +713,8 @@ class _FakeRedisPipeline:
             raise RuntimeError("redis unavailable")
         for value in values:
             self.client.rpush_calls.append((name, value))
+        if self.client.shared_store is not None:
+            self.client.shared_store.setdefault(name, []).extend(values)
         return len(values)
 
     def expire(self, name: str, time: int) -> object:

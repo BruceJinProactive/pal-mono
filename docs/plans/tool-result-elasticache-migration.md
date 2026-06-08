@@ -246,6 +246,19 @@ Run a dual-read period:
 - Log cache hit/miss and result counts.
 - Compare behavior for same-pod and cross-pod turns.
 
+Cross-pod validation:
+
+1. Start two API workers/pods pointed at the same ElastiCache instance.
+2. Send a turn through worker A that emits a cacheable `tool_call` result.
+3. Send the follow-up turn for the same conversation through worker B.
+4. Confirm worker B logs a previous-tool-result cache hit with a non-zero
+   `result_count`, and confirm the response has the expected prior tool context.
+
+Automated coverage simulates this by writing through one Redis client instance
+and reading through another client instance backed by the same shared store.
+Failure-mode tests also force Redis read errors before both non-streaming and
+streaming pal-agents runs and assert chat responses still complete.
+
 Once cross-pod behavior is verified:
 
 1. Prefer ElastiCache results in prompt hydration.

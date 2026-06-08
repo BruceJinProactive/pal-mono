@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-08
+
+- **Tool-result cache dual-read validation.** Added cross-pod-style adapter coverage that writes with one Redis client and reads with another, plus message-service failure tests proving Redis read timeouts do not break non-streaming or streaming pal-agents responses during the dual-read rollout. -> `docs/plans/tool-result-elasticache-migration.md`
+
+---
+
 ## 2026-06-07
 
 - **Catering request activity timeline.** Added `catering_request_activities` as
