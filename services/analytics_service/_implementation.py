@@ -1,6 +1,7 @@
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,11 @@ from api.schemas.admin.analytics import (
     AnalyticsReportType,
     GetAllReportsResponse,
     PerformanceReport,
+)
+from api.schemas.admin.ordering_metrics import (
+    OrderingMetricPoint,
+    OrderingMetricsResponse,
+    OrderingMetricSummary,
 )
 from utils.log import logger
 
@@ -175,6 +181,177 @@ async def get_account_reports(
         end_date=end_date,
         group_by=group_by,
         filter_by=filter_by,
+    )
+
+
+def _to_date_key(value: date | datetime | str) -> str:
+    """Return YYYY-MM-DD for DB date values."""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return value.split("T")[0]
+
+
+def _calculate_accuracy(
+    accurate_order_call_count: int, order_call_count: int
+) -> float | None:
+    """Calculate order accuracy percentage, or None when there is no denominator."""
+    if order_call_count == 0:
+        return None
+    return round((accurate_order_call_count / order_call_count) * 100, 1)
+
+
+def _empty_ordering_summary() -> OrderingMetricSummary:
+    """Build an all-zero ordering summary."""
+    return OrderingMetricSummary(
+        total_orders=0,
+        total_order_value=0.0,
+        order_accuracy=None,
+        order_call_count=0,
+        accurate_order_call_count=0,
+        tool_error_order_call_count=0,
+    )
+
+
+def _iter_date_keys(start_date: datetime, end_date: datetime) -> list[str]:
+    """Return inclusive YYYY-MM-DD date keys for a datetime range."""
+    current = start_date.date()
+    end = end_date.date()
+    dates: list[str] = []
+    while current <= end:
+        dates.append(current.isoformat())
+        current += timedelta(days=1)
+    return dates
+
+
+def _build_ordering_filter_by(
+    account_id: uuid.UUID, project_ids: list[uuid.UUID] | None
+) -> dict[str, uuid.UUID | list[uuid.UUID]]:
+    """Build analytics filters matching the Slack conversion metrics path."""
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] = {"account_id": account_id}
+    if project_ids:
+        filter_by["project_id"] = project_ids
+    return filter_by
+
+
+_CONVERSION_CONVERSATIONS_WITH_ORDERS_INDEX = 2
+_CONVERSION_TOTAL_SUBTOTAL_INDEX = 4
+
+
+async def get_ordering_metrics(
+    session: Session,
+    account_id: uuid.UUID,
+    account_name: str,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    project_ids: list[uuid.UUID] | None = None,
+) -> OrderingMetricsResponse:
+    """
+    Get ordering dashboard metrics and whether ordering is enabled.
+
+    The capability gate is scoped to the selected projects when project_ids are
+    provided. When enabled, the response includes a continuous daily series.
+    """
+    start_date, end_date = validate_date_range(start_date, end_date)
+    analytics_repo = db.AnalyticsRepository(session)
+
+    ordering_enabled = analytics_repo.has_ordering_enabled(
+        account_id=account_id,
+        project_ids=project_ids,
+    )
+    period_start = start_date.date().isoformat()
+    period_end = end_date.date().isoformat()
+
+    if not ordering_enabled:
+        return OrderingMetricsResponse(
+            account_name=account_name,
+            ordering_enabled=False,
+            period_start=period_start,
+            period_end=period_end,
+            time_series=[],
+            summary=_empty_ordering_summary(),
+        )
+
+    conversion_rows = analytics_repo.get_conversion_summary(
+        start_date=start_date,
+        end_date=end_date,
+        group_by=["date"],
+        filter_by=_build_ordering_filter_by(account_id, project_ids),
+    )
+    accuracy_rows = analytics_repo.get_order_accuracy_time_series(
+        account_id=account_id,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=project_ids,
+    )
+
+    conversion_rows_by_date: dict[str, tuple[int, float]] = {}
+    for row in conversion_rows:
+        row_date = row[0]
+        date_key = _to_date_key(row_date)
+        # get_conversion_summary(["date"]) matches Slack's ordering report shape.
+        conversion_rows_by_date[date_key] = (
+            int(row[_CONVERSION_CONVERSATIONS_WITH_ORDERS_INDEX] or 0),
+            float(row[_CONVERSION_TOTAL_SUBTOTAL_INDEX] or Decimal("0")),
+        )
+
+    accurate_calls_by_date: dict[str, int] = {}
+    for row_date, _order_calls, accurate_calls in accuracy_rows:
+        date_key = _to_date_key(row_date)
+        accurate_calls_by_date[date_key] = int(accurate_calls or 0)
+
+    total_orders_summary = 0
+    total_order_value_summary = 0.0
+    order_call_count_summary = 0
+    accurate_order_call_count_summary = 0
+    time_series: list[OrderingMetricPoint] = []
+
+    for date_key in _iter_date_keys(start_date, end_date):
+        total_orders, total_order_value = conversion_rows_by_date.get(
+            date_key, (0, 0.0)
+        )
+        order_calls = total_orders
+        accurate_calls = accurate_calls_by_date.get(date_key, 0)
+        tool_error_calls = order_calls - accurate_calls
+        total_orders_summary += total_orders
+        total_order_value_summary += total_order_value
+        order_call_count_summary += order_calls
+        accurate_order_call_count_summary += accurate_calls
+
+        time_series.append(
+            OrderingMetricPoint(
+                date=date_key,
+                total_orders=total_orders,
+                total_order_value=round(total_order_value, 2),
+                order_accuracy=_calculate_accuracy(accurate_calls, order_calls),
+                order_call_count=order_calls,
+                accurate_order_call_count=accurate_calls,
+                tool_error_order_call_count=tool_error_calls,
+            )
+        )
+
+    tool_error_order_call_count_summary = (
+        order_call_count_summary - accurate_order_call_count_summary
+    )
+
+    return OrderingMetricsResponse(
+        account_name=account_name,
+        ordering_enabled=True,
+        period_start=period_start,
+        period_end=period_end,
+        time_series=time_series,
+        summary=OrderingMetricSummary(
+            total_orders=total_orders_summary,
+            total_order_value=round(total_order_value_summary, 2),
+            order_accuracy=_calculate_accuracy(
+                accurate_order_call_count_summary,
+                order_call_count_summary,
+            ),
+            order_call_count=order_call_count_summary,
+            accurate_order_call_count=accurate_order_call_count_summary,
+            tool_error_order_call_count=tool_error_order_call_count_summary,
+        ),
     )
 
 

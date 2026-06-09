@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from api.schemas.admin.analytics import GetAllReportsResponse
+from api.schemas.admin.ordering_metrics import OrderingMetricsResponse
 
 from . import _implementation
 
@@ -70,4 +71,36 @@ async def get_account_reports(
         end_date,
         group_by=group_by,
         filter_by=filter_by,
+    )
+
+
+async def get_ordering_metrics(
+    session: Session,
+    account_id: uuid.UUID,
+    account_name: str,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    project_ids: list[uuid.UUID] | None = None,
+) -> OrderingMetricsResponse:
+    """
+    Get ordering dashboard metrics for an account/project scope.
+
+    Args:
+        session: Database session
+        account_id: Account ID
+        account_name: Account name for the response
+        start_date: Optional start date
+        end_date: Optional end date
+        project_ids: Optional project filter
+
+    Returns:
+        OrderingMetricsResponse: Capability gate plus time-series metrics
+    """
+    return await _implementation.get_ordering_metrics(
+        session=session,
+        account_id=account_id,
+        account_name=account_name,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=project_ids,
     )

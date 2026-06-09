@@ -40,6 +40,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-06
+
+- **Admin ordering metrics API.** Added account-scoped ordering dashboard metrics for Admin Console, gated by ordering capability/integration detection. The API returns daily Total Order and Total Order Value from the existing Slack conversion metric source (`conversations_with_orders`, `total_subtotal`) and computes Order Accuracy from order conversations without tool-call errors. -> `api/schemas/admin/ordering_metrics.py`
+
+---
+
 ## 2026-06-05
 
 - **Selected-location subscription checkout.** Account subscription checkout now accepts an optional `project_ids` subset so the admin console can send only the locations selected for purchase; omitted `project_ids` keeps the existing all-attached-projects behavior, while empty or unknown selections fail before Stripe checkout is created. -> `docs/state/billing.md`

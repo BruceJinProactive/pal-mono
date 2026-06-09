@@ -8,13 +8,17 @@ from sqlalchemy.orm import Session
 
 from db.tables import (
     Account,
+    Agent,
+    AgentCapability,
     Conversation,
     Integration,
     Message,
     Order,
     PhoneCall,
     Project,
+    ProjectIntegration,
     Reservation,
+    ToolCallRecord,
     User,
 )
 from db.tables.types import IntegrationType
@@ -28,10 +32,206 @@ HIGH_TURN_THRESHOLD = 5  # Conversations with > 10 turns are considered "high"
 SHORT_CALL_THRESHOLD = 10.0  # Calls <= 10s are considered "short"
 LONG_CALL_THRESHOLD = 120.0  # Calls > 120s are considered "long"
 
+ORDERING_CAPABILITY_IDENTIFIER = "ordering"
+ORDERING_TOOL_NAMES = (
+    "adora_tool",
+    "adora_v2_tool",
+    "adora_v3",
+    "menusifu_tool",
+    "olo_tool",
+    "square_tool",
+    "toast_tool",
+    "toast_v3",
+)
+
 
 class AnalyticsRepository:
     def __init__(self, session: Session):
         self.session = session
+
+    def _project_filter_conditions(self, project_ids: list[uuid.UUID] | None) -> list:
+        """Build reusable project filter conditions."""
+        if not project_ids:
+            return []
+        return [Project.id.in_(project_ids)]
+
+    def has_ordering_enabled(
+        self,
+        account_id: uuid.UUID,
+        project_ids: list[uuid.UUID] | None = None,
+    ) -> bool:
+        """
+        Return whether ordering is enabled for an account/project scope.
+
+        Checks the explicit ordering capability, ProjectIntegration tool names used by
+        the new agent stack, and legacy agent/project raw_config tool identifiers.
+        """
+        try:
+            project_conditions = self._project_filter_conditions(project_ids)
+
+            capability_query = (
+                select(AgentCapability.id)
+                .select_from(AgentCapability)
+                .join(Agent, AgentCapability.agent_id == Agent.id)
+                .join(Project, Project.agent_id == Agent.id)
+                .where(
+                    Agent.account_id == account_id,
+                    Project.account_id == account_id,
+                    AgentCapability.capability_identifier
+                    == ORDERING_CAPABILITY_IDENTIFIER,
+                    AgentCapability.enabled.is_(True),
+                    *project_conditions,
+                )
+                .limit(1)
+            )
+            if self.session.execute(capability_query).first() is not None:
+                return True
+
+            project_integration_query = (
+                select(ProjectIntegration.id)
+                .select_from(ProjectIntegration)
+                .join(Project, ProjectIntegration.project_id == Project.id)
+                .where(
+                    Project.account_id == account_id,
+                    ProjectIntegration.tool_name.in_(ORDERING_TOOL_NAMES),
+                    *project_conditions,
+                )
+                .limit(1)
+            )
+            if self.session.execute(project_integration_query).first() is not None:
+                return True
+
+            raw_config_conditions = []
+            for tool_name in ORDERING_TOOL_NAMES:
+                tool_identifier = {"tools": {"identifiers": [{"tool_name": tool_name}]}}
+                raw_config_conditions.append(
+                    Project.raw_config.contains(tool_identifier)
+                )
+                raw_config_conditions.append(Agent.raw_config.contains(tool_identifier))
+
+            raw_config_query = (
+                select(Project.id)
+                .select_from(Project)
+                .join(Agent, Project.agent_id == Agent.id)
+                .where(
+                    Project.account_id == account_id,
+                    Agent.account_id == account_id,
+                    or_(*raw_config_conditions),
+                    *project_conditions,
+                )
+                .limit(1)
+            )
+            return self.session.execute(raw_config_query).first() is not None
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error checking ordering capability: {e}")
+            return False
+
+    def get_order_accuracy_time_series(
+        self,
+        account_id: uuid.UUID,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        project_ids: list[uuid.UUID] | None = None,
+    ) -> list[tuple]:
+        """
+        Get daily order-call accuracy metrics for dashboard charts.
+
+        Accuracy is measured per distinct conversation with one or more orders:
+        conversations with orders and no ToolCallRecord.is_error are accurate.
+        """
+        try:
+            start_time = time.time()
+            conversation_date = func.date(Conversation.created_at).label("date")
+            conditions = [
+                User.account_id == account_id,
+                Conversation.created_at.between(start_date, end_date),
+                ~Conversation.is_test,
+                exists(
+                    select(1)
+                    .select_from(Integration)
+                    .where(
+                        Integration.account_id == User.account_id,
+                        or_(
+                            Integration.integration_type == IntegrationType.pos,
+                            Integration.integration_type == IntegrationType.reservation,
+                        ),
+                    )
+                ),
+            ]
+            if project_ids:
+                conditions.append(Conversation.project_id.in_(project_ids))
+
+            tool_errors = (
+                select(
+                    ToolCallRecord.conversation_id.label("conversation_id"),
+                    func.bool_or(ToolCallRecord.is_error).label("has_tool_error"),
+                )
+                .group_by(ToolCallRecord.conversation_id)
+                .subquery()
+            )
+
+            order_conversations = (
+                select(
+                    conversation_date,
+                    Conversation.id.label("conversation_id"),
+                    func.coalesce(tool_errors.c.has_tool_error, False).label(
+                        "has_tool_error"
+                    ),
+                )
+                .select_from(Conversation)
+                .join(User, Conversation.user_id == User.id)
+                .join(Order, Conversation.id == Order.conversation_id)
+                .outerjoin(
+                    tool_errors, Conversation.id == tool_errors.c.conversation_id
+                )
+                .where(
+                    *conditions,
+                )
+                .group_by(
+                    conversation_date, Conversation.id, tool_errors.c.has_tool_error
+                )
+                .subquery()
+            )
+
+            query = select(
+                order_conversations.c.date,
+                func.count(order_conversations.c.conversation_id).label(
+                    "order_call_count"
+                ),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                order_conversations.c.has_tool_error.is_(False),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("accurate_order_call_count"),
+            ).select_from(order_conversations)
+
+            query = query.group_by(order_conversations.c.date).order_by(
+                order_conversations.c.date
+            )
+
+            result = self.session.execute(query)
+            rows = [tuple(row) for row in result.all()]
+
+            elapsed = time.time() - start_time
+            logger.info(
+                "AnalyticsRepository: Order accuracy query executed in "
+                f"{elapsed:.3f}s, returned {len(rows)} rows"
+            )
+            return rows
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error getting order accuracy metrics: {e}")
+            return []
 
     def _build_group_fields(self, group_by: list[str] | None) -> tuple[list, list]:
         """

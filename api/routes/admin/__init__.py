@@ -127,6 +127,7 @@ from api.schemas.admin.onboarding import (
     SigninGoogleUserRequest,
     SigninGoogleUserResponse,
 )
+from api.schemas.admin.ordering_metrics import OrderingMetricsResponse
 from api.schemas.admin.phone_number import (
     EnhancedReleaseProjectNumberRequest,
     EnhancedReleaseProjectNumberResponse,
@@ -3873,6 +3874,42 @@ async def get_account_reports(
         end_date,
         group_by=group_by if group_by else None,
         filter_by={"project_id": project_ids} if project_ids else None,
+    )
+
+
+@admin_router.get(
+    "/accounts/{account_name}/ordering-metrics",
+    status_code=status.HTTP_200_OK,
+)
+async def get_account_ordering_metrics(
+    account_name: str,
+    start_date: datetime | None = Query(
+        default=None,
+        description="Start date for ordering metrics. If not provided, defaults to 7 days ago.",
+    ),
+    end_date: datetime | None = Query(
+        default=None,
+        description="End date for ordering metrics. If not provided, defaults to today.",
+    ),
+    project_ids: Optional[list[uuid.UUID]] = Query(
+        default=None,
+        description="Optional list of project IDs to filter ordering metrics by.",
+    ),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> OrderingMetricsResponse:
+    """
+    Retrieve ordering dashboard metrics and ordering capability status.
+    """
+    return await _analytics.get_account_ordering_metrics(
+        account_name=account_name,
+        context=context,
+        session=session,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=project_ids,
     )
 
 
