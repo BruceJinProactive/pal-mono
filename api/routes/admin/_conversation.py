@@ -9,6 +9,7 @@ from api.schemas.admin.conversation import (
     ConversationAccountLookupResponse,
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
+    OrderDetails,
     UpdateConversationRequest,
     UserSessionSearchFilters,
 )
@@ -138,6 +139,31 @@ async def list_conversation_messages(
         total_pages=total_pages,
         total_messages=total_messages,
     )
+
+
+async def get_conversation_order_details(
+    account_name: str,
+    conversation_id: uuid.UUID,
+    context: UserContext,
+    session: Session,
+) -> OrderDetails:
+    """
+    Get latest order details for a conversation.
+    Authorization is handled by require_account_permission in route decorator.
+    """
+    conversation = admin_service.get_conversation_by_id(session, conversation_id)
+    if not conversation:
+        raise not_found_error(f"Conversation not found for id: {conversation_id}")
+
+    account = conversation.user.account
+    if account_name != account.name:
+        raise not_found_error(f"Conversation not found for id: {conversation_id}")
+
+    order = admin_service.get_conversation_order_details(session, conversation_id)
+    if order is None:
+        raise not_found_error(f"Order not found for conversation id: {conversation_id}")
+
+    return _builder.build_order_details(order)
 
 
 async def get_conversation_detail(

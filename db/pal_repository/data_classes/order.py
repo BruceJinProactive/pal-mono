@@ -45,3 +45,28 @@ class LatestOrderData:
     conversation_id: uuid.UUID
     created_at: datetime
     order_id: str | None = None
+
+
+@dataclass(frozen=True)
+class OrderDetailsData:
+    """Order projection for admin console detail lookups."""
+
+    id: uuid.UUID
+    conversation_id: uuid.UUID
+    created_at: datetime
+    order_id: str | None = None
+    store_id: str | None = None
+    user_phone_number: str | None = None
+    store_phone_number: str | None = None
+    tracking_link: str | None = None
+    status: str | None = None
+    vendor: str | None = None
+    subtotal: Decimal | None = None
+    order_items: tuple[Any, ...] = ()
+    fulfillment_strategy: str | None = None
+    updated_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "order_items", tuple(self.order_items) if self.order_items else ()
+        )

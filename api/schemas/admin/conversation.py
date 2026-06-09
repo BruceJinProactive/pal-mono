@@ -1,5 +1,7 @@
 import datetime
 import uuid
+from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -105,6 +107,25 @@ class ConversationDetail(BaseModel):
     transfer_purpose: str | None = None
     agent_fingerprint: str | None = None
     prompt_fingerprint: str | None = None
+
+
+class OrderDetails(BaseModel):
+    """Order details for a conversation."""
+
+    id: uuid.UUID
+    conversation_id: uuid.UUID
+    order_id: str | None = None
+    store_id: str | None = None
+    user_phone_number: str | None = None
+    store_phone_number: str | None = None
+    tracking_link: str | None = None
+    status: str | None = None
+    vendor: str | None = None
+    subtotal: Decimal | None = None
+    order_items: list[Any] = Field(default_factory=list)
+    fulfillment_strategy: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime | None = None
 
 
 class ConversationAccountLookupResponse(BaseModel):

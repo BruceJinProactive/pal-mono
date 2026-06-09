@@ -10,6 +10,7 @@ import db
 from services.admin_service._implementation import (
     _include_conversation_preview,
     get_conversation_messages,
+    get_conversation_order_details,
     get_conversation_order_display_info,
     list_conversations_in_account,
 )
@@ -272,3 +273,29 @@ def test_get_conversation_order_display_info_hides_placeholder_id(mocker) -> Non
 
     assert result.order_number is None
     assert result.has_order is True
+
+
+def test_get_conversation_order_details_delegates_to_repository(mocker) -> None:
+    """
+    Test get_conversation_order_details fetches the latest order detail projection.
+
+    Expected result: the service returns the repository detail payload unchanged.
+    """
+    conversation_id = uuid4()
+    expected_order = SimpleNamespace(id=uuid4(), conversation_id=conversation_id)
+    order_repository = MagicMock()
+    order_repository.get_latest_order_details_by_conversation_id.return_value = (
+        expected_order
+    )
+
+    mocker.patch(
+        "services.admin_service._implementation.db.OrderRepository",
+        return_value=order_repository,
+    )
+
+    result = get_conversation_order_details(mock_session, conversation_id)
+
+    assert result is expected_order
+    order_repository.get_latest_order_details_by_conversation_id.assert_called_once_with(
+        conversation_id
+    )

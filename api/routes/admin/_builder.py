@@ -4,7 +4,12 @@ import db
 from api.routes.admin._utils import get_agent_type
 from api.schemas.admin.account import Account, AccountSummary
 from api.schemas.admin.agent import Agent, AgentSummary
-from api.schemas.admin.conversation import Conversation, ConversationDetail, Message
+from api.schemas.admin.conversation import (
+    Conversation,
+    ConversationDetail,
+    Message,
+    OrderDetails,
+)
 from api.schemas.admin.faq import FAQ
 from api.schemas.admin.feedback import Feedback
 from api.schemas.admin.history import ChangeField, ChangeLogDetails, ChangeLogSummary
@@ -26,6 +31,7 @@ from api.schemas.admin.subscription import (
     SubscriptionPlan,
 )
 from db.pal_repository.data_classes.faq import FAQData
+from db.pal_repository.data_classes.order import OrderDetailsData
 from db.repositories.prompt_repository import PromptRepository
 from db.tables.accounts import OnboardingMethod
 from services.admin_service.schema import CreatedProjectInfo
@@ -307,6 +313,25 @@ def build_conversation_detail(
         transfer_purpose=conversation.transfer_purpose,
         agent_fingerprint=conversation.agent_fingerprint,
         prompt_fingerprint=conversation.prompt_fingerprint,
+    )
+
+
+def build_order_details(order: OrderDetailsData) -> OrderDetails:
+    return OrderDetails(
+        id=order.id,
+        conversation_id=order.conversation_id,
+        order_id=order.order_id,
+        store_id=order.store_id,
+        user_phone_number=order.user_phone_number,
+        store_phone_number=order.store_phone_number,
+        tracking_link=order.tracking_link,
+        status=order.status,
+        vendor=order.vendor,
+        subtotal=order.subtotal,
+        order_items=list(order.order_items),
+        fulfillment_strategy=order.fulfillment_strategy,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
     )
 
 

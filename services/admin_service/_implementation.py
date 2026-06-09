@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, declarative_base
 
 import db
 from api.schemas.admin.conversation import ConversationPreview
+from db.pal_repository.data_classes.order import OrderDetailsData
 from db.repositories import LeadFilter as RepoLeadFilter
 from db.repositories.account_repository import AccountRepository
 from db.repositories.account_user_repository import AccountUserRepository
@@ -228,6 +229,15 @@ def get_conversation_order_display_info(
     order_repository = db.OrderRepository(session, auto_commit=False)
     order = order_repository.get_latest_order_by_conversation_id(conversation_id)
     return _resolve_conversation_order_info(order)
+
+
+def get_conversation_order_details(
+    session: Session,
+    conversation_id: uuid.UUID,
+) -> OrderDetailsData | None:
+    """Get the latest order details associated with a conversation."""
+    order_repository = db.OrderRepository(session, auto_commit=False)
+    return order_repository.get_latest_order_details_by_conversation_id(conversation_id)
 
 
 def get_conversation_order_number(

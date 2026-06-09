@@ -7,6 +7,7 @@ import db
 from api.schemas.admin.conversation import ConversationPreview
 from api.schemas.admin.user import SignUpRequest
 from db import ConversationStatus
+from db.pal_repository.data_classes.order import OrderDetailsData
 from services.account_service import AccountParams
 from services.auth_types import UserContext
 
@@ -107,6 +108,23 @@ def get_conversation_order_display_info(
         session,
         conversation_id,
     )
+
+
+def get_conversation_order_details(
+    session: Session,
+    conversation_id: uuid.UUID,
+) -> OrderDetailsData | None:
+    """
+    Return the latest stored order details associated with a conversation.
+
+    Args:
+        session (Session): The database session.
+        conversation_id (uuid.UUID): The conversation to inspect.
+
+    Returns:
+        OrderDetailsData | None: Latest order detail projection, if one exists.
+    """
+    return _implementation.get_conversation_order_details(session, conversation_id)
 
 
 def get_inbox_conversations(
@@ -905,6 +923,7 @@ __all__ = [
     "get_conversation_filter_values",
     "get_conversation_order_number",
     "get_conversation_order_display_info",
+    "get_conversation_order_details",
     "get_inbox_conversations",
     "get_conversation_by_id",
     "get_conversation_messages",

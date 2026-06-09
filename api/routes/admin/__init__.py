@@ -65,6 +65,7 @@ from api.schemas.admin.conversation import (
     ConversationDetail,
     ListConversationMessagesResponse,
     ListUserSessionsResponse,
+    OrderDetails,
     UpdateConversationRequest,
 )
 from api.schemas.admin.email import (
@@ -1148,6 +1149,23 @@ async def get_conversation_detail(
     Get conversation details for the given conversation ID, excluding messages.
     """
     return await _conversation.get_conversation_detail(
+        account_name, conversation_id, context, session
+    )
+
+
+@admin_router.get("/accounts/{account_name}/conversations/{conversation_id}/order")
+async def get_conversation_order_details(
+    account_name: str,
+    conversation_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> OrderDetails:
+    """
+    Get latest order details for the given conversation ID.
+    """
+    return await _conversation.get_conversation_order_details(
         account_name, conversation_id, context, session
     )
 

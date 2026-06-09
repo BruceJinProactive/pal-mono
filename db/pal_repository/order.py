@@ -8,7 +8,11 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.pal_repository.data_classes.order import LatestOrderData, OrderData
+from db.pal_repository.data_classes.order import (
+    LatestOrderData,
+    OrderData,
+    OrderDetailsData,
+)
 from db.tables.orders import Order
 from utils.log import logger
 
@@ -40,6 +44,26 @@ def _to_latest_data(row: RowMapping) -> LatestOrderData:
         conversation_id=row["conversation_id"],
         created_at=row["created_at"],
         order_id=row["order_id"],
+    )
+
+
+def _to_details_data(row: RowMapping) -> OrderDetailsData:
+    vendor = row["vendor"]
+    return OrderDetailsData(
+        id=row["id"],
+        conversation_id=row["conversation_id"],
+        created_at=row["created_at"],
+        order_id=row["order_id"],
+        store_id=row["store_id"],
+        user_phone_number=row["user_phone_number"],
+        store_phone_number=row["store_phone_number"],
+        tracking_link=row["tracking_link"],
+        status=row["status"],
+        vendor=vendor.value if hasattr(vendor, "value") else vendor,
+        subtotal=row["subtotal"],
+        order_items=tuple(row["order_items"]) if row["order_items"] else (),
+        fulfillment_strategy=row["fulfillment_strategy"],
+        updated_at=row["updated_at"],
     )
 
 
@@ -147,3 +171,44 @@ class OrderRepository:
             if conversation_id not in latest_orders:
                 latest_orders[conversation_id] = _to_latest_data(row)
         return latest_orders
+
+    async def get_latest_order_details_by_conversation_id(
+        self,
+        conversation_id: uuid.UUID,
+    ) -> OrderDetailsData | None:
+        """Retrieve the newest order detail projection for a conversation.
+
+        This intentionally does not select Order.order_time because some historic
+        rows contain postgres infinity timestamps that psycopg cannot deserialize.
+        """
+        try:
+            sort_time = func.coalesce(Order.order_time, Order.created_at)
+            result = await self.session.execute(
+                select(
+                    Order.id.label("id"),
+                    Order.conversation_id.label("conversation_id"),
+                    Order.created_at.label("created_at"),
+                    Order.order_id.label("order_id"),
+                    Order.store_id.label("store_id"),
+                    Order.user_phone_number.label("user_phone_number"),
+                    Order.store_phone_number.label("store_phone_number"),
+                    Order.tracking_link.label("tracking_link"),
+                    Order.status.label("status"),
+                    Order.vendor.label("vendor"),
+                    Order.subtotal.label("subtotal"),
+                    Order.order_items.label("order_items"),
+                    Order.fulfillment_strategy.label("fulfillment_strategy"),
+                    Order.updated_at.label("updated_at"),
+                )
+                .filter(
+                    Order.conversation_id == conversation_id,
+                )
+                .order_by(sort_time.desc(), Order.created_at.desc())
+                .limit(1)
+            )
+            row = result.mappings().one_or_none()
+            return _to_details_data(row) if row else None
+        except SQLAlchemyError:
+            await self.session.rollback()
+            logger.exception("Error retrieving latest order details by conversation ID")
+            raise

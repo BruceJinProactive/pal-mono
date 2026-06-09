@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 import services.transaction_service as transaction_service
 from db.repositories.order_repository import OrderRepository
+from db.tables.orders import Order
 from db.tables.types import IntegrationProvider
 from services.transaction_service._implementation import (
     _normalize_us_phone_number,
@@ -487,6 +488,63 @@ def test_order_repository_conversation_ids_rolls_back_and_reraises_db_error() ->
 
     with pytest.raises(SQLAlchemyError):
         repository.get_latest_orders_by_conversation_ids([uuid.uuid4()])
+
+    session.rollback.assert_called_once()
+
+
+def test_order_repository_conversation_order_details_omits_order_time() -> None:
+    """Order details lookup should not select order_time for admin display."""
+    conversation_id = uuid.uuid4()
+    expected_order = SimpleNamespace(
+        id=uuid.uuid4(),
+        conversation_id=conversation_id,
+        created_at=datetime(2026, 3, 19),
+        order_id="ORD-789",
+        store_id="STORE-1",
+        user_phone_number="+15551234567",
+        store_phone_number="+15559876543",
+        tracking_link="https://example.com/track",
+        status="paid",
+        vendor=IntegrationProvider.adora,
+        subtotal=Decimal("22.99"),
+        order_items=[{"name": "Pizza", "quantity": 1}],
+        fulfillment_strategy="pickup",
+        updated_at=datetime(2026, 3, 19, 1, 2, 3),
+    )
+    session = MagicMock()
+    query = MagicMock()
+    session.query.return_value = query
+    query.with_entities.return_value = query
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.first.return_value = expected_order
+    repository = OrderRepository(session)
+
+    result = repository.get_latest_order_details_by_conversation_id(conversation_id)
+
+    assert result is not None
+    assert result.id == expected_order.id
+    assert result.conversation_id == conversation_id
+    assert result.order_id == "ORD-789"
+    assert result.vendor == "adora"
+    assert result.order_items == ({"name": "Pizza", "quantity": 1},)
+    selected_columns = query.with_entities.call_args.args
+    assert all(column is not Order.order_time for column in selected_columns)
+    session.query.assert_called_once()
+    query.with_entities.assert_called_once()
+    query.filter.assert_called_once()
+    query.order_by.assert_called_once()
+    query.first.assert_called_once()
+
+
+def test_order_repository_conversation_order_details_rolls_back_on_db_error() -> None:
+    """Order details lookup should rollback dirty sessions on database errors."""
+    session = MagicMock()
+    session.query.side_effect = SQLAlchemyError("db down")
+    repository = OrderRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repository.get_latest_order_details_by_conversation_id(uuid.uuid4())
 
     session.rollback.assert_called_once()
 

@@ -12,7 +12,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from db.pal_repository.data_classes.order import LatestOrderData, OrderData
+from db.pal_repository.data_classes.order import (
+    LatestOrderData,
+    OrderData,
+    OrderDetailsData,
+)
 from db.pal_repository.order import OrderRepository, _to_data
 from db.tables.orders import Order
 
@@ -79,6 +83,25 @@ def _make_latest_order_mapping(row: MagicMock) -> dict[str, object]:
         "conversation_id": row.conversation_id,
         "created_at": row.created_at,
         "order_id": row.order_id,
+    }
+
+
+def _make_order_details_mapping(row: MagicMock) -> dict[str, object]:
+    return {
+        "id": row.id,
+        "conversation_id": row.conversation_id,
+        "created_at": row.created_at,
+        "order_id": row.order_id,
+        "store_id": row.store_id,
+        "user_phone_number": row.user_phone_number,
+        "store_phone_number": row.store_phone_number,
+        "tracking_link": row.tracking_link,
+        "status": row.status,
+        "vendor": row.vendor,
+        "subtotal": row.subtotal,
+        "order_items": row.order_items,
+        "fulfillment_strategy": row.fulfillment_strategy,
+        "updated_at": row.updated_at,
     }
 
 
@@ -340,4 +363,59 @@ class TestGetLatestOrdersByConversationIds:
         mock_session.execute.side_effect = SQLAlchemyError("db error")
         with pytest.raises(SQLAlchemyError):
             await repo.get_latest_orders_by_conversation_ids([uuid.uuid4()])
+        mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# get_latest_order_details_by_conversation_id
+# ---------------------------------------------------------------------------
+
+
+class TestGetLatestOrderDetailsByConversationId:
+    @pytest.mark.asyncio
+    async def test_found(
+        self,
+        repo: OrderRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_mappings = MagicMock()
+        mock_mappings.one_or_none.return_value = _make_order_details_mapping(
+            sample_orm_row
+        )
+        mock_result.mappings.return_value = mock_mappings
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.get_latest_order_details_by_conversation_id(uuid.uuid4())
+
+        assert isinstance(data, OrderDetailsData)
+        assert data.order_id == "ORD-001"
+        assert data.vendor == "Toast"
+        assert data.order_items == ({"name": "Pizza", "qty": 1},)
+        statement = mock_session.execute.call_args.args[0]
+        selected_keys = {column.key for column in statement.selected_columns}
+        assert "order_time" not in selected_keys
+
+    @pytest.mark.asyncio
+    async def test_not_found(
+        self, repo: OrderRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_result = MagicMock()
+        mock_mappings = MagicMock()
+        mock_mappings.one_or_none.return_value = None
+        mock_result.mappings.return_value = mock_mappings
+        mock_session.execute.return_value = mock_result
+
+        assert (
+            await repo.get_latest_order_details_by_conversation_id(uuid.uuid4()) is None
+        )
+
+    @pytest.mark.asyncio
+    async def test_error_rolls_back(
+        self, repo: OrderRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = SQLAlchemyError("db error")
+        with pytest.raises(SQLAlchemyError):
+            await repo.get_latest_order_details_by_conversation_id(uuid.uuid4())
         mock_session.rollback.assert_awaited_once()
