@@ -2,6 +2,7 @@ import os
 import uuid
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.orm import Session
 from twilio.rest import Client
 from twilio.rest.api.v2010.account.incoming_phone_number import (
     IncomingPhoneNumberInstance,
@@ -562,7 +563,7 @@ class NumberService:
         self,
         phone_number: str,
         merchant_name: str,
-        session,
+        session: Session,
         voice_provider: str = "livekit",
     ) -> bool:
         """Reserve an existing phone number for a project.
@@ -586,16 +587,16 @@ class NumberService:
         if not number_details:
             raise ValueError(f"Phone number {phone_number} not found in Twilio account")
 
-        # Validate LiveKit provisioning
-        if not self._is_number_on_livekit(phone_number):
-            raise ValueError(
-                f"Phone number {phone_number} is not provisioned for LiveKit"
-            )
-
         if self._is_number_associated_with_project(phone_number, session):
             raise ValueError(
                 f"Phone number {phone_number} is already associated with a project and not available for assignment"
             )
+
+        # Ensure existing pool numbers are ready for LiveKit before assignment.
+        if voice_provider == "livekit" and not getattr(
+            number_details, "trunk_sid", None
+        ):
+            self._setup_number_for_livekit(phone_number)
 
         try:
             # Update the friendly name to associate with the project

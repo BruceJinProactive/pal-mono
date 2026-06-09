@@ -277,8 +277,48 @@ class TestReserveExistingNumberDualStack:
         assert result is True
 
     @patch("services.number_service._implementation.Client")
-    def test_reserve_livekit_number_without_trunk_sid_raises(self, mock_twilio_cls):
-        """Reserving a number for LiveKit that has no trunk_sid raises ValueError."""
+    def test_reserve_livekit_number_without_trunk_sid_provisions_number(
+        self, mock_twilio_cls
+    ):
+        """Reserving a LiveKit number with no trunk_sid provisions the number."""
+        from services.number_service._implementation import NumberService
+
+        with patch.dict(
+            "os.environ",
+            {
+                "TWILIO_ACCOUNT_SID": "ACtest",
+                "TWILIO_AUTH_TOKEN": "token",
+                "TWILIO_SIP_TRUNK_SID": "TK-sip-trunk",
+            },
+        ):
+            service = NumberService()
+
+        # Mock: Twilio number has no trunk_sid
+        mock_number_details = MagicMock()
+        mock_number_details.trunk_sid = None
+        mock_number_details.sid = "PN123"
+        service.twilio_client.incoming_phone_numbers.list.return_value = [
+            mock_number_details
+        ]
+
+        mock_session = MagicMock()
+        with patch(
+            "services.number_service._implementation.ProjectRepository"
+        ) as mock_project_repo:
+            mock_project_repo.return_value.get_projects_by_phone_number.return_value = (
+                []
+            )
+
+            result = service.reserve_existing_number(
+                "+15551234567", "TestBiz", mock_session, voice_provider="livekit"
+            )
+
+        assert result is True
+        mock_number_details.update.assert_any_call(trunk_sid="TK-sip-trunk")
+
+    @patch("services.number_service._implementation.Client")
+    def test_reserve_livekit_number_without_trunk_sid_env_raises(self, mock_twilio_cls):
+        """Reserving an unprovisioned LiveKit number still requires trunk config."""
         from services.number_service._implementation import NumberService
 
         with patch.dict(
@@ -290,19 +330,56 @@ class TestReserveExistingNumberDualStack:
         ):
             service = NumberService()
 
-        # Mock: Twilio number has no trunk_sid
         mock_number_details = MagicMock()
         mock_number_details.trunk_sid = None
         service.twilio_client.incoming_phone_numbers.list.return_value = [
             mock_number_details
         ]
 
-        mock_session = MagicMock()
-
-        with pytest.raises(ValueError, match="not provisioned for LiveKit"):
+        with pytest.raises(ValueError, match="TWILIO_SIP_TRUNK_SID"):
             service.reserve_existing_number(
-                "+15551234567", "TestBiz", mock_session, voice_provider="livekit"
+                "+15551234567", "TestBiz", MagicMock(), voice_provider="livekit"
             )
+
+    @patch("services.number_service._implementation.Client")
+    def test_reserve_livekit_number_already_associated_does_not_provision(
+        self, mock_twilio_cls
+    ):
+        """Already-associated numbers are rejected before Twilio trunk changes."""
+        from services.number_service._implementation import NumberService
+
+        with patch.dict(
+            "os.environ",
+            {
+                "TWILIO_ACCOUNT_SID": "ACtest",
+                "TWILIO_AUTH_TOKEN": "token",
+                "TWILIO_SIP_TRUNK_SID": "TK-sip-trunk",
+            },
+        ):
+            service = NumberService()
+
+        mock_number_details = MagicMock()
+        mock_number_details.trunk_sid = None
+        service.twilio_client.incoming_phone_numbers.list.return_value = [
+            mock_number_details
+        ]
+
+        with patch(
+            "services.number_service._implementation.ProjectRepository"
+        ) as mock_project_repo:
+            mock_project_repo.return_value.get_projects_by_phone_number.return_value = [
+                MagicMock()
+            ]
+
+            with pytest.raises(ValueError, match="already associated"):
+                service.reserve_existing_number(
+                    "+15551234567",
+                    "TestBiz",
+                    MagicMock(),
+                    voice_provider="livekit",
+                )
+
+        mock_number_details.update.assert_not_called()
 
 
 class TestAssignPhoneNumberToProjectDualStack:
