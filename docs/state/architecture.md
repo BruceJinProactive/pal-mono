@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-08
+> **Last updated:** 2026-06-09
 
 ## Quick Reference
 
@@ -243,6 +243,9 @@ rule workflows. Rules can carry empty-default text-array `label` values, and
 the vision-rule CRUD API returns them on rule responses. `PATCH
 /accounts/{account_name}/vision-rules/{rule_id}` treats omitted `label` as
 unchanged and a provided list, including `[]`, as the replacement value.
+`rule_metadata` follows the same update contract: omitted metadata is unchanged,
+and a provided object replaces the previous metadata object so callers can
+remove old keys.
 `GET /accounts/{account_name}/vision-rules` also returns `items_by_label`,
 grouping every rule under each label in its list; rules without labels appear
 under `no-labeld`.

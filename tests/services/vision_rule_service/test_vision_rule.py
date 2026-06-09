@@ -328,13 +328,11 @@ class TestUpdateVisionRule:
                 await update_vision_rule(session, uuid.uuid4(), request, ACCOUNT_NAME)
 
     @pytest.mark.asyncio
-    async def test_merges_metadata(self) -> None:
+    async def test_replaces_metadata(self) -> None:
         session = AsyncMock()
         rule_id = uuid.uuid4()
         rule_data = _make_rule_data(id=rule_id, rule_metadata={"existing": "value"})
-        updated_data = _make_rule_data(
-            id=rule_id, rule_metadata={"existing": "value", "new": "field"}
-        )
+        updated_data = _make_rule_data(id=rule_id, rule_metadata={"new": "field"})
         request = UpdateVisionRuleRequest(rule_metadata={"new": "field"})
 
         with (
@@ -355,7 +353,7 @@ class TestUpdateVisionRule:
             await update_vision_rule(session, rule_id, request, ACCOUNT_NAME)
 
             call_kwargs = repo.update.call_args[1]
-            assert call_kwargs["rule_metadata"] == {"existing": "value", "new": "field"}
+            assert call_kwargs["rule_metadata"] == {"new": "field"}
 
     @pytest.mark.asyncio
     async def test_replaces_labels(self) -> None:

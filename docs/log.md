@@ -6,7 +6,11 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-09
 
+<<<<<<< codex/vision-rule-metadata-merge
+- **Vision rule metadata replacement.** `PATCH /accounts/{account_name}/vision-rules/{rule_id}` now replaces `rule_metadata` when the field is provided, allowing callers to delete old metadata keys by omitting them from the replacement object. -> `docs/state/architecture.md`
+=======
 - **Admin conversation order presence.** Admin conversation list/detail responses now distinguish displayable order numbers from order existence: real non-zero order IDs are returned as `order_number`, while conversations with placeholder order IDs still return `has_order=true` so the admin console can identify unpaid placed-order conversations without changing POS order persistence.
+>>>>>>> main
 
 ---
 

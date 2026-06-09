@@ -162,9 +162,7 @@ async def update_vision_rule(
     if request.is_active is not None:
         update_fields["is_active"] = request.is_active
     if request.rule_metadata is not None:
-        merged = dict(data.rule_metadata)
-        merged.update(request.rule_metadata)
-        update_fields["rule_metadata"] = merged
+        update_fields["rule_metadata"] = request.rule_metadata
     if request.label is not None:
         update_fields["label"] = request.label
 

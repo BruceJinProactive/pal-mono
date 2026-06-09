@@ -36,7 +36,7 @@ class UpdateVisionRuleRequest(BaseModel):
         default=None, description="Whether the rule is active"
     )
     rule_metadata: dict[str, Any] | None = Field(
-        default=None, description="Rule metadata to merge"
+        default=None, description="Rule metadata to replace"
     )
     label: list[str] | None = Field(
         default=None, description="Labels to replace the existing rule labels"
