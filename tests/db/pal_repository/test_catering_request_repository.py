@@ -216,6 +216,46 @@ class TestGetByProjectId:
         mock_session.rollback.assert_awaited_once()
 
 
+class TestListByProjectIdAndPhone:
+    @pytest.mark.asyncio
+    async def test_returns_matching_requests_with_normalized_phone(
+        self, repo: CateringRequestRepository, sample_orm_row: MagicMock
+    ) -> None:
+        matching = _to_data(sample_orm_row)
+        non_matching = CateringRequestData(
+            id=uuid.uuid4(),
+            project_id=sample_orm_row.project_id,
+            event_date=date(2025, 7, 2),
+            contact_name="Jane",
+            contact_phone_number="+19876543210",
+            status="LEAD",
+            idempotency_key="key_456",
+            created_at=sample_orm_row.created_at,
+            updated_at=sample_orm_row.updated_at,
+        )
+        repo.get_by_project_id = AsyncMock(  # type: ignore[method-assign]
+            return_value=[matching, non_matching]
+        )
+
+        results = await repo.list_by_project_id_and_phone(
+            sample_orm_row.project_id,
+            "(123) 456-7890",
+        )
+
+        assert results == [matching]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_for_blank_phone(
+        self, repo: CateringRequestRepository
+    ) -> None:
+        repo.get_by_project_id = AsyncMock()  # type: ignore[method-assign]
+
+        results = await repo.list_by_project_id_and_phone(uuid.uuid4(), "")
+
+        assert results == []
+        repo.get_by_project_id.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # get_by_idempotency_key
 # ---------------------------------------------------------------------------

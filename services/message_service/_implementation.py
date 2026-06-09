@@ -28,6 +28,10 @@ from api.schemas.chat.message import (
     Metadata,
     TextObject,
 )
+from db.pal_repository.catering_request import (
+    CateringRequestRepository as CateringRequestRepositoryNew,
+)
+from db.pal_repository.data_classes.catering_request import CateringRequestData
 from db.session import AsyncSessionLocal
 from db.tables.catering_requests import FulfillmentType
 from db.tables.types import Channel
@@ -133,6 +137,156 @@ async def _hydrate_previous_tool_results(
             },
             exc_info=True,
         )
+
+
+def _serialize_prior_catering_request(request: CateringRequestData) -> dict[str, Any]:
+    return {
+        "id": str(request.id),
+        "event_date": request.event_date.isoformat() if request.event_date else None,
+        "event_time": request.event_time.isoformat() if request.event_time else None,
+        "event_address": request.event_address,
+        "event_detail": request.event_detail,
+        "event_fulfillment": request.event_fulfillment,
+        "party_size": request.party_size,
+        "contact_name": request.contact_name,
+        "contact_phone_number": request.contact_phone_number,
+        "status": request.status,
+        "created_at": request.created_at.isoformat() if request.created_at else None,
+    }
+
+
+async def _attach_prior_catering_requests_to_spec(
+    session: AsyncSession,
+    spec: Spec,
+    project_id: uuid.UUID,
+    customer_phone: str | None,
+) -> None:
+    if not getattr(spec, "catering_enabled", False) or not customer_phone:
+        return
+
+    prior_requests = await CateringRequestRepositoryNew(
+        session
+    ).list_by_project_id_and_phone(project_id, customer_phone)
+    if prior_requests:
+        setattr(
+            spec,
+            "prior_catering_requests",
+            [_serialize_prior_catering_request(request) for request in prior_requests],
+        )
+
+
+def _parse_catering_overwrite_time(
+    raw_value: str | None,
+) -> tuple[datetime.date | None, datetime.time | None]:
+    if not raw_value:
+        return None, None
+    value = raw_value.strip()
+    for separator in ("T", " "):
+        if separator in value:
+            date_part, time_part = value.split(separator, 1)
+            try:
+                return (
+                    datetime.date.fromisoformat(date_part),
+                    datetime.time.fromisoformat(time_part[:5]),
+                )
+            except ValueError:
+                return None, None
+    try:
+        return datetime.date.fromisoformat(value), None
+    except ValueError:
+        return None, None
+
+
+def _select_catering_request_for_overwrite(
+    requests: list[CateringRequestData],
+    overwrite_time: str | None,
+) -> CateringRequestData | None:
+    if not requests:
+        return None
+
+    raw_overwrite_time = overwrite_time.strip() if overwrite_time else None
+    if not raw_overwrite_time:
+        return requests[0]
+
+    target_date, target_time = _parse_catering_overwrite_time(raw_overwrite_time)
+    if target_date is None:
+        return requests[0]
+
+    for request in requests:
+        if request.event_date != target_date:
+            continue
+        if target_time is None or request.event_time == target_time:
+            return request
+
+    if target_time is not None:
+        target_datetime = datetime.datetime.combine(target_date, target_time)
+        return min(
+            requests,
+            key=lambda request: abs(
+                (
+                    datetime.datetime.combine(
+                        request.event_date,
+                        request.event_time or datetime.time.min,
+                    )
+                    - target_datetime
+                ).total_seconds()
+            ),
+        )
+
+    return min(
+        requests,
+        key=lambda request: abs((request.event_date - target_date).days),
+    )
+
+
+async def _persist_catering_details_from_agent(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    cd: Any,
+) -> None:
+    event_fulfillment = (
+        FulfillmentType(cd.event_fulfillment) if cd.event_fulfillment else None
+    )
+    event_time = datetime.time.fromisoformat(cd.event_time) if cd.event_time else None
+    should_overwrite = bool(getattr(cd, "overwrite", False))
+
+    if should_overwrite:
+        candidates = await CateringRequestRepositoryNew(
+            session
+        ).list_by_project_id_and_phone(project_id, cd.contact_phone_number)
+        existing_request = _select_catering_request_for_overwrite(
+            candidates,
+            getattr(cd, "overwrite_time", None),
+        )
+        if existing_request is not None:
+            await catering_service.update_catering_request(
+                session=session,
+                catering_request_id=existing_request.id,
+                event_date=datetime.date.fromisoformat(cd.event_date),
+                contact_name=cd.contact_name,
+                contact_phone_number=cd.contact_phone_number,
+                event_time=event_time,
+                event_address=cd.event_address,
+                event_detail=cd.event_detail,
+                event_fulfillment=event_fulfillment,
+                party_size=cd.party_size,
+            )
+            return
+
+    await catering_service.create_catering_request_async(
+        session=session,
+        project_id=project_id,
+        event_date=datetime.date.fromisoformat(cd.event_date),
+        contact_name=cd.contact_name,
+        contact_phone_number=cd.contact_phone_number,
+        event_time=event_time,
+        event_address=cd.event_address,
+        event_detail=cd.event_detail,
+        event_fulfillment=event_fulfillment,
+        party_size=cd.party_size,
+        idempotency_key=str(conversation_id),
+    )
 
 
 async def _fingerprint_conversation(
@@ -317,12 +471,6 @@ async def _dispatch_agent_async(
         # against a mocked HTTP client) still win.
         await _apply_test_safety_if_needed(session, conversation_id, spec)
 
-        if spec_modifier:
-            spec_modifier(spec)
-
-        pal_agent = PalAgent(spec=spec)
-
-        # Build RuntimeContext for tool execution
         customer_phone = None
         if message.channel and message.channel.value.lower() in [
             "sms",
@@ -330,6 +478,15 @@ async def _dispatch_agent_async(
             "whatsapp",
         ]:
             customer_phone = message.sender_identifier
+
+        await _attach_prior_catering_requests_to_spec(
+            session, spec, project_id, customer_phone
+        )
+
+        if spec_modifier:
+            spec_modifier(spec)
+
+        pal_agent = PalAgent(spec=spec)
 
         store_status = compute_store_status(
             project_business_hours, project_store_hours, project_timezone
@@ -481,26 +638,11 @@ async def _dispatch_agent_async(
                     "contact_name": cd.contact_name,
                 },
             )
-            await catering_service.create_catering_request_async(
+            await _persist_catering_details_from_agent(
                 session=session,
                 project_id=project_id,
-                event_date=datetime.date.fromisoformat(cd.event_date),
-                contact_name=cd.contact_name,
-                contact_phone_number=cd.contact_phone_number,
-                event_time=(
-                    datetime.time.fromisoformat(cd.event_time)
-                    if cd.event_time
-                    else None
-                ),
-                event_address=cd.event_address,
-                event_detail=cd.event_detail,
-                event_fulfillment=(
-                    FulfillmentType(cd.event_fulfillment)
-                    if cd.event_fulfillment
-                    else None
-                ),
-                party_size=cd.party_size,
-                idempotency_key=str(conversation_id),
+                conversation_id=conversation_id,
+                cd=cd,
             )
 
         # Collect generic tool call events
@@ -893,9 +1035,6 @@ async def get_chat_response_stream(
                     await _apply_test_safety_if_needed(
                         session, request_conversation_id, spec
                     )
-                    pal_agent = PalAgent(spec=spec)
-
-                    # Build RuntimeContext (same as non-streaming)
                     customer_phone = None
                     if message.channel and message.channel.value.lower() in [
                         "sms",
@@ -903,6 +1042,12 @@ async def get_chat_response_stream(
                         "whatsapp",
                     ]:
                         customer_phone = message.sender_identifier
+
+                    await _attach_prior_catering_requests_to_spec(
+                        session, spec, project_id, customer_phone
+                    )
+
+                    pal_agent = PalAgent(spec=spec)
 
                     # Pre-fetch voice-specific data for RuntimeContext
                     vapi_control_url = None
@@ -1187,28 +1332,11 @@ async def get_chat_response_stream(
                                             "contact_name": cd.contact_name,
                                         },
                                     )
-                                    await catering_service.create_catering_request_async(
+                                    await _persist_catering_details_from_agent(
                                         session=session,
                                         project_id=project_id,
-                                        event_date=datetime.date.fromisoformat(
-                                            cd.event_date
-                                        ),
-                                        contact_name=cd.contact_name,
-                                        contact_phone_number=cd.contact_phone_number,
-                                        event_time=(
-                                            datetime.time.fromisoformat(cd.event_time)
-                                            if cd.event_time
-                                            else None
-                                        ),
-                                        event_address=cd.event_address,
-                                        event_detail=cd.event_detail,
-                                        event_fulfillment=(
-                                            FulfillmentType(cd.event_fulfillment)
-                                            if cd.event_fulfillment
-                                            else None
-                                        ),
-                                        party_size=cd.party_size,
-                                        idempotency_key=str(request_conversation_id),
+                                        conversation_id=request_conversation_id,
+                                        cd=cd,
                                     )
 
                                 # Collect generic tool call events

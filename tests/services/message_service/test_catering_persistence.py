@@ -5,13 +5,288 @@ import sys
 import uuid
 from contextlib import asynccontextmanager
 from types import ModuleType, SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject
+from db.pal_repository.data_classes.catering_request import CateringRequestData
 from db.tables.types import Channel
 from utils.request_context import RequestContext
+
+
+def _catering_request_data(
+    *,
+    request_id: uuid.UUID,
+    event_date: datetime.date,
+    event_time: datetime.time | None = None,
+) -> CateringRequestData:
+    now = datetime.datetime(2026, 6, 9, tzinfo=datetime.UTC)
+    return CateringRequestData(
+        id=request_id,
+        project_id=uuid.uuid4(),
+        event_date=event_date,
+        contact_name="John Doe",
+        contact_phone_number="+15551234567",
+        status="LEAD",
+        idempotency_key=str(request_id),
+        created_at=now,
+        updated_at=now,
+        event_time=event_time,
+    )
+
+
+def test_select_catering_request_for_overwrite_uses_latest_without_time():
+    from services.message_service._implementation import (
+        _select_catering_request_for_overwrite,
+    )
+
+    latest_id = uuid.uuid4()
+    older_id = uuid.uuid4()
+    requests = [
+        _catering_request_data(
+            request_id=latest_id,
+            event_date=datetime.date(2026, 6, 20),
+        ),
+        _catering_request_data(
+            request_id=older_id,
+            event_date=datetime.date(2026, 6, 10),
+        ),
+    ]
+
+    selected = _select_catering_request_for_overwrite(requests, None)
+
+    assert selected is not None
+    assert selected.id == latest_id
+
+
+def test_select_catering_request_for_overwrite_uses_latest_for_invalid_time():
+    from services.message_service._implementation import (
+        _select_catering_request_for_overwrite,
+    )
+
+    latest_id = uuid.uuid4()
+    requests = [
+        _catering_request_data(
+            request_id=latest_id,
+            event_date=datetime.date(2026, 6, 20),
+        ),
+        _catering_request_data(
+            request_id=uuid.uuid4(),
+            event_date=datetime.date(2026, 6, 10),
+        ),
+    ]
+
+    selected = _select_catering_request_for_overwrite(requests, "next Tuesday")
+
+    assert selected is not None
+    assert selected.id == latest_id
+
+
+def test_select_catering_request_for_overwrite_prefers_exact_date_time():
+    from services.message_service._implementation import (
+        _select_catering_request_for_overwrite,
+    )
+
+    selected_id = uuid.uuid4()
+    requests = [
+        _catering_request_data(
+            request_id=uuid.uuid4(),
+            event_date=datetime.date(2026, 6, 20),
+            event_time=datetime.time(12, 0),
+        ),
+        _catering_request_data(
+            request_id=selected_id,
+            event_date=datetime.date(2026, 6, 20),
+            event_time=datetime.time(18, 30),
+        ),
+    ]
+
+    selected = _select_catering_request_for_overwrite(
+        requests,
+        "2026-06-20 18:30",
+    )
+
+    assert selected is not None
+    assert selected.id == selected_id
+
+
+def test_select_catering_request_for_overwrite_uses_closest_valid_date():
+    from services.message_service._implementation import (
+        _select_catering_request_for_overwrite,
+    )
+
+    closest_id = uuid.uuid4()
+    requests = [
+        _catering_request_data(
+            request_id=uuid.uuid4(),
+            event_date=datetime.date(2026, 6, 1),
+        ),
+        _catering_request_data(
+            request_id=closest_id,
+            event_date=datetime.date(2026, 6, 18),
+        ),
+    ]
+
+    selected = _select_catering_request_for_overwrite(requests, "2026-06-20")
+
+    assert selected is not None
+    assert selected.id == closest_id
+
+
+def test_select_catering_request_for_overwrite_uses_closest_valid_date_time():
+    from services.message_service._implementation import (
+        _select_catering_request_for_overwrite,
+    )
+
+    closest_id = uuid.uuid4()
+    requests = [
+        _catering_request_data(
+            request_id=uuid.uuid4(),
+            event_date=datetime.date(2026, 6, 20),
+            event_time=datetime.time(8, 0),
+        ),
+        _catering_request_data(
+            request_id=closest_id,
+            event_date=datetime.date(2026, 6, 21),
+            event_time=datetime.time(17, 0),
+        ),
+    ]
+
+    selected = _select_catering_request_for_overwrite(
+        requests,
+        "2026-06-21 18:30",
+    )
+
+    assert selected is not None
+    assert selected.id == closest_id
+
+
+def test_serialize_prior_catering_request_includes_expected_fields():
+    from services.message_service._implementation import (
+        _serialize_prior_catering_request,
+    )
+
+    request_id = uuid.uuid4()
+    request = _catering_request_data(
+        request_id=request_id,
+        event_date=datetime.date(2026, 6, 20),
+        event_time=datetime.time(18, 30),
+    )
+
+    payload = _serialize_prior_catering_request(request)
+
+    assert payload["id"] == str(request_id)
+    assert payload["event_date"] == "2026-06-20"
+    assert payload["event_time"] == "18:30:00"
+    assert payload["contact_phone_number"] == "+15551234567"
+
+
+@pytest.mark.asyncio
+async def test_attach_prior_catering_requests_to_spec_sets_serialized_requests(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from services.message_service import _implementation
+
+    request = _catering_request_data(
+        request_id=uuid.uuid4(),
+        event_date=datetime.date(2026, 6, 20),
+    )
+    repo = AsyncMock()
+    repo.list_by_project_id_and_phone.return_value = [request]
+    monkeypatch.setattr(
+        _implementation,
+        "CateringRequestRepositoryNew",
+        lambda session: repo,
+    )
+    spec = SimpleNamespace(catering_enabled=True)
+    project_id = uuid.uuid4()
+
+    await _implementation._attach_prior_catering_requests_to_spec(
+        AsyncMock(),
+        cast(Any, spec),
+        project_id,
+        "+15551234567",
+    )
+
+    repo.list_by_project_id_and_phone.assert_awaited_once_with(
+        project_id,
+        "+15551234567",
+    )
+    assert spec.prior_catering_requests[0]["id"] == str(request.id)
+
+
+def test_parse_catering_overwrite_time_handles_empty_and_invalid_date_only():
+    from services.message_service._implementation import _parse_catering_overwrite_time
+
+    assert _parse_catering_overwrite_time(None) == (None, None)
+    assert _parse_catering_overwrite_time("not-a-date") == (None, None)
+
+
+def test_select_catering_request_for_overwrite_returns_none_without_requests():
+    from services.message_service._implementation import (
+        _select_catering_request_for_overwrite,
+    )
+
+    assert _select_catering_request_for_overwrite([], "2026-06-20") is None
+
+
+@pytest.mark.asyncio
+async def test_persist_catering_details_from_agent_updates_existing_request(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from services.message_service import _implementation
+
+    existing_request = _catering_request_data(
+        request_id=uuid.uuid4(),
+        event_date=datetime.date(2026, 6, 20),
+    )
+    repo = AsyncMock()
+    repo.list_by_project_id_and_phone.return_value = [existing_request]
+    monkeypatch.setattr(
+        _implementation,
+        "CateringRequestRepositoryNew",
+        lambda session: repo,
+    )
+    update_catering_request = AsyncMock()
+    create_catering_request_async = AsyncMock()
+    monkeypatch.setattr(
+        _implementation.catering_service,
+        "update_catering_request",
+        update_catering_request,
+    )
+    monkeypatch.setattr(
+        _implementation.catering_service,
+        "create_catering_request_async",
+        create_catering_request_async,
+    )
+
+    cd = SimpleNamespace(
+        event_date="2026-06-21",
+        contact_name="John Doe",
+        contact_phone_number="+15551234567",
+        party_size=30,
+        event_time=None,
+        event_address="123 Main St",
+        event_detail="Pizza",
+        event_fulfillment="DELIVERY",
+        overwrite=True,
+        overwrite_time=None,
+    )
+
+    await _implementation._persist_catering_details_from_agent(
+        session=AsyncMock(),
+        project_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        cd=cd,
+    )
+
+    update_catering_request.assert_awaited_once()
+    update_args = update_catering_request.await_args
+    assert update_args is not None
+    assert update_args.kwargs["catering_request_id"] == existing_request.id
+    create_catering_request_async.assert_not_called()
 
 
 def _ensure_package_module(

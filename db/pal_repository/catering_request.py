@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, time
 
@@ -72,6 +73,21 @@ class CateringRequestRepository:
             logger.exception("Error retrieving catering requests by project")
             raise
 
+    async def list_by_project_id_and_phone(
+        self, project_id: uuid.UUID, phone_number: str
+    ) -> list[CateringRequestData]:
+        """Retrieve catering requests for a project/caller phone, newest first."""
+        target_digits = re.sub(r"\D", "", phone_number or "")
+        if not target_digits:
+            return []
+
+        requests = await self.get_by_project_id(project_id)
+        return [
+            request
+            for request in requests
+            if re.sub(r"\D", "", request.contact_phone_number or "") == target_digits
+        ]
+
     async def get_by_idempotency_key(
         self, idempotency_key: str
     ) -> CateringRequestData | None:
@@ -93,6 +109,7 @@ class CateringRequestRepository:
         """Create a new catering request and return its persisted ID."""
         try:
             row = CateringRequest(
+                id=data.id,
                 project_id=data.project_id,
                 event_date=data.event_date,
                 contact_name=data.contact_name,
