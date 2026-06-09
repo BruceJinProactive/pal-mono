@@ -88,6 +88,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-05-31
+
+- **Order idempotent write schema.** Added nullable `orders.idempotency_key`, backfilled the newest canonical historical row per `(vendor, store_id, order_id)`, and added a unique partial index for non-null idempotency keys. -> `docs/records/2026-05-31-order-idempotent-writes.md`
+
+---
+
 ## 2026-05-30
 
 - **Catering customer SMS copy refresh.** Updated catering status SMS messages to use warmer customer-facing wording, include the requester name when available, explain confirmed/preparation/ready states, and make pickup/delivery and callback context clearer.

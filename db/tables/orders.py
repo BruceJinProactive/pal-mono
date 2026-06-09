@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Enum
+from sqlalchemy import Enum, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -29,6 +29,7 @@ class Order(Base):
     order_id: Mapped[Optional[str]] = mapped_column(
         String(), nullable=True
     )  # order identifier from external system
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
     store_id: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
     user_phone_number: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
@@ -66,4 +67,13 @@ class Order(Base):
     )
     updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_orders_idempotency_key_unique",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=idempotency_key.isnot(None),
+        ),
     )
