@@ -6,13 +6,14 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from botocore.exceptions import ClientError
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pal_agents.menu_assets.adora import build_menu_assets, compile_coupons_v1
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 import db
+from api.schemas.error.error import ErrorResponse
 from api.schemas.operations.signal_source import SignalSourceIdResponse
 from db.repositories.project_repository import ProjectRepository
 from db.tables.types import IntegrationProvider, IntegrationType
@@ -71,7 +72,8 @@ def _compile_adora_coupon_data(
     "/{project_id}/signal-sources/camera",
     response_model=SignalSourceIdResponse,
     responses={
-        404: {"description": "Signal source not found"},
+        400: {"model": ErrorResponse},
+        204: {"description": "Signal source is not configured; skip processing"},
         500: {"description": "Internal server error"},
     },
 )
@@ -81,7 +83,7 @@ async def get_signal_source_by_camera_id(
         ..., description="Camera identifier from signal source config"
     ),
     session: AsyncSession = Depends(db.get_db_async),
-) -> SignalSourceIdResponse:
+) -> SignalSourceIdResponse | Response:
     """
     Internal endpoint: Get signal source ID by camera_id.
 
@@ -98,7 +100,7 @@ async def get_signal_source_by_camera_id(
 
     Raises:
         400: Invalid project_id format
-        404: Signal source not found
+        204: Signal source not configured; skip processing
         500: Database error
     """
     try:
@@ -124,15 +126,11 @@ async def get_signal_source_by_camera_id(
         )
 
         if not source:
-            logger.warning(
-                f"[Internal API] Signal source not found for camera_id: {camera_id}",
+            logger.info(
+                f"[Internal API] Signal source not configured for camera_id: {camera_id}; skipping",
                 extra={"project_id": project_id, "camera_id": camera_id},
             )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Signal source with camera_id '{camera_id}' not found in project {project_id}",
-                headers={"Content-Type": "application/json"},
-            )
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
 
         logger.info(
             f"[Internal API] Found signal source for camera_id: {camera_id}",

@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-08
 
+- **Internal camera lookup skips unconfigured cameras.** `GET /internal/projects/{project_id}/signal-sources/camera` now returns `204 No Content` when a camera upload references a `camera_id` that is not configured as a signal source for the project, allowing processors to skip the media without logging a 404 as an unexpected backend error.
 - **Catering partial-lead schema.** `catering_requests.event_date` and
   `contact_phone_number` are now nullable, and `contact_email` was added as a
   nullable column so incomplete catering inquiries can be tracked before all
