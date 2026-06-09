@@ -48,7 +48,7 @@ class CateringRequest(Base):
         nullable=False,
         index=True,
     )
-    event_date: Mapped[date] = mapped_column(Date, nullable=False)
+    event_date: Mapped[date] = mapped_column(Date, nullable=True)
     event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     event_address: Mapped[str | None] = mapped_column(String, nullable=True)
     event_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -56,7 +56,8 @@ class CateringRequest(Base):
         SQLEnum(FulfillmentType), nullable=True
     )
     contact_name: Mapped[str] = mapped_column(String, nullable=False)
-    contact_phone_number: Mapped[str] = mapped_column(String, nullable=False)
+    contact_phone_number: Mapped[str] = mapped_column(String, nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String, nullable=True)
     party_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[RequestStatus] = mapped_column(
         SQLEnum(RequestStatus), nullable=False, server_default="INQUIRY"

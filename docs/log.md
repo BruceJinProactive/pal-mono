@@ -6,6 +6,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-08
 
+- **Catering partial-lead schema.** `catering_requests.event_date` and
+  `contact_phone_number` are now nullable, and `contact_email` was added as a
+  nullable column so incomplete catering inquiries can be tracked before all
+  scheduling/contact details are known. This PR is schema-only; service/API
+  adapters follow separately. Migration: `4caa090da0f5`. ->
+  `docs/records/2026-06-08-catering-request-partial-lead-schema.md`
 - **Admin conversation order numbers.** Admin conversation list/detail responses now include `order_number`, sourced from the latest displayable external `orders.order_id` for the conversation, so the admin console can match placed-order conversations to POS orders. -> `docs/log.md`
 - **Tool-result cache dual-read validation.** Added cross-pod-style adapter coverage that writes with one Redis client and reads with another, plus message-service failure tests proving Redis read timeouts do not break non-streaming or streaming pal-agents responses during the dual-read rollout. -> `docs/plans/tool-result-elasticache-migration.md`
 
