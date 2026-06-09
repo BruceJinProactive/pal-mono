@@ -47,6 +47,7 @@ def mock_session():
     session = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
+    session.refresh = AsyncMock()
     return session
 
 
@@ -104,6 +105,7 @@ class TestCreateOrderFromAgentAsync:
         assert result is not None
         assert result.id == mock_order.id
         assert mock_session.commit.called
+        mock_session.refresh.assert_awaited_once_with(mock_order)
         assert not mock_session.rollback.called
 
     async def test_invalid_vendor_returns_none(self, mock_session, conversation_id):

@@ -136,7 +136,7 @@ def create_order(
     session: Session,
     order_data: OrderData,
 ) -> Order:
-    """Create a new order record from standardized order data."""
+    """Create or return an order record from standardized order data."""
     repository = OrderRepository(session, auto_commit=True)
     return repository.create_order(
         conversation_id=order_data.conversation_id,
@@ -160,10 +160,10 @@ async def create_order_from_agent_async(
     conversation_id: uuid.UUID,
 ) -> Optional[Order]:
     """
-    Create an order from pal-agents order_details.
+    Create or return an order from pal-agents order_details.
 
-    This function handles all type conversions and order creation for orders
-    received from the AI agent.
+    This function handles all type conversions and idempotent order creation for
+    orders received from the AI agent.
 
     Args:
         session: Async database session
@@ -171,7 +171,7 @@ async def create_order_from_agent_async(
         conversation_id: The conversation ID this order belongs to
 
     Returns:
-        Order | None: The created order, or None if creation fails
+        Order | None: The created order, existing row, or None if creation fails
     """
     try:
         # Convert vendor string to IntegrationProvider enum
@@ -231,14 +231,16 @@ async def create_order_from_agent_async(
         order = await session.run_sync(_create_order)
 
         if order:
+            order_db_id = str(order.id)
             await session.commit()
+            await session.refresh(order)
             logger.info(
-                "Order persisted to database from agent",
+                "Order available in database from agent",
                 extra={
                     "conversation_id": str(conversation_id),
                     "order_id": order_details.order_id,
                     "vendor": order_details.vendor,
-                    "order_db_id": str(order.id),
+                    "order_db_id": order_db_id,
                 },
             )
         return order

@@ -19,6 +19,7 @@ class OrderData:
     conversation_id: uuid.UUID
     created_at: datetime
     order_id: str | None = None
+    idempotency_key: str | None = None
     store_id: str | None = None
     user_phone_number: str | None = None
     store_phone_number: str | None = None

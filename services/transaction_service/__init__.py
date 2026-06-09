@@ -26,14 +26,14 @@ def create_order(
     order_data: OrderData,
 ) -> Order:
     """
-    Create a new order record from standardized order data.
+    Create or return an order record from standardized order data.
 
     Args:
         session: Database session
         order_data: Standardized order data
 
     Returns:
-        Order: The created order record
+        Order: The created order record, or the existing row for this order identity
     """
     return _implementation.create_order(session, order_data)
 
@@ -251,7 +251,7 @@ def create_order_from_agent_async(
         conversation_id: The conversation ID this order belongs to
 
     Returns:
-        Order | None: The created order, or None if order already exists or creation fails
+        Order | None: The created order, existing row, or None if creation fails
     """
     return _implementation.create_order_from_agent_async(
         session, order_details, conversation_id
