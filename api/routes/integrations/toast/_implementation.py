@@ -1,17 +1,21 @@
 import json
-from datetime import datetime, timezone
-from functools import lru_cache
+import uuid
 
-from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from db.session import AsyncSessionLocal
 from db.tables import Integration, IntegrationProvider, Project, ProjectIntegration
 from services.knowledge_service import (
     delete_knowledge_file_by_metadata,
     query_vector_database,
     upload_knowledge_file,
+)
+from services.toast_checkout_service import (
+    ToastCheckoutSessionExpiredError,
+    ToastCheckoutSessionNotFoundError,
+    get_checkout_session_payload_async,
 )
 from services.transaction_service import update_order_by_order_id
 from tools.toast_tool._apis import (
@@ -33,68 +37,41 @@ from ._utils import (
 )
 from .schema import ToastWebhookRequest, ToastWebhookResponse
 
-# Constants for payment iframe token encryption
-HARD_CODED_PAYMENT_IFRAME_SECRET = "xK8dP2m_QrZ7vN4wL9cF3bJ6hT5yU1gS0aE8iO-pMxA="
-
-
-@lru_cache(maxsize=1)
-def _get_payment_iframe_fernet() -> Fernet:
-    """Get cached Fernet instance for decrypting payment tokens."""
-    try:
-        return Fernet(HARD_CODED_PAYMENT_IFRAME_SECRET.encode("utf-8"))
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Invalid encryption configuration",
-        ) from exc
-
 
 async def get_checkout_session(token: str) -> JSONResponse:
     """
-    Decrypt and return the payment session payload.
+    Look up and return the payment session payload.
 
-    This endpoint decrypts the Fernet-encrypted token passed in the URL
-    and returns the full payment payload including orderItems.
+    This endpoint receives an opaque UUID token and returns the full payment
+    payload including orderItems.
 
     Args:
-        token: URL-encoded Fernet encrypted token
+        token: Opaque checkout session token
 
     Returns:
-        JSONResponse with decrypted payload
+        JSONResponse with checkout session payload
     """
     try:
-        # Decrypt without TTL validation (Fernet will still check signature)
-        decrypted = _get_payment_iframe_fernet().decrypt(token.encode("utf-8"))
-    except InvalidToken as exc:
-        logger.warning("[Toast] get_checkout_session: Invalid token", exc_info=exc)
+        session_token = uuid.UUID(token)
+    except ValueError as exc:
+        logger.warning("[Toast] get_checkout_session: Invalid UUID token", exc_info=exc)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid token"
         ) from exc
 
     try:
-        payload = json.loads(decrypted.decode("utf-8"))
-    except json.JSONDecodeError as exc:
-        logger.error(
-            "[Toast] get_checkout_session: Failed to decode payload", exc_info=exc
-        )
+        async with AsyncSessionLocal() as session:
+            payload = await get_checkout_session_payload_async(session, session_token)
+    except ToastCheckoutSessionNotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed token payload"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Checkout session not found",
         ) from exc
-
-    # Validate expiration from payload
-    expires_at = payload.get("expiresAt")
-    if not expires_at:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token missing expiration",
-        )
-
-    # Check if token has expired using the expiresAt timestamp from payload
-    if datetime.fromtimestamp(expires_at, tz=timezone.utc) < datetime.now(timezone.utc):
+    except ToastCheckoutSessionExpiredError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Token expired",
-        )
+        ) from exc
 
     return JSONResponse(status_code=status.HTTP_200_OK, content=payload)
 

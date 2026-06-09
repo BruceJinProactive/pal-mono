@@ -1,0 +1,416 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from typing import Any, cast
+from unittest.mock import AsyncMock
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@pytest.mark.asyncio
+async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatch):
+    from services.toast_checkout_service import _implementation as service
+
+    stored_sessions: list[Any] = []
+    sent_messages: list[Any] = []
+    created_payment_intents: list[Any] = []
+    tracking_updates: list[dict[str, Any]] = []
+    sessions_by_reference: dict[str, SimpleNamespace] = {}
+
+    class FakeSessionRepository:
+        def __init__(self, _session):
+            return
+
+        async def get_by_external_reference_id(self, external_reference_id):
+            return sessions_by_reference.get(external_reference_id)
+
+        async def create(
+            self,
+            *,
+            token,
+            conversation_id,
+            external_reference_id,
+            order_external_id,
+            request_payload,
+            session_payload,
+            checkout_url,
+            expires_at,
+            status,
+        ):
+            row = SimpleNamespace(
+                id=uuid.uuid4(),
+                token=token,
+                conversation_id=conversation_id,
+                external_reference_id=external_reference_id,
+                order_external_id=order_external_id,
+                request_payload=request_payload,
+                session_payload=session_payload,
+                checkout_url=checkout_url,
+                expires_at=expires_at,
+                status=status,
+            )
+            sessions_by_reference[external_reference_id] = row
+            stored_sessions.append(row)
+            return row
+
+        async def mark_ready(self, row, *, session_payload, expires_at):
+            row.session_payload = session_payload
+            row.expires_at = expires_at
+            row.status = "ready"
+            return row
+
+        async def mark_failed(self, row, *, status):
+            row.status = status
+
+    monkeypatch.setattr(
+        service, "ToastCheckoutSessionRepository", FakeSessionRepository
+    )
+    monkeypatch.setattr(
+        service,
+        "get_toast_access_token_from_aws",
+        lambda **kwargs: SimpleNamespace(
+            access_token=f"token:{kwargs.get('token_name', 'default')}"
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "create_payment_intent",
+        lambda **kwargs: created_payment_intents.append(kwargs)
+        or SimpleNamespace(
+            id="pi_123",
+            sessionSecret="session-secret",
+            amount=kwargs["payment_request"].amount,
+            externalReferenceId=kwargs["payment_request"].externalReferenceId,
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "shorten_url",
+        lambda url: f"https://tiny.test/{url.rsplit('=', 1)[-1]}",
+    )
+    monkeypatch.setattr(
+        service,
+        "send_message",
+        lambda message: sent_messages.append(message) or {"status": "scheduled"},
+    )
+
+    async def _fake_update_order_tracking_link_async(*, session, payload, checkout_url):
+        tracking_updates.append(
+            {
+                "order_external_id": payload.order_external_id,
+                "store_id": payload.store_id,
+                "checkout_url": checkout_url,
+            }
+        )
+
+    monkeypatch.setattr(
+        service,
+        "_update_order_tracking_link_async",
+        _fake_update_order_tracking_link_async,
+    )
+
+    request = {
+        "type": "payment_checkout",
+        "provider": "toast",
+        "payload": {
+            "amount_cents": 3500,
+            "tip_cents": 0,
+            "external_reference_id": "8f2ddc2f-25fd-4c55-943f-04162c43e571",
+            "order_external_id": "PALONA:test-session",
+            "customer_email": "orderingagent+5551234567@palona.ai",
+            "customer_name": "John Doe",
+            "customer_phone": "+15551234567",
+            "order_items": [{"name": "Pizza", "quantity": 1, "totalcost": 3000}],
+            "subtotal_cents": 3000,
+            "tax_cents": 500,
+            "gratuity_fees": [],
+            "store_id": "toast-store",
+            "store_name": "Toast Store",
+        },
+    }
+
+    fake_session_obj = SimpleNamespace(commit=AsyncMock())
+    fake_session = cast(AsyncSession, fake_session_obj)
+
+    result = await service.process_checkout_request_async(
+        session=fake_session,
+        checkout_request=request,
+        conversation_id=uuid.uuid4(),
+        sender_identifier="+15551230000",
+        recipient_identifier="+15551234567",
+    )
+
+    assert result.checkout_url.startswith("https://tiny.test/")
+    assert len(stored_sessions) == 1
+    session_payload = stored_sessions[0].session_payload
+    assert session_payload == {
+        "email": "orderingagent+5551234567@palona.ai",
+        "name": "John Doe",
+        "phone": "+15551234567",
+        "storeId": "toast-store",
+        "storeName": "Toast Store",
+        "orderExternalId": "PALONA:test-session",
+        "paymentIntentId": "pi_123",
+        "paymentIntentExternalReferenceId": "8f2ddc2f-25fd-4c55-943f-04162c43e571",
+        "subtotal": 3000,
+        "tax": 500,
+        "gratuityFees": [],
+        "total": 3500,
+        "tips": 0,
+        "sessionSecret": "session-secret",
+        "iframeBearerToken": "token:TOAST_PAYMENT_IFRAME_ACCESS_TOKEN",
+        "orderItems": [{"name": "Pizza", "quantity": 1, "totalcost": 3000}],
+        "expiresAt": session_payload["expiresAt"],
+    }
+    assert isinstance(stored_sessions[0].token, uuid.UUID)
+    assert stored_sessions[0].status == "ready"
+    assert stored_sessions[0].external_reference_id == (
+        "8f2ddc2f-25fd-4c55-943f-04162c43e571"
+    )
+    assert stored_sessions[0].order_external_id == "PALONA:test-session"
+    assert stored_sessions[0].expires_at > datetime.now(timezone.utc)
+    assert len(sent_messages) == 1
+    assert (
+        sent_messages[0].text.body
+        == f"Please complete your payment: {result.checkout_url}"
+    )
+    assert sent_messages[0].recipient_identifier == "+15551234567"
+    assert len(created_payment_intents) == 1
+    assert tracking_updates == [
+        {
+            "order_external_id": "PALONA:test-session",
+            "store_id": "toast-store",
+            "checkout_url": result.checkout_url,
+        }
+    ]
+
+    duplicate_result = await service.process_checkout_request_async(
+        session=fake_session,
+        checkout_request=request,
+        conversation_id=uuid.uuid4(),
+        sender_identifier="+15551230000",
+        recipient_identifier="+15550000000",
+    )
+
+    assert duplicate_result == result
+    assert len(stored_sessions) == 1
+    assert len(sent_messages) == 1
+    assert len(created_payment_intents) == 1
+    assert len(tracking_updates) == 1
+
+
+@pytest.mark.asyncio
+async def test_process_checkout_request_marks_delivery_failure(monkeypatch):
+    from services.toast_checkout_service import _implementation as service
+
+    class FakeSessionRepository:
+        def __init__(self, _session):
+            self.row = getattr(_session, "row", None)
+
+        async def get_by_external_reference_id(self, _external_reference_id):
+            return None
+
+        async def create(self, **kwargs):
+            self.row = SimpleNamespace(**kwargs)
+            return self.row
+
+        async def mark_ready(self, row, *, session_payload, expires_at):
+            row.session_payload = session_payload
+            row.expires_at = expires_at
+            row.status = "ready"
+            return row
+
+        async def mark_failed(self, row, *, status):
+            row.status = status
+
+    monkeypatch.setattr(
+        service, "ToastCheckoutSessionRepository", FakeSessionRepository
+    )
+    monkeypatch.setattr(
+        service,
+        "get_toast_access_token_from_aws",
+        lambda **kwargs: SimpleNamespace(
+            access_token=f"token:{kwargs.get('token_name')}"
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "create_payment_intent",
+        lambda **kwargs: SimpleNamespace(
+            id="pi_123",
+            sessionSecret="session-secret",
+            amount=kwargs["payment_request"].amount,
+            externalReferenceId=kwargs["payment_request"].externalReferenceId,
+        ),
+    )
+    monkeypatch.setattr(service, "shorten_url", lambda url: url)
+    monkeypatch.setattr(
+        service,
+        "send_message",
+        lambda _message: {"status": "error", "error_message": "relay unavailable"},
+    )
+
+    async def _fake_update_order_tracking_link_async(*, session, payload, checkout_url):
+        return None
+
+    monkeypatch.setattr(
+        service,
+        "_update_order_tracking_link_async",
+        _fake_update_order_tracking_link_async,
+    )
+
+    request = {
+        "type": "payment_checkout",
+        "provider": "toast",
+        "payload": {
+            "amount_cents": 3500,
+            "tip_cents": 0,
+            "external_reference_id": "8f2ddc2f-25fd-4c55-943f-04162c43e571",
+            "order_external_id": "PALONA:test-session",
+            "customer_email": "orderingagent+5551234567@palona.ai",
+            "customer_name": "John Doe",
+            "customer_phone": "+15551234567",
+            "order_items": [],
+            "subtotal_cents": 3000,
+            "tax_cents": 500,
+            "gratuity_fees": [],
+            "store_id": "toast-store",
+            "store_name": "Toast Store",
+        },
+    }
+    fake_session_obj = SimpleNamespace(commit=AsyncMock())
+    fake_session = cast(AsyncSession, fake_session_obj)
+
+    with pytest.raises(service.ToastCheckoutDeliveryError):
+        await service.process_checkout_request_async(
+            session=fake_session,
+            checkout_request=request,
+            conversation_id=uuid.uuid4(),
+            sender_identifier="+15551230000",
+            recipient_identifier="+15551234567",
+        )
+
+
+@pytest.mark.asyncio
+async def test_process_checkout_request_retries_delivery_failed_session(monkeypatch):
+    from services.toast_checkout_service import _implementation as service
+
+    existing_session = SimpleNamespace(
+        token=uuid.uuid4(),
+        checkout_url="https://checkout.test/retry",
+        status="delivery_failed",
+        session_payload={"expiresAt": 9999999999},
+        expires_at=datetime.now(timezone.utc),
+    )
+    sent_messages: list[Any] = []
+
+    class FakeSessionRepository:
+        def __init__(self, _session):
+            return
+
+        async def get_by_external_reference_id(self, _external_reference_id):
+            return existing_session
+
+        async def create(self, **_kwargs):
+            raise AssertionError("existing checkout session should be reused")
+
+        async def mark_ready(self, row, *, session_payload, expires_at):
+            row.session_payload = session_payload
+            row.expires_at = expires_at
+            row.status = "ready"
+            return row
+
+        async def mark_failed(self, row, *, status):
+            row.status = status
+
+    monkeypatch.setattr(
+        service, "ToastCheckoutSessionRepository", FakeSessionRepository
+    )
+    monkeypatch.setattr(
+        service,
+        "create_payment_intent",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("payment intent should not be recreated")
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "send_message",
+        lambda message: sent_messages.append(message) or {"status": "scheduled"},
+    )
+
+    request = {
+        "type": "payment_checkout",
+        "provider": "toast",
+        "payload": {
+            "amount_cents": 3500,
+            "tip_cents": 0,
+            "external_reference_id": "8f2ddc2f-25fd-4c55-943f-04162c43e571",
+            "order_external_id": "PALONA:test-session",
+            "customer_email": "orderingagent+5551234567@palona.ai",
+            "customer_name": "John Doe",
+            "customer_phone": "+15551234567",
+            "order_items": [],
+            "subtotal_cents": 3000,
+            "tax_cents": 500,
+            "gratuity_fees": [],
+            "store_id": "toast-store",
+            "store_name": "Toast Store",
+        },
+    }
+    fake_session_obj = SimpleNamespace(commit=AsyncMock())
+    fake_session = cast(AsyncSession, fake_session_obj)
+
+    result = await service.process_checkout_request_async(
+        session=fake_session,
+        checkout_request=request,
+        conversation_id=uuid.uuid4(),
+        sender_identifier="+15551230000",
+        recipient_identifier="+15551234567",
+    )
+
+    assert result.checkout_url == "https://checkout.test/retry"
+    assert existing_session.status == "ready"
+    assert len(sent_messages) == 1
+    fake_session_obj.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_checkout_session_payload_rejects_expired_session():
+    from services.toast_checkout_service import _implementation as service
+
+    expired_payload = {"expiresAt": 1}
+
+    with pytest.raises(service.ToastCheckoutSessionExpiredError):
+        service._validate_session_payload(expired_payload)
+
+
+def test_validate_session_payload_rejects_missing_expiration():
+    from services.toast_checkout_service import _implementation as service
+
+    with pytest.raises(service.ToastCheckoutSessionExpiredError):
+        service._validate_session_payload({})
+
+
+@pytest.mark.asyncio
+async def test_get_checkout_session_payload_requires_ready_session(monkeypatch):
+    from services.toast_checkout_service import _implementation as service
+
+    class FakeSessionRepository:
+        def __init__(self, _session):
+            return
+
+        async def get_by_token(self, _token):
+            return SimpleNamespace(status="delivery_failed", session_payload={})
+
+    monkeypatch.setattr(
+        service, "ToastCheckoutSessionRepository", FakeSessionRepository
+    )
+
+    with pytest.raises(service.ToastCheckoutSessionNotFoundError):
+        await service.get_checkout_session_payload_async(
+            cast(AsyncSession, object()), uuid.uuid4()
+        )

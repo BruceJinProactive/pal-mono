@@ -9,9 +9,26 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject
+from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
 from db.tables.types import Channel, IntegrationProvider
 from utils.request_context import RequestContext
+
+
+def test_is_toast_checkout_request_requires_payment_checkout_and_toast():
+    from services.message_service import _implementation
+
+    assert _implementation._is_toast_checkout_request(
+        {"type": "payment_checkout", "provider": "toast"}
+    )
+    assert not _implementation._is_toast_checkout_request(
+        {"type": "payment_checkout", "provider": "olo"}
+    )
+    assert not _implementation._is_toast_checkout_request(
+        {"type": "other", "provider": "toast"}
+    )
+    assert _implementation._is_toast_checkout_request(
+        SimpleNamespace(type="payment_checkout", provider="toast")
+    )
 
 
 def _ensure_package_module(
@@ -187,6 +204,115 @@ class _FakeOrderRepository:
 class _FakeAgentRepo:
     async def get_agent(self, agent_id):
         return SimpleNamespace(language=None)
+
+
+@pytest.mark.asyncio
+async def test_toast_checkout_background_uses_own_session(monkeypatch):
+    """Toast checkout processing runs in a background-owned DB session."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    fake_session = object()
+    captured: dict = {}
+
+    class FakeAsyncSessionLocal:
+        async def __aenter__(self):
+            return fake_session
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    async def _fake_process_checkout_request_async(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(_implementation, "AsyncSessionLocal", FakeAsyncSessionLocal)
+    monkeypatch.setattr(
+        _implementation.toast_checkout_service,
+        "process_checkout_request_async",
+        _fake_process_checkout_request_async,
+    )
+
+    checkout_request = SimpleNamespace(provider="toast")
+    conversation_id = uuid.uuid4()
+
+    await _implementation._process_toast_checkout_request_background(
+        checkout_request=checkout_request,
+        conversation_id=conversation_id,
+        sender_identifier="+15551230000",
+        recipient_identifier="+15551234567",
+        broker=Broker.TWILIO,
+    )
+
+    assert captured == {
+        "session": fake_session,
+        "checkout_request": checkout_request,
+        "conversation_id": conversation_id,
+        "sender_identifier": "+15551230000",
+        "recipient_identifier": "+15551234567",
+        "broker": Broker.TWILIO,
+    }
+
+
+def test_schedule_toast_checkout_request_tracks_background_task(monkeypatch):
+    """Scheduled checkout tasks are retained until completion."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    original_tasks = set(_implementation._background_tasks)
+    _implementation._background_tasks.clear()
+
+    class FakeTask:
+        def __init__(self):
+            self.callback = None
+
+        def add_done_callback(self, callback):
+            self.callback = callback
+
+    task = FakeTask()
+
+    def _fake_create_task(coro):
+        coro.close()
+        return task
+
+    monkeypatch.setattr(_implementation.asyncio, "create_task", _fake_create_task)
+
+    try:
+        _implementation._schedule_toast_checkout_request(
+            checkout_request=SimpleNamespace(type="payment_checkout", provider="toast"),
+            conversation_id=uuid.uuid4(),
+            sender_identifier="+15551230000",
+            recipient_identifier="+15551234567",
+            broker=Broker.TWILIO,
+        )
+
+        assert task in _implementation._background_tasks
+        assert task.callback == _implementation._background_tasks.discard
+    finally:
+        _implementation._background_tasks.clear()
+        _implementation._background_tasks.update(original_tasks)
+
+
+def test_schedule_toast_checkout_request_handles_create_task_failure(monkeypatch):
+    """Scheduling failures are logged and do not escape message processing."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    def _fake_create_task(coro):
+        coro.close()
+        raise RuntimeError("event loop unavailable")
+
+    monkeypatch.setattr(_implementation.asyncio, "create_task", _fake_create_task)
+
+    _implementation._schedule_toast_checkout_request(
+        checkout_request=SimpleNamespace(type="payment_checkout", provider="toast"),
+        conversation_id=uuid.uuid4(),
+        sender_identifier="+15551230000",
+        recipient_identifier="+15551234567",
+        broker=Broker.TWILIO,
+    )
 
 
 @pytest.mark.asyncio

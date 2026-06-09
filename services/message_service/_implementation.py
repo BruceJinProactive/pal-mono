@@ -40,6 +40,7 @@ from services import (
     catering_service,
     project_service,
     reservation_service,
+    toast_checkout_service,
     transaction_service,
     user_service,
 )
@@ -355,6 +356,74 @@ async def _fingerprint_conversation(
         logger.exception("Failed to fingerprint conversation %s", conversation_id)
 
 
+async def _process_toast_checkout_request_background(
+    *,
+    checkout_request: object,
+    conversation_id: uuid.UUID,
+    sender_identifier: str,
+    recipient_identifier: str,
+    broker: Broker | None,
+) -> None:
+    """Process Toast checkout request in a fire-and-forget task with its own DB session."""
+    try:
+        async with AsyncSessionLocal() as session:
+            await toast_checkout_service.process_checkout_request_async(
+                session=session,
+                checkout_request=checkout_request,
+                conversation_id=conversation_id,
+                sender_identifier=sender_identifier,
+                recipient_identifier=recipient_identifier,
+                broker=broker,
+            )
+    except Exception:
+        logger.warning(
+            "[ToastCheckout] Background checkout processing failed",
+            extra={"conversation_id": str(conversation_id)},
+            exc_info=True,
+        )
+
+
+def _schedule_toast_checkout_request(
+    *,
+    checkout_request: object,
+    conversation_id: uuid.UUID,
+    sender_identifier: str,
+    recipient_identifier: str,
+    broker: Broker | None,
+) -> None:
+    try:
+        task = asyncio.create_task(
+            _process_toast_checkout_request_background(
+                checkout_request=checkout_request,
+                conversation_id=conversation_id,
+                sender_identifier=sender_identifier,
+                recipient_identifier=recipient_identifier,
+                broker=broker,
+            )
+        )
+    except Exception:
+        logger.warning(
+            "[ToastCheckout] Failed to schedule checkout processing",
+            extra={"conversation_id": str(conversation_id)},
+            exc_info=True,
+        )
+        return
+
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+def _is_toast_checkout_request(checkout_request: object) -> bool:
+    if isinstance(checkout_request, dict):
+        request_type = checkout_request.get("type")
+        provider = checkout_request.get("provider")
+    else:
+        request_type = getattr(checkout_request, "type", None)
+        provider = getattr(checkout_request, "provider", None)
+
+    return request_type == "payment_checkout" and provider == "toast"
+
+
 def get_filler_message(message: Message) -> Message:
     # Collection of filler phrases for voice responses
     FILLER_PHRASES = [
@@ -643,6 +712,27 @@ async def _dispatch_agent_async(
                 project_id=project_id,
                 conversation_id=conversation_id,
                 cd=cd,
+            )
+
+        if (
+            hasattr(pal_output, "checkout_request")
+            and pal_output.checkout_request  # type: ignore[reportAttributeAccessIssue]
+            and _is_toast_checkout_request(pal_output.checkout_request)  # type: ignore[reportAttributeAccessIssue]
+        ):
+            logger.info(
+                "[ToastCheckout] Checkout request received from pal-agents",
+                extra={
+                    "conversation_id": str(conversation_id),
+                    "agent_id": str(agent_id),
+                    "account_name": account_name,
+                },
+            )
+            _schedule_toast_checkout_request(
+                checkout_request=pal_output.checkout_request,  # type: ignore[reportAttributeAccessIssue]
+                conversation_id=conversation_id,
+                sender_identifier=message.recipient_identifier,
+                recipient_identifier=message.sender_identifier,
+                broker=message.broker,
             )
 
         # Collect generic tool call events
@@ -1337,6 +1427,29 @@ async def get_chat_response_stream(
                                         project_id=project_id,
                                         conversation_id=request_conversation_id,
                                         cd=cd,
+                                    )
+
+                                if (
+                                    hasattr(chunk, "checkout_request")
+                                    and chunk.checkout_request  # type: ignore[reportAttributeAccessIssue]
+                                    and _is_toast_checkout_request(chunk.checkout_request)  # type: ignore[reportAttributeAccessIssue]
+                                ):
+                                    logger.info(
+                                        "[ToastCheckout] Checkout request received in stream",
+                                        extra={
+                                            "conversation_id": str(
+                                                request_conversation_id
+                                            ),
+                                            "agent_id": str(agent_id),
+                                            "account_name": account_name,
+                                        },
+                                    )
+                                    _schedule_toast_checkout_request(
+                                        checkout_request=chunk.checkout_request,  # type: ignore[reportAttributeAccessIssue]
+                                        conversation_id=request_conversation_id,
+                                        sender_identifier=message.recipient_identifier,
+                                        recipient_identifier=message.sender_identifier,
+                                        broker=message.broker,
                                     )
 
                                 # Collect generic tool call events
