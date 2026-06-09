@@ -46,8 +46,8 @@ class CreateSubscriptionPlanRequest(BaseModel):
     name: str
     description: Optional[str] = None
     tier: TargetTier
-    features_included: list[str] = []
-    features_excluded: list[str] = []
+    features_included: list[str] = Field(default_factory=list)
+    features_excluded: list[str] = Field(default_factory=list)
     call_quota: Optional[int] = None
     order_quota: Optional[int] = None
     call_overage_charge: Optional[int] = None
@@ -159,7 +159,7 @@ class CreateSubscriptionRequest(BaseModel):
 
 class ListAccountSubscriptionsResponse(BaseModel):
     current: Optional[Subscription] = None
-    scheduled: List[Subscription] = []
+    scheduled: list[Subscription] = Field(default_factory=list)
 
 
 class UsageMetrics(BaseModel):
@@ -193,9 +193,7 @@ class UpgradeOption(BaseModel):
     plan_id: str | None = None
     price_monthly: float | None = None
     price_annual: float | None = None
-    featured_benefits: List[str] = (
-        []
-    )  # 3 randomly selected features from features_included
+    featured_benefits: list[str] = Field(default_factory=list)
 
 
 class GetCurrentSubscriptionResponse(BaseModel):
@@ -208,7 +206,7 @@ class GetCurrentSubscriptionDetailsResponse(BaseModel):
     # Current subscription info
     subscription: Optional[Subscription] = None
     plan_name: str | None = None
-    plan_features: List[str] = []  # features_included from subscription_plan
+    plan_features: list[str] = Field(default_factory=list)
 
     # Billing cycle info
     billing_cycle: str | None = None  # "monthly" or "annual"
@@ -217,7 +215,7 @@ class GetCurrentSubscriptionDetailsResponse(BaseModel):
     current_period_end: datetime | None = None
 
     # Usage metrics
-    usage: UsageMetrics = UsageMetrics()
+    usage: UsageMetrics = Field(default_factory=UsageMetrics)
 
     # Payment info
     payment_status: str | None = None  # "active", "past_due", "canceled", etc.
@@ -225,10 +223,10 @@ class GetCurrentSubscriptionDetailsResponse(BaseModel):
     payment_method_brand: str | None = None  # visa, mastercard, etc.
 
     # Invoices
-    recent_invoices: List[Invoice] = []
+    recent_invoices: list[Invoice] = Field(default_factory=list)
 
     # Upgrade options
-    upgrade_options: List[UpgradeOption] = []
+    upgrade_options: list[UpgradeOption] = Field(default_factory=list)
     current_plan_tier: int = (
         0  # Numeric tier value: 0=none, 1=t1, 2=t2, 3=t3, 4=enterprise
     )
@@ -270,7 +268,7 @@ class UpdateAccountSubscriptionRequest(BaseModel):
     trial_start_date: Optional[datetime] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    trial_end: Optional[datetime] = Field(
+    trial_end: datetime | None = Field(
         None,
         description="Absolute datetime when the trial ends. Sets start_date to this value (Stripe pattern). Cannot be combined with start_date.",
     )
@@ -455,11 +453,24 @@ class UpdateProjectSubscriptionRequest(BaseModel):
     trial_start_date: Optional[datetime] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+    trial_end: datetime | None = Field(
+        None,
+        description="Absolute datetime when the trial ends. Sets start_date to this value (Stripe pattern). Cannot be combined with start_date.",
+    )
     status: Optional[SubscriptionStatus] = None
     subscription_plan_id: Optional[uuid.UUID] = None
     recurring_credit_enabled: Optional[bool] = None
     recurring_credit_amount: Optional[float] = None
     recurring_credit_frequency: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_trial_end_conflicts(self) -> "UpdateProjectSubscriptionRequest":
+        if self.trial_end is not None and self.start_date is not None:
+            raise ValueError(
+                "Cannot specify both trial_end and start_date. "
+                "trial_end automatically sets start_date."
+            )
+        return self
 
 
 class UpdateProjectSubscriptionResponse(BaseModel):
@@ -628,8 +639,8 @@ class CouponDetailsResponse(BaseModel):
     valid: bool
     redeem_by: int | None
     created: int | None = None
-    account_names: list[str] = []
-    project_names: list[str] = []
+    account_names: list[str] = Field(default_factory=list)
+    project_names: list[str] = Field(default_factory=list)
 
 
 class ListCouponsResponse(BaseModel):

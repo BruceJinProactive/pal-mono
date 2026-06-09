@@ -1908,7 +1908,6 @@ def grant_credit_to_account(
 def get_account_credit_balance(
     account: db.Account,
 ) -> tuple[int, str]:
-
     if not account.stripe_customer_id:
         raise ValueError(
             "Account does not have a stripe customer associated, does it have a subscription?"
@@ -3209,8 +3208,10 @@ def update_project_subscription(
     """
     Update a project subscription by creating a new version.
 
-    IMPORTANT: This function performs DATABASE-ONLY updates and does NOT synchronize
-    changes to Stripe. This is intentional for the following reasons:
+    IMPORTANT: This function performs DATABASE-ONLY updates except for explicit
+    trial_end updates, which synchronize the trial end timestamp to Stripe when
+    the project subscription has a Stripe subscription ID. Other changes do NOT
+    synchronize to Stripe. This is intentional for the following reasons:
 
     1. Subscription plan changes should use switch_subscription_plan() which handles
        Stripe synchronization including product/price creation and subscription item updates.
@@ -3233,9 +3234,9 @@ def update_project_subscription(
         project_id: Project ID for authorization
         external_id: External ID of the subscription to update
         update_data: Fields to update (payment_method, trial_start_date, start_date,
-                     end_date, status, stripe_subscription_id, subscription_plan_id,
-                     recurring_credit_enabled, recurring_credit_amount,
-                     recurring_credit_frequency)
+                     trial_end, end_date, status, stripe_subscription_id,
+                     subscription_plan_id, recurring_credit_enabled,
+                     recurring_credit_amount, recurring_credit_frequency)
         force_update: Whether to allow updates on non-active subscriptions
 
     Returns:
@@ -3302,6 +3303,35 @@ def update_project_subscription(
     }
     new_subscription = cls(**data)
 
+    # Handle trial_end (Stripe pattern): sets start_date and ensures trial_start_date exists.
+    trial_end = update_data.pop("trial_end", None)
+    stripe_trial_end: int | str | None = None
+    if trial_end is not None:
+        if trial_end.tzinfo is None:
+            trial_end = trial_end.replace(tzinfo=UTC)
+
+        now = datetime.now(UTC)
+        is_future_trial_end = trial_end > now
+        effective_trial_end = trial_end if is_future_trial_end else now
+        update_data["start_date"] = effective_trial_end
+        stripe_trial_end = (
+            int(effective_trial_end.timestamp()) if is_future_trial_end else "now"
+        )
+
+        if is_future_trial_end:
+            if (
+                not current_subscription.trial_start_date
+                and "trial_start_date" not in update_data
+            ):
+                update_data["trial_start_date"] = now
+            if current_subscription.status == SubscriptionStatus.active:
+                update_data["status"] = SubscriptionStatus.trialing
+        else:
+            if "trial_start_date" not in update_data:
+                update_data["trial_start_date"] = None
+            if current_subscription.status == SubscriptionStatus.trialing:
+                update_data["status"] = SubscriptionStatus.active
+
     allowed_fields = {
         "payment_method",
         "trial_start_date",
@@ -3344,6 +3374,22 @@ def update_project_subscription(
         session.flush()
         session.refresh(new_subscription)
         ctx.new_record = new_subscription
+
+    if stripe_trial_end is not None and new_subscription.stripe_subscription_id:
+        try:
+            stripe.Subscription.modify(
+                new_subscription.stripe_subscription_id,
+                trial_end=stripe_trial_end,
+            )
+        except stripe.StripeError as err:
+            logger.error(
+                "Failed to sync trial_end to Stripe for project subscription "
+                f"{new_subscription.stripe_subscription_id}: {err}"
+            )
+            session.rollback()
+            raise RuntimeError(
+                "Failed to sync project subscription trial_end to Stripe"
+            ) from err
 
     try:
         session.commit()
