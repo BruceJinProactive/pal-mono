@@ -6,16 +6,14 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-09
 
-<<<<<<< codex/vision-rule-metadata-merge
 - **Vision rule metadata replacement.** `PATCH /accounts/{account_name}/vision-rules/{rule_id}` now replaces `rule_metadata` when the field is provided, allowing callers to delete old metadata keys by omitting them from the replacement object. -> `docs/state/architecture.md`
-=======
 - **Admin conversation order presence.** Admin conversation list/detail responses now distinguish displayable order numbers from order existence: real non-zero order IDs are returned as `order_number`, while conversations with placeholder order IDs still return `has_order=true` so the admin console can identify unpaid placed-order conversations without changing POS order persistence.
->>>>>>> main
 
 ---
 
 ## 2026-06-08
 
+- **Toast checkout session storage schema.** Added `toast_checkout_sessions` for UUID-backed Toast checkout links, including idempotency by payment external reference and status fields for async processing/delivery state. Migration: `8cf3a1b9e2d4`. -> `docs/records/2026-06-08-toast-checkout-session-schema.md`
 - **Internal camera lookup skips unconfigured cameras.** `GET /internal/projects/{project_id}/signal-sources/camera` now returns `204 No Content` when a camera upload references a `camera_id` that is not configured as a signal source for the project, allowing processors to skip the media without logging a 404 as an unexpected backend error.
 - **Catering partial-lead schema.** `catering_requests.event_date` and
   `contact_phone_number` are now nullable, and `contact_email` was added as a
