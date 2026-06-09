@@ -4,11 +4,12 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.pal_repository.data_classes.vision_state_change_event import (
     VisionStateChangeEventData,
+    VisionStateChangeEventPage,
 )
 from db.tables import Project, VisionEntity, VisionStateChangeEvent
 from utils.log import logger
@@ -137,9 +138,11 @@ class VisionStateChangeEventRepository:
         entity_id: uuid.UUID | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
-    ) -> list[VisionStateChangeEventData]:
+        page: int = 1,
+        limit: int = 100,
+    ) -> VisionStateChangeEventPage:
         try:
-            query = (
+            base_query = (
                 select(VisionStateChangeEvent)
                 .join(
                     VisionEntity,
@@ -152,22 +155,41 @@ class VisionStateChangeEventRepository:
                 .filter(Project.account_id == account_id)
             )
             if project_id is not None:
-                query = query.filter(VisionEntity.project_id == project_id)
+                base_query = base_query.filter(VisionEntity.project_id == project_id)
             if entity_id is not None:
-                query = query.filter(VisionStateChangeEvent.entity_id == entity_id)
+                base_query = base_query.filter(
+                    VisionStateChangeEvent.entity_id == entity_id
+                )
             if start is not None:
-                query = query.filter(VisionStateChangeEvent.observed_at >= start)
+                base_query = base_query.filter(
+                    VisionStateChangeEvent.observed_at >= start
+                )
             if end is not None:
-                query = query.filter(VisionStateChangeEvent.observed_at <= end)
-            query = query.order_by(VisionStateChangeEvent.observed_at.desc())
+                base_query = base_query.filter(
+                    VisionStateChangeEvent.observed_at <= end
+                )
+
+            count_query = select(func.count()).select_from(base_query.subquery())
+            count_result = await self.session.execute(count_query)
+            total = int(count_result.scalar_one())
+
+            offset = (page - 1) * limit
+            query = (
+                base_query.order_by(VisionStateChangeEvent.observed_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
             result = await self.session.execute(query)
-            return [_to_data(row) for row in result.scalars().all()]
+            return VisionStateChangeEventPage(
+                items=[_to_data(row) for row in result.scalars().all()],
+                total=total,
+            )
         except Exception:
             await self.session.rollback()
             logger.error(
                 "[Vision StateChangeEvent] DB error listing events", exc_info=True
             )
-            return []
+            return VisionStateChangeEventPage(items=[], total=0)
 
     async def update_metadata(
         self,

@@ -30,6 +30,7 @@ def _make_response(**overrides: object) -> VisionRuleResponse:
         "severity": "high",
         "is_active": True,
         "rule_metadata": {},
+        "label": [],
         "created_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
         "updated_at": None,
     }
@@ -112,7 +113,7 @@ class TestGetVisionRule:
 
         session = AsyncMock()
         rule_id = uuid.uuid4()
-        expected = _make_response(id=rule_id)
+        expected = _make_response(id=rule_id, label=["cleanliness"])
 
         with patch(
             f"{MODULE}.vision_rule_service.get_vision_rule",
@@ -122,6 +123,7 @@ class TestGetVisionRule:
             result = await get_vision_rule(session, rule_id, ACCOUNT_NAME)
 
         assert result.id == rule_id
+        assert result.label == ["cleanliness"]
 
     @pytest.mark.asyncio
     async def test_not_found_returns_404(self) -> None:
@@ -161,7 +163,7 @@ class TestListVisionRules:
         from api.routes.operation._vision_rules import list_vision_rules
 
         session = AsyncMock()
-        expected = ListVisionRulesResponse(items=[], total=0)
+        expected = ListVisionRulesResponse(items=[], total=0, items_by_label={})
 
         with patch(
             f"{MODULE}.vision_rule_service.list_vision_rules",
@@ -171,6 +173,7 @@ class TestListVisionRules:
             result = await list_vision_rules(session, ACCOUNT_NAME)
 
         assert result.total == 0
+        assert result.items_by_label == {}
 
     @pytest.mark.asyncio
     async def test_not_found_returns_404(self) -> None:
@@ -211,8 +214,8 @@ class TestUpdateVisionRule:
 
         session = AsyncMock()
         rule_id = uuid.uuid4()
-        expected = _make_response(id=rule_id, name="Updated")
-        request = UpdateVisionRuleRequest(name="Updated")
+        expected = _make_response(id=rule_id, name="Updated", label=["priority"])
+        request = UpdateVisionRuleRequest(name="Updated", label=["priority"])
 
         with patch(
             f"{MODULE}.vision_rule_service.update_vision_rule",
@@ -222,6 +225,7 @@ class TestUpdateVisionRule:
             result = await update_vision_rule(session, rule_id, request, ACCOUNT_NAME)
 
         assert result.id == rule_id
+        assert result.label == ["priority"]
 
     @pytest.mark.asyncio
     async def test_not_found_returns_404(self) -> None:

@@ -225,6 +225,12 @@ The core AI agent implementation providing conversational capabilities.
 | `number_service` | External | Phone number management |
 | `slack_service` | External | Slack notifications |
 
+`GET /accounts/{account_name}/state-change-events` returns state-change events
+matching the account, optional project/entity filters, and observed-at time
+window. The endpoint defaults `start` to the past 24 hours when omitted and
+paginates returned rows with `page` (default `1`) and `limit` (default `100`,
+max `1000`); `total` reports the full filtered match count before pagination.
+
 Vision state-change events also drive lightweight rule workflows in
 `services/vision_observation_service/_workflow.py`. Each workflow is selected by
 `vision_rule.type` and owns its entity-type, state-definition type, and
@@ -234,7 +240,13 @@ transition validation. Current workflows cover `table_cleanness`,
 `vision_rule_event` rows through the repository layer. Test events marked with
 `event_metadata.is_test == True` are persisted as state changes but skipped by
 rule workflows. Rules can carry empty-default text-array `label` values, and
-rule events store a non-null fixed-scale numeric `duration` in minutes that
+the vision-rule CRUD API returns them on rule responses. `PATCH
+/accounts/{account_name}/vision-rules/{rule_id}` treats omitted `label` as
+unchanged and a provided list, including `[]`, as the replacement value.
+`GET /accounts/{account_name}/vision-rules` also returns `items_by_label`,
+grouping every rule under each label in its list; rules without labels appear
+under `no-labeld`.
+Rule events store a non-null fixed-scale numeric `duration` in minutes that
 defaults to `0.0`. State-transition workflows set that duration to the elapsed
 time spent in the prior state before the trigger state was observed. For example,
 `table_cleanness` records how many minutes a table stayed `dirty` when it

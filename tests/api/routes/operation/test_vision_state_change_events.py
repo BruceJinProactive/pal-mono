@@ -166,16 +166,61 @@ class TestListStateChangeEvents:
         )
 
         session = AsyncMock()
-        expected = ListStateChangeEventsResponse(items=[], total=0)
+        expected = ListStateChangeEventsResponse(
+            items=[],
+            total=0,
+            page=1,
+            page_size=100,
+        )
 
         with patch(
             f"{MODULE}.vision_event_service.list_state_change_events",
             new_callable=AsyncMock,
             return_value=expected,
-        ):
+        ) as mock_list:
             result = await list_state_change_events(session, "test-account")
 
         assert result.total == 0
+        mock_list.assert_awaited_once_with(
+            session=session,
+            account_name="test-account",
+            project_id=None,
+            entity_id=None,
+            start=None,
+            end=None,
+            page=1,
+            limit=100,
+        )
+
+    @pytest.mark.asyncio
+    async def test_passes_page_and_limit(self) -> None:
+        from api.routes.operation._vision_state_change_events import (
+            list_state_change_events,
+        )
+
+        session = AsyncMock()
+        expected = ListStateChangeEventsResponse(
+            items=[],
+            total=0,
+            page=3,
+            page_size=25,
+        )
+
+        with patch(
+            f"{MODULE}.vision_event_service.list_state_change_events",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ) as mock_list:
+            await list_state_change_events(
+                session,
+                "test-account",
+                page=3,
+                limit=25,
+            )
+
+        assert mock_list.await_args is not None
+        assert mock_list.await_args.kwargs["page"] == 3
+        assert mock_list.await_args.kwargs["limit"] == 25
 
     @pytest.mark.asyncio
     async def test_not_found_returns_404(self) -> None:

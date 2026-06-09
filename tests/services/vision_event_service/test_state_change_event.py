@@ -12,6 +12,7 @@ from api.schemas.operations.vision_state_change_event import (
 )
 from db.pal_repository.data_classes.vision_state_change_event import (
     VisionStateChangeEventData,
+    VisionStateChangeEventPage,
 )
 from services.vision_event_service._implementation import _presign_frame_s3_key
 
@@ -271,7 +272,10 @@ class TestListStateChangeEvents:
             patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
         ):
             repo = AsyncMock()
-            repo.list_by_account.return_value = [event_data]
+            repo.list_by_account.return_value = VisionStateChangeEventPage(
+                items=[event_data],
+                total=7,
+            )
             mock_repo_cls.return_value = repo
 
             from services.vision_event_service._implementation import (
@@ -280,7 +284,9 @@ class TestListStateChangeEvents:
 
             result = await list_state_change_events(session, ACCOUNT_NAME)
 
-            assert result.total == 1
+            assert result.total == 7
+            assert result.page == 1
+            assert result.page_size == 100
             assert len(result.items) == 1
 
     @pytest.mark.asyncio
@@ -319,7 +325,10 @@ class TestListStateChangeEvents:
             patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
         ):
             repo = AsyncMock()
-            repo.list_by_account.return_value = []
+            repo.list_by_account.return_value = VisionStateChangeEventPage(
+                items=[],
+                total=0,
+            )
             mock_repo_cls.return_value = repo
 
             from services.vision_event_service._implementation import (
@@ -336,12 +345,60 @@ class TestListStateChangeEvents:
             )
 
             assert result.total == 0
+            assert result.page == 1
+            assert result.page_size == 100
             repo.list_by_account.assert_awaited_once_with(
                 account_id=ACCOUNT_ID,
                 project_id=project_id,
                 entity_id=entity_id,
                 start=start,
                 end=end,
+                page=1,
+                limit=100,
+            )
+
+    @pytest.mark.asyncio
+    async def test_passes_page_and_limit(self) -> None:
+        session = AsyncMock()
+        mock_account = MagicMock()
+        mock_account.id = ACCOUNT_ID
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=mock_account,
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.list_by_account.return_value = VisionStateChangeEventPage(
+                items=[],
+                total=0,
+            )
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                list_state_change_events,
+            )
+
+            result = await list_state_change_events(
+                session,
+                ACCOUNT_NAME,
+                page=3,
+                limit=25,
+            )
+
+            assert result.page == 3
+            assert result.page_size == 25
+            repo.list_by_account.assert_awaited_once_with(
+                account_id=ACCOUNT_ID,
+                project_id=None,
+                entity_id=None,
+                start=None,
+                end=None,
+                page=3,
+                limit=25,
             )
 
 

@@ -42,6 +42,7 @@ def sample_orm_row(sample_id: uuid.UUID, sample_project_id: uuid.UUID) -> MagicM
     row.severity = "high"
     row.is_active = True
     row.rule_metadata = {"threshold": 0.8}
+    row.label = ["cleanliness", "front-of-house"]
     row.created_at = None
     row.updated_at = None
     return row
@@ -57,6 +58,7 @@ def sample_data(sample_id: uuid.UUID, sample_project_id: uuid.UUID) -> VisionRul
         severity="high",
         is_active=True,
         rule_metadata={"threshold": 0.8},
+        label=["cleanliness", "front-of-house"],
         description="Check table cleanness",
     )
 
@@ -73,6 +75,8 @@ class TestCreate:
         await repo.create(sample_data)
 
         mock_session.add.assert_called_once()
+        created = mock_session.add.call_args.args[0]
+        assert created.label == ["cleanliness", "front-of-house"]
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -108,6 +112,7 @@ class TestGetById:
         assert isinstance(data, VisionRuleData)
         assert data.id == sample_id
         assert data.name == "Table must be clean"
+        assert data.label == ["cleanliness", "front-of-house"]
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(

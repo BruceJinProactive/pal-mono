@@ -81,3 +81,5 @@ class ListStateChangeEventsResponse(BaseModel):
 
     items: list[StateChangeEventResponse]
     total: int
+    page: int = 1
+    page_size: int = 100

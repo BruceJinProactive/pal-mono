@@ -17,3 +17,9 @@ class VisionStateChangeEventData:
     previous_state_id: uuid.UUID | None = None
     confidence: float | None = None
     frame_s3_key: str | None = None
+
+
+@dataclass(frozen=True)
+class VisionStateChangeEventPage:
+    items: list[VisionStateChangeEventData]
+    total: int

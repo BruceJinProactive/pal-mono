@@ -150,6 +150,8 @@ async def list_state_change_events(
     entity_id: uuid.UUID | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
+    page: int = 1,
+    limit: int = 100,
 ) -> ListStateChangeEventsResponse:
     account = await account_service.get_account_async(session, account_name)
     if not account:
@@ -162,11 +164,15 @@ async def list_state_change_events(
         entity_id=entity_id,
         start=start,
         end=end,
+        page=page,
+        limit=limit,
     )
-    items = await asyncio.gather(*[_build_response(e) for e in events])
+    items = await asyncio.gather(*[_build_response(e) for e in events.items])
     return ListStateChangeEventsResponse(
         items=list(items),
-        total=len(items),
+        total=events.total,
+        page=page,
+        page_size=limit,
     )
 
 

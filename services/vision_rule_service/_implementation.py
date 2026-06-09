@@ -15,6 +15,8 @@ from db.pal_repository.data_classes.vision_rule import VisionRuleData
 from services import account_service
 from utils.log import logger
 
+NO_LABEL_GROUP = "no-labeld"
+
 
 def _build_response(data: VisionRuleData) -> VisionRuleResponse:
     return VisionRuleResponse(
@@ -26,9 +28,32 @@ def _build_response(data: VisionRuleData) -> VisionRuleResponse:
         severity=data.severity,
         is_active=data.is_active,
         rule_metadata=data.rule_metadata,
+        label=data.label,
         created_at=data.created_at,
         updated_at=data.updated_at,
     )
+
+
+def _label_group_keys(labels: list[str]) -> list[str]:
+    keys: list[str] = []
+    seen: set[str] = set()
+    for label in labels:
+        key = label.strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return keys or [NO_LABEL_GROUP]
+
+
+def _group_rules_by_label(
+    items: list[VisionRuleResponse],
+) -> dict[str, list[VisionRuleResponse]]:
+    grouped: dict[str, list[VisionRuleResponse]] = {}
+    for item in items:
+        for label in _label_group_keys(item.label):
+            grouped.setdefault(label, []).append(item)
+    return grouped
 
 
 async def create_vision_rule(
@@ -58,6 +83,7 @@ async def create_vision_rule(
         severity=request.severity,
         is_active=request.is_active,
         rule_metadata=request.rule_metadata,
+        label=request.label,
         description=request.description,
     )
 
@@ -104,7 +130,11 @@ async def list_vision_rules(
         limit=limit,
     )
     items = [_build_response(r) for r in rules]
-    return ListVisionRulesResponse(items=items, total=len(items))
+    return ListVisionRulesResponse(
+        items=items,
+        total=len(items),
+        items_by_label=_group_rules_by_label(items),
+    )
 
 
 async def update_vision_rule(
@@ -135,6 +165,8 @@ async def update_vision_rule(
         merged = dict(data.rule_metadata)
         merged.update(request.rule_metadata)
         update_fields["rule_metadata"] = merged
+    if request.label is not None:
+        update_fields["label"] = request.label
 
     if not update_fields:
         return _build_response(data)

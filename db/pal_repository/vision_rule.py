@@ -20,6 +20,7 @@ def _to_data(row: VisionRule) -> VisionRuleData:
         severity=row.severity,
         is_active=row.is_active,
         rule_metadata=dict(row.rule_metadata) if row.rule_metadata else {},
+        label=list(row.label) if row.label else [],
         description=row.description,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -41,6 +42,7 @@ class VisionRuleRepository:
                 severity=record.severity,
                 is_active=record.is_active,
                 rule_metadata=record.rule_metadata,
+                label=record.label,
                 description=record.description,
             )
             self.session.add(row)

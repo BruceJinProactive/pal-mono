@@ -39,6 +39,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-04
 
+- **Vision rule labels API.** Vision-rule API responses now include `label`, and PATCH updates can replace labels with a provided string list, including `[]` to clear them. -> `docs/state/architecture.md`
+- **Vision rules grouped by label.** `GET /accounts/{account_name}/vision-rules` now includes `items_by_label`, where each rule appears under every label it carries and unlabeled rules appear under `no-labeld`. -> `docs/state/architecture.md`
+- **Paginate state-change event list.** `GET /accounts/{account_name}/state-change-events` now accepts `page` plus `limit`, returns rows ordered by `observed_at` descending for that page, and reports `total` as the full filtered match count. -> `docs/state/architecture.md`
 - **Admin conversation call-purpose filters use first-level purposes.** Conversation filter values now split historical comma-joined `Conversation.purpose` strings into canonical `CallPurpose` enum values, and filtering by a purpose matches conversations whose purpose list contains that selected token instead of requiring an exact whole-string match. -> `docs/log.md`
 - **Message service tool-result cache writes.** `message_service` now schedules best-effort background writes for streaming and non-streaming `tool_call` payloads through `utils.cache.tool_result_cache.append_tool_result(...)`, keeping Redis details inside the cache adapter. -> `docs/plans/tool-result-elasticache-migration.md`
 - **Tool-result cache per-family allowlists.** Strengthened the ElastiCache tool-result cache adapter so `build_cacheable_tool_result(...)` applies explicit Toast, Adora, and generic `cacheable_result` field allowlists before byte-limit checks while retaining recursive sensitive-key redaction. -> `docs/plans/tool-result-elasticache-migration.md`

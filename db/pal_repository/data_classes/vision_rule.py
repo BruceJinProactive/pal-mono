@@ -15,6 +15,7 @@ class VisionRuleData:
     severity: str
     is_active: bool
     rule_metadata: dict[str, Any] = field(default_factory=dict)
+    label: list[str] = field(default_factory=list)
     description: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

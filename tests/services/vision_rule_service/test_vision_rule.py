@@ -34,6 +34,7 @@ def _make_rule_data(**overrides: object) -> VisionRuleData:
         "severity": "high",
         "is_active": True,
         "rule_metadata": {},
+        "label": [],
         "description": None,
         "created_at": None,
         "updated_at": None,
@@ -52,6 +53,7 @@ class TestCreateVisionRule:
             name="Table must be clean",
             type="table_cleanness",
             severity="high",
+            label=["cleanliness"],
         )
 
         with (
@@ -73,7 +75,10 @@ class TestCreateVisionRule:
 
             assert result.name == "Table must be clean"
             assert result.type == "table_cleanness"
+            assert result.label == ["cleanliness"]
             repo.create.assert_awaited_once()
+            created_record = repo.create.call_args.args[0]
+            assert created_record.label == ["cleanliness"]
 
     @pytest.mark.asyncio
     async def test_raises_when_account_not_found(self) -> None:
@@ -129,7 +134,7 @@ class TestGetVisionRule:
     async def test_returns_rule(self) -> None:
         session = AsyncMock()
         rule_id = uuid.uuid4()
-        rule_data = _make_rule_data(id=rule_id)
+        rule_data = _make_rule_data(id=rule_id, label=["front-of-house"])
 
         with (
             patch(
@@ -148,6 +153,7 @@ class TestGetVisionRule:
             result = await get_vision_rule(session, rule_id, ACCOUNT_NAME)
 
             assert result.id == rule_id
+            assert result.label == ["front-of-house"]
 
     @pytest.mark.asyncio
     async def test_raises_when_not_found(self) -> None:
@@ -176,7 +182,38 @@ class TestListVisionRules:
     @pytest.mark.asyncio
     async def test_returns_rules(self) -> None:
         session = AsyncMock()
-        rule_data = _make_rule_data()
+        rule_id = uuid.uuid4()
+        rule_data = _make_rule_data(id=rule_id, label=["cleanliness", "priority"])
+        unlabeled_rule_id = uuid.uuid4()
+        unlabeled_rule_data = _make_rule_data(id=unlabeled_rule_id, label=[])
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionRuleRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.list_by_account.return_value = [rule_data, unlabeled_rule_data]
+            mock_repo_cls.return_value = repo
+
+            from services.vision_rule_service._implementation import list_vision_rules
+
+            result = await list_vision_rules(session, ACCOUNT_NAME)
+
+            assert result.total == 2
+            assert result.items[0].label == ["cleanliness", "priority"]
+            assert result.items_by_label["cleanliness"][0].id == rule_id
+            assert result.items_by_label["priority"][0].id == rule_id
+            assert result.items_by_label["no-labeld"][0].id == unlabeled_rule_id
+
+    @pytest.mark.asyncio
+    async def test_groups_labels_once_per_rule(self) -> None:
+        session = AsyncMock()
+        rule_id = uuid.uuid4()
+        rule_data = _make_rule_data(id=rule_id, label=["priority", "priority", " "])
 
         with (
             patch(
@@ -194,7 +231,8 @@ class TestListVisionRules:
 
             result = await list_vision_rules(session, ACCOUNT_NAME)
 
-            assert result.total == 1
+            assert list(result.items_by_label.keys()) == ["priority"]
+            assert [rule.id for rule in result.items_by_label["priority"]] == [rule_id]
 
     @pytest.mark.asyncio
     async def test_raises_when_account_not_found(self) -> None:
@@ -318,6 +356,64 @@ class TestUpdateVisionRule:
 
             call_kwargs = repo.update.call_args[1]
             assert call_kwargs["rule_metadata"] == {"existing": "value", "new": "field"}
+
+    @pytest.mark.asyncio
+    async def test_replaces_labels(self) -> None:
+        session = AsyncMock()
+        rule_id = uuid.uuid4()
+        rule_data = _make_rule_data(id=rule_id, label=["old"])
+        updated_data = _make_rule_data(id=rule_id, label=["new", "priority"])
+        request = UpdateVisionRuleRequest(label=["new", "priority"])
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionRuleRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = rule_data
+            repo.update.return_value = updated_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_rule_service._implementation import update_vision_rule
+
+            result = await update_vision_rule(session, rule_id, request, ACCOUNT_NAME)
+
+            assert result.label == ["new", "priority"]
+            call_kwargs = repo.update.call_args[1]
+            assert call_kwargs["label"] == ["new", "priority"]
+
+    @pytest.mark.asyncio
+    async def test_clears_labels(self) -> None:
+        session = AsyncMock()
+        rule_id = uuid.uuid4()
+        rule_data = _make_rule_data(id=rule_id, label=["old"])
+        updated_data = _make_rule_data(id=rule_id, label=[])
+        request = UpdateVisionRuleRequest(label=[])
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionRuleRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = rule_data
+            repo.update.return_value = updated_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_rule_service._implementation import update_vision_rule
+
+            result = await update_vision_rule(session, rule_id, request, ACCOUNT_NAME)
+
+            assert result.label == []
+            call_kwargs = repo.update.call_args[1]
+            assert call_kwargs["label"] == []
 
 
 class TestDeleteVisionRule:

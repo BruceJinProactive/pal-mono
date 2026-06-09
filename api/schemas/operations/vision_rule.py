@@ -21,6 +21,9 @@ class CreateVisionRuleRequest(BaseModel):
     rule_metadata: dict[str, Any] = Field(
         default_factory=dict, description="Arbitrary rule metadata"
     )
+    label: list[str] = Field(
+        default_factory=list, description="Labels associated with the rule"
+    )
 
 
 class UpdateVisionRuleRequest(BaseModel):
@@ -34,6 +37,9 @@ class UpdateVisionRuleRequest(BaseModel):
     )
     rule_metadata: dict[str, Any] | None = Field(
         default=None, description="Rule metadata to merge"
+    )
+    label: list[str] | None = Field(
+        default=None, description="Labels to replace the existing rule labels"
     )
 
 
@@ -50,6 +56,9 @@ class VisionRuleResponse(BaseModel):
     severity: str = Field(description="Rule severity level")
     is_active: bool = Field(description="Whether the rule is active")
     rule_metadata: dict[str, Any] = Field(description="Arbitrary rule metadata")
+    label: list[str] = Field(
+        default_factory=list, description="Labels associated with the rule"
+    )
     created_at: datetime | None = Field(description="Creation timestamp")
     updated_at: datetime | None = Field(description="Last update timestamp")
 
@@ -59,3 +68,7 @@ class ListVisionRulesResponse(BaseModel):
 
     items: list[VisionRuleResponse] = Field(description="List of vision rules")
     total: int = Field(description="Total number of rules returned")
+    items_by_label: dict[str, list[VisionRuleResponse]] = Field(
+        default_factory=dict,
+        description="Vision rules grouped by label; unlabeled rules use no-labeld",
+    )

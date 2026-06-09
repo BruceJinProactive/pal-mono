@@ -13,6 +13,20 @@ from db.pal_repository.vision_state_change_event import VisionStateChangeEventRe
 from db.tables.vision_state_change_events import VisionStateChangeEvent
 
 
+def _mock_count_result(total: int) -> MagicMock:
+    result = MagicMock()
+    result.scalar_one.return_value = total
+    return result
+
+
+def _mock_list_result(rows: list[MagicMock]) -> MagicMock:
+    result = MagicMock()
+    scalars = MagicMock()
+    scalars.all.return_value = rows
+    result.scalars.return_value = scalars
+    return result
+
+
 @pytest.fixture
 def mock_session() -> AsyncMock:
     return AsyncMock()
@@ -225,17 +239,17 @@ class TestListByAccount:
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
     ) -> None:
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [sample_orm_row]
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.side_effect = [
+            _mock_count_result(3),
+            _mock_list_result([sample_orm_row]),
+        ]
 
         account_id = uuid.uuid4()
         results = await repo.list_by_account(account_id)
 
-        assert len(results) == 1
-        assert isinstance(results[0], VisionStateChangeEventData)
+        assert results.total == 3
+        assert len(results.items) == 1
+        assert isinstance(results.items[0], VisionStateChangeEventData)
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_when_no_results(
@@ -243,14 +257,14 @@ class TestListByAccount:
         repo: VisionStateChangeEventRepository,
         mock_session: AsyncMock,
     ) -> None:
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = []
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.side_effect = [
+            _mock_count_result(0),
+            _mock_list_result([]),
+        ]
 
         results = await repo.list_by_account(uuid.uuid4())
-        assert results == []
+        assert results.items == []
+        assert results.total == 0
 
     @pytest.mark.asyncio
     async def test_returns_empty_on_db_error(
@@ -261,7 +275,8 @@ class TestListByAccount:
         mock_session.execute.side_effect = Exception("timeout")
 
         results = await repo.list_by_account(uuid.uuid4())
-        assert results == []
+        assert results.items == []
+        assert results.total == 0
         mock_session.rollback.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -271,14 +286,13 @@ class TestListByAccount:
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
     ) -> None:
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [sample_orm_row]
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.side_effect = [
+            _mock_count_result(1),
+            _mock_list_result([sample_orm_row]),
+        ]
 
         results = await repo.list_by_account(uuid.uuid4(), project_id=uuid.uuid4())
-        assert len(results) == 1
+        assert len(results.items) == 1
 
     @pytest.mark.asyncio
     async def test_filters_by_entity_id(
@@ -287,14 +301,13 @@ class TestListByAccount:
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
     ) -> None:
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [sample_orm_row]
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.side_effect = [
+            _mock_count_result(1),
+            _mock_list_result([sample_orm_row]),
+        ]
 
         results = await repo.list_by_account(uuid.uuid4(), entity_id=uuid.uuid4())
-        assert len(results) == 1
+        assert len(results.items) == 1
 
     @pytest.mark.asyncio
     async def test_filters_by_time_range(
@@ -303,16 +316,36 @@ class TestListByAccount:
         mock_session: AsyncMock,
         sample_orm_row: MagicMock,
     ) -> None:
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [sample_orm_row]
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.side_effect = [
+            _mock_count_result(1),
+            _mock_list_result([sample_orm_row]),
+        ]
 
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         end = datetime(2026, 12, 31, tzinfo=timezone.utc)
         results = await repo.list_by_account(uuid.uuid4(), start=start, end=end)
-        assert len(results) == 1
+        assert len(results.items) == 1
+
+    @pytest.mark.asyncio
+    async def test_applies_page_offset_and_limit(
+        self,
+        repo: VisionStateChangeEventRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+    ) -> None:
+        mock_session.execute.side_effect = [
+            _mock_count_result(99),
+            _mock_list_result([sample_orm_row]),
+        ]
+
+        await repo.list_by_account(uuid.uuid4(), page=3, limit=25)
+
+        statement = mock_session.execute.await_args_list[1].args[0]
+        compiled_params = statement.compile().params
+        assert "LIMIT" in str(statement)
+        assert "OFFSET" in str(statement)
+        assert 25 in compiled_params.values()
+        assert 50 in compiled_params.values()
 
 
 class TestDelete:
