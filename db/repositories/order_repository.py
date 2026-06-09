@@ -136,6 +136,81 @@ class OrderRepository:
             self.session.rollback()
             raise
 
+    def get_latest_order_by_conversation_id(
+        self,
+        conversation_id: uuid.UUID,
+    ) -> Optional[Order]:
+        """
+        Get the newest order with an external order number for a conversation.
+
+        Args:
+            conversation_id: Conversation identifier to match.
+
+        Returns:
+            Order: The newest matching order with a displayable external order ID,
+            or None if no such order exists.
+        """
+        try:
+            sort_time = func.coalesce(Order.order_time, Order.created_at)
+            return (
+                self.session.query(Order)
+                .filter(
+                    Order.conversation_id == conversation_id,
+                    Order.order_id.isnot(None),
+                    Order.order_id != "",
+                )
+                .order_by(sort_time.desc(), Order.created_at.desc())
+                .first()
+            )
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise
+
+    def get_latest_orders_by_conversation_ids(
+        self,
+        conversation_ids: Sequence[uuid.UUID],
+    ) -> dict[uuid.UUID, Order]:
+        """
+        Get the newest order with an external order number for each conversation.
+
+        Args:
+            conversation_ids: Conversation identifiers to match.
+
+        Returns:
+            Mapping of conversation ID to its newest matching order.
+        """
+        sanitized_conversation_ids = [
+            conversation_id for conversation_id in conversation_ids if conversation_id
+        ]
+        if not sanitized_conversation_ids:
+            return {}
+
+        try:
+            sort_time = func.coalesce(Order.order_time, Order.created_at)
+            orders = (
+                self.session.query(Order)
+                .filter(
+                    Order.conversation_id.in_(sanitized_conversation_ids),
+                    Order.order_id.isnot(None),
+                    Order.order_id != "",
+                )
+                .order_by(
+                    Order.conversation_id,
+                    sort_time.desc(),
+                    Order.created_at.desc(),
+                )
+                .all()
+            )
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise
+
+        latest_orders: dict[uuid.UUID, Order] = {}
+        for order in orders:
+            if order.conversation_id not in latest_orders:
+                latest_orders[order.conversation_id] = order
+        return latest_orders
+
     def get_latest_order_by_phone_since(
         self,
         store_id: str,

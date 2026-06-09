@@ -377,6 +377,90 @@ def test_order_repository_external_ids_rolls_back_and_reraises_db_error() -> Non
     session.rollback.assert_called_once()
 
 
+def test_order_repository_conversation_id_queries_latest_displayable_order() -> None:
+    """Conversation lookup should return the newest order with an external ID."""
+    session = MagicMock()
+    query = MagicMock()
+    expected_order = MagicMock()
+    session.query.return_value = query
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.first.return_value = expected_order
+    repository = OrderRepository(session)
+
+    result = repository.get_latest_order_by_conversation_id(uuid.uuid4())
+
+    assert result is expected_order
+    session.query.assert_called_once()
+    query.filter.assert_called_once()
+    query.order_by.assert_called_once()
+    query.first.assert_called_once()
+
+
+def test_order_repository_conversation_id_rolls_back_and_reraises_db_error() -> None:
+    """Conversation lookup should rollback dirty sessions on database errors."""
+    session = MagicMock()
+    session.query.side_effect = SQLAlchemyError("db down")
+    repository = OrderRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repository.get_latest_order_by_conversation_id(uuid.uuid4())
+
+    session.rollback.assert_called_once()
+
+
+def test_order_repository_conversation_ids_returns_none_for_empty_ids() -> None:
+    """Empty conversation ID lists should not query the database."""
+    session = MagicMock()
+    repository = OrderRepository(session)
+
+    result = repository.get_latest_orders_by_conversation_ids([])
+
+    assert result == {}
+    session.query.assert_not_called()
+
+
+def test_order_repository_conversation_ids_keeps_first_order_per_conversation() -> None:
+    """Batch lookup should keep the first ordered row for each conversation."""
+    conversation_a = uuid.uuid4()
+    conversation_b = uuid.uuid4()
+    latest_a = SimpleNamespace(conversation_id=conversation_a, order_id="ORD-A2")
+    older_a = SimpleNamespace(conversation_id=conversation_a, order_id="ORD-A1")
+    latest_b = SimpleNamespace(conversation_id=conversation_b, order_id="ORD-B1")
+    session = MagicMock()
+    query = MagicMock()
+    session.query.return_value = query
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.all.return_value = [latest_a, older_a, latest_b]
+    repository = OrderRepository(session)
+
+    result = repository.get_latest_orders_by_conversation_ids(
+        [conversation_a, conversation_b]
+    )
+
+    assert result == {
+        conversation_a: latest_a,
+        conversation_b: latest_b,
+    }
+    session.query.assert_called_once()
+    query.filter.assert_called_once()
+    query.order_by.assert_called_once()
+    query.all.assert_called_once()
+
+
+def test_order_repository_conversation_ids_rolls_back_and_reraises_db_error() -> None:
+    """Batch conversation lookup should rollback dirty sessions on database errors."""
+    session = MagicMock()
+    session.query.side_effect = SQLAlchemyError("db down")
+    repository = OrderRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repository.get_latest_orders_by_conversation_ids([uuid.uuid4()])
+
+    session.rollback.assert_called_once()
+
+
 def test_order_repository_phone_since_applies_pending_filter() -> None:
     """Phone/date fallback should optionally limit matches to pending orders."""
     session = MagicMock()

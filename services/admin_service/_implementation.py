@@ -143,6 +143,13 @@ def list_conversations_in_account(
         limit=page_size,
     )
 
+    order_repository = db.OrderRepository(db_session, auto_commit=False)
+    latest_orders_by_conversation_id = (
+        order_repository.get_latest_orders_by_conversation_ids(
+            [session.id for session in sessions]
+        )
+    )
+
     # Build the session previews
     user_session_previews = [
         UserSessionPreview(
@@ -153,6 +160,11 @@ def list_conversations_in_account(
             or message_repository.get_last_message_by_conversation(session.id),
             message_count=message_repository.get_message_count_by_conversation(
                 session.id
+            ),
+            order_number=(
+                latest_orders_by_conversation_id[session.id].order_id
+                if session.id in latest_orders_by_conversation_id
+                else None
             ),
         )
         for session in sessions
@@ -171,6 +183,16 @@ def get_conversation_filter_values(
     """
     conversation_repository = db.ConversationRepository(db_session)
     return conversation_repository.get_distinct_filter_values(account_id)
+
+
+def get_conversation_order_number(
+    session: Session,
+    conversation_id: uuid.UUID,
+) -> str | None:
+    """Get the latest external order number associated with a conversation."""
+    order_repository = db.OrderRepository(session, auto_commit=False)
+    order = order_repository.get_latest_order_by_conversation_id(conversation_id)
+    return order.order_id if order else None
 
 
 def get_inbox_conversations(

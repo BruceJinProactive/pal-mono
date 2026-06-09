@@ -35,6 +35,7 @@ class UserSessionPreview:
     conversation: db.Conversation
     last_message: db.Message | None
     message_count: int
+    order_number: str | None = None
 
 
 @dataclass

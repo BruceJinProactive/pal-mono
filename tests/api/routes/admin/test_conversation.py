@@ -11,6 +11,8 @@ from fastapi import HTTPException
 
 from api.routes.admin import _builder
 from api.routes.admin._conversation import (
+    get_conversation_detail,
+    list_account_conversations,
     list_conversation_messages,
     lookup_conversation_account,
 )
@@ -162,6 +164,93 @@ class TestConversationSenderIdentifier:
         )
 
         assert result.sender_identifier == "+15551112222"
+
+    def test_build_conversation_response_includes_order_number(self) -> None:
+        conversation = _make_builder_conversation("voice", ["voice:+15551112222"])
+
+        result = _builder.build_conversation(
+            conversation=conversation,
+            message_count=1,
+            last_message=None,
+            order_number="ORD-123",
+        )
+
+        assert result.order_number == "ORD-123"
+
+    def test_build_conversation_detail_response_includes_order_number(self) -> None:
+        conversation = _make_builder_conversation("voice", ["voice:+15551112222"])
+
+        result = _builder.build_conversation_detail(
+            conversation,
+            order_number="ORD-456",
+        )
+
+        assert result.order_number == "ORD-456"
+
+
+class TestListAccountConversationsOrderNumber:
+    """Verify admin conversation list responses include order numbers."""
+
+    @pytest.mark.asyncio
+    async def test_passes_preview_order_number_to_response(self) -> None:
+        account = MagicMock()
+        account.id = uuid.uuid4()
+        conversation = _make_builder_conversation("voice", ["voice:+15551112222"])
+        preview = SimpleNamespace(
+            conversation=conversation,
+            last_message=None,
+            message_count=1,
+            order_number="ORD-123",
+        )
+
+        with (
+            patch("api.routes.admin._conversation.account_service") as mock_account,
+            patch("api.routes.admin._conversation.admin_service") as mock_admin,
+        ):
+            mock_account.get_account.return_value = account
+            mock_admin.list_conversations_in_account.return_value = (1, [preview])
+            mock_admin.get_conversation_filter_values.return_value = ([], [], [])
+
+            result = await list_account_conversations(
+                account_name="test-account",
+                keyword="",
+                channel=None,
+                project_id=None,
+                lookback=None,
+                page=1,
+                page_size=10,
+                escalated=False,
+                hide_testing_sessions=True,
+                language=None,
+                purpose=None,
+                ended_reason=None,
+                customer_converted=None,
+                context=_make_context(),
+                session=MagicMock(),
+            )
+
+        assert result.sessions[0].order_number == "ORD-123"
+
+    @pytest.mark.asyncio
+    async def test_get_detail_includes_order_number(self) -> None:
+        conversation = _make_builder_conversation(
+            "voice",
+            ["voice:+15551112222"],
+        )
+        conversation.user.account.name = "test-account"
+
+        with patch("api.routes.admin._conversation.admin_service") as mock_admin:
+            mock_admin.get_conversation_by_id.return_value = conversation
+            mock_admin.get_conversation_order_number.return_value = "ORD-456"
+
+            result = await get_conversation_detail(
+                account_name="test-account",
+                conversation_id=conversation.id,
+                context=_make_context(),
+                session=MagicMock(),
+            )
+
+        assert result.order_number == "ORD-456"
 
 
 class TestListConversationMessagesFiltering:

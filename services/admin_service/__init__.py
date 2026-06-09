@@ -71,6 +71,23 @@ def get_conversation_filter_values(
     return _implementation.get_conversation_filter_values(account_id, db_session)
 
 
+def get_conversation_order_number(
+    session: Session,
+    conversation_id: uuid.UUID,
+) -> str | None:
+    """
+    Return the latest external order number associated with a conversation.
+
+    Args:
+        session (Session): The database session.
+        conversation_id (uuid.UUID): The conversation to inspect.
+
+    Returns:
+        str | None: The latest external order ID for display, if one exists.
+    """
+    return _implementation.get_conversation_order_number(session, conversation_id)
+
+
 def get_inbox_conversations(
     session: Session,
     account_id: uuid.UUID,
@@ -865,6 +882,7 @@ async def scrape_brand_from_url(
 __all__ = [
     "list_conversations_in_account",
     "get_conversation_filter_values",
+    "get_conversation_order_number",
     "get_inbox_conversations",
     "get_conversation_by_id",
     "get_conversation_messages",

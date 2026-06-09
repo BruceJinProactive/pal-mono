@@ -258,6 +258,7 @@ def build_conversation(
     conversation: db.Conversation,
     message_count: int,
     last_message: db.Message | None,
+    order_number: str | None = None,
 ) -> Conversation:
     return Conversation(
         id=conversation.id,
@@ -271,13 +272,17 @@ def build_conversation(
         language=conversation.language,
         ended_reason=conversation.ended_reason,
         customer_converted=conversation.customer_converted,
+        order_number=order_number,
         transfer_purpose=conversation.transfer_purpose,
         agent_fingerprint=conversation.agent_fingerprint,
         prompt_fingerprint=conversation.prompt_fingerprint,
     )
 
 
-def build_conversation_detail(conversation: db.Conversation) -> ConversationDetail:
+def build_conversation_detail(
+    conversation: db.Conversation,
+    order_number: str | None = None,
+) -> ConversationDetail:
     """Build conversation detail response without messages"""
     return ConversationDetail(
         id=conversation.id,
@@ -294,6 +299,7 @@ def build_conversation_detail(conversation: db.Conversation) -> ConversationDeta
         language=conversation.language,
         ended_reason=conversation.ended_reason,
         customer_converted=conversation.customer_converted,
+        order_number=order_number,
         transfer_purpose=conversation.transfer_purpose,
         agent_fingerprint=conversation.agent_fingerprint,
         prompt_fingerprint=conversation.prompt_fingerprint,
