@@ -1,7 +1,7 @@
 """Tests for db.pal_repository.OrderRepository.
 
-Validates the async repository: ORM objects stay inside the
-repository layer and only OrderData instances are returned.
+Validates the async repository: ORM objects stay inside the repository layer and
+only data-class snapshots are returned.
 """
 
 import uuid
@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from db.pal_repository.data_classes.order import OrderData
+from db.pal_repository.data_classes.order import LatestOrderData, OrderData
 from db.pal_repository.order import OrderRepository, _to_data
 from db.tables.orders import Order
 
@@ -71,6 +71,15 @@ def _make_order_row(conversation_id: uuid.UUID, order_id: str) -> MagicMock:
     row.order_time = datetime(2025, 6, 1, 12, 0, tzinfo=timezone.utc)
     row.updated_at = datetime(2025, 6, 1, 12, 5, tzinfo=timezone.utc)
     return row
+
+
+def _make_latest_order_mapping(row: MagicMock) -> dict[str, object]:
+    return {
+        "id": row.id,
+        "conversation_id": row.conversation_id,
+        "created_at": row.created_at,
+        "order_id": row.order_id,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -245,12 +254,16 @@ class TestGetLatestOrderByConversationId:
         sample_orm_row: MagicMock,
     ) -> None:
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_mappings = MagicMock()
+        mock_mappings.one_or_none.return_value = _make_latest_order_mapping(
+            sample_orm_row
+        )
+        mock_result.mappings.return_value = mock_mappings
         mock_session.execute.return_value = mock_result
 
         data = await repo.get_latest_order_by_conversation_id(uuid.uuid4())
 
-        assert isinstance(data, OrderData)
+        assert isinstance(data, LatestOrderData)
         assert data.order_id == "ORD-001"
 
     @pytest.mark.asyncio
@@ -258,7 +271,9 @@ class TestGetLatestOrderByConversationId:
         self, repo: OrderRepository, mock_session: AsyncMock
     ) -> None:
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_mappings = MagicMock()
+        mock_mappings.one_or_none.return_value = None
+        mock_result.mappings.return_value = mock_mappings
         mock_session.execute.return_value = mock_result
 
         assert await repo.get_latest_order_by_conversation_id(uuid.uuid4()) is None
@@ -291,9 +306,13 @@ class TestGetLatestOrdersByConversationIds:
         older_a = _make_order_row(conversation_a, "ORD-A1")
         latest_b = _make_order_row(conversation_b, "ORD-B1")
         mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = [latest_a, older_a, latest_b]
-        mock_result.scalars.return_value = mock_scalars
+        mock_mappings = MagicMock()
+        mock_mappings.all.return_value = [
+            _make_latest_order_mapping(latest_a),
+            _make_latest_order_mapping(older_a),
+            _make_latest_order_mapping(latest_b),
+        ]
+        mock_result.mappings.return_value = mock_mappings
         mock_session.execute.return_value = mock_result
 
         results = await repo.get_latest_orders_by_conversation_ids(
@@ -301,6 +320,7 @@ class TestGetLatestOrdersByConversationIds:
         )
 
         assert set(results) == {conversation_a, conversation_b}
+        assert isinstance(results[conversation_a], LatestOrderData)
         assert results[conversation_a].order_id == "ORD-A2"
         assert results[conversation_b].order_id == "ORD-B1"
 

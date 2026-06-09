@@ -35,3 +35,13 @@ class OrderData:
         object.__setattr__(
             self, "order_items", tuple(self.order_items) if self.order_items else ()
         )
+
+
+@dataclass(frozen=True)
+class LatestOrderData:
+    """Lightweight order projection for conversation display lookups."""
+
+    id: uuid.UUID
+    conversation_id: uuid.UUID
+    created_at: datetime
+    order_id: str | None = None

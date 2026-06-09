@@ -381,17 +381,29 @@ def test_order_repository_conversation_id_queries_latest_displayable_order() -> 
     """Conversation lookup should return the newest order with an external ID."""
     session = MagicMock()
     query = MagicMock()
-    expected_order = MagicMock()
+    conversation_id = uuid.uuid4()
+    expected_order = SimpleNamespace(
+        id=uuid.uuid4(),
+        conversation_id=conversation_id,
+        created_at=datetime(2026, 3, 19),
+        order_id="ORD-789",
+    )
     session.query.return_value = query
+    query.with_entities.return_value = query
     query.filter.return_value = query
     query.order_by.return_value = query
     query.first.return_value = expected_order
     repository = OrderRepository(session)
 
-    result = repository.get_latest_order_by_conversation_id(uuid.uuid4())
+    result = repository.get_latest_order_by_conversation_id(conversation_id)
 
-    assert result is expected_order
+    assert result is not None
+    assert result.id == expected_order.id
+    assert result.conversation_id == conversation_id
+    assert result.created_at == expected_order.created_at
+    assert result.order_id == "ORD-789"
     session.query.assert_called_once()
+    query.with_entities.assert_called_once()
     query.filter.assert_called_once()
     query.order_by.assert_called_once()
     query.first.assert_called_once()
@@ -424,12 +436,28 @@ def test_order_repository_conversation_ids_keeps_first_order_per_conversation() 
     """Batch lookup should keep the first ordered row for each conversation."""
     conversation_a = uuid.uuid4()
     conversation_b = uuid.uuid4()
-    latest_a = SimpleNamespace(conversation_id=conversation_a, order_id="ORD-A2")
-    older_a = SimpleNamespace(conversation_id=conversation_a, order_id="ORD-A1")
-    latest_b = SimpleNamespace(conversation_id=conversation_b, order_id="ORD-B1")
+    latest_a = SimpleNamespace(
+        id=uuid.uuid4(),
+        conversation_id=conversation_a,
+        created_at=datetime(2026, 3, 19),
+        order_id="ORD-A2",
+    )
+    older_a = SimpleNamespace(
+        id=uuid.uuid4(),
+        conversation_id=conversation_a,
+        created_at=datetime(2026, 3, 18),
+        order_id="ORD-A1",
+    )
+    latest_b = SimpleNamespace(
+        id=uuid.uuid4(),
+        conversation_id=conversation_b,
+        created_at=datetime(2026, 3, 19),
+        order_id="ORD-B1",
+    )
     session = MagicMock()
     query = MagicMock()
     session.query.return_value = query
+    query.with_entities.return_value = query
     query.filter.return_value = query
     query.order_by.return_value = query
     query.all.return_value = [latest_a, older_a, latest_b]
@@ -439,11 +467,13 @@ def test_order_repository_conversation_ids_keeps_first_order_per_conversation() 
         [conversation_a, conversation_b]
     )
 
-    assert result == {
-        conversation_a: latest_a,
-        conversation_b: latest_b,
-    }
+    assert set(result) == {conversation_a, conversation_b}
+    assert result[conversation_a].id == latest_a.id
+    assert result[conversation_a].order_id == "ORD-A2"
+    assert result[conversation_b].id == latest_b.id
+    assert result[conversation_b].order_id == "ORD-B1"
     session.query.assert_called_once()
+    query.with_entities.assert_called_once()
     query.filter.assert_called_once()
     query.order_by.assert_called_once()
     query.all.assert_called_once()

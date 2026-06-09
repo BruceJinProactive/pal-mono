@@ -18,6 +18,7 @@ from .schema import (
     CreatedProjectInfo,
     LeadFilters,
     LeadParams,
+    OrderDisplayInfo,
     ProjectSetup,
     UserSessionPreview,
 )
@@ -86,6 +87,26 @@ def get_conversation_order_number(
         str | None: The latest external order ID for display, if one exists.
     """
     return _implementation.get_conversation_order_number(session, conversation_id)
+
+
+def get_conversation_order_display_info(
+    session: Session,
+    conversation_id: uuid.UUID,
+) -> OrderDisplayInfo:
+    """
+    Return order display metadata associated with a conversation.
+
+    Args:
+        session (Session): The database session.
+        conversation_id (uuid.UUID): The conversation to inspect.
+
+    Returns:
+        OrderDisplayInfo: Whether an order exists and any displayable order number.
+    """
+    return _implementation.get_conversation_order_display_info(
+        session,
+        conversation_id,
+    )
 
 
 def get_inbox_conversations(
@@ -883,6 +904,7 @@ __all__ = [
     "list_conversations_in_account",
     "get_conversation_filter_values",
     "get_conversation_order_number",
+    "get_conversation_order_display_info",
     "get_inbox_conversations",
     "get_conversation_by_id",
     "get_conversation_messages",

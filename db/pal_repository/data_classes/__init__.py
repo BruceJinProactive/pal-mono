@@ -30,7 +30,7 @@ from .lead import LeadData
 from .message import MessageData
 from .monitoring_config import MonitoringConfigData
 from .monitoring_run import MonitoringRunData
-from .order import OrderData
+from .order import LatestOrderData, OrderData
 from .permission import PermissionData
 from .phone_call import PhoneCallData
 from .project import ProjectData
@@ -93,6 +93,7 @@ __all__ = [
     "FeedbackData",
     "IntegrationData",
     "LeadData",
+    "LatestOrderData",
     "MessageData",
     "MonitoringConfigData",
     "MonitoringRunData",

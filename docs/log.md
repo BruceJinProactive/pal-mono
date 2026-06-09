@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-09
+
+- **Admin conversation order presence.** Admin conversation list/detail responses now distinguish displayable order numbers from order existence: real non-zero order IDs are returned as `order_number`, while conversations with placeholder order IDs still return `has_order=true` so the admin console can identify unpaid placed-order conversations without changing POS order persistence.
+
+---
+
 ## 2026-06-08
 
 - **Internal camera lookup skips unconfigured cameras.** `GET /internal/projects/{project_id}/signal-sources/camera` now returns `204 No Content` when a camera upload references a `camera_id` that is not configured as a signal source for the project, allowing processors to skip the media without logging a 404 as an unexpected backend error.

@@ -177,6 +177,19 @@ class TestConversationSenderIdentifier:
 
         assert result.order_number == "ORD-123"
 
+    def test_build_conversation_response_includes_has_order(self) -> None:
+        conversation = _make_builder_conversation("voice", ["voice:+15551112222"])
+
+        result = _builder.build_conversation(
+            conversation=conversation,
+            message_count=1,
+            last_message=None,
+            has_order=True,
+        )
+
+        assert result.has_order is True
+        assert result.order_number is None
+
     def test_build_conversation_detail_response_includes_order_number(self) -> None:
         conversation = _make_builder_conversation("voice", ["voice:+15551112222"])
 
@@ -186,6 +199,17 @@ class TestConversationSenderIdentifier:
         )
 
         assert result.order_number == "ORD-456"
+
+    def test_build_conversation_detail_response_includes_has_order(self) -> None:
+        conversation = _make_builder_conversation("voice", ["voice:+15551112222"])
+
+        result = _builder.build_conversation_detail(
+            conversation,
+            has_order=True,
+        )
+
+        assert result.has_order is True
+        assert result.order_number is None
 
 
 class TestListAccountConversationsOrderNumber:
@@ -201,6 +225,7 @@ class TestListAccountConversationsOrderNumber:
             last_message=None,
             message_count=1,
             order_number="ORD-123",
+            has_order=True,
         )
 
         with (
@@ -230,9 +255,10 @@ class TestListAccountConversationsOrderNumber:
             )
 
         assert result.sessions[0].order_number == "ORD-123"
+        assert result.sessions[0].has_order is True
 
     @pytest.mark.asyncio
-    async def test_get_detail_includes_order_number(self) -> None:
+    async def test_get_detail_includes_order_info(self) -> None:
         conversation = _make_builder_conversation(
             "voice",
             ["voice:+15551112222"],
@@ -241,7 +267,9 @@ class TestListAccountConversationsOrderNumber:
 
         with patch("api.routes.admin._conversation.admin_service") as mock_admin:
             mock_admin.get_conversation_by_id.return_value = conversation
-            mock_admin.get_conversation_order_number.return_value = "ORD-456"
+            mock_admin.get_conversation_order_display_info.return_value = (
+                SimpleNamespace(order_number="ORD-456", has_order=True)
+            )
 
             result = await get_conversation_detail(
                 account_name="test-account",
@@ -251,6 +279,7 @@ class TestListAccountConversationsOrderNumber:
             )
 
         assert result.order_number == "ORD-456"
+        assert result.has_order is True
 
 
 class TestListConversationMessagesFiltering:

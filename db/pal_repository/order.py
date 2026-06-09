@@ -4,10 +4,11 @@ import uuid
 from collections.abc import Sequence
 
 from sqlalchemy import func, select
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.pal_repository.data_classes.order import OrderData
+from db.pal_repository.data_classes.order import LatestOrderData, OrderData
 from db.tables.orders import Order
 from utils.log import logger
 
@@ -30,6 +31,15 @@ def _to_data(row: Order) -> OrderData:
         fulfillment_strategy=row.fulfillment_strategy,
         order_time=row.order_time,
         updated_at=row.updated_at,
+    )
+
+
+def _to_latest_data(row: RowMapping) -> LatestOrderData:
+    return LatestOrderData(
+        id=row["id"],
+        conversation_id=row["conversation_id"],
+        created_at=row["created_at"],
+        order_id=row["order_id"],
     )
 
 
@@ -72,22 +82,25 @@ class OrderRepository:
     async def get_latest_order_by_conversation_id(
         self,
         conversation_id: uuid.UUID,
-    ) -> OrderData | None:
-        """Retrieve the newest order with an external order ID for a conversation."""
+    ) -> LatestOrderData | None:
+        """Retrieve the newest order for a conversation."""
         try:
             sort_time = func.coalesce(Order.order_time, Order.created_at)
             result = await self.session.execute(
-                select(Order)
+                select(
+                    Order.id.label("id"),
+                    Order.conversation_id.label("conversation_id"),
+                    Order.created_at.label("created_at"),
+                    Order.order_id.label("order_id"),
+                )
                 .filter(
                     Order.conversation_id == conversation_id,
-                    Order.order_id.isnot(None),
-                    Order.order_id != "",
                 )
                 .order_by(sort_time.desc(), Order.created_at.desc())
                 .limit(1)
             )
-            row = result.scalar_one_or_none()
-            return _to_data(row) if row else None
+            row = result.mappings().one_or_none()
+            return _to_latest_data(row) if row else None
         except SQLAlchemyError:
             await self.session.rollback()
             logger.exception("Error retrieving latest order by conversation ID")
@@ -96,8 +109,8 @@ class OrderRepository:
     async def get_latest_orders_by_conversation_ids(
         self,
         conversation_ids: Sequence[uuid.UUID],
-    ) -> dict[uuid.UUID, OrderData]:
-        """Retrieve the newest order with an external order ID per conversation."""
+    ) -> dict[uuid.UUID, LatestOrderData]:
+        """Retrieve the newest order per conversation."""
         sanitized_conversation_ids = [
             conversation_id for conversation_id in conversation_ids if conversation_id
         ]
@@ -107,11 +120,14 @@ class OrderRepository:
         try:
             sort_time = func.coalesce(Order.order_time, Order.created_at)
             result = await self.session.execute(
-                select(Order)
+                select(
+                    Order.id.label("id"),
+                    Order.conversation_id.label("conversation_id"),
+                    Order.created_at.label("created_at"),
+                    Order.order_id.label("order_id"),
+                )
                 .filter(
                     Order.conversation_id.in_(sanitized_conversation_ids),
-                    Order.order_id.isnot(None),
-                    Order.order_id != "",
                 )
                 .order_by(
                     Order.conversation_id,
@@ -119,14 +135,15 @@ class OrderRepository:
                     Order.created_at.desc(),
                 )
             )
-            rows = result.scalars().all()
+            rows = result.mappings().all()
         except SQLAlchemyError:
             await self.session.rollback()
             logger.exception("Error retrieving latest orders by conversation IDs")
             raise
 
-        latest_orders: dict[uuid.UUID, OrderData] = {}
+        latest_orders: dict[uuid.UUID, LatestOrderData] = {}
         for row in rows:
-            if row.conversation_id not in latest_orders:
-                latest_orders[row.conversation_id] = _to_data(row)
+            conversation_id = row["conversation_id"]
+            if conversation_id not in latest_orders:
+                latest_orders[conversation_id] = _to_latest_data(row)
         return latest_orders

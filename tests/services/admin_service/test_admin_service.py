@@ -10,6 +10,7 @@ import db
 from services.admin_service._implementation import (
     _include_conversation_preview,
     get_conversation_messages,
+    get_conversation_order_display_info,
     list_conversations_in_account,
 )
 
@@ -171,6 +172,103 @@ def test_list_conversations_in_account_includes_order_number(mocker):
 
     assert total == 1
     assert previews[0].order_number == "ORD-123"
+    assert previews[0].has_order is True
     order_repository.get_latest_orders_by_conversation_ids.assert_called_once_with(
         [conversation_id]
     )
+
+
+def test_list_conversations_in_account_hides_placeholder_order_number(mocker) -> None:
+    """
+    Test list_conversations_in_account hides placeholder order IDs.
+
+    Expected result: preview still indicates an order exists.
+    """
+    account_id = uuid4()
+    conversation_id = uuid4()
+    user = SimpleNamespace(id=uuid4())
+    conversation = MagicMock()
+    conversation.id = conversation_id
+    latest_order = SimpleNamespace(order_id="0")
+
+    message_repository = MagicMock()
+    message_repository.get_last_user_message_by_conversation.return_value = None
+    message_repository.get_last_message_by_conversation.return_value = MagicMock()
+    message_repository.get_message_count_by_conversation.return_value = 3
+
+    conversation_repository = MagicMock()
+    conversation_repository.get_conversation_ids_by_user_ids.return_value = [
+        conversation_id
+    ]
+    conversation_repository.get_paginated_sessions_by_ids.return_value = (
+        1,
+        [conversation],
+    )
+
+    order_repository = MagicMock()
+    order_repository.get_latest_orders_by_conversation_ids.return_value = {
+        conversation_id: latest_order
+    }
+
+    mocker.patch(
+        "services.admin_service._implementation.user_service.get_users_by_account_id",
+        return_value=[user],
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.MessageRepository",
+        return_value=message_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.ConversationRepository",
+        return_value=conversation_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.OrderRepository",
+        return_value=order_repository,
+    )
+
+    total, previews = list_conversations_in_account(
+        account_id=account_id,
+        keyword="",
+        channel=None,
+        language=None,
+        purpose=None,
+        ended_reason=None,
+        customer_converted=None,
+        project_id=None,
+        start_date=None,
+        end_date=datetime.now(timezone.utc),
+        page=1,
+        page_size=10,
+        escalated=False,
+        hide_testing_sessions=True,
+        db_session=mock_session,
+    )
+
+    assert total == 1
+    assert previews[0].order_number is None
+    assert previews[0].has_order is True
+    message_repository.get_messages_by_conversation.assert_not_called()
+
+
+def test_get_conversation_order_display_info_hides_placeholder_id(mocker) -> None:
+    """
+    Test get_conversation_order_display_info does not expose placeholder order IDs.
+
+    Expected result: the admin API returns has_order for frontend display.
+    """
+    conversation_id = uuid4()
+    order_repository = MagicMock()
+    order_repository.get_latest_order_by_conversation_id.return_value = SimpleNamespace(
+        order_id="0"
+    )
+
+    mocker.patch(
+        "services.admin_service._implementation.db.OrderRepository",
+        return_value=order_repository,
+    )
+
+    result = get_conversation_order_display_info(mock_session, conversation_id)
+
+    assert result.order_number is None
+    assert result.has_order is True

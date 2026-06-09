@@ -36,6 +36,13 @@ class UserSessionPreview:
     last_message: db.Message | None
     message_count: int
     order_number: str | None = None
+    has_order: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class OrderDisplayInfo:
+    order_number: str | None = None
+    has_order: bool = False
 
 
 @dataclass

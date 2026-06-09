@@ -72,6 +72,7 @@ async def list_account_conversations(
             last_message=preview.last_message,
             message_count=preview.message_count,
             order_number=preview.order_number,
+            has_order=preview.has_order,
         )
         for preview in user_session_previews
     ]
@@ -157,11 +158,15 @@ async def get_conversation_detail(
     if account_name != account.name:
         raise not_found_error(f"Conversation not found for id: {conversation_id}")
 
-    order_number = admin_service.get_conversation_order_number(session, conversation_id)
+    order_info = admin_service.get_conversation_order_display_info(
+        session,
+        conversation_id,
+    )
 
     return _builder.build_conversation_detail(
         conversation,
-        order_number=order_number,
+        order_number=order_info.order_number,
+        has_order=order_info.has_order,
     )
 
 

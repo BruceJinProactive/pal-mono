@@ -44,6 +44,7 @@ from services.admin_service.schema import (
     CreatedProjectInfo,
     LeadFilters,
     LeadParams,
+    OrderDisplayInfo,
     ProjectSetup,
     UserSessionPreview,
 )
@@ -85,6 +86,39 @@ def _include_conversation_preview(message: db.Message, max_age: int) -> bool:
         )
 
     return True
+
+
+_INVALID_DISPLAY_ORDER_NUMBERS = {"", "0", "none", "null", "n/a", "na", "unknown"}
+
+
+def _normalize_display_order_number(value: Any) -> str | None:
+    """Normalize external/client-facing order numbers for admin display."""
+    if value is None or isinstance(value, bool):
+        return None
+
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+
+    normalized = str(value).strip()
+    if normalized.lower() in _INVALID_DISPLAY_ORDER_NUMBERS:
+        return None
+    return normalized
+
+
+def _resolve_conversation_order_info(
+    latest_order: Any | None,
+) -> OrderDisplayInfo:
+    has_order = latest_order is not None
+    order_number = _normalize_display_order_number(
+        getattr(latest_order, "order_id", None)
+    )
+    if order_number:
+        return OrderDisplayInfo(order_number=order_number, has_order=has_order)
+
+    if not has_order:
+        return OrderDisplayInfo()
+
+    return OrderDisplayInfo(has_order=has_order)
 
 
 def get_conversation_by_id(
@@ -151,24 +185,25 @@ def list_conversations_in_account(
     )
 
     # Build the session previews
-    user_session_previews = [
-        UserSessionPreview(
-            conversation=session,
-            last_message=message_repository.get_last_user_message_by_conversation(
-                session.id
-            )
-            or message_repository.get_last_message_by_conversation(session.id),
-            message_count=message_repository.get_message_count_by_conversation(
-                session.id
-            ),
-            order_number=(
-                latest_orders_by_conversation_id[session.id].order_id
-                if session.id in latest_orders_by_conversation_id
-                else None
-            ),
+    user_session_previews = []
+    for session in sessions:
+        order_info = _resolve_conversation_order_info(
+            latest_orders_by_conversation_id.get(session.id),
         )
-        for session in sessions
-    ]
+        user_session_previews.append(
+            UserSessionPreview(
+                conversation=session,
+                last_message=message_repository.get_last_user_message_by_conversation(
+                    session.id
+                )
+                or message_repository.get_last_message_by_conversation(session.id),
+                message_count=message_repository.get_message_count_by_conversation(
+                    session.id
+                ),
+                order_number=order_info.order_number,
+                has_order=order_info.has_order,
+            )
+        )
     return total, user_session_previews
 
 
@@ -185,14 +220,22 @@ def get_conversation_filter_values(
     return conversation_repository.get_distinct_filter_values(account_id)
 
 
+def get_conversation_order_display_info(
+    session: Session,
+    conversation_id: uuid.UUID,
+) -> OrderDisplayInfo:
+    """Get displayable order metadata associated with a conversation."""
+    order_repository = db.OrderRepository(session, auto_commit=False)
+    order = order_repository.get_latest_order_by_conversation_id(conversation_id)
+    return _resolve_conversation_order_info(order)
+
+
 def get_conversation_order_number(
     session: Session,
     conversation_id: uuid.UUID,
 ) -> str | None:
     """Get the latest external order number associated with a conversation."""
-    order_repository = db.OrderRepository(session, auto_commit=False)
-    order = order_repository.get_latest_order_by_conversation_id(conversation_id)
-    return order.order_id if order else None
+    return get_conversation_order_display_info(session, conversation_id).order_number
 
 
 def get_inbox_conversations(

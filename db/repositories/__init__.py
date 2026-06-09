@@ -15,7 +15,7 @@ from .lead_repository import LeadFilter, LeadRepository
 from .message_repository import MessageRepository, MessageRepositoryAsync
 from .monitoring_config_repository import MonitoringConfigRepositoryAsync
 from .monitoring_run_repository import MonitoringRunRepositoryAsync
-from .order_repository import OrderRepository
+from .order_repository import LatestOrderData, OrderRepository
 from .permission_repository import PermissionRepository
 from .phone_call_repository import PhoneCallRepository, PhoneCallRepositoryAsync
 from .project_integration_repository import (
