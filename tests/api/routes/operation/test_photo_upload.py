@@ -107,6 +107,31 @@ class TestUploadCameraPhoto:
         )
 
     @pytest.mark.asyncio
+    async def test_chica_camera_id_uses_camera_id_folder(self, mocker) -> None:
+        """Should preserve Chica camera IDs as S3 folders."""
+        from api.routes.operation._photo_upload import upload_camera_photo
+
+        s3_mock, _, _ = _setup_mocks(mocker)
+        session = AsyncMock()
+        upload = _make_upload(filename="snapshots/2026-06-10/2026-06-10_19-26-15.jpg")
+
+        result = await upload_camera_photo(
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002",
+            "chica-cam-08",
+            upload,
+            session,
+        )
+
+        assert result.url == (
+            "security/cameras/00000000-0000-0000-0000-000000000001/"
+            "00000000-0000-0000-0000-000000000002/chica-cam-08/"
+            "images/2026-06-10/2026-06-10_19-26-15.jpg"
+        )
+        call_args = s3_mock.upload_fileobj.call_args
+        assert call_args[0][2] == result.url
+
+    @pytest.mark.asyncio
     async def test_non_timestamp_filename_warns_and_uses_fallback_key(
         self, mocker
     ) -> None:

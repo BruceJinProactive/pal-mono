@@ -8,6 +8,7 @@ timestamp to keep the "camera alive" indicator working.
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -38,6 +39,14 @@ SUPPORTED_PHOTO_EXTENSIONS: dict[str, str] = {
     ".jpeg": "image/jpeg",
     ".png": "image/png",
 }
+CHICA_CAMERA_ID_PATTERN = re.compile(r"chica-cam-\d{2}$")
+
+
+def _camera_folder_name(camera_id: str, source_name: str | None) -> str:
+    """Use Chica recorder camera IDs as stable S3 folders."""
+    if CHICA_CAMERA_ID_PATTERN.fullmatch(camera_id):
+        return camera_id
+    return source_name or camera_id
 
 
 async def upload_camera_photo(
@@ -162,8 +171,9 @@ async def upload_camera_photo(
         suffix = uuid.uuid4().hex[:8]
         s3_filename = f"{timestamp}-{suffix}{ext}"
 
-    # Use human-readable camera name in path when available, fall back to camera_id
-    camera_folder = source.name if source and source.name else camera_id
+    camera_folder = _camera_folder_name(
+        camera_id, source.name if source and source.name else None
+    )
     s3_key = (
         f"security/cameras/{account_id}/{project_id}/{camera_folder}"
         f"/images/{capture_date}/{s3_filename}"
