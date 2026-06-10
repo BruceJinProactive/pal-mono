@@ -14,6 +14,7 @@ Chronological record of significant changes. Each entry links to the relevant do
   assignment, idempotency keys, and internal timestamps. ->
   `docs/state/architecture.md`
 - **Admin conversation order details.** Added an admin endpoint for fetching the latest stored order details for a conversation, using an explicit order projection that avoids loading problematic `orders.order_time` values while giving the admin console enough data for an order details modal.
+- **Catering item list storage schema.** Added nullable `catering_requests.all_items` JSONB storage for structured catering item maps keyed by item name, keeping item-level modifiers, quantity, price, and special notes separate from freeform event notes. Migration: `f2b5c6a7d8e9`.
 - **Vision rule metadata replacement.** `PATCH /accounts/{account_name}/vision-rules/{rule_id}` now replaces `rule_metadata` when the field is provided, allowing callers to delete old metadata keys by omitting them from the replacement object. -> `docs/state/architecture.md`
 - **Admin conversation order presence.** Admin conversation list/detail responses now distinguish displayable order numbers from order existence: real non-zero order IDs are returned as `order_number`, while conversations with placeholder order IDs still return `has_order=true` so the admin console can identify unpaid placed-order conversations without changing POS order persistence.
 

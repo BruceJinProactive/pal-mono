@@ -5,7 +5,7 @@ from datetime import date, datetime, time
 from enum import Enum
 
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
@@ -52,6 +52,7 @@ class CateringRequest(Base):
     event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     event_address: Mapped[str | None] = mapped_column(String, nullable=True)
     event_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    all_items: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     event_fulfillment: Mapped[FulfillmentType | None] = mapped_column(
         SQLEnum(FulfillmentType), nullable=True
     )
