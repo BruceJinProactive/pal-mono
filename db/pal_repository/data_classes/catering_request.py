@@ -16,13 +16,14 @@ class CateringRequestData:
 
     id: uuid.UUID
     project_id: uuid.UUID
-    event_date: date
+    event_date: date | None
     contact_name: str
-    contact_phone_number: str
+    contact_phone_number: str | None
     status: str
     idempotency_key: str
     created_at: datetime
     updated_at: datetime
+    contact_email: str | None = None
     event_time: time | None = None
     event_address: str | None = None
     event_detail: str | None = None

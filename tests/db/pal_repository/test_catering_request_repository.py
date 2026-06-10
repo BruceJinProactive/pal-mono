@@ -41,6 +41,7 @@ def sample_orm_row(sample_id: uuid.UUID) -> MagicMock:
     row.event_date = date(2025, 7, 1)
     row.contact_name = "John"
     row.contact_phone_number = "+1234567890"
+    row.contact_email = "john@example.com"
     row.status = MagicMock(value="LEAD")
     row.idempotency_key = "key_123"
     row.created_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
@@ -69,6 +70,7 @@ class TestToData:
         assert data.event_date == date(2025, 7, 1)
         assert data.contact_name == "John"
         assert data.contact_phone_number == "+1234567890"
+        assert data.contact_email == "john@example.com"
         assert data.status == "LEAD"
         assert data.idempotency_key == "key_123"
         assert data.event_time == time(12, 0)
@@ -85,15 +87,21 @@ class TestToData:
         sample_orm_row.event_detail = None
         sample_orm_row.all_items = None
         sample_orm_row.event_fulfillment = None
+        sample_orm_row.event_date = None
         sample_orm_row.party_size = None
         sample_orm_row.contact_id = None
+        sample_orm_row.contact_phone_number = None
+        sample_orm_row.contact_email = None
         data = _to_data(sample_orm_row)
         assert data.event_time is None
         assert data.event_address is None
         assert data.event_detail is None
         assert data.event_fulfillment is None
+        assert data.event_date is None
         assert data.party_size is None
         assert data.contact_id is None
+        assert data.contact_phone_number is None
+        assert data.contact_email is None
 
     def test_converts_none_status_to_empty_string(
         self, sample_orm_row: MagicMock
@@ -231,6 +239,7 @@ class TestListByProjectIdAndPhone:
             event_date=date(2025, 7, 2),
             contact_name="Jane",
             contact_phone_number="+19876543210",
+            contact_email="jane@example.com",
             status="LEAD",
             idempotency_key="key_456",
             created_at=sample_orm_row.created_at,
@@ -320,6 +329,7 @@ class TestCreate:
             event_date=date(2025, 7, 1),
             contact_name="John",
             contact_phone_number="+1234567890",
+            contact_email="john@example.com",
             status="LEAD",
             idempotency_key="key_123",
             created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
@@ -342,6 +352,8 @@ class TestCreate:
         if hasattr(row, "all_items"):
             assert row.all_items == {"Cake tray": {"quantity": 2, "price": 80.00}}
         mock_session.add.assert_called_once()
+        added_row = mock_session.add.call_args.args[0]
+        assert added_row.contact_email == "john@example.com"
         mock_session.flush.assert_awaited_once()
         mock_session.commit.assert_awaited_once()
 
@@ -358,6 +370,7 @@ class TestCreate:
             event_date=date(2025, 7, 1),
             contact_name="John",
             contact_phone_number="+1234567890",
+            contact_email="john@example.com",
             status="LEAD",
             idempotency_key="key_456",
             created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
@@ -390,6 +403,7 @@ class TestUpdate:
         data = await repo.update(
             idempotency_key="key_123",
             contact_name="Jane",
+            contact_email=None,
             all_items={"Sandwich platter": {"quantity": 3, "price": 150.00}},
             party_size=100,
         )

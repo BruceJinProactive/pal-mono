@@ -40,7 +40,10 @@ sqlalchemy.ext.asyncio.async_sessionmaker = (
 )
 
 from api.routes.catering import _implementation  # noqa: E402
-from api.schemas.catering.catering import CreateCateringRequestRequest  # noqa: E402
+from api.schemas.catering.catering import (  # noqa: E402
+    CreateCateringRequestRequest,
+    UpdateCateringRequestRequest,
+)
 from db.pal_repository.data_classes.catering_request import (  # noqa: E402
     CateringRequestData,
 )
@@ -111,6 +114,7 @@ async def test_create_project_catering_request_uses_internal_actor_for_activity(
         event_date=date(2026, 6, 15),
         contact_name="Maya Acme",
         contact_phone_number="+15551234567",
+        contact_email="maya@example.com",
         status=RequestStatus.LEAD.value,
         idempotency_key="idem-key-1",
         created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
@@ -128,6 +132,7 @@ async def test_create_project_catering_request_uses_internal_actor_for_activity(
                 event_date=date(2026, 6, 15),
                 contact_name="Maya Acme",
                 contact_phone_number="+15551234567",
+                contact_email="maya@example.com",
                 party_size=45,
                 idempotency_key="idem-key-1",
             ),
@@ -136,7 +141,9 @@ async def test_create_project_catering_request_uses_internal_actor_for_activity(
         )
 
     assert result.id == request_id
+    assert result.contact_email == "maya@example.com"
     mock_create.assert_awaited_once()
+    assert mock_create.call_args.kwargs["contact_email"] == "maya@example.com"
     assert mock_create.call_args.kwargs["activity_actor_type"] == (
         CateringRequestActivityActorType.INTERNAL_USER
     )
@@ -166,6 +173,7 @@ async def test_list_project_catering_requests_embeds_activities_when_requested()
         event_date=date(2026, 6, 15),
         contact_name="Maya Acme",
         contact_phone_number="+15551234567",
+        contact_email="maya@example.com",
         status=RequestStatus.PROPOSAL.value,
         idempotency_key="idem-key-1",
         created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
@@ -193,8 +201,51 @@ async def test_list_project_catering_requests_embeds_activities_when_requested()
     )
     assert len(result.catering_requests) == 1
     assert result.catering_requests[0].id == request_id
+    assert result.catering_requests[0].contact_email == "maya@example.com"
     assert result.catering_requests[0].activities[0].id == activity.id
     assert result.catering_requests[0].activities[0].metadata == {
         "from_status": "LEAD",
         "to_status": "PROPOSAL",
     }
+
+
+@pytest.mark.asyncio
+async def test_update_catering_request_forwards_only_present_fields() -> None:
+    session = _make_session()
+    project_id = uuid.uuid4()
+    request_id = uuid.uuid4()
+    context = _make_context()
+    updated_request = CateringRequestData(
+        id=request_id,
+        project_id=project_id,
+        event_date=None,
+        contact_name="Maya Acme",
+        contact_phone_number=None,
+        contact_email=None,
+        status=RequestStatus.LEAD.value,
+        idempotency_key="idem-key-1",
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+
+    with patch(
+        "api.routes.catering._implementation.update_catering_request_impl",
+        return_value=updated_request,
+    ) as mock_update:
+        result = await _implementation.update_catering_request(
+            catering_request_id=request_id,
+            request=UpdateCateringRequestRequest(
+                contact_phone_number=None,
+                contact_email=None,
+            ),
+            context=context,
+            session=session,
+        )
+
+    assert result.contact_phone_number is None
+    assert result.contact_email is None
+    kwargs = mock_update.call_args.kwargs
+    assert kwargs["contact_phone_number"] is None
+    assert kwargs["contact_email"] is None
+    assert "party_size" not in kwargs
+    assert kwargs["actor_display_name"] == "Casey Manager"

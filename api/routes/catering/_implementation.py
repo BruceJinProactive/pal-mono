@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict
+from typing import Any, Dict
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -144,6 +144,7 @@ async def create_project_catering_request(
         event_date=request.event_date,
         contact_name=request.contact_name,
         contact_phone_number=request.contact_phone_number,
+        contact_email=request.contact_email,
         event_time=request.event_time,
         event_address=request.event_address,
         event_detail=request.event_detail,
@@ -231,19 +232,28 @@ async def update_catering_request(
     """
     Update an existing catering request.
     """
+    update_kwargs: dict[str, Any] = {
+        field: getattr(request, field)
+        for field in (
+            "event_date",
+            "contact_name",
+            "contact_phone_number",
+            "contact_email",
+            "event_time",
+            "event_address",
+            "event_detail",
+            "all_items",
+            "event_fulfillment",
+            "party_size",
+            "status",
+        )
+        if field in request.model_fields_set
+    }
+
     updated_request = await update_catering_request_impl(
         session=session,
         catering_request_id=catering_request_id,
-        event_date=request.event_date,
-        contact_name=request.contact_name,
-        contact_phone_number=request.contact_phone_number,
-        event_time=request.event_time,
-        event_address=request.event_address,
-        event_detail=request.event_detail,
-        all_items=request.all_items,
-        event_fulfillment=request.event_fulfillment,
-        party_size=request.party_size,
-        status=request.status,
+        **update_kwargs,
         actor_id=_get_actor_id(context),
         actor_display_name=_get_actor_display_name(context),
     )

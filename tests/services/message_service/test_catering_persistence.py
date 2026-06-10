@@ -19,7 +19,7 @@ from utils.request_context import RequestContext
 def _catering_request_data(
     *,
     request_id: uuid.UUID,
-    event_date: datetime.date,
+    event_date: datetime.date | None,
     event_time: datetime.time | None = None,
 ) -> CateringRequestData:
     now = datetime.datetime(2026, 6, 9, tzinfo=datetime.UTC)
@@ -29,6 +29,7 @@ def _catering_request_data(
         event_date=event_date,
         contact_name="John Doe",
         contact_phone_number="+15551234567",
+        contact_email="john@example.com",
         status="LEAD",
         idempotency_key=str(request_id),
         created_at=now,
@@ -181,6 +182,7 @@ def test_serialize_prior_catering_request_includes_expected_fields():
     assert payload["event_date"] == "2026-06-20"
     assert payload["event_time"] == "18:30:00"
     assert payload["contact_phone_number"] == "+15551234567"
+    assert payload["contact_email"] == "john@example.com"
 
 
 @pytest.mark.asyncio
@@ -232,6 +234,77 @@ def test_select_catering_request_for_overwrite_returns_none_without_requests():
     assert _select_catering_request_for_overwrite([], "2026-06-20") is None
 
 
+def test_select_catering_request_for_overwrite_ignores_null_dates_for_distance():
+    from services.message_service._implementation import (
+        _select_catering_request_for_overwrite,
+    )
+
+    closest_id = uuid.uuid4()
+    requests = [
+        _catering_request_data(
+            request_id=uuid.uuid4(),
+            event_date=None,
+        ),
+        _catering_request_data(
+            request_id=closest_id,
+            event_date=datetime.date(2026, 6, 18),
+        ),
+    ]
+
+    selected = _select_catering_request_for_overwrite(requests, "2026-06-20")
+
+    assert selected is not None
+    assert selected.id == closest_id
+
+
+def test_select_catering_request_for_overwrite_returns_first_when_all_dates_missing() -> (
+    None
+):
+    from services.message_service._implementation import (
+        _select_catering_request_for_overwrite,
+    )
+
+    first_id = uuid.uuid4()
+    requests = [
+        _catering_request_data(
+            request_id=first_id,
+            event_date=None,
+        ),
+        _catering_request_data(
+            request_id=uuid.uuid4(),
+            event_date=None,
+        ),
+    ]
+
+    selected = _select_catering_request_for_overwrite(requests, "2026-06-20")
+
+    assert selected is not None
+    assert selected.id == first_id
+
+
+def test_catering_distance_helpers_treat_null_event_dates_as_unmatchable() -> None:
+    from services.message_service._implementation import (
+        _catering_event_date_distance,
+        _catering_event_datetime_distance,
+    )
+
+    request = _catering_request_data(request_id=uuid.uuid4(), event_date=None)
+
+    assert _catering_event_datetime_distance(
+        request,
+        datetime.datetime(2026, 6, 20, 18, 30),
+    ) == float("inf")
+    assert _catering_event_date_distance(request, datetime.date(2026, 6, 20)) == 999999
+
+
+def test_parse_agent_catering_event_date_returns_none_for_invalid_values() -> None:
+    from services.message_service._implementation import (
+        _parse_agent_catering_event_date,
+    )
+
+    assert _parse_agent_catering_event_date("next Tuesday") is None
+
+
 @pytest.mark.asyncio
 async def test_persist_catering_details_from_agent_updates_existing_request(
     monkeypatch: pytest.MonkeyPatch,
@@ -266,6 +339,7 @@ async def test_persist_catering_details_from_agent_updates_existing_request(
         event_date="2026-06-21",
         contact_name="John Doe",
         contact_phone_number="+15551234567",
+        contact_email="lead@example.com",
         party_size=30,
         event_time=None,
         event_address="123 Main St",
@@ -286,7 +360,52 @@ async def test_persist_catering_details_from_agent_updates_existing_request(
     update_args = update_catering_request.await_args
     assert update_args is not None
     assert update_args.kwargs["catering_request_id"] == existing_request.id
+    assert update_args.kwargs["contact_email"] == "lead@example.com"
     create_catering_request_async.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_persist_catering_details_from_agent_creates_partial_request(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from services.message_service import _implementation
+
+    create_catering_request_async = AsyncMock()
+    monkeypatch.setattr(
+        _implementation.catering_service,
+        "create_catering_request_async",
+        create_catering_request_async,
+    )
+
+    cd = SimpleNamespace(
+        event_date=None,
+        contact_name="Email Lead",
+        contact_phone_number=None,
+        contact_email="lead@example.com",
+        party_size=30,
+        event_time=None,
+        event_address="123 Main St",
+        event_detail="Pizza",
+        event_fulfillment=None,
+        overwrite=False,
+    )
+    conversation_id = uuid.uuid4()
+
+    await _implementation._persist_catering_details_from_agent(
+        session=AsyncMock(),
+        project_id=uuid.uuid4(),
+        conversation_id=conversation_id,
+        cd=cd,
+    )
+
+    create_catering_request_async.assert_awaited_once()
+    await_args = create_catering_request_async.await_args
+    assert await_args is not None
+    kwargs = await_args.kwargs
+    assert kwargs["event_date"] is None
+    assert kwargs["contact_phone_number"] is None
+    assert kwargs["contact_email"] == "lead@example.com"
+    assert kwargs["idempotency_key"] == str(conversation_id)
 
 
 def _ensure_package_module(

@@ -45,7 +45,7 @@ def _make_request(
     *,
     project_id: uuid.UUID = PROJECT_ID,
     created_at: datetime = TWO_DAYS_AGO_UTC,
-    event_date: date = date(2026, 3, 28),
+    event_date: date | None = date(2026, 3, 28),
     event_time: time | None = None,
     status: RequestStatus = RequestStatus.LEAD,
 ) -> CateringRequest:
@@ -475,6 +475,18 @@ def test_format_single_request_message() -> None:
     assert "2 days ago" in msg.lower()
     assert "Taylor" in msg
     assert "Party Size: 25" in msg
+
+
+def test_format_single_partial_request_message() -> None:
+    """Single partial request shows missing details without crashing."""
+    req = _make_request(event_date=None)
+    setattr(req, "contact_phone_number", None)
+    req.contact_email = "taylor@example.com"
+
+    msg = format_catering_reminder_message([req])
+
+    assert "Date: Not provided" in msg
+    assert "Taylor (taylor@example.com)" in msg
 
 
 def test_format_multiple_requests_message() -> None:

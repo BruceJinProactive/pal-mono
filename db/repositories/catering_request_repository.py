@@ -30,16 +30,11 @@ class CateringRequestRepositoryAsync:
         """
         db_catering_request = CateringRequest()
         for key, value in vars(catering_request).items():
-            if (
-                hasattr(CateringRequest, key)
-                and key
-                not in {
-                    "id",
-                    "created_at",
-                    "updated_at",
-                }
-                and value is not None
-            ):  # Ignore None values to avoid constraint violations
+            if hasattr(CateringRequest, key) and key not in {
+                "id",
+                "created_at",
+                "updated_at",
+            }:
                 setattr(db_catering_request, key, value)
 
         try:
@@ -180,17 +175,12 @@ class CateringRequestRepositoryAsync:
                 raise ValueError(f"Catering request {catering_request_id} not found")
 
             for key, value in vars(updated_catering_request).items():
-                if (
-                    hasattr(CateringRequest, key)
-                    and key
-                    not in {
-                        "id",
-                        "created_at",
-                        "updated_at",
-                        "idempotency_key",  # Block idempotency_key updates to preserve deduplication
-                    }
-                    and value is not None
-                ):  # Ignore None values to avoid constraint violations
+                if hasattr(CateringRequest, key) and key not in {
+                    "id",
+                    "created_at",
+                    "updated_at",
+                    "idempotency_key",  # Block idempotency_key updates to preserve deduplication
+                }:
                     setattr(db_catering_request, key, value)
 
             await self.session.commit()
@@ -237,16 +227,11 @@ class CateringRequestRepository:
         # If no existing request, create new one
         db_catering_request = CateringRequest()
         for key, value in vars(catering_request).items():
-            if (
-                hasattr(CateringRequest, key)
-                and key
-                not in {
-                    "id",
-                    "created_at",
-                    "updated_at",
-                }
-                and value is not None
-            ):  # Ignore None values to avoid constraint violations
+            if hasattr(CateringRequest, key) and key not in {
+                "id",
+                "created_at",
+                "updated_at",
+            }:
                 setattr(db_catering_request, key, value)
 
         try:
@@ -328,17 +313,12 @@ class CateringRequestRepository:
 
             # Update fields from the provided catering request
             for key, value in vars(updated_catering_request).items():
-                if (
-                    hasattr(CateringRequest, key)
-                    and key
-                    not in {
-                        "id",
-                        "created_at",
-                        "updated_at",
-                        "idempotency_key",  # Block idempotency_key updates to preserve deduplication
-                    }
-                    and value is not None
-                ):  # Ignore None values to avoid constraint violations
+                if hasattr(CateringRequest, key) and key not in {
+                    "id",
+                    "created_at",
+                    "updated_at",
+                    "idempotency_key",  # Block idempotency_key updates to preserve deduplication
+                }:
                     setattr(db_catering_request, key, value)
 
             self.session.commit()

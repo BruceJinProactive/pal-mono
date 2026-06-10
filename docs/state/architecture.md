@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-09
+> **Last updated:** 2026-06-10
 
 ## Quick Reference
 
@@ -331,9 +331,11 @@ remain available for older rows and compatibility paths.
 `contact_phone_number` are nullable, and `contact_email` stores an optional
 requester email directly on the request. This lets catering workflows track an
 incomplete inquiry even when scheduling or phone details are not yet known.
-The public catering request detail endpoint returns requester phone number and
-the project `address` as `store_address` for customer confirmation pages, while
-still omitting project IDs, contact assignment, idempotency keys, and internal
+Repository DTOs, service methods, agent catering persistence, and catering API
+schemas accept and return these partial fields. The public catering request
+detail endpoint returns requester phone number, requester email, and the project
+`address` as `store_address` for customer confirmation pages, while still
+omitting project IDs, contact assignment, idempotency keys, and internal
 timestamps.
 
 `catering_request_activities` stores an append-only timeline for each catering

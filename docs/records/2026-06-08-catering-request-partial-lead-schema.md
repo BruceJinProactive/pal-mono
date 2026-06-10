@@ -15,8 +15,11 @@ later.
 - Added nullable `catering_requests.contact_email`.
 - Made `catering_requests.event_date` nullable.
 - Made `catering_requests.contact_phone_number` nullable.
-- Kept this PR schema-only: runtime repository, API, service, and test adapters
-  are intentionally deferred to the follow-up implementation branch.
+- 2026-06-10 follow-up: repository DTOs, API schemas, service methods, public
+  detail DTOs, and agent catering persistence now accept and return missing
+  event dates, missing requester phone numbers, and optional requester email.
+- Date/phone-dependent notification paths guard partial leads instead of
+  fabricating placeholder dates or phone numbers.
 
 ## Migration
 
@@ -24,6 +27,4 @@ Alembic revision: `4caa090da0f5`.
 
 ## Follow-Up
 
-The follow-up implementation should update repository/data-class/API/service
-layers to accept the nullable fields, then layer the email-forwarding ingestion
-logic on top.
+Email-forwarding ingestion can now build on the nullable runtime adapters.

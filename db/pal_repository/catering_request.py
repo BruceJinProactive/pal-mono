@@ -27,6 +27,7 @@ def _to_data(row: CateringRequest) -> CateringRequestData:
         event_date=row.event_date,
         contact_name=row.contact_name,
         contact_phone_number=row.contact_phone_number,
+        contact_email=row.contact_email,
         status=row.status.value if row.status else "",
         idempotency_key=row.idempotency_key,
         created_at=row.created_at,
@@ -80,7 +81,7 @@ class CateringRequestRepository:
             raise
 
     async def list_by_project_id_and_phone(
-        self, project_id: uuid.UUID, phone_number: str
+        self, project_id: uuid.UUID, phone_number: str | None
     ) -> list[CateringRequestData]:
         """Retrieve catering requests for a project/caller phone, newest first."""
         target_digits = re.sub(r"\D", "", phone_number or "")
@@ -114,12 +115,13 @@ class CateringRequestRepository:
     async def create(self, data: CateringRequestData) -> uuid.UUID:
         """Create a new catering request and return its persisted ID."""
         try:
-            values = {
+            values: dict[str, Any] = {
                 "id": data.id,
                 "project_id": data.project_id,
                 "event_date": data.event_date,
                 "contact_name": data.contact_name,
                 "contact_phone_number": data.contact_phone_number,
+                "contact_email": data.contact_email,
                 "idempotency_key": data.idempotency_key,
                 "event_time": data.event_time,
                 "event_address": data.event_address,
@@ -148,9 +150,10 @@ class CateringRequestRepository:
     async def update(
         self,
         idempotency_key: str,
-        event_date: date | _Unset = UNSET,
+        event_date: date | None | _Unset = UNSET,
         contact_name: str | _Unset = UNSET,
-        contact_phone_number: str | _Unset = UNSET,
+        contact_phone_number: str | None | _Unset = UNSET,
+        contact_email: str | None | _Unset = UNSET,
         event_time: time | None | _Unset = UNSET,
         event_address: str | None | _Unset = UNSET,
         event_detail: str | None | _Unset = UNSET,
@@ -176,6 +179,8 @@ class CateringRequestRepository:
                 values["contact_name"] = contact_name
             if not isinstance(contact_phone_number, _Unset):
                 values["contact_phone_number"] = contact_phone_number
+            if not isinstance(contact_email, _Unset):
+                values["contact_email"] = contact_email
             if not isinstance(event_time, _Unset):
                 values["event_time"] = event_time
             if not isinstance(event_address, _Unset):

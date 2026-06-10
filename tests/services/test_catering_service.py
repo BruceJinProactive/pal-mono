@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from types import ModuleType, SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import sqlalchemy.engine
@@ -35,11 +35,14 @@ from db.tables.catering_requests import (  # noqa: E402
 from services.catering_service._implementation import (  # noqa: E402
     _build_customer_status_sms_message,
     _find_and_assign_catering_manager,
+    _format_catering_contact_summary,
     _get_catering_business_name,
     _get_catering_request_confirmation_url,
     _get_catering_store_phone_number,
     _is_catering_manager_role,
     _should_send_customer_status_sms,
+    create_catering_request,
+    format_catering_request_message,
     send_sms_notification,
     update_catering_request,
 )
@@ -48,7 +51,7 @@ from services.catering_service._implementation import (  # noqa: E402
 def _build_request(
     *,
     status: RequestStatus,
-    phone_number: str = "4165550100",
+    phone_number: str | None = "4165550100",
     event_fulfillment: FulfillmentType | None = None,
 ) -> CateringRequest:
     return CateringRequest(
@@ -133,6 +136,69 @@ def test_send_sms_notification_uses_default_catering_sender(
 
     relay_message = mock_send_message.call_args.args[0]
     assert relay_message.sender_identifier == "+19803725662"
+
+
+def test_create_catering_request_skips_event_for_partial_request_without_date() -> None:
+    session = MagicMock()
+    created_request = _build_request(status=RequestStatus.LEAD)
+    setattr(created_request, "event_date", None)
+    repo = MagicMock()
+    repo.get_catering_request_by_idempotency_key.return_value = None
+    repo.create_catering_request.return_value = created_request
+    project_repo = MagicMock()
+    project_repo.get_project.return_value = SimpleNamespace(account_id=uuid.uuid4())
+
+    with (
+        patch(
+            "services.catering_service._implementation.SyncSessionLocal",
+            return_value=session,
+        ),
+        patch(
+            "services.catering_service._implementation.CateringRequestRepository",
+            return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.ProjectRepository",
+            return_value=project_repo,
+        ),
+        patch(
+            "services.catering_service._implementation.publish_event",
+            new_callable=AsyncMock,
+        ) as mock_publish,
+        patch("services.catering_service._implementation.logger.info") as mock_info,
+    ):
+        result = create_catering_request(
+            project_id=created_request.project_id,
+            event_date=None,
+            contact_name="Taylor",
+            contact_phone_number=None,
+            contact_email="taylor@example.com",
+            idempotency_key=created_request.idempotency_key,
+        )
+
+    assert result is created_request
+    mock_publish.assert_not_called()
+    mock_info.assert_called_once()
+    session.close.assert_called_once()
+
+
+def test_format_catering_request_message_includes_email_for_partial_lead() -> None:
+    catering_request = _build_request(
+        status=RequestStatus.LEAD,
+        phone_number=None,
+    )
+    setattr(catering_request, "event_date", None)
+    catering_request.contact_email = "taylor@example.com"
+
+    message = format_catering_request_message(catering_request)
+
+    assert "Date: Not provided" in message
+    assert "Phone: Not provided" in message
+    assert "Email: taylor@example.com" in message
+
+
+def test_format_catering_contact_summary_returns_name_without_channels() -> None:
+    assert _format_catering_contact_summary("Taylor", None, None) == "Taylor"
 
 
 def test_update_catering_request_sends_sms_for_confirmed_status() -> None:
@@ -449,6 +515,41 @@ def test_update_catering_request_skips_sms_when_status_not_requested() -> None:
                 session=session,
                 catering_request_id=existing_request.id,
                 contact_name="Updated Taylor",
+            )
+        )
+
+    assert result is updated_request
+    mock_send_sms.assert_not_called()
+
+
+def test_update_catering_request_skips_sms_when_contact_phone_missing() -> None:
+    session = AsyncMock()
+    existing_request = _build_request(status=RequestStatus.LEAD)
+    updated_request = _build_request(status=RequestStatus.CONFIRMED)
+    updated_request.id = existing_request.id
+    updated_request.project_id = existing_request.project_id
+    updated_request.idempotency_key = existing_request.idempotency_key
+    setattr(updated_request, "contact_phone_number", None)
+
+    repo = AsyncMock()
+    repo.get_catering_request_by_id.return_value = existing_request
+    repo.update_catering_request.return_value = updated_request
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryAsync",
+            return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.send_sms_notification",
+            return_value=True,
+        ) as mock_send_sms,
+    ):
+        result = asyncio.run(
+            update_catering_request(
+                session=session,
+                catering_request_id=existing_request.id,
+                status=RequestStatus.CONFIRMED,
             )
         )
 

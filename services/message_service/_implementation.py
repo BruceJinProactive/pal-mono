@@ -151,6 +151,7 @@ def _serialize_prior_catering_request(request: CateringRequestData) -> dict[str,
         "party_size": request.party_size,
         "contact_name": request.contact_name,
         "contact_phone_number": request.contact_phone_number,
+        "contact_email": request.contact_email,
         "status": request.status,
         "created_at": request.created_at.isoformat() if request.created_at else None,
     }
@@ -219,25 +220,59 @@ def _select_catering_request_for_overwrite(
         if target_time is None or request.event_time == target_time:
             return request
 
+    dated_requests = [request for request in requests if request.event_date is not None]
+    if not dated_requests:
+        return requests[0]
+
     if target_time is not None:
         target_datetime = datetime.datetime.combine(target_date, target_time)
         return min(
-            requests,
-            key=lambda request: abs(
-                (
-                    datetime.datetime.combine(
-                        request.event_date,
-                        request.event_time or datetime.time.min,
-                    )
-                    - target_datetime
-                ).total_seconds()
+            dated_requests,
+            key=lambda request: _catering_event_datetime_distance(
+                request,
+                target_datetime,
             ),
         )
 
     return min(
-        requests,
-        key=lambda request: abs((request.event_date - target_date).days),
+        dated_requests,
+        key=lambda request: _catering_event_date_distance(request, target_date),
     )
+
+
+def _catering_event_datetime_distance(
+    request: CateringRequestData,
+    target_datetime: datetime.datetime,
+) -> float:
+    if request.event_date is None:
+        return float("inf")
+    request_datetime = datetime.datetime.combine(
+        request.event_date,
+        request.event_time or datetime.time.min,
+    )
+    return abs((request_datetime - target_datetime).total_seconds())
+
+
+def _catering_event_date_distance(
+    request: CateringRequestData,
+    target_date: datetime.date,
+) -> int:
+    if request.event_date is None:
+        return 999999
+    return abs((request.event_date - target_date).days)
+
+
+def _parse_agent_catering_event_date(raw_value: str | None) -> datetime.date | None:
+    if not raw_value:
+        return None
+    try:
+        return datetime.date.fromisoformat(raw_value)
+    except ValueError:
+        logger.warning(
+            "[catering] Ignoring invalid catering event_date from agent.",
+            extra={"event_date": raw_value},
+        )
+        return None
 
 
 async def _persist_catering_details_from_agent(
@@ -246,46 +281,59 @@ async def _persist_catering_details_from_agent(
     conversation_id: uuid.UUID,
     cd: Any,
 ) -> None:
+    raw_event_fulfillment = getattr(cd, "event_fulfillment", None)
+    raw_event_time = getattr(cd, "event_time", None)
+    contact_phone_number = getattr(cd, "contact_phone_number", None)
     event_fulfillment = (
-        FulfillmentType(cd.event_fulfillment) if cd.event_fulfillment else None
+        FulfillmentType(raw_event_fulfillment) if raw_event_fulfillment else None
     )
-    event_time = datetime.time.fromisoformat(cd.event_time) if cd.event_time else None
+    event_time = datetime.time.fromisoformat(raw_event_time) if raw_event_time else None
+    event_date = _parse_agent_catering_event_date(getattr(cd, "event_date", None))
+    contact_email = getattr(cd, "contact_email", None)
+    all_items = getattr(cd, "all_items", None)
     should_overwrite = bool(getattr(cd, "overwrite", False))
 
     if should_overwrite:
         candidates = await CateringRequestRepositoryNew(
             session
-        ).list_by_project_id_and_phone(project_id, cd.contact_phone_number)
+        ).list_by_project_id_and_phone(project_id, contact_phone_number)
         existing_request = _select_catering_request_for_overwrite(
             candidates,
             getattr(cd, "overwrite_time", None),
         )
         if existing_request is not None:
-            await catering_service.update_catering_request(
-                session=session,
-                catering_request_id=existing_request.id,
-                event_date=datetime.date.fromisoformat(cd.event_date),
-                contact_name=cd.contact_name,
-                contact_phone_number=cd.contact_phone_number,
-                event_time=event_time,
-                event_address=cd.event_address,
-                event_detail=cd.event_detail,
-                all_items=getattr(cd, "all_items", None),
-                event_fulfillment=event_fulfillment,
-                party_size=cd.party_size,
-            )
+            update_kwargs: dict[str, Any] = {
+                "session": session,
+                "catering_request_id": existing_request.id,
+                "contact_name": cd.contact_name,
+                "event_time": event_time,
+                "event_address": cd.event_address,
+                "event_detail": cd.event_detail,
+                "event_fulfillment": event_fulfillment,
+                "party_size": cd.party_size,
+            }
+            if event_date is not None:
+                update_kwargs["event_date"] = event_date
+            if contact_phone_number:
+                update_kwargs["contact_phone_number"] = contact_phone_number
+            if contact_email:
+                update_kwargs["contact_email"] = contact_email
+            if all_items is not None:
+                update_kwargs["all_items"] = all_items
+            await catering_service.update_catering_request(**update_kwargs)
             return
 
     await catering_service.create_catering_request_async(
         session=session,
         project_id=project_id,
-        event_date=datetime.date.fromisoformat(cd.event_date),
+        event_date=event_date,
         contact_name=cd.contact_name,
-        contact_phone_number=cd.contact_phone_number,
+        contact_phone_number=contact_phone_number,
+        contact_email=contact_email,
         event_time=event_time,
         event_address=cd.event_address,
         event_detail=cd.event_detail,
-        all_items=getattr(cd, "all_items", None),
+        all_items=all_items,
         event_fulfillment=event_fulfillment,
         party_size=cd.party_size,
         idempotency_key=str(conversation_id),

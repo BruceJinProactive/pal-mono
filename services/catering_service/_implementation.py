@@ -24,6 +24,7 @@ from db.pal_repository.data_classes.catering_request_activity import (
     CateringRequestActivityData,
 )
 from db.pal_repository.data_classes.contact import ContactData
+from db.pal_repository.data_classes.routine_execution import UNSET, _Unset
 from db.repositories.catering_request_repository import (
     CateringRequestRepository,
     CateringRequestRepositoryAsync,
@@ -63,10 +64,11 @@ class PublicCateringRequestDetails:
     """Public-safe catering request details for customer confirmation pages."""
 
     id: uuid.UUID
-    event_date: date
+    event_date: date | None
     contact_name: str
     contact_phone_number: str | None
     status: str
+    contact_email: str | None = None
     event_time: time | None = None
     event_address: str | None = None
     event_detail: str | None = None
@@ -225,9 +227,10 @@ async def list_catering_requests_with_activities_by_project_id(
 
 def create_catering_request(
     project_id: uuid.UUID,
-    event_date: date,
+    event_date: date | None,
     contact_name: str,
-    contact_phone_number: str,
+    contact_phone_number: str | None,
+    contact_email: str | None = None,
     event_time: Optional[time] = None,
     event_address: Optional[str] = None,
     event_detail: Optional[str] = None,
@@ -241,9 +244,10 @@ def create_catering_request(
 
     Args:
         project_id: ID of the project this request belongs to
-        event_date: Date of the catering event
+        event_date: Date of the catering event, if known
         contact_name: Name of the contact person
-        contact_phone_number: Phone number of the contact person
+        contact_phone_number: Phone number of the contact person, if known
+        contact_email: Email address of the contact person, if known
         event_time: Time of the event (optional)
         event_address: Address where the event will take place (optional)
         event_detail: Additional details about the event (optional)
@@ -285,6 +289,7 @@ def create_catering_request(
                 "event_fulfillment": event_fulfillment,
                 "contact_name": contact_name,
                 "contact_phone_number": contact_phone_number,
+                "contact_email": contact_email,
                 "party_size": party_size,
             }
 
@@ -320,6 +325,7 @@ def create_catering_request(
                 event_fulfillment=event_fulfillment,
                 contact_name=contact_name,
                 contact_phone_number=contact_phone_number,
+                contact_email=contact_email,
                 party_size=party_size,
                 contact_id=None,
                 status=RequestStatus.LEAD,
@@ -336,6 +342,13 @@ def create_catering_request(
             if not project:
                 logger.warning(
                     f"Project {project_id} not found, skipping event publishing"
+                )
+                return created_request
+
+            if created_request.event_date is None:
+                logger.info(
+                    "[catering] Skipping creation event for partial catering request without event_date.",
+                    extra={"request_id": str(created_request.id)},
                 )
                 return created_request
 
@@ -362,9 +375,10 @@ def create_catering_request(
 async def create_catering_request_async(
     session: AsyncSession,
     project_id: uuid.UUID,
-    event_date: date,
+    event_date: date | None,
     contact_name: str,
-    contact_phone_number: str,
+    contact_phone_number: str | None,
+    contact_email: str | None = None,
     event_time: Optional[time] = None,
     event_address: Optional[str] = None,
     event_detail: Optional[str] = None,
@@ -397,6 +411,7 @@ async def create_catering_request_async(
             "event_fulfillment": event_fulfillment,
             "contact_name": contact_name,
             "contact_phone_number": contact_phone_number,
+            "contact_email": contact_email,
             "party_size": party_size,
         }
 
@@ -439,6 +454,7 @@ async def create_catering_request_async(
         event_date=event_date,
         contact_name=contact_name,
         contact_phone_number=contact_phone_number,
+        contact_email=contact_email,
         status=RequestStatus.LEAD.value,
         idempotency_key=idempotency_key,
         created_at=datetime.now(tz=timezone.utc),
@@ -476,6 +492,7 @@ async def create_catering_request_async(
                     "event_fulfillment",
                     "contact_name",
                     "contact_phone_number",
+                    "contact_email",
                     "party_size",
                     "status",
                 ],
@@ -487,6 +504,13 @@ async def create_catering_request_async(
     project = await project_repo.get_project(project_id)
     if not project:
         logger.warning(f"Project {project_id} not found, skipping event publishing")
+        return data
+
+    if data.event_date is None:
+        logger.info(
+            "[catering] Skipping creation event for partial catering request without event_date.",
+            extra={"request_id": str(data.id), "project_id": str(project_id)},
+        )
         return data
 
     event = CateringRequestCreated(
@@ -524,6 +548,7 @@ async def get_public_catering_request_by_id(
         event_date=catering_request.event_date,
         contact_name=catering_request.contact_name,
         contact_phone_number=catering_request.contact_phone_number,
+        contact_email=catering_request.contact_email,
         status=catering_request.status,
         event_time=catering_request.event_time,
         event_address=catering_request.event_address,
@@ -687,16 +712,17 @@ async def update_contact(
 async def update_catering_request(
     session: AsyncSession,
     catering_request_id: uuid.UUID,
-    event_date: Optional[date] = None,
-    contact_name: Optional[str] = None,
-    contact_phone_number: Optional[str] = None,
-    event_time: Optional[time] = None,
-    event_address: Optional[str] = None,
-    event_detail: Optional[str] = None,
-    all_items: dict[str, dict[str, Any]] | None = None,
-    event_fulfillment: Optional[FulfillmentType] = None,
-    party_size: Optional[int] = None,
-    status: Optional[RequestStatus] = None,
+    event_date: date | None | _Unset = UNSET,
+    contact_name: str | None | _Unset = UNSET,
+    contact_phone_number: str | None | _Unset = UNSET,
+    contact_email: str | None | _Unset = UNSET,
+    event_time: time | None | _Unset = UNSET,
+    event_address: str | None | _Unset = UNSET,
+    event_detail: str | None | _Unset = UNSET,
+    all_items: dict[str, dict[str, Any]] | None | _Unset = UNSET,
+    event_fulfillment: FulfillmentType | None | _Unset = UNSET,
+    party_size: int | None | _Unset = UNSET,
+    status: RequestStatus | None | _Unset = UNSET,
     actor_id: uuid.UUID | None = None,
     actor_display_name: str | None = None,
     actor_type: CateringRequestActivityActorType = (
@@ -715,6 +741,7 @@ async def update_catering_request(
         event_date: New event date (optional)
         contact_name: New contact name (optional)
         contact_phone_number: New contact phone number (optional)
+        contact_email: New contact email address (optional)
         event_time: New event time (optional)
         event_address: New event address (optional)
         event_detail: New event details (optional)
@@ -737,6 +764,7 @@ async def update_catering_request(
         "event_date",
         "contact_name",
         "contact_phone_number",
+        "contact_email",
         "event_time",
         "event_address",
         "event_detail",
@@ -755,6 +783,7 @@ async def update_catering_request(
         "event_date": event_date,
         "contact_name": contact_name,
         "contact_phone_number": contact_phone_number,
+        "contact_email": contact_email,
         "event_time": event_time,
         "event_address": event_address,
         "event_detail": event_detail,
@@ -764,10 +793,25 @@ async def update_catering_request(
         "status": status,
     }
 
-    # Set only non-None values
+    nullable_update_fields = {
+        "event_date",
+        "contact_phone_number",
+        "contact_email",
+        "event_time",
+        "event_address",
+        "event_detail",
+        "all_items",
+        "event_fulfillment",
+        "party_size",
+    }
+
+    # Set explicitly provided values. ``None`` clears nullable fields only.
     for field, value in updates.items():
-        if value is not None:
-            setattr(updated_catering_request, field, value)
+        if isinstance(value, _Unset):
+            continue
+        if value is None and field not in nullable_update_fields:
+            continue
+        setattr(updated_catering_request, field, value)
 
     updated_request = await catering_request_repo.update_catering_request(
         catering_request_id, updated_catering_request
@@ -808,14 +852,19 @@ async def update_catering_request(
 
     previous_status_value = before_values["status"]
     requested_status_value = (
-        status.value if isinstance(status, RequestStatus) else status
+        status.value
+        if isinstance(status, RequestStatus)
+        else None if isinstance(status, _Unset) else status
     )
     updated_status_value = (
         updated_request.status.value
         if isinstance(updated_request.status, RequestStatus)
         else updated_request.status
     )
-    sms_skip_reason = _get_customer_status_sms_skip_reason(status)
+    sms_skip_reason = _get_customer_status_sms_skip_reason(
+        status,
+        updated_request.contact_phone_number,
+    )
 
     logger.info(
         "[catering] Processed catering request update.",
@@ -907,11 +956,16 @@ def _should_send_customer_status_sms(
     return next_status in CUSTOMER_STATUS_SMS_STATUSES
 
 
-def _get_customer_status_sms_skip_reason(next_status: RequestStatus | None) -> str:
-    if next_status is None:
+def _get_customer_status_sms_skip_reason(
+    next_status: RequestStatus | None | _Unset,
+    contact_phone_number: str | None,
+) -> str:
+    if isinstance(next_status, _Unset) or next_status is None:
         return "no_status_requested"
     if next_status not in CUSTOMER_STATUS_SMS_STATUSES:
         return "status_not_supported"
+    if not contact_phone_number:
+        return "missing_contact_phone_number"
     return "eligible"
 
 
@@ -1220,6 +1274,30 @@ async def handle_catering_request_created_event(
         return False
 
 
+def _format_optional_event_date(
+    event_date: date | None,
+    date_format: str = "%B %d, %Y",
+) -> str:
+    if event_date is None:
+        return "Not provided"
+    return event_date.strftime(date_format)
+
+
+def _format_catering_contact_summary(
+    contact_name: str,
+    contact_phone_number: str | None,
+    contact_email: str | None,
+) -> str:
+    contact_channels = [
+        value
+        for value in (contact_phone_number, contact_email)
+        if value and value.strip()
+    ]
+    if not contact_channels:
+        return contact_name
+    return f"{contact_name} ({', '.join(contact_channels)})"
+
+
 def format_catering_request_message(catering_request) -> str:
     """
     Format catering request details into a text message.
@@ -1230,12 +1308,17 @@ def format_catering_request_message(catering_request) -> str:
     Returns:
         str: Formatted message
     """
+    contact_phone_number = getattr(catering_request, "contact_phone_number", None)
+    contact_email = getattr(catering_request, "contact_email", None)
     message_parts = [
         "New Catering Request",
-        f"Date: {catering_request.event_date.strftime('%B %d, %Y')}",
+        f"Date: {_format_optional_event_date(catering_request.event_date)}",
         f"Contact: {catering_request.contact_name}",
-        f"Phone: {catering_request.contact_phone_number}",
+        f"Phone: {contact_phone_number or 'Not provided'}",
     ]
+
+    if contact_email:
+        message_parts.append(f"Email: {contact_email}")
 
     if catering_request.event_time:
         message_parts.append(
@@ -1254,7 +1337,7 @@ def format_catering_request_message(catering_request) -> str:
     return "\n".join(message_parts)
 
 
-def _validate_and_format_phone_number(phone_number: str) -> str:
+def _validate_and_format_phone_number(phone_number: str | None) -> str:
     """
     Validate and format phone number to +1xxxxxxxxxx format.
 
@@ -1292,7 +1375,7 @@ def _validate_and_format_phone_number(phone_number: str) -> str:
     return formatted
 
 
-def send_sms_notification(phone_number: str, message: str) -> bool:
+def send_sms_notification(phone_number: str | None, message: str) -> bool:
     """
     Send SMS notification using configured SMS service.
 
@@ -1397,8 +1480,9 @@ def format_catering_reminder_message(
         req = requests[0]
         parts = [
             "A catering request from 2 days ago is still at lead status.",
-            f"Date: {req.event_date.strftime('%B %d, %Y')}",
-            f"Contact: {req.contact_name} ({req.contact_phone_number})",
+            f"Date: {_format_optional_event_date(req.event_date)}",
+            "Contact: "
+            f"{_format_catering_contact_summary(req.contact_name, req.contact_phone_number, req.contact_email)}",
         ]
         if req.party_size:
             parts.append(f"Party Size: {req.party_size}")
@@ -1410,7 +1494,10 @@ def format_catering_reminder_message(
         "",
     ]
     for i, req in enumerate(requests, 1):
-        line = f"{i}. {req.event_date.strftime('%b %d')} - {req.contact_name} ({req.contact_phone_number})"
+        line = (
+            f"{i}. {_format_optional_event_date(req.event_date, '%b %d')} - "
+            f"{_format_catering_contact_summary(req.contact_name, req.contact_phone_number, req.contact_email)}"
+        )
         if req.party_size:
             line += f", Party of {req.party_size}"
         parts.append(line)
@@ -1496,10 +1583,11 @@ async def send_catering_inquiry_reminders(
                 continue
 
             # Filter: event hasn't passed
-            if req.event_date < today_local:
+            if req.event_date is not None and req.event_date < today_local:
                 continue
             if (
-                req.event_date == today_local
+                req.event_date is not None
+                and req.event_date == today_local
                 and req.event_time is not None
                 and req.event_time < now_local.time()
             ):
@@ -1558,9 +1646,10 @@ def format_catering_apology_message(
     Returns:
         Formatted SMS message string.
     """
+    event_date = _format_optional_event_date(request.event_date)
     parts = [
         f"Hi {request.contact_name}, we're sorry if we weren't able to respond "
-        f"to your catering request for {request.event_date.strftime('%B %d, %Y')} in time.",
+        f"to your catering request for {event_date} in time.",
         "We apologize for the inconvenience and hope to assist you with future catering needs.",
         f"- {project_name}",
     ]

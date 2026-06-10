@@ -38,9 +38,10 @@ class CreateCateringRequestRequest(BaseModel):
     Request schema for creating a catering request.
     """
 
-    event_date: date
+    event_date: Optional[date] = None
     contact_name: str
-    contact_phone_number: str
+    contact_phone_number: Optional[str] = None
+    contact_email: Optional[str] = None
     event_time: Optional[time] = None
     event_address: Optional[str] = None
     event_detail: Optional[str] = None
@@ -58,6 +59,7 @@ class UpdateCateringRequestRequest(BaseModel):
     event_date: Optional[date] = None
     contact_name: Optional[str] = None
     contact_phone_number: Optional[str] = None
+    contact_email: Optional[str] = None
     event_time: Optional[time] = None
     event_address: Optional[str] = None
     event_detail: Optional[str] = None
@@ -97,9 +99,10 @@ class CateringRequest(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
     activities: List[CateringRequestActivity] = Field(default_factory=list)
-    event_date: date
+    event_date: Optional[date] = None
     contact_name: str
-    contact_phone_number: str
+    contact_phone_number: Optional[str] = None
+    contact_email: Optional[str] = None
     event_time: Optional[time] = None
     event_address: Optional[str] = None
     event_detail: Optional[str] = None
@@ -137,9 +140,10 @@ class PublicCateringRequest(BaseModel):
     """
 
     id: uuid.UUID
-    event_date: date
+    event_date: Optional[date] = None
     contact_name: str
     contact_phone_number: Optional[str] = None
+    contact_email: Optional[str] = None
     event_time: Optional[time] = None
     event_address: Optional[str] = None
     event_detail: Optional[str] = None

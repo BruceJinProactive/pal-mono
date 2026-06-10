@@ -68,6 +68,7 @@ def _make_public_catering_request_details(
         event_fulfillment=FulfillmentType.DELIVERY.value,
         contact_name="Taylor Guest",
         contact_phone_number="+15551234567",
+        contact_email="taylor@example.com",
         party_size=25,
         status=RequestStatus.CONFIRMED.value,
         store_address="456 Store Ave",
@@ -110,6 +111,7 @@ async def test_get_public_catering_request_returns_public_safe_fields() -> None:
     assert result.id == catering_request_id
     assert result.contact_name == "Taylor Guest"
     assert result.contact_phone_number == "+15551234567"
+    assert result.contact_email == "taylor@example.com"
     assert result.event_detail == "Lunch for 25 guests"
     assert result.event_fulfillment == FulfillmentType.DELIVERY
     assert result.store_address == "456 Store Ave"
@@ -117,12 +119,41 @@ async def test_get_public_catering_request_returns_public_safe_fields() -> None:
 
     public_payload = result.model_dump()
     assert public_payload["contact_phone_number"] == "+15551234567"
+    assert public_payload["contact_email"] == "taylor@example.com"
     assert public_payload["store_address"] == "456 Store Ave"
     assert "project_id" not in public_payload
     assert "contact_id" not in public_payload
     assert "idempotency_key" not in public_payload
     assert "created_at" not in public_payload
     assert "updated_at" not in public_payload
+
+
+@pytest.mark.asyncio
+async def test_get_public_catering_request_allows_partial_lead_fields() -> None:
+    session = AsyncMock()
+    catering_request_id = uuid.uuid4()
+    catering_request = PublicCateringRequestDetails(
+        id=catering_request_id,
+        event_date=None,
+        contact_name="Taylor Guest",
+        contact_phone_number=None,
+        contact_email="taylor@example.com",
+        status=RequestStatus.LEAD.value,
+        store_address="456 Store Ave",
+    )
+
+    with patch(
+        "api.routes.catering._implementation.get_public_catering_request_by_id",
+        return_value=catering_request,
+    ):
+        result = await _implementation.get_public_catering_request(
+            catering_request_id=catering_request_id,
+            session=session,
+        )
+
+    assert result.event_date is None
+    assert result.contact_phone_number is None
+    assert result.contact_email == "taylor@example.com"
 
 
 @pytest.mark.asyncio

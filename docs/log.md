@@ -4,6 +4,17 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-10
+
+- **Catering partial-lead runtime adapters.** Repository DTOs, catering API
+  schemas, service create/update/read paths, public detail responses, and agent
+  catering persistence now accept nullable `event_date`,
+  nullable `contact_phone_number`, and optional `contact_email`. Notification
+  paths guard partial leads instead of inventing placeholder contact details. ->
+  `docs/records/2026-06-08-catering-request-partial-lead-schema.md`
+
+---
+
 ## 2026-06-09
 
 - **Camera video upload LLM flag.** `POST /v1/operation/accounts/{account_id}/projects/{project_id}/cameras/{camera_id}/upload-video` now accepts multipart `llm_analysis` (default `true`) and stores it as S3 object metadata while keeping the existing upload path.

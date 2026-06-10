@@ -67,6 +67,7 @@ def _make_catering_request_data(**overrides) -> CateringRequestData:
         "event_fulfillment": FulfillmentType.DELIVERY.value,
         "contact_name": "John Doe",
         "contact_phone_number": "+15551234567",
+        "contact_email": "john@example.com",
         "party_size": 30,
         "contact_id": None,
         "status": RequestStatus.LEAD.value,
@@ -135,6 +136,56 @@ async def test_creates_new_request_when_no_existing() -> None:
     repo.create.assert_called_once()
     mock_publish.assert_called_once()
     assert mock_publish.call_args.args[0].catering_request_id == persisted_request_id
+
+
+@pytest.mark.asyncio
+async def test_creates_partial_request_without_event_date_or_phone() -> None:
+    session = _make_session()
+    project_id = uuid.uuid4()
+
+    repo = AsyncMock()
+    repo.get_by_idempotency_key.return_value = None
+    persisted_request_id = uuid.uuid4()
+    repo.create.return_value = persisted_request_id
+
+    project_repo = AsyncMock()
+    project_repo.get_project.return_value = SimpleNamespace(
+        account_id=uuid.uuid4(), name="Test Project"
+    )
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryNew",
+            return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.ProjectRepositoryAsync",
+            return_value=project_repo,
+        ),
+        patch(
+            "services.catering_service._implementation.publish_event",
+            return_value=True,
+        ) as mock_publish,
+    ):
+        result = await create_catering_request_async(
+            session=session,
+            project_id=project_id,
+            event_date=None,
+            contact_name="Avery Lead",
+            contact_phone_number=None,
+            contact_email="avery@example.com",
+            idempotency_key="partial-lead-1",
+        )
+
+    assert result.id == persisted_request_id
+    assert result.event_date is None
+    assert result.contact_phone_number is None
+    assert result.contact_email == "avery@example.com"
+    created_data = repo.create.call_args.args[0]
+    assert created_data.event_date is None
+    assert created_data.contact_phone_number is None
+    assert created_data.contact_email == "avery@example.com"
+    mock_publish.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -228,6 +279,44 @@ async def test_get_public_catering_request_by_id_returns_request() -> None:
     assert result.store_address == "456 Store Ave"
     repo.get_by_id.assert_awaited_once_with(catering_request_id)
     project_repo.get_project.assert_awaited_once_with(catering_request.project_id)
+
+
+@pytest.mark.asyncio
+async def test_get_public_catering_request_by_id_returns_partial_request() -> None:
+    session = _make_session()
+    catering_request_id = uuid.uuid4()
+    catering_request = _make_catering_request_data(
+        id=catering_request_id,
+        event_date=None,
+        contact_phone_number=None,
+        contact_email="avery@example.com",
+    )
+
+    repo = AsyncMock()
+    repo.get_by_id.return_value = catering_request
+
+    project_repo = AsyncMock()
+    project_repo.get_project.return_value = SimpleNamespace(address="456 Store Ave")
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryNew",
+            return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.ProjectRepositoryAsync",
+            return_value=project_repo,
+        ),
+    ):
+        result = await get_public_catering_request_by_id(
+            session=session,
+            catering_request_id=catering_request_id,
+        )
+
+    assert result is not None
+    assert result.event_date is None
+    assert result.contact_phone_number is None
+    assert result.contact_email == "avery@example.com"
 
 
 @pytest.mark.asyncio
@@ -352,6 +441,7 @@ async def test_update_catering_request_records_field_update_activity() -> None:
         event_date=date(2025, 12, 25),
         contact_name="John Doe",
         contact_phone_number="+15551234567",
+        contact_email="john@example.com",
         event_time=time(14, 30),
         event_address="123 Main St",
         event_detail="50 pepperoni pizzas",
@@ -365,6 +455,7 @@ async def test_update_catering_request_records_field_update_activity() -> None:
         event_date=date(2025, 12, 25),
         contact_name="John Doe",
         contact_phone_number="+15551234567",
+        contact_email="john@example.com",
         event_time=time(14, 30),
         event_address="123 Main St",
         event_detail="50 pepperoni pizzas",
@@ -407,6 +498,129 @@ async def test_update_catering_request_records_field_update_activity() -> None:
     assert activity.source == CateringRequestActivitySource.ADMIN_CONSOLE
     assert activity.metadata["changed_fields"] == {"party_size": {"old": 30, "new": 45}}
     session.refresh.assert_awaited_once_with(updated_request)
+
+
+@pytest.mark.asyncio
+async def test_update_catering_request_clears_nullable_lead_fields() -> None:
+    session = _make_session()
+    request_id = uuid.uuid4()
+    project_id = uuid.uuid4()
+
+    existing_request = SimpleNamespace(
+        id=request_id,
+        project_id=project_id,
+        event_date=date(2025, 12, 25),
+        contact_name="John Doe",
+        contact_phone_number="+15551234567",
+        contact_email="john@example.com",
+        event_time=time(14, 30),
+        event_address="123 Main St",
+        event_detail="50 pepperoni pizzas",
+        event_fulfillment=FulfillmentType.DELIVERY,
+        party_size=30,
+        status=RequestStatus.LEAD,
+    )
+    updated_request = SimpleNamespace(
+        id=request_id,
+        project_id=project_id,
+        event_date=None,
+        contact_name="John Doe",
+        contact_phone_number=None,
+        contact_email=None,
+        event_time=time(14, 30),
+        event_address="123 Main St",
+        event_detail="50 pepperoni pizzas",
+        event_fulfillment=FulfillmentType.DELIVERY,
+        party_size=30,
+        status=RequestStatus.LEAD,
+    )
+
+    repo = AsyncMock()
+    repo.get_catering_request_by_id.return_value = existing_request
+    repo.update_catering_request.return_value = updated_request
+
+    activity_repo = AsyncMock()
+    activity_repo.create.side_effect = lambda activity: activity
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryAsync",
+            return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.CateringRequestActivityRepository",
+            return_value=activity_repo,
+        ),
+    ):
+        result = await update_catering_request(
+            session=session,
+            catering_request_id=request_id,
+            event_date=None,
+            contact_phone_number=None,
+            contact_email=None,
+        )
+
+    assert result is updated_request
+    updated_model = repo.update_catering_request.call_args.args[1]
+    assert updated_model.event_date is None
+    assert updated_model.contact_phone_number is None
+    assert updated_model.contact_email is None
+    activity = activity_repo.create.call_args.args[0]
+    assert activity.metadata["changed_fields"]["event_date"]["new"] is None
+    assert activity.metadata["changed_fields"]["contact_phone_number"]["new"] is None
+    assert activity.metadata["changed_fields"]["contact_email"]["new"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_catering_request_ignores_null_non_nullable_fields() -> None:
+    session = _make_session()
+    request_id = uuid.uuid4()
+    project_id = uuid.uuid4()
+
+    existing_request = SimpleNamespace(
+        id=request_id,
+        project_id=project_id,
+        event_date=date(2025, 12, 25),
+        contact_name="John Doe",
+        contact_phone_number="+15551234567",
+        contact_email="john@example.com",
+        event_time=time(14, 30),
+        event_address="123 Main St",
+        event_detail="50 pepperoni pizzas",
+        event_fulfillment=FulfillmentType.DELIVERY,
+        party_size=30,
+        status=RequestStatus.LEAD,
+    )
+    updated_request = SimpleNamespace(**vars(existing_request))
+
+    repo = AsyncMock()
+    repo.get_catering_request_by_id.return_value = existing_request
+    repo.update_catering_request.return_value = updated_request
+
+    activity_repo = AsyncMock()
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryAsync",
+            return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.CateringRequestActivityRepository",
+            return_value=activity_repo,
+        ),
+    ):
+        result = await update_catering_request(
+            session=session,
+            catering_request_id=request_id,
+            contact_name=None,
+            status=None,
+        )
+
+    assert result is updated_request
+    updated_model = repo.update_catering_request.call_args.args[1]
+    assert "contact_name" not in updated_model.__dict__
+    assert "status" not in updated_model.__dict__
+    activity_repo.create.assert_not_called()
 
 
 @pytest.mark.asyncio
