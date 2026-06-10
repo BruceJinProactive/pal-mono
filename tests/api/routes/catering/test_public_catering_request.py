@@ -2,7 +2,7 @@
 
 import sys
 import uuid
-from datetime import date, time
+from datetime import date, datetime, time, timezone
 from types import ModuleType
 from unittest.mock import AsyncMock, patch
 
@@ -40,7 +40,11 @@ sqlalchemy.ext.asyncio.async_sessionmaker = (
     lambda *args, **kwargs: lambda *a, **kw: None
 )
 
+import api.routes.catering as catering_routes  # noqa: E402
 from api.routes.catering import _implementation  # noqa: E402
+from db.pal_repository.data_classes.catering_request import (  # noqa: E402
+    CateringRequestData,
+)
 from db.tables.catering_requests import FulfillmentType, RequestStatus  # noqa: E402
 from services.catering_service._implementation import (  # noqa: E402
     PublicCateringRequestDetails,
@@ -67,6 +71,24 @@ def _make_public_catering_request_details(
         party_size=25,
         status=RequestStatus.CONFIRMED.value,
         store_address="456 Store Ave",
+    )
+
+
+def _make_catering_request_data(
+    *,
+    catering_request_id: uuid.UUID,
+    project_id: uuid.UUID,
+) -> CateringRequestData:
+    return CateringRequestData(
+        id=catering_request_id,
+        project_id=project_id,
+        event_date=date(2026, 6, 15),
+        contact_name="Taylor Guest",
+        contact_phone_number="+15551234567",
+        status=RequestStatus.CONFIRMED.value,
+        idempotency_key="idem-key-1",
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
     )
 
 
@@ -119,3 +141,149 @@ async def test_get_public_catering_request_raises_404_when_missing() -> None:
             )
 
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_catering_request_deletes_owned_request() -> None:
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+    catering_request_id = uuid.uuid4()
+    catering_request = _make_catering_request_data(
+        catering_request_id=catering_request_id,
+        project_id=project_id,
+    )
+
+    with (
+        patch(
+            "api.routes.catering._implementation.get_catering_request_by_id",
+            return_value=catering_request,
+        ) as mock_get,
+        patch(
+            "api.routes.catering._implementation.delete_catering_request_impl",
+            return_value=catering_request,
+        ) as mock_delete,
+    ):
+        result = await _implementation.delete_catering_request(
+            project_id=project_id,
+            catering_request_id=catering_request_id,
+            context=object(),  # type: ignore[arg-type]
+            session=session,
+        )
+
+    assert result == {"status": "deleted"}
+    mock_get.assert_awaited_once_with(
+        session=session,
+        catering_request_id=catering_request_id,
+    )
+    mock_delete.assert_awaited_once_with(
+        session=session,
+        catering_request_id=catering_request_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_catering_request_raises_404_when_missing() -> None:
+    session = AsyncMock()
+    catering_request_id = uuid.uuid4()
+
+    with patch(
+        "api.routes.catering._implementation.get_catering_request_by_id",
+        return_value=None,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await _implementation.delete_catering_request(
+                project_id=uuid.uuid4(),
+                catering_request_id=catering_request_id,
+                context=object(),  # type: ignore[arg-type]
+                session=session,
+            )
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_catering_request_raises_404_for_wrong_project() -> None:
+    session = AsyncMock()
+    catering_request_id = uuid.uuid4()
+    catering_request = _make_catering_request_data(
+        catering_request_id=catering_request_id,
+        project_id=uuid.uuid4(),
+    )
+
+    with (
+        patch(
+            "api.routes.catering._implementation.get_catering_request_by_id",
+            return_value=catering_request,
+        ),
+        patch(
+            "api.routes.catering._implementation.delete_catering_request_impl",
+        ) as mock_delete,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await _implementation.delete_catering_request(
+                project_id=uuid.uuid4(),
+                catering_request_id=catering_request_id,
+                context=object(),  # type: ignore[arg-type]
+                session=session,
+            )
+
+    assert exc_info.value.status_code == 404
+    mock_delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_catering_request_raises_404_when_delete_loses_race() -> None:
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+    catering_request_id = uuid.uuid4()
+    catering_request = _make_catering_request_data(
+        catering_request_id=catering_request_id,
+        project_id=project_id,
+    )
+
+    with (
+        patch(
+            "api.routes.catering._implementation.get_catering_request_by_id",
+            return_value=catering_request,
+        ),
+        patch(
+            "api.routes.catering._implementation.delete_catering_request_impl",
+            return_value=None,
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await _implementation.delete_catering_request(
+                project_id=project_id,
+                catering_request_id=catering_request_id,
+                context=object(),  # type: ignore[arg-type]
+                session=session,
+            )
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_catering_request_route_delegates_to_implementation() -> None:
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+    catering_request_id = uuid.uuid4()
+    context = object()
+
+    with patch(
+        "api.routes.catering._implementation.delete_catering_request",
+        return_value={"status": "deleted"},
+    ) as mock_delete:
+        result = await catering_routes.delete_catering_request(
+            project_id=project_id,
+            catering_request_id=catering_request_id,
+            context=context,  # type: ignore[arg-type]
+            session=session,
+        )
+
+    assert result == {"status": "deleted"}
+    mock_delete.assert_awaited_once_with(
+        project_id,
+        catering_request_id,
+        context,
+        session,
+    )

@@ -432,3 +432,61 @@ class TestUpdate:
         with pytest.raises(RuntimeError):
             await repo.update(idempotency_key="unknown_key", contact_name="Jane")
         mock_session.rollback.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# delete_by_id
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteById:
+    @pytest.mark.asyncio
+    async def test_deletes_existing_request(
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        existing = _to_data(sample_orm_row)
+        repo.get_by_id = AsyncMock(return_value=existing)  # type: ignore[method-assign]
+
+        result = await repo.delete_by_id(sample_id)
+
+        assert result == existing
+        repo.get_by_id.assert_awaited_once_with(sample_id)
+        mock_session.execute.assert_awaited_once()
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_request_missing(
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        repo.get_by_id = AsyncMock(return_value=None)  # type: ignore[method-assign]
+
+        result = await repo.delete_by_id(sample_id)
+
+        assert result is None
+        mock_session.execute.assert_not_awaited()
+        mock_session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_error_rolls_back(
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        repo.get_by_id = AsyncMock(  # type: ignore[method-assign]
+            return_value=_to_data(sample_orm_row)
+        )
+        mock_session.execute.side_effect = SQLAlchemyError("db error")
+
+        with pytest.raises(SQLAlchemyError):
+            await repo.delete_by_id(sample_id)
+
+        mock_session.rollback.assert_awaited_once()

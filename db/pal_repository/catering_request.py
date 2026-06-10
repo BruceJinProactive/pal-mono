@@ -5,7 +5,7 @@ import uuid
 from datetime import date, time
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -205,4 +205,21 @@ class CateringRequestRepository:
         except Exception:
             await self.session.rollback()
             logger.exception("Error updating catering request")
+            raise
+
+    async def delete_by_id(self, request_id: uuid.UUID) -> CateringRequestData | None:
+        """Delete a catering request by ID and return the deleted record."""
+        try:
+            existing = await self.get_by_id(request_id)
+            if existing is None:
+                return None
+
+            await self.session.execute(
+                delete(CateringRequest).where(CateringRequest.id == request_id)
+            )
+            await self.session.commit()
+            return existing
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Error deleting catering request")
             raise

@@ -534,6 +534,33 @@ async def get_public_catering_request_by_id(
     )
 
 
+async def get_catering_request_by_id(
+    session: AsyncSession,
+    catering_request_id: uuid.UUID,
+) -> CateringRequestData | None:
+    """Fetch an internal catering request by ID."""
+    return await CateringRequestRepositoryNew(session).get_by_id(catering_request_id)
+
+
+async def delete_catering_request(
+    session: AsyncSession,
+    catering_request_id: uuid.UUID,
+) -> CateringRequestData | None:
+    """Delete a catering request and its activity timeline."""
+    request_repo = CateringRequestRepositoryNew(session)
+    catering_request = await request_repo.get_by_id(catering_request_id)
+    if catering_request is None:
+        return None
+
+    activity_repo = CateringRequestActivityRepository(session)
+    await activity_repo.delete_by_request(
+        project_id=catering_request.project_id,
+        catering_request_id=catering_request.id,
+    )
+
+    return await request_repo.delete_by_id(catering_request_id)
+
+
 def list_catering_requests_by_project_id(
     project_id: uuid.UUID,
 ) -> List[CateringRequest]:

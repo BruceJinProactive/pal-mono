@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.pal_repository.data_classes.catering_request_activity import (
@@ -93,6 +93,25 @@ class CateringRequestActivityRepository:
         except Exception:
             await self.session.rollback()
             logger.exception("[catering] DB error listing request activities")
+            raise
+
+    async def delete_by_request(
+        self,
+        project_id: uuid.UUID,
+        catering_request_id: uuid.UUID,
+    ) -> int:
+        try:
+            result = await self.session.execute(
+                delete(CateringRequestActivity).where(
+                    CateringRequestActivity.project_id == project_id,
+                    CateringRequestActivity.catering_request_id == catering_request_id,
+                )
+            )
+            await self.session.flush()
+            return result.rowcount or 0
+        except Exception:
+            await self.session.rollback()
+            logger.exception("[catering] DB error deleting request activities")
             raise
 
 

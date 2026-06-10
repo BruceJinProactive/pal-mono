@@ -42,6 +42,8 @@ from db.tables.catering_request_activities import (  # noqa: E402
 from db.tables.catering_requests import FulfillmentType, RequestStatus  # noqa: E402
 from services.catering_service._implementation import (  # noqa: E402
     create_catering_request_async,
+    delete_catering_request,
+    get_catering_request_by_id,
     get_public_catering_request_by_id,
     list_catering_request_activities,
     list_catering_requests_with_activities_by_project_id,
@@ -247,6 +249,94 @@ async def test_get_public_catering_request_by_id_returns_none_when_missing() -> 
 
     assert result is None
     repo.get_by_id.assert_awaited_once_with(catering_request_id)
+
+
+@pytest.mark.asyncio
+async def test_get_catering_request_by_id_returns_internal_request() -> None:
+    session = _make_session()
+    catering_request_id = uuid.uuid4()
+    catering_request = _make_catering_request_data(id=catering_request_id)
+
+    repo = AsyncMock()
+    repo.get_by_id.return_value = catering_request
+
+    with patch(
+        "services.catering_service._implementation.CateringRequestRepositoryNew",
+        return_value=repo,
+    ):
+        result = await get_catering_request_by_id(
+            session=session,
+            catering_request_id=catering_request_id,
+        )
+
+    assert result is catering_request
+    repo.get_by_id.assert_awaited_once_with(catering_request_id)
+
+
+@pytest.mark.asyncio
+async def test_delete_catering_request_deletes_timeline_then_request() -> None:
+    session = _make_session()
+    catering_request_id = uuid.uuid4()
+    catering_request = _make_catering_request_data(id=catering_request_id)
+
+    request_repo = AsyncMock()
+    request_repo.get_by_id.return_value = catering_request
+    request_repo.delete_by_id.return_value = catering_request
+
+    activity_repo = AsyncMock()
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryNew",
+            return_value=request_repo,
+        ),
+        patch(
+            "services.catering_service._implementation.CateringRequestActivityRepository",
+            return_value=activity_repo,
+        ),
+    ):
+        result = await delete_catering_request(
+            session=session,
+            catering_request_id=catering_request_id,
+        )
+
+    assert result is catering_request
+    request_repo.get_by_id.assert_awaited_once_with(catering_request_id)
+    activity_repo.delete_by_request.assert_awaited_once_with(
+        project_id=catering_request.project_id,
+        catering_request_id=catering_request.id,
+    )
+    request_repo.delete_by_id.assert_awaited_once_with(catering_request_id)
+
+
+@pytest.mark.asyncio
+async def test_delete_catering_request_returns_none_when_missing() -> None:
+    session = _make_session()
+    catering_request_id = uuid.uuid4()
+
+    request_repo = AsyncMock()
+    request_repo.get_by_id.return_value = None
+
+    activity_repo = AsyncMock()
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryNew",
+            return_value=request_repo,
+        ),
+        patch(
+            "services.catering_service._implementation.CateringRequestActivityRepository",
+            return_value=activity_repo,
+        ),
+    ):
+        result = await delete_catering_request(
+            session=session,
+            catering_request_id=catering_request_id,
+        )
+
+    assert result is None
+    activity_repo.delete_by_request.assert_not_called()
+    request_repo.delete_by_id.assert_not_called()
 
 
 @pytest.mark.asyncio

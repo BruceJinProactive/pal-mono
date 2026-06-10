@@ -105,6 +105,26 @@ async def update_catering_request(
     )
 
 
+@catering_router.delete(
+    "/projects/{project_id}/requests/{catering_request_id}",
+    status_code=status.HTTP_200_OK,
+)
+async def delete_catering_request(
+    project_id: uuid.UUID,
+    catering_request_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+):
+    """
+    Delete an existing catering request.
+    """
+    return await _implementation.delete_catering_request(
+        project_id, catering_request_id, context, session
+    )
+
+
 @catering_router.post(
     "/projects/{project_id}/contacts", status_code=status.HTTP_201_CREATED
 )

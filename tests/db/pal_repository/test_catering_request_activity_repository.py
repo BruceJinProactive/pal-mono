@@ -133,3 +133,55 @@ async def test_list_by_request_rolls_back_on_error(
         )
 
     mock_session.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_by_request_returns_deleted_row_count(
+    repo: CateringRequestActivityRepository,
+    mock_session: AsyncMock,
+) -> None:
+    mock_result = MagicMock()
+    mock_result.rowcount = 3
+    mock_session.execute.return_value = mock_result
+
+    result = await repo.delete_by_request(
+        project_id=uuid.uuid4(),
+        catering_request_id=uuid.uuid4(),
+    )
+
+    assert result == 3
+    mock_session.execute.assert_awaited_once()
+    mock_session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_by_request_returns_zero_when_rowcount_missing(
+    repo: CateringRequestActivityRepository,
+    mock_session: AsyncMock,
+) -> None:
+    mock_result = MagicMock()
+    mock_result.rowcount = None
+    mock_session.execute.return_value = mock_result
+
+    result = await repo.delete_by_request(
+        project_id=uuid.uuid4(),
+        catering_request_id=uuid.uuid4(),
+    )
+
+    assert result == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_by_request_rolls_back_on_error(
+    repo: CateringRequestActivityRepository,
+    mock_session: AsyncMock,
+) -> None:
+    mock_session.execute.side_effect = SQLAlchemyError("db error")
+
+    with pytest.raises(SQLAlchemyError):
+        await repo.delete_by_request(
+            project_id=uuid.uuid4(),
+            catering_request_id=uuid.uuid4(),
+        )
+
+    mock_session.rollback.assert_awaited_once()

@@ -25,7 +25,13 @@ from services.auth_types import UserContext
 from services.catering_service._implementation import (
     create_catering_request_async,
     create_contact,
+)
+from services.catering_service._implementation import (
+    delete_catering_request as delete_catering_request_impl,
+)
+from services.catering_service._implementation import (
     delete_contact,
+    get_catering_request_by_id,
     get_public_catering_request_by_id,
     handle_catering_request_created_event,
     list_catering_requests_by_project_id,
@@ -243,6 +249,53 @@ async def update_catering_request(
     )
 
     return CateringRequest.model_validate(updated_request)
+
+
+async def delete_catering_request(
+    project_id: uuid.UUID,
+    catering_request_id: uuid.UUID,
+    context: UserContext,
+    session: AsyncSession,
+) -> Dict[str, str]:
+    """
+    Delete an existing catering request.
+    """
+    existing_request = await get_catering_request_by_id(
+        session=session,
+        catering_request_id=catering_request_id,
+    )
+    if existing_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Catering request {catering_request_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    if existing_request.project_id != project_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Catering request {catering_request_id} not found for project {project_id}",
+            headers={"Content-Type": "application/json"},
+        )
+
+    del context
+
+    deleted_request = await delete_catering_request_impl(
+        session=session,
+        catering_request_id=catering_request_id,
+    )
+    if deleted_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Catering request {catering_request_id} not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    logger.debug(
+        f"Successfully deleted catering request {catering_request_id} "
+        f"from project {deleted_request.project_id}"
+    )
+    return {"status": "deleted"}
 
 
 async def create_project_contact(
