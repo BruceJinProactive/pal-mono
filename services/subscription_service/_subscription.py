@@ -3309,28 +3309,25 @@ def update_project_subscription(
     if trial_end is not None:
         if trial_end.tzinfo is None:
             trial_end = trial_end.replace(tzinfo=UTC)
-
         now = datetime.now(UTC)
         is_future_trial_end = trial_end > now
-        effective_trial_end = trial_end if is_future_trial_end else now
-        update_data["start_date"] = effective_trial_end
-        stripe_trial_end = (
-            int(effective_trial_end.timestamp()) if is_future_trial_end else "now"
-        )
-
-        if is_future_trial_end:
-            if (
-                not current_subscription.trial_start_date
-                and "trial_start_date" not in update_data
-            ):
-                update_data["trial_start_date"] = now
-            if current_subscription.status == SubscriptionStatus.active:
-                update_data["status"] = SubscriptionStatus.trialing
-        else:
-            if "trial_start_date" not in update_data:
-                update_data["trial_start_date"] = None
-            if current_subscription.status == SubscriptionStatus.trialing:
-                update_data["status"] = SubscriptionStatus.active
+        stripe_trial_end = int(trial_end.timestamp()) if is_future_trial_end else "now"
+        update_data["start_date"] = trial_end
+        if (
+            not current_subscription.trial_start_date
+            and "trial_start_date" not in update_data
+        ):
+            update_data["trial_start_date"] = datetime.now(UTC)
+        if (
+            current_subscription.status == SubscriptionStatus.active
+            and is_future_trial_end
+        ):
+            update_data["status"] = SubscriptionStatus.trialing
+        elif (
+            current_subscription.status == SubscriptionStatus.trialing
+            and not is_future_trial_end
+        ):
+            update_data["status"] = SubscriptionStatus.active
 
     allowed_fields = {
         "payment_method",
@@ -3353,11 +3350,14 @@ def update_project_subscription(
                 continue
             setattr(new_subscription, k, v)
     new_subscription.version = (new_subscription.version or 0) + 1
+    new_subscription.deleted = False
 
     # Cancel old version
     project_subscription_repository.update_project_subscription_status(
         external_id, SubscriptionStatus.cancelled
     )
+    current_subscription.deleted = True
+    session.flush()
 
     with change_log_context(
         session=session,

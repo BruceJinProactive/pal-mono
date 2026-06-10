@@ -6,8 +6,8 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-09
 
+- **Project subscription trial_end sync.** `PATCH /projects/{project_id}/subscriptions/{external_id}` now accepts `trial_end` for project-level trial adjustments, maps it to the local billing start date, exits existing trials when shortened into the past, retires the previous non-deleted project subscription version before inserting the replacement row, and syncs the trial end timestamp to Stripe before committing when the project subscription has a Stripe subscription ID.
 - **Catering item list API plumbing.** Catering request APIs and persistence adapters now carry an optional `all_items` map keyed by item name, allowing item-level quantity, price, modifier, and special-note details to stay separate from broad `event_detail` notes.
-- **Project subscription trial_end sync.** `PATCH /projects/{project_id}/subscriptions/{external_id}` now accepts `trial_end` for project-level trial adjustments, maps it to the local billing start date, and syncs the trial end timestamp to Stripe when the project subscription has a Stripe subscription ID.
 - **Public catering confirmation details.** The unauthenticated catering request
   detail endpoint now includes `contact_phone_number` and project `address` as
   `store_address`, allowing confirmation pages to show requester phone numbers

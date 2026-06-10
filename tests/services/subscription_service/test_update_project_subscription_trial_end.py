@@ -29,6 +29,7 @@ class _FakeTable:
         _FakeColumn("payment_method"),
         _FakeColumn("stripe_subscription_id"),
         _FakeColumn("subscription_plan_id"),
+        _FakeColumn("deleted"),
         _FakeColumn("recurring_credit_enabled"),
         _FakeColumn("recurring_credit_amount"),
         _FakeColumn("recurring_credit_frequency"),
@@ -51,6 +52,7 @@ class FakeProjectSubscription:
     payment_method: str
     stripe_subscription_id: str | None
     subscription_plan_id: uuid.UUID
+    deleted: bool
     recurring_credit_enabled: bool
     recurring_credit_amount: float | None
     recurring_credit_frequency: str | None
@@ -92,6 +94,7 @@ def trialing_project_subscription() -> FakeProjectSubscription:
         payment_method="card",
         stripe_subscription_id=None,
         subscription_plan_id=uuid.uuid4(),
+        deleted=False,
         recurring_credit_enabled=False,
         recurring_credit_amount=None,
         recurring_credit_frequency=None,
@@ -112,6 +115,7 @@ def active_project_subscription() -> FakeProjectSubscription:
         payment_method="card",
         stripe_subscription_id="sub_project_123",
         subscription_plan_id=uuid.uuid4(),
+        deleted=False,
         recurring_credit_enabled=False,
         recurring_credit_amount=None,
         recurring_credit_frequency=None,
@@ -160,6 +164,8 @@ class TestProjectTrialEnd:
         )
 
         assert result.start_date == trial_end
+        assert trialing_project_subscription.deleted is True
+        assert result.deleted is False
 
     @patch("services.subscription_service._subscription.project_service.get_project")
     @patch("services.subscription_service._subscription.change_log_context")
@@ -203,7 +209,7 @@ class TestProjectTrialEnd:
     @patch("services.subscription_service._subscription.project_service.get_project")
     @patch("services.subscription_service._subscription.change_log_context")
     @patch("services.subscription_service._subscription.ProjectSubscriptionRepository")
-    def test_past_trial_end_does_not_create_inverted_trial_dates(
+    def test_past_trial_end_uses_account_level_trial_end_logic(
         self,
         mock_repo_cls: MagicMock,
         mock_changelog: MagicMock,
@@ -224,7 +230,6 @@ class TestProjectTrialEnd:
         mock_changelog.return_value.__enter__ = MagicMock(return_value=MagicMock())
         mock_changelog.return_value.__exit__ = MagicMock(return_value=False)
 
-        before = datetime.now(UTC)
         result = update_project_subscription(
             session=mock_session,
             context=mock_context,
@@ -232,12 +237,43 @@ class TestProjectTrialEnd:
             external_id=active_project_subscription.external_id,
             update_data={"trial_end": requested_trial_end},
         )
-        after = datetime.now(UTC)
 
-        assert result.start_date is not None
-        assert result.start_date >= before
-        assert result.start_date <= after
-        assert result.trial_start_date is None
+        assert result.start_date == requested_trial_end
+        assert result.trial_start_date is not None
+        assert result.status == SubscriptionStatus.active
+
+    @patch("services.subscription_service._subscription.project_service.get_project")
+    @patch("services.subscription_service._subscription.change_log_context")
+    @patch("services.subscription_service._subscription.ProjectSubscriptionRepository")
+    def test_past_trial_end_exits_existing_trial(
+        self,
+        mock_repo_cls: MagicMock,
+        mock_changelog: MagicMock,
+        mock_get_project: MagicMock,
+        mock_session: MagicMock,
+        mock_context: MagicMock,
+        trialing_project_subscription: FakeProjectSubscription,
+    ) -> None:
+        requested_trial_end = datetime.now(UTC) - timedelta(days=1)
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_project_subscription_by_external_id.return_value = (
+            trialing_project_subscription
+        )
+        mock_get_project.return_value = _mock_project(
+            trialing_project_subscription.project_id
+        )
+        mock_changelog.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_changelog.return_value.__exit__ = MagicMock(return_value=False)
+
+        result = update_project_subscription(
+            session=mock_session,
+            context=mock_context,
+            project_id=trialing_project_subscription.project_id,
+            external_id=trialing_project_subscription.external_id,
+            update_data={"trial_end": requested_trial_end},
+        )
+
+        assert result.start_date == requested_trial_end
         assert result.status == SubscriptionStatus.active
 
     @patch("services.subscription_service._subscription.stripe")
@@ -356,6 +392,40 @@ class TestProjectTrialEnd:
 
         mock_session.rollback.assert_called_once()
         mock_session.commit.assert_not_called()
+
+    @patch("services.subscription_service._subscription.project_service.get_project")
+    @patch("services.subscription_service._subscription.change_log_context")
+    @patch("services.subscription_service._subscription.ProjectSubscriptionRepository")
+    def test_trial_end_surfaces_commit_failure(
+        self,
+        mock_repo_cls: MagicMock,
+        mock_changelog: MagicMock,
+        mock_get_project: MagicMock,
+        mock_session: MagicMock,
+        mock_context: MagicMock,
+        active_project_subscription: FakeProjectSubscription,
+    ) -> None:
+        trial_end = datetime.now(UTC) + timedelta(days=14)
+        active_project_subscription.stripe_subscription_id = None
+        mock_session.commit.side_effect = RuntimeError("db down")
+        mock_repo = mock_repo_cls.return_value
+        mock_repo.get_project_subscription_by_external_id.return_value = (
+            active_project_subscription
+        )
+        mock_get_project.return_value = _mock_project(
+            active_project_subscription.project_id
+        )
+        mock_changelog.return_value.__enter__ = MagicMock(return_value=MagicMock())
+        mock_changelog.return_value.__exit__ = MagicMock(return_value=False)
+
+        with pytest.raises(RuntimeError, match="db down"):
+            update_project_subscription(
+                session=mock_session,
+                context=mock_context,
+                project_id=active_project_subscription.project_id,
+                external_id=active_project_subscription.external_id,
+                update_data={"trial_end": trial_end},
+            )
 
     @patch("services.subscription_service._subscription.stripe")
     @patch("services.subscription_service._subscription.project_service.get_project")
