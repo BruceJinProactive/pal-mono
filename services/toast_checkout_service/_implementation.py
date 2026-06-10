@@ -193,7 +193,7 @@ def _build_payment_sms(
         sender_identifier=sender_identifier,
         recipient_identifier=recipient_identifier,
         channel=Channel.SMS,
-        broker=broker,
+        broker=broker or Broker.TWILIO,
         text=TextObject(body=f"Please complete your payment: {checkout_url}"),
         metadata=Metadata(testing=False),
     )

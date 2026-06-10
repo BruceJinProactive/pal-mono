@@ -10,6 +10,8 @@ import pytest
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.schemas.chat.message import Broker
+
 
 class _ExpiringCheckoutSession:
     def __init__(self, **kwargs: Any) -> None:
@@ -203,6 +205,7 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
         == f"Please complete your payment: {result.checkout_url}"
     )
     assert sent_messages[0].recipient_identifier == "+15145609523"
+    assert sent_messages[0].broker == Broker.TWILIO
     assert len(created_payment_intents) == 1
     assert tracking_updates == [
         {
