@@ -2903,8 +2903,8 @@ wheels = [
 
 [[package]]
 name = "pal-agents"
-version = "0.2.365"
-source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.365#a85c03f4b47f41e3f6eaf6a1a0f012ff4fd35307" }
+version = "0.2.366"
+source = { git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.366#cdfa83a1de808638f0b2a5219d63de804be7d785" }
 dependencies = [
     { name = "cryptography" },
     { name = "filelock" },
@@ -3101,9 +3101,9 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-requests", specifier = ">=0.61b0,<0.63b0" },
     { name = "opentelemetry-instrumentation-sqlalchemy", specifier = ">=0.61b0,<0.63b0" },
     { name = "opentelemetry-instrumentation-starlette", specifier = ">=0.61b0,<0.63b0" },
-    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.365" },
-    { name = "pal-agents", extras = ["eval"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.365" },
-    { name = "pal-agents", extras = ["voice"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.365" },
+    { name = "pal-agents", git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.366" },
+    { name = "pal-agents", extras = ["eval"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.366" },
+    { name = "pal-agents", extras = ["voice"], git = "https://github.com/Proactive-AI-Lab/pal-agents.git?rev=v0.2.366" },
     { name = "pgvector", specifier = "==0.3.2" },
     { name = "pinecone", specifier = "==7.3.0" },
     { name = "polyline", specifier = "==2.0.2" },
