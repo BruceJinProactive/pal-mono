@@ -176,6 +176,11 @@ async def get_agent_input_from_message(
     """
     content = message.text.body if message.text else ""
 
+    message_id = message.channel_info.get("messageId")
+    logger.debug(
+        f"processing input message: {message_id}, {message.channel}, {content}"
+    )
+
     # Handle email body extraction from S3
     if message.channel == Channel.EMAIL and message.channel_info.get("messageId"):
         message_id = message.channel_info["messageId"]
