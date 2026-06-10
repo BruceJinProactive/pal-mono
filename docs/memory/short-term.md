@@ -2,11 +2,13 @@
 
 Current project context. Read this before starting any work.
 
-Last updated: 2026-06-08
+Last updated: 2026-06-10
 
 ---
 
 ## Active Work
+
+- **Contract-to-account onboarding PRD** (started 2026-06-10) - Product plan for replacing manual pre-go-live onboarding across contract signing, account creation, ToS acceptance, Slack/Folk/Notion visibility, and FDE handoff. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`
 
 - **Tool-result ElastiCache migration** (started 2026-06-01) - Moving recent
   tool-result context from process-local `pal-agents` memory to shared
