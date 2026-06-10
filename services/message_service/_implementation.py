@@ -270,6 +270,7 @@ async def _persist_catering_details_from_agent(
                 event_time=event_time,
                 event_address=cd.event_address,
                 event_detail=cd.event_detail,
+                all_items=getattr(cd, "all_items", None),
                 event_fulfillment=event_fulfillment,
                 party_size=cd.party_size,
             )
@@ -284,6 +285,7 @@ async def _persist_catering_details_from_agent(
         event_time=event_time,
         event_address=cd.event_address,
         event_detail=cd.event_detail,
+        all_items=getattr(cd, "all_items", None),
         event_fulfillment=event_fulfillment,
         party_size=cd.party_size,
         idempotency_key=str(conversation_id),

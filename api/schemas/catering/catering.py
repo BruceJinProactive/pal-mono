@@ -44,6 +44,7 @@ class CreateCateringRequestRequest(BaseModel):
     event_time: Optional[time] = None
     event_address: Optional[str] = None
     event_detail: Optional[str] = None
+    all_items: Optional[Dict[str, Dict[str, Any]]] = None
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
     idempotency_key: Optional[str] = None
@@ -60,6 +61,7 @@ class UpdateCateringRequestRequest(BaseModel):
     event_time: Optional[time] = None
     event_address: Optional[str] = None
     event_detail: Optional[str] = None
+    all_items: Optional[Dict[str, Dict[str, Any]]] = None
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
     status: Optional[RequestStatus] = None
@@ -101,6 +103,7 @@ class CateringRequest(BaseModel):
     event_time: Optional[time] = None
     event_address: Optional[str] = None
     event_detail: Optional[str] = None
+    all_items: Optional[Dict[str, Dict[str, Any]]] = None
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
     contact_id: Optional[uuid.UUID] = None
@@ -140,6 +143,7 @@ class PublicCateringRequest(BaseModel):
     event_time: Optional[time] = None
     event_address: Optional[str] = None
     event_detail: Optional[str] = None
+    all_items: Optional[Dict[str, Dict[str, Any]]] = None
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
     store_address: Optional[str] = None

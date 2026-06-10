@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import date, time
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -12,6 +13,10 @@ from db.pal_repository.data_classes.catering_request import CateringRequestData
 from db.pal_repository.data_classes.routine_execution import UNSET, _Unset
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from utils.log import logger
+
+
+def _supports_all_items_column() -> bool:
+    return hasattr(CateringRequest, "all_items")
 
 
 def _to_data(row: CateringRequest) -> CateringRequestData:
@@ -29,6 +34,7 @@ def _to_data(row: CateringRequest) -> CateringRequestData:
         event_time=row.event_time,
         event_address=row.event_address,
         event_detail=row.event_detail,
+        all_items=getattr(row, "all_items", None),
         event_fulfillment=(
             row.event_fulfillment.value if row.event_fulfillment else None
         ),
@@ -108,23 +114,27 @@ class CateringRequestRepository:
     async def create(self, data: CateringRequestData) -> uuid.UUID:
         """Create a new catering request and return its persisted ID."""
         try:
-            row = CateringRequest(
-                id=data.id,
-                project_id=data.project_id,
-                event_date=data.event_date,
-                contact_name=data.contact_name,
-                contact_phone_number=data.contact_phone_number,
-                idempotency_key=data.idempotency_key,
-                event_time=data.event_time,
-                event_address=data.event_address,
-                event_detail=data.event_detail,
-                event_fulfillment=data.event_fulfillment,
-                party_size=data.party_size,
-                contact_id=data.contact_id,
-                status=(
+            values = {
+                "id": data.id,
+                "project_id": data.project_id,
+                "event_date": data.event_date,
+                "contact_name": data.contact_name,
+                "contact_phone_number": data.contact_phone_number,
+                "idempotency_key": data.idempotency_key,
+                "event_time": data.event_time,
+                "event_address": data.event_address,
+                "event_detail": data.event_detail,
+                "event_fulfillment": data.event_fulfillment,
+                "party_size": data.party_size,
+                "contact_id": data.contact_id,
+                "status": (
                     RequestStatus(data.status) if data.status else RequestStatus.LEAD
                 ),
-            )
+            }
+            if _supports_all_items_column():
+                values["all_items"] = data.all_items
+
+            row = CateringRequest(**values)
             self.session.add(row)
             await self.session.flush()
             request_id = row.id
@@ -144,6 +154,7 @@ class CateringRequestRepository:
         event_time: time | None | _Unset = UNSET,
         event_address: str | None | _Unset = UNSET,
         event_detail: str | None | _Unset = UNSET,
+        all_items: dict[str, dict[str, Any]] | None | _Unset = UNSET,
         event_fulfillment: FulfillmentType | None | _Unset = UNSET,
         party_size: int | None | _Unset = UNSET,
         contact_id: uuid.UUID | None | _Unset = UNSET,
@@ -171,6 +182,8 @@ class CateringRequestRepository:
                 values["event_address"] = event_address
             if not isinstance(event_detail, _Unset):
                 values["event_detail"] = event_detail
+            if not isinstance(all_items, _Unset) and _supports_all_items_column():
+                values["all_items"] = all_items
             if not isinstance(event_fulfillment, _Unset):
                 values["event_fulfillment"] = event_fulfillment
             if not isinstance(party_size, _Unset):

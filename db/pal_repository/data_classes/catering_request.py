@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, time
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class CateringRequestData:
     event_time: time | None = None
     event_address: str | None = None
     event_detail: str | None = None
+    all_items: dict[str, dict[str, Any]] | None = None
     event_fulfillment: str | None = None
     party_size: int | None = None
     contact_id: uuid.UUID | None = None

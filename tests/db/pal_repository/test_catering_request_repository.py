@@ -48,6 +48,7 @@ def sample_orm_row(sample_id: uuid.UUID) -> MagicMock:
     row.event_time = time(12, 0)
     row.event_address = "123 Main St"
     row.event_detail = "Birthday party"
+    row.all_items = {"Cake tray": {"quantity": 2, "price": 80.00}}
     row.event_fulfillment = MagicMock(value="DELIVERY")
     row.party_size = 50
     row.contact_id = uuid.uuid4()
@@ -73,6 +74,7 @@ class TestToData:
         assert data.event_time == time(12, 0)
         assert data.event_address == "123 Main St"
         assert data.event_detail == "Birthday party"
+        assert data.all_items == {"Cake tray": {"quantity": 2, "price": 80.00}}
         assert data.event_fulfillment == "DELIVERY"
         assert data.party_size == 50
         assert data.contact_id == sample_orm_row.contact_id
@@ -81,6 +83,7 @@ class TestToData:
         sample_orm_row.event_time = None
         sample_orm_row.event_address = None
         sample_orm_row.event_detail = None
+        sample_orm_row.all_items = None
         sample_orm_row.event_fulfillment = None
         sample_orm_row.party_size = None
         sample_orm_row.contact_id = None
@@ -322,6 +325,7 @@ class TestCreate:
             created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
             updated_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
             event_time=time(12, 0),
+            all_items={"Cake tray": {"quantity": 2, "price": 80.00}},
             party_size=50,
         )
 
@@ -334,6 +338,9 @@ class TestCreate:
         result = await repo.create(data)
 
         assert result == persisted_id
+        row = mock_session.add.call_args.args[0]
+        if hasattr(row, "all_items"):
+            assert row.all_items == {"Cake tray": {"quantity": 2, "price": 80.00}}
         mock_session.add.assert_called_once()
         mock_session.flush.assert_awaited_once()
         mock_session.commit.assert_awaited_once()
@@ -383,6 +390,7 @@ class TestUpdate:
         data = await repo.update(
             idempotency_key="key_123",
             contact_name="Jane",
+            all_items={"Sandwich platter": {"quantity": 3, "price": 150.00}},
             party_size=100,
         )
         assert isinstance(data, CateringRequestData)

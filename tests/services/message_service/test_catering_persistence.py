@@ -402,6 +402,12 @@ def _install_services_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     catering_service_mod.create_catering_request_async = _not_implemented  # type: ignore[attr-defined]
 
 
+@pytest.fixture(autouse=True)
+def _message_service_dependency_shims(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+
 class _FakeMessageRepo:
     def __init__(self):
         self.saved_conversation_id = None
@@ -474,6 +480,7 @@ async def test_catering_details_persisted_from_stream(monkeypatch):
                     event_time="14:30",
                     event_address="123 Main St",
                     event_detail="50 pepperoni pizzas",
+                    all_items={"Pepperoni pizza": {"quantity": 50, "price": 500.00}},
                     event_fulfillment="DELIVERY",
                 )
                 yield SimpleNamespace(content="", catering_details=catering_details)
@@ -568,6 +575,9 @@ async def test_catering_details_persisted_from_stream(monkeypatch):
     assert catering["event_time"] == datetime.time(14, 30)
     assert catering["event_address"] == "123 Main St"
     assert catering["event_detail"] == "50 pepperoni pizzas"
+    assert catering["all_items"] == {
+        "Pepperoni pizza": {"quantity": 50, "price": 500.00}
+    }
     assert catering["event_fulfillment"] == "DELIVERY"
     assert catering["idempotency_key"] is not None
 
@@ -763,6 +773,7 @@ async def test_catering_details_persisted_from_non_streaming(monkeypatch):
                     event_time="14:30",
                     event_address="123 Main St",
                     event_detail="50 pepperoni pizzas",
+                    all_items={"Pepperoni pizza": {"quantity": 50, "price": 500.00}},
                     event_fulfillment="DELIVERY",
                 ),
             )
@@ -834,5 +845,8 @@ async def test_catering_details_persisted_from_non_streaming(monkeypatch):
     assert catering["event_time"] == datetime.time(14, 30)
     assert catering["event_address"] == "123 Main St"
     assert catering["event_detail"] == "50 pepperoni pizzas"
+    assert catering["all_items"] == {
+        "Pepperoni pizza": {"quantity": 50, "price": 500.00}
+    }
     assert catering["event_fulfillment"] == "DELIVERY"
     assert catering["idempotency_key"] is not None

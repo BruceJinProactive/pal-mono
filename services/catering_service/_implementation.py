@@ -90,7 +90,7 @@ def _snapshot_request_fields(
     fields: list[str],
 ) -> dict[str, object]:
     return {
-        field: _serialize_activity_value(getattr(catering_request, field))
+        field: _serialize_activity_value(getattr(catering_request, field, None))
         for field in fields
     }
 
@@ -231,6 +231,7 @@ def create_catering_request(
     event_time: Optional[time] = None,
     event_address: Optional[str] = None,
     event_detail: Optional[str] = None,
+    all_items: dict[str, dict[str, Any]] | None = None,
     event_fulfillment: Optional[FulfillmentType] = None,
     party_size: Optional[int] = None,
     idempotency_key: Optional[str] = None,
@@ -246,6 +247,7 @@ def create_catering_request(
         event_time: Time of the event (optional)
         event_address: Address where the event will take place (optional)
         event_detail: Additional details about the event (optional)
+        all_items: Structured map of all requested items keyed by item name (optional)
         event_fulfillment: How the catering will be fulfilled (optional)
         party_size: Number of people expected (optional)
         idempotency_key: Key to prevent duplicate requests (optional, will generate if not provided)
@@ -279,6 +281,7 @@ def create_catering_request(
                 "event_time": event_time,
                 "event_address": event_address,
                 "event_detail": event_detail,
+                "all_items": all_items,
                 "event_fulfillment": event_fulfillment,
                 "contact_name": contact_name,
                 "contact_phone_number": contact_phone_number,
@@ -313,6 +316,7 @@ def create_catering_request(
                 event_time=event_time,
                 event_address=event_address,
                 event_detail=event_detail,
+                all_items=all_items,
                 event_fulfillment=event_fulfillment,
                 contact_name=contact_name,
                 contact_phone_number=contact_phone_number,
@@ -364,6 +368,7 @@ async def create_catering_request_async(
     event_time: Optional[time] = None,
     event_address: Optional[str] = None,
     event_detail: Optional[str] = None,
+    all_items: dict[str, dict[str, Any]] | None = None,
     event_fulfillment: Optional[FulfillmentType] = None,
     party_size: Optional[int] = None,
     idempotency_key: Optional[str] = None,
@@ -388,6 +393,7 @@ async def create_catering_request_async(
             "event_time": event_time,
             "event_address": event_address,
             "event_detail": event_detail,
+            "all_items": all_items,
             "event_fulfillment": event_fulfillment,
             "contact_name": contact_name,
             "contact_phone_number": contact_phone_number,
@@ -440,6 +446,7 @@ async def create_catering_request_async(
         event_time=event_time,
         event_address=event_address,
         event_detail=event_detail,
+        all_items=all_items,
         event_fulfillment=event_fulfillment.value if event_fulfillment else None,
         party_size=party_size,
     )
@@ -465,6 +472,7 @@ async def create_catering_request_async(
                     "event_time",
                     "event_address",
                     "event_detail",
+                    "all_items",
                     "event_fulfillment",
                     "contact_name",
                     "contact_phone_number",
@@ -658,6 +666,7 @@ async def update_catering_request(
     event_time: Optional[time] = None,
     event_address: Optional[str] = None,
     event_detail: Optional[str] = None,
+    all_items: dict[str, dict[str, Any]] | None = None,
     event_fulfillment: Optional[FulfillmentType] = None,
     party_size: Optional[int] = None,
     status: Optional[RequestStatus] = None,
@@ -682,6 +691,7 @@ async def update_catering_request(
         event_time: New event time (optional)
         event_address: New event address (optional)
         event_detail: New event details (optional)
+        all_items: New structured item map keyed by item name (optional)
         event_fulfillment: New fulfillment type (optional)
         party_size: New party size (optional)
         status: New status (optional)
@@ -703,6 +713,7 @@ async def update_catering_request(
         "event_time",
         "event_address",
         "event_detail",
+        "all_items",
         "event_fulfillment",
         "party_size",
         "status",
@@ -720,6 +731,7 @@ async def update_catering_request(
         "event_time": event_time,
         "event_address": event_address,
         "event_detail": event_detail,
+        "all_items": all_items,
         "event_fulfillment": event_fulfillment,
         "party_size": party_size,
         "status": status,
