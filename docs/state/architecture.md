@@ -258,6 +258,14 @@ keeps the `0.0` default. `GET /accounts/{account_name}/rule-events` returns all
 rule events matching the account, optional rule/entity filters, and the time
 window; it has no pagination or `limit` query parameter.
 
+Vision V2 observations derive `observed_at` from the image path when the
+filename matches the UTC snapshot format `YYYY-MM-DD_HH-MM-SS.jpg`, including
+paths like `snapshots/YYYY-MM-DD/YYYY-MM-DD_HH-MM-SS.jpg` and uploaded S3 keys
+under `security/cameras/.../images/YYYY-MM-DD/`. If the filename does not carry
+that format, Vision logs a warning and falls back to backend processing time.
+The resolved `observed_at` is reused for entity current-state metadata,
+state-change events, and downstream rule-event trigger time.
+
 The `visionruletype` database enum also accepts `empty_tray`,
 `people_queued_up`, and `floor_cleanness` rule records for manage-app
 configuration.

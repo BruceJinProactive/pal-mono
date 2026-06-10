@@ -218,3 +218,39 @@ class TestUploadCameraVideoRemux:
 
         mock_remux.assert_not_called()
         assert result.url.endswith(".mov")
+
+    @pytest.mark.asyncio
+    async def test_llm_analysis_false_keeps_shared_path_and_metadata(self, mocker):
+        """Should keep the same S3 path and store llm_analysis metadata."""
+        from api.routes.operation._video_upload import upload_camera_video
+
+        video_file = BytesIO(b"mp4-data")
+        upload = UploadFile(filename="recording.mp4", file=video_file, size=8)
+
+        session = AsyncMock()
+        mocker.patch(
+            "api.routes.operation._video_upload.signal_source_service.get_source_by_camera_id",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        )
+
+        mock_s3 = MagicMock()
+        mocker.patch(
+            "api.routes.operation._video_upload.boto3.client",
+            return_value=mock_s3,
+        )
+
+        result = await upload_camera_video(
+            "acc-1",
+            "proj-1",
+            "cam-1",
+            upload,
+            session,
+            llm_analysis=False,
+        )
+
+        assert len(result.url.split("/")) == 8
+        assert result.url.endswith("/recording.mp4")
+        call_args = mock_s3.upload_fileobj.call_args
+        assert call_args[0][2] == result.url
+        assert call_args[1]["ExtraArgs"]["Metadata"]["llm_analysis"] == "false"

@@ -430,6 +430,9 @@ class TestGenerateObservation:
                 "services.vision_observation_service._implementation.asyncio.to_thread",
                 side_effect=_sync_to_thread,
             ),
+            patch(
+                "services.vision_observation_service._implementation.logger.warning"
+            ) as mock_warning,
         ):
             mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
                 return_value=None
@@ -454,15 +457,24 @@ class TestGenerateObservation:
             )
 
             camera_id = uuid.uuid4()
-            result = await generate_observation(
-                session, camera_id, image_url="cameras/my-kitchen-cam/frame.jpg"
-            )
+            image_url = "cameras/my-kitchen-cam/frame.jpg"
+            result = await generate_observation(session, camera_id, image_url=image_url)
 
             assert result is not None
             assert result.camera_id == camera_id
             assert len(result.entity_observations) == 1
             mock_config_repo_cls.return_value.get_by_name.assert_awaited_once_with(
                 "my-kitchen-cam"
+            )
+            mock_warning.assert_any_call(
+                "[Vision Observation] Image filename does not include UTC capture "
+                "timestamp; falling back to processing time",
+                extra={
+                    "camera_id": str(camera_id),
+                    "config_id": str(config_id),
+                    "image_url": image_url,
+                    "expected_format": "snapshots/YYYY-MM-DD/YYYY-MM-DD_HH-MM-SS.jpg",
+                },
             )
 
     @pytest.mark.asyncio
@@ -1207,6 +1219,7 @@ class TestGenerateObservation:
         entity_type_id = uuid.uuid4()
 
         mock_config = MagicMock()
+        mock_config.id = config_id
         mock_config.enabled = True
         mock_config.llm_prompt = ""
         mock_config.llm_provider = "google"
@@ -1226,6 +1239,8 @@ class TestGenerateObservation:
         mock_entity.is_active = True
         mock_entity.entity_type_id = entity_type_id
         mock_entity.current_state_id = state_id_open
+        mock_entity.current_state_since = None
+        mock_entity.entity_metadata = {}
 
         mock_state_def = MagicMock()
         mock_state_def.id = state_id_open
@@ -1251,6 +1266,11 @@ class TestGenerateObservation:
         mock_llm_provider.analyze_image.return_value = llm_result
 
         fake_image_bytes = b"fake-s3-image-content"
+        image_url = (
+            "security/cameras/account/project/chica-cam-08/images/"
+            "2026-06-09/2026-06-09_18-51-35.jpg"
+        )
+        expected_observed_at = datetime(2026, 6, 9, 18, 51, 35, tzinfo=timezone.utc)
 
         with (
             patch(
@@ -1268,6 +1288,9 @@ class TestGenerateObservation:
             patch(
                 "services.vision_observation_service._implementation.VisionEntityTypeRepository"
             ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
             patch("services.vision_observation_service._implementation.init_s3"),
             patch(
                 "services.vision_observation_service._implementation._fetch_s3_bytes",
@@ -1300,17 +1323,22 @@ class TestGenerateObservation:
             mock_type_repo_cls.return_value.get_by_id = AsyncMock(
                 return_value=mock_entity_type
             )
+            mock_event_repo_cls.return_value.create = AsyncMock()
 
-            result = await generate_observation(
-                session, config_id, image_url="cameras/test/frame.jpg"
-            )
+            result = await generate_observation(session, config_id, image_url=image_url)
 
             assert result is not None
             assert result.camera_id == config_id
+            assert result.observed_at == expected_observed_at
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].state == "closed"
             assert result.entity_observations[0].state_id == state_id_closed
             assert result.entity_observations[0].confidence == 0.88
+            event_create_args = mock_event_repo_cls.return_value.create.await_args
+            assert event_create_args is not None
+            event = event_create_args.args[0]
+            assert event.observed_at == expected_observed_at
+            assert event.frame_s3_key == image_url
 
     @pytest.mark.asyncio
     async def test_reference_images_loaded(self):

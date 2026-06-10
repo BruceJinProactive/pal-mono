@@ -21,6 +21,7 @@ from api.schemas.asset.asset import AssetResponse
 from db.repositories import SignalFeedRepositoryAsync
 from services import signal_source_service
 from utils.log import logger
+from utils.vision_capture_time import parse_utc_capture_time_from_path
 
 # S3 configuration — uses the same asset bucket as video uploads
 AWS_IMAGE_BUCKET_NAME = os.environ.get(
@@ -138,16 +139,34 @@ async def upload_camera_photo(
             f"{MAX_PHOTO_SIZE_BYTES // (1024 * 1024)}MB",
         )
 
-    # Build S3 key (include short UUID suffix to prevent same-second collisions)
     now = datetime.now(timezone.utc)
-    today = now.strftime("%Y-%m-%d")
-    timestamp = now.strftime("%H%M%S")
-    suffix = uuid.uuid4().hex[:8]
+    parsed_capture_time = parse_utc_capture_time_from_path(photo.filename)
+    captured_at = parsed_capture_time or now
+    capture_date = captured_at.strftime("%Y-%m-%d")
+
+    if parsed_capture_time:
+        s3_filename = filename
+    else:
+        logger.warning(
+            "Camera snapshot filename does not include UTC capture timestamp; "
+            "falling back to upload time",
+            extra={
+                "camera_id": camera_id,
+                "project_id": project_id,
+                "account_id": account_id,
+                "snapshot_filename": filename,
+                "expected_format": "snapshots/YYYY-MM-DD/YYYY-MM-DD_HH-MM-SS.jpg",
+            },
+        )
+        timestamp = now.strftime("%H%M%S")
+        suffix = uuid.uuid4().hex[:8]
+        s3_filename = f"{timestamp}-{suffix}{ext}"
+
     # Use human-readable camera name in path when available, fall back to camera_id
     camera_folder = source.name if source and source.name else camera_id
     s3_key = (
         f"security/cameras/{account_id}/{project_id}/{camera_folder}"
-        f"/images/{today}/{timestamp}-{suffix}{ext}"
+        f"/images/{capture_date}/{s3_filename}"
     )
 
     # Upload to S3
@@ -168,7 +187,7 @@ async def upload_camera_photo(
                     "camera_id": camera_id,
                     "account_id": account_id,
                     "project_id": project_id,
-                    "captured_at": now.isoformat(),
+                    "captured_at": captured_at.isoformat(),
                 },
             },
         )
@@ -216,7 +235,7 @@ async def upload_camera_photo(
             feed_repo = SignalFeedRepositoryAsync(session)
             feed = await feed_repo.get_by_source_id(source.id)
             if feed:
-                await feed_repo.update_last_capture(feed.id, now, s3_key)
+                await feed_repo.update_last_capture(feed.id, captured_at, s3_key)
                 await session.commit()
         except Exception as e:
             logger.warning(

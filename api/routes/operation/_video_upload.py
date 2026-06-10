@@ -42,6 +42,7 @@ async def upload_camera_video(
     camera_id: str,
     video: UploadFile,
     session: AsyncSession,
+    llm_analysis: bool = True,
 ) -> AssetResponse:
     """
     Upload a video segment from a camera to S3 using streaming.
@@ -55,6 +56,8 @@ async def upload_camera_video(
         camera_id: The camera identifier
         video: The video file to upload
         session: Database session for camera validation
+        llm_analysis: Whether the uploaded video is intended for LLM analysis.
+            Stored as S3 object metadata.
 
     Returns:
         AssetResponse with the S3 key of the uploaded video
@@ -229,6 +232,7 @@ async def upload_camera_video(
                     "camera_id": camera_id,
                     "account_id": account_id,
                     "project_id": project_id,
+                    "llm_analysis": str(llm_analysis).lower(),
                     "uploaded_at": datetime.now(timezone.utc).isoformat(),
                 },
             },
@@ -240,6 +244,7 @@ async def upload_camera_video(
                 "camera_id": camera_id,
                 "video_filename": filename,
                 "s3_key": s3_key,
+                "llm_analysis": llm_analysis,
             },
         )
 

@@ -39,6 +39,7 @@ from services.vision_state_metadata import (
     set_current_state_metadata,
 )
 from utils.log import logger
+from utils.vision_capture_time import parse_utc_capture_time_from_path
 
 
 async def _fetch_s3_bytes(s3_client: Any, key: str) -> bytes:
@@ -566,7 +567,19 @@ async def generate_observation(
 
     raw_response = llm_result["result"]
     token_usage = llm_result.get("token_usage", {})
-    observed_at = datetime.now(timezone.utc)
+    parsed_observed_at = parse_utc_capture_time_from_path(image_url)
+    if parsed_observed_at is None and image_url:
+        logger.warning(
+            "[Vision Observation] Image filename does not include UTC capture "
+            "timestamp; falling back to processing time",
+            extra={
+                "camera_id": str(camera_id),
+                "config_id": str(camera_config_id),
+                "image_url": image_url,
+                "expected_format": "snapshots/YYYY-MM-DD/YYYY-MM-DD_HH-MM-SS.jpg",
+            },
+        )
+    observed_at = parsed_observed_at or datetime.now(timezone.utc)
 
     image_relevant = raw_response.get("image_relevant", True)
     if not image_relevant:

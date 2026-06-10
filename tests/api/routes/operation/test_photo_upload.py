@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock
 
@@ -71,6 +72,74 @@ class TestUploadCameraPhoto:
         call_args = s3_mock.upload_fileobj.call_args
         assert call_args[0][1] == "test-images-bucket"
         assert call_args[1]["ExtraArgs"]["ContentType"] == "image/jpeg"
+
+    @pytest.mark.asyncio
+    async def test_timestamp_filename_uses_capture_time_key(self, mocker) -> None:
+        """Should preserve UTC capture timestamp filenames in the S3 key."""
+        from api.routes.operation._photo_upload import upload_camera_photo
+
+        s3_mock, _, feed_repo = _setup_mocks(mocker)
+        session = AsyncMock()
+        upload = _make_upload(filename="snapshots/2026-06-09/2026-06-09_18-51-35.jpg")
+
+        result = await upload_camera_photo(
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002",
+            "cam-1",
+            upload,
+            session,
+        )
+
+        assert result.url == (
+            "security/cameras/00000000-0000-0000-0000-000000000001/"
+            "00000000-0000-0000-0000-000000000002/front-door-cam/"
+            "images/2026-06-09/2026-06-09_18-51-35.jpg"
+        )
+        call_args = s3_mock.upload_fileobj.call_args
+        assert call_args[0][2] == result.url
+        assert call_args[1]["ExtraArgs"]["Metadata"]["captured_at"] == (
+            "2026-06-09T18:51:35+00:00"
+        )
+        feed_repo.update_last_capture.assert_called_once_with(
+            "feed-id-456",
+            datetime(2026, 6, 9, 18, 51, 35, tzinfo=timezone.utc),
+            result.url,
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_timestamp_filename_warns_and_uses_fallback_key(
+        self, mocker
+    ) -> None:
+        """Should warn and preserve old generated filename behavior."""
+        from api.routes.operation._photo_upload import upload_camera_photo
+
+        warning_mock = mocker.patch("api.routes.operation._photo_upload.logger.warning")
+        s3_mock, _, _ = _setup_mocks(mocker)
+        session = AsyncMock()
+        upload = _make_upload(filename="snapshot.jpg")
+
+        result = await upload_camera_photo(
+            "00000000-0000-0000-0000-000000000001",
+            "00000000-0000-0000-0000-000000000002",
+            "cam-1",
+            upload,
+            session,
+        )
+
+        assert result.url.endswith(".jpg")
+        assert not result.url.endswith("/snapshot.jpg")
+        s3_mock.upload_fileobj.assert_called_once()
+        warning_mock.assert_any_call(
+            "Camera snapshot filename does not include UTC capture timestamp; "
+            "falling back to upload time",
+            extra={
+                "camera_id": "cam-1",
+                "project_id": "00000000-0000-0000-0000-000000000002",
+                "account_id": "00000000-0000-0000-0000-000000000001",
+                "snapshot_filename": "snapshot.jpg",
+                "expected_format": "snapshots/YYYY-MM-DD/YYYY-MM-DD_HH-MM-SS.jpg",
+            },
+        )
 
     @pytest.mark.asyncio
     async def test_updates_signal_feed(self, mocker) -> None:

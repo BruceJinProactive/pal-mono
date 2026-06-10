@@ -224,6 +224,15 @@ async def upload_camera_video(
     project_id: str,
     camera_id: str,
     video: UploadFile = File(...),
+    llm_analysis: Annotated[
+        bool,
+        Form(
+            description=(
+                "Whether this video is intended for LLM analysis. "
+                "Stored as S3 object metadata."
+            )
+        ),
+    ] = True,
     session: AsyncSession = Depends(db.get_db_async),
 ) -> AssetResponse:
     """
@@ -240,6 +249,7 @@ async def upload_camera_video(
 
     Request body (multipart/form-data):
     - video: The video file to upload (.mkv, .mp4, .mov, .avi, .webm)
+    - llm_analysis: Whether this video is intended for LLM analysis (default: true).
 
     Returns:
     - url: S3 key of the uploaded video
@@ -252,6 +262,7 @@ async def upload_camera_video(
         project_id=project_id,
         camera_id=camera_id,
         video=video,
+        llm_analysis=llm_analysis,
         session=session,
     )
 

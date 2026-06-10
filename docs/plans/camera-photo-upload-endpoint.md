@@ -29,11 +29,14 @@ falls back to `camera_id`
 ## S3 Key Format
 
 ```
-security/cameras/{account_id}/{project_id}/{camera_name}/images/{YYYY-MM-DD}/{HHMMSS}-{uuid8}{ext}
+security/cameras/{account_id}/{project_id}/{camera_name}/images/{YYYY-MM-DD}/{filename}
 ```
 
 - `camera_name`: resolved from `SignalSource.name` if available, otherwise `camera_id`
-- `uuid8`: 8-char hex suffix prevents same-second collisions from multiple cameras
+- `filename`: preserved as `YYYY-MM-DD_HH-MM-SS{ext}` when the upload filename matches
+  `snapshots/YYYY-MM-DD/YYYY-MM-DD_HH-MM-SS{ext}` or the same basename; otherwise generated
+  as `{HHMMSS}-{uuid8}{ext}` with a warning log
+- `uuid8`: 8-char hex suffix prevents same-second collisions for generated fallback names
 - `ext`: `.jpg`, `.jpeg`, or `.png`
 
 ## API Endpoint
@@ -81,7 +84,9 @@ POST /v1/operation/accounts/{account_id}/projects/{project_id}/cameras/{camera_i
 2. **Camera lookup**: Best-effort — queries `SignalSource` by `camera_id` + `project_id` to get
   human-readable name. Failure doesn't block upload.
 3. **Signal feed update**: Best-effort — updates `SignalFeed.last_capture_at` for the matched source.
-  Failure doesn't block upload (logged and swallowed).
+  Uses the timestamp parsed from snapshot filenames when available; filenames without a parseable
+  timestamp log a warning and fall back to upload time. Feed update failure doesn't block upload
+  (logged and swallowed).
 4. **File pointer**: `photo.file.seek(0)` before upload to prevent truncated objects.
 
 ### VM Side (camera_manager.py)
@@ -100,6 +105,7 @@ The `SnapshotCaptureThread` in the VM's `camera_manager.py`:
 | Test                                          | Verifies                                        |
 | --------------------------------------------- | ----------------------------------------------- |
 | `test_successful_upload`                      | Happy path: valid JPEG → 200 + S3 key returned  |
+| `test_timestamp_filename_uses_capture_time_key` | Snapshot timestamp filename drives S3 key and capture time |
 | `test_updates_signal_feed`                    | SignalFeed.last_capture_at updated after upload |
 | `test_png_extension_accepted`                 | `.png` files accepted with correct content type |
 | `test_unsupported_extension_rejected`         | `.gif`, `.bmp` etc. → 400                       |
@@ -128,4 +134,3 @@ but names with `/` would create unexpected prefixes. Current camera names are si
 - Video upload endpoint: `api/routes/operation/_video_upload.py`
 - Signal source/feed tables: `db/tables/signal_sources.py`, `db/tables/signal_feeds.py`
 - VM camera manager: `Camera/camera_manager.py`
-
