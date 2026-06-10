@@ -15,6 +15,7 @@ from db.tables import (
     Conversation,
     ConversationStatus,
     Message,
+    Order,
     User,
 )
 from utils.log import logger
@@ -387,6 +388,7 @@ class ConversationRepository:
         purpose: list[str] | None = None,
         ended_reason: list[str] | None = None,
         customer_converted: bool | None = None,
+        has_order: bool | None = None,
     ) -> list[uuid.UUID]:
         try:
             query = self.session.query(Conversation.id).filter(
@@ -417,6 +419,12 @@ class ConversationRepository:
                     query = query.filter(Conversation.customer_converted.is_not(None))
                 else:
                     query = query.filter(Conversation.customer_converted.is_(None))
+            if has_order is not None:
+                order_conversation_ids = select(Order.conversation_id)
+                if has_order:
+                    query = query.filter(Conversation.id.in_(order_conversation_ids))
+                else:
+                    query = query.filter(Conversation.id.notin_(order_conversation_ids))
 
             return [id for (id,) in query.all()]
         except SQLAlchemyError as e:

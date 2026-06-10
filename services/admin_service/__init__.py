@@ -41,6 +41,7 @@ def list_conversations_in_account(
     escalated: bool,
     hide_testing_sessions: bool,
     db_session: Session,
+    has_order: bool | None = None,
 ) -> tuple[int, list[UserSessionPreview]]:
     return _implementation.list_conversations_in_account(
         account_id,
@@ -58,6 +59,7 @@ def list_conversations_in_account(
         escalated,
         hide_testing_sessions,
         db_session,
+        has_order=has_order,
     )
 
 

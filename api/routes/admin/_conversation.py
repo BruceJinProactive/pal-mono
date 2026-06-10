@@ -35,6 +35,7 @@ async def list_account_conversations(
     purpose: list[str] | None,
     ended_reason: list[str] | None,
     customer_converted: bool | None,
+    has_order: bool | None,
     context: UserContext,
     session: Session,
 ) -> ListUserSessionsResponse:
@@ -63,6 +64,7 @@ async def list_account_conversations(
         purpose=purpose,
         ended_reason=ended_reason,
         customer_converted=customer_converted,
+        has_order=has_order,
         db_session=session,
     )
     total_pages = (total + page_size - 1) // page_size

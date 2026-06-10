@@ -1109,6 +1109,10 @@ async def list_account_conversations(
         None,
         description="Filter by customer conversion status. True for converted, False for not converted, None for all",
     ),
+    has_order: bool | None = Query(
+        None,
+        description="Filter by order presence. True for conversations with orders, False for conversations without orders, None for all",
+    ),
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
     ),
@@ -1132,6 +1136,7 @@ async def list_account_conversations(
         purpose,
         ended_reason,
         customer_converted,
+        has_order,
         context,
         session,
     )

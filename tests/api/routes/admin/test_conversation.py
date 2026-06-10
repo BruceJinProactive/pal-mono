@@ -250,6 +250,7 @@ class TestListAccountConversationsOrderNumber:
                 purpose=None,
                 ended_reason=None,
                 customer_converted=None,
+                has_order=None,
                 context=_make_context(),
                 session=MagicMock(),
             )

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -250,6 +250,75 @@ def test_list_conversations_in_account_hides_placeholder_order_number(mocker) ->
     assert previews[0].order_number is None
     assert previews[0].has_order is True
     message_repository.get_messages_by_conversation.assert_not_called()
+
+
+def test_list_conversations_in_account_filters_by_order_presence(mocker) -> None:
+    """
+    Test list_conversations_in_account passes the order-presence filter to storage.
+
+    Expected result: repository-level filtering controls pagination and totals.
+    """
+    account_id = uuid4()
+    user = SimpleNamespace(id=uuid4())
+
+    message_repository = MagicMock()
+    conversation_repository = MagicMock()
+    conversation_repository.get_conversation_ids_by_user_ids.return_value = []
+    conversation_repository.get_paginated_sessions_by_ids.return_value = (0, [])
+
+    order_repository = MagicMock()
+    order_repository.get_latest_orders_by_conversation_ids.return_value = {}
+
+    mocker.patch(
+        "services.admin_service._implementation.user_service.get_users_by_account_id",
+        return_value=[user],
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.MessageRepository",
+        return_value=message_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.ConversationRepository",
+        return_value=conversation_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.OrderRepository",
+        return_value=order_repository,
+    )
+
+    total, previews = list_conversations_in_account(
+        account_id=account_id,
+        keyword="",
+        channel=None,
+        language=None,
+        purpose=None,
+        ended_reason=None,
+        customer_converted=None,
+        project_id=None,
+        start_date=None,
+        end_date=datetime.now(timezone.utc),
+        page=1,
+        page_size=10,
+        escalated=False,
+        hide_testing_sessions=True,
+        db_session=mock_session,
+        has_order=True,
+    )
+
+    assert total == 0
+    assert previews == []
+    conversation_repository.get_conversation_ids_by_user_ids.assert_called_once_with(
+        [user.id],
+        None,
+        ANY,
+        None,
+        True,
+        None,
+        None,
+        None,
+        None,
+        has_order=True,
+    )
 
 
 def test_get_conversation_order_display_info_hides_placeholder_id(mocker) -> None:

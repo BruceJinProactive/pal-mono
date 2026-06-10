@@ -411,6 +411,58 @@ class TestConversationFiltering:
         )
         assert result == [sample_conversation_id]
 
+    def test_get_conversation_ids_with_orders_filter(
+        self, repo, mock_session, sample_conversation_id
+    ) -> None:
+        """Admin console can list only conversations with stored orders."""
+        mock_q = mock_session.query.return_value.filter.return_value
+        mock_q.filter.return_value = mock_q
+        mock_q.all.return_value = [(sample_conversation_id,)]
+
+        result = repo.get_conversation_ids_by_user_ids(
+            user_ids=[uuid.uuid4()],
+            start_date=None,
+            end_date=datetime(2025, 12, 31, tzinfo=timezone.utc),
+            has_order=True,
+        )
+
+        assert result == [sample_conversation_id]
+        compiled_filters = [
+            str(call.args[0].compile(dialect=postgresql.dialect()))
+            for call in mock_q.filter.call_args_list
+        ]
+        assert any(
+            "conversations.id IN" in compiled_filter
+            and "orders.conversation_id" in compiled_filter
+            for compiled_filter in compiled_filters
+        )
+
+    def test_get_conversation_ids_without_orders_filter(
+        self, repo, mock_session, sample_conversation_id
+    ) -> None:
+        """Admin console can list only conversations without stored orders."""
+        mock_q = mock_session.query.return_value.filter.return_value
+        mock_q.filter.return_value = mock_q
+        mock_q.all.return_value = [(sample_conversation_id,)]
+
+        result = repo.get_conversation_ids_by_user_ids(
+            user_ids=[uuid.uuid4()],
+            start_date=None,
+            end_date=datetime(2025, 12, 31, tzinfo=timezone.utc),
+            has_order=False,
+        )
+
+        assert result == [sample_conversation_id]
+        compiled_filters = [
+            str(call.args[0].compile(dialect=postgresql.dialect()))
+            for call in mock_q.filter.call_args_list
+        ]
+        assert any(
+            "conversations.id NOT IN" in compiled_filter
+            and "orders.conversation_id" in compiled_filter
+            for compiled_filter in compiled_filters
+        )
+
     def test_get_conversation_ids_returns_empty_on_error(self, repo, mock_session):
         """Graceful degradation."""
         mock_session.query.return_value.filter.return_value.all.side_effect = (

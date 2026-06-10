@@ -147,6 +147,7 @@ def list_conversations_in_account(
     escalated: bool,
     hide_testing_sessions: bool,
     db_session: Session,
+    has_order: bool | None = None,
 ) -> tuple[int, list[UserSessionPreview]]:
     message_repository = db.MessageRepository(db_session)
     conversation_repository = db.ConversationRepository(db_session)
@@ -164,6 +165,7 @@ def list_conversations_in_account(
         purpose,
         ended_reason,
         customer_converted,
+        has_order=has_order,
     )
     # Only narrow down id list if necessary
     if keyword or channel or escalated:

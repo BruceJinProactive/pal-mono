@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-10
 
+- **Admin conversation order filter.** `GET /accounts/{account_name}/conversations` now accepts `has_order` so the admin console can list only conversations with stored orders, or only conversations without stored orders, while preserving correct pagination totals.
 - **Catering partial-lead runtime adapters.** Repository DTOs, catering API
   schemas, service create/update/read paths, public detail responses, and agent
   catering persistence now accept nullable `event_date`,
