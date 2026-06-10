@@ -507,7 +507,7 @@ def _agent_config_to_spec(
         toast=toast_spec or ToastSpec(),
         olo=OloSpec(),
         filler_words=filler_words_spec,
-        **({"catering_enabled": catering_enabled} if catering_enabled else {}),
+        catering_enabled=catering_enabled,
     )
 
 

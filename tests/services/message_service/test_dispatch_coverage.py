@@ -171,7 +171,11 @@ def _install_services_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     user_service_mod.get_user_async = _not_implemented  # type: ignore[attr-defined]
     user_service_mod.create_user_async = _not_implemented  # type: ignore[attr-defined]
     transaction_service_mod.create_order_from_agent_async = _not_implemented  # type: ignore[attr-defined]
+    transaction_service_mod.get_order_by_order_id_store_vendor = _not_implemented  # type: ignore[attr-defined]
+    transaction_service_mod.save_order = _not_implemented  # type: ignore[attr-defined]
     reservation_service_mod.save_reservation_from_agent_async = _not_implemented  # type: ignore[attr-defined]
+    reservation_service_mod.save_reservation = _not_implemented  # type: ignore[attr-defined]
+    reservation_service_mod.save_waitlist = _not_implemented  # type: ignore[attr-defined]
 
 
 class _FakeMessageRepo:
@@ -432,7 +436,7 @@ async def test_pal_agents_path_attaches_external_previous_tool_results(
             "status": "success",
         }
     ]
-    captured_previous_results: list[object] = []
+    captured_previous_results: list[object | None] = []
 
     async def _fake_get_tool_results(
         conversation_id: str,
@@ -493,7 +497,7 @@ async def test_pal_agents_path_uses_process_local_fallback_on_cache_miss(
         monkeypatch, project=project, user=user, message_repo=message_repo
     )
 
-    captured_has_previous_results: list[bool] = []
+    captured_previous_results: list[object | None] = []
 
     async def _fake_get_tool_results(
         conversation_id: str,
@@ -508,8 +512,8 @@ async def test_pal_agents_path_uses_process_local_fallback_on_cache_miss(
             self.spec = spec
 
         async def run(self, pal_input: Any, stream: bool = False) -> SimpleNamespace:
-            captured_has_previous_results.append(
-                hasattr(pal_input.runtime_context, "previous_tool_results")
+            captured_previous_results.append(
+                getattr(pal_input.runtime_context, "previous_tool_results", None)
             )
             return SimpleNamespace(
                 content="response", escalated=False, closing_conversation=False
@@ -534,7 +538,7 @@ async def test_pal_agents_path_uses_process_local_fallback_on_cache_miss(
         request_context=RequestContext(),
     )
 
-    assert captured_has_previous_results == [False]
+    assert captured_previous_results == [None]
 
 
 @pytest.mark.asyncio
@@ -559,7 +563,7 @@ async def test_previous_tool_result_read_failure_is_best_effort(
 
     await _impl._hydrate_previous_tool_results(runtime_context, uuid.uuid4())
 
-    assert not hasattr(runtime_context, "previous_tool_results")
+    assert getattr(runtime_context, "previous_tool_results", None) is None
 
 
 @pytest.mark.asyncio
@@ -579,7 +583,7 @@ async def test_pal_agents_path_continues_when_previous_tool_result_read_fails(
         monkeypatch, project=project, user=user, message_repo=message_repo
     )
 
-    captured_has_previous_results: list[bool] = []
+    captured_previous_results: list[object | None] = []
 
     async def _raise_get_tool_results(
         conversation_id: str,
@@ -594,8 +598,8 @@ async def test_pal_agents_path_continues_when_previous_tool_result_read_fails(
             self.spec = spec
 
         async def run(self, pal_input: Any, stream: bool = False) -> SimpleNamespace:
-            captured_has_previous_results.append(
-                hasattr(pal_input.runtime_context, "previous_tool_results")
+            captured_previous_results.append(
+                getattr(pal_input.runtime_context, "previous_tool_results", None)
             )
             return SimpleNamespace(
                 content="response", escalated=False, closing_conversation=False
@@ -620,7 +624,7 @@ async def test_pal_agents_path_continues_when_previous_tool_result_read_fails(
         request_context=RequestContext(),
     )
 
-    assert captured_has_previous_results == [False]
+    assert captured_previous_results == [None]
     assert any(
         response_message.text and response_message.text.body == "response"
         for response_message in result
@@ -651,7 +655,7 @@ async def test_streaming_pal_agents_path_attaches_external_previous_tool_results
             "status": "success",
         }
     ]
-    captured_previous_results: list[object] = []
+    captured_previous_results: list[object | None] = []
 
     @asynccontextmanager
     async def _fake_trace_async_block(
@@ -728,7 +732,7 @@ async def test_streaming_pal_agents_path_continues_when_previous_tool_result_rea
         monkeypatch, project=project, user=user, message_repo=message_repo
     )
 
-    captured_has_previous_results: list[bool] = []
+    captured_previous_results: list[object | None] = []
 
     @asynccontextmanager
     async def _fake_trace_async_block(
@@ -752,8 +756,8 @@ async def test_streaming_pal_agents_path_continues_when_previous_tool_result_rea
             self.spec = spec
 
         async def run(self, pal_input: Any, stream: bool = False) -> AsyncIterator[Any]:
-            captured_has_previous_results.append(
-                hasattr(pal_input.runtime_context, "previous_tool_results")
+            captured_previous_results.append(
+                getattr(pal_input.runtime_context, "previous_tool_results", None)
             )
 
             async def _stream() -> AsyncIterator[SimpleNamespace]:
@@ -789,7 +793,7 @@ async def test_streaming_pal_agents_path_continues_when_previous_tool_result_rea
         for chunk in chunks
         if chunk.choices[0].delta.content
     ]
-    assert captured_has_previous_results == [False]
+    assert captured_previous_results == [None]
     assert "Still working" in contents
 
 
