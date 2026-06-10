@@ -58,6 +58,23 @@ CATERING_REQUEST_ACTIVITY_LIMIT_DEFAULT = 50
 CATERING_REQUEST_ACTIVITY_SYSTEM_ACTOR = "System"
 
 
+@dataclasses.dataclass(frozen=True)
+class PublicCateringRequestDetails:
+    """Public-safe catering request details for customer confirmation pages."""
+
+    id: uuid.UUID
+    event_date: date
+    contact_name: str
+    contact_phone_number: str | None
+    status: str
+    event_time: time | None = None
+    event_address: str | None = None
+    event_detail: str | None = None
+    event_fulfillment: str | None = None
+    party_size: int | None = None
+    store_address: str | None = None
+
+
 def _serialize_activity_value(value: object) -> object:
     if isinstance(value, enum.Enum):
         return value.value
@@ -484,10 +501,29 @@ async def create_catering_request_async(
 async def get_public_catering_request_by_id(
     session: AsyncSession,
     catering_request_id: uuid.UUID,
-) -> CateringRequestData | None:
+) -> PublicCateringRequestDetails | None:
     """Fetch a catering request for a public detail page."""
     repo = CateringRequestRepositoryNew(session)
-    return await repo.get_by_id(catering_request_id)
+    catering_request = await repo.get_by_id(catering_request_id)
+    if catering_request is None:
+        return None
+
+    project = await ProjectRepositoryAsync(session).get_project(
+        catering_request.project_id
+    )
+    return PublicCateringRequestDetails(
+        id=catering_request.id,
+        event_date=catering_request.event_date,
+        contact_name=catering_request.contact_name,
+        contact_phone_number=catering_request.contact_phone_number,
+        status=catering_request.status,
+        event_time=catering_request.event_time,
+        event_address=catering_request.event_address,
+        event_detail=catering_request.event_detail,
+        event_fulfillment=catering_request.event_fulfillment,
+        party_size=catering_request.party_size,
+        store_address=project.address if project else None,
+    )
 
 
 def list_catering_requests_by_project_id(

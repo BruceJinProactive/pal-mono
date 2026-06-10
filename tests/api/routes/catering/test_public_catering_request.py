@@ -2,7 +2,7 @@
 
 import sys
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import date, time
 from types import ModuleType
 from unittest.mock import AsyncMock, patch
 
@@ -41,10 +41,10 @@ sqlalchemy.ext.asyncio.async_sessionmaker = (
 )
 
 from api.routes.catering import _implementation  # noqa: E402
-from db.pal_repository.data_classes.catering_request import (  # noqa: E402
-    CateringRequestData,
-)
 from db.tables.catering_requests import FulfillmentType, RequestStatus  # noqa: E402
+from services.catering_service._implementation import (  # noqa: E402
+    PublicCateringRequestDetails,
+)
 
 sqlalchemy.engine.create_engine = original_create_engine
 sqlalchemy.ext.asyncio.create_async_engine = original_create_async_engine
@@ -52,12 +52,11 @@ sqlalchemy.orm.sessionmaker = original_sessionmaker
 sqlalchemy.ext.asyncio.async_sessionmaker = original_async_sessionmaker
 
 
-def _make_catering_request_data(
+def _make_public_catering_request_details(
     catering_request_id: uuid.UUID,
-) -> CateringRequestData:
-    return CateringRequestData(
+) -> PublicCateringRequestDetails:
+    return PublicCateringRequestDetails(
         id=catering_request_id,
-        project_id=uuid.uuid4(),
         event_date=date(2026, 6, 15),
         event_time=time(12, 30),
         event_address="123 Main St",
@@ -66,11 +65,8 @@ def _make_catering_request_data(
         contact_name="Taylor Guest",
         contact_phone_number="+15551234567",
         party_size=25,
-        contact_id=uuid.uuid4(),
         status=RequestStatus.CONFIRMED.value,
-        idempotency_key="private-idempotency-key",
-        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
-        updated_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+        store_address="456 Store Ave",
     )
 
 
@@ -78,7 +74,7 @@ def _make_catering_request_data(
 async def test_get_public_catering_request_returns_public_safe_fields() -> None:
     session = AsyncMock()
     catering_request_id = uuid.uuid4()
-    catering_request = _make_catering_request_data(catering_request_id)
+    catering_request = _make_public_catering_request_details(catering_request_id)
 
     with patch(
         "api.routes.catering._implementation.get_public_catering_request_by_id",
@@ -91,12 +87,15 @@ async def test_get_public_catering_request_returns_public_safe_fields() -> None:
 
     assert result.id == catering_request_id
     assert result.contact_name == "Taylor Guest"
+    assert result.contact_phone_number == "+15551234567"
     assert result.event_detail == "Lunch for 25 guests"
     assert result.event_fulfillment == FulfillmentType.DELIVERY
+    assert result.store_address == "456 Store Ave"
     assert result.status == RequestStatus.CONFIRMED
 
     public_payload = result.model_dump()
-    assert "contact_phone_number" not in public_payload
+    assert public_payload["contact_phone_number"] == "+15551234567"
+    assert public_payload["store_address"] == "456 Store Ave"
     assert "project_id" not in public_payload
     assert "contact_id" not in public_payload
     assert "idempotency_key" not in public_payload

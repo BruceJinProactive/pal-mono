@@ -201,17 +201,31 @@ async def test_get_public_catering_request_by_id_returns_request() -> None:
     repo = AsyncMock()
     repo.get_by_id.return_value = catering_request
 
-    with patch(
-        "services.catering_service._implementation.CateringRequestRepositoryNew",
-        return_value=repo,
+    project_repo = AsyncMock()
+    project_repo.get_project.return_value = SimpleNamespace(address="456 Store Ave")
+
+    with (
+        patch(
+            "services.catering_service._implementation.CateringRequestRepositoryNew",
+            return_value=repo,
+        ),
+        patch(
+            "services.catering_service._implementation.ProjectRepositoryAsync",
+            return_value=project_repo,
+        ),
     ):
         result = await get_public_catering_request_by_id(
             session=session,
             catering_request_id=catering_request_id,
         )
 
-    assert result == catering_request
+    assert result is not None
+    assert result.id == catering_request_id
+    assert result.contact_phone_number == "+15551234567"
+    assert result.event_address == "123 Main St"
+    assert result.store_address == "456 Store Ave"
     repo.get_by_id.assert_awaited_once_with(catering_request_id)
+    project_repo.get_project.assert_awaited_once_with(catering_request.project_id)
 
 
 @pytest.mark.asyncio

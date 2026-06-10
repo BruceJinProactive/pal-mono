@@ -136,11 +136,13 @@ class PublicCateringRequest(BaseModel):
     id: uuid.UUID
     event_date: date
     contact_name: str
+    contact_phone_number: Optional[str] = None
     event_time: Optional[time] = None
     event_address: Optional[str] = None
     event_detail: Optional[str] = None
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
+    store_address: Optional[str] = None
     status: RequestStatus
 
     model_config = ConfigDict(from_attributes=True)
