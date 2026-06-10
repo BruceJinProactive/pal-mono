@@ -147,6 +147,7 @@ async def _get_or_create_checkout_session(
         status="processing",
     )
     await session.commit()
+    await session.refresh(row)
     return row, True
 
 
@@ -299,6 +300,7 @@ async def process_checkout_request_async(
                 checkout_url=checkout_session.checkout_url,
             )
             await session.commit()
+            await session.refresh(checkout_session)
     except Exception:
         await repo.mark_failed(checkout_session, status="failed")
         await session.commit()
@@ -311,6 +313,7 @@ async def process_checkout_request_async(
             expires_at=checkout_session.expires_at,
         )
         await session.commit()
+        await session.refresh(checkout_session)
 
     try:
         sms = _build_payment_sms(

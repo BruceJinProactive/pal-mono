@@ -7,7 +7,31 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+class _ExpiringCheckoutSession:
+    def __init__(self, **kwargs: Any) -> None:
+        object.__setattr__(self, "_expired", False)
+        for key, value in kwargs.items():
+            object.__setattr__(self, key, value)
+
+    def expire(self) -> None:
+        object.__setattr__(self, "_expired", True)
+
+    def refresh(self) -> None:
+        object.__setattr__(self, "_expired", False)
+
+    def __getattribute__(self, name: str) -> Any:
+        if name.startswith("_") or name in {"expire", "refresh"}:
+            return object.__getattribute__(self, name)
+        if object.__getattribute__(self, "_expired"):
+            raise MissingGreenlet("expired attribute requires async refresh")
+        return object.__getattribute__(self, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        object.__setattr__(self, name, value)
 
 
 @pytest.mark.asyncio
@@ -133,6 +157,7 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
     }
 
     fake_session_obj = SimpleNamespace(commit=AsyncMock())
+    fake_session_obj.refresh = AsyncMock()
     fake_session = cast(AsyncSession, fake_session_obj)
 
     result = await service.process_checkout_request_async(
@@ -200,6 +225,127 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
     assert len(sent_messages) == 1
     assert len(created_payment_intents) == 1
     assert len(tracking_updates) == 1
+
+
+@pytest.mark.asyncio
+async def test_process_checkout_request_refreshes_session_after_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    rows: list[_ExpiringCheckoutSession] = []
+    sent_messages: list[Any] = []
+
+    class FakeSessionRepository:
+        def __init__(self, _session: object) -> None:
+            return
+
+        async def get_by_external_reference_id(
+            self, _external_reference_id: str
+        ) -> None:
+            return None
+
+        async def create(self, **kwargs: Any) -> _ExpiringCheckoutSession:
+            row = _ExpiringCheckoutSession(**kwargs)
+            rows.append(row)
+            return row
+
+        async def mark_ready(
+            self,
+            row: _ExpiringCheckoutSession,
+            *,
+            session_payload: dict[str, Any],
+            expires_at: datetime,
+        ) -> _ExpiringCheckoutSession:
+            row.session_payload = session_payload
+            row.expires_at = expires_at
+            row.status = "ready"
+            return row
+
+        async def mark_failed(
+            self, row: _ExpiringCheckoutSession, *, status: str
+        ) -> None:
+            row.status = status
+
+    monkeypatch.setattr(
+        service, "ToastCheckoutSessionRepository", FakeSessionRepository
+    )
+    monkeypatch.setattr(
+        service,
+        "get_toast_access_token_from_aws",
+        lambda **kwargs: SimpleNamespace(
+            access_token=f"token:{kwargs.get('token_name')}"
+        ),
+    )
+    monkeypatch.setattr(
+        service,
+        "create_payment_intent",
+        lambda **kwargs: SimpleNamespace(
+            id="pi_123",
+            sessionSecret="session-secret",
+            amount=kwargs["payment_request"].amount,
+            externalReferenceId=kwargs["payment_request"].externalReferenceId,
+        ),
+    )
+    monkeypatch.setattr(service, "shorten_url", lambda url: url)
+    monkeypatch.setattr(
+        service,
+        "send_message",
+        lambda message: sent_messages.append(message) or {"status": "scheduled"},
+    )
+
+    async def _fake_update_order_tracking_link_async(
+        *, session: AsyncSession, payload: object, checkout_url: str
+    ) -> None:
+        return None
+
+    monkeypatch.setattr(
+        service,
+        "_update_order_tracking_link_async",
+        _fake_update_order_tracking_link_async,
+    )
+
+    request = {
+        "type": "payment_checkout",
+        "provider": "toast",
+        "payload": {
+            "amount_cents": 3500,
+            "tip_cents": 0,
+            "external_reference_id": "8f2ddc2f-25fd-4c55-943f-04162c43e571",
+            "order_external_id": "PALONA:test-session",
+            "customer_email": "orderingagent+5551234567@palona.ai",
+            "customer_name": "John Doe",
+            "customer_phone": "+15551234567",
+            "order_items": [],
+            "subtotal_cents": 3000,
+            "tax_cents": 500,
+            "gratuity_fees": [],
+            "store_id": "toast-store",
+            "store_name": "Toast Store",
+        },
+    }
+
+    async def _commit() -> None:
+        rows[-1].expire()
+
+    async def _refresh(row: _ExpiringCheckoutSession) -> None:
+        row.refresh()
+
+    fake_session_obj = SimpleNamespace(commit=AsyncMock(side_effect=_commit))
+    fake_session_obj.refresh = AsyncMock(side_effect=_refresh)
+    fake_session = cast(AsyncSession, fake_session_obj)
+
+    result = await service.process_checkout_request_async(
+        session=fake_session,
+        checkout_request=request,
+        conversation_id=uuid.uuid4(),
+        sender_identifier="+15551230000",
+        recipient_identifier="+15551234567",
+    )
+
+    assert result.checkout_url.startswith("https://console.palona.ai/checkout/toast")
+    assert len(sent_messages) == 1
+    assert fake_session_obj.refresh.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -282,6 +428,7 @@ async def test_process_checkout_request_marks_delivery_failure(monkeypatch):
         },
     }
     fake_session_obj = SimpleNamespace(commit=AsyncMock())
+    fake_session_obj.refresh = AsyncMock()
     fake_session = cast(AsyncSession, fake_session_obj)
 
     with pytest.raises(service.ToastCheckoutDeliveryError):
@@ -362,6 +509,7 @@ async def test_process_checkout_request_retries_delivery_failed_session(monkeypa
         },
     }
     fake_session_obj = SimpleNamespace(commit=AsyncMock())
+    fake_session_obj.refresh = AsyncMock()
     fake_session = cast(AsyncSession, fake_session_obj)
 
     result = await service.process_checkout_request_async(
