@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -198,6 +199,33 @@ def _build_payment_sms(
     )
 
 
+def _normalize_sms_recipient(recipient_identifier: str | None) -> str | None:
+    if not recipient_identifier:
+        return None
+
+    stripped = recipient_identifier.strip()
+    digits = re.sub(r"\D", "", stripped)
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    if stripped.startswith("+") and 8 <= len(digits) <= 15:
+        return f"+{digits}"
+    return None
+
+
+def _select_sms_recipient(
+    *,
+    preferred_recipient: str | None,
+    fallback_recipient: str,
+) -> str:
+    return (
+        _normalize_sms_recipient(preferred_recipient)
+        or _normalize_sms_recipient(fallback_recipient)
+        or fallback_recipient
+    )
+
+
 async def process_checkout_request_async(
     *,
     session: AsyncSession,
@@ -318,7 +346,10 @@ async def process_checkout_request_async(
     try:
         sms = _build_payment_sms(
             sender_identifier=sender_identifier,
-            recipient_identifier=payload.customer_phone or recipient_identifier,
+            recipient_identifier=_select_sms_recipient(
+                preferred_recipient=payload.customer_phone,
+                fallback_recipient=recipient_identifier,
+            ),
             checkout_url=checkout_session.checkout_url,
             broker=broker,
         )

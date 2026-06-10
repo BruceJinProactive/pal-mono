@@ -144,9 +144,9 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
             "tip_cents": 0,
             "external_reference_id": "8f2ddc2f-25fd-4c55-943f-04162c43e571",
             "order_external_id": "PALONA:test-session",
-            "customer_email": "orderingagent+5551234567@palona.ai",
+            "customer_email": "orderingagent+5145609523@palona.ai",
             "customer_name": "John Doe",
-            "customer_phone": "+15551234567",
+            "customer_phone": "5145609523",
             "order_items": [{"name": "Pizza", "quantity": 1, "totalcost": 3000}],
             "subtotal_cents": 3000,
             "tax_cents": 500,
@@ -172,9 +172,9 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
     assert len(stored_sessions) == 1
     session_payload = stored_sessions[0].session_payload
     assert session_payload == {
-        "email": "orderingagent+5551234567@palona.ai",
+        "email": "orderingagent+5145609523@palona.ai",
         "name": "John Doe",
-        "phone": "+15551234567",
+        "phone": "5145609523",
         "storeId": "toast-store",
         "storeName": "Toast Store",
         "orderExternalId": "PALONA:test-session",
@@ -202,7 +202,7 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
         sent_messages[0].text.body
         == f"Please complete your payment: {result.checkout_url}"
     )
-    assert sent_messages[0].recipient_identifier == "+15551234567"
+    assert sent_messages[0].recipient_identifier == "+15145609523"
     assert len(created_payment_intents) == 1
     assert tracking_updates == [
         {
@@ -541,6 +541,39 @@ def test_validate_session_payload_rejects_missing_expiration():
 
     with pytest.raises(service.ToastCheckoutSessionExpiredError):
         service._validate_session_payload({})
+
+
+def test_select_sms_recipient_normalizes_ten_digit_payload_phone() -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    recipient = service._select_sms_recipient(
+        preferred_recipient="5145609523",
+        fallback_recipient="+15551234567",
+    )
+
+    assert recipient == "+15145609523"
+
+
+def test_select_sms_recipient_preserves_e164_payload_phone() -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    recipient = service._select_sms_recipient(
+        preferred_recipient="+15145609523",
+        fallback_recipient="+15551234567",
+    )
+
+    assert recipient == "+15145609523"
+
+
+def test_select_sms_recipient_falls_back_for_invalid_payload_phone() -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    recipient = service._select_sms_recipient(
+        preferred_recipient="+1514560",
+        fallback_recipient="+15551234567",
+    )
+
+    assert recipient == "+15551234567"
 
 
 @pytest.mark.asyncio
