@@ -44,6 +44,19 @@ def _to_data(row: CateringRequest) -> CateringRequestData:
     )
 
 
+def _phone_match_keys(phone_number: str | None) -> set[str]:
+    digits = re.sub(r"\D", "", phone_number or "")
+    if not digits:
+        return set()
+
+    keys = {digits}
+    if len(digits) == 11 and digits.startswith("1"):
+        keys.add(digits[1:])
+    elif len(digits) == 10:
+        keys.add(f"1{digits}")
+    return keys
+
+
 class CateringRequestRepository:
     """Async-only repository for CateringRequest records."""
 
@@ -84,15 +97,15 @@ class CateringRequestRepository:
         self, project_id: uuid.UUID, phone_number: str | None
     ) -> list[CateringRequestData]:
         """Retrieve catering requests for a project/caller phone, newest first."""
-        target_digits = re.sub(r"\D", "", phone_number or "")
-        if not target_digits:
+        target_keys = _phone_match_keys(phone_number)
+        if not target_keys:
             return []
 
         requests = await self.get_by_project_id(project_id)
         return [
             request
             for request in requests
-            if re.sub(r"\D", "", request.contact_phone_number or "") == target_digits
+            if _phone_match_keys(request.contact_phone_number) & target_keys
         ]
 
     async def get_by_idempotency_key(

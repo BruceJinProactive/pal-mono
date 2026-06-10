@@ -16,6 +16,33 @@ from db.pal_repository.data_classes.catering_request import CateringRequestData
 from db.tables.catering_requests import CateringRequest
 
 
+def _catering_request_data(
+    sample_orm_row: MagicMock,
+    *,
+    request_id: uuid.UUID | None = None,
+    contact_phone_number: str | None = None,
+) -> CateringRequestData:
+    return CateringRequestData(
+        id=request_id or uuid.uuid4(),
+        project_id=sample_orm_row.project_id,
+        event_date=sample_orm_row.event_date,
+        contact_name=sample_orm_row.contact_name,
+        contact_phone_number=contact_phone_number,
+        contact_email=sample_orm_row.contact_email,
+        status="LEAD",
+        idempotency_key=f"key_{request_id or uuid.uuid4()}",
+        created_at=sample_orm_row.created_at,
+        updated_at=sample_orm_row.updated_at,
+        event_time=sample_orm_row.event_time,
+        event_address=sample_orm_row.event_address,
+        event_detail=sample_orm_row.event_detail,
+        all_items=sample_orm_row.all_items,
+        event_fulfillment="DELIVERY",
+        party_size=sample_orm_row.party_size,
+        contact_id=sample_orm_row.contact_id,
+    )
+
+
 @pytest.fixture
 def mock_session() -> AsyncMock:
     session = AsyncMock()
@@ -255,6 +282,45 @@ class TestListByProjectIdAndPhone:
         )
 
         assert results == [matching]
+
+    @pytest.mark.asyncio
+    async def test_matches_us_number_with_or_without_country_code(
+        self, repo: CateringRequestRepository, sample_orm_row: MagicMock
+    ) -> None:
+        stored_with_country_code = _catering_request_data(
+            sample_orm_row,
+            contact_phone_number="+1 (123) 456-7890",
+        )
+        stored_without_country_code = _catering_request_data(
+            sample_orm_row,
+            contact_phone_number="1234567890",
+        )
+        non_matching = _catering_request_data(
+            sample_orm_row,
+            contact_phone_number="+1 (987) 654-3210",
+        )
+        repo.get_by_project_id = AsyncMock(  # type: ignore[method-assign]
+            return_value=[
+                stored_with_country_code,
+                stored_without_country_code,
+                non_matching,
+            ]
+        )
+
+        bare_results = await repo.list_by_project_id_and_phone(
+            sample_orm_row.project_id,
+            "1234567890",
+        )
+        country_code_results = await repo.list_by_project_id_and_phone(
+            sample_orm_row.project_id,
+            "+11234567890",
+        )
+
+        assert bare_results == [stored_with_country_code, stored_without_country_code]
+        assert country_code_results == [
+            stored_with_country_code,
+            stored_without_country_code,
+        ]
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_for_blank_phone(
