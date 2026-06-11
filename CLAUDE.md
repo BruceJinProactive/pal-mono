@@ -20,6 +20,7 @@ Operating rules and guardrails for AI agents. Obey hard rules unconditionally. F
 - **Update `docs/`** in the same PR as code changes (see Documentation Gate below)
 - **Write tests** for new functionality and bug fixes — match existing patterns in `tests/`
 - **Export new models** in `db/tables/__init__.py` before generating migrations — autogenerate only detects imported models
+- **Generate DB schema revisions with the `README.md` Database Migration command** — after model/schema changes, run the documented Alembic `revision --autogenerate` command inside `pal-mono-api`, then review the generated file; do not create revision files by hand
 
 ### MUST NOT
 
@@ -30,7 +31,7 @@ Operating rules and guardrails for AI agents. Obey hard rules unconditionally. F
 - **Skip validation** — never claim work is done without running `./scripts/validate.sh`
 - **Manual session management** — never use `next(db.get_db())`, always use `Depends()`
 - **Mix async/sync** — never use sync DB session in async endpoint or vice versa
-- **Modify `db/migrations/versions/` directly** — always use Alembic to generate migrations
+- **Create DB migration revision files by hand** — always use the `README.md` Database Migration command to generate Alembic revisions first, then make only necessary review fixups to the generated file
 - **Delete or skip failing tests** to make a PR pass
 
 ---
@@ -137,6 +138,7 @@ docker restart pal-mono-api               # Restart API only
 
 ```bash
 # IMPORTANT: Export new models in db/tables/__init__.py BEFORE generating
+# IMPORTANT: Do not create revision files by hand; run the README.md command below, then review the generated file
 docker exec -it pal-mono-api alembic -c db/alembic.ini revision --autogenerate -m "description"
 docker exec -it pal-mono-api alembic -c db/alembic.ini upgrade head      # Apply
 docker exec -it pal-mono-api alembic -c db/alembic.ini downgrade -1      # Rollback
