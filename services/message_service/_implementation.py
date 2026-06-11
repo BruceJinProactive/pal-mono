@@ -154,6 +154,7 @@ def _serialize_prior_catering_request(request: CateringRequestData) -> dict[str,
         "contact_email": request.contact_email,
         "status": request.status,
         "created_at": request.created_at.isoformat() if request.created_at else None,
+        "all_items": request.all_items,
     }
 
 

@@ -21,6 +21,7 @@ def _catering_request_data(
     request_id: uuid.UUID,
     event_date: datetime.date | None,
     event_time: datetime.time | None = None,
+    all_items: dict[str, dict[str, Any]] | None = None,
 ) -> CateringRequestData:
     now = datetime.datetime(2026, 6, 9, tzinfo=datetime.UTC)
     return CateringRequestData(
@@ -35,6 +36,7 @@ def _catering_request_data(
         created_at=now,
         updated_at=now,
         event_time=event_time,
+        all_items=all_items,
     )
 
 
@@ -174,6 +176,12 @@ def test_serialize_prior_catering_request_includes_expected_fields():
         request_id=request_id,
         event_date=datetime.date(2026, 6, 20),
         event_time=datetime.time(18, 30),
+        all_items={
+            "BBQ Chicken Tray": {
+                "quantity": 2,
+                "special_notes": "Mild sauce on the side.",
+            }
+        },
     )
 
     payload = _serialize_prior_catering_request(request)
@@ -183,6 +191,7 @@ def test_serialize_prior_catering_request_includes_expected_fields():
     assert payload["event_time"] == "18:30:00"
     assert payload["contact_phone_number"] == "+15551234567"
     assert payload["contact_email"] == "john@example.com"
+    assert payload["all_items"] == request.all_items
 
 
 @pytest.mark.asyncio
