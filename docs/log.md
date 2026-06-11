@@ -6,6 +6,11 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-11
 
+- **Vision state-change event video URL.** `GET
+  /accounts/{account_name}/state-change-events/{event_id}` now accepts
+  `include_video` (default `false`) and returns nullable `video_url` when
+  requested, using `event_metadata.video_url` or the video key derived from the
+  event image minute. -> `docs/state/architecture.md`
 - **Catering history count updates.** `PATCH /catering/requests/{request_id}` now accepts and persists `prior_catering_request_count` and `prior_order_count`, allowing internal admin edits to survive page reloads.
 
 ## 2026-06-10

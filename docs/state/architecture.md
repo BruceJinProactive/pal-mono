@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-10
+> **Last updated:** 2026-06-11
 
 ## Quick Reference
 
@@ -230,6 +230,12 @@ matching the account, optional project/entity filters, and observed-at time
 window. The endpoint defaults `start` to the past 24 hours when omitted and
 paginates returned rows with `page` (default `1`) and `limit` (default `100`,
 max `1000`); `total` reports the full filtered match count before pagination.
+`GET /accounts/{account_name}/state-change-events/{event_id}` accepts
+`include_video` (default `false`). When requested, the response includes
+nullable `video_url`; the service first uses `event_metadata.video_url` when it
+contains a video asset URI, otherwise it derives the matching one-minute video
+from `frame_s3_key` by replacing `/images/` with `/videos/` and flooring the
+timestamped image filename to `YYYY-MM-DD_HH-MM-00.mp4`.
 
 Vision state-change events also drive lightweight rule workflows in
 `services/vision_observation_service/_workflow.py`. Each workflow is selected by

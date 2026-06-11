@@ -3851,6 +3851,10 @@ async def list_state_change_events(
 async def get_state_change_event(
     account_name: str,
     event_id: uuid.UUID,
+    include_video: bool = Query(
+        default=False,
+        description="Include the presigned video URL for the event's image minute",
+    ),
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
     ),
@@ -3862,12 +3866,16 @@ async def get_state_change_event(
     Path Parameters:
     - account_name: Account identifier
     - event_id: UUID of the event
+
+    Query Parameters:
+    - include_video (optional): Include the presigned video URL for the event's image minute
     """
     _ = context
     return await _vision_state_change_events.get_state_change_event(
         session=session,
         event_id=event_id,
         account_name=account_name,
+        include_video=include_video,
     )
 
 

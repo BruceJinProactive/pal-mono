@@ -206,7 +206,10 @@ class TestGetStateChangeEvent:
     async def test_returns_event(self) -> None:
         session = AsyncMock()
         event_id = uuid.uuid4()
-        event_data = _make_event_data(id=event_id)
+        event_data = _make_event_data(
+            id=event_id,
+            event_metadata={"video_url": "security/cameras/video.mp4"},
+        )
 
         with (
             patch(
@@ -215,6 +218,7 @@ class TestGetStateChangeEvent:
                 return_value=_mock_account(),
             ),
             patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(f"{MODULE}.map_uri_to_s3_url") as mock_map_uri,
         ):
             repo = AsyncMock()
             repo.get_by_id_for_account.return_value = event_data
@@ -227,6 +231,164 @@ class TestGetStateChangeEvent:
             result = await get_state_change_event(session, event_id, ACCOUNT_NAME)
 
             assert result.id == event_id
+            assert result.video_url is None
+            mock_map_uri.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_omits_video_url_by_default(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            event_metadata={"video_url": "security/cameras/video.mp4"},
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(
+                f"{MODULE}.map_uri_to_s3_url",
+                return_value="https://s3.amazonaws.com/bucket/video.mp4",
+            ),
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(session, event_id, ACCOUNT_NAME)
+
+            assert result.video_url is None
+
+    @pytest.mark.asyncio
+    async def test_returns_presigned_video_url_when_included(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            event_metadata={"video_url": "security/cameras/video.mp4"},
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(
+                f"{MODULE}.map_uri_to_s3_url",
+                return_value="https://s3.amazonaws.com/bucket/video.mp4",
+            ),
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.video_url == "https://s3.amazonaws.com/bucket/video.mp4"
+
+    @pytest.mark.asyncio
+    async def test_derives_video_url_from_frame_s3_key_when_included(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            frame_s3_key=(
+                "security/cameras/70a60d3d-5af8-4dbd-9b14-5a6c1f99076b/"
+                "704652fc-01d2-4e21-95d0-c9c9df56fd75/chica-cam-08/"
+                "images/2026-06-11/2026-06-11_16-20-15.jpg"
+            ),
+        )
+        expected_video_key = (
+            "security/cameras/70a60d3d-5af8-4dbd-9b14-5a6c1f99076b/"
+            "704652fc-01d2-4e21-95d0-c9c9df56fd75/chica-cam-08/"
+            "videos/2026-06-11/2026-06-11_16-20-00.mp4"
+        )
+
+        def fake_map_uri_to_s3_url(uri: str | None) -> str:
+            if uri == expected_video_key:
+                return "https://s3.amazonaws.com/bucket/video.mp4"
+            return ""
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(f"{MODULE}.map_uri_to_s3_url", side_effect=fake_map_uri_to_s3_url),
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.video_url == "https://s3.amazonaws.com/bucket/video.mp4"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_for_non_string_video_url_metadata(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            event_metadata={"video_url": 123},
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(f"{MODULE}.map_uri_to_s3_url") as mock_map_uri,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.video_url is None
+            mock_map_uri.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_not_found_raises(self) -> None:

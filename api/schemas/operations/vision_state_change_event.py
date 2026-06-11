@@ -67,6 +67,10 @@ class StateChangeEventResponse(BaseModel):
     previous_state_id: uuid.UUID | None
     confidence: float | None
     frame_s3_key: str | None
+    video_url: str | None = Field(
+        default=None,
+        description="Presigned video URL associated with the event, when available",
+    )
     event_metadata: dict[str, Any]
     is_test: bool | None = Field(
         default=None, description="Whether this event is from a test run"
