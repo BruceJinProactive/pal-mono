@@ -23,6 +23,10 @@ from utils.log import logger
 
 PAYMENT_IFRAME_ENDPOINT = "https://console.palona.ai/checkout/toast"
 PAYMENT_IFRAME_TOKEN_TTL_SECONDS = 15 * 60
+MAX_SMS_ORDER_SUMMARY_ITEMS = 3
+SMS_BODY_MAX_CHARS = 4096
+SMS_ORDER_ITEM_NAME_MAX_CHARS = 80
+TRUNCATION_SUFFIX = "..."
 
 
 class ToastCheckoutSessionNotFoundError(Exception):
@@ -117,6 +121,60 @@ def _build_session_payload(
     }
 
 
+def _format_payment_amount(amount_cents: int) -> str:
+    dollars, cents = divmod(amount_cents, 100)
+    return f"${dollars}.{cents:02d}"
+
+
+def _format_order_item_quantity(quantity: Any) -> str:
+    if isinstance(quantity, bool):
+        return "1"
+    if isinstance(quantity, int):
+        return str(quantity)
+    if isinstance(quantity, float) and quantity.is_integer():
+        return str(int(quantity))
+    if isinstance(quantity, float):
+        return f"{quantity:g}"
+    if isinstance(quantity, str) and quantity.strip():
+        return quantity.strip()
+    return "1"
+
+
+def _truncate_text(value: str, max_chars: int) -> str:
+    if max_chars <= 0:
+        return ""
+    if len(value) <= max_chars:
+        return value
+    if max_chars <= len(TRUNCATION_SUFFIX):
+        return value[:max_chars]
+    return value[: max_chars - len(TRUNCATION_SUFFIX)].rstrip() + TRUNCATION_SUFFIX
+
+
+def _format_order_summary(
+    order_items: list[dict[str, Any]],
+    *,
+    max_items: int = MAX_SMS_ORDER_SUMMARY_ITEMS,
+) -> str:
+    visible_items = order_items[:max_items]
+    formatted_items: list[str] = []
+    for item in visible_items:
+        name = item.get("name") or item.get("item_name") or item.get("displayName")
+        if not isinstance(name, str) or not name.strip():
+            name = "Item"
+        name = _truncate_text(name.strip(), SMS_ORDER_ITEM_NAME_MAX_CHARS)
+        quantity = _format_order_item_quantity(item.get("quantity", 1))
+        formatted_items.append(f"{name} x{quantity}")
+
+    if not formatted_items:
+        return "See checkout page"
+
+    remaining_count = len(order_items) - len(visible_items)
+    if remaining_count > 0:
+        formatted_items.append(f"+{remaining_count} more")
+
+    return ", ".join(formatted_items)
+
+
 async def _build_checkout_url_async(token: uuid.UUID) -> str:
     return await asyncio.to_thread(shorten_url, f"{_checkout_endpoint()}?t={token}")
 
@@ -186,15 +244,36 @@ def _build_payment_sms(
     sender_identifier: str,
     recipient_identifier: str,
     checkout_url: str,
+    payload: ToastCheckoutPayload,
     broker: Broker | None = None,
 ) -> Message:
+    order_summary_prefix = "Order summary: "
+    order_summary = _format_order_summary(payload.order_items)
+    total_line = f"Total: {_format_payment_amount(payload.amount_cents)}"
+    payment_line = f"Pay here: {checkout_url}"
+    fixed_body_length = len(
+        "Your order is pending payment.\n\n"
+        + order_summary_prefix
+        + "\n"
+        + total_line
+        + "\n\n"
+        + payment_line
+    )
+    available_summary_chars = SMS_BODY_MAX_CHARS - fixed_body_length
+    sms_body = (
+        "Your order is pending payment.\n\n"
+        f"{order_summary_prefix}{_truncate_text(order_summary, available_summary_chars)}\n"
+        f"{total_line}\n\n"
+        f"{payment_line}"
+    )
+    sms_body = _truncate_text(sms_body, SMS_BODY_MAX_CHARS)
     return Message(
         author_type=AuthorType.AGENT,
         sender_identifier=sender_identifier,
         recipient_identifier=recipient_identifier,
         channel=Channel.SMS,
         broker=broker or Broker.TWILIO,
-        text=TextObject(body=f"Please complete your payment: {checkout_url}"),
+        text=TextObject(body=sms_body),
         metadata=Metadata(testing=False),
     )
 
@@ -351,6 +430,7 @@ async def process_checkout_request_async(
                 fallback_recipient=recipient_identifier,
             ),
             checkout_url=checkout_session.checkout_url,
+            payload=payload,
             broker=broker,
         )
         send_result = await asyncio.to_thread(send_message, sms)

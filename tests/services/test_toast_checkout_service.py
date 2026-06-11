@@ -13,6 +13,79 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.schemas.chat.message import Broker
 
 
+def test_format_payment_amount() -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    assert service._format_payment_amount(0) == "$0.00"
+    assert service._format_payment_amount(1) == "$0.01"
+    assert service._format_payment_amount(2418) == "$24.18"
+
+
+def test_format_order_summary_caps_visible_items() -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    summary = service._format_order_summary(
+        [
+            {"name": "Pizza", "quantity": 1},
+            {"name": "Coke", "quantity": 2},
+            {"name": "Fries", "quantity": 1},
+            {"name": "Cookie", "quantity": 3},
+        ]
+    )
+
+    assert summary == "Pizza x1, Coke x2, Fries x1, +1 more"
+
+
+def test_format_order_summary_normalizes_item_fallbacks() -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    summary = service._format_order_summary(
+        [
+            {"name": "Smoothie", "quantity": 1.0},
+            {"item_name": "Cookie", "quantity": 1.5},
+            {"displayName": "Tea", "quantity": " 2 "},
+            {"name": "  ", "quantity": None},
+            {"name": "Water", "quantity": True},
+        ],
+        max_items=5,
+    )
+
+    assert summary == "Smoothie x1, Cookie x1.5, Tea x2, Item x1, Water x1"
+
+
+def test_build_payment_sms_caps_long_order_summary() -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    checkout_url = "https://payment.palona.link/abc123"
+    payload = service.ToastCheckoutPayload(
+        amount_cents=2418,
+        external_reference_id="external-reference",
+        order_external_id="order-external",
+        customer_email="customer@example.com",
+        customer_name="Customer",
+        customer_phone="+15551234567",
+        order_items=[
+            {"name": "A" * 5000, "quantity": 2},
+            {"name": "B" * 5000, "quantity": 1},
+            {"name": "C" * 5000, "quantity": 1},
+        ],
+        subtotal_cents=2200,
+        tax_cents=218,
+        store_id="store-id",
+    )
+
+    sms = service._build_payment_sms(
+        sender_identifier="+15550000000",
+        recipient_identifier="+15551234567",
+        checkout_url=checkout_url,
+        payload=payload,
+    )
+
+    assert sms.text is not None
+    assert len(sms.text.body) <= service.SMS_BODY_MAX_CHARS
+    assert checkout_url in sms.text.body
+
+
 class _ExpiringCheckoutSession:
     def __init__(self, **kwargs: Any) -> None:
         object.__setattr__(self, "_expired", False)
@@ -149,7 +222,10 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
             "customer_email": "orderingagent+5145609523@palona.ai",
             "customer_name": "John Doe",
             "customer_phone": "5145609523",
-            "order_items": [{"name": "Pizza", "quantity": 1, "totalcost": 3000}],
+            "order_items": [
+                {"name": "Pizza", "quantity": 1, "totalcost": 3000},
+                {"name": "Coke", "quantity": 2, "totalcost": 500},
+            ],
             "subtotal_cents": 3000,
             "tax_cents": 500,
             "gratuity_fees": [],
@@ -189,7 +265,10 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
         "tips": 0,
         "sessionSecret": "session-secret",
         "iframeBearerToken": "token:TOAST_PAYMENT_IFRAME_ACCESS_TOKEN",
-        "orderItems": [{"name": "Pizza", "quantity": 1, "totalcost": 3000}],
+        "orderItems": [
+            {"name": "Pizza", "quantity": 1, "totalcost": 3000},
+            {"name": "Coke", "quantity": 2, "totalcost": 500},
+        ],
         "expiresAt": session_payload["expiresAt"],
     }
     assert isinstance(stored_sessions[0].token, uuid.UUID)
@@ -200,9 +279,11 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
     assert stored_sessions[0].order_external_id == "PALONA:test-session"
     assert stored_sessions[0].expires_at > datetime.now(timezone.utc)
     assert len(sent_messages) == 1
-    assert (
-        sent_messages[0].text.body
-        == f"Please complete your payment: {result.checkout_url}"
+    assert sent_messages[0].text.body == (
+        "Your order is pending payment.\n\n"
+        "Order summary: Pizza x1, Coke x2\n"
+        "Total: $35.00\n\n"
+        f"Pay here: {result.checkout_url}"
     )
     assert sent_messages[0].recipient_identifier == "+15145609523"
     assert sent_messages[0].broker == Broker.TWILIO
