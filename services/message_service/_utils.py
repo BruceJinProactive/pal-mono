@@ -1,11 +1,16 @@
+import asyncio
 import email
 import json
 import os
 import re
 from email import policy
+from email.message import EmailMessage
 from typing import Any, List
+from urllib.parse import urlparse
 
 import boto3
+from botocore.config import Config
+from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
 
 from agent.input_output import Input, Output
 from api.schemas.chat.message import (
@@ -20,6 +25,9 @@ from api.schemas.chat.message import (
 from db.tables.types import Channel
 from utils.log import logger
 from utils.request_context import RequestContext
+
+_EMAIL_S3_CLIENT_CONFIG = Config(connect_timeout=2, read_timeout=3)
+EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS = 5.0
 
 
 def strip_markdown_content(agent_message: Any) -> Any | str:
@@ -185,7 +193,15 @@ async def get_agent_input_from_message(
     if message.channel == Channel.EMAIL and message.channel_info.get("messageId"):
         message_id = message.channel_info["messageId"]
         logger.info(f"Extracting email body for message ID: {message_id}")
-        content = await _extract_email_body_from_s3(message_id)
+        try:
+            content = await asyncio.wait_for(
+                _extract_email_body_from_s3(message_id, fallback_body=content),
+                timeout=EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Timed out extracting email body from S3 for message_id {message_id}"
+            )
 
     input_obj = Input(
         content=content,
@@ -199,41 +215,64 @@ async def get_agent_input_from_message(
     return input_obj
 
 
-async def _extract_email_body_from_s3(message_id: str) -> str:
+def _get_email_s3_location(message_id: str) -> tuple[str, str]:
+    if message_id.startswith("s3://"):
+        parsed_uri = urlparse(message_id)
+        return parsed_uri.netloc, parsed_uri.path.lstrip("/")
+
+    bucket_name = os.environ.get("SES_S3_BUCKET", "lat-pal-mono-bucket")
+    return bucket_name, f"emails/{message_id}"
+
+
+def _read_raw_email_from_s3(bucket_name: str, s3_key: str) -> bytes:
+    s3_client = boto3.client("s3", config=_EMAIL_S3_CLIENT_CONFIG)
+    response = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+    return response["Body"].read()
+
+
+async def _extract_email_body_from_s3(
+    message_id: str,
+    fallback_body: str = "",
+) -> str:
     """
     Extract email body content from S3 based on message ID.
 
     Args:
         message_id (str): S3 message identifier or S3 URI
+        fallback_body (str): Body to return if S3 retrieval fails
 
     Returns:
         str: Extracted email body content
     """
     try:
-        # Get S3 bucket from environment variable or use default
-        bucket_name = os.environ.get("SES_S3_BUCKET", "lat-pal-mono-bucket")
-
-        # Create S3 client
-        s3_client = boto3.client("s3")
-
-        # Email is stored in emails folder with message ID as filename
-        s3_key = f"emails/{message_id}"
+        bucket_name, s3_key = _get_email_s3_location(message_id)
 
         logger.debug(
             f"Extracting email body from S3: bucket={bucket_name}, key={s3_key}"
         )
 
-        # Retrieve email from S3
-        response = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
-        raw_email = response["Body"].read()
+        loop = asyncio.get_running_loop()
+        raw_email = await loop.run_in_executor(
+            None,
+            _read_raw_email_from_s3,
+            bucket_name,
+            s3_key,
+        )
 
         # Parse email
         email_message = email.message_from_bytes(raw_email, policy=policy.default)
+        if not isinstance(email_message, EmailMessage):
+            logger.error(
+                f"Parsed S3 email is not an EmailMessage for message_id {message_id}"
+            )
+            return fallback_body
 
         # Extract text content
         email_body = ""
         if email_message.is_multipart():
             for part in email_message.walk():
+                if not isinstance(part, EmailMessage):
+                    continue
                 if part.get_content_type() == "text/plain":
                     email_body = part.get_content()
                     break
@@ -261,12 +300,17 @@ async def _extract_email_body_from_s3(message_id: str) -> str:
         )
         return extracted_body
 
+    except (ConnectTimeoutError, ReadTimeoutError) as e:
+        logger.warning(
+            f"Timed out extracting email body from S3 for message_id {message_id}: "
+            f"{str(e)}"
+        )
+        return fallback_body
     except Exception as e:
         logger.error(
             f"Failed to extract email body from S3 for message_id {message_id}: {str(e)}"
         )
-        # Return original message_id as fallback
-        return message_id
+        return fallback_body
 
 
 def get_messages_from_agent_output(

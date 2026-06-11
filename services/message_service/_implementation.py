@@ -53,6 +53,7 @@ from utils.request_context import RequestContext
 from . import _utils
 from ._store_status import compute_store_status
 from ._tracing import langfuse_message_span
+from ._utils import EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS, _extract_email_body_from_s3
 
 _background_tasks: set[asyncio.Task[None]] = set()
 
@@ -636,8 +637,28 @@ async def _dispatch_agent_async(
             limit=100,
         )
 
-        # Format history for context
         current_message = message.text.body if message.text else ""
+        message_id = message.channel_info.get("messageId")
+        logger.debug(f"processing input message: {message_id}, {message.channel}")
+
+        # Handle email body extraction from S3
+        if message.channel == Channel.EMAIL and message.channel_info.get("messageId"):
+            message_id = message.channel_info["messageId"]
+            logger.info(f"Extracting email body for message ID: {message_id}")
+            try:
+                current_message = await asyncio.wait_for(
+                    _extract_email_body_from_s3(
+                        message_id,
+                        fallback_body=current_message,
+                    ),
+                    timeout=EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Timed out extracting email body from S3 for "
+                    f"message_id {message_id}"
+                )
+
         history_text = ""
         if history_messages:
             if (
