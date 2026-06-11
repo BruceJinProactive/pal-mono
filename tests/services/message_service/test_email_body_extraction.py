@@ -134,7 +134,7 @@ async def test_extract_email_body_from_s3_returns_fallback_on_read_timeout(
 
 
 @pytest.mark.asyncio
-async def test_get_agent_input_keeps_body_when_s3_extraction_times_out(
+async def test_hydrate_email_message_content_keeps_body_when_s3_extraction_times_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def slow_extract_email_body(
@@ -156,13 +156,11 @@ async def test_get_agent_input_keeps_body_when_s3_extraction_times_out(
         text=TextObject(body="Original fallback body"),
     )
 
-    agent_input = await _utils.get_agent_input_from_message(
-        message=message,
-        stream=False,
-        request_context=RequestContext(),
-    )
+    body = await _utils.hydrate_email_message_content(message)
 
-    assert agent_input.content == "Original fallback body"
+    assert body == "Original fallback body"
+    assert message.text
+    assert message.text.body == "Original fallback body"
 
 
 @pytest.mark.asyncio

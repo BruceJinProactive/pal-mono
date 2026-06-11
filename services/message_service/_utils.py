@@ -189,20 +189,6 @@ async def get_agent_input_from_message(
         f"processing input message: {message_id}, {message.channel}, {content}"
     )
 
-    # Handle email body extraction from S3
-    if message.channel == Channel.EMAIL and message.channel_info.get("messageId"):
-        message_id = message.channel_info["messageId"]
-        logger.info(f"Extracting email body for message ID: {message_id}")
-        try:
-            content = await asyncio.wait_for(
-                _extract_email_body_from_s3(message_id, fallback_body=content),
-                timeout=EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS,
-            )
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Timed out extracting email body from S3 for message_id {message_id}"
-            )
-
     input_obj = Input(
         content=content,
         context=message.context,
@@ -213,6 +199,31 @@ async def get_agent_input_from_message(
     )
 
     return input_obj
+
+
+async def hydrate_email_message_content(message: Message) -> str:
+    content = message.text.body if message.text else ""
+    message_id = message.channel_info.get("messageId")
+    if message.channel != Channel.EMAIL or not message_id:
+        return content
+
+    logger.info(f"Extracting email body for message ID: {message_id}")
+    try:
+        content = await asyncio.wait_for(
+            _extract_email_body_from_s3(str(message_id), fallback_body=content),
+            timeout=EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"Timed out extracting email body from S3 for message_id {message_id}"
+        )
+
+    if message.text:
+        message.text.body = content
+    else:
+        message.text = TextObject(body=content)
+
+    return content
 
 
 def _get_email_s3_location(message_id: str) -> tuple[str, str]:

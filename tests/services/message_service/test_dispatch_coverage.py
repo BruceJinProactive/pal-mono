@@ -181,9 +181,11 @@ def _install_services_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
 class _FakeMessageRepo:
     def __init__(self):
         self.saved_messages: list[dict] = []
+        self.created_message_kwargs_list: list[dict] = []
         self.created_message_kwargs: dict | None = None
 
     async def create_message(self, **kwargs):
+        self.created_message_kwargs_list.append(kwargs)
         self.created_message_kwargs = kwargs
         return SimpleNamespace(conversation_id=uuid.uuid4())
 
@@ -348,7 +350,7 @@ async def test_pal_agents_path_formats_history_with_prior_messages(monkeypatch):
 async def test_pal_agents_email_extraction_timeout_keeps_current_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify email S3 extraction timeout falls back to the original body."""
+    """Verify email S3 extraction timeout falls back before storage and dispatch."""
     _install_knowledge_shim_if_needed(monkeypatch)
     _install_agent_shims_if_needed(monkeypatch)
     _install_services_shims_if_needed(monkeypatch)
@@ -395,8 +397,10 @@ async def test_pal_agents_email_extraction_timeout_keeps_current_message(
     )
     monkeypatch.setattr(_impl, "PalAgent", _CapturePalAgent)
     monkeypatch.setattr(_impl, "query_history_messages", _fake_query_history_messages)
-    monkeypatch.setattr(_impl, "EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS", 0.001)
-    monkeypatch.setattr(_impl, "_extract_email_body_from_s3", _slow_extract_email_body)
+    monkeypatch.setattr(_impl._utils, "EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(
+        _impl._utils, "_extract_email_body_from_s3", _slow_extract_email_body
+    )
 
     session = AsyncMock()
     session.refresh = AsyncMock()
@@ -409,6 +413,81 @@ async def test_pal_agents_email_extraction_timeout_keeps_current_message(
     )
 
     assert captured_inputs == ["User: Original email body"]
+    assert message_repo.created_message_kwargs_list
+    saved_body = message_repo.created_message_kwargs_list[0]["message_body"]
+    assert saved_body["text"]["body"] == "Original email body"
+
+
+@pytest.mark.asyncio
+async def test_pal_agents_email_extraction_hydrates_saved_message_and_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify fetched S3 email content is saved and sent to pal-agents."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+    project = _make_project(use_pal_agents=True)
+    user = SimpleNamespace(id=uuid.uuid4())
+    message_repo = _FakeMessageRepo()
+
+    _impl, _ = _setup_common_mocks(
+        monkeypatch, project=project, user=user, message_repo=message_repo
+    )
+
+    captured_inputs: list[str] = []
+
+    async def _fake_construct_agent_spec(**kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    class _CapturePalAgent:
+        def __init__(self, spec: Any = None) -> None:
+            self.spec = spec
+
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+        ) -> SimpleNamespace:
+            captured_inputs.append(pal_input.content)
+            return SimpleNamespace(
+                content="response", escalated=False, closing_conversation=False
+            )
+
+    async def _fake_query_history_messages(*args: Any, **kwargs: Any) -> list:
+        return []
+
+    async def _fake_extract_email_body(
+        message_id: str,
+        fallback_body: str = "",
+    ) -> str:
+        assert message_id == "ses-message-id"
+        assert fallback_body == "Email subject placeholder"
+        return "Fetched S3 email body"
+
+    monkeypatch.setattr(
+        _impl.agent_service, "construct_agent_spec", _fake_construct_agent_spec
+    )
+    monkeypatch.setattr(_impl, "PalAgent", _CapturePalAgent)
+    monkeypatch.setattr(_impl, "query_history_messages", _fake_query_history_messages)
+    monkeypatch.setattr(
+        _impl._utils, "_extract_email_body_from_s3", _fake_extract_email_body
+    )
+
+    session = AsyncMock()
+    session.refresh = AsyncMock()
+    message = _make_message("Email subject placeholder")
+    message.channel = Channel.EMAIL
+    message.channel_info = {"messageId": "ses-message-id"}
+
+    await _impl.get_chat_response_async(
+        session=session, message=message, request_context=RequestContext()
+    )
+
+    assert captured_inputs == ["User: Fetched S3 email body"]
+    assert message_repo.created_message_kwargs_list
+    saved_body = message_repo.created_message_kwargs_list[0]["message_body"]
+    assert saved_body["text"]["body"] == "Fetched S3 email body"
 
 
 # ---------------------------------------------------------------------------
@@ -1211,6 +1290,82 @@ async def test_streaming_pal_agents_formats_history(monkeypatch):
     assert "Assistant: Previous answer" in content
     # Current message excluded from history, appended after
     assert content.endswith("User: Follow up")
+
+
+@pytest.mark.asyncio
+async def test_streaming_pal_agents_email_hydrates_saved_message_and_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify streaming pal-agents uses fetched S3 email content."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+
+    project = _make_project(use_pal_agents=True)
+    user = SimpleNamespace(id=uuid.uuid4())
+    message_repo = _FakeMessageRepo()
+
+    _impl, _ = _setup_common_mocks(
+        monkeypatch, project=project, user=user, message_repo=message_repo
+    )
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(name, resource=None, service=None, tags=None):
+        yield None
+
+    captured_inputs: list[str] = []
+
+    async def _fake_construct_agent_spec(**kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    class _CapturePalAgent:
+        def __init__(self, spec: Any = None) -> None:
+            self.spec = spec
+
+        async def run(self, pal_input: Any, stream: bool = False) -> AsyncIterator[Any]:
+            captured_inputs.append(pal_input.content)
+
+            async def _stream() -> AsyncIterator[Any]:
+                yield SimpleNamespace(content="stream response")
+
+            return _stream()
+
+    async def _fake_query_history_messages(*args: Any, **kwargs: Any) -> list:
+        return []
+
+    async def _fake_extract_email_body(
+        message_id: str,
+        fallback_body: str = "",
+    ) -> str:
+        assert message_id == "ses-message-id"
+        assert fallback_body == "Email subject placeholder"
+        return "Fetched S3 streaming email body"
+
+    monkeypatch.setattr(_impl, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(
+        _impl.agent_service, "construct_agent_spec", _fake_construct_agent_spec
+    )
+    monkeypatch.setattr(_impl, "PalAgent", _CapturePalAgent)
+    monkeypatch.setattr(_impl, "query_history_messages", _fake_query_history_messages)
+    monkeypatch.setattr(
+        _impl._utils, "_extract_email_body_from_s3", _fake_extract_email_body
+    )
+
+    session = AsyncMock()
+    session.refresh = AsyncMock()
+    message = _make_message("Email subject placeholder")
+    message.channel = Channel.EMAIL
+    message.channel_info = {"messageId": "ses-message-id"}
+
+    async for _ in _impl.get_chat_response_stream(
+        session=session, message=message, request_context=RequestContext()
+    ):
+        pass
+
+    assert captured_inputs == ["User: Fetched S3 streaming email body"]
+    assert message_repo.created_message_kwargs_list
+    saved_body = message_repo.created_message_kwargs_list[0]["message_body"]
+    assert saved_body["text"]["body"] == "Fetched S3 streaming email body"
 
 
 # ---------------------------------------------------------------------------

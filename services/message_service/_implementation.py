@@ -54,7 +54,6 @@ from . import _utils
 from ._phone_routing import resolve_broker_from_sip_provider, resolve_outbound_tn
 from ._store_status import compute_store_status
 from ._tracing import langfuse_message_span
-from ._utils import EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS, _extract_email_body_from_s3
 
 _background_tasks: set[asyncio.Task[None]] = set()
 
@@ -655,27 +654,6 @@ async def _dispatch_agent_async(
         )
 
         current_message = message.text.body if message.text else ""
-        message_id = message.channel_info.get("messageId")
-        logger.debug(f"processing input message: {message_id}, {message.channel}")
-
-        # Handle email body extraction from S3
-        if message.channel == Channel.EMAIL and message.channel_info.get("messageId"):
-            message_id = message.channel_info["messageId"]
-            logger.info(f"Extracting email body for message ID: {message_id}")
-            try:
-                current_message = await asyncio.wait_for(
-                    _extract_email_body_from_s3(
-                        message_id,
-                        fallback_body=current_message,
-                    ),
-                    timeout=EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                logger.warning(
-                    "Timed out extracting email body from S3 for "
-                    f"message_id {message_id}"
-                )
-
         history_text = ""
         if history_messages:
             if (
@@ -906,6 +884,8 @@ async def get_chat_response_async(
             # Create new user record
             user = await user_service.create_user_async(session, project, message)
 
+        await _utils.hydrate_email_message_content(message)
+
         # Save request message to database
         request_message = await message_repo.create_message(
             user_id=user.id,
@@ -1124,6 +1104,8 @@ async def get_chat_response_stream(
             # Capture user_id early while object is attached to session
             # (prevents MissingGreenlet errors after commits expire the object)
             user_id = user.id
+
+            await _utils.hydrate_email_message_content(message)
 
             # For VOICE channel with call_id, use voice-specific message creation
             # to reuse the conversation created during handle_assistant_request
