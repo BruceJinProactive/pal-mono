@@ -6,6 +6,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-11
 
+- **Guest menu board vision rule schema.** Added `guest_visiting_menu_board`
+  to the `visionruletype` enum so menu-board monitoring rules can be
+  persisted. Migration: `c2f4d8a9b1e3`.
 - **Admin conversation order status filter.** `GET /accounts/{account_name}/conversations` now accepts `order_filter=all|paid|unpaid`, allowing the admin console to filter placed-order conversations by whether the latest stored order has a displayable order number.
 - **Vision state-change event video URL.** `GET
   /accounts/{account_name}/state-change-events/{event_id}` now accepts
