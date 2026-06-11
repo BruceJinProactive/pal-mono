@@ -1,6 +1,7 @@
 import datetime
 import math
 import uuid
+from typing import Literal
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -20,6 +21,8 @@ from services.auth_service.authorization import check_permission
 from . import _builder
 from ._utils import SortOrder, UserContext, not_found_error
 
+OrderFilter = Literal["all", "paid", "unpaid"]
+
 
 async def list_account_conversations(
     account_name: str,
@@ -35,9 +38,10 @@ async def list_account_conversations(
     purpose: list[str] | None,
     ended_reason: list[str] | None,
     customer_converted: bool | None,
-    has_order: bool | None,
     context: UserContext,
     session: Session,
+    has_order: bool | None = None,
+    order_filter: OrderFilter | None = None,
 ) -> ListUserSessionsResponse:
     """Authorization is handled by require_account_permission in route decorator."""
     account = account_service.get_account(session, account_name)
@@ -65,6 +69,7 @@ async def list_account_conversations(
         ended_reason=ended_reason,
         customer_converted=customer_converted,
         has_order=has_order,
+        order_filter=order_filter,
         db_session=session,
     )
     total_pages = (total + page_size - 1) // page_size

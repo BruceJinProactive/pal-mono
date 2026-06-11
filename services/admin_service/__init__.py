@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from sqlalchemy.orm import Session
 
@@ -24,6 +25,8 @@ from .schema import (
     UserSessionPreview,
 )
 
+OrderFilter = Literal["all", "paid", "unpaid"]
+
 
 def list_conversations_in_account(
     account_id: uuid.UUID,
@@ -42,6 +45,7 @@ def list_conversations_in_account(
     hide_testing_sessions: bool,
     db_session: Session,
     has_order: bool | None = None,
+    order_filter: OrderFilter | None = None,
 ) -> tuple[int, list[UserSessionPreview]]:
     return _implementation.list_conversations_in_account(
         account_id,
@@ -60,6 +64,7 @@ def list_conversations_in_account(
         hide_testing_sessions,
         db_session,
         has_order=has_order,
+        order_filter=order_filter,
     )
 
 

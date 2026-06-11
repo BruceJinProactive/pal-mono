@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-11
 
+- **Admin conversation order status filter.** `GET /accounts/{account_name}/conversations` now accepts `order_filter=all|paid|unpaid`, allowing the admin console to filter placed-order conversations by whether the latest stored order has a displayable order number.
 - **Vision state-change event video URL.** `GET
   /accounts/{account_name}/state-change-events/{event_id}` now accepts
   `include_video` (default `false`) and returns nullable `video_url` when

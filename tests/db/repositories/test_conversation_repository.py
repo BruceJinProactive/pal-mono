@@ -463,6 +463,88 @@ class TestConversationFiltering:
             for compiled_filter in compiled_filters
         )
 
+    def test_get_conversation_ids_all_order_filter(
+        self, repo, mock_session, sample_conversation_id
+    ) -> None:
+        """Admin console can list conversations with any stored order."""
+        mock_q = mock_session.query.return_value.filter.return_value
+        mock_q.filter.return_value = mock_q
+        mock_q.all.return_value = [(sample_conversation_id,)]
+
+        result = repo.get_conversation_ids_by_user_ids(
+            user_ids=[uuid.uuid4()],
+            start_date=None,
+            end_date=datetime(2025, 12, 31, tzinfo=timezone.utc),
+            order_filter="all",
+        )
+
+        assert result == [sample_conversation_id]
+        compiled_filters = [
+            str(call.args[0].compile(dialect=postgresql.dialect()))
+            for call in mock_q.filter.call_args_list
+        ]
+        assert any(
+            "conversations.id IN" in compiled_filter
+            and "orders.conversation_id" in compiled_filter
+            for compiled_filter in compiled_filters
+        )
+
+    def test_get_conversation_ids_paid_order_filter(
+        self, repo, mock_session, sample_conversation_id
+    ) -> None:
+        """Admin console can list conversations whose latest order is paid."""
+        mock_q = mock_session.query.return_value.filter.return_value
+        mock_q.filter.return_value = mock_q
+        mock_q.join.return_value = mock_q
+        mock_q.all.return_value = [(sample_conversation_id,)]
+
+        result = repo.get_conversation_ids_by_user_ids(
+            user_ids=[uuid.uuid4()],
+            start_date=None,
+            end_date=datetime(2025, 12, 31, tzinfo=timezone.utc),
+            order_filter="paid",
+        )
+
+        assert result == [sample_conversation_id]
+        assert mock_q.join.called
+        compiled_filters = [
+            str(call.args[0].compile(dialect=postgresql.dialect()))
+            for call in mock_q.filter.call_args_list
+        ]
+        assert any(
+            "lower(trim(coalesce" in compiled_filter and "NOT IN" in compiled_filter
+            for compiled_filter in compiled_filters
+        )
+
+    def test_get_conversation_ids_unpaid_order_filter(
+        self, repo, mock_session, sample_conversation_id
+    ) -> None:
+        """Admin console can list conversations whose latest order is unpaid."""
+        mock_q = mock_session.query.return_value.filter.return_value
+        mock_q.filter.return_value = mock_q
+        mock_q.join.return_value = mock_q
+        mock_q.all.return_value = [(sample_conversation_id,)]
+
+        result = repo.get_conversation_ids_by_user_ids(
+            user_ids=[uuid.uuid4()],
+            start_date=None,
+            end_date=datetime(2025, 12, 31, tzinfo=timezone.utc),
+            order_filter="unpaid",
+        )
+
+        assert result == [sample_conversation_id]
+        assert mock_q.join.called
+        compiled_filters = [
+            str(call.args[0].compile(dialect=postgresql.dialect()))
+            for call in mock_q.filter.call_args_list
+        ]
+        assert any(
+            "lower(trim(coalesce" in compiled_filter
+            and " IN " in compiled_filter
+            and "NOT IN" not in compiled_filter
+            for compiled_filter in compiled_filters
+        )
+
     def test_get_conversation_ids_returns_empty_on_error(self, repo, mock_session):
         """Graceful degradation."""
         mock_session.query.return_value.filter.return_value.all.side_effect = (

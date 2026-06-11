@@ -5,7 +5,7 @@ import re
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import quote
 
 import boto3
@@ -63,6 +63,8 @@ from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
 MOCK_USER_PREFIX = "mock-user"
+
+OrderFilter = Literal["all", "paid", "unpaid"]
 
 
 AWS_REGION = os.environ["AWS_REGION"]
@@ -148,6 +150,7 @@ def list_conversations_in_account(
     hide_testing_sessions: bool,
     db_session: Session,
     has_order: bool | None = None,
+    order_filter: OrderFilter | None = None,
 ) -> tuple[int, list[UserSessionPreview]]:
     message_repository = db.MessageRepository(db_session)
     conversation_repository = db.ConversationRepository(db_session)
@@ -166,6 +169,7 @@ def list_conversations_in_account(
         ended_reason,
         customer_converted,
         has_order=has_order,
+        order_filter=order_filter,
     )
     # Only narrow down id list if necessary
     if keyword or channel or escalated:

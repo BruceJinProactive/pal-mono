@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 from sqlalchemy import Text, cast, func, select, update
@@ -8,6 +8,8 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.selectable import Subquery
 
 from db.tables import (
     Account,
@@ -19,6 +21,10 @@ from db.tables import (
     User,
 )
 from utils.log import logger
+
+OrderFilter = Literal["all", "paid", "unpaid"]
+
+_INVALID_DISPLAY_ORDER_NUMBERS = ("", "0", "none", "null", "n/a", "na", "unknown")
 
 
 def _split_call_purpose_values(raw_purposes: list[str]) -> list[str]:
@@ -45,6 +51,27 @@ def _normalize_call_purpose_filter_values(raw_purposes: list[str]) -> list[str]:
         for call_purpose in CallPurpose
         if call_purpose.value in present_purposes
     ]
+
+
+def _latest_order_for_conversation_subquery() -> Subquery:
+    sort_time = func.coalesce(Order.order_time, Order.created_at)
+    return select(
+        Order.conversation_id.label("conversation_id"),
+        Order.order_id.label("order_id"),
+        func.row_number()
+        .over(
+            partition_by=Order.conversation_id,
+            order_by=(sort_time.desc(), Order.created_at.desc()),
+        )
+        .label("order_rank"),
+    ).subquery()
+
+
+def _has_display_order_number(
+    order_id_column: ColumnElement[Any],
+) -> ColumnElement[bool]:
+    normalized_order_id = func.lower(func.trim(func.coalesce(order_id_column, "")))
+    return normalized_order_id.notin_(_INVALID_DISPLAY_ORDER_NUMBERS)
 
 
 class ConversationUpdate(BaseModel):
@@ -389,6 +416,7 @@ class ConversationRepository:
         ended_reason: list[str] | None = None,
         customer_converted: bool | None = None,
         has_order: bool | None = None,
+        order_filter: OrderFilter | None = None,
     ) -> list[uuid.UUID]:
         try:
             query = self.session.query(Conversation.id).filter(
@@ -419,7 +447,26 @@ class ConversationRepository:
                     query = query.filter(Conversation.customer_converted.is_not(None))
                 else:
                     query = query.filter(Conversation.customer_converted.is_(None))
-            if has_order is not None:
+            if order_filter == "all":
+                query = query.filter(Conversation.id.in_(select(Order.conversation_id)))
+            elif order_filter in {"paid", "unpaid"}:
+                latest_order = _latest_order_for_conversation_subquery()
+                query = query.join(
+                    latest_order,
+                    (latest_order.c.conversation_id == Conversation.id)
+                    & (latest_order.c.order_rank == 1),
+                )
+                if order_filter == "paid":
+                    query = query.filter(
+                        _has_display_order_number(latest_order.c.order_id)
+                    )
+                else:
+                    query = query.filter(
+                        ~_has_display_order_number(latest_order.c.order_id)
+                    )
+            elif order_filter is not None:
+                raise ValueError(f"Unsupported order filter: {order_filter}")
+            elif has_order is not None:
                 order_conversation_ids = select(Order.conversation_id)
                 if has_order:
                     query = query.filter(Conversation.id.in_(order_conversation_ids))

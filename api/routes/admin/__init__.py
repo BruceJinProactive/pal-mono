@@ -1,6 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import (
     APIRouter,
@@ -1113,6 +1113,10 @@ async def list_account_conversations(
         None,
         description="Filter by order presence. True for conversations with orders, False for conversations without orders, None for all",
     ),
+    order_filter: Literal["all", "paid", "unpaid"] | None = Query(
+        None,
+        description="Filter conversations by latest order display state. all returns conversations with orders, paid returns conversations whose latest order has a real order number, unpaid returns conversations whose latest order has a placeholder or missing order number.",
+    ),
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
     ),
@@ -1123,22 +1127,23 @@ async def list_account_conversations(
     are sorted by the timestamp of the last message in reverse chronological order.
     """
     return await _conversation.list_account_conversations(
-        account_name,
-        keyword,
-        channel,
-        project_id,
-        lookback,
-        page,
-        page_size,
-        escalated,
-        hide_testing_sessions,
-        language,
-        purpose,
-        ended_reason,
-        customer_converted,
-        has_order,
-        context,
-        session,
+        account_name=account_name,
+        keyword=keyword,
+        channel=channel,
+        project_id=project_id,
+        lookback=lookback,
+        page=page,
+        page_size=page_size,
+        escalated=escalated,
+        hide_testing_sessions=hide_testing_sessions,
+        language=language,
+        purpose=purpose,
+        ended_reason=ended_reason,
+        customer_converted=customer_converted,
+        context=context,
+        session=session,
+        has_order=has_order,
+        order_filter=order_filter,
     )
 
 
