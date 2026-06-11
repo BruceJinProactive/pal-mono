@@ -18,6 +18,15 @@ Chronological record of significant changes. Each entry links to the relevant do
   nullable `contact_phone_number`, and optional `contact_email`. Notification
   paths guard partial leads instead of inventing placeholder contact details. ->
   `docs/records/2026-06-08-catering-request-partial-lead-schema.md`
+- **Catering request financial and history fields.** Added creation-time
+  customer-history snapshots to `catering_requests` for prior same-account
+  catering requests matched by requester phone or email, plus same-account
+  prior order counts matched by phone, nullable estimated/confirmed order value,
+  and deposit
+  requirement/received value fields. The create path now populates history
+  snapshots, and create/update APIs can set the monetary fields. Migration:
+  `b7f43f8aac6e`. ->
+  `docs/records/2026-06-10-catering-request-financial-history-fields.md`
 
 ---
 

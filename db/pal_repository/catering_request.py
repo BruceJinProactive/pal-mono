@@ -2,21 +2,35 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date, time
+from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
-from db.pal_repository.data_classes.catering_request import CateringRequestData
+from db.pal_repository.data_classes.catering_request import (
+    CateringRequestCustomerHistoryData,
+    CateringRequestData,
+)
 from db.pal_repository.data_classes.routine_execution import UNSET, _Unset
 from db.tables.catering_requests import CateringRequest, FulfillmentType, RequestStatus
+from db.tables.projects import Project
 from utils.log import logger
+from utils.phone import normalize_phone_digits
 
 
 def _supports_all_items_column() -> bool:
     return hasattr(CateringRequest, "all_items")
+
+
+def _normalize_contact_email(email: str | None) -> str | None:
+    if email is None:
+        return None
+    normalized = email.strip().lower()
+    return normalized or None
 
 
 def _to_data(row: CateringRequest) -> CateringRequestData:
@@ -32,6 +46,14 @@ def _to_data(row: CateringRequest) -> CateringRequestData:
         idempotency_key=row.idempotency_key,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        prior_catering_request_count=row.prior_catering_request_count,
+        prior_order_count=row.prior_order_count,
+        last_catering_request_at=row.last_catering_request_at,
+        last_order_at=row.last_order_at,
+        estimated_order_value=row.estimated_order_value,
+        confirmed_order_value=row.confirmed_order_value,
+        deposit_requirement_value=row.deposit_requirement_value,
+        deposit_received_value=row.deposit_received_value,
         event_time=row.event_time,
         event_address=row.event_address,
         event_detail=row.event_detail,
@@ -108,6 +130,62 @@ class CateringRequestRepository:
             if _phone_match_keys(request.contact_phone_number) & target_keys
         ]
 
+    async def get_customer_history_by_project_id_and_phone_or_email(
+        self,
+        project_id: uuid.UUID,
+        phone_number: str | None,
+        contact_email: str | None = None,
+    ) -> CateringRequestCustomerHistoryData:
+        """Summarize prior same-account catering requests by caller phone or email."""
+        target_digits = normalize_phone_digits(phone_number)
+        target_email = _normalize_contact_email(contact_email)
+        if target_digits is None and target_email is None:
+            return CateringRequestCustomerHistoryData(request_count=0)
+
+        match_filters: list[Any] = []
+        if target_digits is not None:
+            phone_digits = func.regexp_replace(
+                func.coalesce(CateringRequest.contact_phone_number, ""),
+                r"\D",
+                "",
+                "g",
+            )
+            match_filters.append(phone_digits == target_digits)
+        if target_email is not None:
+            contact_email_normalized = func.lower(
+                func.trim(func.coalesce(CateringRequest.contact_email, ""))
+            )
+            match_filters.append(contact_email_normalized == target_email)
+
+        request_project = aliased(Project)
+        current_project = aliased(Project)
+        current_account_id = (
+            select(current_project.account_id)
+            .filter(current_project.id == project_id)
+            .scalar_subquery()
+        )
+        try:
+            result = await self.session.execute(
+                select(
+                    func.count(CateringRequest.id).label("request_count"),
+                    func.max(CateringRequest.created_at).label("last_request_at"),
+                )
+                .join(request_project, CateringRequest.project_id == request_project.id)
+                .filter(
+                    request_project.account_id == current_account_id,
+                    or_(*match_filters),
+                )
+            )
+            row = result.mappings().one()
+            return CateringRequestCustomerHistoryData(
+                request_count=int(row["request_count"] or 0),
+                last_request_at=row["last_request_at"],
+            )
+        except SQLAlchemyError:
+            await self.session.rollback()
+            logger.exception("Error retrieving catering request customer history")
+            raise
+
     async def get_by_idempotency_key(
         self, idempotency_key: str
     ) -> CateringRequestData | None:
@@ -136,6 +214,14 @@ class CateringRequestRepository:
                 "contact_phone_number": data.contact_phone_number,
                 "contact_email": data.contact_email,
                 "idempotency_key": data.idempotency_key,
+                "prior_catering_request_count": data.prior_catering_request_count,
+                "prior_order_count": data.prior_order_count,
+                "last_catering_request_at": data.last_catering_request_at,
+                "last_order_at": data.last_order_at,
+                "estimated_order_value": data.estimated_order_value,
+                "confirmed_order_value": data.confirmed_order_value,
+                "deposit_requirement_value": data.deposit_requirement_value,
+                "deposit_received_value": data.deposit_received_value,
                 "event_time": data.event_time,
                 "event_address": data.event_address,
                 "event_detail": data.event_detail,
@@ -174,6 +260,14 @@ class CateringRequestRepository:
         event_fulfillment: FulfillmentType | None | _Unset = UNSET,
         party_size: int | None | _Unset = UNSET,
         contact_id: uuid.UUID | None | _Unset = UNSET,
+        prior_catering_request_count: int | _Unset = UNSET,
+        prior_order_count: int | _Unset = UNSET,
+        last_catering_request_at: datetime | None | _Unset = UNSET,
+        last_order_at: datetime | None | _Unset = UNSET,
+        estimated_order_value: Decimal | None | _Unset = UNSET,
+        confirmed_order_value: Decimal | None | _Unset = UNSET,
+        deposit_requirement_value: Decimal | None | _Unset = UNSET,
+        deposit_received_value: Decimal | None | _Unset = UNSET,
         status: RequestStatus | _Unset = UNSET,
     ) -> CateringRequestData | None:
         """Update a catering request by idempotency key. Only provided fields are updated.
@@ -208,6 +302,22 @@ class CateringRequestRepository:
                 values["party_size"] = party_size
             if not isinstance(contact_id, _Unset):
                 values["contact_id"] = contact_id
+            if not isinstance(prior_catering_request_count, _Unset):
+                values["prior_catering_request_count"] = prior_catering_request_count
+            if not isinstance(prior_order_count, _Unset):
+                values["prior_order_count"] = prior_order_count
+            if not isinstance(last_catering_request_at, _Unset):
+                values["last_catering_request_at"] = last_catering_request_at
+            if not isinstance(last_order_at, _Unset):
+                values["last_order_at"] = last_order_at
+            if not isinstance(estimated_order_value, _Unset):
+                values["estimated_order_value"] = estimated_order_value
+            if not isinstance(confirmed_order_value, _Unset):
+                values["confirmed_order_value"] = confirmed_order_value
+            if not isinstance(deposit_requirement_value, _Unset):
+                values["deposit_requirement_value"] = deposit_requirement_value
+            if not isinstance(deposit_received_value, _Unset):
+                values["deposit_received_value"] = deposit_received_value
             if not isinstance(status, _Unset):
                 values["status"] = status
 

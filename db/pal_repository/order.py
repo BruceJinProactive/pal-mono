@@ -7,14 +7,19 @@ from sqlalchemy import func, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from db.pal_repository.data_classes.order import (
     LatestOrderData,
+    OrderCustomerHistoryData,
     OrderData,
     OrderDetailsData,
 )
+from db.tables.conversations import Conversation
 from db.tables.orders import Order
+from db.tables.projects import Project
 from utils.log import logger
+from utils.phone import normalize_phone_digits
 
 
 def _to_data(row: Order) -> OrderData:
@@ -115,6 +120,53 @@ class OrderRepository:
         except SQLAlchemyError:
             await self.session.rollback()
             logger.exception("Error retrieving orders by conversation ID")
+            raise
+
+    async def get_customer_history_by_project_id_and_phone(
+        self, project_id: uuid.UUID, phone_number: str | None
+    ) -> OrderCustomerHistoryData:
+        """Summarize prior same-account orders for a caller phone."""
+        target_digits = normalize_phone_digits(phone_number)
+        if target_digits is None:
+            return OrderCustomerHistoryData(order_count=0)
+
+        phone_digits = func.regexp_replace(
+            func.coalesce(Order.user_phone_number, ""),
+            r"\D",
+            "",
+            "g",
+        )
+        conversation_project = aliased(Project)
+        current_project = aliased(Project)
+        current_account_id = (
+            select(current_project.account_id)
+            .filter(current_project.id == project_id)
+            .scalar_subquery()
+        )
+        try:
+            result = await self.session.execute(
+                select(
+                    func.count(Order.id).label("order_count"),
+                    func.max(Order.created_at).label("last_order_at"),
+                )
+                .join(Conversation, Order.conversation_id == Conversation.id)
+                .join(
+                    conversation_project,
+                    Conversation.project_id == conversation_project.id,
+                )
+                .filter(
+                    conversation_project.account_id == current_account_id,
+                    phone_digits == target_digits,
+                )
+            )
+            row = result.mappings().one()
+            return OrderCustomerHistoryData(
+                order_count=int(row["order_count"] or 0),
+                last_order_at=row["last_order_at"],
+            )
+        except SQLAlchemyError:
+            await self.session.rollback()
+            logger.exception("Error retrieving order customer history")
             raise
 
     async def get_latest_order_by_conversation_id(

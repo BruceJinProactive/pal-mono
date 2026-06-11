@@ -6,6 +6,7 @@ repository layer and only CateringRequestData instances are returned.
 
 import uuid
 from datetime import date, datetime, time, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -73,6 +74,14 @@ def sample_orm_row(sample_id: uuid.UUID) -> MagicMock:
     row.idempotency_key = "key_123"
     row.created_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
     row.updated_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    row.prior_catering_request_count = 2
+    row.prior_order_count = 3
+    row.last_catering_request_at = datetime(2025, 5, 1, tzinfo=timezone.utc)
+    row.last_order_at = datetime(2025, 5, 15, tzinfo=timezone.utc)
+    row.estimated_order_value = Decimal("500.00")
+    row.confirmed_order_value = Decimal("525.00")
+    row.deposit_requirement_value = Decimal("100.00")
+    row.deposit_received_value = Decimal("50.00")
     row.event_time = time(12, 0)
     row.event_address = "123 Main St"
     row.event_detail = "Birthday party"
@@ -100,6 +109,16 @@ class TestToData:
         assert data.contact_email == "john@example.com"
         assert data.status == "LEAD"
         assert data.idempotency_key == "key_123"
+        assert data.prior_catering_request_count == 2
+        assert data.prior_order_count == 3
+        assert data.last_catering_request_at == datetime(
+            2025, 5, 1, tzinfo=timezone.utc
+        )
+        assert data.last_order_at == datetime(2025, 5, 15, tzinfo=timezone.utc)
+        assert data.estimated_order_value == Decimal("500.00")
+        assert data.confirmed_order_value == Decimal("525.00")
+        assert data.deposit_requirement_value == Decimal("100.00")
+        assert data.deposit_received_value == Decimal("50.00")
         assert data.event_time == time(12, 0)
         assert data.event_address == "123 Main St"
         assert data.event_detail == "Birthday party"
@@ -334,6 +353,93 @@ class TestListByProjectIdAndPhone:
         repo.get_by_project_id.assert_not_called()
 
 
+class TestGetCustomerHistoryByProjectIdAndPhoneOrEmail:
+    @pytest.mark.asyncio
+    async def test_returns_history_summary(
+        self, repo: CateringRequestRepository, mock_session: AsyncMock
+    ) -> None:
+        last_request_at = datetime(2025, 5, 1, tzinfo=timezone.utc)
+        mock_result = MagicMock()
+        mock_mappings = MagicMock()
+        mock_mappings.one.return_value = {
+            "request_count": 2,
+            "last_request_at": last_request_at,
+        }
+        mock_result.mappings.return_value = mock_mappings
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.get_customer_history_by_project_id_and_phone_or_email(
+            uuid.uuid4(),
+            "(123) 456-7890",
+            "John@Example.COM ",
+        )
+
+        assert result.request_count == 2
+        assert result.last_request_at == last_request_at
+        mock_session.execute.assert_awaited_once()
+        statement = mock_session.execute.call_args.args[0]
+        statement_text = str(statement)
+        assert "JOIN projects" in statement_text
+        assert "account_id" in statement_text
+        assert "regexp_replace" in statement_text
+        assert "lower(trim(coalesce(catering_requests.contact_email" in statement_text
+        assert " OR " in statement_text
+
+    @pytest.mark.asyncio
+    async def test_email_only_runs_history_query(
+        self, repo: CateringRequestRepository, mock_session: AsyncMock
+    ) -> None:
+        last_request_at = datetime(2025, 5, 1, tzinfo=timezone.utc)
+        mock_result = MagicMock()
+        mock_mappings = MagicMock()
+        mock_mappings.one.return_value = {
+            "request_count": 1,
+            "last_request_at": last_request_at,
+        }
+        mock_result.mappings.return_value = mock_mappings
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.get_customer_history_by_project_id_and_phone_or_email(
+            uuid.uuid4(),
+            None,
+            "John@Example.COM ",
+        )
+
+        assert result.request_count == 1
+        assert result.last_request_at == last_request_at
+        mock_session.execute.assert_awaited_once()
+        statement_text = str(mock_session.execute.call_args.args[0])
+        assert "lower(trim(coalesce(catering_requests.contact_email" in statement_text
+        assert "regexp_replace" not in statement_text
+
+    @pytest.mark.asyncio
+    async def test_blank_phone_and_email_skip_query(
+        self, repo: CateringRequestRepository, mock_session: AsyncMock
+    ) -> None:
+        result = await repo.get_customer_history_by_project_id_and_phone_or_email(
+            uuid.uuid4(),
+            "",
+            " ",
+        )
+
+        assert result.request_count == 0
+        assert result.last_request_at is None
+        mock_session.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_error_rolls_back(
+        self, repo: CateringRequestRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = SQLAlchemyError("db error")
+        with pytest.raises(SQLAlchemyError):
+            await repo.get_customer_history_by_project_id_and_phone_or_email(
+                uuid.uuid4(),
+                "+1234567890",
+                "john@example.com",
+            )
+        mock_session.rollback.assert_awaited_once()
+
+
 # ---------------------------------------------------------------------------
 # get_by_idempotency_key
 # ---------------------------------------------------------------------------
@@ -400,6 +506,14 @@ class TestCreate:
             idempotency_key="key_123",
             created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
             updated_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            prior_catering_request_count=2,
+            prior_order_count=3,
+            last_catering_request_at=datetime(2025, 5, 1, tzinfo=timezone.utc),
+            last_order_at=datetime(2025, 5, 15, tzinfo=timezone.utc),
+            estimated_order_value=Decimal("500.00"),
+            confirmed_order_value=Decimal("525.00"),
+            deposit_requirement_value=Decimal("100.00"),
+            deposit_received_value=Decimal("50.00"),
             event_time=time(12, 0),
             all_items={"Cake tray": {"quantity": 2, "price": 80.00}},
             party_size=50,
@@ -420,6 +534,14 @@ class TestCreate:
         mock_session.add.assert_called_once()
         added_row = mock_session.add.call_args.args[0]
         assert added_row.contact_email == "john@example.com"
+        assert row.prior_catering_request_count == 2
+        assert row.prior_order_count == 3
+        assert row.last_catering_request_at == datetime(2025, 5, 1, tzinfo=timezone.utc)
+        assert row.last_order_at == datetime(2025, 5, 15, tzinfo=timezone.utc)
+        assert row.estimated_order_value == Decimal("500.00")
+        assert row.confirmed_order_value == Decimal("525.00")
+        assert row.deposit_requirement_value == Decimal("100.00")
+        assert row.deposit_received_value == Decimal("50.00")
         mock_session.flush.assert_awaited_once()
         mock_session.commit.assert_awaited_once()
 
@@ -472,6 +594,7 @@ class TestUpdate:
             contact_email=None,
             all_items={"Sandwich platter": {"quantity": 3, "price": 150.00}},
             party_size=100,
+            estimated_order_value=Decimal("600.00"),
         )
         assert isinstance(data, CateringRequestData)
         # execute called 3 times: get_by_idempotency_key, update stmt, get_by_idempotency_key again

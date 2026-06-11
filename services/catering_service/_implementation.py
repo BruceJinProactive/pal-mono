@@ -5,6 +5,7 @@ import os
 import re
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 from typing import Any, List, Optional
 from zoneinfo import ZoneInfo
 
@@ -25,6 +26,7 @@ from db.pal_repository.data_classes.catering_request_activity import (
 )
 from db.pal_repository.data_classes.contact import ContactData
 from db.pal_repository.data_classes.routine_execution import UNSET, _Unset
+from db.pal_repository.order import OrderRepository as OrderRepositoryNew
 from db.repositories.catering_request_repository import (
     CateringRequestRepository,
     CateringRequestRepositoryAsync,
@@ -237,6 +239,10 @@ def create_catering_request(
     all_items: dict[str, dict[str, Any]] | None = None,
     event_fulfillment: Optional[FulfillmentType] = None,
     party_size: Optional[int] = None,
+    estimated_order_value: Decimal | None = None,
+    confirmed_order_value: Decimal | None = None,
+    deposit_requirement_value: Decimal | None = None,
+    deposit_received_value: Decimal | None = None,
     idempotency_key: Optional[str] = None,
 ) -> CateringRequest:
     """
@@ -254,6 +260,10 @@ def create_catering_request(
         all_items: Structured map of all requested items keyed by item name (optional)
         event_fulfillment: How the catering will be fulfilled (optional)
         party_size: Number of people expected (optional)
+        estimated_order_value: Estimated catering order value (optional)
+        confirmed_order_value: Confirmed catering order value (optional)
+        deposit_requirement_value: Deposit required for the order (optional)
+        deposit_received_value: Deposit amount received so far (optional)
         idempotency_key: Key to prevent duplicate requests (optional, will generate if not provided)
 
     Returns:
@@ -290,6 +300,10 @@ def create_catering_request(
                 "contact_name": contact_name,
                 "contact_phone_number": contact_phone_number,
                 "contact_email": contact_email,
+                "estimated_order_value": estimated_order_value,
+                "confirmed_order_value": confirmed_order_value,
+                "deposit_requirement_value": deposit_requirement_value,
+                "deposit_received_value": deposit_received_value,
                 "party_size": party_size,
             }
 
@@ -326,6 +340,10 @@ def create_catering_request(
                 contact_name=contact_name,
                 contact_phone_number=contact_phone_number,
                 contact_email=contact_email,
+                estimated_order_value=estimated_order_value,
+                confirmed_order_value=confirmed_order_value,
+                deposit_requirement_value=deposit_requirement_value,
+                deposit_received_value=deposit_received_value,
                 party_size=party_size,
                 contact_id=None,
                 status=RequestStatus.LEAD,
@@ -385,6 +403,10 @@ async def create_catering_request_async(
     all_items: dict[str, dict[str, Any]] | None = None,
     event_fulfillment: Optional[FulfillmentType] = None,
     party_size: Optional[int] = None,
+    estimated_order_value: Decimal | None = None,
+    confirmed_order_value: Decimal | None = None,
+    deposit_requirement_value: Decimal | None = None,
+    deposit_received_value: Decimal | None = None,
     idempotency_key: Optional[str] = None,
     activity_actor_type: CateringRequestActivityActorType = (
         CateringRequestActivityActorType.CUSTOMER
@@ -412,6 +434,10 @@ async def create_catering_request_async(
             "contact_name": contact_name,
             "contact_phone_number": contact_phone_number,
             "contact_email": contact_email,
+            "estimated_order_value": estimated_order_value,
+            "confirmed_order_value": confirmed_order_value,
+            "deposit_requirement_value": deposit_requirement_value,
+            "deposit_received_value": deposit_received_value,
             "party_size": party_size,
         }
 
@@ -448,6 +474,18 @@ async def create_catering_request_async(
             return updated or existing_request
         return existing_request
 
+    catering_history = await repo.get_customer_history_by_project_id_and_phone_or_email(
+        project_id,
+        contact_phone_number,
+        contact_email,
+    )
+    order_history = await OrderRepositoryNew(
+        session
+    ).get_customer_history_by_project_id_and_phone(
+        project_id,
+        contact_phone_number,
+    )
+
     data = CateringRequestData(
         id=uuid.uuid4(),
         project_id=project_id,
@@ -459,6 +497,14 @@ async def create_catering_request_async(
         idempotency_key=idempotency_key,
         created_at=datetime.now(tz=timezone.utc),
         updated_at=datetime.now(tz=timezone.utc),
+        prior_catering_request_count=catering_history.request_count,
+        prior_order_count=order_history.order_count,
+        last_catering_request_at=catering_history.last_request_at,
+        last_order_at=order_history.last_order_at,
+        estimated_order_value=estimated_order_value,
+        confirmed_order_value=confirmed_order_value,
+        deposit_requirement_value=deposit_requirement_value,
+        deposit_received_value=deposit_received_value,
         event_time=event_time,
         event_address=event_address,
         event_detail=event_detail,
@@ -493,6 +539,14 @@ async def create_catering_request_async(
                     "contact_name",
                     "contact_phone_number",
                     "contact_email",
+                    "prior_catering_request_count",
+                    "prior_order_count",
+                    "last_catering_request_at",
+                    "last_order_at",
+                    "estimated_order_value",
+                    "confirmed_order_value",
+                    "deposit_requirement_value",
+                    "deposit_received_value",
                     "party_size",
                     "status",
                 ],
@@ -722,6 +776,10 @@ async def update_catering_request(
     all_items: dict[str, dict[str, Any]] | None | _Unset = UNSET,
     event_fulfillment: FulfillmentType | None | _Unset = UNSET,
     party_size: int | None | _Unset = UNSET,
+    estimated_order_value: Decimal | None | _Unset = UNSET,
+    confirmed_order_value: Decimal | None | _Unset = UNSET,
+    deposit_requirement_value: Decimal | None | _Unset = UNSET,
+    deposit_received_value: Decimal | None | _Unset = UNSET,
     status: RequestStatus | None | _Unset = UNSET,
     actor_id: uuid.UUID | None = None,
     actor_display_name: str | None = None,
@@ -748,6 +806,10 @@ async def update_catering_request(
         all_items: New structured item map keyed by item name (optional)
         event_fulfillment: New fulfillment type (optional)
         party_size: New party size (optional)
+        estimated_order_value: New estimated catering order value (optional)
+        confirmed_order_value: New confirmed catering order value (optional)
+        deposit_requirement_value: New required deposit value (optional)
+        deposit_received_value: New received deposit value (optional)
         status: New status (optional)
 
     Returns:
@@ -771,6 +833,10 @@ async def update_catering_request(
         "all_items",
         "event_fulfillment",
         "party_size",
+        "estimated_order_value",
+        "confirmed_order_value",
+        "deposit_requirement_value",
+        "deposit_received_value",
         "status",
     ]
     before_values = _snapshot_request_fields(existing_request, tracked_fields)
@@ -790,6 +856,10 @@ async def update_catering_request(
         "all_items": all_items,
         "event_fulfillment": event_fulfillment,
         "party_size": party_size,
+        "estimated_order_value": estimated_order_value,
+        "confirmed_order_value": confirmed_order_value,
+        "deposit_requirement_value": deposit_requirement_value,
+        "deposit_received_value": deposit_received_value,
         "status": status,
     }
 
@@ -803,6 +873,10 @@ async def update_catering_request(
         "all_items",
         "event_fulfillment",
         "party_size",
+        "estimated_order_value",
+        "confirmed_order_value",
+        "deposit_requirement_value",
+        "deposit_received_value",
     }
 
     # Set explicitly provided values. ``None`` clears nullable fields only.
@@ -888,6 +962,13 @@ async def update_catering_request(
             },
         )
         try:
+            if not updated_request.contact_phone_number:
+                logger.warning(
+                    "[catering] Skipping customer status SMS without contact phone number.",
+                    extra={"request_id": str(updated_request.id)},
+                )
+                return updated_request
+
             business_name = await _get_catering_business_name(
                 session, updated_request.project_id
             )
@@ -1068,6 +1149,16 @@ def _build_customer_sms_event_phrase(event_date: date | None) -> str:
     if event_date is None:
         return ""
     return f" for {event_date.strftime('%B %d, %Y')}"
+
+
+def _format_catering_event_date(
+    event_date: date | None,
+    date_format: str,
+    fallback: str = "Date TBD",
+) -> str:
+    if event_date is None:
+        return fallback
+    return event_date.strftime(date_format)
 
 
 def _build_customer_sms_contact_sentence(store_phone_number: str | None) -> str:
@@ -1582,7 +1673,7 @@ async def send_catering_inquiry_reminders(
             if created_local != two_days_ago:
                 continue
 
-            # Filter: event hasn't passed
+            # Filter: event hasn't passed.
             if req.event_date is not None and req.event_date < today_local:
                 continue
             if (
@@ -1735,6 +1826,12 @@ async def send_catering_inquiry_apologies(
         )
 
         for req in qualifying:
+            if not req.contact_phone_number:
+                logger.warning(
+                    "[catering-apology] Skipping apology without contact phone number.",
+                    extra={"request_id": str(req.id), "project_id": str(project_id)},
+                )
+                continue
             message = format_catering_apology_message(req, project_name)
             try:
                 sms_success = await asyncio.to_thread(

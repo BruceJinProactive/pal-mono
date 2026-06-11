@@ -49,6 +49,14 @@ class LatestOrderData:
 
 
 @dataclass(frozen=True)
+class OrderCustomerHistoryData:
+    """Summary of prior orders for a project/customer phone."""
+
+    order_count: int
+    last_order_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class OrderDetailsData:
     """Order projection for admin console detail lookups."""
 

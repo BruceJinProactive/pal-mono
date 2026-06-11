@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from db.pal_repository.data_classes.order import (
     LatestOrderData,
+    OrderCustomerHistoryData,
     OrderData,
     OrderDetailsData,
 )
@@ -174,6 +175,67 @@ class TestDataImmutability:
             order_items=({"name": "Pizza"},),
         )
         assert isinstance(data.order_items, tuple)
+
+
+# ---------------------------------------------------------------------------
+# get_customer_history_by_project_id_and_phone
+# ---------------------------------------------------------------------------
+
+
+class TestGetCustomerHistoryByProjectIdAndPhone:
+    @pytest.mark.asyncio
+    async def test_returns_history_summary(
+        self, repo: OrderRepository, mock_session: AsyncMock
+    ) -> None:
+        last_order_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_result = MagicMock()
+        mock_mappings = MagicMock()
+        mock_mappings.one.return_value = {
+            "order_count": 3,
+            "last_order_at": last_order_at,
+        }
+        mock_result.mappings.return_value = mock_mappings
+        mock_session.execute.return_value = mock_result
+
+        result = await repo.get_customer_history_by_project_id_and_phone(
+            uuid.uuid4(),
+            "(555) 123-4567",
+        )
+
+        assert isinstance(result, OrderCustomerHistoryData)
+        assert result.order_count == 3
+        assert result.last_order_at == last_order_at
+        mock_session.execute.assert_awaited_once()
+        statement_text = str(mock_session.execute.call_args.args[0])
+        assert "JOIN conversations" in statement_text
+        assert "JOIN projects" in statement_text
+        assert "account_id" in statement_text
+        assert "regexp_replace" in statement_text
+
+    @pytest.mark.asyncio
+    async def test_blank_phone_skips_query(
+        self, repo: OrderRepository, mock_session: AsyncMock
+    ) -> None:
+        result = await repo.get_customer_history_by_project_id_and_phone(
+            uuid.uuid4(),
+            "",
+        )
+
+        assert result.order_count == 0
+        assert result.last_order_at is None
+        mock_session.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_error_rolls_back(
+        self, repo: OrderRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = SQLAlchemyError("db error")
+        with pytest.raises(SQLAlchemyError):
+            await repo.get_customer_history_by_project_id_and_phone(
+                uuid.uuid4(),
+                "+15551234567",
+            )
+        mock_session.rollback.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

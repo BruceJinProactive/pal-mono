@@ -151,6 +151,10 @@ async def create_project_catering_request(
         all_items=request.all_items,
         event_fulfillment=request.event_fulfillment,
         party_size=request.party_size,
+        estimated_order_value=request.estimated_order_value,
+        confirmed_order_value=request.confirmed_order_value,
+        deposit_requirement_value=request.deposit_requirement_value,
+        deposit_received_value=request.deposit_received_value,
         idempotency_key=request.idempotency_key,
         activity_actor_type=CateringRequestActivityActorType.INTERNAL_USER,
         activity_actor_id=_get_actor_id(context),
@@ -245,6 +249,10 @@ async def update_catering_request(
             "all_items",
             "event_fulfillment",
             "party_size",
+            "estimated_order_value",
+            "confirmed_order_value",
+            "deposit_requirement_value",
+            "deposit_received_value",
             "status",
         )
         if field in request.model_fields_set

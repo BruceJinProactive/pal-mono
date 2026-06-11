@@ -3,7 +3,9 @@
 import sys
 import uuid
 from datetime import date, datetime, time, timezone
+from decimal import Decimal
 from types import ModuleType, SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -85,6 +87,26 @@ def _make_session() -> AsyncMock:
     return session
 
 
+def _set_empty_catering_history(repo: AsyncMock) -> None:
+    repo.get_customer_history_by_project_id_and_phone_or_email.return_value = (
+        SimpleNamespace(
+            request_count=0,
+            last_request_at=None,
+        )
+    )
+
+
+def _patch_empty_order_history() -> Any:
+    order_repo = AsyncMock()
+    order_repo.get_customer_history_by_project_id_and_phone.return_value = (
+        SimpleNamespace(order_count=0, last_order_at=None)
+    )
+    return patch(
+        "services.catering_service._implementation.OrderRepositoryNew",
+        return_value=order_repo,
+    )
+
+
 @pytest.mark.asyncio
 async def test_creates_new_request_when_no_existing() -> None:
     session = _make_session()
@@ -95,6 +117,12 @@ async def test_creates_new_request_when_no_existing() -> None:
     repo.get_by_idempotency_key.return_value = None
     persisted_request_id = uuid.uuid4()
     repo.create.return_value = persisted_request_id
+    repo.get_customer_history_by_project_id_and_phone_or_email.return_value = (
+        SimpleNamespace(
+            request_count=2,
+            last_request_at=datetime(2025, 5, 1, tzinfo=timezone.utc),
+        )
+    )
 
     project_repo = AsyncMock()
     project_repo.get_project.return_value = SimpleNamespace(
@@ -111,6 +139,17 @@ async def test_creates_new_request_when_no_existing() -> None:
             return_value=project_repo,
         ),
         patch(
+            "services.catering_service._implementation.OrderRepositoryNew",
+            return_value=SimpleNamespace(
+                get_customer_history_by_project_id_and_phone=AsyncMock(
+                    return_value=SimpleNamespace(
+                        order_count=3,
+                        last_order_at=datetime(2025, 5, 15, tzinfo=timezone.utc),
+                    )
+                )
+            ),
+        ),
+        patch(
             "services.catering_service._implementation.publish_event",
             return_value=True,
         ) as mock_publish,
@@ -124,8 +163,13 @@ async def test_creates_new_request_when_no_existing() -> None:
             event_time=time(14, 30),
             event_address="123 Main St",
             event_detail="50 pepperoni pizzas",
+            contact_email="john@example.com",
             event_fulfillment=FulfillmentType.DELIVERY,
             party_size=30,
+            estimated_order_value=Decimal("500.00"),
+            confirmed_order_value=Decimal("525.00"),
+            deposit_requirement_value=Decimal("100.00"),
+            deposit_received_value=Decimal("50.00"),
             idempotency_key="idem-key-1",
         )
 
@@ -133,6 +177,19 @@ async def test_creates_new_request_when_no_existing() -> None:
     assert result.id == persisted_request_id
     assert result.project_id == project_id
     assert result.event_date == date(2025, 12, 25)
+    assert result.prior_catering_request_count == 2
+    assert result.prior_order_count == 3
+    assert result.last_catering_request_at == datetime(2025, 5, 1, tzinfo=timezone.utc)
+    assert result.last_order_at == datetime(2025, 5, 15, tzinfo=timezone.utc)
+    assert result.estimated_order_value == Decimal("500.00")
+    assert result.confirmed_order_value == Decimal("525.00")
+    assert result.deposit_requirement_value == Decimal("100.00")
+    assert result.deposit_received_value == Decimal("50.00")
+    repo.get_customer_history_by_project_id_and_phone_or_email.assert_awaited_once_with(
+        project_id,
+        "+15551234567",
+        "john@example.com",
+    )
     repo.create.assert_called_once()
     mock_publish.assert_called_once()
     assert mock_publish.call_args.args[0].catering_request_id == persisted_request_id
@@ -197,6 +254,7 @@ async def test_creates_activity_when_new_request_created() -> None:
     repo.get_by_idempotency_key.return_value = None
     persisted_request_id = uuid.uuid4()
     repo.create.return_value = persisted_request_id
+    _set_empty_catering_history(repo)
 
     activity_repo = AsyncMock()
     activity_repo.create.side_effect = lambda activity: activity
@@ -219,6 +277,7 @@ async def test_creates_activity_when_new_request_created() -> None:
             "services.catering_service._implementation.ProjectRepositoryAsync",
             return_value=project_repo,
         ),
+        _patch_empty_order_history(),
         patch(
             "services.catering_service._implementation.publish_event",
             return_value=True,
@@ -447,6 +506,10 @@ async def test_update_catering_request_records_field_update_activity() -> None:
         event_detail="50 pepperoni pizzas",
         event_fulfillment=FulfillmentType.DELIVERY,
         party_size=30,
+        estimated_order_value=None,
+        confirmed_order_value=None,
+        deposit_requirement_value=None,
+        deposit_received_value=None,
         status=RequestStatus.LEAD,
     )
     updated_request = SimpleNamespace(
@@ -461,6 +524,10 @@ async def test_update_catering_request_records_field_update_activity() -> None:
         event_detail="50 pepperoni pizzas",
         event_fulfillment=FulfillmentType.DELIVERY,
         party_size=45,
+        estimated_order_value=None,
+        confirmed_order_value=None,
+        deposit_requirement_value=None,
+        deposit_received_value=None,
         status=RequestStatus.LEAD,
     )
 
@@ -748,6 +815,7 @@ async def test_generates_idempotency_key_when_none() -> None:
     repo = AsyncMock()
     repo.get_by_idempotency_key.return_value = None
     repo.create.return_value = uuid.uuid4()
+    _set_empty_catering_history(repo)
 
     project_repo = AsyncMock()
     project_repo.get_project.return_value = SimpleNamespace(
@@ -763,6 +831,7 @@ async def test_generates_idempotency_key_when_none() -> None:
             "services.catering_service._implementation.ProjectRepositoryAsync",
             return_value=project_repo,
         ),
+        _patch_empty_order_history(),
         patch(
             "services.catering_service._implementation.publish_event",
             return_value=True,
@@ -859,6 +928,7 @@ async def test_skips_event_publishing_when_project_not_found() -> None:
     repo = AsyncMock()
     repo.get_by_idempotency_key.return_value = None
     repo.create.return_value = uuid.uuid4()
+    _set_empty_catering_history(repo)
 
     project_repo = AsyncMock()
     project_repo.get_project.return_value = None
@@ -872,6 +942,7 @@ async def test_skips_event_publishing_when_project_not_found() -> None:
             "services.catering_service._implementation.ProjectRepositoryAsync",
             return_value=project_repo,
         ),
+        _patch_empty_order_history(),
         patch(
             "services.catering_service._implementation.publish_event",
             return_value=True,
@@ -898,6 +969,7 @@ async def test_logs_warning_when_event_publish_fails() -> None:
     repo = AsyncMock()
     repo.get_by_idempotency_key.return_value = None
     repo.create.return_value = uuid.uuid4()
+    _set_empty_catering_history(repo)
 
     project_repo = AsyncMock()
     project_repo.get_project.return_value = SimpleNamespace(
@@ -913,6 +985,7 @@ async def test_logs_warning_when_event_publish_fails() -> None:
             "services.catering_service._implementation.ProjectRepositoryAsync",
             return_value=project_repo,
         ),
+        _patch_empty_order_history(),
         patch(
             "services.catering_service._implementation.publish_event",
             return_value=False,

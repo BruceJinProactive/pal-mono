@@ -332,10 +332,22 @@ remain available for older rows and compatibility paths.
 requester email directly on the request. This lets catering workflows track an
 incomplete inquiry even when scheduling or phone details are not yet known.
 Repository DTOs, service methods, agent catering persistence, and catering API
-schemas accept and return these partial fields. The public catering request
-detail endpoint returns requester phone number, requester email, and the project
-`address` as `store_address` for customer confirmation pages, while still
-omitting project IDs, contact assignment, idempotency keys, and internal
+schemas accept and return these partial fields.
+
+When a new request is created, the catering service snapshots customer history
+into `prior_catering_request_count`, `prior_order_count`,
+`last_catering_request_at`, and `last_order_at`. Catering request history is
+matched across all projects in the same account by requester phone or requester
+email; order history is matched across all projects in the same account by
+phone. These are creation-time context fields, not live counters. The request
+also stores nullable monetary planning fields: `estimated_order_value`,
+`confirmed_order_value`, `deposit_requirement_value`, and
+`deposit_received_value`.
+
+The public catering request detail endpoint returns requester phone number,
+requester email, and the project `address` as `store_address` for customer
+confirmation pages, while still omitting project IDs, contact assignment,
+idempotency keys, and internal
 timestamps.
 
 `catering_request_activities` stores an append-only timeline for each catering

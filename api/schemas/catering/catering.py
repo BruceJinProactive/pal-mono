@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -48,6 +49,10 @@ class CreateCateringRequestRequest(BaseModel):
     all_items: Optional[Dict[str, Dict[str, Any]]] = None
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
+    estimated_order_value: Optional[Decimal] = None
+    confirmed_order_value: Optional[Decimal] = None
+    deposit_requirement_value: Optional[Decimal] = None
+    deposit_received_value: Optional[Decimal] = None
     idempotency_key: Optional[str] = None
 
 
@@ -66,6 +71,10 @@ class UpdateCateringRequestRequest(BaseModel):
     all_items: Optional[Dict[str, Dict[str, Any]]] = None
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
+    estimated_order_value: Optional[Decimal] = None
+    confirmed_order_value: Optional[Decimal] = None
+    deposit_requirement_value: Optional[Decimal] = None
+    deposit_received_value: Optional[Decimal] = None
     status: Optional[RequestStatus] = None
 
 
@@ -109,6 +118,14 @@ class CateringRequest(BaseModel):
     all_items: Optional[Dict[str, Dict[str, Any]]] = None
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
+    prior_catering_request_count: int = 0
+    prior_order_count: int = 0
+    last_catering_request_at: Optional[datetime] = None
+    last_order_at: Optional[datetime] = None
+    estimated_order_value: Optional[Decimal] = None
+    confirmed_order_value: Optional[Decimal] = None
+    deposit_requirement_value: Optional[Decimal] = None
+    deposit_received_value: Optional[Decimal] = None
     contact_id: Optional[uuid.UUID] = None
     status: RequestStatus
     idempotency_key: str

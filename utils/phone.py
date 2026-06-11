@@ -1,5 +1,7 @@
 """Utilities for phone number classification."""
 
+import re
+
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
@@ -40,3 +42,9 @@ def is_test_phone_number(phone_number: str) -> bool:
         True if test number, False otherwise.
     """
     return phone_number in get_test_phone_numbers()
+
+
+def normalize_phone_digits(phone_number: str | None) -> str | None:
+    """Return digits-only phone text for loose matching, or None when blank."""
+    digits = re.sub(r"\D", "", phone_number or "")
+    return digits or None
