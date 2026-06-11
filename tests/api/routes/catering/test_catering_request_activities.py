@@ -237,6 +237,8 @@ async def test_update_catering_request_forwards_only_present_fields() -> None:
             request=UpdateCateringRequestRequest(
                 contact_phone_number=None,
                 contact_email=None,
+                prior_catering_request_count=4,
+                prior_order_count=7,
             ),
             context=context,
             session=session,
@@ -247,5 +249,7 @@ async def test_update_catering_request_forwards_only_present_fields() -> None:
     kwargs = mock_update.call_args.kwargs
     assert kwargs["contact_phone_number"] is None
     assert kwargs["contact_email"] is None
+    assert kwargs["prior_catering_request_count"] == 4
+    assert kwargs["prior_order_count"] == 7
     assert "party_size" not in kwargs
     assert kwargs["actor_display_name"] == "Casey Manager"

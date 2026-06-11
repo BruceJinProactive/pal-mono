@@ -506,6 +506,8 @@ async def test_update_catering_request_records_field_update_activity() -> None:
         event_detail="50 pepperoni pizzas",
         event_fulfillment=FulfillmentType.DELIVERY,
         party_size=30,
+        prior_catering_request_count=2,
+        prior_order_count=5,
         estimated_order_value=None,
         confirmed_order_value=None,
         deposit_requirement_value=None,
@@ -524,6 +526,8 @@ async def test_update_catering_request_records_field_update_activity() -> None:
         event_detail="50 pepperoni pizzas",
         event_fulfillment=FulfillmentType.DELIVERY,
         party_size=45,
+        prior_catering_request_count=4,
+        prior_order_count=8,
         estimated_order_value=None,
         confirmed_order_value=None,
         deposit_requirement_value=None,
@@ -552,6 +556,8 @@ async def test_update_catering_request_records_field_update_activity() -> None:
             session=session,
             catering_request_id=request_id,
             party_size=45,
+            prior_catering_request_count=4,
+            prior_order_count=8,
             actor_id=actor_id,
             actor_display_name="Casey Manager",
         )
@@ -563,7 +569,15 @@ async def test_update_catering_request_records_field_update_activity() -> None:
     assert activity.actor_id == actor_id
     assert activity.actor_display_name == "Casey Manager"
     assert activity.source == CateringRequestActivitySource.ADMIN_CONSOLE
-    assert activity.metadata["changed_fields"] == {"party_size": {"old": 30, "new": 45}}
+    updated_model = repo.update_catering_request.call_args.args[1]
+    assert updated_model.party_size == 45
+    assert updated_model.prior_catering_request_count == 4
+    assert updated_model.prior_order_count == 8
+    assert activity.metadata["changed_fields"] == {
+        "party_size": {"old": 30, "new": 45},
+        "prior_catering_request_count": {"old": 2, "new": 4},
+        "prior_order_count": {"old": 5, "new": 8},
+    }
     session.refresh.assert_awaited_once_with(updated_request)
 
 
@@ -680,12 +694,16 @@ async def test_update_catering_request_ignores_null_non_nullable_fields() -> Non
             session=session,
             catering_request_id=request_id,
             contact_name=None,
+            prior_catering_request_count=None,
+            prior_order_count=None,
             status=None,
         )
 
     assert result is updated_request
     updated_model = repo.update_catering_request.call_args.args[1]
     assert "contact_name" not in updated_model.__dict__
+    assert "prior_catering_request_count" not in updated_model.__dict__
+    assert "prior_order_count" not in updated_model.__dict__
     assert "status" not in updated_model.__dict__
     activity_repo.create.assert_not_called()
 

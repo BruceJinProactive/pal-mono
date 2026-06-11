@@ -776,6 +776,8 @@ async def update_catering_request(
     all_items: dict[str, dict[str, Any]] | None | _Unset = UNSET,
     event_fulfillment: FulfillmentType | None | _Unset = UNSET,
     party_size: int | None | _Unset = UNSET,
+    prior_catering_request_count: int | None | _Unset = UNSET,
+    prior_order_count: int | None | _Unset = UNSET,
     estimated_order_value: Decimal | None | _Unset = UNSET,
     confirmed_order_value: Decimal | None | _Unset = UNSET,
     deposit_requirement_value: Decimal | None | _Unset = UNSET,
@@ -806,6 +808,8 @@ async def update_catering_request(
         all_items: New structured item map keyed by item name (optional)
         event_fulfillment: New fulfillment type (optional)
         party_size: New party size (optional)
+        prior_catering_request_count: New prior catering request count (optional)
+        prior_order_count: New prior order count (optional)
         estimated_order_value: New estimated catering order value (optional)
         confirmed_order_value: New confirmed catering order value (optional)
         deposit_requirement_value: New required deposit value (optional)
@@ -833,6 +837,8 @@ async def update_catering_request(
         "all_items",
         "event_fulfillment",
         "party_size",
+        "prior_catering_request_count",
+        "prior_order_count",
         "estimated_order_value",
         "confirmed_order_value",
         "deposit_requirement_value",
@@ -856,6 +862,8 @@ async def update_catering_request(
         "all_items": all_items,
         "event_fulfillment": event_fulfillment,
         "party_size": party_size,
+        "prior_catering_request_count": prior_catering_request_count,
+        "prior_order_count": prior_order_count,
         "estimated_order_value": estimated_order_value,
         "confirmed_order_value": confirmed_order_value,
         "deposit_requirement_value": deposit_requirement_value,

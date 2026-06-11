@@ -71,6 +71,8 @@ class UpdateCateringRequestRequest(BaseModel):
     all_items: Optional[Dict[str, Dict[str, Any]]] = None
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
+    prior_catering_request_count: Optional[int] = None
+    prior_order_count: Optional[int] = None
     estimated_order_value: Optional[Decimal] = None
     confirmed_order_value: Optional[Decimal] = None
     deposit_requirement_value: Optional[Decimal] = None

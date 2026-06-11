@@ -249,6 +249,8 @@ async def update_catering_request(
             "all_items",
             "event_fulfillment",
             "party_size",
+            "prior_catering_request_count",
+            "prior_order_count",
             "estimated_order_value",
             "confirmed_order_value",
             "deposit_requirement_value",

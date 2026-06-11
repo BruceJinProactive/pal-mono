@@ -4,6 +4,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-11
+
+- **Catering history count updates.** `PATCH /catering/requests/{request_id}` now accepts and persists `prior_catering_request_count` and `prior_order_count`, allowing internal admin edits to survive page reloads.
+
 ## 2026-06-10
 
 - **Contract-to-account onboarding PRD.** Added a draft PRD for the account onboarding flow from verbal yes through DocuSign/order-form signing, ToS acceptance, Slack/Folk/Notion visibility, and FDE handoff. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`
