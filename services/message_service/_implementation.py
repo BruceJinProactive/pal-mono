@@ -51,6 +51,7 @@ from utils.otel import record_duration, trace_async_block
 from utils.request_context import RequestContext
 
 from . import _utils
+from ._phone_routing import resolve_broker_from_sip_provider, resolve_outbound_tn
 from ._store_status import compute_store_status
 from ._tracing import langfuse_message_span
 from ._utils import EMAIL_BODY_EXTRACTION_TIMEOUT_SECONDS, _extract_email_body_from_s3
@@ -442,8 +443,14 @@ def _schedule_toast_checkout_request(
     sender_identifier: str,
     recipient_identifier: str,
     broker: Broker | None,
+    sip_provider: str | None = None,
 ) -> None:
     try:
+        sender_identifier, broker = _resolve_toast_checkout_sms_route(
+            sender_identifier=sender_identifier,
+            broker=broker,
+            sip_provider=sip_provider,
+        )
         task = asyncio.create_task(
             _process_toast_checkout_request_background(
                 checkout_request=checkout_request,
@@ -463,6 +470,16 @@ def _schedule_toast_checkout_request(
 
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
+
+
+def _resolve_toast_checkout_sms_route(
+    *,
+    sender_identifier: str,
+    broker: Broker | None,
+    sip_provider: str | None,
+) -> tuple[str, Broker]:
+    resolved_broker = broker or resolve_broker_from_sip_provider(sip_provider)
+    return resolve_outbound_tn(sender_identifier, resolved_broker), resolved_broker
 
 
 def _is_toast_checkout_request(checkout_request: object) -> bool:
@@ -1522,6 +1539,7 @@ async def get_chat_response_stream(
                                         sender_identifier=message.recipient_identifier,
                                         recipient_identifier=message.sender_identifier,
                                         broker=message.broker,
+                                        sip_provider=sip_provider,
                                     )
 
                                 # Collect generic tool call events

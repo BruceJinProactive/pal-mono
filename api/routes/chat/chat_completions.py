@@ -1,7 +1,6 @@
 import asyncio
 import datetime
 import json
-import os
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -16,10 +15,14 @@ import db
 from agent.model import ModelOptions, call_llm_default
 from api.routes.chat._utils import create_url_filter
 from api.routes.chat.chat import chat_router
-from api.schemas.chat.message import AuthorType, Broker, Message, Metadata, TextObject
+from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
 from services.message_service import get_chat_response_stream
+from services.message_service._phone_routing import (
+    resolve_broker_from_sip_provider,
+    resolve_outbound_tn,
+)
 from services.relay_service import send_message
 from utils.log import logger
 from utils.otel import increment_counter, record_duration
@@ -27,41 +30,6 @@ from utils.request_context import RequestContext
 
 _CHAT_COMPLETIONS_TURN_BRIDGE_METRIC = "chat.completions.turn.bridge"
 _CHAT_COMPLETIONS_TURN_BRIDGE_DURATION_METRIC = "chat.completions.turn.bridge.duration"
-
-
-def resolve_outbound_tn(sender_tn: str, broker: Broker) -> str:
-    """Map internal routing TN to real outbound TN. Passthrough for non-PizzaCloud.
-
-    Reads PIZZACLOUD_OUTBOUND_TN_MAP env var on every call so updates
-    take effect without redeployment.
-
-    Raises ValueError if the mapping is misconfigured or the sender TN
-    is not found — PizzaCloud SMS must not be sent from an unmapped TN.
-    """
-    if broker != Broker.PIZZACLOUD:
-        return sender_tn
-    raw = os.environ.get("PIZZACLOUD_OUTBOUND_TN_MAP", "")
-    if not raw:
-        raise ValueError(
-            f"PIZZACLOUD_OUTBOUND_TN_MAP env var is not set; "
-            f"cannot resolve outbound TN for {sender_tn}"
-        )
-    try:
-        mapping = json.loads(raw)
-    except json.JSONDecodeError:
-        raise ValueError("PIZZACLOUD_OUTBOUND_TN_MAP is not valid JSON")
-    if not isinstance(mapping, dict):
-        raise ValueError("PIZZACLOUD_OUTBOUND_TN_MAP must be a JSON object")
-    resolved = mapping.get(sender_tn)
-    if resolved is None:
-        raise ValueError(
-            f"No outbound TN mapping found for {sender_tn} in "
-            f"PIZZACLOUD_OUTBOUND_TN_MAP"
-        )
-    if not isinstance(resolved, str):
-        raise ValueError(f"Outbound TN mapping value for {sender_tn} is not a string")
-    logger.info(f"Outbound TN override: ***{sender_tn[-4:]} -> ***{resolved[-4:]}")
-    return resolved
 
 
 # Request model with FastAPI validation
@@ -434,10 +402,7 @@ Instructions:
                 logger.debug(f"Post processed SMS summary to {summary_content}")
 
                 # Resolve broker from SIP provider
-                try:
-                    broker = Broker(sip_provider) if sip_provider else Broker.TWILIO
-                except ValueError:
-                    broker = Broker.TWILIO
+                broker = resolve_broker_from_sip_provider(sip_provider)
 
                 # Resolve outbound TN — for brokers like PizzaCloud, the
                 # internal routing TN may differ from the real SMS-authorized

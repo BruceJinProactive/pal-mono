@@ -5,6 +5,7 @@ import uuid
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from types import ModuleType, SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -134,6 +135,8 @@ def _install_services_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     user_service_mod.get_user_async = _not_implemented  # type: ignore[attr-defined]
     user_service_mod.create_user_async = _not_implemented  # type: ignore[attr-defined]
     transaction_service_mod.create_order_from_agent_async = _not_implemented  # type: ignore[attr-defined]
+    transaction_service_mod.save_order = _not_implemented  # type: ignore[attr-defined]
+    transaction_service_mod.get_order_by_order_id_store_vendor = _not_implemented  # type: ignore[attr-defined]
 
 
 class _FakeMessageRepo:
@@ -289,6 +292,92 @@ def test_schedule_toast_checkout_request_tracks_background_task(monkeypatch):
 
         assert task in _implementation._background_tasks
         assert task.callback == _implementation._background_tasks.discard
+    finally:
+        _implementation._background_tasks.clear()
+        _implementation._background_tasks.update(original_tasks)
+
+
+def test_resolve_toast_checkout_sms_route_uses_sip_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Checkout SMS uses the voice SIP provider to resolve broker and sender."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    monkeypatch.setenv(
+        "PIZZACLOUD_OUTBOUND_TN_MAP",
+        '{"+19921001001": "+19254641000"}',
+    )
+
+    sender_identifier, broker = _implementation._resolve_toast_checkout_sms_route(
+        sender_identifier="+19921001001",
+        broker=None,
+        sip_provider="pizzacloud",
+    )
+
+    assert sender_identifier == "+19254641000"
+    assert broker == Broker.PIZZACLOUD
+
+
+def test_schedule_toast_checkout_request_resolves_sender_from_sip_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scheduled checkout processing receives the resolved broker and sender."""
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    original_tasks = set(_implementation._background_tasks)
+    _implementation._background_tasks.clear()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setenv(
+        "PIZZACLOUD_OUTBOUND_TN_MAP",
+        '{"+19921001001": "+19254641000"}',
+    )
+
+    class FakeTask:
+        def add_done_callback(self, callback: object) -> None:
+            return None
+
+    class FakeAwaitable:
+        def close(self) -> None:
+            return None
+
+    def _fake_process_toast_checkout_request_background(
+        **kwargs: object,
+    ) -> FakeAwaitable:
+        captured.update(kwargs)
+        return FakeAwaitable()
+
+    def _fake_create_task(coro: Any) -> FakeTask:
+        coro.close()
+        return FakeTask()
+
+    monkeypatch.setattr(
+        _implementation,
+        "_process_toast_checkout_request_background",
+        _fake_process_toast_checkout_request_background,
+    )
+    monkeypatch.setattr(_implementation.asyncio, "create_task", _fake_create_task)
+
+    conversation_id = uuid.uuid4()
+
+    try:
+        _implementation._schedule_toast_checkout_request(
+            checkout_request=SimpleNamespace(type="payment_checkout", provider="toast"),
+            conversation_id=conversation_id,
+            sender_identifier="+19921001001",
+            recipient_identifier="+15145609523",
+            broker=None,
+            sip_provider="pizzacloud",
+        )
+
+        assert captured["conversation_id"] == conversation_id
+        assert captured["sender_identifier"] == "+19254641000"
+        assert captured["recipient_identifier"] == "+15145609523"
+        assert captured["broker"] == Broker.PIZZACLOUD
     finally:
         _implementation._background_tasks.clear()
         _implementation._background_tasks.update(original_tasks)
