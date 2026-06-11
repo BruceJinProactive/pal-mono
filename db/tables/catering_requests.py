@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, time
+from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import Enum as SQLEnum
@@ -9,7 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import Date, DateTime, Integer, String, Text, Time
+from sqlalchemy.types import Date, DateTime, Integer, Numeric, String, Text, Time
 
 from .base import Base
 
@@ -48,7 +49,7 @@ class CateringRequest(Base):
         nullable=False,
         index=True,
     )
-    event_date: Mapped[date] = mapped_column(Date, nullable=True)
+    event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     event_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     event_address: Mapped[str | None] = mapped_column(String, nullable=True)
     event_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -57,9 +58,33 @@ class CateringRequest(Base):
         SQLEnum(FulfillmentType), nullable=True
     )
     contact_name: Mapped[str] = mapped_column(String, nullable=False)
-    contact_phone_number: Mapped[str] = mapped_column(String, nullable=True)
+    contact_phone_number: Mapped[str | None] = mapped_column(String, nullable=True)
     contact_email: Mapped[str | None] = mapped_column(String, nullable=True)
     party_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prior_catering_request_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    prior_order_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    last_catering_request_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_order_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    estimated_order_value: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    confirmed_order_value: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    deposit_requirement_value: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    deposit_received_value: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
     status: Mapped[RequestStatus] = mapped_column(
         SQLEnum(RequestStatus), nullable=False, server_default="INQUIRY"
     )

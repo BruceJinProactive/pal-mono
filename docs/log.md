@@ -8,6 +8,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 - **Contract-to-account onboarding PRD.** Added a draft PRD for the account onboarding flow from verbal yes through DocuSign/order-form signing, ToS acceptance, Slack/Folk/Notion visibility, and FDE handoff. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`
 - **Admin conversation order filter.** `GET /accounts/{account_name}/conversations` now accepts `has_order` so the admin console can list only conversations with stored orders, or only conversations without stored orders, while preserving correct pagination totals.
+- **Catering request financial history schema.** Added `catering_requests`
+  columns for creation-time prior activity snapshots and nullable
+  order/deposit value tracking. Migration: `b7f43f8aac6e`. ->
+  `docs/records/2026-06-10-catering-request-financial-history-fields.md`
 - **Catering partial-lead runtime adapters.** Repository DTOs, catering API
   schemas, service create/update/read paths, public detail responses, and agent
   catering persistence now accept nullable `event_date`,
