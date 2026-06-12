@@ -105,6 +105,25 @@ class TestToastHostedPaymentIframeToken:
         )
 
 
+class TestGenerateIframePaymentLink:
+    @patch("tools.toast_tool._implementation.shorten_url")
+    def test_shortens_with_env_url_prefix(self, mock_shorten_url):
+        mock_shorten_url.return_value = "https://pay.palona.ai/abc123"
+        tool = _make_toast_tool(
+            hosted_payment_iframe_endpoint="https://console.palona.ai/checkout/toast"
+        )
+        tool._payment_iframe_fernet = MagicMock()
+        tool._payment_iframe_fernet.encrypt.return_value = b"encrypted-token"
+
+        result = tool._generate_iframe_payment_link({"order": "order-1"})
+
+        assert result == "https://pay.palona.ai/abc123"
+        mock_shorten_url.assert_called_once_with(
+            "https://console.palona.ai/checkout/toast?t=encrypted-token",
+            use_env_url_prefix=True,
+        )
+
+
 class TestGetChatHistory:
     """Covers lines 914 (warning) and 918 (update_current_span)."""
 

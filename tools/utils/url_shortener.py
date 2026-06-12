@@ -2,22 +2,41 @@
 
 import os
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
+from api.settings import ApiSettings
 from utils.log import logger
 from utils.secret import get_server_secret_with_fallback
 
 DEFAULT_TIMEOUT = 10
 TINYURL_API_URL = "https://api.tinyurl.com/create"
+ENV_URL_PREFIXES = {"lat", "stg"}
 
 
-def shorten_url(long_url: str) -> str:
+def _apply_env_url_prefix(long_url: str) -> str:
+    runtime_env = ApiSettings().runtime_env
+    if runtime_env not in ENV_URL_PREFIXES:
+        return long_url
+
+    prefix = f"{runtime_env}-"
+    url_parts = urlsplit(long_url)
+    if url_parts.netloc.startswith(prefix):
+        return long_url
+
+    prefixed_netloc = f"{prefix}{url_parts.netloc}"
+    return urlunsplit(url_parts._replace(netloc=prefixed_netloc))
+
+
+def shorten_url(long_url: str, *, use_env_url_prefix: bool = False) -> str:
     """
     Shorten a URL using TinyURL service.
 
     Args:
         long_url: The URL to shorten
+        use_env_url_prefix: Whether to prefix the destination URL host with the
+            current runtime environment for non-production links.
 
     Returns:
         Shortened URL, or the original URL if shortening fails
@@ -33,6 +52,9 @@ def shorten_url(long_url: str) -> str:
         "accept": "application/json",
         "Authorization": f"Bearer {api_token}",
     }
+
+    if use_env_url_prefix:
+        long_url = _apply_env_url_prefix(long_url)
 
     payload = {"url": long_url}
 

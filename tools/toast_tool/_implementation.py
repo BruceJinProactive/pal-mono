@@ -1856,7 +1856,7 @@ class ToastTool(Toolkit):
                 },
             )
 
-            shortened_url = shorten_url(iframe_url)
+            shortened_url = shorten_url(iframe_url, use_env_url_prefix=True)
             return shortened_url
 
         except Exception:
