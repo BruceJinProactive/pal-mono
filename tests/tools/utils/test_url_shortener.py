@@ -42,3 +42,21 @@ def test_shorten_url_uses_env_aware_destination_url(
     post_mock.assert_called_once()
     assert post_mock.call_args.kwargs["json"]["url"] == expected_url
     assert post_mock.call_args.kwargs["json"]["domain"] == "pay.palona.ai"
+
+
+def test_shorten_url_returns_env_aware_url_when_api_key_missing(monkeypatch):
+    from tools.utils import url_shortener
+
+    monkeypatch.setenv("RUNTIME_ENV", "lat")
+    monkeypatch.setattr(
+        url_shortener,
+        "get_server_secret_with_fallback",
+        lambda _name: "",
+    )
+
+    result = url_shortener.shorten_url(
+        "https://console.palona.ai/checkout/toast?t=token",
+        use_env_url_prefix=True,
+    )
+
+    assert result == "https://lat-console.palona.ai/checkout/toast?t=token"

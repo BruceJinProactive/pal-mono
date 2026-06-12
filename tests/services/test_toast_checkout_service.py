@@ -86,6 +86,34 @@ def test_build_payment_sms_caps_long_order_summary() -> None:
     assert checkout_url in sms.text.body
 
 
+@pytest.mark.asyncio
+async def test_build_checkout_url_uses_env_url_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    calls: list[tuple[str, bool]] = []
+
+    def _fake_shorten_url(url: str, *, use_env_url_prefix: bool = False) -> str:
+        calls.append((url, use_env_url_prefix))
+        return "https://tiny.test/checkout"
+
+    monkeypatch.setattr(service, "shorten_url", _fake_shorten_url)
+
+    result = await service._build_checkout_url_async(
+        uuid.UUID("3080391c-538c-44a7-9063-bcec4ded5676")
+    )
+
+    assert result == "https://tiny.test/checkout"
+    assert calls == [
+        (
+            "https://console.palona.ai/checkout/toast?"
+            "t=3080391c-538c-44a7-9063-bcec4ded5676",
+            True,
+        )
+    ]
+
+
 class _ExpiringCheckoutSession:
     def __init__(self, **kwargs: Any) -> None:
         object.__setattr__(self, "_expired", False)
@@ -188,7 +216,9 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
     monkeypatch.setattr(
         service,
         "shorten_url",
-        lambda url: f"https://tiny.test/{url.rsplit('=', 1)[-1]}",
+        lambda url, *, use_env_url_prefix=False: (
+            f"https://tiny.test/{url.rsplit('=', 1)[-1]}"
+        ),
     )
     monkeypatch.setattr(
         service,
@@ -371,7 +401,9 @@ async def test_process_checkout_request_refreshes_session_after_commit(
             externalReferenceId=kwargs["payment_request"].externalReferenceId,
         ),
     )
-    monkeypatch.setattr(service, "shorten_url", lambda url: url)
+    monkeypatch.setattr(
+        service, "shorten_url", lambda url, *, use_env_url_prefix=False: url
+    )
     monkeypatch.setattr(
         service,
         "send_message",
@@ -476,7 +508,9 @@ async def test_process_checkout_request_marks_delivery_failure(monkeypatch):
             externalReferenceId=kwargs["payment_request"].externalReferenceId,
         ),
     )
-    monkeypatch.setattr(service, "shorten_url", lambda url: url)
+    monkeypatch.setattr(
+        service, "shorten_url", lambda url, *, use_env_url_prefix=False: url
+    )
     monkeypatch.setattr(
         service,
         "send_message",

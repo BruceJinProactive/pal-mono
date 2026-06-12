@@ -42,6 +42,9 @@ def shorten_url(long_url: str, *, use_env_url_prefix: bool = False) -> str:
         Shortened URL, or the original URL if shortening fails
     """
 
+    if use_env_url_prefix:
+        long_url = _apply_env_url_prefix(long_url)
+
     api_token = get_server_secret_with_fallback("TINYURL_API_KEY")
 
     if not api_token:
@@ -52,9 +55,6 @@ def shorten_url(long_url: str, *, use_env_url_prefix: bool = False) -> str:
         "accept": "application/json",
         "Authorization": f"Bearer {api_token}",
     }
-
-    if use_env_url_prefix:
-        long_url = _apply_env_url_prefix(long_url)
 
     payload = {"url": long_url}
 

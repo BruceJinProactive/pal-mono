@@ -176,7 +176,9 @@ def _format_order_summary(
 
 
 async def _build_checkout_url_async(token: uuid.UUID) -> str:
-    return await asyncio.to_thread(shorten_url, f"{_checkout_endpoint()}?t={token}")
+    return await asyncio.to_thread(
+        shorten_url, f"{_checkout_endpoint()}?t={token}", use_env_url_prefix=True
+    )
 
 
 async def _get_or_create_checkout_session(
