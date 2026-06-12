@@ -5,22 +5,22 @@
 # Components evolve independently. Only important cross-module changes require human review.
 
 # Root and first level structural changes
-/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
-/*/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jun.hyung.lee@proactiveailab.com jason@proactiveailab.com
+/*/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jun.hyung.lee@proactiveailab.com jason@proactiveailab.com
 
 # DB schema
-/db/tables/** jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
-/db/migrations/** jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/db/tables/** jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jun.hyung.lee@proactiveailab.com jason@proactiveailab.com
+/db/migrations/** jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jun.hyung.lee@proactiveailab.com jason@proactiveailab.com
 
 # Agent interfaces
-/agent/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/agent/* jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jun.hyung.lee@proactiveailab.com jason@proactiveailab.com
 
 # Documentation (plans are auto-approvable, everything else requires review)
-/docs/** jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+/docs/** jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jun.hyung.lee@proactiveailab.com jason@proactiveailab.com
 /docs/plans/**
 
 # CLAUDE.md files
-**/CLAUDE.md jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jacob@proactiveailab.com jun.hyung.lee@proactiveailab.com
+**/CLAUDE.md jeff.crooks@proactiveailab.com shuo.wang@proactiveailab.com jun.hyung.lee@proactiveailab.com jason@proactiveailab.com
 
 # Auto-approvable: no code owners required (overrides /* rule)
 /pyproject.toml
