@@ -238,6 +238,13 @@ class TestHandleStateChangeRules:
                 "people_present",
                 "presence",
             ),
+            (
+                "guest_visiting_menu_board",
+                "menu_board",
+                "no_people",
+                "people_present",
+                "presence",
+            ),
         ],
     )
     @pytest.mark.asyncio

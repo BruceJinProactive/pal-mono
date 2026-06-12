@@ -13,6 +13,11 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-11
 
+- **Guest visiting menu board workflow.** Added a
+  `guest_visiting_menu_board` vision rule type and workflow for a `menu_board`
+  entity moving from `no_people` to `people_present`, so a "Guest visiting menu
+  board" monitoring config can focus on an assigned ROI around the menu board.
+  Migration: `c2f4d8a9b1e3`. -> `docs/state/architecture.md`
 - **Guest menu board vision rule schema.** Added `guest_visiting_menu_board`
   to the `visionruletype` enum so menu-board monitoring rules can be
   persisted. Migration: `c2f4d8a9b1e3`.

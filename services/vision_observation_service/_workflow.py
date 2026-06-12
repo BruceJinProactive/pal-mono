@@ -269,6 +269,13 @@ RULE_TYPE_WORKFLOWS: dict[str, RuleWorkflow] = {
         state_definition_type="presence",
         handler=_handle_state_transition_rule,
     ),
+    "guest_visiting_menu_board": RuleWorkflow(
+        entity_type_name="menu_board",
+        previous_state="no_people",
+        trigger_state="people_present",
+        state_definition_type="presence",
+        handler=_handle_state_transition_rule,
+    ),
 }
 
 
