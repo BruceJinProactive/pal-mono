@@ -4,6 +4,13 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-12
+
+- **Order display payload schema.** Added nullable `orders.display_payload`
+  JSONB storage for order display data. Migration: `e62c73367f57`.
+
+---
+
 ## 2026-06-11
 
 - **Guest menu board vision rule schema.** Added `guest_visiting_menu_board`

@@ -56,6 +56,7 @@ class Order(Base):
         nullable=True,
         server_default=text("'[]'::jsonb"),
     )
+    display_payload: Mapped[Optional[dict]] = mapped_column(JSONB(), nullable=True)
     fulfillment_strategy: Mapped[Optional[str]] = mapped_column(String(), nullable=True)
 
     # Timestamps
