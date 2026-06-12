@@ -447,6 +447,7 @@ def _agent_config_to_spec(
     generic_api_spec: GenericAPISpec | None = None,
     adora_spec: AdoraSpec | None = None,
     toast_spec: ToastSpec | None = None,
+    olo_spec: OloSpec | None = None,
     catering_enabled: bool = False,
     language: str | None = None,
 ) -> Spec:
@@ -462,6 +463,7 @@ def _agent_config_to_spec(
         generic_api_spec: Optional GenericAPISpec for external API calling.
         adora_spec: Optional AdoraSpec for deterministic adora ordering.
         toast_spec: Optional ToastSpec for deterministic toast ordering.
+        olo_spec: Optional OloSpec for deterministic olo ordering.
         catering_enabled: Whether catering request tool is active.
         language: Optional language code for the agent.
 
@@ -505,7 +507,7 @@ def _agent_config_to_spec(
         generic_api=generic_api_spec or GenericAPISpec(),
         adora=adora_spec or AdoraSpec(),
         toast=toast_spec or ToastSpec(),
-        olo=OloSpec(),
+        olo=olo_spec or OloSpec(),
         filler_words=filler_words_spec,
         catering_enabled=catering_enabled,
     )
@@ -580,6 +582,7 @@ async def construct_agent_spec(
         effective_raw_config
     )
     toast_spec = pi_specs.get("toast")
+    olo_spec = pi_specs.get("olo")
 
     # Build pal-tools ToolSpecs from ProjectIntegrations (MiniTable, etc.)
     pal_tools_specs = await _build_pal_tools_specs_from_project_integrations(
@@ -595,6 +598,7 @@ async def construct_agent_spec(
         generic_api_spec=generic_api_spec,
         adora_spec=adora_spec,
         toast_spec=toast_spec,
+        olo_spec=olo_spec,
         catering_enabled=catering_enabled,
         language=effective_language,
     )

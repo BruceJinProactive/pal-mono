@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from pal_agents.spec import AdoraSpec, ToastSpec
+from pal_agents.spec import AdoraSpec, OloSpec, ToastSpec
 
 # ========== Registry infrastructure ==========
 
@@ -218,9 +218,66 @@ def _build_toast_v3_spec(
     return ToastSpec(**kwargs)
 
 
+# ========== Olo v1 builder ==========
+
+_OLO_SPEC_FIELDS = [
+    "menu_data",
+    "lookup_tool_name",
+    "tool_name",
+    "base_url",
+    "restaurant_id",
+    "timeout",
+    "debug",
+]
+
+
+def _coerce_restaurant_id(store_identifier: str) -> int | None:
+    if not store_identifier:
+        return None
+
+    try:
+        return int(store_identifier)
+    except ValueError:
+        raise ValueError(
+            f"Olo ProjectIntegration store_identifier must be an integer restaurant_id; "
+            f"got {store_identifier!r}"
+        ) from None
+
+
+def _build_olo_v1_spec(
+    config: dict[str, Any],
+    store_identifier: str,
+    client_id: str | None,
+    client_secret: str | None,
+    integration_secrets: dict[str, Any] | None,
+) -> OloSpec:
+    """Build an OloSpec from ProjectIntegration config + Integration credentials."""
+    del integration_secrets
+    kwargs: dict[str, Any] = {"enabled": True}
+    for field in _OLO_SPEC_FIELDS:
+        if field in config:
+            kwargs[field] = config[field]
+
+    restaurant_id = _coerce_restaurant_id(store_identifier)
+    if restaurant_id is not None:
+        kwargs["restaurant_id"] = restaurant_id
+
+    auth = merge_auth_with_credentials(
+        config.get("auth"),
+        client_id,
+        client_secret,
+        default_token_url=config.get("token_url"),
+    )
+    if auth is not None:
+        kwargs["auth"] = auth
+
+    return OloSpec(**kwargs)
+
+
 # ========== Registry ==========
 
 PAL_AGENT_TOOL_REGISTRY: dict[str, PalAgentToolEntry] = {
     "adora_v3": PalAgentToolEntry(spec_field="adora", builder=_build_adora_v3_spec),
     "toast_v3": PalAgentToolEntry(spec_field="toast", builder=_build_toast_v3_spec),
+    "olo_v1": PalAgentToolEntry(spec_field="olo", builder=_build_olo_v1_spec),
 }
