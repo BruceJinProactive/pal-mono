@@ -4,6 +4,16 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-15
+
+- **Olo handle-backed menu_data workflow.** Added a documented workflow and
+  pal-mono wrapper for compiling raw Olo bundles into
+  `ProjectIntegration.config.menu_data` for `olo_v1`, explicitly keeping the
+  new runtime path separate from legacy Pinecone `namespace` / `index_name`
+  indexing. -> `docs/records/2026-06-15-olo-menu-data-workflow.md`
+
+---
+
 ## 2026-06-12
 
 - **Order display payload schema.** Added nullable `orders.display_payload`
