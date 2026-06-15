@@ -6,7 +6,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import delete, func, literal_column, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -79,6 +79,15 @@ def _phone_match_keys(phone_number: str | None) -> set[str]:
     return keys
 
 
+def _contact_phone_digits_expr() -> Any:
+    return func.regexp_replace(
+        func.coalesce(CateringRequest.contact_phone_number, literal_column("''")),
+        literal_column(r"'\D'"),
+        literal_column("''"),
+        literal_column("'g'"),
+    )
+
+
 class CateringRequestRepository:
     """Async-only repository for CateringRequest records."""
 
@@ -123,12 +132,22 @@ class CateringRequestRepository:
         if not target_keys:
             return []
 
-        requests = await self.get_by_project_id(project_id)
-        return [
-            request
-            for request in requests
-            if _phone_match_keys(request.contact_phone_number) & target_keys
-        ]
+        contact_phone_digits = _contact_phone_digits_expr()
+        try:
+            result = await self.session.execute(
+                select(CateringRequest)
+                .filter(
+                    CateringRequest.project_id == project_id,
+                    contact_phone_digits.in_(target_keys),
+                )
+                .order_by(CateringRequest.created_at.desc())
+            )
+            rows = result.scalars().all()
+            return [_to_data(row) for row in rows]
+        except SQLAlchemyError:
+            await self.session.rollback()
+            logger.exception("Error retrieving catering requests by project and phone")
+            raise
 
     async def get_customer_history_by_project_id_and_phone_or_email(
         self,

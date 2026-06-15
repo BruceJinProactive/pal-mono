@@ -12,7 +12,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from db.pal_repository.catering_request import CateringRequestRepository, _to_data
+from db.pal_repository.catering_request import (
+    CateringRequestRepository,
+    _phone_match_keys,
+    _to_data,
+)
 from db.pal_repository.data_classes.catering_request import CateringRequestData
 from db.tables.catering_requests import CateringRequest
 
@@ -274,57 +278,54 @@ class TestGetByProjectId:
 
 
 class TestListByProjectIdAndPhone:
+    def test_phone_match_keys_matches_us_number_with_or_without_country_code(
+        self,
+    ) -> None:
+        assert _phone_match_keys("1234567890") == {"1234567890", "11234567890"}
+        assert _phone_match_keys("+1 (123) 456-7890") == {
+            "1234567890",
+            "11234567890",
+        }
+
     @pytest.mark.asyncio
     async def test_returns_matching_requests_with_normalized_phone(
-        self, repo: CateringRequestRepository, sample_orm_row: MagicMock
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
     ) -> None:
-        matching = _to_data(sample_orm_row)
-        non_matching = CateringRequestData(
-            id=uuid.uuid4(),
-            project_id=sample_orm_row.project_id,
-            event_date=date(2025, 7, 2),
-            contact_name="Jane",
-            contact_phone_number="+19876543210",
-            contact_email="jane@example.com",
-            status="LEAD",
-            idempotency_key="key_456",
-            created_at=sample_orm_row.created_at,
-            updated_at=sample_orm_row.updated_at,
-        )
-        repo.get_by_project_id = AsyncMock(  # type: ignore[method-assign]
-            return_value=[matching, non_matching]
-        )
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [sample_orm_row]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
 
         results = await repo.list_by_project_id_and_phone(
             sample_orm_row.project_id,
             "(123) 456-7890",
         )
 
-        assert results == [matching]
+        assert len(results) == 1
+        assert results[0].id == sample_orm_row.id
+        executed_statement = mock_session.execute.await_args.args[0]
+        statement_sql = str(executed_statement)
+        assert "regexp_replace" in statement_sql
+        assert "contact_phone_number" in statement_sql
+        assert "project_id" in statement_sql
+        assert "created_at DESC" in statement_sql
 
     @pytest.mark.asyncio
-    async def test_matches_us_number_with_or_without_country_code(
-        self, repo: CateringRequestRepository, sample_orm_row: MagicMock
+    async def test_queries_database_for_country_code_variant(
+        self,
+        repo: CateringRequestRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
     ) -> None:
-        stored_with_country_code = _catering_request_data(
-            sample_orm_row,
-            contact_phone_number="+1 (123) 456-7890",
-        )
-        stored_without_country_code = _catering_request_data(
-            sample_orm_row,
-            contact_phone_number="1234567890",
-        )
-        non_matching = _catering_request_data(
-            sample_orm_row,
-            contact_phone_number="+1 (987) 654-3210",
-        )
-        repo.get_by_project_id = AsyncMock(  # type: ignore[method-assign]
-            return_value=[
-                stored_with_country_code,
-                stored_without_country_code,
-                non_matching,
-            ]
-        )
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [sample_orm_row]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
 
         bare_results = await repo.list_by_project_id_and_phone(
             sample_orm_row.project_id,
@@ -335,11 +336,9 @@ class TestListByProjectIdAndPhone:
             "+11234567890",
         )
 
-        assert bare_results == [stored_with_country_code, stored_without_country_code]
-        assert country_code_results == [
-            stored_with_country_code,
-            stored_without_country_code,
-        ]
+        assert [result.id for result in bare_results] == [sample_orm_row.id]
+        assert [result.id for result in country_code_results] == [sample_orm_row.id]
+        assert mock_session.execute.await_count == 2
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_for_blank_phone(
@@ -351,6 +350,17 @@ class TestListByProjectIdAndPhone:
 
         assert results == []
         repo.get_by_project_id.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_error_rolls_back(
+        self, repo: CateringRequestRepository, mock_session: AsyncMock
+    ) -> None:
+        mock_session.execute.side_effect = SQLAlchemyError("db error")
+
+        with pytest.raises(SQLAlchemyError):
+            await repo.list_by_project_id_and_phone(uuid.uuid4(), "(123) 456-7890")
+
+        mock_session.rollback.assert_awaited_once()
 
 
 class TestGetCustomerHistoryByProjectIdAndPhoneOrEmail:
