@@ -3,7 +3,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pal_agents.providers.olo import Olo
 from pal_agents.spec import OloSpec
+from pydantic import ValidationError
 
 from agent import (
     AgentConfig,
@@ -93,12 +95,38 @@ def _build_agent_config() -> AgentConfig:
     )
 
 
+def _compiled_olo_menu_data() -> dict[str, Any]:
+    return {
+        "version": 1,
+        "restaurant_id": "3569",
+        "items": [
+            {
+                "product_id": 100,
+                "item_name": "Cheeseburger",
+                "normalized_item_name": "cheeseburger",
+                "category_id": 10,
+                "category_name": "Burgers",
+                "description": "Burger with cheese",
+                "cost": 8.99,
+                "minimum_quantity": None,
+                "maximum_quantity": None,
+                "quantity_increment": None,
+                "has_consolidated_quantities": None,
+                "root_modifier_group_ids": [],
+            }
+        ],
+        "modifier_groups_by_id": {},
+        "modifier_options_by_id": {},
+        "option_paths_by_product_id": {"100": []},
+    }
+
+
 def test_registry_builds_olo_v1_spec_from_project_integration_config() -> None:
     builder = PAL_AGENT_TOOL_REGISTRY["olo_v1"].builder
     config = {
-        "menu_data": {"categories": [], "products": []},
+        "menu_data": _compiled_olo_menu_data(),
         "base_url": "https://ordering.api.olo.com",
-        "auth": {"type": "basic"},
+        "auth": {"type": "signature"},
         "timeout": 15.0,
         "debug": True,
         "lookup_tool_name": "lookup_olo_order_options_v1",
@@ -109,7 +137,7 @@ def test_registry_builds_olo_v1_spec_from_project_integration_config() -> None:
 
     assert isinstance(result, OloSpec)
     assert result.enabled is True
-    assert result.menu_data == {"categories": [], "products": []}
+    assert result.menu_data == _compiled_olo_menu_data()
     assert result.restaurant_id == 3569
     assert result.base_url == "https://ordering.api.olo.com"
     assert result.timeout == 15.0
@@ -117,18 +145,48 @@ def test_registry_builds_olo_v1_spec_from_project_integration_config() -> None:
     assert result.lookup_tool_name == "lookup_olo_order_options_v1"
     assert result.tool_name == "olo_create_order_v1"
     assert result.auth == {
-        "type": "basic",
-        "username": "client-id",
-        "password": "client-secret",
+        "type": "signature",
+        "client_id": "client-id",
+        "client_secret": "client-secret",
     }
+
+
+def test_registry_rejects_olo_v1_without_menu_data() -> None:
+    builder = PAL_AGENT_TOOL_REGISTRY["olo_v1"].builder
+
+    with pytest.raises(ValidationError, match="menu_data required when olo is enabled"):
+        builder({}, "3569", "client-id", "client-secret", None)
+
+
+def test_olo_v1_spec_exposes_lookup_and_create_order_tools() -> None:
+    builder = PAL_AGENT_TOOL_REGISTRY["olo_v1"].builder
+    spec = builder(
+        {
+            "menu_data": _compiled_olo_menu_data(),
+            "base_url": "https://ordering.api.olo.com",
+            "auth": {"type": "signature"},
+        },
+        "3569",
+        "client-id",
+        "client-secret",
+        None,
+    )
+
+    tools = Olo(spec).as_tool()
+
+    assert isinstance(tools, list)
+    assert [tool["name"] for tool in tools] == [
+        "lookup_olo_order_options_v1",
+        "olo_create_order_v1",
+    ]
 
 
 @pytest.mark.asyncio
 async def test_build_specs_from_project_integrations_dispatches_olo_v1() -> None:
     pi = _make_project_integration(
         config={
-            "menu_data": {"categories": [], "products": []},
-            "auth": {"type": "basic"},
+            "menu_data": _compiled_olo_menu_data(),
+            "auth": {"type": "signature"},
         },
     )
     integration_record = _make_integration_record(
@@ -152,9 +210,9 @@ async def test_build_specs_from_project_integrations_dispatches_olo_v1() -> None
     assert spec.enabled is True
     assert spec.restaurant_id == 3569
     assert spec.auth == {
-        "type": "basic",
-        "username": "real-client-id",
-        "password": "real-client-secret",
+        "type": "signature",
+        "client_id": "real-client-id",
+        "client_secret": "real-client-secret",
     }
 
 
@@ -174,10 +232,14 @@ async def test_construct_agent_spec_threads_olo_spec(
             return_value={
                 "olo": OloSpec(
                     enabled=True,
-                    menu_data={"categories": [], "products": []},
+                    menu_data=_compiled_olo_menu_data(),
                     restaurant_id=3569,
                     base_url="https://ordering.api.olo.com",
-                    auth={"type": "basic", "username": "cid", "password": "secret"},
+                    auth={
+                        "type": "signature",
+                        "client_id": "cid",
+                        "client_secret": "secret",
+                    },
                 )
             }
         ),
@@ -201,3 +263,10 @@ async def test_construct_agent_spec_threads_olo_spec(
     assert spec.olo.enabled is True
     assert spec.olo.restaurant_id == 3569
     assert spec.olo.base_url == "https://ordering.api.olo.com"
+
+    tools = Olo(spec.olo).as_tool()
+    assert isinstance(tools, list)
+    assert [tool["name"] for tool in tools] == [
+        "lookup_olo_order_options_v1",
+        "olo_create_order_v1",
+    ]

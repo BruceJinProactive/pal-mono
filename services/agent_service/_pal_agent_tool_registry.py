@@ -109,6 +109,11 @@ def merge_auth_with_credentials(
             auth["username"] = client_id
         if client_secret:
             auth["password"] = client_secret
+    elif auth_type == "signature":
+        if client_id:
+            auth["client_id"] = client_id
+        if client_secret:
+            auth["client_secret"] = client_secret
 
     return auth
 
