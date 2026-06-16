@@ -1,7 +1,8 @@
 """Video upload implementation for camera recordings.
 
-This module provides streaming upload support for video files,
-avoiding memory issues with large video segments.
+This module provides streaming upload support for video files. Videos intended
+for LLM analysis keep a stricter size limit because non-MP4 inputs may be
+loaded into memory for remuxing before upload.
 """
 
 import os
@@ -23,8 +24,72 @@ from utils.log import logger
 AWS_ASSET_BUCKET_NAME = os.environ.get("AWS_ASSET_BUCKET_NAME", "")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
-# Video file size limit (500MB)
-MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024
+_BYTES_PER_MIB = 1024 * 1024
+
+# Video file size limits. LLM-analysis uploads keep the historical 500MB cap.
+# Archive-only uploads are streamed directly to S3 and have no app-level cap by
+# default; infra/proxy/S3 limits may still apply.
+_DEFAULT_LLM_ANALYSIS_MAX_VIDEO_SIZE_BYTES = 500 * _BYTES_PER_MIB
+
+
+def _read_positive_int_env(name: str, default: int) -> int:
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+
+    try:
+        value = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid positive integer environment value; using default",
+            extra={"env_name": name, "env_value": raw_value, "default": default},
+        )
+        return default
+
+    if value <= 0:
+        logger.warning(
+            "Non-positive environment value; using default",
+            extra={"env_name": name, "env_value": raw_value, "default": default},
+        )
+        return default
+
+    return value
+
+
+def _read_optional_max_size_env(name: str) -> int | None:
+    raw_value = os.environ.get(name)
+    if raw_value is None or raw_value == "" or raw_value == "0":
+        return None
+
+    try:
+        value = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid optional max-size environment value; disabling app limit",
+            extra={"env_name": name, "env_value": raw_value},
+        )
+        return None
+
+    if value < 0:
+        logger.warning(
+            "Negative optional max-size environment value; disabling app limit",
+            extra={"env_name": name, "env_value": raw_value},
+        )
+        return None
+
+    return value
+
+
+LLM_ANALYSIS_MAX_VIDEO_SIZE_BYTES = _read_positive_int_env(
+    "CAMERA_VIDEO_ANALYSIS_MAX_SIZE_BYTES",
+    _DEFAULT_LLM_ANALYSIS_MAX_VIDEO_SIZE_BYTES,
+)
+ARCHIVE_MAX_VIDEO_SIZE_BYTES = _read_optional_max_size_env(
+    "CAMERA_VIDEO_ARCHIVE_MAX_SIZE_BYTES"
+)
+
+# Backward-compatible alias for callers/tests that imported the old constant.
+MAX_VIDEO_SIZE_BYTES = LLM_ANALYSIS_MAX_VIDEO_SIZE_BYTES
 
 # Supported video extensions and their content types
 SUPPORTED_VIDEO_EXTENSIONS: dict[str, str] = {
@@ -34,6 +99,18 @@ SUPPORTED_VIDEO_EXTENSIONS: dict[str, str] = {
     ".avi": "video/x-msvideo",
     ".webm": "video/webm",
 }
+
+
+def _format_size_limit(max_size_bytes: int) -> str:
+    if max_size_bytes % _BYTES_PER_MIB == 0:
+        return f"{max_size_bytes // _BYTES_PER_MIB}MB"
+    return f"{max_size_bytes} bytes"
+
+
+def _upload_size_limit(llm_analysis: bool) -> tuple[int | None, str]:
+    if llm_analysis:
+        return LLM_ANALYSIS_MAX_VIDEO_SIZE_BYTES, "LLM analysis"
+    return ARCHIVE_MAX_VIDEO_SIZE_BYTES, "archive-only upload"
 
 
 async def upload_camera_video(
@@ -136,25 +213,27 @@ async def upload_camera_video(
         file_size = video.file.tell()
         video.file.seek(current_pos)  # Seek back to original position
 
-    if file_size > MAX_VIDEO_SIZE_BYTES:
+    max_size_bytes, size_limit_context = _upload_size_limit(llm_analysis)
+    if max_size_bytes is not None and file_size > max_size_bytes:
         logger.error(
             "Video file exceeds maximum size",
             extra={
                 "video_filename": filename,
                 "file_size": file_size,
-                "max_size": MAX_VIDEO_SIZE_BYTES,
+                "max_size": max_size_bytes,
+                "llm_analysis": llm_analysis,
             },
         )
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Video file '{filename}' exceeds maximum size of "
-            f"{MAX_VIDEO_SIZE_BYTES // (1024 * 1024)}MB",
+            f"{_format_size_limit(max_size_bytes)} for {size_limit_context}",
         )
 
-    # Remux non-MP4 containers (e.g. MKV) to MP4 so downstream consumers
-    # (Gemini native video) always receive a Gemini-supported format.
+    # Remux non-MP4 containers (e.g. MKV) to MP4 only when the video is meant
+    # for LLM analysis. Archive-only uploads stream the original file to S3.
     upload_file = video.file
-    if ext in {".mkv", ".avi", ".webm"}:
+    if llm_analysis and ext in {".mkv", ".avi", ".webm"}:
         try:
             video_bytes = await run_in_threadpool(video.file.read)
             if not video_bytes:
@@ -171,7 +250,7 @@ async def upload_camera_video(
                 mp4_bytes = await run_in_threadpool(remux_to_mp4, video_bytes)
 
                 # Validate remuxed size (re-encoding can inflate the output)
-                if len(mp4_bytes) > MAX_VIDEO_SIZE_BYTES:
+                if len(mp4_bytes) > LLM_ANALYSIS_MAX_VIDEO_SIZE_BYTES:
                     logger.warning(
                         f"Remuxed MP4 exceeds size limit ({len(mp4_bytes)} bytes), uploading original",
                         extra={
