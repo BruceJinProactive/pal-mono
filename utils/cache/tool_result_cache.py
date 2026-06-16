@@ -102,6 +102,13 @@ _TOAST_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
         "pickupTime",
     }
 )
+_TOAST_LOOKUP_TOOL_NAMES = frozenset({"get_toast_item_details_v3"})
+_TOAST_LOOKUP_CACHEABLE_RESULT_FIELDS = _TOAST_CACHEABLE_RESULT_FIELDS | frozenset(
+    {
+        "kind",
+        "results",
+    }
+)
 _ADORA_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
     {
         "available",
@@ -334,6 +341,8 @@ def _sanitize_cacheable_result(tool_name: str, value: Any) -> Any:
 
 def _cacheable_result_fields_for_tool(tool_name: str) -> frozenset[str]:
     family = _tool_family_for_name(tool_name)
+    if family == "toast" and tool_name.lower() in _TOAST_LOOKUP_TOOL_NAMES:
+        return _TOAST_LOOKUP_CACHEABLE_RESULT_FIELDS
     return _CACHEABLE_RESULT_FIELDS_BY_TOOL_FAMILY[family]
 
 
@@ -378,7 +387,7 @@ def _sanitize_json_value(value: Any, depth: int = 0) -> Any:
             for item in value
             if (sanitized_value := _sanitize_json_value(item, depth + 1)) is not None
         ]
-        return sanitized_items or None
+        return sanitized_items
 
     return None
 

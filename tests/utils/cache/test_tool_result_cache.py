@@ -101,6 +101,68 @@ def test_build_cacheable_tool_result_uses_toast_family_allowlist() -> None:
     }
 
 
+def test_build_cacheable_tool_result_keeps_toast_lookup_envelope() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "get_toast_item_details_v3",
+            "result_summary": "toast lookup completed with status success.",
+            "cacheable_result": {
+                "kind": "toast_item_lookup_v3",
+                "results": [
+                    {
+                        "request": {
+                            "item_name": "Prototype Pizza",
+                            "targets": [{"path_prefix": [], "group_name": "Toppings"}],
+                            "customer_phone": "+15551234567",
+                        },
+                        "status": "ok",
+                        "error_code": None,
+                        "message": None,
+                        "groups": [
+                            {
+                                "group_name": "Toppings",
+                                "selection_state": "optional",
+                                "options": [
+                                    {
+                                        "option_name": "Pepperoni",
+                                        "price": 1.5,
+                                        "specialInstructions": "drop notes",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+                "customer_email": "drop@example.com",
+            },
+        }
+    )
+
+    assert result == {
+        "tool_name": "get_toast_item_details_v3",
+        "result_summary": "toast lookup completed with status success.",
+        "cacheable_result": {
+            "kind": "toast_item_lookup_v3",
+            "results": [
+                {
+                    "request": {
+                        "item_name": "Prototype Pizza",
+                        "targets": [{"path_prefix": [], "group_name": "Toppings"}],
+                    },
+                    "status": "ok",
+                    "groups": [
+                        {
+                            "group_name": "Toppings",
+                            "selection_state": "optional",
+                            "options": [{"option_name": "Pepperoni", "price": 1.5}],
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+
+
 def test_build_cacheable_tool_result_uses_adora_family_allowlist() -> None:
     result = build_cacheable_tool_result(
         {
