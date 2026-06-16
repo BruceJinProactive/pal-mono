@@ -622,7 +622,7 @@ async def create_realtime_session(
     )
     tools, tool_executors = build_agno_tools(tool_config)
 
-    # Add pal-agents provider tools (toast_v3, adora_v3) in dry-run mode
+    # Add pal-agents provider tools (toast_v3, adora_v3, olo_v1)
     pa_tools, pa_executors = await build_pal_agent_provider_tools(
         session=session,
         project_id=project.id,

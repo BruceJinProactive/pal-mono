@@ -2167,6 +2167,32 @@ class TestBackgroundAudioMixerLoading:
 class TestBuildPalAgentProviderTools:
     """Test _build_pal_agent_provider_tools loading and dry-run execution."""
 
+    @staticmethod
+    def _compiled_olo_menu_data() -> dict[str, object]:
+        return {
+            "version": 1,
+            "restaurant_id": "3569",
+            "items": [
+                {
+                    "product_id": 100,
+                    "item_name": "Regular Soft Drink (20 oz.)",
+                    "normalized_item_name": "regular soft drink 20 oz",
+                    "category_id": 10,
+                    "category_name": "Drinks",
+                    "description": "Twenty-ounce fountain drink",
+                    "cost": 2.99,
+                    "minimum_quantity": None,
+                    "maximum_quantity": None,
+                    "quantity_increment": None,
+                    "has_consolidated_quantities": None,
+                    "root_modifier_group_ids": [],
+                }
+            ],
+            "modifier_groups_by_id": {},
+            "modifier_options_by_id": {},
+            "option_paths_by_product_id": {"100": []},
+        }
+
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_integrations(self) -> None:
         """Returns empty tools/executors when no matching integrations exist."""
@@ -2441,3 +2467,45 @@ class TestBuildPalAgentProviderTools:
             assert t["type"] == "function"
             assert "name" in t
         assert len(executors) == len(tools)
+
+    @pytest.mark.asyncio
+    async def test_loads_olo_v1_tools(self) -> None:
+        """Loads olo_v1 lookup and validation tools."""
+        mock_pi = MagicMock()
+        mock_pi.tool_name = "olo_v1"
+        mock_pi.config = {
+            "menu_data": self._compiled_olo_menu_data(),
+            "base_url": "https://ordering.api.olo.com",
+            "auth": {"type": "signature"},
+        }
+        mock_pi.store_identifier = "3569"
+        mock_pi.integration_id = uuid.uuid4()
+
+        mock_pi_result = MagicMock()
+        mock_pi_result.scalars.return_value = iter([mock_pi])
+
+        mock_int_result = MagicMock()
+        mock_int_result.scalar_one_or_none.return_value = None
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[mock_pi_result, mock_int_result])
+
+        with patch(
+            "services.agent_service._implementation._resolve_integration_credentials",
+            new=AsyncMock(return_value=("client-id", "client-secret", None)),
+        ):
+            tools, executors = await build_pal_agent_provider_tools(
+                session=mock_session,
+                project_id=uuid.uuid4(),
+                caller_id="+15551234567",
+                user_id=uuid.uuid4(),
+                conversation_id=uuid.uuid4(),
+                project_timezone="America/New_York",
+            )
+
+        tool_names = [tool["name"] for tool in tools]
+        assert tool_names == [
+            "lookup_olo_order_options_v1",
+            "olo_create_order_v1",
+        ]
+        assert set(executors) == set(tool_names)

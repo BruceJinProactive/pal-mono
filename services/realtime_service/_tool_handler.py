@@ -2,7 +2,7 @@
 
 Handles three tool sources:
 - Agno tools: Legacy toolkit-based tools from agent raw_config
-- PAL-agent provider tools: toast_v3, adora_v3 via pal-agents providers
+- PAL-agent provider tools: toast_v3, adora_v3, olo_v1 via pal-agents providers
 - Executor dispatch: Routes tool calls from OpenAI to the correct handler
 """
 
@@ -83,7 +83,7 @@ async def build_pal_agent_provider_tools(
     conversation_id: uuid.UUID,
     project_timezone: str | None,
 ) -> tuple[list[dict], dict[str, Callable]]:
-    """Load pal-agents provider tools (toast_v3, adora_v3) for realtime sessions.
+    """Load pal-agents provider tools for realtime sessions.
 
     Instantiates providers from ProjectIntegration config and returns tool schemas
     plus executors. Lookup tools use real functions; ordering tools are log-only.
@@ -148,6 +148,14 @@ async def build_pal_agent_provider_tools(
                     provider_tools = adora_tool_output
                 else:
                     provider_tools = [adora_tool_output]
+            elif entry.spec_field == "olo":
+                from pal_agents.providers.olo._implementation import Olo
+
+                olo_tool_output = Olo(spec).as_tool()
+                if isinstance(olo_tool_output, list):
+                    provider_tools = olo_tool_output
+                else:
+                    provider_tools = [olo_tool_output]
             else:
                 continue
         except Exception as e:
@@ -197,7 +205,11 @@ async def build_pal_agent_provider_tools(
 
                 return _executor
 
-            if tool_fn and ("item_details" in tool_name or "lookup" in tool_name):
+            if tool_fn and (
+                "item_details" in tool_name
+                or "lookup" in tool_name
+                or tool_name == "olo_create_order_v1"
+            ):
                 executors[tool_name] = _make_executor(tool_name, tool_fn)
             else:
                 executors[tool_name] = _make_executor(tool_name, None)
