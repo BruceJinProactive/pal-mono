@@ -64,9 +64,9 @@ dependencies = [
   "opentelemetry-instrumentation-requests>=0.61b0,<0.63b0",
   "opentelemetry-instrumentation-sqlalchemy>=0.61b0,<0.63b0",
   "opentelemetry-instrumentation-starlette>=0.61b0,<0.63b0",
-  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.373",
-  "pal-agents[eval] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.373",
-  "pal-agents[voice] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.373",
+  "pal-agents @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.376",
+  "pal-agents[eval] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.376",
+  "pal-agents[voice] @ git+https://github.com/Proactive-AI-Lab/pal-agents.git@v0.2.376",
   "pgvector==0.3.2", # PostgreSQL extension for vector similarity search
   "pinecone==7.3.0", # Managed vector database for AI applications
   "polyline==2.0.2", # Google polyline encoding/decoding for GPS coordinates
