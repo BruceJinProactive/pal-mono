@@ -6,6 +6,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-15
 
+- **Project status and live timestamp schema.** Added `projects.status` as a
+  three-value `projectstatus` enum (`pending`, `onboarding`, `live`) and
+  `projects.live_at` as a non-null location live timestamp. Existing rows
+  backfill `live_at` from `created_at`; new rows default it to `now()`.
+  Migration: `a6a147b427f8`. -> `docs/state/architecture.md`
+
 - **Olo handle-backed menu_data workflow.** Added a documented workflow and
   pal-mono wrapper for compiling raw Olo bundles into
   `ProjectIntegration.config.menu_data` for `olo_v1`, explicitly keeping the

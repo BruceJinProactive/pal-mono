@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-11
+> **Last updated:** 2026-06-15
 
 ## Quick Reference
 
@@ -312,6 +312,12 @@ the metadata map before removing a state definition.
 **Tables by Domain**:
 
 *Core*: `accounts`, `agents`, `projects`, `users`, `account_user`, `user_invitation`, `contacts`, `project_contacts`
+
+`projects` stores per-location lifecycle metadata. `status` uses the
+`ProjectStatus` enum and is limited to `pending`, `onboarding`, and `live`.
+`live_at` is a non-null timestamp for the location's live/start time; the
+schema migration backfills existing rows from `created_at`, and new rows
+default to `now()`.
 
 *Agent & AI*: `agent_capabilities`, `capability_actions`, `prompts`, `voice_configs`
 

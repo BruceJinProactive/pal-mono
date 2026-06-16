@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Dict, Optional
 
+from sqlalchemy import Enum
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -17,6 +19,12 @@ from .base import Base
 if TYPE_CHECKING:
     from .accounts import Account
     from .agents import Agent
+
+
+class ProjectStatus(str, enum.Enum):
+    pending = "pending"
+    onboarding = "onboarding"
+    live = "live"
 
 
 class Project(Base):
@@ -59,6 +67,15 @@ class Project(Base):
     ordering_link: Mapped[str | None] = mapped_column(String, nullable=True)
     call_forwarding_setup_completed: Mapped[bool] = mapped_column(
         nullable=False, server_default=text("false")
+    )
+    status: Mapped[ProjectStatus] = mapped_column(
+        Enum(ProjectStatus, name="projectstatus"),
+        nullable=False,
+        server_default=ProjectStatus.pending.value,
+        index=True,
+    )
+    live_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
 
     # Stripe subscription info
