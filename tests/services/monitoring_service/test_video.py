@@ -8,8 +8,10 @@ from fastapi import HTTPException
 
 from services.monitoring_service._video import (
     _MP4_COMPATIBLE_CODECS,
+    _extract_frames_at_timestamps_sync,
     _extract_frames_sync,
     download_video_bytes,
+    extract_one_minute_video_frames_from_bytes,
     extract_video_frames,
     remux_to_mp4,
 )
@@ -342,6 +344,113 @@ class TestExtractFramesSync:
         frames = _extract_frames_sync("/fake/video.mp4", frame_interval_seconds=10)
         assert len(frames) == 1
         assert frames[0]["timestamp_seconds"] == 0.0
+
+
+class TestExtractFramesAtTimestampsSync:
+    """Tests for exact timestamp extraction used by archive video uploads."""
+
+    def test_extracts_archive_frames_and_validates_one_minute_duration(
+        self, mocker
+    ) -> None:
+        mock_pil_image = MagicMock()
+        mock_pil_image.size = (1920, 1080)
+        mock_pil_image.save = MagicMock(
+            side_effect=lambda buf, **kwargs: buf.write(b"x" * 200)
+        )
+        mock_frame = MagicMock()
+        mock_frame.to_image.return_value = mock_pil_image
+
+        mock_stream = MagicMock()
+        mock_stream.duration = 60
+        mock_stream.time_base = 1
+        mock_stream.average_rate = 30
+
+        mock_container = MagicMock()
+        mock_container.streams.video = [mock_stream]
+        mock_container.seek = MagicMock()
+        mock_container.decode = MagicMock(
+            side_effect=lambda video=None, **kwargs: iter([mock_frame])
+        )
+
+        mocker.patch(
+            "services.monitoring_service._video.av.open",
+            return_value=mock_container,
+        )
+        mock_img = MagicMock()
+        mock_img.verify = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._video.Image.open",
+            return_value=mock_img,
+        )
+
+        duration, frames = _extract_frames_at_timestamps_sync(
+            "/fake/video.mp4",
+            (15.0, 30.0, 45.0, 60.0),
+            require_one_minute=True,
+        )
+
+        assert duration == 60.0
+        assert [frame["timestamp_seconds"] for frame in frames] == [
+            15.0,
+            30.0,
+            45.0,
+            60.0,
+        ]
+        assert frames[-1]["timestamp_label"] == "1:00"
+        assert frames[-1]["source_timestamp_seconds"] < 60.0
+        assert all(frame["jpeg_bytes"] == b"x" * 200 for frame in frames)
+
+    def test_rejects_non_one_minute_video(self, mocker) -> None:
+        mock_stream = MagicMock()
+        mock_stream.duration = 45
+        mock_stream.time_base = 1
+
+        mock_container = MagicMock()
+        mock_container.streams.video = [mock_stream]
+
+        mocker.patch(
+            "services.monitoring_service._video.av.open",
+            return_value=mock_container,
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            _extract_frames_at_timestamps_sync(
+                "/fake/video.mp4",
+                (15.0, 30.0, 45.0, 60.0),
+                require_one_minute=True,
+            )
+
+        assert "60 seconds long" in str(exc_info.value)
+
+    def test_extract_one_minute_video_frames_from_bytes_writes_temp_file(
+        self, mocker
+    ) -> None:
+        mock_tmp = MagicMock()
+        mock_tmp.name = "/tmp/test.video"
+        mocker.patch(
+            "services.monitoring_service._video.tempfile.NamedTemporaryFile",
+            return_value=mock_tmp,
+        )
+        mock_extract = mocker.patch(
+            "services.monitoring_service._video._extract_frames_at_timestamps_sync",
+            return_value=(60.0, [{"jpeg_bytes": b"x" * 200}]),
+        )
+        mocker.patch(
+            "services.monitoring_service._video.os.path.exists",
+            return_value=True,
+        )
+        mock_unlink = mocker.patch("services.monitoring_service._video.os.unlink")
+
+        result = extract_one_minute_video_frames_from_bytes(b"video-bytes")
+
+        assert result == (60.0, [{"jpeg_bytes": b"x" * 200}])
+        mock_tmp.write.assert_called_once_with(b"video-bytes")
+        mock_extract.assert_called_once_with(
+            "/tmp/test.video",
+            (15.0, 30.0, 45.0, 60.0),
+            require_one_minute=True,
+        )
+        mock_unlink.assert_called_once_with("/tmp/test.video")
 
 
 class TestExtractVideoFrames:

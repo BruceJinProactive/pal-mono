@@ -1,5 +1,6 @@
 """Tests for video upload with MKV-to-MP4 remux."""
 
+from datetime import datetime, timezone
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock
 
@@ -23,6 +24,105 @@ def _patch_s3_client(mocker: MockerFixture) -> MagicMock:
         return_value=mock_s3,
     )
     return mock_s3
+
+
+def _archive_frame_payloads() -> list[dict]:
+    return [
+        {"jpeg_bytes": b"a" * 200, "timestamp_seconds": 15.0},
+        {"jpeg_bytes": b"b" * 200, "timestamp_seconds": 30.0},
+        {"jpeg_bytes": b"c" * 200, "timestamp_seconds": 45.0},
+        {"jpeg_bytes": b"d" * 200, "timestamp_seconds": 60.0},
+    ]
+
+
+def _patch_archive_frame_extraction(mocker: MockerFixture) -> MagicMock:
+    return mocker.patch(
+        "api.routes.operation._video_upload.extract_one_minute_video_frames_from_bytes",
+        return_value=(60.0, _archive_frame_payloads()),
+    )
+
+
+class TestUploadArchiveFrames:
+    """Tests for archive frame S3 uploads derived from one-minute videos."""
+
+    @pytest.mark.asyncio
+    async def test_uses_source_timestamp_for_frame_key_but_keeps_requested_label(
+        self, mocker: MockerFixture
+    ) -> None:
+        from api.routes.operation._video_upload import _upload_archive_frames
+
+        mocker.patch(
+            "api.routes.operation._video_upload.AWS_IMAGE_BUCKET_NAME",
+            "image-bucket",
+        )
+        mock_s3 = MagicMock()
+
+        frame_keys = await _upload_archive_frames(
+            s3_client=mock_s3,
+            account_id="acc-1",
+            project_id="proj-1",
+            camera_id="cam-1",
+            video_filename="2026-06-16_12-00-00.mp4",
+            video_s3_key="security/cameras/acc-1/proj-1/cam-1/videos/2026-06-16/2026-06-16_12-00-00.mp4",
+            frames=[
+                {
+                    "jpeg_bytes": b"x" * 200,
+                    "timestamp_seconds": 60.0,
+                    "source_timestamp_seconds": 59.95,
+                }
+            ],
+            upload_time=datetime(2026, 6, 16, 13, 0, tzinfo=timezone.utc),
+        )
+
+        assert frame_keys == [
+            "security/cameras/acc-1/proj-1/cam-1/images/2026-06-16/2026-06-16_12-00-59.jpg"
+        ]
+        call_args = mock_s3.upload_fileobj.call_args
+        assert call_args[0][1] == "image-bucket"
+        assert call_args[0][2] == frame_keys[0]
+        mock_s3.head_object.assert_called_once_with(
+            Bucket="image-bucket",
+            Key=frame_keys[0],
+        )
+        metadata = call_args[1]["ExtraArgs"]["Metadata"]
+        assert metadata["timestamp_seconds"] == "60"
+        assert metadata["source_timestamp_seconds"] == "59.95"
+
+    @pytest.mark.asyncio
+    async def test_retrieval_verification_failure_logs_without_failing_upload(
+        self, mocker: MockerFixture
+    ) -> None:
+        from api.routes.operation._video_upload import _upload_archive_frames
+
+        mocker.patch(
+            "api.routes.operation._video_upload.AWS_IMAGE_BUCKET_NAME",
+            "image-bucket",
+        )
+        mock_warning = mocker.patch("api.routes.operation._video_upload.logger.warning")
+        mock_s3 = MagicMock()
+        mock_s3.head_object.side_effect = Exception("head failed")
+
+        frame_keys = await _upload_archive_frames(
+            s3_client=mock_s3,
+            account_id="acc-1",
+            project_id="proj-1",
+            camera_id="cam-1",
+            video_filename="2026-06-16_12-00-00.mp4",
+            video_s3_key="security/cameras/acc-1/proj-1/cam-1/videos/2026-06-16/2026-06-16_12-00-00.mp4",
+            frames=[
+                {
+                    "jpeg_bytes": b"x" * 200,
+                    "timestamp_seconds": 15.0,
+                }
+            ],
+            upload_time=datetime(2026, 6, 16, 13, 0, tzinfo=timezone.utc),
+        )
+
+        assert frame_keys == [
+            "security/cameras/acc-1/proj-1/cam-1/images/2026-06-16/2026-06-16_12-00-15.jpg"
+        ]
+        mock_s3.upload_fileobj.assert_called_once()
+        mock_warning.assert_called_once()
 
 
 class TestVideoUploadSizeLimitHelpers:
@@ -302,6 +402,7 @@ class TestUploadCameraVideoRemux:
         upload = UploadFile(filename="recording.mp4", file=video_file, size=8)
 
         session = AsyncMock()
+        mock_extract = _patch_archive_frame_extraction(mocker)
         mocker.patch(
             "api.routes.operation._video_upload.signal_source_service.get_source_by_camera_id",
             new_callable=AsyncMock,
@@ -325,9 +426,22 @@ class TestUploadCameraVideoRemux:
 
         assert len(result.url.split("/")) == 8
         assert result.url.endswith("/recording.mp4")
+        mock_extract.assert_called_once_with(
+            b"mp4-data",
+            (15.0, 30.0, 45.0, 60.0),
+        )
         call_args = mock_s3.upload_fileobj.call_args
         assert call_args[0][2] == result.url
         assert call_args[1]["ExtraArgs"]["Metadata"]["llm_analysis"] == "false"
+        assert (
+            call_args[1]["ExtraArgs"]["Metadata"]["archive_frame_timestamps_seconds"]
+            == "15,30,45,60"
+        )
+        frame_keys = call_args[1]["ExtraArgs"]["Metadata"][
+            "archive_frame_s3_keys"
+        ].split(",")
+        assert len(frame_keys) == 4
+        assert all("/images/" in key for key in frame_keys)
 
     @pytest.mark.asyncio
     async def test_llm_analysis_rejects_file_above_analysis_limit(
@@ -372,6 +486,7 @@ class TestUploadCameraVideoRemux:
         session = AsyncMock()
         _patch_camera_lookup(mocker)
         mock_s3 = _patch_s3_client(mocker)
+        _patch_archive_frame_extraction(mocker)
         mocker.patch(
             "api.routes.operation._video_upload.LLM_ANALYSIS_MAX_VIDEO_SIZE_BYTES",
             8,
@@ -391,7 +506,7 @@ class TestUploadCameraVideoRemux:
         )
 
         assert result.url.endswith("/recording.mp4")
-        mock_s3.upload_fileobj.assert_called_once()
+        assert mock_s3.upload_fileobj.call_count == 5
 
     @pytest.mark.asyncio
     async def test_archive_upload_rejects_file_above_configured_archive_limit(
@@ -437,6 +552,7 @@ class TestUploadCameraVideoRemux:
         session = AsyncMock()
         _patch_camera_lookup(mocker)
         mock_s3 = _patch_s3_client(mocker)
+        _patch_archive_frame_extraction(mocker)
         mock_remux = mocker.patch(
             "api.routes.operation._video_upload.remux_to_mp4",
             return_value=b"fake-mp4-data",
@@ -458,3 +574,37 @@ class TestUploadCameraVideoRemux:
         assert uploaded_file.read() == original_bytes
         assert call_args[1]["ExtraArgs"]["ContentType"] == "video/x-matroska"
         assert call_args[1]["ExtraArgs"]["Metadata"]["llm_analysis"] == "false"
+
+    @pytest.mark.asyncio
+    async def test_archive_upload_rejects_non_one_minute_video(
+        self, mocker: MockerFixture
+    ) -> None:
+        """Should reject archive-only videos that fail one-minute validation."""
+        from api.routes.operation._video_upload import upload_camera_video
+
+        video_file = BytesIO(b"mp4-data")
+        upload = UploadFile(filename="recording.mp4", file=video_file, size=8)
+
+        session = AsyncMock()
+        _patch_camera_lookup(mocker)
+        mock_s3 = _patch_s3_client(mocker)
+        mocker.patch(
+            "api.routes.operation._video_upload.extract_one_minute_video_frames_from_bytes",
+            side_effect=ValueError(
+                "Archive-only videos must be 60 seconds long (detected 45.00s)"
+            ),
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await upload_camera_video(
+                "acc-1",
+                "proj-1",
+                "cam-1",
+                upload,
+                session,
+                llm_analysis=False,
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "60 seconds long" in str(exc_info.value.detail)
+        mock_s3.upload_fileobj.assert_not_called()

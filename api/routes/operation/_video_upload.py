@@ -7,7 +7,9 @@ loaded into memory for remuxing before upload.
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from io import BytesIO
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -17,11 +19,16 @@ from starlette.concurrency import run_in_threadpool
 
 from api.schemas.asset.asset import AssetResponse
 from services import signal_source_service
-from services.monitoring_service._video import remux_to_mp4
+from services.monitoring_service._video import (
+    extract_one_minute_video_frames_from_bytes,
+    remux_to_mp4,
+)
 from utils.log import logger
+from utils.vision_capture_time import parse_utc_capture_time_from_path
 
 # Get S3 configuration from environment
 AWS_ASSET_BUCKET_NAME = os.environ.get("AWS_ASSET_BUCKET_NAME", "")
+AWS_IMAGE_BUCKET_NAME = os.environ.get("AWS_IMAGE_BUCKET_NAME", AWS_ASSET_BUCKET_NAME)
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 _BYTES_PER_MIB = 1024 * 1024
@@ -99,6 +106,7 @@ SUPPORTED_VIDEO_EXTENSIONS: dict[str, str] = {
     ".avi": "video/x-msvideo",
     ".webm": "video/webm",
 }
+ARCHIVE_FRAME_TIMESTAMPS_SECONDS: tuple[float, ...] = (15.0, 30.0, 45.0, 60.0)
 
 
 def _format_size_limit(max_size_bytes: int) -> str:
@@ -111,6 +119,151 @@ def _upload_size_limit(llm_analysis: bool) -> tuple[int | None, str]:
     if llm_analysis:
         return LLM_ANALYSIS_MAX_VIDEO_SIZE_BYTES, "LLM analysis"
     return ARCHIVE_MAX_VIDEO_SIZE_BYTES, "archive-only upload"
+
+
+def _timestamp_suffix(timestamp_seconds: float) -> str:
+    return (
+        str(int(timestamp_seconds))
+        if timestamp_seconds.is_integer()
+        else str(timestamp_seconds)
+    )
+
+
+def _frame_capture_time(
+    video_filename: str,
+    timestamp_seconds: float,
+    upload_time: datetime,
+) -> datetime:
+    video_start = parse_utc_capture_time_from_path(video_filename)
+    if video_start is None:
+        video_start = upload_time
+    return video_start + timedelta(seconds=timestamp_seconds)
+
+
+def _archive_frame_s3_key(
+    account_id: str,
+    project_id: str,
+    camera_id: str,
+    video_filename: str,
+    timestamp_seconds: float,
+    upload_time: datetime,
+) -> str:
+    captured_at = _frame_capture_time(video_filename, timestamp_seconds, upload_time)
+    capture_date = captured_at.strftime("%Y-%m-%d")
+    frame_filename = f"{captured_at.strftime('%Y-%m-%d_%H-%M-%S')}.jpg"
+    return (
+        f"security/cameras/{account_id}/{project_id}/{camera_id}"
+        f"/images/{capture_date}/{frame_filename}"
+    )
+
+
+async def _log_archive_frame_retrieval_status(
+    s3_client: Any,
+    bucket_name: str,
+    frame_key: str,
+    camera_id: str,
+    video_s3_key: str,
+    timestamp_seconds: float,
+) -> None:
+    try:
+        response = await run_in_threadpool(
+            s3_client.head_object,
+            Bucket=bucket_name,
+            Key=frame_key,
+        )
+        logger.info(
+            "Archive frame uploaded and verified retrievable",
+            extra={
+                "camera_id": camera_id,
+                "bucket": bucket_name,
+                "frame_s3_key": frame_key,
+                "source_video_key": video_s3_key,
+                "timestamp_seconds": timestamp_seconds,
+                "content_length": response.get("ContentLength"),
+            },
+        )
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        logger.warning(
+            "Archive frame uploaded but retrieval verification failed",
+            extra={
+                "camera_id": camera_id,
+                "bucket": bucket_name,
+                "frame_s3_key": frame_key,
+                "source_video_key": video_s3_key,
+                "timestamp_seconds": timestamp_seconds,
+                "error_code": error_code,
+                "error": str(e),
+            },
+        )
+    except Exception as e:
+        logger.warning(
+            "Archive frame uploaded but retrieval verification failed",
+            extra={
+                "camera_id": camera_id,
+                "bucket": bucket_name,
+                "frame_s3_key": frame_key,
+                "source_video_key": video_s3_key,
+                "timestamp_seconds": timestamp_seconds,
+                "error": str(e),
+            },
+        )
+
+
+async def _upload_archive_frames(
+    s3_client: Any,
+    account_id: str,
+    project_id: str,
+    camera_id: str,
+    video_filename: str,
+    video_s3_key: str,
+    frames: list[dict[str, Any]],
+    upload_time: datetime,
+) -> list[str]:
+    frame_s3_keys: list[str] = []
+    for frame in frames:
+        timestamp_seconds = float(frame["timestamp_seconds"])
+        source_timestamp_seconds = float(
+            frame.get("source_timestamp_seconds", timestamp_seconds)
+        )
+        frame_key = _archive_frame_s3_key(
+            account_id=account_id,
+            project_id=project_id,
+            camera_id=camera_id,
+            video_filename=video_filename,
+            timestamp_seconds=source_timestamp_seconds,
+            upload_time=upload_time,
+        )
+        await run_in_threadpool(
+            s3_client.upload_fileobj,
+            BytesIO(frame["jpeg_bytes"]),
+            AWS_IMAGE_BUCKET_NAME,
+            frame_key,
+            ExtraArgs={
+                "ContentType": "image/jpeg",
+                "Metadata": {
+                    "camera_id": camera_id,
+                    "account_id": account_id,
+                    "project_id": project_id,
+                    "source_video_key": video_s3_key,
+                    "timestamp_seconds": _timestamp_suffix(timestamp_seconds),
+                    "source_timestamp_seconds": _timestamp_suffix(
+                        source_timestamp_seconds
+                    ),
+                },
+            },
+        )
+        await _log_archive_frame_retrieval_status(
+            s3_client=s3_client,
+            bucket_name=AWS_IMAGE_BUCKET_NAME,
+            frame_key=frame_key,
+            camera_id=camera_id,
+            video_s3_key=video_s3_key,
+            timestamp_seconds=timestamp_seconds,
+        )
+        frame_s3_keys.append(frame_key)
+
+    return frame_s3_keys
 
 
 async def upload_camera_video(
@@ -142,6 +295,13 @@ async def upload_camera_video(
     Raises:
         HTTPException: If validation fails or upload errors occur
     """
+    if not llm_analysis and not AWS_IMAGE_BUCKET_NAME:
+        logger.error("AWS_IMAGE_BUCKET_NAME not configured for archive frame upload")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Image storage not configured",
+        )
+
     # Validate camera exists (optional - log warning but don't block)
     try:
         source = await signal_source_service.get_source_by_camera_id(
@@ -230,10 +390,37 @@ async def upload_camera_video(
             f"{_format_size_limit(max_size_bytes)} for {size_limit_context}",
         )
 
-    # Remux non-MP4 containers (e.g. MKV) to MP4 only when the video is meant
-    # for LLM analysis. Archive-only uploads stream the original file to S3.
     upload_file = video.file
-    if llm_analysis and ext in {".mkv", ".avi", ".webm"}:
+    archive_frames: list[dict[str, Any]] = []
+    archive_video_duration_seconds: float | None = None
+
+    if not llm_analysis:
+        try:
+            video_bytes = await run_in_threadpool(video.file.read)
+            archive_video_duration_seconds, archive_frames = await run_in_threadpool(
+                extract_one_minute_video_frames_from_bytes,
+                video_bytes,
+                ARCHIVE_FRAME_TIMESTAMPS_SECONDS,
+            )
+            upload_file = BytesIO(video_bytes)
+        except ValueError as e:
+            logger.error(
+                "Archive-only video failed duration/frame validation",
+                extra={
+                    "camera_id": camera_id,
+                    "video_filename": filename,
+                    "error": str(e),
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
+
+    # Remux non-MP4 containers (e.g. MKV) to MP4 only when the video is meant
+    # for LLM analysis. Archive-only uploads keep the original file after
+    # one-minute validation and frame extraction above.
+    elif ext in {".mkv", ".avi", ".webm"}:
         try:
             video_bytes = await run_in_threadpool(video.file.read)
             if not video_bytes:
@@ -262,8 +449,6 @@ async def upload_camera_video(
                     video.file.seek(0)
                     upload_file = video.file
                 else:
-                    from io import BytesIO
-
                     upload_file = BytesIO(mp4_bytes)
                     filename = os.path.splitext(filename)[0] + ".mp4"
                     content_type = "video/mp4"
@@ -291,15 +476,51 @@ async def upload_camera_video(
 
     # Build S3 key
     # Format: security/cameras/{account_id}/{project_id}/{camera_id}/videos/{date}/{filename}
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    uploaded_at = datetime.now(timezone.utc)
+    today = uploaded_at.strftime("%Y-%m-%d")
     s3_key = f"security/cameras/{account_id}/{project_id}/{camera_id}/videos/{today}/{filename}"
 
     # Upload to S3 using streaming
     try:
         s3_client = boto3.client("s3", region_name=AWS_REGION)
+        archive_frame_s3_keys: list[str] = []
+        if archive_frames:
+            archive_frame_s3_keys = await _upload_archive_frames(
+                s3_client=s3_client,
+                account_id=account_id,
+                project_id=project_id,
+                camera_id=camera_id,
+                video_filename=filename,
+                video_s3_key=s3_key,
+                frames=archive_frames,
+                upload_time=uploaded_at,
+            )
 
         # Use upload_fileobj for streaming upload (doesn't load entire file into memory)
         # Wrap in run_in_threadpool to avoid blocking the event loop
+        metadata = {
+            "camera_id": camera_id,
+            "account_id": account_id,
+            "project_id": project_id,
+            "llm_analysis": str(llm_analysis).lower(),
+            "uploaded_at": uploaded_at.isoformat(),
+        }
+        if archive_frame_s3_keys:
+            metadata.update(
+                {
+                    "archive_frame_s3_keys": ",".join(archive_frame_s3_keys),
+                    "archive_frame_timestamps_seconds": ",".join(
+                        _timestamp_suffix(timestamp)
+                        for timestamp in ARCHIVE_FRAME_TIMESTAMPS_SECONDS
+                    ),
+                    "archive_video_duration_seconds": (
+                        f"{archive_video_duration_seconds:.3f}"
+                        if archive_video_duration_seconds is not None
+                        else ""
+                    ),
+                }
+            )
+
         await run_in_threadpool(
             s3_client.upload_fileobj,
             upload_file,
@@ -307,13 +528,7 @@ async def upload_camera_video(
             s3_key,
             ExtraArgs={
                 "ContentType": content_type,
-                "Metadata": {
-                    "camera_id": camera_id,
-                    "account_id": account_id,
-                    "project_id": project_id,
-                    "llm_analysis": str(llm_analysis).lower(),
-                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                },
+                "Metadata": metadata,
             },
         )
 

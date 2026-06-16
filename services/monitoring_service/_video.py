@@ -11,6 +11,7 @@ import base64
 import os
 import tempfile
 from io import BytesIO
+from typing import Any
 
 import av
 import boto3
@@ -21,6 +22,78 @@ from utils.log import logger
 
 # Codecs that can be remuxed into an MP4 container without re-encoding.
 _MP4_COMPATIBLE_CODECS: set[str] = {"h264", "hevc", "h265", "mpeg4", "av1"}
+ONE_MINUTE_VIDEO_SECONDS = 60.0
+ONE_MINUTE_VIDEO_TOLERANCE_SECONDS = 1.0
+
+
+def _duration_seconds(container: Any, stream: Any) -> float:
+    """Return the best available duration for a video container."""
+    if stream.duration and stream.time_base:
+        return float(stream.duration * stream.time_base)
+    if container.duration:
+        return container.duration / 1_000_000.0
+    return 0.0
+
+
+def _timestamp_label(timestamp_seconds: float) -> str:
+    minutes = int(timestamp_seconds) // 60
+    seconds = int(timestamp_seconds) % 60
+    return f"{minutes}:{seconds:02d}"
+
+
+def _frame_to_jpeg_bytes(frame: Any, timestamp_seconds: float) -> bytes | None:
+    try:
+        pil_image = frame.to_image()
+
+        width, height = pil_image.size
+        if width < 10 or height < 10:
+            logger.warning(
+                f"[Video Extraction] Frame at {timestamp_seconds}s too small ({width}x{height}), skipping"
+            )
+            return None
+
+        if width > 4096 or height > 4096:
+            logger.warning(
+                f"[Video Extraction] Frame at {timestamp_seconds}s too large ({width}x{height}), resizing"
+            )
+            pil_image.thumbnail((4096, 4096), Image.Resampling.LANCZOS)
+
+        buffer = BytesIO()
+        pil_image.save(buffer, format="JPEG", quality=85)
+        jpeg_bytes = buffer.getvalue()
+
+        if len(jpeg_bytes) < 100:
+            logger.warning(
+                f"[Video Extraction] Frame at {timestamp_seconds}s produced suspiciously small JPEG ({len(jpeg_bytes)} bytes), skipping"
+            )
+            return None
+
+        try:
+            Image.open(BytesIO(jpeg_bytes)).verify()
+        except Exception as verify_error:
+            logger.warning(
+                f"[Video Extraction] Frame at {timestamp_seconds}s failed JPEG verification: {verify_error}, skipping"
+            )
+            return None
+
+        return jpeg_bytes
+    except Exception as frame_error:
+        logger.warning(
+            f"[Video Extraction] Error processing frame at {timestamp_seconds}s: {frame_error}, skipping"
+        )
+        return None
+
+
+def _validate_one_minute_duration(duration_seconds: float) -> None:
+    if duration_seconds <= 0:
+        raise ValueError("Could not determine video duration")
+
+    delta = abs(duration_seconds - ONE_MINUTE_VIDEO_SECONDS)
+    if delta > ONE_MINUTE_VIDEO_TOLERANCE_SECONDS:
+        raise ValueError(
+            "Archive-only videos must be 60 seconds long "
+            f"(detected {duration_seconds:.2f}s)"
+        )
 
 
 def remux_to_mp4(src: bytes) -> bytes:
@@ -137,12 +210,7 @@ def _extract_frames_sync(
         # Try stream-level duration first, fall back to container-level duration.
         # Some video formats (e.g., certain MP4, WebM) don't set duration on the
         # stream, only on the container (in microseconds / AV_TIME_BASE).
-        if stream.duration and stream.time_base:
-            duration_seconds = float(stream.duration * stream.time_base)
-        elif container.duration:
-            duration_seconds = container.duration / 1_000_000.0
-        else:
-            duration_seconds = 0.0
+        duration_seconds = _duration_seconds(container, stream)
         fps = float(stream.average_rate) if stream.average_rate else 30.0
 
         logger.info(
@@ -168,49 +236,12 @@ def _extract_frames_sync(
                 # Decode the next frame after seeking
                 for frame in container.decode(video=0):
                     try:
-                        # Convert frame to PIL Image, then to JPEG bytes
-                        pil_image = frame.to_image()
-
-                        # Validate frame: Check dimensions and that it's not empty
-                        width, height = pil_image.size
-                        if width < 10 or height < 10:
-                            logger.warning(
-                                f"[Video Extraction] Frame at {target_ts}s too small ({width}x{height}), skipping"
-                            )
-                            continue
-
-                        if width > 4096 or height > 4096:
-                            logger.warning(
-                                f"[Video Extraction] Frame at {target_ts}s too large ({width}x{height}), resizing"
-                            )
-                            # Resize while maintaining aspect ratio
-                            pil_image.thumbnail((4096, 4096), Image.Resampling.LANCZOS)
-
-                        # Convert to JPEG
-                        buffer = BytesIO()
-                        pil_image.save(buffer, format="JPEG", quality=85)
-                        jpeg_bytes = buffer.getvalue()
-
-                        # Validate JPEG bytes
-                        if len(jpeg_bytes) < 100:  # Suspiciously small JPEG
-                            logger.warning(
-                                f"[Video Extraction] Frame at {target_ts}s produced suspiciously small JPEG ({len(jpeg_bytes)} bytes), skipping"
-                            )
-                            continue
-
-                        # Verify the JPEG can be re-opened (final validation)
-                        try:
-                            Image.open(BytesIO(jpeg_bytes)).verify()
-                        except Exception as verify_error:
-                            logger.warning(
-                                f"[Video Extraction] Frame at {target_ts}s failed JPEG verification: {verify_error}, skipping"
-                            )
+                        jpeg_bytes = _frame_to_jpeg_bytes(frame, target_ts)
+                        if jpeg_bytes is None:
                             continue
 
                         # Format timestamp label
-                        minutes = int(target_ts) // 60
-                        seconds = int(target_ts) % 60
-                        timestamp_label = f"{minutes}:{seconds:02d}"
+                        timestamp_label = _timestamp_label(target_ts)
 
                         frames.append(
                             {
@@ -222,7 +253,7 @@ def _extract_frames_sync(
                             }
                         )
                         logger.debug(
-                            f"[Video Extraction] Successfully extracted frame at {target_ts}s ({width}x{height}, {len(jpeg_bytes)} bytes)"
+                            f"[Video Extraction] Successfully extracted frame at {target_ts}s ({len(jpeg_bytes)} bytes)"
                         )
                         break  # Only need one frame per timestamp
                     except Exception as frame_error:
@@ -242,6 +273,99 @@ def _extract_frames_sync(
 
     logger.info(f"[Video Extraction] Extracted {len(frames)} frames from video")
     return frames
+
+
+def _extract_frames_at_timestamps_sync(
+    video_path: str,
+    timestamps_seconds: tuple[float, ...],
+    require_one_minute: bool = False,
+) -> tuple[float, list[dict[str, Any]]]:
+    """
+    Extract JPEG frames from a local video at exact timestamp labels.
+
+    If a requested timestamp lands at or beyond the duration boundary, PyAV may
+    not decode a frame exactly there. In that case, seek just before the end but
+    preserve the requested timestamp label in the returned frame metadata.
+    """
+    frames: list[dict[str, Any]] = []
+
+    container = av.open(video_path)
+    try:
+        if not container.streams.video:
+            raise ValueError("Source video contains no video stream")
+
+        stream = container.streams.video[0]
+        duration_seconds = _duration_seconds(container, stream)
+        if require_one_minute:
+            _validate_one_minute_duration(duration_seconds)
+
+        for timestamp_seconds in timestamps_seconds:
+            seek_timestamp = timestamp_seconds
+            if duration_seconds > 0 and timestamp_seconds >= duration_seconds:
+                seek_timestamp = max(duration_seconds - 0.05, 0.0)
+
+            try:
+                time_base = stream.time_base or 1
+                target_pts = int(seek_timestamp / time_base)
+                container.seek(target_pts, stream=stream)
+
+                for frame in container.decode(video=0):
+                    jpeg_bytes = _frame_to_jpeg_bytes(frame, timestamp_seconds)
+                    if jpeg_bytes is None:
+                        continue
+
+                    frames.append(
+                        {
+                            "jpeg_bytes": jpeg_bytes,
+                            "base64_data": base64.b64encode(jpeg_bytes).decode("utf-8"),
+                            "timestamp_seconds": timestamp_seconds,
+                            "timestamp_label": _timestamp_label(timestamp_seconds),
+                            "source_timestamp_seconds": seek_timestamp,
+                        }
+                    )
+                    break
+            except Exception as e:
+                logger.warning(
+                    f"[Video Extraction] Failed to extract exact frame at {timestamp_seconds}s: {e}"
+                )
+                continue
+    finally:
+        container.close()
+
+    if len(frames) != len(timestamps_seconds):
+        raise ValueError(
+            f"Expected {len(timestamps_seconds)} frames, extracted {len(frames)}"
+        )
+
+    return duration_seconds, frames
+
+
+def extract_one_minute_video_frames_from_bytes(
+    video_bytes: bytes,
+    timestamps_seconds: tuple[float, ...] = (15.0, 30.0, 45.0, 60.0),
+) -> tuple[float, list[dict[str, Any]]]:
+    """Validate one-minute video bytes and extract archive frame JPEGs."""
+    if not video_bytes:
+        raise ValueError("Provided video bytes are empty (0 bytes)")
+
+    tmp_path: str | None = None
+    try:
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".video")
+        tmp_path = tmp_file.name
+        tmp_file.write(video_bytes)
+        tmp_file.close()
+
+        return _extract_frames_at_timestamps_sync(
+            tmp_path,
+            timestamps_seconds,
+            require_one_minute=True,
+        )
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 async def download_video_bytes(video_s3_key: str) -> tuple[bytes, str]:
