@@ -591,7 +591,8 @@ class TestUploadCameraVideoRemux:
         mocker.patch(
             "api.routes.operation._video_upload.extract_one_minute_video_frames_from_bytes",
             side_effect=ValueError(
-                "Archive-only videos must be 60 seconds long (detected 45.00s)"
+                "Archive-only videos must be between 59 and 65 seconds long "
+                "(detected 45.00s)"
             ),
         )
 
@@ -606,5 +607,5 @@ class TestUploadCameraVideoRemux:
             )
 
         assert exc_info.value.status_code == 400
-        assert "60 seconds long" in str(exc_info.value.detail)
+        assert "between 59 and 65 seconds long" in str(exc_info.value.detail)
         mock_s3.upload_fileobj.assert_not_called()

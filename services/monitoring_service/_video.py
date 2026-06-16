@@ -23,7 +23,8 @@ from utils.log import logger
 # Codecs that can be remuxed into an MP4 container without re-encoding.
 _MP4_COMPATIBLE_CODECS: set[str] = {"h264", "hevc", "h265", "mpeg4", "av1"}
 ONE_MINUTE_VIDEO_SECONDS = 60.0
-ONE_MINUTE_VIDEO_TOLERANCE_SECONDS = 1.0
+ONE_MINUTE_VIDEO_MIN_SECONDS = 59.0
+ONE_MINUTE_VIDEO_MAX_SECONDS = 65.0
 
 
 def _duration_seconds(container: Any, stream: Any) -> float:
@@ -88,10 +89,15 @@ def _validate_one_minute_duration(duration_seconds: float) -> None:
     if duration_seconds <= 0:
         raise ValueError("Could not determine video duration")
 
-    delta = abs(duration_seconds - ONE_MINUTE_VIDEO_SECONDS)
-    if delta > ONE_MINUTE_VIDEO_TOLERANCE_SECONDS:
+    if (
+        not ONE_MINUTE_VIDEO_MIN_SECONDS
+        <= duration_seconds
+        <= ONE_MINUTE_VIDEO_MAX_SECONDS
+    ):
         raise ValueError(
-            "Archive-only videos must be 60 seconds long "
+            "Archive-only videos must be between "
+            f"{ONE_MINUTE_VIDEO_MIN_SECONDS:.0f} and "
+            f"{ONE_MINUTE_VIDEO_MAX_SECONDS:.0f} seconds long "
             f"(detected {duration_seconds:.2f}s)"
         )
 

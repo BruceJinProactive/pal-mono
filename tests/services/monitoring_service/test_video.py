@@ -10,6 +10,7 @@ from services.monitoring_service._video import (
     _MP4_COMPATIBLE_CODECS,
     _extract_frames_at_timestamps_sync,
     _extract_frames_sync,
+    _validate_one_minute_duration,
     download_video_bytes,
     extract_one_minute_video_frames_from_bytes,
     extract_video_frames,
@@ -346,6 +347,27 @@ class TestExtractFramesSync:
         assert frames[0]["timestamp_seconds"] == 0.0
 
 
+class TestValidateOneMinuteDuration:
+    """Tests for archive video duration bounds."""
+
+    @pytest.mark.parametrize("duration_seconds", [59.0, 60.0, 61.89, 65.0])
+    def test_accepts_duration_up_to_65_seconds(self, duration_seconds: float) -> None:
+        _validate_one_minute_duration(duration_seconds)
+
+    def test_rejects_unknown_duration(self) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            _validate_one_minute_duration(0.0)
+
+        assert "Could not determine video duration" in str(exc_info.value)
+
+    @pytest.mark.parametrize("duration_seconds", [58.99, 65.01])
+    def test_rejects_duration_outside_bounds(self, duration_seconds: float) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            _validate_one_minute_duration(duration_seconds)
+
+        assert "between 59 and 65 seconds long" in str(exc_info.value)
+
+
 class TestExtractFramesAtTimestampsSync:
     """Tests for exact timestamp extraction used by archive video uploads."""
 
@@ -420,7 +442,7 @@ class TestExtractFramesAtTimestampsSync:
                 require_one_minute=True,
             )
 
-        assert "60 seconds long" in str(exc_info.value)
+        assert "between 59 and 65 seconds long" in str(exc_info.value)
 
     def test_extract_one_minute_video_frames_from_bytes_writes_temp_file(
         self, mocker
