@@ -751,6 +751,11 @@ class TestGenerateObservation:
 
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = llm_result
+        image_url = (
+            "security/cameras/account/project/chica-cam-08/videos/"
+            "2026-02-13/2026-02-12_16-51-55.mkv"
+        )
+        observed_at = datetime(2026, 2, 12, 16, 52, 25, tzinfo=timezone.utc)
 
         with (
             patch(
@@ -811,11 +816,16 @@ class TestGenerateObservation:
             mock_event_repo_cls.return_value.create = AsyncMock()
 
             result = await generate_observation(
-                session, config_id, image_bytes=b"fake-image-data"
+                session,
+                config_id,
+                image_url=image_url,
+                image_bytes=b"fake-image-data",
+                observed_at=observed_at,
             )
 
             assert result is not None
             assert result.camera_id == config_id
+            assert result.observed_at == observed_at
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].entity_name == "oven_1"
             assert result.entity_observations[0].state == "on"
@@ -847,6 +857,11 @@ class TestGenerateObservation:
                     }
                 }
             }
+            event_create_args = mock_event_repo_cls.return_value.create.await_args
+            assert event_create_args is not None
+            event = event_create_args.args[0]
+            assert event.observed_at == observed_at
+            assert event.frame_s3_key == image_url
 
     @pytest.mark.asyncio
     async def test_observation_skips_when_current_metadata_matches(self):

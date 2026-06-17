@@ -387,6 +387,7 @@ async def generate_observation(
     image_url: str | None = None,
     image_bytes: bytes | None = None,
     is_test: bool = False,
+    observed_at: datetime | None = None,
 ) -> GenerateObservationResponse | None:
     config_repo = VisionCameraConfigurationRepository(session)
     config = await config_repo.get_by_signal_source(camera_id)
@@ -568,7 +569,7 @@ async def generate_observation(
     raw_response = llm_result["result"]
     token_usage = llm_result.get("token_usage", {})
     parsed_observed_at = parse_utc_capture_time_from_path(image_url)
-    if parsed_observed_at is None and image_url:
+    if observed_at is None and parsed_observed_at is None and image_url:
         logger.warning(
             "[Vision Observation] Image filename does not include UTC capture "
             "timestamp; falling back to processing time",
@@ -579,7 +580,7 @@ async def generate_observation(
                 "expected_format": "snapshots/YYYY-MM-DD/YYYY-MM-DD_HH-MM-SS.jpg",
             },
         )
-    observed_at = parsed_observed_at or datetime.now(timezone.utc)
+    observed_at = observed_at or parsed_observed_at or datetime.now(timezone.utc)
 
     image_relevant = raw_response.get("image_relevant", True)
     if not image_relevant:

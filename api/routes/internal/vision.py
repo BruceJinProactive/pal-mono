@@ -52,8 +52,12 @@ async def create_observation(
         default=False,
         description="If true, run observation without updating entity state or creating events.",
     ),
+    observed_at: datetime | None = Form(
+        default=None,
+        description="Optional capture timestamp to use for the observation.",
+    ),
     session: AsyncSession = Depends(db.get_db_async),
-):
+) -> GenerateObservationResponse:
     """
     Run LLM analysis on a camera frame and return entity state observations.
 
@@ -73,6 +77,7 @@ async def create_observation(
         camera_id: UUID of the camera (signal source)
         image_url: S3 key of camera image (optional if image file is uploaded)
         image: Optional uploaded image file for testing
+        observed_at: Optional timestamp to use as the observation time
         session: Async database session
 
     Returns:
@@ -94,12 +99,18 @@ async def create_observation(
                 detail="Either image_url or image file must be provided",
             )
 
+        observed_at_value = observed_at if isinstance(observed_at, datetime) else None
+        is_test_value = is_test if isinstance(is_test, bool) else False
+
         logger.info(
             "[Internal Vision] Running observation",
             extra={
                 "camera_id": str(camera_id),
                 "image_url": image_url,
                 "has_uploaded_image": image_bytes is not None,
+                "observed_at": (
+                    observed_at_value.isoformat() if observed_at_value else None
+                ),
             },
         )
 
@@ -108,7 +119,8 @@ async def create_observation(
             camera_id=camera_id,
             image_url=image_url,
             image_bytes=image_bytes,
-            is_test=is_test,
+            is_test=is_test_value,
+            observed_at=observed_at_value,
         )
 
         if result is None:

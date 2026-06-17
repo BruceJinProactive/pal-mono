@@ -147,10 +147,11 @@ class TestCreateObservation:
 
         mock_image = AsyncMock()
         mock_image.read = AsyncMock(return_value=b"fake-image-bytes")
+        observed_at = datetime(2026, 2, 12, 16, 52, 25, tzinfo=timezone.utc)
 
         expected_response = GenerateObservationResponse(
             camera_id=config_id,
-            observed_at=datetime.now(timezone.utc),
+            observed_at=observed_at,
             entity_observations=[
                 EntityObservation(
                     entity_id=entity_id,
@@ -173,6 +174,7 @@ class TestCreateObservation:
                 camera_id=config_id,
                 image_url=None,
                 image=mock_image,
+                observed_at=observed_at,
                 session=session,
             )
 
@@ -181,6 +183,7 @@ class TestCreateObservation:
             call_kwargs = mock_gen.call_args.kwargs
             assert call_kwargs["image_bytes"] == b"fake-image-bytes"
             assert call_kwargs["image_url"] is None
+            assert call_kwargs["observed_at"] == observed_at
 
     @pytest.mark.asyncio
     async def test_uploaded_image_takes_precedence(self):
