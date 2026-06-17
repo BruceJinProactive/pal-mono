@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-17
 
+- **Contract-to-account onboarding MVP/post-MVP rewrite.** Reworked the PRD and implementation plan around the comment-reviewed AE-led MVP flow: DocuSign contract prepared manually by AE, Manage App account creation and invite send, DocuSign-first Admin Console onboarding, password setup, and post-signature Slack/Notion/Folk/FDE handoff automation. The plan now separates MVP phases from post-MVP visibility, reminder, RBAC/location, and repair work. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Admin conversation deep-link pinning.** `GET /accounts/{account_name}/conversations` now accepts `conversationId=<uuid>` and pins that account-owned conversation into the returned session list, allowing Admin Console deep links to land on the requested conversation instead of defaulting to the newest row.
 - **Transfer reason analytics report.** Added a backend
   `Transfer Reason Distribution` report to `/admin/reports` and
@@ -31,6 +32,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-15
 
+- **Contract-to-account onboarding flow revision.** Updated the PRD and added an implementation plan for the fixed FDE-led Manage App account creation flow: client order form submission, FDE account creation plus invite send, Slack/Notion/Folk artifact creation at invite time, DocuSign-first Admin Console onboarding, password setup, dashboard redirect, and cross-system status sync. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Project status and live timestamp schema.** Added `projects.status` as a
   three-value `projectstatus` enum (`pending`, `onboarding`, `live`) and
   `projects.live_at` as a non-null location live timestamp. Existing rows
