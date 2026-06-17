@@ -42,6 +42,7 @@ async def list_account_conversations(
     session: Session,
     has_order: bool | None = None,
     order_filter: OrderFilter | None = None,
+    conversation_id: uuid.UUID | None = None,
 ) -> ListUserSessionsResponse:
     """Authorization is handled by require_account_permission in route decorator."""
     account = account_service.get_account(session, account_name)
@@ -58,6 +59,7 @@ async def list_account_conversations(
         keyword=keyword,
         channel=channel.value if channel else None,
         project_id=project_id,
+        conversation_id=conversation_id,
         start_date=start_date,
         end_date=end_date,
         page=page,

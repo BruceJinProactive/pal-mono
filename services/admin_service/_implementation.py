@@ -151,6 +151,7 @@ def list_conversations_in_account(
     db_session: Session,
     has_order: bool | None = None,
     order_filter: OrderFilter | None = None,
+    conversation_id: uuid.UUID | None = None,
 ) -> tuple[int, list[UserSessionPreview]]:
     message_repository = db.MessageRepository(db_session)
     conversation_repository = db.ConversationRepository(db_session)
@@ -178,11 +179,38 @@ def list_conversations_in_account(
         )
     else:
         filtered_session_ids = all_session_ids
+    selected_conversation = None
+    if conversation_id is not None:
+        candidate = conversation_repository.get_conversation_by_id(conversation_id)
+        if (
+            candidate is not None
+            and getattr(getattr(candidate, "user", None), "account_id", None)
+            == account_id
+        ):
+            selected_conversation = candidate
+
+    if selected_conversation is not None:
+        filtered_session_ids = [
+            session_id
+            for session_id in filtered_session_ids
+            if session_id != selected_conversation.id
+        ]
+        offset = 0 if page == 1 else max((page - 1) * page_size - 1, 0)
+        limit = max(page_size - 1, 0) if page == 1 else page_size
+    else:
+        offset = (page - 1) * page_size
+        limit = page_size
+
     total, sessions = conversation_repository.get_paginated_sessions_by_ids(
         filtered_session_ids,
-        offset=(page - 1) * page_size,
-        limit=page_size,
+        offset=offset,
+        limit=limit,
     )
+
+    if selected_conversation is not None:
+        total += 1
+        if page == 1:
+            sessions = [selected_conversation, *sessions][:page_size]
 
     order_repository = db.OrderRepository(db_session, auto_commit=False)
     latest_orders_by_conversation_id = (

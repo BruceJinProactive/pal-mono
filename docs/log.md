@@ -4,7 +4,15 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-17
+
+- **Admin conversation deep-link pinning.** `GET /accounts/{account_name}/conversations` now accepts `conversationId=<uuid>` and pins that account-owned conversation into the returned session list, allowing Admin Console deep links to land on the requested conversation instead of defaulting to the newest row.
+
+---
+
 ## 2026-06-16
+
+- **Tool-result cache parity fields.** Broadened the Redis sanitizer for safe cutover parity fields: Adora delivery-zone status, Adora/Toast prefetch timing, Minitable reservation identifiers/status, and structured error context such as `source`, `missing`, and `retryable`. -> `docs/plans/tool-result-elasticache-migration.md`
 
 - **Toast lookup tool-result cache payloads.** Preserved `get_toast_item_details_v3` lookup envelopes (`kind` plus `results`) through the ElastiCache sanitizer so `<previous_tool_results>` can render structured Toast lookup details instead of falling back to the generic lookup summary. -> `docs/plans/tool-result-elasticache-migration.md`
 

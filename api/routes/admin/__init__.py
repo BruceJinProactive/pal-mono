@@ -1081,6 +1081,11 @@ async def list_account_conversations(
     project_id: uuid.UUID | None = Query(
         None, description="Optional project ID to filter conversations by"
     ),
+    conversation_id: uuid.UUID | None = Query(
+        None,
+        alias="conversationId",
+        description="Optional conversation ID to pin for deep links",
+    ),
     lookback: int | None = Query(
         None,
         description="Only retrieve sessions created within the specified lookback period in seconds.",
@@ -1131,6 +1136,7 @@ async def list_account_conversations(
         keyword=keyword,
         channel=channel,
         project_id=project_id,
+        conversation_id=conversation_id,
         lookback=lookback,
         page=page,
         page_size=page_size,

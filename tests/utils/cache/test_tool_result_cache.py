@@ -195,6 +195,155 @@ def test_build_cacheable_tool_result_uses_adora_family_allowlist() -> None:
     }
 
 
+def test_build_cacheable_tool_result_preserves_adora_delivery_zone_context() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "verify_adora_delivery_zone_v1",
+            "status": "success",
+            "cacheable_result": {
+                "kind": "adora_delivery_zone_check",
+                "status": "success",
+                "is_in_delivery_zone": True,
+                "checked_delivery_address": {
+                    "street_number": "123",
+                    "street_name": "Main St",
+                    "city": "Austin",
+                },
+            },
+        }
+    )
+
+    assert result == {
+        "tool_name": "verify_adora_delivery_zone_v1",
+        "status": "success",
+        "cacheable_result": {
+            "kind": "adora_delivery_zone_check",
+            "status": "success",
+            "is_in_delivery_zone": True,
+        },
+    }
+
+
+def test_build_cacheable_tool_result_preserves_prefetch_timing_context() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "adora_wait_time_prefetch_v1",
+            "status": "success",
+            "cacheable_result": {
+                "kind": "adora_wait_time_prefetch_v1",
+                "takeout_minutes": 20,
+                "delivery_minutes": 30,
+            },
+        }
+    )
+
+    assert result == {
+        "tool_name": "adora_wait_time_prefetch_v1",
+        "status": "success",
+        "cacheable_result": {
+            "kind": "adora_wait_time_prefetch_v1",
+            "takeout_minutes": 20,
+            "delivery_minutes": 30,
+        },
+    }
+
+
+def test_build_cacheable_tool_result_redacts_prefetch_profile_pii() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "adora_customer_profile_prefetch_v1",
+            "status": "success",
+            "cacheable_result": {
+                "kind": "adora_customer_profile_prefetch_v1",
+                "first_name": "Alice",
+                "last_name": "Jones",
+                "loyalty_member": True,
+                "loyalty_point_count": 50,
+                "delivery_address": {
+                    "address": "123 Main St",
+                    "city": "Austin",
+                },
+            },
+        }
+    )
+
+    assert result == {
+        "tool_name": "adora_customer_profile_prefetch_v1",
+        "status": "success",
+        "cacheable_result": {
+            "kind": "adora_customer_profile_prefetch_v1",
+            "loyalty_member": True,
+            "loyalty_point_count": 50,
+        },
+    }
+
+
+def test_build_cacheable_tool_result_uses_minitable_family_allowlist() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "minitable_make_reservation",
+            "status": "confirmed",
+            "cacheable_result": {
+                "status": "confirmed",
+                "booking_id": "booking-1",
+                "restaurant_id": "restaurant-1",
+                "party_size": 4,
+                "date": "2026-06-16",
+                "time": "18:30",
+                "status_link": "https://example.com/reservations/booking-1",
+                "guest_name": "Drop Guest",
+                "customer_email": "drop@example.com",
+                "notes": "drop free-form note",
+            },
+        }
+    )
+
+    assert result == {
+        "tool_name": "minitable_make_reservation",
+        "status": "confirmed",
+        "cacheable_result": {
+            "status": "confirmed",
+            "booking_id": "booking-1",
+            "restaurant_id": "restaurant-1",
+            "party_size": 4,
+            "date": "2026-06-16",
+            "time": "18:30",
+            "status_link": "https://example.com/reservations/booking-1",
+        },
+    }
+
+
+def test_build_cacheable_tool_result_preserves_structured_error_context() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "status": "error",
+            "error_type": "missing_params",
+            "cacheable_result": {
+                "status": "error",
+                "source": "tool_handler",
+                "error_type": "missing_params",
+                "missing": ["items"],
+                "retryable": True,
+                "arguments": {"customer_phone": "+15551234567"},
+            },
+        }
+    )
+
+    assert result == {
+        "tool_name": "toast_takeout_create_order_v1",
+        "status": "error",
+        "error_type": "missing_params",
+        "cacheable_result": {
+            "status": "error",
+            "source": "tool_handler",
+            "error_type": "missing_params",
+            "missing": ["items"],
+            "retryable": True,
+        },
+    }
+
+
 def test_build_cacheable_tool_result_uses_generic_family_allowlist() -> None:
     result = build_cacheable_tool_result(
         {

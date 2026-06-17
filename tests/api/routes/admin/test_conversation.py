@@ -219,6 +219,7 @@ class TestListAccountConversationsOrderNumber:
     async def test_passes_preview_order_number_to_response(self) -> None:
         account = MagicMock()
         account.id = uuid.uuid4()
+        conversation_id = uuid.uuid4()
         conversation = _make_builder_conversation("voice", ["voice:+15551112222"])
         preview = SimpleNamespace(
             conversation=conversation,
@@ -251,12 +252,17 @@ class TestListAccountConversationsOrderNumber:
                 ended_reason=None,
                 customer_converted=None,
                 has_order=None,
+                conversation_id=conversation_id,
                 context=_make_context(),
                 session=MagicMock(),
             )
 
         assert result.sessions[0].order_number == "ORD-123"
         assert result.sessions[0].has_order is True
+        assert (
+            mock_admin.list_conversations_in_account.call_args.kwargs["conversation_id"]
+            == conversation_id
+        )
 
     @pytest.mark.asyncio
     async def test_get_detail_includes_order_info(self) -> None:

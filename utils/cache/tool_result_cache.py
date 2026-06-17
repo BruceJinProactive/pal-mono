@@ -67,7 +67,10 @@ _COMMON_CACHEABLE_RESULT_FIELDS = frozenset(
         "errorCode",
         "errorType",
         "message",
+        "missing",
         "ok",
+        "retryable",
+        "source",
         "state",
         "status",
         "success",
@@ -88,6 +91,7 @@ _TOAST_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
         "fulfillmentState",
         "fulfillmentStatus",
         "items",
+        "kind",
         "order_guid",
         "order_id",
         "order_number",
@@ -100,6 +104,8 @@ _TOAST_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
         "orderStatus",
         "pickup_time",
         "pickupTime",
+        "delivery_minutes",
+        "takeout_minutes",
     }
 )
 _TOAST_LOOKUP_TOOL_NAMES = frozenset({"get_toast_item_details_v3"})
@@ -113,7 +119,13 @@ _ADORA_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
     {
         "available",
         "availability",
+        "delivery_minutes",
+        "is_in_delivery_zone",
+        "isInDeliveryZone",
         "key",
+        "kind",
+        "loyalty_member",
+        "loyalty_point_count",
         "online_ordering_status",
         "onlineOrderingStatus",
         "order_id",
@@ -130,11 +142,26 @@ _ADORA_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
         "trackerURL",
         "tracking_link",
         "trackingLink",
+        "takeout_minutes",
+    }
+)
+_MINITABLE_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
+    {
+        "booking_id",
+        "date",
+        "party_size",
+        "restaurant_id",
+        "reservation_id",
+        "status_link",
+        "time",
+        "vendor",
+        "waitlist_id",
     }
 )
 _CACHEABLE_RESULT_FIELDS_BY_TOOL_FAMILY = {
     "adora": _ADORA_CACHEABLE_RESULT_FIELDS,
     "generic": _COMMON_CACHEABLE_RESULT_FIELDS,
+    "minitable": _MINITABLE_CACHEABLE_RESULT_FIELDS,
     "toast": _TOAST_CACHEABLE_RESULT_FIELDS,
 }
 
@@ -352,6 +379,8 @@ def _tool_family_for_name(tool_name: str) -> str:
         return "toast"
     if "adora" in normalized_tool_name:
         return "adora"
+    if "minitable" in normalized_tool_name:
+        return "minitable"
     return "generic"
 
 

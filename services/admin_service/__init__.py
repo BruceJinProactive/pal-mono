@@ -46,6 +46,7 @@ def list_conversations_in_account(
     db_session: Session,
     has_order: bool | None = None,
     order_filter: OrderFilter | None = None,
+    conversation_id: uuid.UUID | None = None,
 ) -> tuple[int, list[UserSessionPreview]]:
     return _implementation.list_conversations_in_account(
         account_id,
@@ -65,6 +66,7 @@ def list_conversations_in_account(
         db_session,
         has_order=has_order,
         order_filter=order_filter,
+        conversation_id=conversation_id,
     )
 
 
