@@ -25,6 +25,7 @@ _MP4_COMPATIBLE_CODECS: set[str] = {"h264", "hevc", "h265", "mpeg4", "av1"}
 ONE_MINUTE_VIDEO_SECONDS = 60.0
 ONE_MINUTE_VIDEO_MIN_SECONDS = 59.0
 ONE_MINUTE_VIDEO_MAX_SECONDS = 65.0
+END_FRAME_SAFETY_MARGIN_SECONDS = 0.5
 
 
 def _duration_seconds(container: Any, stream: Any) -> float:
@@ -45,6 +46,9 @@ def _timestamp_label(timestamp_seconds: float) -> str:
 def _frame_to_jpeg_bytes(frame: Any, timestamp_seconds: float) -> bytes | None:
     try:
         pil_image = frame.to_image()
+        image_mode = getattr(pil_image, "mode", "RGB")
+        if isinstance(image_mode, str) and image_mode != "RGB":
+            pil_image = pil_image.convert("RGB")
 
         width, height = pil_image.size
         if width < 10 or height < 10:
@@ -308,7 +312,10 @@ def _extract_frames_at_timestamps_sync(
         for timestamp_seconds in timestamps_seconds:
             seek_timestamp = timestamp_seconds
             if duration_seconds > 0 and timestamp_seconds >= duration_seconds:
-                seek_timestamp = max(duration_seconds - 0.05, 0.0)
+                seek_timestamp = max(
+                    duration_seconds - END_FRAME_SAFETY_MARGIN_SECONDS,
+                    0.0,
+                )
 
             try:
                 time_base = stream.time_base or 1
