@@ -30,8 +30,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 - **Order display payload schema.** Added nullable `orders.display_payload`
   JSONB storage for order display data. Migration: `e62c73367f57`.
-
----
+- **Catering request phone lookup index.** Added an expression index on
+  `catering_requests` for project-scoped, normalized contact-phone lookups
+  ordered by newest request first. Migration: `9d7e1f4a6b2c`. ->
+  `docs/records/2026-06-12-catering-request-phone-lookup-index.md`
 
 ## 2026-06-11
 
