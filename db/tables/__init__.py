@@ -8,6 +8,7 @@ from .agents import Agent
 from .base import Base
 from .campaigns import Campaign, CampaignChannel, CampaignMessage, CampaignMessageStatus
 from .capability_actions import CapabilityAction
+from .catering_menus import CateringMenu
 from .catering_request_activities import (
     CateringRequestActivity,
     CateringRequestActivityActorType,

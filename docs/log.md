@@ -12,6 +12,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-16
 
+- **Catering menu storage schema.** Added `catering_menus` for per-project
+  catering menu item rows with optional account linkage, item name, item price,
+  and lookup indexes. Migration: `a4d9c8e7b6a5`.
+
 - **Tool-result cache parity fields.** Broadened the Redis sanitizer for safe cutover parity fields: Adora delivery-zone status, Adora/Toast prefetch timing, Minitable reservation identifiers/status, and structured error context such as `source`, `missing`, and `retryable`. -> `docs/plans/tool-result-elasticache-migration.md`
 
 - **Toast lookup tool-result cache payloads.** Preserved `get_toast_item_details_v3` lookup envelopes (`kind` plus `results`) through the ElastiCache sanitizer so `<previous_tool_results>` can render structured Toast lookup details instead of falling back to the generic lookup summary. -> `docs/plans/tool-result-elasticache-migration.md`
