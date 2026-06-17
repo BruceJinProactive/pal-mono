@@ -7,6 +7,13 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-06-17
 
 - **Admin conversation deep-link pinning.** `GET /accounts/{account_name}/conversations` now accepts `conversationId=<uuid>` and pins that account-owned conversation into the returned session list, allowing Admin Console deep links to land on the requested conversation instead of defaulting to the newest row.
+- **Transfer reason analytics report.** Added a backend
+  `Transfer Reason Distribution` report to `/admin/reports` and
+  `/admin/accounts/{account_name}/reports`, ranking
+  `phone_calls.transfer_reason_category` values and exposing
+  `transfer_agent_was_at_fault` counts/rates for Manage App resolution KPIs.
+  Transfer reason labels and descriptions now come from the post-call analytics
+  taxonomy metadata so frontend reporting does not duplicate the category map.
 
 ---
 

@@ -19,6 +19,7 @@ from api.schemas.admin.ordering_metrics import (
 from utils.log import logger
 
 from ._utils import (
+    TRANSFER_REASON_METADATA_BY_KEY,
     _enforce_hierarchy_order,
     process_analytics_data_generic,
     validate_date_range,
@@ -79,6 +80,7 @@ async def get_reports(
             calls_report,
             call_info_report,
             conversion_report,
+            transfer_reason_report,
         ) = await asyncio.gather(
             asyncio.to_thread(
                 create_sync_session_and_run,
@@ -120,6 +122,14 @@ async def get_reports(
                 group_by=group_by,
                 filter_by=filter_by,
             ),
+            asyncio.to_thread(
+                create_sync_session_and_run,
+                get_transfer_reason_distribution,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+                filter_by=filter_by,
+            ),
         )
 
         # Create and return reports
@@ -140,6 +150,10 @@ async def get_reports(
             PerformanceReport(
                 name=AnalyticsReportType.CONVERSION_METRICS.name,
                 data=conversion_report,
+            ),
+            PerformanceReport(
+                name=AnalyticsReportType.TRANSFER_REASON_DISTRIBUTION.name,
+                data=transfer_reason_report,
             ),
         ]
 
@@ -237,6 +251,141 @@ def _build_ordering_filter_by(
 
 _CONVERSION_CONVERSATIONS_WITH_ORDERS_INDEX = 2
 _CONVERSION_TOTAL_SUBTOTAL_INDEX = 4
+
+
+def _calculate_percentage(numerator: int, denominator: int) -> float | None:
+    """Calculate a percentage with one decimal place, or None with no denominator."""
+    if denominator <= 0:
+        return None
+    return round((numerator / denominator) * 100, 1)
+
+
+def _to_int(value: object) -> int:
+    """Convert SQL aggregate values to int for JSON report output."""
+    if value is None:
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (float, Decimal)):
+        return int(value)
+    return int(str(value))
+
+
+def _to_group_date_key(value: object) -> str:
+    """Convert a grouped SQL date value to the report date key format."""
+    if isinstance(value, (date, datetime, str)):
+        return _to_date_key(value)
+    return str(value)
+
+
+def _format_unknown_transfer_reason_label(reason: str) -> str:
+    """Format unknown transfer reason keys defensively for report output."""
+    return " ".join(word.capitalize() for word in reason.split("_") if word) or reason
+
+
+def _parse_transfer_reason_row(
+    row: tuple[object, ...],
+    group_by: list[str],
+) -> tuple[dict[str, object], tuple[str, ...]]:
+    """Parse a transfer reason tuple into a report row and group identity."""
+    index = 0
+    report_row: dict[str, object] = {}
+    group_key_parts: list[str] = []
+
+    for group in group_by:
+        if group == "date":
+            date_key = _to_group_date_key(row[index])
+            report_row["date"] = date_key
+            group_key_parts.append(date_key)
+            index += 1
+        elif group == "account_id":
+            account_id = str(row[index])
+            account_name = str(row[index + 1])
+            report_row["account_id"] = account_id
+            report_row["account_name"] = account_name
+            group_key_parts.append(account_id)
+            index += 2
+        elif group == "project_id":
+            project_id = str(row[index])
+            project_name = str(row[index + 1])
+            report_row["project_id"] = project_id
+            report_row["project_name"] = project_name
+            group_key_parts.append(project_id)
+            index += 2
+
+    reason = str(row[index])
+    count = _to_int(row[index + 1])
+    agent_fault_count = _to_int(row[index + 2])
+    reason_metadata = TRANSFER_REASON_METADATA_BY_KEY.get(reason)
+
+    report_row.update(
+        {
+            "reason": reason,
+            "transfer_reason_category": reason,
+            "label": (
+                reason_metadata.label
+                if reason_metadata
+                else _format_unknown_transfer_reason_label(reason)
+            ),
+            "description": (
+                reason_metadata.description
+                if reason_metadata
+                else "Custom transfer reason"
+            ),
+            "count": count,
+            "agent_fault_count": agent_fault_count,
+            "agent_fault_rate": _calculate_percentage(agent_fault_count, count),
+        }
+    )
+
+    return report_row, tuple(group_key_parts)
+
+
+def _build_transfer_reason_rows(
+    data: list[tuple[object, ...]],
+    group_by: list[str],
+) -> list[dict[str, object]]:
+    """Build transfer reason ranking rows with percentages within each group."""
+    parsed_rows: list[tuple[dict[str, object], tuple[str, ...]]] = []
+    group_totals: dict[tuple[str, ...], int] = {}
+
+    for row in data:
+        report_row, group_key = _parse_transfer_reason_row(row, group_by)
+        count = _to_int(report_row["count"])
+        group_totals[group_key] = group_totals.get(group_key, 0) + count
+        parsed_rows.append((report_row, group_key))
+
+    output_rows: list[dict[str, object]] = []
+    for report_row, group_key in parsed_rows:
+        count = _to_int(report_row["count"])
+        report_row["percentage"] = _calculate_percentage(
+            count,
+            group_totals.get(group_key, 0),
+        )
+        output_rows.append(report_row)
+
+    output_rows.sort(
+        key=lambda report_row: (
+            tuple(str(report_row.get(group, "")) for group in group_by),
+            -_to_int(report_row["count"]),
+            str(report_row["reason"]),
+        )
+    )
+    return output_rows
+
+
+def _build_transfer_reason_totals(
+    rows: list[dict[str, object]],
+) -> dict[str, object]:
+    """Build summary totals from ungrouped transfer reason ranking rows."""
+    total_count = sum(_to_int(row["count"]) for row in rows)
+    agent_fault_count = sum(_to_int(row["agent_fault_count"]) for row in rows)
+
+    return {
+        "total_transfer_reason_calls": total_count,
+        "agent_fault_calls": agent_fault_count,
+        "agent_fault_rate": _calculate_percentage(agent_fault_count, total_count),
+    }
 
 
 async def get_ordering_metrics(
@@ -353,6 +502,85 @@ async def get_ordering_metrics(
             tool_error_order_call_count=tool_error_order_call_count_summary,
         ),
     )
+
+
+def get_transfer_reason_distribution(
+    session: Session,
+    start_date: datetime,
+    end_date: datetime,
+    group_by: list[str] | None = None,
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+) -> dict[str, object]:
+    """
+    Get transfer reason ranking with agent-fault attribution.
+
+    Returns:
+        dict: {
+            'transfer_reason_distribution': [...],
+            'totals': {
+                'transfer_reason_distribution': [...],
+                'total_transfer_reason_calls': int,
+                'agent_fault_calls': int,
+                'agent_fault_rate': float | None
+            },
+            'metadata': {...}
+        }
+    """
+    try:
+        if group_by is None:
+            group_by = []
+
+        ordered_group_by = _enforce_hierarchy_order(group_by)
+        analytics_repo = db.AnalyticsRepository(session)
+
+        if ordered_group_by:
+            transfer_reason_data, transfer_reason_totals_data = (
+                analytics_repo.get_transfer_reason_distribution(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=ordered_group_by,
+                    filter_by=filter_by,
+                ),
+                analytics_repo.get_transfer_reason_distribution(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=[],
+                    filter_by=filter_by,
+                ),
+            )
+        else:
+            transfer_reason_data = []
+            transfer_reason_totals_data = (
+                analytics_repo.get_transfer_reason_distribution(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=[],
+                    filter_by=filter_by,
+                )
+            )
+
+        transfer_reason_rows = _build_transfer_reason_rows(
+            transfer_reason_data,
+            ordered_group_by,
+        )
+        total_rows = _build_transfer_reason_rows(transfer_reason_totals_data, [])
+        totals = _build_transfer_reason_totals(total_rows)
+
+        return {
+            "transfer_reason_distribution": transfer_reason_rows,
+            "totals": {
+                **totals,
+                "transfer_reason_distribution": total_rows,
+            },
+            "metadata": {
+                "group_by": ordered_group_by,
+                "filter_by": filter_by or {},
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating transfer reason distribution: {e}")
+        raise
 
 
 def get_active_users(

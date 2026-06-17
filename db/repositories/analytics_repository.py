@@ -822,6 +822,110 @@ class AnalyticsRepository:
             logger.error(f"Error getting call info summary: {e}")
             return []
 
+    def get_transfer_reason_distribution(
+        self,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        group_by: list[str] | None = None,
+        filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+    ) -> list[tuple[object, ...]]:
+        """
+        Get transfer reason category counts and agent-fault counts.
+
+        Returns:
+            list[tuple]: (group_fields..., transfer_reason_category, count, agent_fault_count)
+        """
+        try:
+            start_time = time.time()
+            select_fields, group_fields = self._build_group_fields(group_by)
+
+            select_fields.extend(
+                [
+                    PhoneCall.transfer_reason_category.label(
+                        "transfer_reason_category"
+                    ),
+                    func.count(PhoneCall.id).label("count"),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (PhoneCall.transfer_agent_was_at_fault.is_(True), 1),
+                                else_=0,
+                            )
+                        ),
+                        0,
+                    ).label("agent_fault_count"),
+                ]
+            )
+
+            if filter_by and "account_id" in filter_by:
+                account_filter = filter_by["account_id"]
+
+                if isinstance(account_filter, list):
+                    account_condition = User.account_id.in_(account_filter)
+                else:
+                    account_condition = User.account_id == account_filter
+
+                query = (
+                    select(*select_fields)
+                    .select_from(PhoneCall)
+                    .join(Conversation, PhoneCall.conversation_id == Conversation.id)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        PhoneCall.created_at.between(start_date, end_date),
+                        PhoneCall.transfer_reason_category.isnot(None),
+                        ~Conversation.is_test,
+                        account_condition,
+                    )
+                )
+            else:
+                query = (
+                    select(*select_fields)
+                    .select_from(PhoneCall)
+                    .join(Conversation, PhoneCall.conversation_id == Conversation.id)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        PhoneCall.created_at.between(start_date, end_date),
+                        PhoneCall.transfer_reason_category.isnot(None),
+                        ~Conversation.is_test,
+                    )
+                )
+
+            if group_by and "project_id" in group_by:
+                query = query.join(Project, Conversation.project_id == Project.id)
+
+            if filter_by and "project_id" in filter_by:
+                project_id = filter_by["project_id"]
+                if isinstance(project_id, list):
+                    query = query.where(Conversation.project_id.in_(project_id))
+                else:
+                    query = query.where(Conversation.project_id == project_id)
+
+            group_fields_with_reason = [
+                *group_fields,
+                PhoneCall.transfer_reason_category,
+            ]
+            query = query.group_by(*group_fields_with_reason).order_by(
+                func.count(PhoneCall.id).desc(),
+                PhoneCall.transfer_reason_category.asc(),
+            )
+
+            result = self.session.execute(query)
+            rows = [tuple(row) for row in result.all()]
+
+            elapsed = time.time() - start_time
+            logger.info(
+                "AnalyticsRepository: Transfer reason distribution query executed "
+                f"in {elapsed:.3f}s, returned {len(rows)} rows"
+            )
+            return rows
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error getting transfer reason distribution: {e}")
+            return []
+
     def get_conversion_summary(
         self,
         start_date: datetime.datetime,

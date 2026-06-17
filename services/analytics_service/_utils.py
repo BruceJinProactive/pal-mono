@@ -1,23 +1,194 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from utils.log import logger
 
-TRANSFER_REASON_CATEGORIES: tuple[str, ...] = (
-    "cold_opt_out",
-    "capability_specific_person",
-    "user_frustration_in_flow",
-    "capability_reservation",
-    "tool_failure_order",
-    "capability_catering",
-    "other",
-    "post_order_followup",
-    "capability_other_department",
-    "checkout_handoff_not_human",
-    "ambiguous_intent_user_gave_up",
-    "capability_hiring",
-    "failed_transfer_attempt",
-    "capability_off_topic",
+
+@dataclass(frozen=True)
+class TransferReasonMetadata:
+    key: str
+    label: str
+    description: str
+    prompt_description: str
+    agent_fault_default: bool | None
+
+
+TRANSFER_REASON_METADATA: tuple[TransferReasonMetadata, ...] = (
+    TransferReasonMetadata(
+        key="cold_opt_out",
+        label="Cold opt-out",
+        description="Generic request to speak with a human",
+        prompt_description=(
+            "The caller's first substantive utterance is a generic human "
+            'request, such as "representative" or "speak to a person." Do not '
+            "use this if the caller first stated another intent, or if the "
+            "caller asked for a named/specific person or department."
+        ),
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="capability_specific_person",
+        label="Specific person",
+        description="Asked for a named employee or manager",
+        prompt_description=(
+            "Caller asks for a named employee, manager, front desk, or specific "
+            "person."
+        ),
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="user_frustration_in_flow",
+        label="Flow frustration",
+        description="Repetition or missed details led to transfer",
+        prompt_description=(
+            "No explicit tool error, but repetition, missed details, or flow "
+            "breakdown made the caller ask for a human."
+        ),
+        agent_fault_default=True,
+    ),
+    TransferReasonMetadata(
+        key="capability_reservation",
+        label="Reservation support",
+        description="Reservation request needed human help",
+        prompt_description=(
+            "Agent says it cannot book or fully handle reservations and offers "
+            "transfer."
+        ),
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="tool_failure_order",
+        label="Order tool failure",
+        description="Ordering, checkout, or payment tool failed",
+        prompt_description=(
+            "Agent was placing/finalizing an order or checkout and a "
+            "tool/order/payment/link-delivery error caused transfer. This "
+            "includes cases where the caller did not receive an ordering or "
+            "payment link."
+        ),
+        agent_fault_default=True,
+    ),
+    TransferReasonMetadata(
+        key="capability_catering",
+        label="Catering",
+        description="Large-party or event order needed staff",
+        prompt_description=(
+            "Catering, large party, or event order the agent cannot fully handle."
+        ),
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="other",
+        label="Other",
+        description="Transfer reason outside the main categories",
+        prompt_description="Use only when the transfer happened but none of the above fit.",
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="post_order_followup",
+        label="Post-order follow-up",
+        description="Follow-up after order or payment link",
+        prompt_description=(
+            "Order/payment link was already created, then caller asked for a "
+            "human to confirm, modify, complain, or follow up."
+        ),
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="capability_other_department",
+        label="Other department",
+        description="Billing, corporate, supplier, or similar",
+        prompt_description=(
+            "Billing, corporate, supplier, accounts payable, or another "
+            "non-restaurant department."
+        ),
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="checkout_handoff_not_human",
+        label="Checkout handoff",
+        description="Self-service handoff rather than staff transfer",
+        prompt_description=(
+            "Transcript says the order/reservation was handed off for checkout, "
+            "final processing, payment link, or self-service booking, but no "
+            "human transfer actually occurred. Use this category instead of "
+            "null when a transfer signal exists but the handoff was not to a "
+            "human."
+        ),
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="ambiguous_intent_user_gave_up",
+        label="Ambiguous intent",
+        description="Caller did not provide a usable request",
+        prompt_description=(
+            "Caller request was unclear, caller only greeted / checked "
+            "connection, or agent asked for clarification and the call "
+            "transferred before the caller gave a usable intent."
+        ),
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="capability_hiring",
+        label="Hiring",
+        description="Job or employment inquiry",
+        prompt_description="Job, hiring, or employment inquiry.",
+        agent_fault_default=False,
+    ),
+    TransferReasonMetadata(
+        key="failed_transfer_attempt",
+        label="Failed transfer",
+        description="Agent could not complete the transfer",
+        prompt_description=(
+            "Agent failed to connect, reported transfer could not happen, or "
+            "initially refused to transfer before complying."
+        ),
+        agent_fault_default=True,
+    ),
+    TransferReasonMetadata(
+        key="capability_off_topic",
+        label="Off topic",
+        description="Wrong business or unrelated request",
+        prompt_description="Wrong business or unrelated to restaurant operations.",
+        agent_fault_default=False,
+    ),
 )
+TRANSFER_REASON_CATEGORIES: tuple[str, ...] = tuple(
+    metadata.key for metadata in TRANSFER_REASON_METADATA
+)
+TRANSFER_REASON_METADATA_BY_KEY: dict[str, TransferReasonMetadata] = {
+    metadata.key: metadata for metadata in TRANSFER_REASON_METADATA
+}
+
+
+def format_transfer_reason_taxonomy_for_prompt() -> str:
+    """Return transfer reason taxonomy lines for the post-call analytics prompt."""
+    return "\n".join(
+        f"   - {metadata.key}: {metadata.prompt_description}"
+        for metadata in TRANSFER_REASON_METADATA
+    )
+
+
+def format_transfer_agent_fault_defaults_for_prompt() -> str:
+    """Return transfer-agent fault defaults for the post-call analytics prompt."""
+    true_categories = [
+        metadata.key
+        for metadata in TRANSFER_REASON_METADATA
+        if metadata.agent_fault_default is True
+    ]
+    false_categories = [
+        metadata.key
+        for metadata in TRANSFER_REASON_METADATA
+        if metadata.agent_fault_default is False
+    ]
+
+    return "\n".join(
+        [
+            f"   - true for: {', '.join(true_categories)}.",
+            f"   - false for: {', '.join(false_categories)}.",
+            "   - null when transfer_reason_category is null.",
+        ]
+    )
 
 
 # =============================================================================
@@ -651,6 +822,8 @@ async def extract_call_analytics(
     )
 
     transfer_categories = ", ".join(TRANSFER_REASON_CATEGORIES)
+    transfer_taxonomy = format_transfer_reason_taxonomy_for_prompt()
+    transfer_fault_defaults = format_transfer_agent_fault_defaults_for_prompt()
     transfer_purpose_context = transfer_purpose or "none"
 
     # Build system prompt with all enum options
@@ -707,20 +880,7 @@ Do not use call_purpose for transfer root cause. Example: an order tool failure 
    Valid categories: {transfer_categories}
 
    Transfer taxonomy decision rules, adapted from VSA:
-   - cold_opt_out: The caller's first substantive utterance is a generic human request, such as "representative" or "speak to a person." Do not use this if the caller first stated another intent, or if the caller asked for a named/specific person or department.
-   - capability_specific_person: Caller asks for a named employee, manager, front desk, or specific person.
-   - capability_reservation: Agent says it cannot book or fully handle reservations and offers transfer.
-   - capability_catering: Catering, large party, or event order the agent cannot fully handle.
-   - capability_hiring: Job, hiring, or employment inquiry.
-   - capability_other_department: Billing, corporate, supplier, accounts payable, or another non-restaurant department.
-   - capability_off_topic: Wrong business or unrelated to restaurant operations.
-   - tool_failure_order: Agent was placing/finalizing an order or checkout and a tool/order/payment/link-delivery error caused transfer. This includes cases where the caller did not receive an ordering or payment link.
-   - user_frustration_in_flow: No explicit tool error, but repetition, missed details, or flow breakdown made the caller ask for a human.
-   - post_order_followup: Order/payment link was already created, then caller asked for a human to confirm, modify, complain, or follow up.
-   - ambiguous_intent_user_gave_up: Caller request was unclear, caller only greeted / checked connection, or agent asked for clarification and the call transferred before the caller gave a usable intent.
-   - failed_transfer_attempt: Agent failed to connect, reported transfer could not happen, or initially refused to transfer before complying.
-   - checkout_handoff_not_human: Transcript says the order/reservation was handed off for checkout, final processing, payment link, or self-service booking, but no human transfer actually occurred. Use this category instead of null when a transfer signal exists but the handoff was not to a human.
-   - other: Use only when the transfer happened but none of the above fit.
+{transfer_taxonomy}
 
    Transfer category precedence:
    1. If a transfer signal exists but the transcript only shows checkout, payment-link, reservation-link, or final-processing handoff with no human request or human connection, use checkout_handoff_not_human.
@@ -730,10 +890,7 @@ Do not use call_purpose for transfer root cause. Example: an order tool failure 
    5. If the caller only says hello, checks whether they are connected, gives an unclear request, or never gives a usable intent before the transfer signal, use ambiguous_intent_user_gave_up rather than other.
 
 6. transfer_agent_was_at_fault: boolean or null.
-   - true for agent/tool failures: tool_failure_order, user_frustration_in_flow, failed_transfer_attempt.
-   - false for valid human handoff/product capability gaps: cold_opt_out, capability_* categories, post_order_followup, ambiguous_intent_user_gave_up.
-   - false for checkout_handoff_not_human because it is a data-quality/routing-label issue, not caller-facing agent fault.
-   - null when transfer_reason_category is null.
+{transfer_fault_defaults}
 
 Return ONLY a valid JSON object with these exact keys: ended_reason, call_purpose, user_satisfaction, language, transfer_reason_category, transfer_agent_was_at_fault.
 The call_purpose value must be an array of strings. ended_reason, user_satisfaction, language, and transfer_reason_category must be strings or null as specified. transfer_agent_was_at_fault must be boolean or null.

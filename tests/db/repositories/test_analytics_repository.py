@@ -75,6 +75,78 @@ class TestGetCallsTimeSummaryExclusions:
         session.execute.assert_called_once()
 
 
+class TestGetTransferReasonDistribution:
+    """Tests for transfer reason distribution aggregation."""
+
+    def test_returns_transfer_reason_rows(self) -> None:
+        session = _make_session()
+        session.execute.return_value.all.return_value = [
+            ("tool_failure_order", 3, 2),
+            ("cold_opt_out", 1, 0),
+        ]
+        repo = AnalyticsRepository(session)
+
+        result = repo.get_transfer_reason_distribution(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            group_by=[],
+            filter_by={"account_id": uuid.uuid4()},
+        )
+
+        assert result == [
+            ("tool_failure_order", 3, 2),
+            ("cold_opt_out", 1, 0),
+        ]
+        session.execute.assert_called_once()
+
+    def test_rolls_back_on_sqlalchemy_error(self) -> None:
+        session = MagicMock()
+        session.execute.side_effect = SQLAlchemyError("boom")
+        repo = AnalyticsRepository(session)
+
+        result = repo.get_transfer_reason_distribution(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+
+        assert result == []
+        session.rollback.assert_called_once()
+
+    def test_supports_account_list_and_project_list_filters(self) -> None:
+        session = _make_session()
+        repo = AnalyticsRepository(session)
+
+        result = repo.get_transfer_reason_distribution(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            group_by=["project_id"],
+            filter_by={
+                "account_id": [uuid.uuid4(), uuid.uuid4()],
+                "project_id": [uuid.uuid4(), uuid.uuid4()],
+            },
+        )
+
+        assert result == []
+        session.execute.assert_called_once()
+
+    def test_supports_project_id_scalar_filter(self) -> None:
+        session = _make_session()
+        repo = AnalyticsRepository(session)
+
+        result = repo.get_transfer_reason_distribution(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            group_by=[],
+            filter_by={
+                "account_id": uuid.uuid4(),
+                "project_id": uuid.uuid4(),
+            },
+        )
+
+        assert result == []
+        session.execute.assert_called_once()
+
+
 class TestGetConversionSummaryExclusions:
     """Tests for exclusion filters in get_conversion_summary."""
 

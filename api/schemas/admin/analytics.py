@@ -198,6 +198,11 @@ class AnalyticsReportType:
         },
     )
 
+    TRANSFER_REASON_DISTRIBUTION = ReportConfig(
+        name="Transfer Reason Distribution",
+        metrics_config={},
+    )
+
 
 class PerformanceReport(BaseModel):
     name: str
