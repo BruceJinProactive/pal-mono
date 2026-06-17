@@ -1,10 +1,13 @@
 """Tests for vision observation service implementation."""
 
+import base64
 import uuid
 from datetime import datetime, timezone
+from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from PIL import Image
 
 from services.vision_observation_service._implementation import (
     _build_entity_state_schema,
@@ -12,10 +15,22 @@ from services.vision_observation_service._implementation import (
     _extract_camera_name_from_s3_key,
     _format_roi_hint,
     _is_legacy_observation,
+    _normalize_image_bytes_for_llm,
     _state_definition_type,
     generate_observation,
     get_configuration_prompt,
 )
+
+
+def _test_image_bytes(
+    image_format: str = "JPEG",
+    mode: str = "RGB",
+    size: tuple[int, int] = (20, 20),
+) -> bytes:
+    image = Image.new(mode, size, (255, 0, 0))
+    buffer = BytesIO()
+    image.save(buffer, format=image_format)
+    return buffer.getvalue()
 
 
 class TestBuildEntityStateSchema:
@@ -150,6 +165,35 @@ class TestExtractCameraNameFromS3Key:
 
     def test_empty_string(self):
         assert _extract_camera_name_from_s3_key("") is None
+
+
+class TestNormalizeImageBytesForLlm:
+    """Tests for preparing images before they are sent to multimodal providers."""
+
+    def test_converts_png_to_verified_jpeg(self):
+        normalized = _normalize_image_bytes_for_llm(
+            _test_image_bytes(image_format="PNG"),
+            "test image",
+        )
+
+        assert normalized.startswith(b"\xff\xd8")
+        with Image.open(BytesIO(normalized)) as image:
+            assert image.format == "JPEG"
+            assert image.mode == "RGB"
+            assert image.size == (20, 20)
+
+    def test_downscales_large_images(self):
+        normalized = _normalize_image_bytes_for_llm(
+            _test_image_bytes(size=(5000, 20)),
+            "large test image",
+        )
+
+        with Image.open(BytesIO(normalized)) as image:
+            assert max(image.size) <= 4096
+
+    def test_rejects_invalid_image_bytes(self):
+        with pytest.raises(ValueError, match="not a valid processable image"):
+            _normalize_image_bytes_for_llm(b"not-an-image", "bad test image")
 
 
 class TestLegacyObservationParsing:
@@ -399,7 +443,7 @@ class TestGenerateObservation:
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = llm_result
 
-        fake_image_bytes = b"fake-s3-image"
+        fake_image_bytes = _test_image_bytes()
 
         with (
             patch(
@@ -819,7 +863,7 @@ class TestGenerateObservation:
                 session,
                 config_id,
                 image_url=image_url,
-                image_bytes=b"fake-image-data",
+                image_bytes=_test_image_bytes(image_format="PNG"),
                 observed_at=observed_at,
             )
 
@@ -862,6 +906,133 @@ class TestGenerateObservation:
             event = event_create_args.args[0]
             assert event.observed_at == observed_at
             assert event.frame_s3_key == image_url
+            analyze_args = mock_llm_provider.analyze_image.call_args.args
+            camera_image_bytes = base64.b64decode(analyze_args[3])
+            assert camera_image_bytes.startswith(b"\xff\xd8")
+
+    @pytest.mark.asyncio
+    async def test_unprocessable_gemini_image_returns_skipped_observation(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.enabled = True
+        mock_config.llm_prompt = "Kitchen camera"
+        mock_config.llm_provider = "google"
+        mock_config.llm_model = "gemini-2.0-flash"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.name = "oven_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
+        mock_entity.entity_metadata = {}
+
+        mock_state_def = MagicMock()
+        mock_state_def.id = uuid.uuid4()
+        mock_state_def.name = "on"
+        mock_state_def.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "oven"
+        mock_entity_type.display_name = "Oven"
+
+        exact_reason = "Unable to process input image. Please retry"
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.side_effect = RuntimeError(
+            "400 INVALID_ARGUMENT. {'error': {'code': 400, "
+            f"'message': '{exact_reason}', "
+            "'status': 'INVALID_ARGUMENT'}}"
+        )
+        observed_at = datetime(2026, 2, 12, 16, 52, 25, tzinfo=timezone.utc)
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.logger.warning"
+            ) as mock_warning,
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+            mock_event_repo_cls.return_value.create = AsyncMock()
+
+            result = await generate_observation(
+                session,
+                config_id,
+                image_bytes=_test_image_bytes(),
+                observed_at=observed_at,
+            )
+
+            assert result is not None
+            assert result.observed_at == observed_at
+            assert result.entity_observations == []
+            assert result.raw_llm_response["skip_reason"] == "unprocessable_image"
+            assert result.raw_llm_response["gemini_refusal_reason"] == exact_reason
+            assert result.token_usage == {
+                "observed": False,
+                "image_relevant": False,
+                "skip_reason": "unprocessable_image",
+            }
+            refusal_log = next(
+                call
+                for call in mock_warning.call_args_list
+                if call.args
+                and call.args[0]
+                == "[Vision Observation] LLM could not process image, skipping observation"
+            )
+            assert refusal_log.kwargs["extra"]["gemini_refusal_reason"] == exact_reason
+            mock_entity_repo_cls.return_value.update.assert_not_awaited()
+            mock_event_repo_cls.return_value.create.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_observation_skips_when_current_metadata_matches(self):
@@ -964,7 +1135,9 @@ class TestGenerateObservation:
             )
             mock_event_repo_cls.return_value.create = AsyncMock()
 
-            await generate_observation(session, config_id, image_bytes=b"frame")
+            await generate_observation(
+                session, config_id, image_bytes=_test_image_bytes()
+            )
 
             mock_entity_repo_cls.return_value.update.assert_not_awaited()
             mock_event_repo_cls.return_value.create.assert_not_awaited()
@@ -1062,7 +1235,9 @@ class TestGenerateObservation:
             )
             mock_event_repo_cls.return_value.create = AsyncMock()
 
-            await generate_observation(session, config_id, image_bytes=b"frame")
+            await generate_observation(
+                session, config_id, image_bytes=_test_image_bytes()
+            )
 
             update_args = mock_entity_repo_cls.return_value.update.await_args
             assert update_args is not None
@@ -1186,7 +1361,7 @@ class TestGenerateObservation:
             mock_event_repo_cls.return_value.create = AsyncMock()
 
             result = await generate_observation(
-                session, config_id, image_bytes=b"frame-data"
+                session, config_id, image_bytes=_test_image_bytes()
             )
 
             assert result is not None
@@ -1280,7 +1455,7 @@ class TestGenerateObservation:
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = llm_result
 
-        fake_image_bytes = b"fake-s3-image-content"
+        fake_image_bytes = _test_image_bytes()
         image_url = (
             "security/cameras/account/project/chica-cam-08/images/"
             "2026-06-09/2026-06-09_18-51-35.jpg"
@@ -1402,7 +1577,7 @@ class TestGenerateObservation:
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = llm_result
 
-        ref_image_bytes = b"reference-image-bytes"
+        ref_image_bytes = _test_image_bytes()
 
         with (
             patch(
@@ -1454,12 +1629,19 @@ class TestGenerateObservation:
             )
 
             result = await generate_observation(
-                session, config_id, image_bytes=b"camera-frame"
+                session, config_id, image_bytes=_test_image_bytes()
             )
 
             assert result is not None
             assert result.camera_id == config_id
             assert len(result.entity_observations) == 1
+            analyze_args = mock_llm_provider.analyze_image.call_args.args
+            reference_images = analyze_args[2]
+            assert len(reference_images) == 2
+            assert all(
+                base64.b64decode(ref_img["base64_data"]).startswith(b"\xff\xd8")
+                for ref_img in reference_images
+            )
 
     @pytest.mark.asyncio
     async def test_unknown_entity_in_response_skipped(self):
@@ -1552,7 +1734,7 @@ class TestGenerateObservation:
             )
 
             result = await generate_observation(
-                session, config_id, image_bytes=b"frame-data"
+                session, config_id, image_bytes=_test_image_bytes()
             )
 
             assert result is not None

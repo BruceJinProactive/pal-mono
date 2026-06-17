@@ -102,6 +102,42 @@ class TestCreateObservation:
             assert exc_info.value.status_code == 500
 
     @pytest.mark.asyncio
+    async def test_unprocessable_image_skip_response_does_not_raise_http_error(self):
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        observed_at = datetime(2026, 2, 12, 16, 52, 25, tzinfo=timezone.utc)
+
+        expected_response = GenerateObservationResponse(
+            camera_id=config_id,
+            observed_at=observed_at,
+            entity_observations=[],
+            raw_llm_response={
+                "error": "Unable to process input image",
+                "skip_reason": "unprocessable_image",
+            },
+            token_usage={
+                "observed": False,
+                "image_relevant": False,
+                "skip_reason": "unprocessable_image",
+            },
+        )
+
+        with patch(
+            "services.vision_observation_service.generate_observation",
+            new_callable=AsyncMock,
+            return_value=expected_response,
+        ):
+            result = await create_observation(
+                camera_id=config_id,
+                image_url="test/image.jpg",
+                image=None,
+                session=session,
+            )
+
+            assert result.entity_observations == []
+            assert result.token_usage["skip_reason"] == "unprocessable_image"
+
+    @pytest.mark.asyncio
     async def test_success_with_image_url(self):
         session = AsyncMock()
         config_id = uuid.uuid4()

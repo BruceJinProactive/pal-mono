@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import base64
 import uuid
 from datetime import datetime, timezone
+from io import BytesIO
 from typing import Any
 
+from PIL import Image, ImageOps
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.vision_observation import (
@@ -41,12 +44,67 @@ from services.vision_state_metadata import (
 from utils.log import logger
 from utils.vision_capture_time import parse_utc_capture_time_from_path
 
+_MAX_LLM_IMAGE_DIMENSION = 4096
+_MIN_LLM_IMAGE_DIMENSION = 10
+_MIN_LLM_IMAGE_BYTES = 100
+
 
 async def _fetch_s3_bytes(s3_client: Any, key: str) -> bytes:
     response = await asyncio.to_thread(
         s3_client.get_object, Bucket=AWS_ASSET_BUCKET_NAME, Key=key
     )
     return await asyncio.to_thread(response["Body"].read)
+
+
+def _normalize_image_bytes_for_llm(image_bytes: bytes, image_label: str) -> bytes:
+    if not image_bytes:
+        raise ValueError(f"{image_label} bytes are empty (0 bytes)")
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as image:
+            pil_image = ImageOps.exif_transpose(image)
+            width, height = pil_image.size
+            if width < _MIN_LLM_IMAGE_DIMENSION or height < _MIN_LLM_IMAGE_DIMENSION:
+                raise ValueError(
+                    f"{image_label} is too small for LLM processing "
+                    f"({width}x{height})"
+                )
+
+            if width > _MAX_LLM_IMAGE_DIMENSION or height > _MAX_LLM_IMAGE_DIMENSION:
+                logger.warning(
+                    "[Vision Observation] Image too large, resizing before LLM",
+                    extra={
+                        "image_label": image_label,
+                        "width": width,
+                        "height": height,
+                        "max_dimension": _MAX_LLM_IMAGE_DIMENSION,
+                    },
+                )
+                pil_image.thumbnail(
+                    (_MAX_LLM_IMAGE_DIMENSION, _MAX_LLM_IMAGE_DIMENSION),
+                    Image.Resampling.LANCZOS,
+                )
+
+            image_mode = getattr(pil_image, "mode", "RGB")
+            if isinstance(image_mode, str) and image_mode != "RGB":
+                pil_image = pil_image.convert("RGB")
+
+            buffer = BytesIO()
+            pil_image.save(buffer, format="JPEG", quality=85)
+            normalized_bytes = buffer.getvalue()
+
+        if len(normalized_bytes) < _MIN_LLM_IMAGE_BYTES:
+            raise ValueError(
+                f"{image_label} produced a suspiciously small JPEG "
+                f"({len(normalized_bytes)} bytes)"
+            )
+
+        Image.open(BytesIO(normalized_bytes)).verify()
+        return normalized_bytes
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"{image_label} is not a valid processable image") from e
 
 
 def _build_entity_state_schema(
@@ -165,6 +223,28 @@ def _is_legacy_observation(observation: dict[str, Any]) -> bool:
         or observation.get("format") == "legacy"
         or definition_type == LEGACY_CURRENT_STATE_TYPE
     )
+
+
+def _is_unprocessable_image_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return "unable to process input image" in message
+
+
+def _gemini_refusal_reason(error: Exception) -> str:
+    message = str(error)
+    payload_start = message.find("{")
+    if payload_start >= 0:
+        try:
+            payload = ast.literal_eval(message[payload_start:])
+        except (SyntaxError, ValueError):
+            payload = None
+        if isinstance(payload, dict):
+            error_payload = payload.get("error")
+            if isinstance(error_payload, dict):
+                reason = error_payload.get("message")
+                if isinstance(reason, str) and reason.strip():
+                    return reason.strip()
+    return message
 
 
 def _format_roi_hint(roi_hint: dict[str, object] | None) -> str | None:
@@ -518,10 +598,17 @@ async def generate_observation(
                 continue
             try:
                 img_bytes = await _fetch_s3_bytes(s3_client, ref_img["url"])
+                normalized_img_bytes = await asyncio.to_thread(
+                    _normalize_image_bytes_for_llm,
+                    img_bytes,
+                    f"reference image {ref_img['url']}",
+                )
                 reference_images.append(
                     {
                         "description": ref_img.get("description", "Reference image"),
-                        "base64_data": base64.b64encode(img_bytes).decode("utf-8"),
+                        "base64_data": base64.b64encode(normalized_img_bytes).decode(
+                            "utf-8"
+                        ),
                     }
                 )
             except Exception as e:
@@ -532,10 +619,20 @@ async def generate_observation(
     if image_bytes is not None:
         if len(image_bytes) == 0:
             raise ValueError("Provided image bytes are empty (0 bytes)")
-        camera_image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+        camera_image_bytes = await asyncio.to_thread(
+            _normalize_image_bytes_for_llm,
+            image_bytes,
+            "uploaded camera image",
+        )
+        camera_image_base64 = base64.b64encode(camera_image_bytes).decode("utf-8")
     elif image_url:
         camera_image_raw = await _fetch_s3_bytes(s3_client, image_url)
-        camera_image_base64 = base64.b64encode(camera_image_raw).decode("utf-8")
+        camera_image_bytes = await asyncio.to_thread(
+            _normalize_image_bytes_for_llm,
+            camera_image_raw,
+            f"camera image {image_url}",
+        )
+        camera_image_base64 = base64.b64encode(camera_image_bytes).decode("utf-8")
     else:
         raise ValueError("Either image_url or image file must be provided")
 
@@ -545,29 +642,6 @@ async def generate_observation(
         model=config.llm_model,
     )
     llm_provider = await asyncio.to_thread(create_monitoring_llm_provider, llm_config)
-
-    logger.info(
-        "[Vision Observation] Generating observation",
-        extra={
-            "camera_id": str(camera_id),
-            "config_id": str(camera_config_id),
-            "provider": config.llm_provider,
-            "model": config.llm_model,
-            "entity_count": len(entities_with_states),
-        },
-    )
-
-    llm_result = await asyncio.to_thread(
-        llm_provider.analyze_image,
-        system_prompt,
-        config.llm_prompt,
-        reference_images,
-        camera_image_base64,
-        response_format,
-    )
-
-    raw_response = llm_result["result"]
-    token_usage = llm_result.get("token_usage", {})
     parsed_observed_at = parse_utc_capture_time_from_path(image_url)
     if observed_at is None and parsed_observed_at is None and image_url:
         logger.warning(
@@ -581,6 +655,61 @@ async def generate_observation(
             },
         )
     observed_at = observed_at or parsed_observed_at or datetime.now(timezone.utc)
+
+    logger.info(
+        "[Vision Observation] Generating observation",
+        extra={
+            "camera_id": str(camera_id),
+            "config_id": str(camera_config_id),
+            "provider": config.llm_provider,
+            "model": config.llm_model,
+            "entity_count": len(entities_with_states),
+        },
+    )
+
+    try:
+        llm_result = await asyncio.to_thread(
+            llm_provider.analyze_image,
+            system_prompt,
+            config.llm_prompt,
+            reference_images,
+            camera_image_base64,
+            response_format,
+        )
+    except Exception as e:
+        if _is_unprocessable_image_error(e):
+            gemini_refusal_reason = _gemini_refusal_reason(e)
+            logger.warning(
+                "[Vision Observation] LLM could not process image, skipping observation",
+                extra={
+                    "camera_id": str(camera_id),
+                    "config_id": str(camera_config_id),
+                    "provider": config.llm_provider,
+                    "model": config.llm_model,
+                    "image_url": image_url,
+                    "error": str(e),
+                    "gemini_refusal_reason": gemini_refusal_reason,
+                },
+            )
+            return GenerateObservationResponse(
+                camera_id=camera_id,
+                observed_at=observed_at,
+                entity_observations=[],
+                raw_llm_response={
+                    "error": str(e),
+                    "gemini_refusal_reason": gemini_refusal_reason,
+                    "skip_reason": "unprocessable_image",
+                },
+                token_usage={
+                    "observed": False,
+                    "image_relevant": False,
+                    "skip_reason": "unprocessable_image",
+                },
+            )
+        raise
+
+    raw_response = llm_result["result"]
+    token_usage = llm_result.get("token_usage", {})
 
     image_relevant = raw_response.get("image_relevant", True)
     if not image_relevant:
