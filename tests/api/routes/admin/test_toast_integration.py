@@ -4,20 +4,31 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
-from api.routes.admin._integration import _compile_toast_config
+from api.routes.admin._integration import (
+    _compile_toast_config,
+    _stamp_manual_toast_menu_update_metadata,
+    create_project_integration,
+    update_project_integration,
+)
 from api.routes.admin._toast_integration import (
     _extract_menu_names,
     _parse_dining_options,
     _suggest_guids,
     get_toast_options,
 )
-from api.schemas.admin.integration import CreateProjectIntegrationRequest
+from api.schemas.admin.integration import (
+    CreateProjectIntegrationRequest,
+    UpdateProjectIntegrationRequest,
+)
 from api.schemas.admin.pos_onboarding import DiningOption
+from services.integration_service.schema import ProjectIntegrationParams
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -514,6 +525,90 @@ class TestCompileToastConfig:
         assert result.config["menu_data"] == compiled
         assert result.config["takeout_dining_option_guid"] == "t-guid"
         assert result.config["submit_orders"] is False
+        assert result.config["menu_last_updated_source"] == "manage_app"
+        datetime.fromisoformat(result.config["menu_last_updated"])
+
+    def test_stamps_manual_menu_metadata_when_absent(self) -> None:
+        config = {
+            "restaurant_guid": "rest-guid-123",
+            "menu_data": {"items": []},
+        }
+
+        result = _stamp_manual_toast_menu_update_metadata(config)
+
+        assert result is not None
+        assert result["menu_last_updated_source"] == "manage_app"
+        datetime.fromisoformat(result["menu_last_updated"])
+
+    def test_preserves_existing_manual_menu_metadata_when_menu_data_is_unchanged(
+        self,
+    ) -> None:
+        existing_config = {
+            "restaurant_guid": "rest-guid-123",
+            "menu_data": {"items": []},
+            "menu_last_updated": "2026-05-14T12:00:00+00:00",
+            "menu_last_updated_source": "webhook",
+        }
+        config = {
+            "restaurant_guid": "rest-guid-123",
+            "menu_data": {"items": []},
+            "menu_last_updated": "2026-05-14T12:00:00+00:00",
+            "menu_last_updated_source": "webhook",
+        }
+
+        result = _stamp_manual_toast_menu_update_metadata(config, existing_config)
+
+        assert result is not None
+        assert result["menu_last_updated"] == "2026-05-14T12:00:00+00:00"
+        assert result["menu_last_updated_source"] == "webhook"
+
+    def test_preserves_existing_manual_menu_metadata_when_incoming_config_omits_it(
+        self,
+    ) -> None:
+        existing_config = {
+            "restaurant_guid": "rest-guid-123",
+            "menu_data": {"items": []},
+            "menu_last_updated": "2026-05-14T12:00:00+00:00",
+            "menu_last_updated_source": "webhook",
+        }
+        config = {
+            "restaurant_guid": "rest-guid-123",
+            "menu_data": {"items": []},
+        }
+
+        result = _stamp_manual_toast_menu_update_metadata(config, existing_config)
+
+        assert result is not None
+        assert result["menu_last_updated"] == "2026-05-14T12:00:00+00:00"
+        assert result["menu_last_updated_source"] == "webhook"
+
+    def test_refreshes_manual_menu_metadata_when_menu_data_changes(self) -> None:
+        existing_config = {
+            "restaurant_guid": "rest-guid-123",
+            "menu_data": {"items": [{"name": "old"}]},
+            "menu_last_updated": "2026-05-14T12:00:00+00:00",
+            "menu_last_updated_source": "webhook",
+        }
+        config = {
+            "restaurant_guid": "rest-guid-123",
+            "menu_data": {"items": [{"name": "new"}]},
+            "menu_last_updated": "2026-05-14T12:00:00+00:00",
+            "menu_last_updated_source": "webhook",
+        }
+
+        result = _stamp_manual_toast_menu_update_metadata(config, existing_config)
+
+        assert result is not None
+        assert result["menu_last_updated"] != "2026-05-14T12:00:00+00:00"
+        assert result["menu_last_updated_source"] == "manage_app"
+        datetime.fromisoformat(result["menu_last_updated"])
+
+    def test_does_not_stamp_manual_metadata_without_menu_data(self) -> None:
+        config = {"restaurant_guid": "rest-guid-123"}
+
+        result = _stamp_manual_toast_menu_update_metadata(config)
+
+        assert result == config
 
     def test_raises_404_when_integration_missing(self) -> None:
         req = self._make_request()
@@ -545,3 +640,134 @@ class TestCompileToastConfig:
             with pytest.raises(HTTPException) as exc:
                 _compile_toast_config(req, uuid.uuid4())
         assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_project_integration_stamps_manual_toast_menu_metadata() -> None:
+    project_id = uuid.uuid4()
+    integration_id = uuid.uuid4()
+    session = MagicMock()
+    req = CreateProjectIntegrationRequest(
+        integration_id=integration_id,
+        store_identifier="rest-guid-123",
+        tool_name="toast_v3",
+        config={
+            "restaurant_guid": "rest-guid-123",
+            "menu_data": {"items": []},
+            "takeout_dining_option_guid": "takeout-guid",
+        },
+        auto_fetch=False,
+    )
+
+    def _create_project_integration(
+        *,
+        params: ProjectIntegrationParams,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=uuid.uuid4(),
+            project_id=project_id,
+            integration_id=integration_id,
+            store_identifier=req.store_identifier,
+            tool_name=req.tool_name,
+            config=params.config,
+            created_at=datetime.now(),
+        )
+
+    with (
+        patch("api.routes.admin._integration.db.ProjectRepository") as repo_cls,
+        patch(
+            "api.routes.admin._integration.integration_service.create_project_integration",
+            side_effect=_create_project_integration,
+        ) as mock_create,
+    ):
+        repo_cls.return_value.get_project.return_value = SimpleNamespace(
+            id=project_id,
+            account_id=uuid.uuid4(),
+        )
+
+        result = await create_project_integration(
+            project_id,
+            req,
+            _make_context(),
+            session,
+        )
+
+    params = mock_create.call_args.kwargs["params"]
+    assert params.config["menu_last_updated_source"] == "manage_app"
+    datetime.fromisoformat(params.config["menu_last_updated"])
+    assert result.config["menu_last_updated_source"] == "manage_app"
+
+
+@pytest.mark.asyncio
+async def test_update_project_integration_stamps_changed_manual_toast_menu_metadata() -> (
+    None
+):
+    project_id = uuid.uuid4()
+    project_integration_id = uuid.uuid4()
+    integration_id = uuid.uuid4()
+    session = MagicMock()
+    existing_config = {
+        "restaurant_guid": "rest-guid-123",
+        "menu_data": {"items": [{"name": "old"}]},
+        "menu_last_updated": "2026-05-14T12:00:00+00:00",
+        "menu_last_updated_source": "webhook",
+    }
+    req = UpdateProjectIntegrationRequest(
+        config={
+            "restaurant_guid": "rest-guid-123",
+            "menu_data": {"items": [{"name": "new"}]},
+            "menu_last_updated": "2026-05-14T12:00:00+00:00",
+            "menu_last_updated_source": "webhook",
+        },
+    )
+    db_project_integration = SimpleNamespace(
+        id=project_integration_id,
+        project_id=project_id,
+        integration_id=integration_id,
+        store_identifier="rest-guid-123",
+        tool_name="toast_v3",
+        config=existing_config,
+        created_at=datetime.now(),
+    )
+
+    def _update_project_integration(
+        *,
+        params: ProjectIntegrationParams,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=project_integration_id,
+            project_id=project_id,
+            integration_id=integration_id,
+            store_identifier="rest-guid-123",
+            tool_name="toast_v3",
+            config=params.config,
+            created_at=datetime.now(),
+        )
+
+    with (
+        patch("api.routes.admin._integration.db.ProjectRepository") as repo_cls,
+        patch(
+            "api.routes.admin._integration.integration_service.get_project_integration_by_id",
+            return_value=db_project_integration,
+        ),
+        patch(
+            "api.routes.admin._integration.integration_service.update_project_integration",
+            side_effect=_update_project_integration,
+        ) as mock_update,
+    ):
+        repo_cls.return_value.get_project.return_value = SimpleNamespace(id=project_id)
+
+        result = await update_project_integration(
+            project_id,
+            project_integration_id,
+            req,
+            _make_context(),
+            session,
+        )
+
+    params = mock_update.call_args.kwargs["params"]
+    assert params.config["menu_last_updated"] != "2026-05-14T12:00:00+00:00"
+    assert params.config["menu_last_updated_source"] == "manage_app"
+    assert result.config["menu_last_updated_source"] == "manage_app"

@@ -573,6 +573,7 @@ def _update_toast_menu_config(
     updated_config = dict(config or {})
     updated_config["menu_data"] = menu_data
     updated_config["menu_last_updated"] = menu_last_updated
+    updated_config["menu_last_updated_source"] = "webhook"
     return updated_config
 
 

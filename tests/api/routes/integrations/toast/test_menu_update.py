@@ -233,6 +233,7 @@ async def test_update_menu_content_generates_and_persists_toast_menu_assets() ->
         "make_unique": False,
         "menu_data": compiled_menu,
         "menu_last_updated": "2026-05-14T12:00:00.000Z",
+        "menu_last_updated_source": "webhook",
     }
     session.add.assert_any_call(project)
     session.add.assert_any_call(project_integration)
@@ -287,6 +288,7 @@ async def test_update_menu_content_skips_disabled_project_integrations() -> None
         "auto_update_menu_on_webhook": True,
         "menu_data": compiled_menu,
         "menu_last_updated": "2026-05-14T12:00:00.000Z",
+        "menu_last_updated_source": "webhook",
     }
     assert disabled_project.product_info == "old menu"
     assert disabled_integration.config == {"auto_update_menu_on_webhook": False}

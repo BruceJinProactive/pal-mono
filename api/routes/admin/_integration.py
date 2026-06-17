@@ -1,6 +1,7 @@
 """Integration route handlers."""
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from pal_agents.menu_assets.toast.compiler import compile_toast_menu_v2
@@ -32,6 +33,45 @@ from ._builder import (
     build_project_integration_summary,
 )
 from ._utils import UserContext, not_found_error
+
+TOAST_MENU_LAST_UPDATED_SOURCE_MANAGE_APP = "manage_app"
+
+
+def _utc_now_isoformat() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _stamp_manual_toast_menu_update_metadata(
+    config: dict | None,
+    existing_config: dict | None = None,
+) -> dict | None:
+    """Stamp Toast menu metadata for Manage App saves that carry menu_data."""
+    if config is None or config.get("menu_data") is None:
+        return config
+
+    updated_config = dict(config)
+    existing_menu_data = (existing_config or {}).get("menu_data")
+    menu_data_changed = (
+        existing_config is None or config.get("menu_data") != existing_menu_data
+    )
+    if not menu_data_changed and existing_config:
+        for metadata_key in ("menu_last_updated", "menu_last_updated_source"):
+            if not updated_config.get(metadata_key) and existing_config.get(
+                metadata_key
+            ):
+                updated_config[metadata_key] = existing_config[metadata_key]
+
+    metadata_missing = not updated_config.get(
+        "menu_last_updated"
+    ) or not updated_config.get("menu_last_updated_source")
+
+    if menu_data_changed or metadata_missing:
+        updated_config["menu_last_updated"] = _utc_now_isoformat()
+        updated_config["menu_last_updated_source"] = (
+            TOAST_MENU_LAST_UPDATED_SOURCE_MANAGE_APP
+        )
+
+    return updated_config
 
 
 def _compile_toast_config(
@@ -148,6 +188,7 @@ def _compile_toast_config(
         "delivery_dining_option_guid": delivery_guid,
         "submit_orders": config.get("submit_orders", False),
     }
+    compiled_config = _stamp_manual_toast_menu_update_metadata(compiled_config) or {}
 
     logger.info(
         "[ToastIntegration] Menu compiled for project integration",
@@ -393,6 +434,14 @@ async def create_project_integration(
         project_integration = await run_in_threadpool(
             _compile_toast_config, project_integration, project.account_id
         )
+    elif project_integration.tool_name == "toast_v3":
+        project_integration = project_integration.model_copy(
+            update={
+                "config": _stamp_manual_toast_menu_update_metadata(
+                    project_integration.config
+                )
+            }
+        )
 
     created_project_integration = integration_service.create_project_integration(
         session=session,
@@ -429,6 +478,18 @@ async def update_project_integration(
 
     # Get the integration_id from the existing project integration
     integration_id = db_project_integration.integration_id
+    effective_tool_name = (
+        project_integration.tool_name or db_project_integration.tool_name
+    )
+    if effective_tool_name == "toast_v3" and project_integration.config is not None:
+        project_integration = project_integration.model_copy(
+            update={
+                "config": _stamp_manual_toast_menu_update_metadata(
+                    project_integration.config,
+                    db_project_integration.config,
+                )
+            }
+        )
 
     updated_project_integration = integration_service.update_project_integration(
         session=session,
