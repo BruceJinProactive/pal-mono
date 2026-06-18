@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-18
 
+- **Client onboarding lifecycle storage schema.** Added schema-only storage for the contract-to-account onboarding MVP: `client_onboarding_lifecycles` for canonical lifecycle state, `client_onboarding_activity` for append-only activity history, and `client_onboarding_sync_jobs` for idempotent external sync work. Migration: `128e03e17ca5`.
 - **Empty tray vision rule workflow.** `empty_tray` rules now create rule events
   for `food_tray` entities when the observed state transitions from `not_empty`
   to `empty`; the workflow uses the event's `definition_type` for prior-state

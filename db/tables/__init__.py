@@ -17,6 +17,17 @@ from .catering_request_activities import (
 )
 from .catering_requests import CateringRequest, FulfillmentType, RequestStatus
 from .change_log import ChangeAction, ChangeField, ChangeLog
+from .client_onboarding import (
+    ClientOnboardingActivity,
+    ClientOnboardingActivitySource,
+    ClientOnboardingActorType,
+    ClientOnboardingContractType,
+    ClientOnboardingLifecycle,
+    ClientOnboardingStatus,
+    ClientOnboardingSyncJob,
+    ClientOnboardingSyncJobStatus,
+    ClientOnboardingSyncTarget,
+)
 from .contacts import Contact
 from .conversations import Conversation, ConversationStatus
 from .credit_grants import CreditGrant
