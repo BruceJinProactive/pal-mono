@@ -276,6 +276,13 @@ RULE_TYPE_WORKFLOWS: dict[str, RuleWorkflow] = {
         state_definition_type="presence",
         handler=_handle_state_transition_rule,
     ),
+    "empty_tray": RuleWorkflow(
+        entity_type_name="food_tray",
+        previous_state="not_empty",
+        trigger_state="empty",
+        state_definition_type=None,
+        handler=_handle_state_transition_rule,
+    ),
 }
 
 

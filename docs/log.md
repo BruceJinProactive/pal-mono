@@ -4,6 +4,13 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-18
+
+- **Empty tray vision rule workflow.** `empty_tray` rules now create rule events
+  for `food_tray` entities when the observed state transitions from `not_empty`
+  to `empty`; the workflow uses the event's `definition_type` for prior-state
+  duration resolution. -> `docs/state/architecture.md`
+
 ## 2026-06-17
 
 - **Contract-to-account onboarding MVP/post-MVP rewrite.** Reworked the PRD and implementation plan around the comment-reviewed AE-led MVP flow: DocuSign contract prepared manually by AE, Manage App account creation and invite send, DocuSign-first Admin Console onboarding, password setup, and post-signature Slack/Notion/Folk/FDE handoff automation. The plan now separates MVP phases from post-MVP visibility, reminder, RBAC/location, and repair work. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-15
+> **Last updated:** 2026-06-18
 
 ## Quick Reference
 
@@ -239,11 +239,11 @@ timestamped image filename to `YYYY-MM-DD_HH-MM-00.mp4`.
 
 Vision state-change events also drive lightweight rule workflows in
 `services/vision_observation_service/_workflow.py`. Each workflow is selected by
-`vision_rule.type` and owns its entity-type, state-definition type, and
+`vision_rule.type` and owns its entity-type, optional state-definition type, and
 transition validation. Current workflows cover `table_cleanness`,
 `table_occupied`, `table_touch`, `glove_usage`, `food_container_on_ground`,
-`manager_in_room`, `staff_at_front_desk`, and `guest_visiting_menu_board`.
-Matched workflows write linked
+`manager_in_room`, `staff_at_front_desk`, `guest_visiting_menu_board`, and
+`empty_tray`. Matched workflows write linked
 `vision_rule_event` rows through the repository layer. Test events marked with
 `event_metadata.is_test == True` are persisted as state changes but skipped by
 rule workflows. Rules can carry empty-default text-array `label` values, and
@@ -273,9 +273,11 @@ that format, Vision logs a warning and falls back to backend processing time.
 The resolved `observed_at` is reused for entity current-state metadata,
 state-change events, and downstream rule-event trigger time.
 
-The `visionruletype` database enum also accepts `guest_visiting_menu_board`,
-`empty_tray`, `people_queued_up`, and `floor_cleanness` rule records for
-manage-app configuration.
+The `empty_tray` workflow matches `food_tray` entities transitioning from
+`not_empty` to `empty` and uses the event's `definition_type` when resolving
+prior-state duration. The `visionruletype` database enum also accepts
+`people_queued_up` and `floor_cleanness` rule records for manage-app
+configuration, but they do not have rule workflows yet.
 
 Vision entities can track one current state per state-definition type. The
 legacy `vision_entity.current_state_id` and `current_state_since` columns remain

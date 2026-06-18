@@ -245,6 +245,13 @@ class TestHandleStateChangeRules:
                 "people_present",
                 "presence",
             ),
+            (
+                "empty_tray",
+                "food_tray",
+                "not_empty",
+                "empty",
+                "tray_status",
+            ),
         ],
     )
     @pytest.mark.asyncio
