@@ -84,7 +84,7 @@ def test_build_payment_sms_uses_store_name_without_order_summary() -> None:
 
     assert sms.text is not None
     assert sms.text.body == (
-        "Toast Store: checkout is ready for your order.\n\n"
+        "Your order at Toast Store is ready for payment.\n\n"
         "Total: $24.18\n"
         "Order summary is available on the payment page:\n"
         f"{checkout_url}"
@@ -120,7 +120,7 @@ def test_build_payment_sms_falls_back_to_restaurant_name() -> None:
 
     assert sms.text is not None
     assert sms.text.body == (
-        "Restaurant: checkout is ready for your order.\n\n"
+        "Your order is ready for payment.\n\n"
         "Total: $24.18\n"
         "Order summary is available on the payment page:\n"
         f"{checkout_url}"
@@ -351,7 +351,7 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
     assert stored_sessions[0].expires_at > datetime.now(timezone.utc)
     assert len(sent_messages) == 1
     assert sent_messages[0].text.body == (
-        "Toast Store: checkout is ready for your order.\n\n"
+        "Your order at Toast Store is ready for payment.\n\n"
         "Total: $35.00\n"
         "Order summary is available on the payment page:\n"
         f"{result.checkout_url}"

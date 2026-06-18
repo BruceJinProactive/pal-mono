@@ -249,11 +249,16 @@ def _build_payment_sms(
     payload: ToastCheckoutPayload,
     broker: Broker | None = None,
 ) -> Message:
-    store_name = payload.store_name.strip() if payload.store_name else "Restaurant"
-    store_name = _truncate_text(store_name, 80) or "Restaurant"
+    store_name = payload.store_name.strip() if payload.store_name else ""
+    store_name = _truncate_text(store_name, 80)
+    payment_intro = (
+        f"Your order at {store_name} is ready for payment."
+        if store_name
+        else "Your order is ready for payment."
+    )
     total_line = f"Total: {_format_payment_amount(payload.amount_cents)}"
     sms_body = (
-        f"{store_name}: checkout is ready for your order.\n\n"
+        f"{payment_intro}\n\n"
         f"{total_line}\n"
         "Order summary is available on the payment page:\n"
         f"{checkout_url}"
