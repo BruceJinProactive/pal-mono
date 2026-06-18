@@ -35,6 +35,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 - **Toast lookup tool-result cache payloads.** Preserved `get_toast_item_details_v3` lookup envelopes (`kind` plus `results`) through the ElastiCache sanitizer so `<previous_tool_results>` can render structured Toast lookup details instead of falling back to the generic lookup summary. -> `docs/plans/tool-result-elasticache-migration.md`
 
+- **Catering request creation activity sources.** Added channel-specific
+  `CateringRequestActivitySource` values for customer email, voice, and
+  internal app request origins, allowing `REQUEST_CREATED` entries to show where
+  a catering request originated without separate source metadata. ->
+  `docs/records/2026-06-07-catering-request-activity-log.md`
+
 ---
 
 ## 2026-06-15

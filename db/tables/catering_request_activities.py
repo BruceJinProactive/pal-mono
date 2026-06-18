@@ -44,7 +44,10 @@ class CateringRequestActivityActorType(str, enum.Enum):
 
 class CateringRequestActivitySource(str, enum.Enum):
     ADMIN_CONSOLE = "ADMIN_CONSOLE"
+    CUSTOMER_EMAIL = "CUSTOMER_EMAIL"
     CUSTOMER_SMS = "CUSTOMER_SMS"
+    CUSTOMER_VOICE = "CUSTOMER_VOICE"
+    INTERNAL_APP = "INTERNAL_APP"
     SYSTEM_JOB = "SYSTEM_JOB"
     AI_AGENT = "AI_AGENT"
     TOAST = "TOAST"
