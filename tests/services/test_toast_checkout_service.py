@@ -53,7 +53,7 @@ def test_format_order_summary_normalizes_item_fallbacks() -> None:
     assert summary == "Smoothie x1, Cookie x1.5, Tea x2, Item x1, Water x1"
 
 
-def test_build_payment_sms_caps_long_order_summary() -> None:
+def test_build_payment_sms_uses_store_name_without_order_summary() -> None:
     from services.toast_checkout_service import _implementation as service
 
     checkout_url = "https://payment.palona.link/abc123"
@@ -72,6 +72,7 @@ def test_build_payment_sms_caps_long_order_summary() -> None:
         subtotal_cents=2200,
         tax_cents=218,
         store_id="store-id",
+        store_name="Toast Store",
     )
 
     sms = service._build_payment_sms(
@@ -82,8 +83,48 @@ def test_build_payment_sms_caps_long_order_summary() -> None:
     )
 
     assert sms.text is not None
-    assert len(sms.text.body) <= service.SMS_BODY_MAX_CHARS
-    assert checkout_url in sms.text.body
+    assert sms.text.body == (
+        "Toast Store: checkout is ready for your order.\n\n"
+        "Total: $24.18\n"
+        "Order summary is available on the payment page:\n"
+        f"{checkout_url}"
+    )
+    assert "Order summary: " not in sms.text.body
+    assert "Pay here" not in sms.text.body
+    assert "AAAA" not in sms.text.body
+
+
+def test_build_payment_sms_falls_back_to_restaurant_name() -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    checkout_url = "https://payment.palona.link/abc123"
+    payload = service.ToastCheckoutPayload(
+        amount_cents=2418,
+        external_reference_id="external-reference",
+        order_external_id="order-external",
+        customer_email="customer@example.com",
+        customer_name="Customer",
+        customer_phone="+15551234567",
+        order_items=[{"name": "Pizza", "quantity": 1}],
+        subtotal_cents=2200,
+        tax_cents=218,
+        store_id="store-id",
+    )
+
+    sms = service._build_payment_sms(
+        sender_identifier="+15550000000",
+        recipient_identifier="+15551234567",
+        checkout_url=checkout_url,
+        payload=payload,
+    )
+
+    assert sms.text is not None
+    assert sms.text.body == (
+        "Restaurant: checkout is ready for your order.\n\n"
+        "Total: $24.18\n"
+        "Order summary is available on the payment page:\n"
+        f"{checkout_url}"
+    )
 
 
 @pytest.mark.asyncio
@@ -310,10 +351,10 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
     assert stored_sessions[0].expires_at > datetime.now(timezone.utc)
     assert len(sent_messages) == 1
     assert sent_messages[0].text.body == (
-        "Your order is pending payment.\n\n"
-        "Order summary: Pizza x1, Coke x2\n"
-        "Total: $35.00\n\n"
-        f"Pay here: {result.checkout_url}"
+        "Toast Store: checkout is ready for your order.\n\n"
+        "Total: $35.00\n"
+        "Order summary is available on the payment page:\n"
+        f"{result.checkout_url}"
     )
     assert sent_messages[0].recipient_identifier == "+15145609523"
     assert sent_messages[0].broker == Broker.TWILIO

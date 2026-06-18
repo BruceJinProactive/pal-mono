@@ -249,24 +249,14 @@ def _build_payment_sms(
     payload: ToastCheckoutPayload,
     broker: Broker | None = None,
 ) -> Message:
-    order_summary_prefix = "Order summary: "
-    order_summary = _format_order_summary(payload.order_items)
+    store_name = payload.store_name.strip() if payload.store_name else "Restaurant"
+    store_name = _truncate_text(store_name, 80) or "Restaurant"
     total_line = f"Total: {_format_payment_amount(payload.amount_cents)}"
-    payment_line = f"Pay here: {checkout_url}"
-    fixed_body_length = len(
-        "Your order is pending payment.\n\n"
-        + order_summary_prefix
-        + "\n"
-        + total_line
-        + "\n\n"
-        + payment_line
-    )
-    available_summary_chars = SMS_BODY_MAX_CHARS - fixed_body_length
     sms_body = (
-        "Your order is pending payment.\n\n"
-        f"{order_summary_prefix}{_truncate_text(order_summary, available_summary_chars)}\n"
-        f"{total_line}\n\n"
-        f"{payment_line}"
+        f"{store_name}: checkout is ready for your order.\n\n"
+        f"{total_line}\n"
+        "Order summary is available on the payment page:\n"
+        f"{checkout_url}"
     )
     sms_body = _truncate_text(sms_body, SMS_BODY_MAX_CHARS)
     return Message(
