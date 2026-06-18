@@ -33,6 +33,7 @@ from db.pal_repository.catering_request import (
 )
 from db.pal_repository.data_classes.catering_request import CateringRequestData
 from db.session import AsyncSessionLocal
+from db.tables.catering_request_activities import CateringRequestActivitySource
 from db.tables.catering_requests import FulfillmentType
 from db.tables.types import Channel
 from services import (
@@ -277,11 +278,31 @@ def _parse_agent_catering_event_date(raw_value: str | None) -> datetime.date | N
         return None
 
 
+def _get_catering_request_activity_source_for_channel(
+    channel: Channel | None,
+) -> CateringRequestActivitySource:
+    if channel == Channel.EMAIL:
+        return CateringRequestActivitySource.CUSTOMER_EMAIL
+    if channel == Channel.INTERNAL_APP:
+        return CateringRequestActivitySource.INTERNAL_APP
+    if channel == Channel.SMS:
+        return CateringRequestActivitySource.CUSTOMER_SMS
+    if channel == Channel.VOICE:
+        return CateringRequestActivitySource.CUSTOMER_VOICE
+    if channel == Channel.API:
+        return CateringRequestActivitySource.API
+
+    return CateringRequestActivitySource.AI_AGENT
+
+
 async def _persist_catering_details_from_agent(
     session: AsyncSession,
     project_id: uuid.UUID,
     conversation_id: uuid.UUID,
     cd: Any,
+    activity_source: CateringRequestActivitySource = (
+        CateringRequestActivitySource.AI_AGENT
+    ),
 ) -> None:
     raw_event_fulfillment = getattr(cd, "event_fulfillment", None)
     raw_event_time = getattr(cd, "event_time", None)
@@ -339,6 +360,7 @@ async def _persist_catering_details_from_agent(
         event_fulfillment=event_fulfillment,
         party_size=cd.party_size,
         idempotency_key=str(conversation_id),
+        activity_source=activity_source,
     )
 
 
@@ -785,6 +807,9 @@ async def _dispatch_agent_async(
                 project_id=project_id,
                 conversation_id=conversation_id,
                 cd=cd,
+                activity_source=_get_catering_request_activity_source_for_channel(
+                    message.channel
+                ),
             )
 
         if (
@@ -1515,6 +1540,9 @@ async def get_chat_response_stream(
                                         project_id=project_id,
                                         conversation_id=request_conversation_id,
                                         cd=cd,
+                                        activity_source=_get_catering_request_activity_source_for_channel(
+                                            message.channel
+                                        ),
                                     )
 
                                 if (

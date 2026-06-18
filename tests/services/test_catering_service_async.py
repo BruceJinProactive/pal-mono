@@ -14,8 +14,16 @@ import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
 
 boto3_stub = ModuleType("boto3")
+boto3_stub.__path__ = []
 setattr(boto3_stub, "client", lambda *args, **kwargs: object())
 sys.modules.setdefault("boto3", boto3_stub)
+
+boto3_session_stub = ModuleType("boto3.session")
+setattr(boto3_session_stub, "Session", lambda *args, **kwargs: object())
+sys.modules.setdefault("boto3.session", boto3_session_stub)
+
+aioboto3_stub = ModuleType("aioboto3")
+sys.modules.setdefault("aioboto3", aioboto3_stub)
 
 botocore_exceptions_stub = ModuleType("botocore.exceptions")
 setattr(botocore_exceptions_stub, "ClientError", Exception)
@@ -291,6 +299,7 @@ async def test_creates_activity_when_new_request_created() -> None:
             contact_phone_number="+15551234567",
             party_size=30,
             idempotency_key="idem-key-1",
+            activity_source=CateringRequestActivitySource.CUSTOMER_VOICE,
         )
 
     activity_repo.create.assert_awaited_once()
@@ -300,7 +309,7 @@ async def test_creates_activity_when_new_request_created() -> None:
     assert activity.activity_type == CateringRequestActivityType.REQUEST_CREATED
     assert activity.actor_type == CateringRequestActivityActorType.CUSTOMER
     assert activity.actor_display_name == "John Doe"
-    assert activity.source == CateringRequestActivitySource.AI_AGENT
+    assert activity.source == CateringRequestActivitySource.CUSTOMER_VOICE
     assert activity.metadata["initial_fields"]["party_size"] == 30
 
 

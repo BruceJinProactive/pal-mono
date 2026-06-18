@@ -516,6 +516,32 @@ async def create_catering_request_async(
     created_request_id = await repo.create(data)
     data = dataclasses.replace(data, id=created_request_id)
 
+    creation_metadata: dict[str, Any] = {
+        "initial_fields": _snapshot_request_fields(
+            data,
+            [
+                "event_date",
+                "event_time",
+                "event_address",
+                "event_detail",
+                "all_items",
+                "event_fulfillment",
+                "contact_name",
+                "contact_phone_number",
+                "contact_email",
+                "prior_catering_request_count",
+                "prior_order_count",
+                "last_catering_request_at",
+                "last_order_at",
+                "estimated_order_value",
+                "confirmed_order_value",
+                "deposit_requirement_value",
+                "deposit_received_value",
+                "party_size",
+                "status",
+            ],
+        )
+    }
     await _record_catering_request_activity_safely(
         session=session,
         catering_request_id=data.id,
@@ -526,32 +552,7 @@ async def create_catering_request_async(
         actor_display_name=activity_actor_display_name or data.contact_name,
         description="Catering request created.",
         source=activity_source,
-        metadata={
-            "initial_fields": _snapshot_request_fields(
-                data,
-                [
-                    "event_date",
-                    "event_time",
-                    "event_address",
-                    "event_detail",
-                    "all_items",
-                    "event_fulfillment",
-                    "contact_name",
-                    "contact_phone_number",
-                    "contact_email",
-                    "prior_catering_request_count",
-                    "prior_order_count",
-                    "last_catering_request_at",
-                    "last_order_at",
-                    "estimated_order_value",
-                    "confirmed_order_value",
-                    "deposit_requirement_value",
-                    "deposit_received_value",
-                    "party_size",
-                    "status",
-                ],
-            )
-        },
+        metadata=creation_metadata,
     )
 
     project_repo = ProjectRepositoryAsync(session)

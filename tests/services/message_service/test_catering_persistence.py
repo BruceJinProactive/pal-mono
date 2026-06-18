@@ -405,6 +405,9 @@ async def test_persist_catering_details_from_agent_creates_partial_request(
         project_id=uuid.uuid4(),
         conversation_id=conversation_id,
         cd=cd,
+        activity_source=_implementation._get_catering_request_activity_source_for_channel(
+            Channel.EMAIL
+        ),
     )
 
     create_catering_request_async.assert_awaited_once()
@@ -415,6 +418,26 @@ async def test_persist_catering_details_from_agent_creates_partial_request(
     assert kwargs["contact_phone_number"] is None
     assert kwargs["contact_email"] == "lead@example.com"
     assert kwargs["idempotency_key"] == str(conversation_id)
+    assert kwargs["activity_source"].value == "CUSTOMER_EMAIL"
+
+
+@pytest.mark.parametrize(
+    ("channel", "expected_source"),
+    [
+        (Channel.INTERNAL_APP, "INTERNAL_APP"),
+        (Channel.API, "API"),
+        (None, "AI_AGENT"),
+    ],
+)
+def test_get_catering_request_activity_source_for_channel_maps_remaining_sources(
+    channel: Channel | None,
+    expected_source: str,
+) -> None:
+    from services.message_service import _implementation
+
+    source = _implementation._get_catering_request_activity_source_for_channel(channel)
+
+    assert source.value == expected_source
 
 
 def _ensure_package_module(
@@ -725,6 +748,7 @@ async def test_catering_details_persisted_from_stream(monkeypatch):
     }
     assert catering["event_fulfillment"] == "DELIVERY"
     assert catering["idempotency_key"] is not None
+    assert catering["activity_source"].value == "CUSTOMER_VOICE"
 
 
 @pytest.mark.asyncio
@@ -873,6 +897,7 @@ async def test_catering_details_persisted_without_optional_fields(monkeypatch):
     assert catering["event_address"] is None
     assert catering["event_fulfillment"] is None
     assert catering["idempotency_key"] is not None
+    assert catering["activity_source"].value == "CUSTOMER_VOICE"
 
 
 @pytest.mark.asyncio
@@ -1005,3 +1030,4 @@ async def test_catering_details_persisted_from_non_streaming(monkeypatch):
     }
     assert catering["event_fulfillment"] == "DELIVERY"
     assert catering["idempotency_key"] is not None
+    assert catering["activity_source"].value == "CUSTOMER_SMS"
