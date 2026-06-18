@@ -589,11 +589,22 @@ async def generate_observation(
         },
     }
 
+    llm_prompt = config.llm_prompt
+    llm_provider_name = config.llm_provider
+    llm_model = config.llm_model
+    reference_image_configs = list(config.reference_images or [])
+
+    await session.rollback()
+    logger.info(
+        "[Vision Observation] Released read transaction before image and LLM work",
+        extra={"camera_id": str(camera_id), "config_id": str(camera_config_id)},
+    )
+
     s3_client = init_s3(AWS_REGION)
 
     reference_images: list[dict[str, Any]] = []
-    if config.reference_images:
-        for ref_img in config.reference_images:
+    if reference_image_configs:
+        for ref_img in reference_image_configs:
             if not isinstance(ref_img, dict) or not ref_img.get("url"):
                 continue
             try:
@@ -636,10 +647,10 @@ async def generate_observation(
     else:
         raise ValueError("Either image_url or image file must be provided")
 
-    provider_enum = MonitoringLLMProvider(config.llm_provider)
+    provider_enum = MonitoringLLMProvider(llm_provider_name)
     llm_config = MonitoringLLMConfig(
         provider=provider_enum,
-        model=config.llm_model,
+        model=llm_model,
     )
     llm_provider = await asyncio.to_thread(create_monitoring_llm_provider, llm_config)
     parsed_observed_at = parse_utc_capture_time_from_path(image_url)
@@ -661,8 +672,8 @@ async def generate_observation(
         extra={
             "camera_id": str(camera_id),
             "config_id": str(camera_config_id),
-            "provider": config.llm_provider,
-            "model": config.llm_model,
+            "provider": llm_provider_name,
+            "model": llm_model,
             "entity_count": len(entities_with_states),
         },
     )
@@ -671,7 +682,7 @@ async def generate_observation(
         llm_result = await asyncio.to_thread(
             llm_provider.analyze_image,
             system_prompt,
-            config.llm_prompt,
+            llm_prompt,
             reference_images,
             camera_image_base64,
             response_format,
@@ -684,8 +695,8 @@ async def generate_observation(
                 extra={
                     "camera_id": str(camera_id),
                     "config_id": str(camera_config_id),
-                    "provider": config.llm_provider,
-                    "model": config.llm_model,
+                    "provider": llm_provider_name,
+                    "model": llm_model,
                     "image_url": image_url,
                     "error": str(e),
                     "gemini_refusal_reason": gemini_refusal_reason,

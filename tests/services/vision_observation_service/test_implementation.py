@@ -2,6 +2,7 @@
 
 import base64
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -520,6 +521,130 @@ class TestGenerateObservation:
                     "expected_format": "snapshots/YYYY-MM-DD/YYYY-MM-DD_HH-MM-SS.jpg",
                 },
             )
+
+    @pytest.mark.asyncio
+    async def test_releases_read_transaction_before_image_and_llm_work(self):
+        session = AsyncMock()
+        events: list[str] = []
+
+        async def track_rollback() -> None:
+            events.append("rollback")
+
+        session.rollback = AsyncMock(side_effect=track_rollback)
+
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        state_id_open = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.enabled = True
+        mock_config.llm_prompt = "Check the door state"
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.name = "door_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
+
+        mock_state_def = MagicMock()
+        mock_state_def.id = state_id_open
+        mock_state_def.name = "open"
+        mock_state_def.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "door"
+        mock_entity_type.display_name = "Door"
+
+        llm_result = {
+            "result": {"door_1": {"cleanliness": {"state": "open", "confidence": 0.9}}},
+            "token_usage": {},
+        }
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = llm_result
+        fake_image_bytes = _test_image_bytes()
+
+        async def track_fetch_s3(*args: object, **kwargs: object) -> bytes:
+            del args, kwargs
+            events.append("fetch_s3")
+            assert "rollback" in events
+            return fake_image_bytes
+
+        async def track_to_thread(
+            func: Callable[..., object], *args: object, **kwargs: object
+        ) -> object:
+            events.append("to_thread")
+            assert "rollback" in events
+            return func(*args, **kwargs)
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation._fetch_s3_bytes",
+                AsyncMock(side_effect=track_fetch_s3),
+            ),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=track_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+
+            result = await generate_observation(
+                session,
+                uuid.uuid4(),
+                image_url="security/cameras/account/project/door-cam/snapshots/2026-06-18/2026-06-18_12-00-00.jpg",
+                is_test=True,
+            )
+
+            assert result is not None
+            assert result.entity_observations[0].state == "open"
+            assert events[0] == "rollback"
+            assert "fetch_s3" in events
+            mock_llm_provider.analyze_image.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_config_disabled_returns_none(self):
