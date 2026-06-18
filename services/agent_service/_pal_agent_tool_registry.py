@@ -181,6 +181,7 @@ _TOAST_SPEC_FIELDS = [
     "customer_email",
     "tool_name",
     "enable_hosted_checkout",
+    "hosted_checkout_delivery_only",
     "revenue_center_id",
     "seed_force_show_defaults",
     "require_payment_before_kitchen",

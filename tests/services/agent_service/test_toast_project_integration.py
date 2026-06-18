@@ -18,6 +18,7 @@ from agent import (
 )
 from db.tables.types import Channel
 from services.agent_service import _implementation
+from services.agent_service import _pal_agent_tool_registry as registry
 from services.agent_service._implementation import (
     _build_specs_from_project_integrations,
 )
@@ -96,6 +97,61 @@ def _build_agent_config() -> AgentConfig:
 
 
 class TestBuildToastV3Spec:
+    def test_hosted_checkout_delivery_only_is_allowed_config_field(self):
+        assert "hosted_checkout_delivery_only" in registry._TOAST_SPEC_FIELDS
+
+    def test_hosted_checkout_delivery_only_config_is_passed_through(self, monkeypatch):
+        captured_kwargs = {}
+
+        class CapturingToastSpec:
+            def __init__(self, **kwargs):
+                captured_kwargs.update(kwargs)
+
+        monkeypatch.setattr(registry, "ToastSpec", CapturingToastSpec)
+
+        config = {
+            "menu_data": {"version": "v2"},
+            "takeout_dining_option_guid": "takeout-guid-1",
+            "enable_hosted_checkout": True,
+            "hosted_checkout_delivery_only": True,
+        }
+
+        registry._build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "cid",
+            "csecret",
+            None,
+        )
+
+        assert captured_kwargs["enable_hosted_checkout"] is True
+        assert captured_kwargs["hosted_checkout_delivery_only"] is True
+
+    def test_hosted_checkout_delivery_only_is_omitted_when_unset(self, monkeypatch):
+        captured_kwargs = {}
+
+        class CapturingToastSpec:
+            def __init__(self, **kwargs):
+                captured_kwargs.update(kwargs)
+
+        monkeypatch.setattr(registry, "ToastSpec", CapturingToastSpec)
+
+        config = {
+            "menu_data": {"version": "v2"},
+            "takeout_dining_option_guid": "takeout-guid-1",
+            "enable_hosted_checkout": True,
+        }
+
+        registry._build_toast_v3_spec(
+            config,
+            "restaurant-guid-1",
+            "cid",
+            "csecret",
+            None,
+        )
+
+        assert "hosted_checkout_delivery_only" not in captured_kwargs
+
     def test_basic_build_uses_store_identifier_and_auto_auth(self):
         config = {
             "menu_data": {"version": "v2", "items": []},
