@@ -2,6 +2,7 @@ import sys
 import uuid
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -51,7 +52,12 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, spec=None):
                 self.spec = spec
 
-            async def run(self, _input, stream=False):
+            async def run(
+                self,
+                _input: object,
+                stream: bool = False,
+                **_kwargs: Any,
+            ) -> object:
                 return SimpleNamespace(content="test response")
 
         class _NoopPalInput:
@@ -242,7 +248,12 @@ async def test_get_chat_response_async_captures_project_attributes_early(monkeyp
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             # Capture the runtime context to verify correct attributes are passed
             captured_runtime_contexts.append(pal_input.runtime_context)
             return SimpleNamespace(
@@ -366,7 +377,9 @@ async def test_get_chat_response_async_uses_captured_ids_after_order_commit(
         def __init__(self, spec: object | None = None) -> None:
             self.spec = spec
 
-        async def run(self, pal_input: object, stream: bool = False) -> SimpleNamespace:
+        async def run(
+            self, pal_input: object, stream: bool = False, **_kwargs: Any
+        ) -> SimpleNamespace:
             return SimpleNamespace(
                 content="Great news, your order has been placed.",
                 escalated=False,

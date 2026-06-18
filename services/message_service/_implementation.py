@@ -692,7 +692,13 @@ async def _dispatch_agent_async(
             runtime_context=runtime_context,
         )
 
-        pal_output = await pal_agent.run(pal_input)
+        def prefetch_result_sink(event: dict[str, Any]) -> None:
+            _schedule_tool_result_cache_writes(conversation_id, [event])
+
+        pal_output = await pal_agent.run(
+            pal_input,
+            prefetch_result_sink=prefetch_result_sink,
+        )
 
         # Log order_details if present and persist to DB
         if hasattr(pal_output, "order_details") and pal_output.order_details:
@@ -1328,7 +1334,18 @@ async def get_chat_response_stream(
                         transfer_purpose_captured = None
 
                         try:
-                            pal_stream = await pal_agent.run(pal_input, stream=True)
+
+                            def prefetch_result_sink(event: dict[str, Any]) -> None:
+                                _schedule_tool_result_cache_writes(
+                                    request_conversation_id,
+                                    [event],
+                                )
+
+                            pal_stream = await pal_agent.run(
+                                pal_input,
+                                stream=True,
+                                prefetch_result_sink=prefetch_result_sink,
+                            )
                             if pal_stream is None:
                                 # Gracefully stop streaming when upstream cancellation/teardown
                                 # results in a missing iterator from pal-agents.

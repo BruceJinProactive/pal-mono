@@ -64,7 +64,12 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, spec=None):
                 self.spec = spec
 
-            async def run(self, _input, stream=False):
+            async def run(
+                self,
+                _input: object,
+                stream: bool = False,
+                **_kwargs: Any,
+            ) -> object:
                 return SimpleNamespace(
                     content="noop", escalated=False, closing_conversation=False
                 )
@@ -304,7 +309,12 @@ async def test_pal_agents_path_formats_history_with_prior_messages(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             captured_inputs.append(pal_input.content)
             return SimpleNamespace(
                 content="response", escalated=False, closing_conversation=False
@@ -376,6 +386,7 @@ async def test_pal_agents_email_extraction_timeout_keeps_current_message(
             self,
             pal_input: Any,
             stream: bool = False,
+            **_kwargs: Any,
         ) -> SimpleNamespace:
             captured_inputs.append(pal_input.content)
             return SimpleNamespace(
@@ -448,6 +459,7 @@ async def test_pal_agents_email_extraction_hydrates_saved_message_and_input(
             self,
             pal_input: Any,
             stream: bool = False,
+            **_kwargs: Any,
         ) -> SimpleNamespace:
             captured_inputs.append(pal_input.content)
             return SimpleNamespace(
@@ -519,7 +531,12 @@ async def test_pal_agents_path_applies_context_modifier(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             captured_runtime_contexts.append(pal_input.runtime_context)
             return SimpleNamespace(
                 content="response", escalated=False, closing_conversation=False
@@ -596,7 +613,9 @@ async def test_pal_agents_path_attaches_external_previous_tool_results(
         def __init__(self, spec: object | None = None) -> None:
             self.spec = spec
 
-        async def run(self, pal_input: Any, stream: bool = False) -> SimpleNamespace:
+        async def run(
+            self, pal_input: Any, stream: bool = False, **_kwargs
+        ) -> SimpleNamespace:
             captured_previous_results.append(
                 getattr(pal_input.runtime_context, "previous_tool_results", None)
             )
@@ -657,7 +676,9 @@ async def test_pal_agents_path_uses_process_local_fallback_on_cache_miss(
         def __init__(self, spec: object | None = None) -> None:
             self.spec = spec
 
-        async def run(self, pal_input: Any, stream: bool = False) -> SimpleNamespace:
+        async def run(
+            self, pal_input: Any, stream: bool = False, **_kwargs
+        ) -> SimpleNamespace:
             captured_previous_results.append(
                 getattr(pal_input.runtime_context, "previous_tool_results", None)
             )
@@ -743,7 +764,9 @@ async def test_pal_agents_path_continues_when_previous_tool_result_read_fails(
         def __init__(self, spec: object | None = None) -> None:
             self.spec = spec
 
-        async def run(self, pal_input: Any, stream: bool = False) -> SimpleNamespace:
+        async def run(
+            self, pal_input: Any, stream: bool = False, **_kwargs
+        ) -> SimpleNamespace:
             captured_previous_results.append(
                 getattr(pal_input.runtime_context, "previous_tool_results", None)
             )
@@ -824,7 +847,9 @@ async def test_streaming_pal_agents_path_attaches_external_previous_tool_results
         def __init__(self, spec: object | None = None) -> None:
             self.spec = spec
 
-        async def run(self, pal_input: Any, stream: bool = False) -> AsyncIterator[Any]:
+        async def run(
+            self, pal_input: Any, stream: bool = False, **_kwargs
+        ) -> AsyncIterator[Any]:
             captured_previous_results.append(
                 getattr(pal_input.runtime_context, "previous_tool_results", None)
             )
@@ -901,7 +926,9 @@ async def test_streaming_pal_agents_path_continues_when_previous_tool_result_rea
         def __init__(self, spec: object | None = None) -> None:
             self.spec = spec
 
-        async def run(self, pal_input: Any, stream: bool = False) -> AsyncIterator[Any]:
+        async def run(
+            self, pal_input: Any, stream: bool = False, **_kwargs
+        ) -> AsyncIterator[Any]:
             captured_previous_results.append(
                 getattr(pal_input.runtime_context, "previous_tool_results", None)
             )
@@ -970,7 +997,12 @@ async def test_nonstreaming_closing_conversation_updates_status(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             return SimpleNamespace(
                 content="Goodbye!", escalated=False, closing_conversation=True
             )
@@ -1029,7 +1061,12 @@ async def test_nonstreaming_break_token_splits_messages(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             return SimpleNamespace(
                 content="Part one<BREAK>Part two<BREAK>Part three",
                 escalated=False,
@@ -1087,7 +1124,12 @@ async def test_nonstreaming_reservation_persistence(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             return SimpleNamespace(
                 content="Reservation confirmed!",
                 escalated=False,
@@ -1171,7 +1213,12 @@ async def test_streaming_transfer_purpose_persisted(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             async def _stream():
                 yield SimpleNamespace(content="Let me transfer you")
                 # Chunk with transfer_purpose
@@ -1251,7 +1298,12 @@ async def test_streaming_pal_agents_formats_history(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             captured_inputs.append(pal_input.content)
 
             async def _stream():
@@ -1322,7 +1374,9 @@ async def test_streaming_pal_agents_email_hydrates_saved_message_and_input(
         def __init__(self, spec: Any = None) -> None:
             self.spec = spec
 
-        async def run(self, pal_input: Any, stream: bool = False) -> AsyncIterator[Any]:
+        async def run(
+            self, pal_input: Any, stream: bool = False, **_kwargs
+        ) -> AsyncIterator[Any]:
             captured_inputs.append(pal_input.content)
 
             async def _stream() -> AsyncIterator[Any]:
@@ -1399,7 +1453,12 @@ async def test_streaming_saves_collected_content_to_db(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             async def _stream():
                 yield SimpleNamespace(content="Hello ")
                 yield SimpleNamespace(content="world ")
@@ -1548,7 +1607,12 @@ async def test_store_status_wired_into_runtime_context(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: Any,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             captured_runtime_contexts.append(pal_input.runtime_context)
             return SimpleNamespace(
                 content="response", escalated=False, closing_conversation=False

@@ -56,7 +56,12 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, spec=None):  # type: ignore[no-untyped-def]
                 self.spec = spec
 
-            async def run(self, _input, stream=False):  # type: ignore[no-untyped-def]
+            async def run(
+                self,
+                _input: object,
+                stream: bool = False,
+                **_kwargs: Any,
+            ) -> object:
                 async def _stream():  # type: ignore[no-untyped-def]
                     if False:
                         yield None
@@ -115,6 +120,8 @@ def _install_services_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     user_service_mod.get_user_async = _not_implemented  # type: ignore[attr-defined]
     user_service_mod.create_user_async = _not_implemented  # type: ignore[attr-defined]
     transaction_service_mod.create_order_from_agent_async = _not_implemented  # type: ignore[attr-defined]
+    transaction_service_mod.save_order = _not_implemented  # type: ignore[attr-defined]
+    transaction_service_mod.get_order_by_order_id_store_vendor = _not_implemented  # type: ignore[attr-defined]
 
 
 class _FakeMessageRepo:
@@ -323,7 +330,16 @@ async def test_streaming_tool_call_events_attached_to_message(
         "source": "adora_process_order",
         "payload": {"item_recap": "1 large pepperoni pizza."},
     }
+    prefetch_event = {
+        "type": "tool_call",
+        "payload": {
+            "tool_name": "adora_wait_time_prefetch_v1",
+            "cacheable": True,
+            "cacheable_result": {"takeout_minutes": 20},
+        },
+    }
     collected_sms_events: list[dict] = []
+    captured_prefetch_sinks: list[Any] = []
     append_calls: list[tuple[str, dict[str, Any]]] = []
 
     async def _fake_append_tool_result(
@@ -335,7 +351,15 @@ async def test_streaming_tool_call_events_attached_to_message(
         def __init__(self, spec=None):  # type: ignore[no-untyped-def]
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):  # type: ignore[no-untyped-def]
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            *,
+            prefetch_result_sink: Any | None = None,
+        ) -> object:
+            captured_prefetch_sinks.append(prefetch_result_sink)
+
             async def _stream():  # type: ignore[no-untyped-def]
                 # Content chunk
                 yield SimpleNamespace(content="Here's your order!")
@@ -404,6 +428,9 @@ async def test_streaming_tool_call_events_attached_to_message(
             event_collector=collected_sms_events.append,
         )
     ]
+    assert len(captured_prefetch_sinks) == 1
+    assert callable(captured_prefetch_sinks[0])
+    captured_prefetch_sinks[0](prefetch_event)
     await _drain_background_tasks(_implementation)
 
     # Verify content chunks were yielded
@@ -424,10 +451,19 @@ async def test_streaming_tool_call_events_attached_to_message(
     )
     assert collected_sms_events == [sms_followup_event]
     assert message_repo.saved_conversation_id is not None
-    assert append_calls == [
-        (str(message_repo.saved_conversation_id), tool_events[0]["payload"]),
-        (str(message_repo.saved_conversation_id), tool_events[1]["payload"]),
-    ]
+    assert len(append_calls) == 3
+    assert (
+        str(message_repo.saved_conversation_id),
+        tool_events[0]["payload"],
+    ) in append_calls
+    assert (
+        str(message_repo.saved_conversation_id),
+        tool_events[1]["payload"],
+    ) in append_calls
+    assert (
+        str(message_repo.saved_conversation_id),
+        prefetch_event["payload"],
+    ) in append_calls
 
 
 @pytest.mark.asyncio
@@ -475,7 +511,12 @@ async def test_streaming_no_events_no_tool_calls_key(
         def __init__(self, spec=None):  # type: ignore[no-untyped-def]
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):  # type: ignore[no-untyped-def]
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             async def _stream():  # type: ignore[no-untyped-def]
                 yield SimpleNamespace(content="Just a normal reply")
 
@@ -583,6 +624,15 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
             },
         }
     ]
+    prefetch_event = {
+        "type": "tool_call",
+        "payload": {
+            "tool_name": "toast_wait_time_prefetch_v1",
+            "cacheable": True,
+            "cacheable_result": {"takeout_minutes": 15},
+        },
+    }
+    captured_prefetch_sinks: list[Any] = []
     append_calls: list[tuple[str, dict[str, Any]]] = []
 
     async def _fake_append_tool_result(
@@ -594,7 +644,14 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
         def __init__(self, spec=None):  # type: ignore[no-untyped-def]
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):  # type: ignore[no-untyped-def]
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            *,
+            prefetch_result_sink: Any | None = None,
+        ) -> object:
+            captured_prefetch_sinks.append(prefetch_result_sink)
             return SimpleNamespace(
                 content="We are open!",
                 escalated=False,
@@ -661,6 +718,9 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
         message=message,
         request_context=RequestContext(),
     )
+    assert len(captured_prefetch_sinks) == 1
+    assert callable(captured_prefetch_sinks[0])
+    captured_prefetch_sinks[0](prefetch_event)
     await _drain_background_tasks(_implementation)
 
     # Verify response was returned
@@ -677,6 +737,12 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
     assert "tool_calls" in first_agent_body
     assert len(first_agent_body["tool_calls"]) == 1
     assert first_agent_body["tool_calls"][0]["payload"]["tool_name"] == "check_hours"
-    assert append_calls == [
-        (str(message_repo.request_conversation_id), tool_events[0]["payload"])
-    ]
+    assert len(append_calls) == 2
+    assert (
+        str(message_repo.request_conversation_id),
+        tool_events[0]["payload"],
+    ) in append_calls
+    assert (
+        str(message_repo.request_conversation_id),
+        prefetch_event["payload"],
+    ) in append_calls

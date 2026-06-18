@@ -459,7 +459,12 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, spec=None):
                 self.spec = spec
 
-            async def run(self, _input, stream=False):
+            async def run(
+                self,
+                _input: object,
+                stream: bool = False,
+                **_kwargs: Any,
+            ) -> object:
                 async def _stream():
                     if False:
                         yield None
@@ -526,8 +531,15 @@ def _install_services_shims_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
     user_service_mod.get_user_async = _not_implemented  # type: ignore[attr-defined]
     user_service_mod.create_user_async = _not_implemented  # type: ignore[attr-defined]
     transaction_service_mod.create_order_from_agent_async = _not_implemented  # type: ignore[attr-defined]
+    transaction_service_mod.save_order = _not_implemented  # type: ignore[attr-defined]
+    transaction_service_mod.get_order_by_order_id_store_vendor = _not_implemented  # type: ignore[attr-defined]
     reservation_service_mod.save_reservation_from_agent_async = _not_implemented  # type: ignore[attr-defined]
+    reservation_service_mod.save_reservation = _not_implemented  # type: ignore[attr-defined]
+    reservation_service_mod.save_waitlist = _not_implemented  # type: ignore[attr-defined]
+    catering_service_mod.create_catering_request = _not_implemented  # type: ignore[attr-defined]
     catering_service_mod.create_catering_request_async = _not_implemented  # type: ignore[attr-defined]
+    catering_service_mod.update_catering_request = _not_implemented  # type: ignore[attr-defined]
+    catering_service_mod.send_sms_notification = _not_implemented  # type: ignore[attr-defined]
 
 
 @pytest.fixture(autouse=True)
@@ -594,7 +606,12 @@ async def test_catering_details_persisted_from_stream(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             async def _stream():
                 yield SimpleNamespace(
                     content="Your catering request has been submitted!"
@@ -749,7 +766,12 @@ async def test_catering_details_persisted_without_optional_fields(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             async def _stream():
                 yield SimpleNamespace(content="Catering request received!")
 
@@ -888,7 +910,12 @@ async def test_catering_details_persisted_from_non_streaming(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             return SimpleNamespace(
                 content="Your catering request is confirmed!",
                 escalated=False,

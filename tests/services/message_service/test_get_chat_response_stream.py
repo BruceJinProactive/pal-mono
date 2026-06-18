@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -56,7 +57,12 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, spec=None):
                 self.spec = spec
 
-            async def run(self, _input, stream=False):
+            async def run(
+                self,
+                _input: object,
+                stream: bool = False,
+                **_kwargs: Any,
+            ) -> object:
                 async def _stream():
                     if False:
                         yield None
@@ -448,7 +454,12 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             captured_inputs.append(pal_input)
 
             async def _stream():
@@ -563,7 +574,12 @@ async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             return None
 
     async def _fake_query_history_messages(*args, **kwargs):
@@ -655,7 +671,12 @@ async def test_get_chat_response_stream_pal_agents_non_async_stream_yields_error
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             return object()
 
     async def _fake_query_history_messages(*args, **kwargs):
@@ -748,7 +769,12 @@ async def test_get_chat_response_stream_pal_agents_iteration_cancelled_ends_clea
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             async def _stream():
                 if False:
                     yield None
@@ -1044,7 +1070,12 @@ async def test_get_chat_response_stream_wires_store_status_into_runtime_context(
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             captured_inputs.append(pal_input)
 
             async def _stream():

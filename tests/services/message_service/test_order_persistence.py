@@ -74,7 +74,12 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, spec=None):
                 self.spec = spec
 
-            async def run(self, _input, stream=False):
+            async def run(
+                self,
+                _input: object,
+                stream: bool = False,
+                **_kwargs: object,
+            ) -> object:
                 async def _stream():
                     if False:
                         yield None
@@ -444,7 +449,12 @@ async def test_order_details_persisted_to_database(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: object,
+        ) -> object:
             async def _stream():
                 # First chunk: normal content
                 yield SimpleNamespace(content="Your order has been placed!")
@@ -651,7 +661,12 @@ async def test_order_details_error_handling(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: object,
+        ) -> object:
             async def _stream():
                 # Chunk with order_details
                 order_details = SimpleNamespace(

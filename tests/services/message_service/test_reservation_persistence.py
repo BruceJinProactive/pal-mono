@@ -4,6 +4,7 @@ import sys
 import uuid
 from contextlib import asynccontextmanager
 from types import ModuleType, SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -55,7 +56,12 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, spec=None):
                 self.spec = spec
 
-            async def run(self, _input, stream=False):
+            async def run(
+                self,
+                _input: object,
+                stream: bool = False,
+                **_kwargs: Any,
+            ) -> object:
                 async def _stream():
                     if False:
                         yield None
@@ -181,7 +187,12 @@ async def test_reservation_details_persisted_from_stream(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             async def _stream():
                 yield SimpleNamespace(content="Your reservation has been confirmed!")
 
@@ -339,7 +350,12 @@ async def test_reservation_details_error_does_not_break_stream(monkeypatch):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             async def _stream():
                 reservation_details = SimpleNamespace(
                     vendor="yelp",

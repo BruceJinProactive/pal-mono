@@ -9,6 +9,7 @@ import uuid
 from contextlib import asynccontextmanager, contextmanager
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -62,7 +63,12 @@ def _install_knowledge_shim_if_needed(monkeypatch: pytest.MonkeyPatch) -> None:
             def __init__(self, spec=None):
                 self.spec = spec
 
-            async def run(self, _input, stream=False):
+            async def run(
+                self,
+                _input: object,
+                stream: bool = False,
+                **_kwargs: Any,
+            ) -> object:
                 if stream:
 
                     async def _stream():
@@ -243,7 +249,12 @@ def _setup_mocks(monkeypatch, *, use_pal_agents=True):
         def __init__(self, spec=None):
             self.spec = spec
 
-        async def run(self, pal_input, stream=False):
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
             if stream:
 
                 async def _stream():
