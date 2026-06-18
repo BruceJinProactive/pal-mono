@@ -12,6 +12,10 @@ from .catering_request import CateringRequestRepository
 from .catering_request_activity import CateringRequestActivityRepository
 from .change_field import ChangeFieldRepository
 from .change_log import ChangeLogRepository
+from .client_onboarding import (
+    ClientOnboardingRepository,
+    ClientOnboardingRepositoryAsync,
+)
 from .contact import ContactRepository
 from .conversation import ConversationRepository
 from .eval_result import EvalResultRepository
@@ -72,6 +76,8 @@ __all__ = [
     "CateringRequestActivityRepository",
     "ChangeFieldRepository",
     "ChangeLogRepository",
+    "ClientOnboardingRepository",
+    "ClientOnboardingRepositoryAsync",
     "ContactRepository",
     "ConversationRepository",
     "EvalResultRepository",

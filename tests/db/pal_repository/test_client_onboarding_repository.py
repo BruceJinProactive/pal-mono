@@ -1,0 +1,645 @@
+from __future__ import annotations
+
+import asyncio
+import importlib
+from datetime import datetime, timezone
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
+
+from sqlalchemy.exc import SQLAlchemyError
+
+from db.pal_repository.client_onboarding import (
+    ClientOnboardingRepository,
+    ClientOnboardingRepositoryAsync,
+)
+from db.tables import (
+    ClientOnboardingActivity,
+    ClientOnboardingActivitySource,
+    ClientOnboardingActorType,
+    ClientOnboardingContractType,
+    ClientOnboardingLifecycle,
+    ClientOnboardingStatus,
+)
+
+ACCOUNT_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+AE_USER_ID = UUID("11111111-2222-3333-4444-555555555555")
+FDE_USER_ID = UUID("22222222-3333-4444-5555-666666666666")
+LIFECYCLE_ID = UUID("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
+INVITATION_ID = UUID("99999999-8888-7777-6666-555555555555")
+OCCURRED_AT = datetime(2026, 6, 18, 12, 0, tzinfo=timezone.utc)
+pytest: Any = importlib.import_module("pytest")
+
+
+def _repository_with_query_result(
+    result: ClientOnboardingLifecycle | None,
+) -> tuple[ClientOnboardingRepository, MagicMock, MagicMock]:
+    session = MagicMock()
+    query = session.query.return_value
+    query.filter.return_value.first.return_value = result
+    return ClientOnboardingRepository(session), session, query
+
+
+def _async_repository_with_execute_result(
+    result: ClientOnboardingLifecycle | None,
+) -> tuple[ClientOnboardingRepositoryAsync, MagicMock, MagicMock]:
+    session = MagicMock()
+    query_result = MagicMock()
+    query_result.scalars.return_value.first.return_value = result
+    session.execute = AsyncMock(return_value=query_result)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    session.rollback = AsyncMock()
+    session.get = AsyncMock()
+    return ClientOnboardingRepositoryAsync(session), session, query_result
+
+
+def _lifecycle_kwargs() -> dict[str, Any]:
+    return {
+        "idempotency_key": "onboarding-key",
+        "account_id": ACCOUNT_ID,
+        "manage_app_account_name": "acme",
+        "order_form_id": "order-123",
+        "client_company_name": "Acme Inc.",
+        "signer_name": "Client Signer",
+        "signer_email": " Signer@Example.COM ",
+        "contract_type": ClientOnboardingContractType.order_form_tos,
+        "docusign_contract_id": "contract-123",
+        "docusign_envelope_id": "envelope-123",
+        "docusign_contract_url": "https://docusign.example/contracts/123",
+        "ae_owner_user_id": AE_USER_ID,
+        "fde_owner_user_id": FDE_USER_ID,
+        "folk_company_id": "folk-company",
+        "folk_contact_id": "folk-contact",
+        "scoping_doc_url": "https://notion.example/scoping",
+        "occurred_at": OCCURRED_AT,
+    }
+
+
+def _lifecycle() -> ClientOnboardingLifecycle:
+    return ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.account_created,
+    )
+
+
+def test_get_by_idempotency_key_returns_first_matching_lifecycle() -> None:
+    lifecycle = ClientOnboardingLifecycle(id=LIFECYCLE_ID)
+    repo, session, query = _repository_with_query_result(lifecycle)
+
+    result = repo.get_by_idempotency_key("onboarding-key")
+
+    assert result is lifecycle
+    session.query.assert_called_once_with(ClientOnboardingLifecycle)
+    query.filter.assert_called_once()
+
+
+def test_get_by_idempotency_key_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.query.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.get_by_idempotency_key("onboarding-key")
+
+    session.rollback.assert_called()
+
+
+def test_get_active_for_account_signer_normalizes_signer_email() -> None:
+    lifecycle = ClientOnboardingLifecycle(id=LIFECYCLE_ID)
+    repo, session, query = _repository_with_query_result(lifecycle)
+
+    result = repo.get_active_for_account_signer(ACCOUNT_ID, " Signer@Example.COM ")
+
+    assert result is lifecycle
+    session.query.assert_called_once_with(ClientOnboardingLifecycle)
+    query.filter.assert_called_once()
+
+
+def test_get_active_for_account_signer_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.query.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.get_active_for_account_signer(ACCOUNT_ID, "signer@example.com")
+
+    session.rollback.assert_called_once()
+
+
+def test_get_active_by_docusign_reference_returns_none_without_reference() -> None:
+    session = MagicMock()
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.get_active_by_docusign_reference()
+
+    assert result is None
+    session.query.assert_not_called()
+
+
+def test_get_active_by_docusign_reference_matches_any_supplied_reference() -> None:
+    lifecycle = ClientOnboardingLifecycle(id=LIFECYCLE_ID)
+    repo, session, query = _repository_with_query_result(lifecycle)
+
+    result = repo.get_active_by_docusign_reference(
+        docusign_contract_id="contract-123",
+        docusign_envelope_id="envelope-123",
+        docusign_contract_url="https://docusign.example/contracts/123",
+    )
+
+    assert result is lifecycle
+    session.query.assert_called_once_with(ClientOnboardingLifecycle)
+    query.filter.assert_called_once()
+
+
+def test_get_active_by_docusign_reference_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.query.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.get_active_by_docusign_reference(
+            docusign_envelope_id="envelope-123",
+        )
+
+    session.rollback.assert_called_once()
+
+
+def test_create_lifecycle_persists_account_created_lifecycle() -> None:
+    session = MagicMock()
+    repo = ClientOnboardingRepository(session)
+
+    lifecycle = repo.create_lifecycle(
+        idempotency_key="onboarding-key",
+        account_id=ACCOUNT_ID,
+        manage_app_account_name="acme",
+        order_form_id="order-123",
+        client_company_name="Acme Inc.",
+        signer_name="Client Signer",
+        signer_email=" Signer@Example.COM ",
+        contract_type=ClientOnboardingContractType.order_form_tos,
+        docusign_contract_id="contract-123",
+        docusign_envelope_id="envelope-123",
+        docusign_contract_url="https://docusign.example/contracts/123",
+        ae_owner_user_id=AE_USER_ID,
+        fde_owner_user_id=FDE_USER_ID,
+        folk_company_id="folk-company",
+        folk_contact_id="folk-contact",
+        scoping_doc_url="https://notion.example/scoping",
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert lifecycle.account_id == ACCOUNT_ID
+    assert lifecycle.manage_app_account_name == "acme"
+    assert lifecycle.signer_email == "signer@example.com"
+    assert lifecycle.status == ClientOnboardingStatus.account_created
+    assert lifecycle.contract_prepared_at == OCCURRED_AT
+    assert lifecycle.account_created_at == OCCURRED_AT
+    session.add.assert_called_once_with(lifecycle)
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_create_lifecycle_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.add.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.create_lifecycle(**_lifecycle_kwargs())
+
+    session.rollback.assert_called_once()
+
+
+def test_mark_invite_sent_updates_existing_lifecycle() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.account_created,
+    )
+    session = MagicMock()
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_invite_sent(
+        LIFECYCLE_ID,
+        invite_id=INVITATION_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.invite_id == INVITATION_ID
+    assert lifecycle.status == ClientOnboardingStatus.invite_sent
+    assert lifecycle.invite_sent_at == OCCURRED_AT
+    session.get.assert_called_once_with(ClientOnboardingLifecycle, LIFECYCLE_ID)
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_mark_blocked_updates_status_reason() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.account_created,
+    )
+    session = MagicMock()
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_blocked(
+        LIFECYCLE_ID,
+        status_reason="Signer invite failed",
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.blocked
+    assert lifecycle.status_reason == "Signer invite failed"
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_mark_blocked_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.get.return_value = _lifecycle()
+    session.flush.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.mark_blocked(
+            LIFECYCLE_ID,
+            status_reason="Signer invite failed",
+        )
+
+    session.rollback.assert_called_once()
+
+
+def test_append_activity_defaults_payloads_and_persists_activity() -> None:
+    session = MagicMock()
+    repo = ClientOnboardingRepository(session)
+
+    activity = repo.append_activity(
+        lifecycle_id=LIFECYCLE_ID,
+        activity_type="invite_sent",
+        actor_type=ClientOnboardingActorType.ae,
+        source=ClientOnboardingActivitySource.manage_app,
+        previous_status=ClientOnboardingStatus.account_created,
+        next_status=ClientOnboardingStatus.invite_sent,
+        actor_id=AE_USER_ID,
+        actor_display_name="AE User",
+        description="Invite sent",
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert isinstance(activity, ClientOnboardingActivity)
+    assert activity.lifecycle_id == LIFECYCLE_ID
+    assert activity.activity_type == "invite_sent"
+    assert activity.payload_diff == {}
+    assert activity.activity_metadata == {}
+    assert activity.occurred_at == OCCURRED_AT
+    session.add.assert_called_once_with(activity)
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(activity)
+
+
+def test_append_activity_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.add.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.append_activity(
+            lifecycle_id=LIFECYCLE_ID,
+            activity_type="invite_sent",
+            actor_type=ClientOnboardingActorType.ae,
+            source=ClientOnboardingActivitySource.manage_app,
+        )
+
+    session.rollback.assert_called_once()
+
+
+def test_status_updates_raise_when_lifecycle_is_missing() -> None:
+    session = MagicMock()
+    session.get.return_value = None
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(ValueError, match=str(LIFECYCLE_ID)):
+        repo.mark_invite_sent(LIFECYCLE_ID, invite_id=INVITATION_ID)
+
+
+def test_status_updates_roll_back_on_lifecycle_lookup_error() -> None:
+    session = MagicMock()
+    session.get.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.mark_invite_sent(LIFECYCLE_ID, invite_id=INVITATION_ID)
+
+    session.rollback.assert_called()
+
+
+def test_async_get_by_idempotency_key_returns_first_matching_lifecycle() -> None:
+    lifecycle = ClientOnboardingLifecycle(id=LIFECYCLE_ID)
+    repo, session, query_result = _async_repository_with_execute_result(lifecycle)
+
+    result = asyncio.run(repo.get_by_idempotency_key("onboarding-key"))
+
+    assert result is lifecycle
+    session.execute.assert_awaited_once()
+    query_result.scalars.return_value.first.assert_called_once()
+
+
+def test_async_get_active_for_account_signer_normalizes_signer_email() -> None:
+    lifecycle = ClientOnboardingLifecycle(id=LIFECYCLE_ID)
+    repo, session, query_result = _async_repository_with_execute_result(lifecycle)
+
+    result = asyncio.run(
+        repo.get_active_for_account_signer(ACCOUNT_ID, " Signer@Example.COM ")
+    )
+
+    assert result is lifecycle
+    session.execute.assert_awaited_once()
+    query_result.scalars.return_value.first.assert_called_once()
+
+
+def test_async_get_active_for_account_signer_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(
+            repo.get_active_for_account_signer(ACCOUNT_ID, "signer@example.com")
+        )
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_get_active_by_docusign_reference_returns_none_without_reference() -> (
+    None
+):
+    session = MagicMock()
+    session.execute = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(repo.get_active_by_docusign_reference())
+
+    assert result is None
+    session.execute.assert_not_called()
+
+
+def test_async_get_active_by_docusign_reference_matches_any_supplied_reference() -> (
+    None
+):
+    lifecycle = ClientOnboardingLifecycle(id=LIFECYCLE_ID)
+    repo, session, query_result = _async_repository_with_execute_result(lifecycle)
+
+    result = asyncio.run(
+        repo.get_active_by_docusign_reference(
+            docusign_contract_id="contract-123",
+            docusign_envelope_id="envelope-123",
+            docusign_contract_url="https://docusign.example/contracts/123",
+        )
+    )
+
+    assert result is lifecycle
+    session.execute.assert_awaited_once()
+    query_result.scalars.return_value.first.assert_called_once()
+
+
+def test_async_get_active_by_docusign_reference_rolls_back_on_sqlalchemy_error() -> (
+    None
+):
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(
+            repo.get_active_by_docusign_reference(
+                docusign_envelope_id="envelope-123",
+            )
+        )
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_get_by_idempotency_key_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(repo.get_by_idempotency_key("onboarding-key"))
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_create_lifecycle_persists_account_created_lifecycle() -> None:
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    lifecycle = asyncio.run(
+        repo.create_lifecycle(
+            idempotency_key="onboarding-key",
+            account_id=ACCOUNT_ID,
+            manage_app_account_name="acme",
+            order_form_id="order-123",
+            client_company_name="Acme Inc.",
+            signer_name="Client Signer",
+            signer_email=" Signer@Example.COM ",
+            contract_type=ClientOnboardingContractType.order_form_tos,
+            docusign_contract_id="contract-123",
+            docusign_envelope_id="envelope-123",
+            docusign_contract_url="https://docusign.example/contracts/123",
+            ae_owner_user_id=AE_USER_ID,
+            fde_owner_user_id=FDE_USER_ID,
+            folk_company_id="folk-company",
+            folk_contact_id="folk-contact",
+            scoping_doc_url="https://notion.example/scoping",
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert lifecycle.account_id == ACCOUNT_ID
+    assert lifecycle.signer_email == "signer@example.com"
+    assert lifecycle.status == ClientOnboardingStatus.account_created
+    assert lifecycle.contract_prepared_at == OCCURRED_AT
+    session.add.assert_called_once_with(lifecycle)
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_create_lifecycle_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.flush = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(repo.create_lifecycle(**_lifecycle_kwargs()))
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_mark_invite_sent_updates_existing_lifecycle() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.account_created,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_invite_sent(
+            LIFECYCLE_ID,
+            invite_id=INVITATION_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.invite_id == INVITATION_ID
+    assert lifecycle.status == ClientOnboardingStatus.invite_sent
+    assert lifecycle.invite_sent_at == OCCURRED_AT
+    session.get.assert_awaited_once_with(ClientOnboardingLifecycle, LIFECYCLE_ID)
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_mark_invite_sent_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.get = AsyncMock(return_value=_lifecycle())
+    session.flush = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(
+            repo.mark_invite_sent(
+                LIFECYCLE_ID,
+                invite_id=INVITATION_ID,
+            )
+        )
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_mark_blocked_updates_status_reason() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.account_created,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_blocked(
+            LIFECYCLE_ID,
+            status_reason="Signer invite failed",
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.blocked
+    assert lifecycle.status_reason == "Signer invite failed"
+    assert lifecycle.updated_at == OCCURRED_AT
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_mark_blocked_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.get = AsyncMock(return_value=_lifecycle())
+    session.flush = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(
+            repo.mark_blocked(
+                LIFECYCLE_ID,
+                status_reason="Signer invite failed",
+            )
+        )
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_append_activity_defaults_payloads_and_persists_activity() -> None:
+    session = MagicMock()
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    activity = asyncio.run(
+        repo.append_activity(
+            lifecycle_id=LIFECYCLE_ID,
+            activity_type="invite_sent",
+            actor_type=ClientOnboardingActorType.ae,
+            source=ClientOnboardingActivitySource.manage_app,
+            previous_status=ClientOnboardingStatus.account_created,
+            next_status=ClientOnboardingStatus.invite_sent,
+            actor_id=AE_USER_ID,
+            actor_display_name="AE User",
+            description="Invite sent",
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert isinstance(activity, ClientOnboardingActivity)
+    assert activity.lifecycle_id == LIFECYCLE_ID
+    assert activity.payload_diff == {}
+    assert activity.activity_metadata == {}
+    session.add.assert_called_once_with(activity)
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(activity)
+
+
+def test_async_append_activity_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.add.side_effect = SQLAlchemyError("database unavailable")
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(
+            repo.append_activity(
+                lifecycle_id=LIFECYCLE_ID,
+                activity_type="invite_sent",
+                actor_type=ClientOnboardingActorType.ae,
+                source=ClientOnboardingActivitySource.manage_app,
+            )
+        )
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_status_updates_raise_when_lifecycle_is_missing() -> None:
+    session = MagicMock()
+    session.get = AsyncMock(return_value=None)
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(ValueError, match=str(LIFECYCLE_ID)):
+        asyncio.run(repo.mark_invite_sent(LIFECYCLE_ID, invite_id=INVITATION_ID))
+
+
+def test_async_status_updates_roll_back_on_lifecycle_lookup_error() -> None:
+    session = MagicMock()
+    session.get = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(repo.mark_invite_sent(LIFECYCLE_ID, invite_id=INVITATION_ID))
+
+    assert session.rollback.await_count == 2

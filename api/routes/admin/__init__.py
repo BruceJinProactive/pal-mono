@@ -114,6 +114,8 @@ from api.schemas.admin.lead import (
 from api.schemas.admin.onboarding import (
     BuildMenuRequest,
     BuildMenuResponse,
+    CreateClientOnboardingAccountRequest,
+    CreateClientOnboardingAccountResponse,
     GenerateAgentPromptsRequest,
     GenerateAgentPromptsResponse,
     MenuProcessingStatusResponse,
@@ -277,6 +279,7 @@ from . import (
     _billing,
     _campaign,
     _capabilities,
+    _client_onboarding,
     _conversation,
     _email,
     _faq,
@@ -2747,6 +2750,24 @@ async def delete_lead(
 ---------- Onboarding Endpoint ----------
 ---------------------------------------
 """
+
+
+@admin_router.post(
+    "/onboarding/client-accounts",
+    status_code=status.HTTP_201_CREATED,
+    responses={400: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def create_client_onboarding_account(
+    request: CreateClientOnboardingAccountRequest,
+    context: UserContext = Depends(require_admin),
+    session: Session = Depends(db.get_db),
+) -> CreateClientOnboardingAccountResponse:
+    """
+    Create or link a client account for the DocuSign-first onboarding flow.
+    """
+    return _client_onboarding.create_client_onboarding_account(
+        request, context, session
+    )
 
 
 @admin_router.post("/onboarding/generate_prompts", status_code=status.HTTP_200_OK)
