@@ -13,6 +13,7 @@ Chronological record of significant changes. Each entry links to the relevant do
   for `food_tray` entities when the observed state transitions from `not_empty`
   to `empty`; the workflow uses the event's `definition_type` for prior-state
   duration resolution. -> `docs/state/architecture.md`
+- **Folk to Notion webhook sync.** Added a feature-flagged Folk Pipeline Review deal/company webhook endpoint that creates or updates one Notion client page per company, aggregates multiple current deals, verifies Standard Webhooks signatures, ignores delete events, and sends Slack alerts on sync failures. -> `docs/records/2026-06-18-folk-notion-webhook-sync.md`
 
 ## 2026-06-17
 

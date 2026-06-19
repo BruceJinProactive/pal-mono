@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 import db
 from api.routes.endpoints import endpoints
 from api.routes.integrations.adora import adora_router
+from api.routes.integrations.folk import folk_router
 from api.routes.integrations.olo import olo_router
 from api.routes.integrations.slack import slack_router
 from api.routes.integrations.square import _implementation as square_implementation
@@ -24,6 +25,9 @@ integrations_router.include_router(toast_router)
 
 # Include the Olo router
 integrations_router.include_router(olo_router)
+
+# Include the Folk router
+integrations_router.include_router(folk_router)
 
 # Include the Slack router
 integrations_router.include_router(slack_router)

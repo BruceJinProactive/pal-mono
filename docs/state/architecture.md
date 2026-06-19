@@ -16,7 +16,7 @@
 **Key Metrics**:
 - 48 database tables
 - 57 repository classes
-- 47 business services
+- 48 business services
 - 17 registered AI agent tools
 - 9 API route groups
 - 4 environments (dev/lat/stg/prd)
@@ -52,7 +52,7 @@ pal-mono is a multi-tenant conversational AI platform designed for restaurant an
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Service Layer                              │
-│  - 47 Business Services (account, agent, message, integration) │
+│  - 48 Business Services (account, agent, message, integration) │
 │  - Business Logic & Orchestration                               │
 │  - Transaction Management                                       │
 │  - Monitoring, Routines, Notifications                          │
@@ -104,7 +104,7 @@ pal-mono is a multi-tenant conversational AI platform designed for restaurant an
 **Route Groups** (9 routers in `/v1`):
 - `/v1/admin` - Account, agent, project, user, team, billing, capabilities management (29 sub-modules)
 - `/v1/chat` - Main conversational interface (streaming and non-streaming, OpenAI-compatible completions)
-- `/v1/integrations` - Third-party integrations (Adora, OLO, Slack, Square, Stripe, Toast, Twilio)
+- `/v1/integrations` - Third-party integrations (Adora, Folk, OLO, Slack, Square, Stripe, Toast, Twilio)
 - `/v1/assets` - Asset management (S3-backed)
 - `/v1/operation` - Checklists, monitoring, routines, signal sources, video upload
 - `/v1/catering` - Catering request handling
@@ -687,6 +687,7 @@ Pydantic Settings for type-safe configuration:
 | Agent Service | `/services/agent_service/` | Agent management |
 | Account Service | `/services/account_service/` | Account management |
 | Auth Service | `/services/auth_service/` | RBAC and permissions |
+| Folk Notion Sync Service | `/services/folk_notion_sync/` | Folk Pipeline Review deal/company webhook sync into Notion |
 | Integration Service | `/services/integration_service/` | Integration management |
 | Monitoring Service | `/services/monitoring_service/` | Monitoring and LLM analysis |
 | Notification Service | `/services/notification_service/` | Multi-channel notifications |
