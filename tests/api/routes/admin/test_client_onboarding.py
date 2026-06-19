@@ -263,6 +263,35 @@ def test_mark_client_onboarding_docusign_viewed_returns_service_response(
     assert mark_viewed.call_args.kwargs["invitation_token"] == "invite-token"
 
 
+def test_mark_client_onboarding_password_set_returns_service_response(
+    invite_step_result: ClientOnboardingInviteStepResult,
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client_onboarding_route = _load_client_onboarding_route_module(monkeypatch)
+    invite_step_result.lifecycle_status = ClientOnboardingStatus.password_set
+    invite_step_result.docusign_required = False
+    context = MagicMock()
+    mark_password_set = mocker.patch.object(
+        client_onboarding_route.client_onboarding_service,
+        "mark_client_onboarding_password_set",
+        return_value=invite_step_result,
+    )
+
+    response = client_onboarding_route.mark_client_onboarding_password_set(
+        "invite-token",
+        context,
+        MagicMock(),
+    )
+
+    assert response.lifecycle_id == LIFECYCLE_ID
+    assert response.lifecycle_status == ClientOnboardingStatus.password_set
+    assert response.docusign_required is False
+    mark_password_set.assert_called_once()
+    assert mark_password_set.call_args.kwargs["invitation_token"] == "invite-token"
+    assert mark_password_set.call_args.kwargs["context"] is context
+
+
 def test_reconcile_client_onboarding_docusign_completion_returns_service_response(
     docusign_completion_request: Any,
     docusign_completion_result: ReconcileClientOnboardingDocusignCompletionResult,
@@ -355,6 +384,28 @@ def test_mark_client_onboarding_docusign_viewed_maps_invalid(
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "invalid invite"
+
+
+def test_mark_client_onboarding_password_set_maps_invalid(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client_onboarding_route = _load_client_onboarding_route_module(monkeypatch)
+    mocker.patch.object(
+        client_onboarding_route.client_onboarding_service,
+        "mark_client_onboarding_password_set",
+        side_effect=ClientOnboardingInviteInvalidError("signature required"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        client_onboarding_route.mark_client_onboarding_password_set(
+            "invite-token",
+            MagicMock(),
+            MagicMock(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "signature required"
 
 
 def test_reconcile_client_onboarding_docusign_completion_maps_not_found(

@@ -2790,6 +2790,25 @@ def mark_client_onboarding_docusign_viewed(
 
 
 @admin_router.post(
+    "/onboarding/client-invites/{invitation_token}/password-set",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def mark_client_onboarding_password_set(
+    invitation_token: str,
+    context: UserContext = Depends(authenticate_user),
+    session: Session = Depends(db.get_db),
+) -> ClientOnboardingInviteStepResponse:
+    """
+    Record client password setup after DocuSign signature is complete.
+    """
+    return _client_onboarding.mark_client_onboarding_password_set(
+        invitation_token,
+        context,
+        session,
+    )
+
+
+@admin_router.post(
     "/onboarding/docusign/completions",
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
 )

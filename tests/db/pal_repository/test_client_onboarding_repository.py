@@ -455,6 +455,75 @@ def test_mark_docusign_signed_does_not_downgrade_post_signature_status() -> None
     assert session.execute.call_count == 3
 
 
+def test_mark_password_set_advances_from_docusign_signed() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_signed,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 1
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_password_set(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.password_set
+    assert lifecycle.password_set_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.docusign_signed
+    )
+    session.execute.assert_called_once()
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_mark_password_set_does_not_advance_before_signature() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_viewed,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 0
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_password_set(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_viewed
+    assert lifecycle.password_set_at is None
+    assert client_onboarding_transition_changed(result) is False
+
+
+def test_mark_password_set_does_not_downgrade_later_status() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.handoff_created,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 0
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_password_set(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.handoff_created
+    assert client_onboarding_transition_changed(result) is False
+
+
 def test_mark_blocked_updates_status_reason() -> None:
     lifecycle = ClientOnboardingLifecycle(
         id=LIFECYCLE_ID,
@@ -980,6 +1049,93 @@ def test_async_mark_docusign_signed_does_not_downgrade_post_signature_status() -
     assert lifecycle.docusign_signed_at is None
     assert client_onboarding_transition_changed(result) is False
     assert session.execute.await_count == 3
+
+
+def test_async_mark_password_set_advances_from_docusign_signed() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_signed,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    execute_result = MagicMock()
+    execute_result.rowcount = 1
+    session.execute = AsyncMock(return_value=execute_result)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_password_set(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.password_set
+    assert lifecycle.password_set_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.docusign_signed
+    )
+    session.execute.assert_awaited_once()
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_mark_password_set_does_not_advance_before_signature() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_viewed,
+    )
+    execute_result = MagicMock()
+    execute_result.rowcount = 0
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.execute = AsyncMock(return_value=execute_result)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_password_set(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_viewed
+    assert lifecycle.password_set_at is None
+    assert client_onboarding_transition_changed(result) is False
+
+
+def test_async_mark_password_set_does_not_downgrade_later_status() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.handoff_created,
+    )
+    execute_result = MagicMock()
+    execute_result.rowcount = 0
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.execute = AsyncMock(return_value=execute_result)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_password_set(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.handoff_created
+    assert client_onboarding_transition_changed(result) is False
 
 
 def test_async_mark_blocked_updates_status_reason() -> None:

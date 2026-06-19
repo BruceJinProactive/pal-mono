@@ -42,6 +42,16 @@ def mark_client_onboarding_docusign_viewed(
     return _mark(session=session, invitation_token=invitation_token)
 
 
+def mark_client_onboarding_password_set(
+    session: Session,
+    context: UserContext,
+    invitation_token: str,
+) -> ClientOnboardingInviteStepResult:
+    from ._implementation import mark_client_onboarding_password_set as _mark
+
+    return _mark(session=session, context=context, invitation_token=invitation_token)
+
+
 def reconcile_client_onboarding_docusign_completion(
     session: Session,
     params: ReconcileClientOnboardingDocusignCompletionParams,
@@ -65,5 +75,6 @@ __all__ = [
     "create_client_onboarding_account",
     "get_client_onboarding_invite_step",
     "mark_client_onboarding_docusign_viewed",
+    "mark_client_onboarding_password_set",
     "reconcile_client_onboarding_docusign_completion",
 ]

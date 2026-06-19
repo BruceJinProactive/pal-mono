@@ -326,6 +326,50 @@ class ClientOnboardingRepository:
             logger.exception(f"Error marking client onboarding DocuSign signed: {exc}")
             raise
 
+    def mark_password_set(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            password_set_at = occurred_at or datetime.now(timezone.utc)
+            result = self.session.execute(
+                update(ClientOnboardingLifecycle)
+                .where(
+                    ClientOnboardingLifecycle.id == lifecycle_id,
+                    ClientOnboardingLifecycle.status
+                    == ClientOnboardingStatus.docusign_signed,
+                )
+                .values(
+                    status=ClientOnboardingStatus.password_set,
+                    password_set_at=password_set_at,
+                    updated_at=password_set_at,
+                )
+                .execution_options(synchronize_session="fetch")
+            )
+            transition_changed = _rowcount_changed(result)
+            lifecycle = self._require_lifecycle(lifecycle_id)
+            if transition_changed:
+                lifecycle.status = ClientOnboardingStatus.password_set
+                lifecycle.password_set_at = password_set_at
+            self.session.flush()
+            self.session.refresh(lifecycle)
+            _annotate_transition(
+                lifecycle,
+                changed=transition_changed,
+                previous_status=(
+                    ClientOnboardingStatus.docusign_signed
+                    if transition_changed
+                    else None
+                ),
+            )
+            return lifecycle
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error marking client onboarding password set: {exc}")
+            raise
+
     def mark_blocked(
         self,
         lifecycle_id: uuid.UUID,
@@ -743,6 +787,50 @@ class ClientOnboardingRepositoryAsync:
         except SQLAlchemyError as exc:
             await self.session.rollback()
             logger.exception(f"Error marking client onboarding DocuSign signed: {exc}")
+            raise
+
+    async def mark_password_set(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            password_set_at = occurred_at or datetime.now(timezone.utc)
+            result = await self.session.execute(
+                update(ClientOnboardingLifecycle)
+                .where(
+                    ClientOnboardingLifecycle.id == lifecycle_id,
+                    ClientOnboardingLifecycle.status
+                    == ClientOnboardingStatus.docusign_signed,
+                )
+                .values(
+                    status=ClientOnboardingStatus.password_set,
+                    password_set_at=password_set_at,
+                    updated_at=password_set_at,
+                )
+                .execution_options(synchronize_session="fetch")
+            )
+            transition_changed = _rowcount_changed(result)
+            lifecycle = await self._require_lifecycle(lifecycle_id)
+            if transition_changed:
+                lifecycle.status = ClientOnboardingStatus.password_set
+                lifecycle.password_set_at = password_set_at
+            await self.session.flush()
+            await self.session.refresh(lifecycle)
+            _annotate_transition(
+                lifecycle,
+                changed=transition_changed,
+                previous_status=(
+                    ClientOnboardingStatus.docusign_signed
+                    if transition_changed
+                    else None
+                ),
+            )
+            return lifecycle
+        except SQLAlchemyError as exc:
+            await self.session.rollback()
+            logger.exception(f"Error marking client onboarding password set: {exc}")
             raise
 
     async def mark_blocked(

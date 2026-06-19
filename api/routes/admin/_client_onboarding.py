@@ -107,6 +107,33 @@ def mark_client_onboarding_docusign_viewed(
     return _to_invite_step_response(result)
 
 
+def mark_client_onboarding_password_set(
+    invitation_token: str,
+    context: UserContext,
+    session: Session,
+) -> ClientOnboardingInviteStepResponse:
+    try:
+        result = client_onboarding_service.mark_client_onboarding_password_set(
+            session=session,
+            context=context,
+            invitation_token=invitation_token,
+        )
+    except ClientOnboardingInviteNotFoundError as err:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        ) from err
+    except ClientOnboardingInviteInvalidError as err:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        ) from err
+
+    return _to_invite_step_response(result)
+
+
 def reconcile_client_onboarding_docusign_completion(
     request: ReconcileClientOnboardingDocusignCompletionRequest,
     session: Session,

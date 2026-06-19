@@ -47,6 +47,11 @@ POST_SIGNATURE_STATUSES = {
     ClientOnboardingStatus.handoff_created,
     ClientOnboardingStatus.activation_ready,
 }
+POST_PASSWORD_STATUSES = {
+    ClientOnboardingStatus.password_set,
+    ClientOnboardingStatus.handoff_created,
+    ClientOnboardingStatus.activation_ready,
+}
 
 
 def create_client_onboarding_account(
@@ -280,6 +285,58 @@ def mark_client_onboarding_docusign_viewed(
     return _build_invite_step_result(resolved, lifecycle)
 
 
+def mark_client_onboarding_password_set(
+    session: Session,
+    context: UserContext,
+    invitation_token: str,
+) -> ClientOnboardingInviteStepResult:
+    resolved = _resolve_client_onboarding_invite_for_password_set(
+        session=session,
+        invitation_token=invitation_token,
+        context=context,
+    )
+    lifecycle = resolved.lifecycle
+
+    if lifecycle.status not in {
+        ClientOnboardingStatus.docusign_signed,
+        *POST_PASSWORD_STATUSES,
+    }:
+        raise ClientOnboardingInviteInvalidError(
+            "DocuSign completion is required before password setup"
+        )
+
+    if lifecycle.status == ClientOnboardingStatus.docusign_signed:
+        password_set_at = datetime.now(timezone.utc)
+        onboarding_repo = ClientOnboardingRepository(session)
+        lifecycle = onboarding_repo.mark_password_set(
+            lifecycle.id,
+            occurred_at=password_set_at,
+        )
+        if client_onboarding_transition_changed(lifecycle):
+            onboarding_repo.append_activity(
+                lifecycle_id=lifecycle.id,
+                activity_type=ClientOnboardingStatus.password_set.value,
+                actor_type=ClientOnboardingActorType.client,
+                actor_id=_parse_optional_user_id(context.username),
+                actor_display_name=context.email,
+                source=ClientOnboardingActivitySource.admin_console,
+                previous_status=client_onboarding_transition_previous_status(lifecycle)
+                or ClientOnboardingStatus.docusign_signed,
+                next_status=ClientOnboardingStatus.password_set,
+                description="Client completed password setup after DocuSign signature",
+                payload_diff={
+                    "invite_id": (
+                        str(lifecycle.invite_id) if lifecycle.invite_id else None
+                    ),
+                    "signer_email": lifecycle.signer_email,
+                },
+                occurred_at=password_set_at,
+            )
+            session.commit()
+
+    return _build_invite_step_result(resolved, lifecycle)
+
+
 def reconcile_client_onboarding_docusign_completion(
     session: Session,
     params: ReconcileClientOnboardingDocusignCompletionParams,
@@ -507,6 +564,7 @@ def _raise_for_docusign_reference_mismatch(
 
 @dataclass(frozen=True)
 class _ResolvedClientOnboardingInvite:
+    invitation: UserInvitation
     lifecycle: ClientOnboardingLifecycle
     account_name: str
     account_display_name: str | None
@@ -516,15 +574,17 @@ class _ResolvedClientOnboardingInvite:
 def _resolve_client_onboarding_invite(
     session: Session,
     invitation_token: str,
+    allowed_invitation_statuses: set[InvitationStatus] | None = None,
 ) -> _ResolvedClientOnboardingInvite:
     from services import team_service
 
+    allowed_statuses = allowed_invitation_statuses or {InvitationStatus.pending}
     invitation_details = team_service.get_invitation_details(session, invitation_token)
     if not invitation_details:
         raise ClientOnboardingInviteNotFoundError("Invitation not found")
 
     invitation, account_name, account_display_name, inviter_name = invitation_details
-    if invitation.status != InvitationStatus.pending:
+    if invitation.status not in allowed_statuses:
         raise ClientOnboardingInviteInvalidError(
             f"Invitation is {invitation.status.value}"
         )
@@ -545,11 +605,36 @@ def _resolve_client_onboarding_invite(
         )
 
     return _ResolvedClientOnboardingInvite(
+        invitation=invitation,
         lifecycle=lifecycle,
         account_name=account_name,
         account_display_name=account_display_name,
         docusign_sender_name=inviter_name,
     )
+
+
+def _resolve_client_onboarding_invite_for_password_set(
+    *,
+    session: Session,
+    invitation_token: str,
+    context: UserContext,
+) -> _ResolvedClientOnboardingInvite:
+    resolved = _resolve_client_onboarding_invite(
+        session,
+        invitation_token,
+        allowed_invitation_statuses={
+            InvitationStatus.pending,
+            InvitationStatus.accepted,
+        },
+    )
+    context_email = _normalize_email(context.email)
+    invitation_email = _normalize_email(resolved.invitation.email)
+    signer_email = _normalize_email(resolved.lifecycle.signer_email)
+    if context_email != invitation_email or context_email != signer_email:
+        raise ClientOnboardingInviteInvalidError(
+            "Authenticated user does not match client onboarding signer"
+        )
+    return resolved
 
 
 def _build_invite_step_result(
@@ -591,6 +676,13 @@ def _parse_user_id(username: str) -> uuid.UUID:
         return uuid.UUID(username)
     except ValueError as exc:
         raise ValueError("Authenticated AE user id is not a valid UUID") from exc
+
+
+def _parse_optional_user_id(username: str) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(username)
+    except ValueError:
+        return None
 
 
 def _normalize_email(email: str) -> str:

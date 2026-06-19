@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-19
 
+- **Client onboarding password setup lifecycle.** Added the post-signature password setup marker for client onboarding invites so authenticated signers can move a lifecycle from `docusign_signed` to `password_set` only after DocuSign completion is confirmed. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Client onboarding DocuSign completion reconciliation.** Added the MVP backend path for verified DocuSign completion events to advance client onboarding lifecycles to `docusign_signed`, unlock password setup, and record one idempotent DocuSign activity event even when callbacks are retried. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Tool-result cache in-memory parity fields.** Added tool-specific sanitizer exceptions so Redis previous-tool-results preserve the same Adora order, delivery-zone, and customer-profile context that pal-agents process-local fallback injects, including checked delivery address and profile/order identity fields for those explicit tool payloads. -> `docs/plans/tool-result-elasticache-migration.md`
 - **Folk Notion page create fix.** Send `Folk Price Per Month Per Location` as a Notion number property and include Notion validation response bodies in sync failure alerts so schema issues are diagnosable. -> `docs/records/2026-06-18-folk-notion-webhook-sync.md`
