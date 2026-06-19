@@ -105,6 +105,7 @@ from api.schemas.operations.vision_rule import (
 )
 from api.schemas.operations.vision_rule_event import (
     ListVisionRuleEventsResponse,
+    UpdateVisionRuleEventRequest,
     VisionRuleEventResponse,
 )
 from api.schemas.operations.vision_state_change_event import (
@@ -4203,6 +4204,45 @@ async def get_rule_event(
         session=session,
         event_id=event_id,
         account_name=account_name,
+    )
+
+
+@operation_router.patch(
+    "/accounts/{account_name}/rule-events/{event_id}",
+    response_model=VisionRuleEventResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_rule_event(
+    account_name: str,
+    event_id: uuid.UUID,
+    request: UpdateVisionRuleEventRequest,
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> VisionRuleEventResponse:
+    """
+    Update editable fields on a vision rule event.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - event_id: UUID of the rule event
+
+    Body:
+    - triggered_at: Updated event timestamp
+    - duration: Updated event duration in minutes
+    """
+    _ = context
+    return await _vision_rule_events.update_rule_event(
+        session=session,
+        event_id=event_id,
+        account_name=account_name,
+        request=request,
     )
 
 

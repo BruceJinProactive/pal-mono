@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.vision_rule_event import (
     ListVisionRuleEventsResponse,
+    UpdateVisionRuleEventRequest,
     VisionRuleEventResponse,
 )
 from services import vision_event_service
@@ -112,5 +113,38 @@ async def delete_rule_event(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete rule event",
+            headers={"Content-Type": "application/json"},
+        )
+
+
+@traced("vision_rule_event.update")
+async def update_rule_event(
+    session: AsyncSession,
+    event_id: uuid.UUID,
+    account_name: str,
+    request: UpdateVisionRuleEventRequest,
+) -> VisionRuleEventResponse:
+    try:
+        return await vision_event_service.update_rule_event(
+            session=session,
+            event_id=event_id,
+            request=request,
+            account_name=account_name,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+            headers={"Content-Type": "application/json"},
+        )
+    except Exception:
+        logger.error(
+            "[Vision RuleEvent] Failed to update event",
+            exc_info=True,
+            extra={"event_id": str(event_id)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update rule event",
             headers={"Content-Type": "application/json"},
         )

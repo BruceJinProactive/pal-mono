@@ -30,6 +30,16 @@ class VisionRuleEventResponse(BaseModel):
     event_metadata: dict[str, Any] = Field(description="Arbitrary event metadata")
 
 
+class UpdateVisionRuleEventRequest(BaseModel):
+    """Request to update editable vision rule event fields."""
+
+    triggered_at: datetime = Field(description="When the rule was triggered")
+    duration: Decimal = Field(
+        ge=Decimal("0.0"),
+        description="Duration of the prior state in minutes",
+    )
+
+
 class ListVisionRuleEventsResponse(BaseModel):
     """Response for listing vision rule events."""
 

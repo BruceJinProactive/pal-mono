@@ -61,7 +61,6 @@ def sample_data(sample_id: uuid.UUID, sample_rule_id: uuid.UUID) -> VisionRuleEv
 
 
 class TestCreate:
-
     @pytest.mark.asyncio
     async def test_create_commits(
         self,
@@ -91,7 +90,6 @@ class TestCreate:
 
 
 class TestGetByIdForAccount:
-
     @pytest.mark.asyncio
     async def test_returns_data_when_found(
         self,
@@ -137,7 +135,6 @@ class TestGetByIdForAccount:
 
 
 class TestListByAccount:
-
     @pytest.mark.asyncio
     async def test_returns_list(
         self,
@@ -222,7 +219,6 @@ class TestListByAccount:
 
 
 class TestDeleteForAccount:
-
     @pytest.mark.asyncio
     async def test_deletes_and_returns_true(
         self,
@@ -263,4 +259,111 @@ class TestDeleteForAccount:
 
         with pytest.raises(Exception):
             await repo.delete_for_account(sample_id, uuid.uuid4())
+        mock_session.rollback.assert_awaited_once()
+
+
+class TestUpdateForAccount:
+    @pytest.mark.asyncio
+    async def test_updates_and_returns_data(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        updated_row = MagicMock(spec=VisionRuleEvent)
+        updated_row.id = sample_id
+        updated_row.rule_id = sample_orm_row.rule_id
+        updated_row.entity_id = sample_orm_row.entity_id
+        updated_row.state_change_event_id = sample_orm_row.state_change_event_id
+        updated_row.severity = sample_orm_row.severity
+        updated_row.duration = Decimal("3.0000")
+        updated_row.triggered_at = datetime(2026, 5, 1, 12, 30, tzinfo=timezone.utc)
+        updated_row.event_metadata = sample_orm_row.event_metadata
+
+        current_result = MagicMock()
+        current_result.scalar_one_or_none.return_value = sample_orm_row
+        update_result = MagicMock()
+        update_result.rowcount = 1
+        refreshed_result = MagicMock()
+        refreshed_result.scalar_one_or_none.return_value = updated_row
+        mock_session.execute.side_effect = [
+            current_result,
+            update_result,
+            refreshed_result,
+        ]
+
+        result = await repo.update_for_account(
+            event_id=sample_id,
+            account_id=uuid.uuid4(),
+            triggered_at=updated_row.triggered_at,
+            duration=Decimal("3.0000"),
+        )
+
+        assert result is not None
+        assert result.triggered_at == updated_row.triggered_at
+        assert result.duration == Decimal("3.0000")
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_event_not_found(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        current_result = MagicMock()
+        current_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = current_result
+
+        result = await repo.update_for_account(
+            event_id=sample_id,
+            account_id=uuid.uuid4(),
+            triggered_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            duration=Decimal("3.0000"),
+        )
+
+        assert result is None
+        mock_session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_update_does_not_affect_rows(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        current_result = MagicMock()
+        current_result.scalar_one_or_none.return_value = sample_orm_row
+        update_result = MagicMock()
+        update_result.rowcount = 0
+        mock_session.execute.side_effect = [current_result, update_result]
+
+        result = await repo.update_for_account(
+            event_id=sample_id,
+            account_id=uuid.uuid4(),
+            triggered_at=datetime(2026, 5, 1, 12, 30, tzinfo=timezone.utc),
+            duration=Decimal("3.0000"),
+        )
+
+        assert result is None
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_raises_on_db_error(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_id: uuid.UUID,
+    ) -> None:
+        mock_session.execute.side_effect = Exception("update failed")
+
+        with pytest.raises(Exception):
+            await repo.update_for_account(
+                event_id=sample_id,
+                account_id=uuid.uuid4(),
+                triggered_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+                duration=Decimal("3.0000"),
+            )
         mock_session.rollback.assert_awaited_once()

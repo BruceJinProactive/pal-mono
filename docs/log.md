@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-19
 
+- **Vision rule event timing edits.** Added account-scoped `PATCH /accounts/{account_name}/rule-events/{event_id}` support so Admin Console can correct Vision AI rule event `triggered_at` and `duration` values while preserving the event's rule/entity linkage and metadata. -> `docs/records/2026-06-19-vision-rule-event-editing.md`
 - **Client onboarding post-signature DB and Folk sync.** DocuSign completion now records durable post-signature sync jobs for database contract acceptance and Folk contract field updates, with a retryable Folk processor that updates linked company/contact records from the onboarding lifecycle. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Catering customer contact numbers.** Public catering request responses now include
   separate `catering_ai_phone_number` and `catering_manager_phone_number` fields. Customer

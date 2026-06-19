@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.vision_rule_event import (
     ListVisionRuleEventsResponse,
+    UpdateVisionRuleEventRequest,
     VisionRuleEventResponse,
 )
 from db.pal_repository import VisionRuleEventRepository
@@ -85,3 +86,30 @@ async def delete_rule_event(
         "[Vision Event] Deleted rule event",
         extra={"event_id": str(event_id)},
     )
+
+
+async def update_rule_event(
+    session: AsyncSession,
+    event_id: uuid.UUID,
+    request: UpdateVisionRuleEventRequest,
+    account_name: str,
+) -> VisionRuleEventResponse:
+    account = await account_service.get_account_async(session, account_name)
+    if not account:
+        raise ValueError(f"Account {account_name} not found")
+
+    repo = VisionRuleEventRepository(session)
+    data = await repo.update_for_account(
+        event_id=event_id,
+        account_id=account.id,
+        triggered_at=request.triggered_at,
+        duration=request.duration,
+    )
+    if not data:
+        raise ValueError(f"Rule event {event_id} not found")
+
+    logger.info(
+        "[Vision Event] Updated rule event",
+        extra={"event_id": str(event_id)},
+    )
+    return _build_response(data)

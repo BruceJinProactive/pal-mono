@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from api.schemas.operations.vision_rule_event import UpdateVisionRuleEventRequest
 from db.pal_repository.data_classes.vision_rule_event import VisionRuleEventData
 
 MODULE = "services.vision_event_service._rule_events"
@@ -40,7 +41,6 @@ def _make_event_data(**overrides: object) -> VisionRuleEventData:
 
 
 class TestGetRuleEvent:
-
     @pytest.mark.asyncio
     async def test_returns_event(self) -> None:
         session = AsyncMock()
@@ -104,7 +104,6 @@ class TestGetRuleEvent:
 
 
 class TestListRuleEvents:
-
     @pytest.mark.asyncio
     async def test_returns_events(self) -> None:
         session = AsyncMock()
@@ -153,7 +152,6 @@ class TestListRuleEvents:
 
 
 class TestDeleteRuleEvent:
-
     @pytest.mark.asyncio
     async def test_deletes_event(self) -> None:
         session = AsyncMock()
@@ -210,3 +208,94 @@ class TestDeleteRuleEvent:
 
             with pytest.raises(ValueError, match="not found"):
                 await delete_rule_event(session, uuid.uuid4(), ACCOUNT_NAME)
+
+
+class TestUpdateRuleEvent:
+    @pytest.mark.asyncio
+    async def test_updates_event(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        triggered_at = datetime(2026, 5, 1, 12, 30, tzinfo=timezone.utc)
+        request = UpdateVisionRuleEventRequest(
+            triggered_at=triggered_at,
+            duration=Decimal("2.5000"),
+        )
+        event_data = _make_event_data(
+            id=event_id,
+            triggered_at=triggered_at,
+            duration=Decimal("2.5000"),
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionRuleEventRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.update_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._rule_events import update_rule_event
+
+            result = await update_rule_event(
+                session=session,
+                event_id=event_id,
+                request=request,
+                account_name=ACCOUNT_NAME,
+            )
+
+            assert result.id == event_id
+            assert result.triggered_at == triggered_at
+            assert result.duration == Decimal("2.5000")
+            repo.update_for_account.assert_awaited_once_with(
+                event_id=event_id,
+                account_id=ACCOUNT_ID,
+                triggered_at=triggered_at,
+                duration=Decimal("2.5000"),
+            )
+
+    @pytest.mark.asyncio
+    async def test_raises_when_account_not_found(self) -> None:
+        session = AsyncMock()
+        request = UpdateVisionRuleEventRequest(
+            triggered_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            duration=Decimal("1.0000"),
+        )
+
+        with patch(
+            f"{MODULE}.account_service.get_account_async",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            from services.vision_event_service._rule_events import update_rule_event
+
+            with pytest.raises(ValueError, match="not found"):
+                await update_rule_event(session, uuid.uuid4(), request, "bad-account")
+
+    @pytest.mark.asyncio
+    async def test_raises_when_event_not_found(self) -> None:
+        session = AsyncMock()
+        request = UpdateVisionRuleEventRequest(
+            triggered_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            duration=Decimal("1.0000"),
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionRuleEventRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.update_for_account.return_value = None
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._rule_events import update_rule_event
+
+            with pytest.raises(ValueError, match="not found"):
+                await update_rule_event(session, uuid.uuid4(), request, ACCOUNT_NAME)

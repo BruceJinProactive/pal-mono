@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from api.schemas.operations.vision_rule_event import (
     ListVisionRuleEventsResponse,
+    UpdateVisionRuleEventRequest,
     VisionRuleEventResponse,
 )
 
@@ -36,7 +37,6 @@ def _make_response(**overrides: object) -> VisionRuleEventResponse:
 
 
 class TestGetRuleEvent:
-
     @pytest.mark.asyncio
     async def test_success(self) -> None:
         from api.routes.operation._vision_rule_events import get_rule_event
@@ -87,7 +87,6 @@ class TestGetRuleEvent:
 
 
 class TestListRuleEvents:
-
     @pytest.mark.asyncio
     async def test_success(self) -> None:
         from api.routes.operation._vision_rule_events import list_rule_events
@@ -144,7 +143,6 @@ class TestListRuleEvents:
 
 
 class TestDeleteRuleEvent:
-
     @pytest.mark.asyncio
     async def test_success(self) -> None:
         from api.routes.operation._vision_rule_events import delete_rule_event
@@ -187,4 +185,91 @@ class TestDeleteRuleEvent:
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await delete_rule_event(session, uuid.uuid4(), ACCOUNT_NAME)
+            assert exc_info.value.status_code == 500
+
+
+class TestUpdateRuleEvent:
+    @pytest.mark.asyncio
+    async def test_success(self) -> None:
+        from api.routes.operation._vision_rule_events import update_rule_event
+
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        request = UpdateVisionRuleEventRequest(
+            triggered_at=datetime(2026, 5, 1, 12, 30, tzinfo=timezone.utc),
+            duration=Decimal("2.5000"),
+        )
+        expected = _make_response(
+            id=event_id,
+            triggered_at=request.triggered_at,
+            duration=request.duration,
+        )
+
+        with patch(
+            f"{MODULE}.vision_event_service.update_rule_event",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ) as mock_update:
+            result = await update_rule_event(
+                session=session,
+                event_id=event_id,
+                account_name=ACCOUNT_NAME,
+                request=request,
+            )
+
+        assert result.id == event_id
+        assert result.duration == Decimal("2.5000")
+        mock_update.assert_awaited_once_with(
+            session=session,
+            event_id=event_id,
+            request=request,
+            account_name=ACCOUNT_NAME,
+        )
+
+    @pytest.mark.asyncio
+    async def test_not_found_returns_404(self) -> None:
+        from api.routes.operation._vision_rule_events import update_rule_event
+
+        session = AsyncMock()
+        request = UpdateVisionRuleEventRequest(
+            triggered_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            duration=Decimal("1.0000"),
+        )
+
+        with patch(
+            f"{MODULE}.vision_event_service.update_rule_event",
+            new_callable=AsyncMock,
+            side_effect=ValueError("not found"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await update_rule_event(
+                    session=session,
+                    event_id=uuid.uuid4(),
+                    account_name=ACCOUNT_NAME,
+                    request=request,
+                )
+            assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_generic_error_returns_500(self) -> None:
+        from api.routes.operation._vision_rule_events import update_rule_event
+
+        session = AsyncMock()
+        request = UpdateVisionRuleEventRequest(
+            triggered_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            duration=Decimal("1.0000"),
+        )
+
+        with patch(
+            f"{MODULE}.vision_event_service.update_rule_event",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await update_rule_event(
+                    session=session,
+                    event_id=uuid.uuid4(),
+                    account_name=ACCOUNT_NAME,
+                    request=request,
+                )
             assert exc_info.value.status_code == 500

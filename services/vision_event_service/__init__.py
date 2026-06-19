@@ -5,7 +5,12 @@ from ._implementation import (
     list_state_change_events,
     update_state_change_event,
 )
-from ._rule_events import delete_rule_event, get_rule_event, list_rule_events
+from ._rule_events import (
+    delete_rule_event,
+    get_rule_event,
+    list_rule_events,
+    update_rule_event,
+)
 
 __all__ = [
     "create_state_change_event",
@@ -15,5 +20,6 @@ __all__ = [
     "get_state_change_event",
     "list_rule_events",
     "list_state_change_events",
+    "update_rule_event",
     "update_state_change_event",
 ]

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-18
+> **Last updated:** 2026-06-19
 
 ## Quick Reference
 
@@ -263,7 +263,11 @@ time spent in the prior state before the trigger state was observed. For example
 transitions to `clean`; if no prior-state start time can be resolved, the event
 keeps the `0.0` default. `GET /accounts/{account_name}/rule-events` returns all
 rule events matching the account, optional rule/entity filters, and the time
-window; it has no pagination or `limit` query parameter.
+window; it has no pagination or `limit` query parameter. `PATCH
+/accounts/{account_name}/rule-events/{event_id}` is account-scoped and lets
+authorized operations callers correct a rule event's `triggered_at` timestamp
+and `duration` in minutes without changing the linked rule, entity, state-change
+event, severity, or metadata.
 
 Vision V2 observations derive `observed_at` from the image path when the
 filename matches the UTC snapshot format `YYYY-MM-DD_HH-MM-SS.jpg`, including
