@@ -136,13 +136,13 @@ def _previous_state_started_at_from_entity(
     return entity.current_state_since
 
 
-async def _previous_state_duration(
+async def _previous_state_interval(
     state_event_repo: VisionStateChangeEventRepository,
     entity: VisionEntityData,
     state_change_event: VisionStateChangeEventData,
     workflow: RuleWorkflow,
     definition_type: str | None,
-) -> Decimal:
+) -> tuple[datetime | None, Decimal, VisionStateChangeEventData | None]:
     started_at = _previous_state_started_at_from_entity(
         entity=entity,
         definition_type=definition_type,
@@ -150,17 +150,42 @@ async def _previous_state_duration(
         previous_state_name=workflow.previous_state,
     )
 
-    if started_at is None and state_change_event.previous_state_id is not None:
-        previous_event = await state_event_repo.get_latest_by_entity_state_before(
+    start_event = None
+    if state_change_event.previous_state_id is not None:
+        start_event = await state_event_repo.get_latest_by_entity_state_before(
             entity_id=state_change_event.entity_id,
             state_id=state_change_event.previous_state_id,
             before=state_change_event.observed_at,
             definition_type=definition_type,
         )
-        if previous_event is not None:
-            started_at = previous_event.observed_at
+        if started_at is None and start_event is not None:
+            started_at = start_event.observed_at
 
-    return _duration_minutes(started_at, state_change_event.observed_at)
+    return (
+        started_at,
+        _duration_minutes(started_at, state_change_event.observed_at),
+        start_event,
+    )
+
+
+def _duration_event_metadata(
+    workflow: RuleWorkflow,
+    started_at: datetime | None,
+    start_event: VisionStateChangeEventData | None,
+    end_event: VisionStateChangeEventData,
+) -> dict[str, str]:
+    metadata = {
+        "duration_state": workflow.previous_state,
+        "proof_state": workflow.previous_state,
+        "trigger_state": workflow.trigger_state,
+        "duration_end_state_change_event_id": str(end_event.id),
+        "duration_ended_at": _as_utc(end_event.observed_at).isoformat(),
+    }
+    if started_at is not None:
+        metadata["duration_started_at"] = _as_utc(started_at).isoformat()
+    if start_event is not None:
+        metadata["duration_start_state_change_event_id"] = str(start_event.id)
+    return metadata
 
 
 async def _handle_state_transition_rule(
@@ -179,14 +204,14 @@ async def _handle_state_transition_rule(
     ):
         return
 
-    event_metadata = state_change_event.event_metadata or {}
-    event_definition_type = event_metadata.get("definition_type")
+    state_change_metadata = state_change_event.event_metadata or {}
+    event_definition_type = state_change_metadata.get("definition_type")
     definition_type = (
         event_definition_type
         if isinstance(event_definition_type, str)
         else workflow.state_definition_type
     )
-    duration = await _previous_state_duration(
+    started_at, duration, start_event = await _previous_state_interval(
         state_event_repo=state_event_repo,
         entity=entity,
         state_change_event=state_change_event,
@@ -203,6 +228,12 @@ async def _handle_state_transition_rule(
             severity=rule.severity,
             duration=duration,
             triggered_at=state_change_event.observed_at,
+            event_metadata=_duration_event_metadata(
+                workflow,
+                started_at,
+                start_event,
+                state_change_event,
+            ),
         )
     )
     logger.info(
@@ -229,58 +260,72 @@ RULE_TYPE_WORKFLOWS: dict[str, RuleWorkflow] = {
     ),
     "table_occupied": RuleWorkflow(
         entity_type_name="table",
-        previous_state="empty",
-        trigger_state="occupied",
+        previous_state="occupied",
+        trigger_state="empty",
         state_definition_type="occupation",
         handler=_handle_state_transition_rule,
     ),
     "table_touch": RuleWorkflow(
         entity_type_name="table",
-        previous_state="no_table_touch",
-        trigger_state="table_touch",
+        previous_state="table_touch",
+        trigger_state="no_table_touch",
         state_definition_type="touch",
         handler=_handle_state_transition_rule,
     ),
     "glove_usage": RuleWorkflow(
         entity_type_name="staff",
-        previous_state="with_gloves",
-        trigger_state="without_gloves",
+        previous_state="without_gloves",
+        trigger_state="with_gloves",
         state_definition_type="glove_usage",
         handler=_handle_state_transition_rule,
     ),
     "food_container_on_ground": RuleWorkflow(
         entity_type_name="container",
-        previous_state="not_on_ground",
-        trigger_state="container_on_ground",
+        previous_state="container_on_ground",
+        trigger_state="not_on_ground",
         state_definition_type="location",
         handler=_handle_state_transition_rule,
     ),
     "manager_in_room": RuleWorkflow(
         entity_type_name="manager_office",
-        previous_state="no_person",
-        trigger_state="person_present",
+        previous_state="person_present",
+        trigger_state="no_person",
         state_definition_type="presence",
         handler=_handle_state_transition_rule,
     ),
     "staff_at_front_desk": RuleWorkflow(
         entity_type_name="front_desk",
-        previous_state="no_people",
-        trigger_state="people_present",
+        previous_state="people_present",
+        trigger_state="no_people",
         state_definition_type="presence",
         handler=_handle_state_transition_rule,
     ),
     "guest_visiting_menu_board": RuleWorkflow(
         entity_type_name="menu_board",
-        previous_state="no_people",
-        trigger_state="people_present",
+        previous_state="people_present",
+        trigger_state="no_people",
         state_definition_type="presence",
         handler=_handle_state_transition_rule,
     ),
     "empty_tray": RuleWorkflow(
         entity_type_name="food_tray",
-        previous_state="not_empty",
-        trigger_state="empty",
-        state_definition_type=None,
+        previous_state="empty",
+        trigger_state="not_empty",
+        state_definition_type="fullness",
+        handler=_handle_state_transition_rule,
+    ),
+    "people_queued_up": RuleWorkflow(
+        entity_type_name="queue",
+        previous_state="people_present",
+        trigger_state="no_people",
+        state_definition_type="presence",
+        handler=_handle_state_transition_rule,
+    ),
+    "floor_cleanness": RuleWorkflow(
+        entity_type_name="floor",
+        previous_state="dirty",
+        trigger_state="clean",
+        state_definition_type="cleanliness",
         handler=_handle_state_transition_rule,
     ),
 }
