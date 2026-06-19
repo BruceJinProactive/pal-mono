@@ -151,6 +151,7 @@ class TestBuildAdoraV3Spec:
             "debug": True,
             "force_payment_link": True,
             "no_delivery_entries": True,
+            "loyalty_points_per_dollar": 10,
             "customer_email": "test@example.com",
         }
         result = _build_adora_v3_spec(config, "STORE1", "k", "s", None)
@@ -162,6 +163,7 @@ class TestBuildAdoraV3Spec:
         assert result.debug is True
         assert result.force_payment_link is True
         assert result.no_delivery_entries is True
+        assert result.loyalty_points_per_dollar == 10
         assert result.customer_email == "test@example.com"
 
 
