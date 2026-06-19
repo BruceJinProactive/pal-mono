@@ -77,6 +77,8 @@ class PublicCateringRequestDetails:
     event_fulfillment: str | None = None
     party_size: int | None = None
     store_address: str | None = None
+    catering_manager_phone_number: str | None = None
+    catering_ai_phone_number: str | None = None
 
 
 def _serialize_activity_value(value: object) -> object:
@@ -611,6 +613,12 @@ async def get_public_catering_request_by_id(
         event_fulfillment=catering_request.event_fulfillment,
         party_size=catering_request.party_size,
         store_address=project.address if project else None,
+        catering_manager_phone_number=await _get_catering_manager_phone_number(
+            session, catering_request.project_id
+        ),
+        catering_ai_phone_number=_extract_catering_ai_phone_number(
+            project.channel_identifiers if project else None
+        ),
     )
 
 
@@ -982,13 +990,29 @@ async def update_catering_request(
                 session, updated_request.project_id
             )
             try:
-                store_phone_number = await _get_catering_store_phone_number(
+                catering_manager_phone_number = (
+                    await _get_catering_manager_phone_number(
+                        session, updated_request.project_id
+                    )
+                )
+            except Exception as exc:
+                catering_manager_phone_number = None
+                logger.warning(
+                    "[catering] Failed to resolve catering manager phone number for customer status SMS.",
+                    extra={
+                        "request_id": str(updated_request.id),
+                        "project_id": str(updated_request.project_id),
+                        "error": str(exc),
+                    },
+                )
+            try:
+                catering_ai_phone_number = await _get_catering_ai_phone_number(
                     session, updated_request.project_id
                 )
             except Exception as exc:
-                store_phone_number = None
+                catering_ai_phone_number = None
                 logger.warning(
-                    "[catering] Failed to resolve store phone number for customer status SMS.",
+                    "[catering] Failed to resolve catering AI phone number for customer status SMS.",
                     extra={
                         "request_id": str(updated_request.id),
                         "project_id": str(updated_request.project_id),
@@ -999,7 +1023,10 @@ async def update_catering_request(
                 send_sms_notification,
                 updated_request.contact_phone_number,
                 _build_customer_status_sms_message(
-                    updated_request, business_name, store_phone_number
+                    updated_request,
+                    business_name,
+                    catering_manager_phone_number,
+                    catering_ai_phone_number,
                 ),
             )
             if not sms_sent:
@@ -1093,10 +1120,55 @@ async def _get_catering_store_phone_number(
     return None
 
 
+async def _get_catering_manager_phone_number(
+    session: AsyncSession, project_id: uuid.UUID
+) -> str | None:
+    contacts = await contact_service.list_by_project(session, project_id)
+    for contact in contacts:
+        if (
+            contact.role.strip().lower() == CATERING_MANAGER_ROLE
+            and contact.phone_number.strip()
+        ):
+            return contact.phone_number.strip()
+    return None
+
+
+async def _get_catering_ai_phone_number(
+    session: AsyncSession, project_id: uuid.UUID
+) -> str | None:
+    project = await ProjectRepositoryAsync(session).get_project(project_id)
+    return _extract_catering_ai_phone_number(
+        project.channel_identifiers if project else None
+    )
+
+
+def _extract_catering_ai_phone_number(
+    channel_identifiers: list[str] | tuple[str, ...] | None,
+) -> str | None:
+    if not channel_identifiers:
+        return None
+
+    parsed_identifiers: list[tuple[str, str]] = []
+    for channel_identifier in channel_identifiers:
+        if not isinstance(channel_identifier, str) or ":" not in channel_identifier:
+            continue
+        channel, identifier = channel_identifier.split(":", 1)
+        identifier = identifier.strip()
+        if identifier:
+            parsed_identifiers.append((channel.strip().lower(), identifier))
+
+    for preferred_channel in ("sms", "voice", "phone"):
+        for channel, identifier in parsed_identifiers:
+            if channel == preferred_channel:
+                return identifier
+    return None
+
+
 def _build_customer_status_sms_message(
     catering_request: CateringRequest,
     business_name: str,
-    store_phone_number: str | None = None,
+    catering_manager_phone_number: str | None = None,
+    catering_ai_phone_number: str | None = None,
 ) -> str:
     raw_contact_name = getattr(catering_request, "contact_name", None)
     raw_event_fulfillment = getattr(catering_request, "event_fulfillment", None)
@@ -1112,7 +1184,10 @@ def _build_customer_status_sms_message(
     confirmation_link_sentence = _build_customer_sms_confirmation_link_sentence(
         catering_request.id
     )
-    contact_sentence = _build_customer_sms_contact_sentence(store_phone_number)
+    contact_sentence = _build_customer_sms_contact_sentence(
+        catering_manager_phone_number,
+        catering_ai_phone_number,
+    )
     preparation_followup_sentence = _build_preparation_followup_sentence(
         event_fulfillment,
         bool(event_phrase),
@@ -1170,9 +1245,25 @@ def _format_catering_event_date(
     return event_date.strftime(date_format)
 
 
-def _build_customer_sms_contact_sentence(store_phone_number: str | None) -> str:
-    if store_phone_number and store_phone_number.strip():
-        return f" Questions? Call {store_phone_number.strip()}."
+def _build_customer_sms_contact_sentence(
+    catering_manager_phone_number: str | None,
+    catering_ai_phone_number: str | None,
+) -> str:
+    manager_number = (
+        catering_manager_phone_number.strip()
+        if catering_manager_phone_number and catering_manager_phone_number.strip()
+        else None
+    )
+    ai_number = (
+        catering_ai_phone_number.strip()
+        if catering_ai_phone_number and catering_ai_phone_number.strip()
+        else None
+    )
+
+    if manager_number:
+        return f" Questions? Call our catering manager at {manager_number}."
+    if ai_number:
+        return f" Questions? Call {ai_number}."
     return ""
 
 

@@ -72,6 +72,8 @@ def _make_public_catering_request_details(
         party_size=25,
         status=RequestStatus.CONFIRMED.value,
         store_address="456 Store Ave",
+        catering_manager_phone_number="+15551234567",
+        catering_ai_phone_number="+15557654321",
     )
 
 
@@ -115,12 +117,16 @@ async def test_get_public_catering_request_returns_public_safe_fields() -> None:
     assert result.event_detail == "Lunch for 25 guests"
     assert result.event_fulfillment == FulfillmentType.DELIVERY
     assert result.store_address == "456 Store Ave"
+    assert result.catering_manager_phone_number == "+15551234567"
+    assert result.catering_ai_phone_number == "+15557654321"
     assert result.status == RequestStatus.CONFIRMED
 
     public_payload = result.model_dump()
     assert public_payload["contact_phone_number"] == "+15551234567"
     assert public_payload["contact_email"] == "taylor@example.com"
     assert public_payload["store_address"] == "456 Store Ave"
+    assert public_payload["catering_manager_phone_number"] == "+15551234567"
+    assert public_payload["catering_ai_phone_number"] == "+15557654321"
     assert "project_id" not in public_payload
     assert "contact_id" not in public_payload
     assert "idempotency_key" not in public_payload

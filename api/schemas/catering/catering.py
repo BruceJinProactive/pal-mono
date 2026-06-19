@@ -170,6 +170,8 @@ class PublicCateringRequest(BaseModel):
     event_fulfillment: Optional[FulfillmentType] = None
     party_size: Optional[int] = None
     store_address: Optional[str] = None
+    catering_manager_phone_number: Optional[str] = None
+    catering_ai_phone_number: Optional[str] = None
     status: RequestStatus
 
     model_config = ConfigDict(from_attributes=True)

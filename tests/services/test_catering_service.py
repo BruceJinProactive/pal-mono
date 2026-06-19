@@ -12,8 +12,16 @@ import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
 
 boto3_stub = ModuleType("boto3")
+boto3_stub.__path__ = []
 setattr(boto3_stub, "client", lambda *args, **kwargs: object())
 sys.modules.setdefault("boto3", boto3_stub)
+
+boto3_session_stub = ModuleType("boto3.session")
+setattr(boto3_session_stub, "Session", lambda *args, **kwargs: object())
+sys.modules.setdefault("boto3.session", boto3_session_stub)
+
+aioboto3_stub = ModuleType("aioboto3")
+sys.modules.setdefault("aioboto3", aioboto3_stub)
 
 botocore_exceptions_stub = ModuleType("botocore.exceptions")
 setattr(botocore_exceptions_stub, "ClientError", Exception)
@@ -34,9 +42,11 @@ from db.tables.catering_requests import (  # noqa: E402
 )
 from services.catering_service._implementation import (  # noqa: E402
     _build_customer_status_sms_message,
+    _extract_catering_ai_phone_number,
     _find_and_assign_catering_manager,
     _format_catering_contact_summary,
     _get_catering_business_name,
+    _get_catering_manager_phone_number,
     _get_catering_request_confirmation_url,
     _get_catering_store_phone_number,
     _is_catering_manager_role,
@@ -227,8 +237,12 @@ def test_update_catering_request_sends_sms_for_confirmed_status() -> None:
             return_value=project_repo,
         ),
         patch(
-            "services.catering_service._implementation._get_catering_store_phone_number",
+            "services.catering_service._implementation._get_catering_manager_phone_number",
             return_value="+15551234567",
+        ),
+        patch(
+            "services.catering_service._implementation._get_catering_ai_phone_number",
+            return_value="+15557654321",
         ),
         patch(
             "services.catering_service._implementation.send_sms_notification",
@@ -248,7 +262,7 @@ def test_update_catering_request_sends_sms_for_confirmed_status() -> None:
         "Hi Taylor, your catering request with Pal Bistro for March 12, 2026 "
         "is confirmed. We'll reach out if we need any final details. "
         f"View details: https://console.palona.ai/catering-request/{updated_request.id} "
-        "Questions? Call +15551234567."
+        "Questions? Call our catering manager at +15551234567."
     )
     mock_send_sms.assert_called_once_with(
         updated_request.contact_phone_number,
@@ -282,7 +296,11 @@ def test_update_catering_request_sends_sms_when_status_is_re_requested() -> None
             return_value=project_repo,
         ),
         patch(
-            "services.catering_service._implementation._get_catering_store_phone_number",
+            "services.catering_service._implementation._get_catering_manager_phone_number",
+            return_value=None,
+        ),
+        patch(
+            "services.catering_service._implementation._get_catering_ai_phone_number",
             return_value=None,
         ),
         patch(
@@ -309,7 +327,7 @@ def test_update_catering_request_sends_sms_when_status_is_re_requested() -> None
     )
 
 
-def test_update_catering_request_sends_sms_when_store_phone_lookup_fails() -> None:
+def test_update_catering_request_sends_sms_when_contact_number_lookups_fail() -> None:
     session = AsyncMock()
     existing_request = _build_request(status=RequestStatus.LEAD)
     updated_request = _build_request(status=RequestStatus.CONFIRMED)
@@ -335,8 +353,12 @@ def test_update_catering_request_sends_sms_when_store_phone_lookup_fails() -> No
             return_value=project_repo,
         ),
         patch(
-            "services.catering_service._implementation._get_catering_store_phone_number",
+            "services.catering_service._implementation._get_catering_manager_phone_number",
             side_effect=RuntimeError("contact lookup failed"),
+        ),
+        patch(
+            "services.catering_service._implementation._get_catering_ai_phone_number",
+            side_effect=RuntimeError("project lookup failed"),
         ),
         patch(
             "services.catering_service._implementation.send_sms_notification",
@@ -364,7 +386,7 @@ def test_update_catering_request_sends_sms_when_store_phone_lookup_fails() -> No
         updated_request.contact_phone_number,
         expected_message,
     )
-    mock_warning.assert_called_once()
+    assert mock_warning.call_count == 2
 
 
 @pytest.mark.parametrize(
@@ -416,7 +438,11 @@ def test_update_catering_request_sends_sms_for_new_lifecycle_statuses(
             return_value=project_repo,
         ),
         patch(
-            "services.catering_service._implementation._get_catering_store_phone_number",
+            "services.catering_service._implementation._get_catering_manager_phone_number",
+            return_value=None,
+        ),
+        patch(
+            "services.catering_service._implementation._get_catering_ai_phone_number",
             return_value=None,
         ),
         patch(
@@ -606,7 +632,11 @@ def test_update_catering_request_logs_warning_when_sms_send_fails() -> None:
             return_value=project_repo,
         ),
         patch(
-            "services.catering_service._implementation._get_catering_store_phone_number",
+            "services.catering_service._implementation._get_catering_manager_phone_number",
+            return_value=None,
+        ),
+        patch(
+            "services.catering_service._implementation._get_catering_ai_phone_number",
             return_value=None,
         ),
         patch(
@@ -910,6 +940,33 @@ def test_get_catering_store_phone_number_returns_none_without_matching_role() ->
     assert phone_number is None
 
 
+def test_get_catering_manager_phone_number_uses_catering_role_only() -> None:
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+
+    with patch(
+        "services.catering_service._implementation.contact_service.list_by_project",
+        return_value=[
+            _build_contact(role="general", phone_number="+15550000000"),
+            _build_contact(role="catering", phone_number=" +15551111111 "),
+        ],
+    ):
+        phone_number = asyncio.run(
+            _get_catering_manager_phone_number(session, project_id)
+        )
+
+    assert phone_number == "+15551111111"
+
+
+def test_extract_catering_ai_phone_number_prefers_sms_channel() -> None:
+    assert (
+        _extract_catering_ai_phone_number(
+            ["voice:+15550000000", "sms:+15551111111", "phone:+15552222222"]
+        )
+        == "+15551111111"
+    )
+
+
 def test_build_customer_status_sms_message_for_in_prep() -> None:
     request = _build_request(
         status=RequestStatus.IN_PREPARATION,
@@ -926,19 +983,42 @@ def test_build_customer_status_sms_message_for_in_prep() -> None:
     assert message == expected_message
 
 
-def test_build_customer_status_sms_message_includes_store_phone_number() -> None:
+def test_build_customer_status_sms_message_prefers_manager_number() -> None:
     request = _build_request(
         status=RequestStatus.READY,
         event_fulfillment=FulfillmentType.PICKUP,
     )
 
-    message = _build_customer_status_sms_message(request, "Pal Bistro", "+15551234567")
+    message = _build_customer_status_sms_message(
+        request, "Pal Bistro", "+15551234567", "+15557654321"
+    )
 
     expected_message = (
         "Hi Taylor, your catering order from Pal Bistro for March 12, 2026 "
         "is ready for pickup."
         f"{_expected_confirmation_link(request)}"
-        " Questions? Call +15551234567."
+        " Questions? Call our catering manager at +15551234567."
+    )
+    assert message == expected_message
+
+
+def test_build_customer_status_sms_message_uses_ai_number_only_without_manager() -> (
+    None
+):
+    request = _build_request(
+        status=RequestStatus.READY,
+        event_fulfillment=FulfillmentType.PICKUP,
+    )
+
+    message = _build_customer_status_sms_message(
+        request, "Pal Bistro", None, "+15557654321"
+    )
+
+    expected_message = (
+        "Hi Taylor, your catering order from Pal Bistro for March 12, 2026 "
+        "is ready for pickup."
+        f"{_expected_confirmation_link(request)}"
+        " Questions? Call +15557654321."
     )
     assert message == expected_message
 

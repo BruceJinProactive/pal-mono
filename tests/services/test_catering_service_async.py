@@ -323,7 +323,10 @@ async def test_get_public_catering_request_by_id_returns_request() -> None:
     repo.get_by_id.return_value = catering_request
 
     project_repo = AsyncMock()
-    project_repo.get_project.return_value = SimpleNamespace(address="456 Store Ave")
+    project_repo.get_project.return_value = SimpleNamespace(
+        address="456 Store Ave",
+        channel_identifiers=["voice:+15550000000", "sms:+15557654321"],
+    )
 
     with (
         patch(
@@ -333,6 +336,12 @@ async def test_get_public_catering_request_by_id_returns_request() -> None:
         patch(
             "services.catering_service._implementation.ProjectRepositoryAsync",
             return_value=project_repo,
+        ),
+        patch(
+            "services.catering_service._implementation.contact_service.list_by_project",
+            return_value=[
+                SimpleNamespace(role="catering", phone_number=" +15551234567 ")
+            ],
         ),
     ):
         result = await get_public_catering_request_by_id(
@@ -345,6 +354,8 @@ async def test_get_public_catering_request_by_id_returns_request() -> None:
     assert result.contact_phone_number == "+15551234567"
     assert result.event_address == "123 Main St"
     assert result.store_address == "456 Store Ave"
+    assert result.catering_manager_phone_number == "+15551234567"
+    assert result.catering_ai_phone_number == "+15557654321"
     repo.get_by_id.assert_awaited_once_with(catering_request_id)
     project_repo.get_project.assert_awaited_once_with(catering_request.project_id)
 
@@ -364,7 +375,10 @@ async def test_get_public_catering_request_by_id_returns_partial_request() -> No
     repo.get_by_id.return_value = catering_request
 
     project_repo = AsyncMock()
-    project_repo.get_project.return_value = SimpleNamespace(address="456 Store Ave")
+    project_repo.get_project.return_value = SimpleNamespace(
+        address="456 Store Ave",
+        channel_identifiers=[],
+    )
 
     with (
         patch(
@@ -374,6 +388,10 @@ async def test_get_public_catering_request_by_id_returns_partial_request() -> No
         patch(
             "services.catering_service._implementation.ProjectRepositoryAsync",
             return_value=project_repo,
+        ),
+        patch(
+            "services.catering_service._implementation.contact_service.list_by_project",
+            return_value=[],
         ),
     ):
         result = await get_public_catering_request_by_id(
@@ -385,6 +403,8 @@ async def test_get_public_catering_request_by_id_returns_partial_request() -> No
     assert result.event_date is None
     assert result.contact_phone_number is None
     assert result.contact_email == "avery@example.com"
+    assert result.catering_manager_phone_number is None
+    assert result.catering_ai_phone_number is None
 
 
 @pytest.mark.asyncio
