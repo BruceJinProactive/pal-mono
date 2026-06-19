@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -19,6 +20,7 @@ from services.client_onboarding_service import (
     ClientOnboardingInviteStepResult,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
+    ReconcileClientOnboardingDocusignCompletionResult,
 )
 
 ACCOUNT_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
@@ -26,6 +28,7 @@ AE_USER_ID = UUID("11111111-2222-3333-4444-555555555555")
 FDE_USER_ID = UUID("22222222-3333-4444-5555-666666666666")
 LIFECYCLE_ID = UUID("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
 INVITATION_ID = UUID("99999999-8888-7777-6666-555555555555")
+COMPLETED_AT = datetime(2026, 6, 19, 14, 30, tzinfo=timezone.utc)
 pytest: Any = importlib.import_module("pytest")
 
 
@@ -161,6 +164,28 @@ def invite_step_result() -> ClientOnboardingInviteStepResult:
     )
 
 
+@pytest.fixture
+def docusign_completion_request(onboarding_schema: Any) -> Any:
+    return onboarding_schema.ReconcileClientOnboardingDocusignCompletionRequest(
+        docusign_envelope_id="envelope-123",
+        signer_email="Signer@Example.com",
+        completed_at=COMPLETED_AT,
+        docusign_status="completed",
+        docusign_event_id="event-123",
+    )
+
+
+@pytest.fixture
+def docusign_completion_result() -> ReconcileClientOnboardingDocusignCompletionResult:
+    return ReconcileClientOnboardingDocusignCompletionResult(
+        lifecycle_id=LIFECYCLE_ID,
+        lifecycle_status=ClientOnboardingStatus.docusign_signed,
+        docusign_signed_at=COMPLETED_AT,
+        password_setup_available=True,
+        transition_recorded=True,
+    )
+
+
 def test_create_client_onboarding_account_returns_service_response(
     onboarding_request: Any,
     service_result: CreateClientOnboardingAccountResult,
@@ -238,6 +263,35 @@ def test_mark_client_onboarding_docusign_viewed_returns_service_response(
     assert mark_viewed.call_args.kwargs["invitation_token"] == "invite-token"
 
 
+def test_reconcile_client_onboarding_docusign_completion_returns_service_response(
+    docusign_completion_request: Any,
+    docusign_completion_result: ReconcileClientOnboardingDocusignCompletionResult,
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client_onboarding_route = _load_client_onboarding_route_module(monkeypatch)
+    reconcile = mocker.patch.object(
+        client_onboarding_route.client_onboarding_service,
+        "reconcile_client_onboarding_docusign_completion",
+        return_value=docusign_completion_result,
+    )
+
+    response = client_onboarding_route.reconcile_client_onboarding_docusign_completion(
+        docusign_completion_request,
+        MagicMock(),
+    )
+
+    assert response.lifecycle_id == LIFECYCLE_ID
+    assert response.lifecycle_status == ClientOnboardingStatus.docusign_signed
+    assert response.docusign_signed_at == COMPLETED_AT
+    assert response.password_setup_available is True
+    assert response.transition_recorded is True
+    service_params = reconcile.call_args.kwargs["params"]
+    assert service_params.docusign_envelope_id == "envelope-123"
+    assert service_params.signer_email == "Signer@example.com"
+    assert service_params.docusign_status == "completed"
+
+
 def test_create_client_onboarding_account_maps_duplicates_to_conflict(
     onboarding_request: Any,
     mocker: Any,
@@ -303,6 +357,50 @@ def test_mark_client_onboarding_docusign_viewed_maps_invalid(
     assert exc_info.value.detail == "invalid invite"
 
 
+def test_reconcile_client_onboarding_docusign_completion_maps_not_found(
+    docusign_completion_request: Any,
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client_onboarding_route = _load_client_onboarding_route_module(monkeypatch)
+    mocker.patch.object(
+        client_onboarding_route.client_onboarding_service,
+        "reconcile_client_onboarding_docusign_completion",
+        side_effect=ClientOnboardingInviteNotFoundError("not found"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        client_onboarding_route.reconcile_client_onboarding_docusign_completion(
+            docusign_completion_request,
+            MagicMock(),
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "not found"
+
+
+def test_reconcile_client_onboarding_docusign_completion_maps_invalid(
+    docusign_completion_request: Any,
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client_onboarding_route = _load_client_onboarding_route_module(monkeypatch)
+    mocker.patch.object(
+        client_onboarding_route.client_onboarding_service,
+        "reconcile_client_onboarding_docusign_completion",
+        side_effect=ClientOnboardingInviteInvalidError("invalid completion"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        client_onboarding_route.reconcile_client_onboarding_docusign_completion(
+            docusign_completion_request,
+            MagicMock(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "invalid completion"
+
+
 def test_create_client_onboarding_account_maps_value_error_to_bad_request(
     onboarding_request: Any,
     mocker: Any,
@@ -348,4 +446,14 @@ def test_create_client_onboarding_account_request_rejects_blank_docusign_referen
             signer_email="signer@example.com",
             contract_type=ClientOnboardingContractType.order_form_tos,
             docusign_contract_id="   ",
+        )
+
+
+def test_reconcile_client_onboarding_docusign_completion_request_requires_reference(
+    onboarding_schema: Any,
+) -> None:
+    with pytest.raises(ValueError, match="At least one DocuSign reference is required"):
+        onboarding_schema.ReconcileClientOnboardingDocusignCompletionRequest(
+            signer_email="signer@example.com",
+            docusign_status="completed",
         )

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -8,7 +9,10 @@ from api.schemas.admin.agent import CreateAgentRequest
 from api.schemas.admin.project import CreateProjectRequest
 from db.tables import ClientOnboardingContractType, ClientOnboardingStatus
 from db.tables.accounts import AccountSegment
-from services.client_onboarding_service import CreateClientOnboardingAccountParams
+from services.client_onboarding_service import (
+    CreateClientOnboardingAccountParams,
+    ReconcileClientOnboardingDocusignCompletionParams,
+)
 
 
 class OnboardingAgentProject(BaseModel):
@@ -163,6 +167,47 @@ class ClientOnboardingInviteStepResponse(BaseModel):
     docusign_sender_name: str
     fallback_message: str
     password_setup_available: bool
+
+
+class ReconcileClientOnboardingDocusignCompletionRequest(BaseModel):
+    docusign_contract_id: str | None = Field(default=None, max_length=255)
+    docusign_envelope_id: str | None = Field(default=None, max_length=255)
+    docusign_contract_url: str | None = None
+    signer_email: EmailStr | None = None
+    completed_at: datetime | None = None
+    docusign_status: str | None = Field(default=None, max_length=64)
+    docusign_event_id: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def require_docusign_reference(
+        self,
+    ) -> "ReconcileClientOnboardingDocusignCompletionRequest":
+        if not (
+            _has_text(self.docusign_contract_id)
+            or _has_text(self.docusign_envelope_id)
+            or _has_text(self.docusign_contract_url)
+        ):
+            raise ValueError("At least one DocuSign reference is required")
+        return self
+
+    def to_service_params(self) -> ReconcileClientOnboardingDocusignCompletionParams:
+        return ReconcileClientOnboardingDocusignCompletionParams(
+            docusign_contract_id=self.docusign_contract_id,
+            docusign_envelope_id=self.docusign_envelope_id,
+            docusign_contract_url=self.docusign_contract_url,
+            signer_email=str(self.signer_email) if self.signer_email else None,
+            completed_at=self.completed_at,
+            docusign_status=self.docusign_status,
+            docusign_event_id=self.docusign_event_id,
+        )
+
+
+class ReconcileClientOnboardingDocusignCompletionResponse(BaseModel):
+    lifecycle_id: UUID
+    lifecycle_status: ClientOnboardingStatus
+    docusign_signed_at: datetime | None = None
+    password_setup_available: bool
+    transition_recorded: bool
 
 
 class SelfOnboardingRequest(BaseModel):

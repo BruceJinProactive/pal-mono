@@ -369,6 +369,92 @@ def test_mark_docusign_viewed_backfills_invite_opened_from_invite_sent() -> None
     session.refresh.assert_called_once_with(lifecycle)
 
 
+def test_mark_docusign_signed_advances_from_docusign_viewed() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_viewed,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 1
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_docusign_signed(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_signed
+    assert lifecycle.docusign_signed_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.docusign_viewed
+    )
+    session.execute.assert_called_once()
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_mark_docusign_signed_backfills_from_invite_sent() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.invite_sent,
+    )
+    first_update = MagicMock()
+    first_update.rowcount = 0
+    second_update = MagicMock()
+    second_update.rowcount = 0
+    third_update = MagicMock()
+    third_update.rowcount = 1
+    session = MagicMock()
+    session.execute.side_effect = [first_update, second_update, third_update]
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_docusign_signed(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_signed
+    assert lifecycle.docusign_signed_at == OCCURRED_AT
+    assert lifecycle.docusign_viewed_at == OCCURRED_AT
+    assert lifecycle.invite_opened_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.invite_sent
+    )
+    assert session.execute.call_count == 3
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_mark_docusign_signed_does_not_downgrade_post_signature_status() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.password_set,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 0
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_docusign_signed(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.password_set
+    assert lifecycle.docusign_signed_at is None
+    assert client_onboarding_transition_changed(result) is False
+    assert session.execute.call_count == 3
+
+
 def test_mark_blocked_updates_status_reason() -> None:
     lifecycle = ClientOnboardingLifecycle(
         id=LIFECYCLE_ID,
@@ -792,6 +878,108 @@ def test_async_mark_docusign_viewed_backfills_invite_opened_from_invite_sent() -
     assert session.execute.await_count == 2
     session.flush.assert_awaited_once()
     session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_mark_docusign_signed_advances_from_docusign_viewed() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_viewed,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    execute_result = MagicMock()
+    execute_result.rowcount = 1
+    session.execute = AsyncMock(return_value=execute_result)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_docusign_signed(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_signed
+    assert lifecycle.docusign_signed_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.docusign_viewed
+    )
+    session.execute.assert_awaited_once()
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_mark_docusign_signed_backfills_from_invite_sent() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.invite_sent,
+    )
+    first_update = MagicMock()
+    first_update.rowcount = 0
+    second_update = MagicMock()
+    second_update.rowcount = 0
+    third_update = MagicMock()
+    third_update.rowcount = 1
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.execute = AsyncMock(side_effect=[first_update, second_update, third_update])
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_docusign_signed(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_signed
+    assert lifecycle.docusign_signed_at == OCCURRED_AT
+    assert lifecycle.docusign_viewed_at == OCCURRED_AT
+    assert lifecycle.invite_opened_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.invite_sent
+    )
+    assert session.execute.await_count == 3
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_mark_docusign_signed_does_not_downgrade_post_signature_status() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.password_set,
+    )
+    execute_result = MagicMock()
+    execute_result.rowcount = 0
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.execute = AsyncMock(return_value=execute_result)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_docusign_signed(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.password_set
+    assert lifecycle.docusign_signed_at is None
+    assert client_onboarding_transition_changed(result) is False
+    assert session.execute.await_count == 3
 
 
 def test_async_mark_blocked_updates_status_reason() -> None:

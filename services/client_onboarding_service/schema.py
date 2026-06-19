@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from db.tables import ClientOnboardingContractType, ClientOnboardingStatus
@@ -68,3 +69,23 @@ class ClientOnboardingInviteStepResult:
     docusign_sender_name: str
     fallback_message: str
     password_setup_available: bool
+
+
+@dataclass
+class ReconcileClientOnboardingDocusignCompletionParams:
+    docusign_contract_id: str | None = None
+    docusign_envelope_id: str | None = None
+    docusign_contract_url: str | None = None
+    signer_email: str | None = None
+    completed_at: datetime | None = None
+    docusign_status: str | None = None
+    docusign_event_id: str | None = None
+
+
+@dataclass
+class ReconcileClientOnboardingDocusignCompletionResult:
+    lifecycle_id: UUID
+    lifecycle_status: ClientOnboardingStatus
+    docusign_signed_at: datetime | None
+    password_setup_available: bool
+    transition_recorded: bool

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 from dataclasses import replace
+from datetime import datetime, timezone
 from types import ModuleType
 from typing import Any
 from unittest.mock import MagicMock
@@ -10,7 +11,12 @@ from uuid import UUID
 
 import services.client_onboarding_service as public_svc
 from db.repositories.resource_role_assignment_repository import ResourceType
-from db.tables import ClientOnboardingContractType, ClientOnboardingStatus
+from db.tables import (
+    ClientOnboardingActivitySource,
+    ClientOnboardingActorType,
+    ClientOnboardingContractType,
+    ClientOnboardingStatus,
+)
 from db.tables.accounts import AccountStatus, OnboardingMethod
 from db.tables.types import AccountUserStatus, InvitationStatus
 from services.auth_types import UserContext, UserRole
@@ -21,6 +27,8 @@ from services.client_onboarding_service.schema import (
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
+    ReconcileClientOnboardingDocusignCompletionParams,
+    ReconcileClientOnboardingDocusignCompletionResult,
 )
 
 AE_USER_ID = UUID("11111111-2222-3333-4444-555555555555")
@@ -28,6 +36,7 @@ FDE_USER_ID = UUID("22222222-3333-4444-5555-666666666666")
 ACCOUNT_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 LIFECYCLE_ID = UUID("bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
 INVITATION_ID = UUID("99999999-8888-7777-6666-555555555555")
+COMPLETED_AT = datetime(2026, 6, 19, 14, 30, tzinfo=timezone.utc)
 pytest: Any = importlib.import_module("pytest")
 
 
@@ -416,23 +425,17 @@ def _client_onboarding_invite_dependencies(
     onboarding_repo.get_by_invite_id.return_value = lifecycle
 
     def mark_invite_opened(*args: object, **kwargs: object) -> MagicMock:
-        setattr(lifecycle, "_client_onboarding_transition_changed", True)
-        setattr(
-            lifecycle,
-            "_client_onboarding_transition_previous_status",
-            ClientOnboardingStatus.invite_sent,
+        lifecycle._client_onboarding_transition_changed = True
+        lifecycle._client_onboarding_transition_previous_status = (
+            ClientOnboardingStatus.invite_sent
         )
         lifecycle.status = ClientOnboardingStatus.invite_opened
         return lifecycle
 
     def mark_docusign_viewed(*args: object, **kwargs: object) -> MagicMock:
         previous_status = lifecycle.status
-        setattr(lifecycle, "_client_onboarding_transition_changed", True)
-        setattr(
-            lifecycle,
-            "_client_onboarding_transition_previous_status",
-            previous_status,
-        )
+        lifecycle._client_onboarding_transition_changed = True
+        lifecycle._client_onboarding_transition_previous_status = previous_status
         lifecycle.status = ClientOnboardingStatus.docusign_viewed
         return lifecycle
 
@@ -504,7 +507,7 @@ def test_get_client_onboarding_invite_step_skips_activity_when_transition_lost(
     lifecycle = deps["lifecycle"]
 
     def mark_invite_opened(*args: object, **kwargs: object) -> MagicMock:
-        setattr(lifecycle, "_client_onboarding_transition_changed", False)
+        lifecycle._client_onboarding_transition_changed = False
         lifecycle.status = ClientOnboardingStatus.invite_opened
         return lifecycle
 
@@ -552,7 +555,7 @@ def test_mark_client_onboarding_docusign_viewed_skips_activity_when_transition_l
     lifecycle = deps["lifecycle"]
 
     def mark_docusign_viewed(*args: object, **kwargs: object) -> MagicMock:
-        setattr(lifecycle, "_client_onboarding_transition_changed", False)
+        lifecycle._client_onboarding_transition_changed = False
         lifecycle.status = ClientOnboardingStatus.docusign_viewed
         return lifecycle
 
@@ -595,6 +598,192 @@ def test_get_client_onboarding_invite_step_raises_when_no_lifecycle(
 
     with pytest.raises(ClientOnboardingInviteNotFoundError):
         svc.get_client_onboarding_invite_step(session, "team-invite-token")
+
+
+def _docusign_completion_dependencies(
+    mocker: Any,
+    *,
+    lifecycle_status: ClientOnboardingStatus = ClientOnboardingStatus.docusign_viewed,
+    signer_email: str = "signer@example.com",
+) -> dict[str, MagicMock]:
+    lifecycle = MagicMock()
+    lifecycle.id = LIFECYCLE_ID
+    lifecycle.status = lifecycle_status
+    lifecycle.signer_email = signer_email
+    lifecycle.docusign_contract_id = "contract-123"
+    lifecycle.docusign_envelope_id = "envelope-123"
+    lifecycle.docusign_contract_url = "https://docusign.example/sign/123"
+    lifecycle.docusign_signed_at = (
+        COMPLETED_AT
+        if lifecycle_status
+        in {
+            ClientOnboardingStatus.docusign_signed,
+            ClientOnboardingStatus.password_set,
+        }
+        else None
+    )
+
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_active_by_docusign_reference.return_value = lifecycle
+
+    def mark_docusign_signed(*args: object, **kwargs: object) -> MagicMock:
+        previous_status = lifecycle.status
+        lifecycle._client_onboarding_transition_changed = True
+        lifecycle._client_onboarding_transition_previous_status = previous_status
+        lifecycle.status = ClientOnboardingStatus.docusign_signed
+        lifecycle.docusign_signed_at = kwargs["occurred_at"]
+        return lifecycle
+
+    onboarding_repo.mark_docusign_signed.side_effect = mark_docusign_signed
+
+    return {
+        "lifecycle": lifecycle,
+        "onboarding_repo": onboarding_repo,
+    }
+
+
+def test_reconcile_client_onboarding_docusign_completion_records_signed_event(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    deps = _docusign_completion_dependencies(mocker)
+    params = ReconcileClientOnboardingDocusignCompletionParams(
+        docusign_envelope_id=" envelope-123 ",
+        signer_email="Signer@Example.com",
+        completed_at=COMPLETED_AT,
+        docusign_status="completed",
+        docusign_event_id="event-123",
+    )
+
+    result = svc.reconcile_client_onboarding_docusign_completion(session, params)
+
+    assert result.lifecycle_id == LIFECYCLE_ID
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_signed
+    assert result.docusign_signed_at == COMPLETED_AT
+    assert result.password_setup_available is True
+    assert result.transition_recorded is True
+    deps["onboarding_repo"].get_active_by_docusign_reference.assert_called_once_with(
+        docusign_contract_id=None,
+        docusign_envelope_id="envelope-123",
+        docusign_contract_url=None,
+    )
+    deps["onboarding_repo"].mark_docusign_signed.assert_called_once_with(
+        LIFECYCLE_ID,
+        occurred_at=COMPLETED_AT,
+    )
+    activity = deps["onboarding_repo"].append_activity.call_args.kwargs
+    assert activity["activity_type"] == "docusign_signed"
+    assert activity["actor_type"] == ClientOnboardingActorType.webhook
+    assert activity["source"] == ClientOnboardingActivitySource.docusign
+    assert activity["previous_status"] == ClientOnboardingStatus.docusign_viewed
+    assert activity["next_status"] == ClientOnboardingStatus.docusign_signed
+    assert activity["payload_diff"]["docusign_event_id"] == "event-123"
+    assert activity["payload_diff"]["docusign_status"] == "completed"
+    session.commit.assert_called_once()
+
+
+def test_reconcile_client_onboarding_docusign_completion_is_idempotent_when_signed(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    deps = _docusign_completion_dependencies(
+        mocker,
+        lifecycle_status=ClientOnboardingStatus.docusign_signed,
+    )
+    params = ReconcileClientOnboardingDocusignCompletionParams(
+        docusign_envelope_id="envelope-123",
+        completed_at=COMPLETED_AT,
+    )
+
+    result = svc.reconcile_client_onboarding_docusign_completion(session, params)
+
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_signed
+    assert result.transition_recorded is False
+    assert result.password_setup_available is True
+    deps["onboarding_repo"].mark_docusign_signed.assert_not_called()
+    deps["onboarding_repo"].append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_reconcile_client_onboarding_docusign_completion_rejects_signer_mismatch(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    deps = _docusign_completion_dependencies(mocker)
+    params = ReconcileClientOnboardingDocusignCompletionParams(
+        docusign_envelope_id="envelope-123",
+        signer_email="other@example.com",
+    )
+
+    with pytest.raises(ClientOnboardingInviteInvalidError):
+        svc.reconcile_client_onboarding_docusign_completion(session, params)
+
+    deps["onboarding_repo"].mark_docusign_signed.assert_not_called()
+    deps["onboarding_repo"].append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_reconcile_client_onboarding_docusign_completion_rejects_mixed_references(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    deps = _docusign_completion_dependencies(mocker)
+    params = ReconcileClientOnboardingDocusignCompletionParams(
+        docusign_envelope_id="envelope-123",
+        docusign_contract_id="other-contract",
+    )
+
+    with pytest.raises(
+        ClientOnboardingInviteInvalidError,
+        match="docusign_contract_id",
+    ):
+        svc.reconcile_client_onboarding_docusign_completion(session, params)
+
+    deps["onboarding_repo"].mark_docusign_signed.assert_not_called()
+    deps["onboarding_repo"].append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_reconcile_client_onboarding_docusign_completion_requires_reference() -> None:
+    session = MagicMock()
+
+    with pytest.raises(ClientOnboardingInviteInvalidError):
+        svc.reconcile_client_onboarding_docusign_completion(
+            session,
+            ReconcileClientOnboardingDocusignCompletionParams(),
+        )
+
+    session.commit.assert_not_called()
+
+
+def test_public_reconcile_client_onboarding_docusign_completion_wrapper_delegates(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    params = ReconcileClientOnboardingDocusignCompletionParams(
+        docusign_envelope_id="envelope-123",
+    )
+    expected = ReconcileClientOnboardingDocusignCompletionResult(
+        lifecycle_id=LIFECYCLE_ID,
+        lifecycle_status=ClientOnboardingStatus.docusign_signed,
+        docusign_signed_at=COMPLETED_AT,
+        password_setup_available=True,
+        transition_recorded=True,
+    )
+    reconcile = mocker.patch(
+        "services.client_onboarding_service._implementation.reconcile_client_onboarding_docusign_completion",
+        return_value=expected,
+    )
+
+    result = public_svc.reconcile_client_onboarding_docusign_completion(
+        session,
+        params,
+    )
+
+    assert result is expected
+    reconcile.assert_called_once_with(session=session, params=params)
 
 
 class _InvitationParams:

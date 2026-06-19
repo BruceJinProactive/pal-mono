@@ -37,6 +37,8 @@ from .schema import (
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
+    ReconcileClientOnboardingDocusignCompletionParams,
+    ReconcileClientOnboardingDocusignCompletionResult,
 )
 
 POST_SIGNATURE_STATUSES = {
@@ -278,6 +280,82 @@ def mark_client_onboarding_docusign_viewed(
     return _build_invite_step_result(resolved, lifecycle)
 
 
+def reconcile_client_onboarding_docusign_completion(
+    session: Session,
+    params: ReconcileClientOnboardingDocusignCompletionParams,
+) -> ReconcileClientOnboardingDocusignCompletionResult:
+    docusign_contract_id = _clean_optional_text(params.docusign_contract_id)
+    docusign_envelope_id = _clean_optional_text(params.docusign_envelope_id)
+    docusign_contract_url = _clean_optional_text(params.docusign_contract_url)
+    if not (docusign_contract_id or docusign_envelope_id or docusign_contract_url):
+        raise ClientOnboardingInviteInvalidError(
+            "At least one DocuSign reference is required"
+        )
+
+    onboarding_repo = ClientOnboardingRepository(session)
+    lifecycle = onboarding_repo.get_active_by_docusign_reference(
+        docusign_contract_id=docusign_contract_id,
+        docusign_envelope_id=docusign_envelope_id,
+        docusign_contract_url=docusign_contract_url,
+    )
+    if not lifecycle:
+        raise ClientOnboardingInviteNotFoundError(
+            "Client onboarding lifecycle not found for DocuSign reference"
+        )
+    _raise_for_docusign_reference_mismatch(
+        lifecycle,
+        docusign_contract_id=docusign_contract_id,
+        docusign_envelope_id=docusign_envelope_id,
+        docusign_contract_url=docusign_contract_url,
+    )
+
+    signer_email = _clean_optional_text(params.signer_email)
+    if signer_email and _normalize_email(signer_email) != lifecycle.signer_email:
+        raise ClientOnboardingInviteInvalidError(
+            "DocuSign signer email does not match lifecycle signer"
+        )
+
+    completed_at = _coerce_event_time(params.completed_at)
+    transition_recorded = False
+    if lifecycle.status not in POST_SIGNATURE_STATUSES:
+        previous_status = lifecycle.status
+        lifecycle = onboarding_repo.mark_docusign_signed(
+            lifecycle.id,
+            occurred_at=completed_at,
+        )
+        transition_recorded = client_onboarding_transition_changed(lifecycle)
+        if transition_recorded:
+            onboarding_repo.append_activity(
+                lifecycle_id=lifecycle.id,
+                activity_type=ClientOnboardingStatus.docusign_signed.value,
+                actor_type=ClientOnboardingActorType.webhook,
+                source=ClientOnboardingActivitySource.docusign,
+                previous_status=client_onboarding_transition_previous_status(lifecycle)
+                or previous_status,
+                next_status=ClientOnboardingStatus.docusign_signed,
+                actor_display_name=lifecycle.signer_email,
+                description="DocuSign confirmed client contract completion",
+                payload_diff=_docusign_completion_payload(
+                    params=params,
+                    lifecycle=lifecycle,
+                ),
+                occurred_at=completed_at,
+            )
+            session.commit()
+        elif lifecycle.status not in POST_SIGNATURE_STATUSES:
+            raise ClientOnboardingInviteInvalidError(
+                f"DocuSign completion cannot advance lifecycle from {lifecycle.status.value}"
+            )
+
+    return ReconcileClientOnboardingDocusignCompletionResult(
+        lifecycle_id=lifecycle.id,
+        lifecycle_status=lifecycle.status,
+        docusign_signed_at=lifecycle.docusign_signed_at,
+        password_setup_available=lifecycle.status in POST_SIGNATURE_STATUSES,
+        transition_recorded=transition_recorded,
+    )
+
+
 def _attach_ae_as_owner(
     session: Session,
     account: Account,
@@ -371,6 +449,62 @@ def _contract_payload(params: CreateClientOnboardingAccountParams) -> dict[str, 
     return payload | {key: value for key, value in optional_values.items() if value}
 
 
+def _docusign_completion_payload(
+    *,
+    params: ReconcileClientOnboardingDocusignCompletionParams,
+    lifecycle: ClientOnboardingLifecycle,
+) -> dict[str, str]:
+    payload = {
+        "signer_email": lifecycle.signer_email,
+    }
+    optional_values = {
+        "docusign_contract_id": lifecycle.docusign_contract_id
+        or _clean_optional_text(params.docusign_contract_id),
+        "docusign_envelope_id": lifecycle.docusign_envelope_id
+        or _clean_optional_text(params.docusign_envelope_id),
+        "docusign_contract_url": lifecycle.docusign_contract_url
+        or _clean_optional_text(params.docusign_contract_url),
+        "docusign_status": _clean_optional_text(params.docusign_status),
+        "docusign_event_id": _clean_optional_text(params.docusign_event_id),
+    }
+    return payload | {key: value for key, value in optional_values.items() if value}
+
+
+def _raise_for_docusign_reference_mismatch(
+    lifecycle: ClientOnboardingLifecycle,
+    *,
+    docusign_contract_id: str | None,
+    docusign_envelope_id: str | None,
+    docusign_contract_url: str | None,
+) -> None:
+    mismatched_fields = [
+        field_name
+        for field_name, supplied_value, lifecycle_value in (
+            (
+                "docusign_contract_id",
+                docusign_contract_id,
+                lifecycle.docusign_contract_id,
+            ),
+            (
+                "docusign_envelope_id",
+                docusign_envelope_id,
+                lifecycle.docusign_envelope_id,
+            ),
+            (
+                "docusign_contract_url",
+                docusign_contract_url,
+                lifecycle.docusign_contract_url,
+            ),
+        )
+        if supplied_value and _clean_optional_text(lifecycle_value) != supplied_value
+    ]
+    if mismatched_fields:
+        raise ClientOnboardingInviteInvalidError(
+            "Supplied DocuSign references do not all match the same lifecycle: "
+            + ", ".join(mismatched_fields)
+        )
+
+
 @dataclass(frozen=True)
 class _ResolvedClientOnboardingInvite:
     lifecycle: ClientOnboardingLifecycle
@@ -461,3 +595,18 @@ def _parse_user_id(username: str) -> uuid.UUID:
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def _clean_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def _coerce_event_time(value: datetime | None) -> datetime:
+    if value is None:
+        return datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value

@@ -7,6 +7,8 @@ from api.schemas.admin.onboarding import (
     ClientOnboardingInviteStepResponse,
     CreateClientOnboardingAccountRequest,
     CreateClientOnboardingAccountResponse,
+    ReconcileClientOnboardingDocusignCompletionRequest,
+    ReconcileClientOnboardingDocusignCompletionResponse,
 )
 from services import client_onboarding_service
 from services.client_onboarding_service import (
@@ -14,6 +16,7 @@ from services.client_onboarding_service import (
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
     DuplicateClientOnboardingError,
+    ReconcileClientOnboardingDocusignCompletionResult,
 )
 
 
@@ -104,6 +107,33 @@ def mark_client_onboarding_docusign_viewed(
     return _to_invite_step_response(result)
 
 
+def reconcile_client_onboarding_docusign_completion(
+    request: ReconcileClientOnboardingDocusignCompletionRequest,
+    session: Session,
+) -> ReconcileClientOnboardingDocusignCompletionResponse:
+    try:
+        result = (
+            client_onboarding_service.reconcile_client_onboarding_docusign_completion(
+                session=session,
+                params=request.to_service_params(),
+            )
+        )
+    except ClientOnboardingInviteNotFoundError as err:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        ) from err
+    except ClientOnboardingInviteInvalidError as err:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+            headers={"Content-Type": "application/json"},
+        ) from err
+
+    return _to_docusign_completion_response(result)
+
+
 def _to_invite_step_response(
     result: ClientOnboardingInviteStepResult,
 ) -> ClientOnboardingInviteStepResponse:
@@ -124,4 +154,16 @@ def _to_invite_step_response(
         docusign_sender_name=result.docusign_sender_name,
         fallback_message=result.fallback_message,
         password_setup_available=result.password_setup_available,
+    )
+
+
+def _to_docusign_completion_response(
+    result: ReconcileClientOnboardingDocusignCompletionResult,
+) -> ReconcileClientOnboardingDocusignCompletionResponse:
+    return ReconcileClientOnboardingDocusignCompletionResponse(
+        lifecycle_id=result.lifecycle_id,
+        lifecycle_status=result.lifecycle_status,
+        docusign_signed_at=result.docusign_signed_at,
+        password_setup_available=result.password_setup_available,
+        transition_recorded=result.transition_recorded,
     )

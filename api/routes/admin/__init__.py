@@ -123,6 +123,8 @@ from api.schemas.admin.onboarding import (
     MenuUploaderResponse,
     OnboardingRequest,
     OnboardingResponse,
+    ReconcileClientOnboardingDocusignCompletionRequest,
+    ReconcileClientOnboardingDocusignCompletionResponse,
     ScrapeBrandFromUrlRequest,
     ScrapeBrandFromUrlResponse,
     SelfOnboardingRequest,
@@ -2783,6 +2785,24 @@ def mark_client_onboarding_docusign_viewed(
     """
     return _client_onboarding.mark_client_onboarding_docusign_viewed(
         invitation_token,
+        session,
+    )
+
+
+@admin_router.post(
+    "/onboarding/docusign/completions",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def reconcile_client_onboarding_docusign_completion(
+    request: ReconcileClientOnboardingDocusignCompletionRequest,
+    context: UserContext = Depends(require_admin),
+    session: Session = Depends(db.get_db),
+) -> ReconcileClientOnboardingDocusignCompletionResponse:
+    """
+    Reconcile a verified DocuSign completion event with client onboarding.
+    """
+    return _client_onboarding.reconcile_client_onboarding_docusign_completion(
+        request,
         session,
     )
 

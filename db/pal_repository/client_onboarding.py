@@ -282,6 +282,50 @@ class ClientOnboardingRepository:
             logger.exception(f"Error marking client onboarding DocuSign viewed: {exc}")
             raise
 
+    def mark_docusign_signed(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            signed_at = occurred_at or datetime.now(timezone.utc)
+            previous_status = None
+            for candidate_status in (
+                ClientOnboardingStatus.docusign_viewed,
+                ClientOnboardingStatus.invite_opened,
+                ClientOnboardingStatus.invite_sent,
+            ):
+                previous_status = self._mark_docusign_signed_from_status(
+                    lifecycle_id,
+                    previous_status=candidate_status,
+                    occurred_at=signed_at,
+                )
+                if previous_status is not None:
+                    break
+
+            transition_changed = previous_status is not None
+            lifecycle = self._require_lifecycle(lifecycle_id)
+            if transition_changed:
+                lifecycle.status = ClientOnboardingStatus.docusign_signed
+                lifecycle.docusign_signed_at = signed_at
+                if lifecycle.invite_opened_at is None:
+                    lifecycle.invite_opened_at = signed_at
+                if lifecycle.docusign_viewed_at is None:
+                    lifecycle.docusign_viewed_at = signed_at
+            self.session.flush()
+            self.session.refresh(lifecycle)
+            _annotate_transition(
+                lifecycle,
+                changed=transition_changed,
+                previous_status=previous_status,
+            )
+            return lifecycle
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error marking client onboarding DocuSign signed: {exc}")
+            raise
+
     def mark_blocked(
         self,
         lifecycle_id: uuid.UUID,
@@ -370,6 +414,42 @@ class ClientOnboardingRepository:
             .values(
                 status=ClientOnboardingStatus.docusign_viewed,
                 docusign_viewed_at=occurred_at,
+                invite_opened_at=case(
+                    (
+                        ClientOnboardingLifecycle.invite_opened_at.is_(None),
+                        occurred_at,
+                    ),
+                    else_=ClientOnboardingLifecycle.invite_opened_at,
+                ),
+                updated_at=occurred_at,
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        return previous_status if _rowcount_changed(result) else None
+
+    def _mark_docusign_signed_from_status(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        previous_status: ClientOnboardingStatus,
+        occurred_at: datetime,
+    ) -> ClientOnboardingStatus | None:
+        result = self.session.execute(
+            update(ClientOnboardingLifecycle)
+            .where(
+                ClientOnboardingLifecycle.id == lifecycle_id,
+                ClientOnboardingLifecycle.status == previous_status,
+            )
+            .values(
+                status=ClientOnboardingStatus.docusign_signed,
+                docusign_signed_at=occurred_at,
+                docusign_viewed_at=case(
+                    (
+                        ClientOnboardingLifecycle.docusign_viewed_at.is_(None),
+                        occurred_at,
+                    ),
+                    else_=ClientOnboardingLifecycle.docusign_viewed_at,
+                ),
                 invite_opened_at=case(
                     (
                         ClientOnboardingLifecycle.invite_opened_at.is_(None),
@@ -621,6 +701,50 @@ class ClientOnboardingRepositoryAsync:
             logger.exception(f"Error marking client onboarding DocuSign viewed: {exc}")
             raise
 
+    async def mark_docusign_signed(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            signed_at = occurred_at or datetime.now(timezone.utc)
+            previous_status = None
+            for candidate_status in (
+                ClientOnboardingStatus.docusign_viewed,
+                ClientOnboardingStatus.invite_opened,
+                ClientOnboardingStatus.invite_sent,
+            ):
+                previous_status = await self._mark_docusign_signed_from_status(
+                    lifecycle_id,
+                    previous_status=candidate_status,
+                    occurred_at=signed_at,
+                )
+                if previous_status is not None:
+                    break
+
+            transition_changed = previous_status is not None
+            lifecycle = await self._require_lifecycle(lifecycle_id)
+            if transition_changed:
+                lifecycle.status = ClientOnboardingStatus.docusign_signed
+                lifecycle.docusign_signed_at = signed_at
+                if lifecycle.invite_opened_at is None:
+                    lifecycle.invite_opened_at = signed_at
+                if lifecycle.docusign_viewed_at is None:
+                    lifecycle.docusign_viewed_at = signed_at
+            await self.session.flush()
+            await self.session.refresh(lifecycle)
+            _annotate_transition(
+                lifecycle,
+                changed=transition_changed,
+                previous_status=previous_status,
+            )
+            return lifecycle
+        except SQLAlchemyError as exc:
+            await self.session.rollback()
+            logger.exception(f"Error marking client onboarding DocuSign signed: {exc}")
+            raise
+
     async def mark_blocked(
         self,
         lifecycle_id: uuid.UUID,
@@ -711,6 +835,42 @@ class ClientOnboardingRepositoryAsync:
             .values(
                 status=ClientOnboardingStatus.docusign_viewed,
                 docusign_viewed_at=occurred_at,
+                invite_opened_at=case(
+                    (
+                        ClientOnboardingLifecycle.invite_opened_at.is_(None),
+                        occurred_at,
+                    ),
+                    else_=ClientOnboardingLifecycle.invite_opened_at,
+                ),
+                updated_at=occurred_at,
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        return previous_status if _rowcount_changed(result) else None
+
+    async def _mark_docusign_signed_from_status(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        previous_status: ClientOnboardingStatus,
+        occurred_at: datetime,
+    ) -> ClientOnboardingStatus | None:
+        result = await self.session.execute(
+            update(ClientOnboardingLifecycle)
+            .where(
+                ClientOnboardingLifecycle.id == lifecycle_id,
+                ClientOnboardingLifecycle.status == previous_status,
+            )
+            .values(
+                status=ClientOnboardingStatus.docusign_signed,
+                docusign_signed_at=occurred_at,
+                docusign_viewed_at=case(
+                    (
+                        ClientOnboardingLifecycle.docusign_viewed_at.is_(None),
+                        occurred_at,
+                    ),
+                    else_=ClientOnboardingLifecycle.docusign_viewed_at,
+                ),
                 invite_opened_at=case(
                     (
                         ClientOnboardingLifecycle.invite_opened_at.is_(None),

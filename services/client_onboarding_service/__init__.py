@@ -9,6 +9,8 @@ from .schema import (
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
+    ReconcileClientOnboardingDocusignCompletionParams,
+    ReconcileClientOnboardingDocusignCompletionResult,
 )
 
 
@@ -40,6 +42,17 @@ def mark_client_onboarding_docusign_viewed(
     return _mark(session=session, invitation_token=invitation_token)
 
 
+def reconcile_client_onboarding_docusign_completion(
+    session: Session,
+    params: ReconcileClientOnboardingDocusignCompletionParams,
+) -> ReconcileClientOnboardingDocusignCompletionResult:
+    from ._implementation import (
+        reconcile_client_onboarding_docusign_completion as _reconcile,
+    )
+
+    return _reconcile(session=session, params=params)
+
+
 __all__ = [
     "ClientOnboardingInviteInvalidError",
     "ClientOnboardingInviteNotFoundError",
@@ -47,7 +60,10 @@ __all__ = [
     "CreateClientOnboardingAccountParams",
     "CreateClientOnboardingAccountResult",
     "DuplicateClientOnboardingError",
+    "ReconcileClientOnboardingDocusignCompletionParams",
+    "ReconcileClientOnboardingDocusignCompletionResult",
     "create_client_onboarding_account",
     "get_client_onboarding_invite_step",
     "mark_client_onboarding_docusign_viewed",
+    "reconcile_client_onboarding_docusign_completion",
 ]
