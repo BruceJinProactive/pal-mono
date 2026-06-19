@@ -189,7 +189,7 @@ def build_notion_properties(
         "Folk Live Locations": number_property(
             combine_values(company.deals, "live_locations")
         ),
-        "Folk Price Per Month Per Location": text_property(
+        "Folk Price Per Month Per Location": number_property(
             combine_values(company.deals, "price_per_month_per_location")
         ),
         "Folk CARR": number_property(combine_values(company.deals, "carr")),

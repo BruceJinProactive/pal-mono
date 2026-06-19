@@ -529,10 +529,14 @@ async def test_notion_client_does_not_retry_non_retryable_http_status(
             http_client=client,
         )
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(ValueError) as exc_info:
             await notion_client.query_pages()
 
     assert len(requests) == 1
+    assert "Notion request failed POST /v1/data_sources/ds_123/query: 400" in str(
+        exc_info.value
+    )
+    assert "bad request" in str(exc_info.value)
 
 
 @pytest.mark.asyncio

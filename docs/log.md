@@ -4,6 +4,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-19
+
+- **Folk Notion page create fix.** Send `Folk Price Per Month Per Location` as a Notion number property and include Notion validation response bodies in sync failure alerts so schema issues are diagnosable. -> `docs/records/2026-06-18-folk-notion-webhook-sync.md`
+
 ## 2026-06-18
 
 - **Client onboarding lifecycle storage schema.** Added schema-only storage for the contract-to-account onboarding MVP: `client_onboarding_lifecycles` for canonical lifecycle state, `client_onboarding_activity` for append-only activity history, and `client_onboarding_sync_jobs` for idempotent external sync work. Migration: `128e03e17ca5`.

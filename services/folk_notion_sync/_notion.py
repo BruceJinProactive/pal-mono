@@ -135,7 +135,14 @@ class NotionDataSourceClient:
                 ):
                     await asyncio.sleep(_retry_delay(response, attempt))
                     continue
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    raise ValueError(
+                        "Notion request failed "
+                        f"{method} {path}: {response.status_code} "
+                        f"{response.text[:2000]}"
+                    ) from exc
                 return response.json()
             except httpx.RequestError as exc:
                 last_error = exc
