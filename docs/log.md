@@ -6,10 +6,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-19
 
+- **Tool-result cache in-memory parity fields.** Added tool-specific sanitizer exceptions so Redis previous-tool-results preserve the same Adora order, delivery-zone, and customer-profile context that pal-agents process-local fallback injects, including checked delivery address and profile/order identity fields for those explicit tool payloads. -> `docs/plans/tool-result-elasticache-migration.md`
 - **Folk Notion page create fix.** Send `Folk Price Per Month Per Location` as a Notion number property and include Notion validation response bodies in sync failure alerts so schema issues are diagnosable. -> `docs/records/2026-06-18-folk-notion-webhook-sync.md`
 
 ## 2026-06-18
 
+- **Tool-result cache context parity.** Redis tool-result entries now store a prompt-facing `tool_result` alongside `cacheable_result`, derived from the same sanitized payload shape used by pal-agents previous-tool-result rendering. Broadened non-local-cache tool family allowlists for OLO, Yelp, transfer, and Adora lookup so ElastiCache entries preserve useful structured success/error context instead of collapsing to summaries. -> `docs/plans/tool-result-elasticache-migration.md`
 - **Client onboarding lifecycle storage schema.** Added schema-only storage for the contract-to-account onboarding MVP: `client_onboarding_lifecycles` for canonical lifecycle state, `client_onboarding_activity` for append-only activity history, and `client_onboarding_sync_jobs` for idempotent external sync work. Migration: `128e03e17ca5`.
 - **Manage App AE account creation backend.** Added the admin onboarding endpoint for AE-created client accounts, attaching the logged-in AE as account owner, creating/linking the account without project or agent creation, sending the signer invite, and writing lifecycle/activity state through `invite_sent`.
 - **Client onboarding DocuSign-first invite API.** Added public Admin Console onboarding invite endpoints that resolve a signer invitation to its client onboarding lifecycle, advance `invite_opened`, return the DocuSign step payload, and record `docusign_viewed` only after the signer-visible embed has loaded.

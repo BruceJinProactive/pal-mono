@@ -25,6 +25,7 @@ _ALLOWED_TOP_LEVEL_FIELDS = {
     "input_summary",
     "result_summary",
     "cacheable_result",
+    "tool_result",
     "status",
     "error_type",
     "captured_at",
@@ -66,6 +67,7 @@ _COMMON_CACHEABLE_RESULT_FIELDS = frozenset(
         "error_type",
         "errorCode",
         "errorType",
+        "arguments",
         "message",
         "missing",
         "ok",
@@ -137,12 +139,59 @@ _ADORA_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
         "orderNo",
         "orderNumber",
         "orderStatus",
+        "payment_url",
+        "paymentUrl",
         "process_status",
         "processStatus",
         "trackerURL",
         "tracking_link",
         "trackingLink",
         "takeout_minutes",
+        "checked_delivery_address",
+        "checkedDeliveryAddress",
+        "customer_name",
+        "customerName",
+        "delivery_address",
+        "deliveryAddress",
+        "first_name",
+        "firstName",
+        "last_name",
+        "lastName",
+    }
+)
+_ADORA_LOOKUP_TOOL_NAMES = frozenset({"get_adora_item_details_v1"})
+_ADORA_LOOKUP_CACHEABLE_RESULT_FIELDS = _ADORA_CACHEABLE_RESULT_FIELDS | frozenset(
+    {
+        "kind",
+        "results",
+    }
+)
+_OLO_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
+    {
+        "basket_id",
+        "kind",
+        "order_submitted",
+        "results",
+        "validation",
+    }
+)
+_TRANSFER_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
+    {
+        "purpose",
+        "transfer_purpose",
+        "transferPurpose",
+    }
+)
+_YELP_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
+    {
+        "booking_id",
+        "date",
+        "party_size",
+        "reservation_id",
+        "status_link",
+        "time",
+        "vendor",
+        "waitlist_id",
     }
 )
 _MINITABLE_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
@@ -162,7 +211,38 @@ _CACHEABLE_RESULT_FIELDS_BY_TOOL_FAMILY = {
     "adora": _ADORA_CACHEABLE_RESULT_FIELDS,
     "generic": _COMMON_CACHEABLE_RESULT_FIELDS,
     "minitable": _MINITABLE_CACHEABLE_RESULT_FIELDS,
+    "olo": _OLO_CACHEABLE_RESULT_FIELDS,
     "toast": _TOAST_CACHEABLE_RESULT_FIELDS,
+    "transfer": _TRANSFER_CACHEABLE_RESULT_FIELDS,
+    "yelp": _YELP_CACHEABLE_RESULT_FIELDS,
+}
+_ALLOWED_SENSITIVE_CACHEABLE_RESULT_KEYS_BY_TOOL_NAME = {
+    "validate_adora_order_intent": frozenset(
+        {
+            "customername",
+            "customer_name",
+            "paymenturl",
+            "payment_url",
+        }
+    ),
+    "verify_adora_delivery_zone_v1": frozenset(
+        {
+            "address",
+            "checkeddeliveryaddress",
+            "checked_delivery_address",
+        }
+    ),
+    "adora_customer_profile_prefetch_v1": frozenset(
+        {
+            "address",
+            "deliveryaddress",
+            "delivery_address",
+            "firstname",
+            "first_name",
+            "lastname",
+            "last_name",
+        }
+    ),
 }
 
 
@@ -305,7 +385,11 @@ def build_cacheable_tool_result(payload: Mapping[str, Any]) -> dict[str, Any] | 
 
     result: dict[str, Any] = {"tool_name": tool_name}
 
-    for field in _ALLOWED_TOP_LEVEL_FIELDS - {"tool_name", "cacheable_result"}:
+    for field in _ALLOWED_TOP_LEVEL_FIELDS - {
+        "tool_name",
+        "cacheable_result",
+        "tool_result",
+    }:
         if field not in payload:
             continue
         value = payload[field]
@@ -316,16 +400,14 @@ def build_cacheable_tool_result(payload: Mapping[str, Any]) -> dict[str, Any] | 
         if sanitized_value is not None:
             result[field] = sanitized_value
 
-    if "cacheable_result" in payload:
-        cacheable_result = _sanitize_cacheable_result(
-            tool_name,
-            payload["cacheable_result"],
-        )
-        if cacheable_result is not None:
-            result["cacheable_result"] = cacheable_result
+    cacheable_result = _extract_sanitized_tool_result(tool_name, payload)
+    if cacheable_result is not None:
+        result["cacheable_result"] = cacheable_result
+        result["tool_result"] = cacheable_result
 
     if not any(
-        field in result for field in ("cacheable_result", "result_summary", "status")
+        field in result
+        for field in ("tool_result", "cacheable_result", "result_summary", "status")
     ):
         return None
 
@@ -347,8 +429,13 @@ def _parse_cached_item(raw_item: str | bytes) -> dict[str, Any] | None:
 
 
 def _sanitize_cacheable_result(tool_name: str, value: Any) -> Any:
+    allowed_sensitive_keys = _allowed_sensitive_cacheable_result_keys_for_tool(
+        tool_name
+    )
     if not isinstance(value, Mapping):
-        return _sanitize_json_value(value)
+        return _sanitize_json_value(
+            value, allowed_sensitive_keys=allowed_sensitive_keys
+        )
 
     allowed_fields = _cacheable_result_fields_for_tool(tool_name)
     sanitized_mapping: dict[str, Any] = {}
@@ -356,20 +443,47 @@ def _sanitize_cacheable_result(tool_name: str, value: Any) -> Any:
         if (
             not isinstance(key, str)
             or key not in allowed_fields
-            or _is_sensitive_key(key)
+            or _is_disallowed_sensitive_key(key, allowed_sensitive_keys)
         ):
             continue
-        sanitized_value = _sanitize_json_value(nested_value)
+        sanitized_value = _sanitize_json_value(
+            nested_value,
+            allowed_sensitive_keys=allowed_sensitive_keys,
+        )
         if sanitized_value is not None:
             sanitized_mapping[key] = sanitized_value
 
     return sanitized_mapping or None
 
 
+def _allowed_sensitive_cacheable_result_keys_for_tool(tool_name: str) -> frozenset[str]:
+    return _ALLOWED_SENSITIVE_CACHEABLE_RESULT_KEYS_BY_TOOL_NAME.get(
+        tool_name.lower(),
+        frozenset(),
+    )
+
+
+def _extract_sanitized_tool_result(tool_name: str, payload: Mapping[str, Any]) -> Any:
+    if "cacheable_result" in payload:
+        cacheable_result = _sanitize_cacheable_result(
+            tool_name,
+            payload["cacheable_result"],
+        )
+        if cacheable_result is not None:
+            return cacheable_result
+
+    if "tool_result" in payload:
+        return _sanitize_cacheable_result(tool_name, payload["tool_result"])
+
+    return None
+
+
 def _cacheable_result_fields_for_tool(tool_name: str) -> frozenset[str]:
     family = _tool_family_for_name(tool_name)
     if family == "toast" and tool_name.lower() in _TOAST_LOOKUP_TOOL_NAMES:
         return _TOAST_LOOKUP_CACHEABLE_RESULT_FIELDS
+    if family == "adora" and tool_name.lower() in _ADORA_LOOKUP_TOOL_NAMES:
+        return _ADORA_LOOKUP_CACHEABLE_RESULT_FIELDS
     return _CACHEABLE_RESULT_FIELDS_BY_TOOL_FAMILY[family]
 
 
@@ -381,10 +495,21 @@ def _tool_family_for_name(tool_name: str) -> str:
         return "adora"
     if "minitable" in normalized_tool_name:
         return "minitable"
+    if "olo" in normalized_tool_name:
+        return "olo"
+    if "yelp" in normalized_tool_name:
+        return "yelp"
+    if normalized_tool_name == "call_transfer" or "transfer" in normalized_tool_name:
+        return "transfer"
     return "generic"
 
 
-def _sanitize_json_value(value: Any, depth: int = 0) -> Any:
+def _sanitize_json_value(
+    value: Any,
+    depth: int = 0,
+    *,
+    allowed_sensitive_keys: frozenset[str] = frozenset(),
+) -> Any:
     if depth > _MAX_SANITIZE_DEPTH:
         return None
 
@@ -403,9 +528,16 @@ def _sanitize_json_value(value: Any, depth: int = 0) -> Any:
     if isinstance(value, Mapping):
         sanitized_mapping: dict[str, Any] = {}
         for key, nested_value in value.items():
-            if not isinstance(key, str) or _is_sensitive_key(key):
+            if not isinstance(key, str) or _is_disallowed_sensitive_key(
+                key,
+                allowed_sensitive_keys,
+            ):
                 continue
-            sanitized_value = _sanitize_json_value(nested_value, depth + 1)
+            sanitized_value = _sanitize_json_value(
+                nested_value,
+                depth + 1,
+                allowed_sensitive_keys=allowed_sensitive_keys,
+            )
             if sanitized_value is not None:
                 sanitized_mapping[key] = sanitized_value
         return sanitized_mapping or None
@@ -414,7 +546,14 @@ def _sanitize_json_value(value: Any, depth: int = 0) -> Any:
         sanitized_items = [
             sanitized_value
             for item in value
-            if (sanitized_value := _sanitize_json_value(item, depth + 1)) is not None
+            if (
+                sanitized_value := _sanitize_json_value(
+                    item,
+                    depth + 1,
+                    allowed_sensitive_keys=allowed_sensitive_keys,
+                )
+            )
+            is not None
         ]
         return sanitized_items
 
@@ -435,6 +574,27 @@ def _is_sensitive_key(key: str) -> bool:
     return any(
         part in normalized_key or part.replace("_", "") in compact_key
         for part in _SENSITIVE_KEY_PARTS
+    )
+
+
+def _is_allowed_sensitive_key(key: str, allowed_sensitive_keys: frozenset[str]) -> bool:
+    normalized_key = key.lower()
+    compact_key = "".join(
+        character for character in normalized_key if character.isalnum()
+    )
+    return (
+        normalized_key in allowed_sensitive_keys
+        or compact_key in allowed_sensitive_keys
+    )
+
+
+def _is_disallowed_sensitive_key(
+    key: str,
+    allowed_sensitive_keys: frozenset[str],
+) -> bool:
+    return _is_sensitive_key(key) and not _is_allowed_sensitive_key(
+        key,
+        allowed_sensitive_keys,
     )
 
 

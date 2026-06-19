@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 
@@ -15,6 +16,13 @@ from utils.cache.tool_result_cache import (
     get_tool_result_cache_client,
     get_tool_results,
 )
+
+
+def _with_tool_result(expected: dict[str, Any]) -> dict[str, Any]:
+    cacheable_result = expected.get("cacheable_result")
+    if cacheable_result is None:
+        return expected
+    return {**expected, "tool_result": cacheable_result}
 
 
 def test_build_tool_result_cache_key() -> None:
@@ -45,20 +53,22 @@ def test_build_cacheable_tool_result_allowlists_and_redacts() -> None:
 
     result = build_cacheable_tool_result(payload)
 
-    assert result == {
-        "tool_name": "toast_takeout_create_order_v1",
-        "result_summary": "Order was created.",
-        "status": "success",
-        "error_type": None,
-        "captured_at": "2026-06-03T12:00:00+00:00",
-        "cacheable_result": {
-            "order_state": "pending_payment",
-            "items": [
-                {"name": "pizza"},
-                {"name": "salad", "quantity": 1},
-            ],
-        },
-    }
+    assert result == _with_tool_result(
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "result_summary": "Order was created.",
+            "status": "success",
+            "error_type": None,
+            "captured_at": "2026-06-03T12:00:00+00:00",
+            "cacheable_result": {
+                "order_state": "pending_payment",
+                "items": [
+                    {"name": "pizza"},
+                    {"name": "salad", "quantity": 1},
+                ],
+            },
+        }
+    )
 
 
 def test_build_cacheable_tool_result_uses_toast_family_allowlist() -> None:
@@ -87,18 +97,20 @@ def test_build_cacheable_tool_result_uses_toast_family_allowlist() -> None:
         }
     )
 
-    assert result == {
-        "tool_name": "toast_takeout_create_order_v1",
-        "result_summary": "Order was created.",
-        "cacheable_result": {
-            "order_state": "pending_payment",
-            "order_number": "10042",
-            "items": [
-                {"name": "pizza", "quantity": 1},
-                {"name": "salad"},
-            ],
-        },
-    }
+    assert result == _with_tool_result(
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "result_summary": "Order was created.",
+            "cacheable_result": {
+                "order_state": "pending_payment",
+                "order_number": "10042",
+                "items": [
+                    {"name": "pizza", "quantity": 1},
+                    {"name": "salad"},
+                ],
+            },
+        }
+    )
 
 
 def test_build_cacheable_tool_result_keeps_toast_lookup_envelope() -> None:
@@ -138,29 +150,31 @@ def test_build_cacheable_tool_result_keeps_toast_lookup_envelope() -> None:
         }
     )
 
-    assert result == {
-        "tool_name": "get_toast_item_details_v3",
-        "result_summary": "toast lookup completed with status success.",
-        "cacheable_result": {
-            "kind": "toast_item_lookup_v3",
-            "results": [
-                {
-                    "request": {
-                        "item_name": "Prototype Pizza",
-                        "targets": [{"path_prefix": [], "group_name": "Toppings"}],
-                    },
-                    "status": "ok",
-                    "groups": [
-                        {
-                            "group_name": "Toppings",
-                            "selection_state": "optional",
-                            "options": [{"option_name": "Pepperoni", "price": 1.5}],
-                        }
-                    ],
-                }
-            ],
-        },
-    }
+    assert result == _with_tool_result(
+        {
+            "tool_name": "get_toast_item_details_v3",
+            "result_summary": "toast lookup completed with status success.",
+            "cacheable_result": {
+                "kind": "toast_item_lookup_v3",
+                "results": [
+                    {
+                        "request": {
+                            "item_name": "Prototype Pizza",
+                            "targets": [{"path_prefix": [], "group_name": "Toppings"}],
+                        },
+                        "status": "ok",
+                        "groups": [
+                            {
+                                "group_name": "Toppings",
+                                "selection_state": "optional",
+                                "options": [{"option_name": "Pepperoni", "price": 1.5}],
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+    )
 
 
 def test_build_cacheable_tool_result_uses_adora_family_allowlist() -> None:
@@ -183,16 +197,53 @@ def test_build_cacheable_tool_result_uses_adora_family_allowlist() -> None:
         }
     )
 
-    assert result == {
-        "tool_name": "adora_process_order",
-        "status": "success",
-        "cacheable_result": {
-            "orderID": 12345,
-            "orderNo": 67890,
-            "processStatus": "paid",
-            "trackerURL": "https://example.com/track/12345",
-        },
-    }
+    assert result == _with_tool_result(
+        {
+            "tool_name": "adora_process_order",
+            "status": "success",
+            "cacheable_result": {
+                "orderID": 12345,
+                "orderNo": 67890,
+                "processStatus": "paid",
+                "trackerURL": "https://example.com/track/12345",
+            },
+        }
+    )
+
+
+def test_build_cacheable_tool_result_preserves_adora_order_parity_fields() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "validate_adora_order_intent",
+            "status": "success",
+            "cacheable_result": {
+                "status": "success",
+                "orderID": 12345,
+                "orderNo": 67890,
+                "processStatus": "paid",
+                "trackerURL": "https://example.com/track/12345",
+                "paymentUrl": "https://pay.example/secret",
+                "customerName": "Drop Customer",
+                "customer_email": "drop@example.com",
+            },
+        }
+    )
+
+    assert result == _with_tool_result(
+        {
+            "tool_name": "validate_adora_order_intent",
+            "status": "success",
+            "cacheable_result": {
+                "status": "success",
+                "orderID": 12345,
+                "orderNo": 67890,
+                "processStatus": "paid",
+                "trackerURL": "https://example.com/track/12345",
+                "paymentUrl": "https://pay.example/secret",
+                "customerName": "Drop Customer",
+            },
+        }
+    )
 
 
 def test_build_cacheable_tool_result_preserves_adora_delivery_zone_context() -> None:
@@ -208,20 +259,31 @@ def test_build_cacheable_tool_result_preserves_adora_delivery_zone_context() -> 
                     "street_number": "123",
                     "street_name": "Main St",
                     "city": "Austin",
+                    "state": "TX",
+                    "zip": "78701",
                 },
             },
         }
     )
 
-    assert result == {
-        "tool_name": "verify_adora_delivery_zone_v1",
-        "status": "success",
-        "cacheable_result": {
-            "kind": "adora_delivery_zone_check",
+    assert result == _with_tool_result(
+        {
+            "tool_name": "verify_adora_delivery_zone_v1",
             "status": "success",
-            "is_in_delivery_zone": True,
-        },
-    }
+            "cacheable_result": {
+                "kind": "adora_delivery_zone_check",
+                "status": "success",
+                "is_in_delivery_zone": True,
+                "checked_delivery_address": {
+                    "street_number": "123",
+                    "street_name": "Main St",
+                    "city": "Austin",
+                    "state": "TX",
+                    "zip": "78701",
+                },
+            },
+        }
+    )
 
 
 def test_build_cacheable_tool_result_preserves_prefetch_timing_context() -> None:
@@ -237,18 +299,20 @@ def test_build_cacheable_tool_result_preserves_prefetch_timing_context() -> None
         }
     )
 
-    assert result == {
-        "tool_name": "adora_wait_time_prefetch_v1",
-        "status": "success",
-        "cacheable_result": {
-            "kind": "adora_wait_time_prefetch_v1",
-            "takeout_minutes": 20,
-            "delivery_minutes": 30,
-        },
-    }
+    assert result == _with_tool_result(
+        {
+            "tool_name": "adora_wait_time_prefetch_v1",
+            "status": "success",
+            "cacheable_result": {
+                "kind": "adora_wait_time_prefetch_v1",
+                "takeout_minutes": 20,
+                "delivery_minutes": 30,
+            },
+        }
+    )
 
 
-def test_build_cacheable_tool_result_redacts_prefetch_profile_pii() -> None:
+def test_build_cacheable_tool_result_preserves_prefetch_profile_context() -> None:
     result = build_cacheable_tool_result(
         {
             "tool_name": "adora_customer_profile_prefetch_v1",
@@ -267,15 +331,23 @@ def test_build_cacheable_tool_result_redacts_prefetch_profile_pii() -> None:
         }
     )
 
-    assert result == {
-        "tool_name": "adora_customer_profile_prefetch_v1",
-        "status": "success",
-        "cacheable_result": {
-            "kind": "adora_customer_profile_prefetch_v1",
-            "loyalty_member": True,
-            "loyalty_point_count": 50,
-        },
-    }
+    assert result == _with_tool_result(
+        {
+            "tool_name": "adora_customer_profile_prefetch_v1",
+            "status": "success",
+            "cacheable_result": {
+                "kind": "adora_customer_profile_prefetch_v1",
+                "first_name": "Alice",
+                "last_name": "Jones",
+                "loyalty_member": True,
+                "loyalty_point_count": 50,
+                "delivery_address": {
+                    "address": "123 Main St",
+                    "city": "Austin",
+                },
+            },
+        }
+    )
 
 
 def test_build_cacheable_tool_result_uses_minitable_family_allowlist() -> None:
@@ -298,18 +370,183 @@ def test_build_cacheable_tool_result_uses_minitable_family_allowlist() -> None:
         }
     )
 
-    assert result == {
-        "tool_name": "minitable_make_reservation",
-        "status": "confirmed",
-        "cacheable_result": {
+    assert result == _with_tool_result(
+        {
+            "tool_name": "minitable_make_reservation",
             "status": "confirmed",
-            "booking_id": "booking-1",
-            "restaurant_id": "restaurant-1",
-            "party_size": 4,
-            "date": "2026-06-16",
-            "time": "18:30",
-            "status_link": "https://example.com/reservations/booking-1",
-        },
+            "cacheable_result": {
+                "status": "confirmed",
+                "booking_id": "booking-1",
+                "restaurant_id": "restaurant-1",
+                "party_size": 4,
+                "date": "2026-06-16",
+                "time": "18:30",
+                "status_link": "https://example.com/reservations/booking-1",
+            },
+        }
+    )
+
+
+def test_build_cacheable_tool_result_uses_olo_lookup_allowlist() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "lookup_olo_order_options_v1",
+            "status": "success",
+            "cacheable_result": {
+                "kind": "olo_order_option_lookup_v1",
+                "results": [
+                    {
+                        "status": "ok",
+                        "query": {
+                            "item_text": "Cheeseburger",
+                            "customer_phone": "+15551234567",
+                        },
+                        "items": [
+                            {
+                                "item_name": "MOOYAH Cheeseburger",
+                                "item_handle": "item:mooyah-cheeseburger:82610566",
+                                "terminal_selections": [
+                                    {
+                                        "path_label": "Meal > Side Choice > Fries",
+                                        "selection_handle": "sel:fries:1",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+                "payment_token": "drop-token",
+            },
+        }
+    )
+
+    assert result == _with_tool_result(
+        {
+            "tool_name": "lookup_olo_order_options_v1",
+            "status": "success",
+            "cacheable_result": {
+                "kind": "olo_order_option_lookup_v1",
+                "results": [
+                    {
+                        "status": "ok",
+                        "query": {"item_text": "Cheeseburger"},
+                        "items": [
+                            {
+                                "item_name": "MOOYAH Cheeseburger",
+                                "item_handle": "item:mooyah-cheeseburger:82610566",
+                                "terminal_selections": [
+                                    {
+                                        "path_label": "Meal > Side Choice > Fries",
+                                        "selection_handle": "sel:fries:1",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            },
+        }
+    )
+
+
+def test_build_cacheable_tool_result_uses_olo_order_allowlist() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "olo_create_order_v1",
+            "status": "success",
+            "cacheable_result": {
+                "kind": "olo_order_validation_v1",
+                "status": "success",
+                "order_submitted": False,
+                "basket_id": "basket-123",
+                "validation": {"total": 22.81, "payment_url": "drop"},
+                "customer_email": "drop@example.com",
+            },
+        }
+    )
+
+    assert result == _with_tool_result(
+        {
+            "tool_name": "olo_create_order_v1",
+            "status": "success",
+            "cacheable_result": {
+                "kind": "olo_order_validation_v1",
+                "status": "success",
+                "order_submitted": False,
+                "basket_id": "basket-123",
+                "validation": {"total": 22.81},
+            },
+        }
+    )
+
+
+def test_build_cacheable_tool_result_uses_transfer_family_allowlist() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "call_transfer",
+            "status": "success",
+            "cacheable_result": {
+                "status": "success",
+                "purpose": "billing",
+                "phone_number": "+15551234567",
+            },
+        }
+    )
+
+    assert result == _with_tool_result(
+        {
+            "tool_name": "call_transfer",
+            "status": "success",
+            "cacheable_result": {"status": "success", "purpose": "billing"},
+        }
+    )
+
+
+def test_build_cacheable_tool_result_uses_yelp_family_allowlist() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "yelp_make_reservation_no_cc",
+            "status": "confirmed",
+            "cacheable_result": {
+                "status": "confirmed",
+                "reservation_id": "yelp-1",
+                "party_size": 2,
+                "date": "2026-06-18",
+                "time": "19:00",
+                "customer_email": "drop@example.com",
+            },
+        }
+    )
+
+    assert result == _with_tool_result(
+        {
+            "tool_name": "yelp_make_reservation_no_cc",
+            "status": "confirmed",
+            "cacheable_result": {
+                "status": "confirmed",
+                "reservation_id": "yelp-1",
+                "party_size": 2,
+                "date": "2026-06-18",
+                "time": "19:00",
+            },
+        }
+    )
+
+
+def test_build_cacheable_tool_result_preserves_email_string_tool_result() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "send_support_email",
+            "status": "success",
+            "tool_result": "Email sent successfully.",
+        }
+    )
+
+    assert result == {
+        "tool_name": "send_support_email",
+        "status": "success",
+        "cacheable_result": "Email sent successfully.",
+        "tool_result": "Email sent successfully.",
     }
 
 
@@ -330,18 +567,54 @@ def test_build_cacheable_tool_result_preserves_structured_error_context() -> Non
         }
     )
 
-    assert result == {
-        "tool_name": "toast_takeout_create_order_v1",
-        "status": "error",
-        "error_type": "missing_params",
-        "cacheable_result": {
+    assert result == _with_tool_result(
+        {
+            "tool_name": "toast_takeout_create_order_v1",
             "status": "error",
-            "source": "tool_handler",
             "error_type": "missing_params",
-            "missing": ["items"],
-            "retryable": True,
-        },
-    }
+            "cacheable_result": {
+                "status": "error",
+                "source": "tool_handler",
+                "error_type": "missing_params",
+                "missing": ["items"],
+                "retryable": True,
+            },
+        }
+    )
+
+
+def test_build_cacheable_tool_result_preserves_safe_error_arguments() -> None:
+    result = build_cacheable_tool_result(
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "status": "error",
+            "error_type": "missing_params",
+            "cacheable_result": {
+                "status": "error",
+                "source": "tool_handler",
+                "error_type": "missing_params",
+                "error": "Missing required parameters: ['customer_name']",
+                "arguments": {"other": "value", "customer_phone": "+15551234567"},
+                "missing": ["customer_name"],
+            },
+        }
+    )
+
+    assert result == _with_tool_result(
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "status": "error",
+            "error_type": "missing_params",
+            "cacheable_result": {
+                "status": "error",
+                "source": "tool_handler",
+                "error_type": "missing_params",
+                "error": "Missing required parameters: ['customer_name']",
+                "arguments": {"other": "value"},
+                "missing": ["customer_name"],
+            },
+        }
+    )
 
 
 def test_build_cacheable_tool_result_uses_generic_family_allowlist() -> None:
@@ -359,14 +632,16 @@ def test_build_cacheable_tool_result_uses_generic_family_allowlist() -> None:
         }
     )
 
-    assert result == {
-        "tool_name": "check_hours",
-        "result_summary": "The store is open.",
-        "cacheable_result": {
-            "status": "open",
-            "count": 1,
-        },
-    }
+    assert result == _with_tool_result(
+        {
+            "tool_name": "check_hours",
+            "result_summary": "The store is open.",
+            "cacheable_result": {
+                "status": "open",
+                "count": 1,
+            },
+        }
+    )
 
 
 def test_build_cacheable_tool_result_requires_tool_name_and_useful_result() -> None:
@@ -400,10 +675,12 @@ def test_build_cacheable_tool_result_drops_unsupported_and_deep_values() -> None
         }
     )
 
-    assert result == {
-        "tool_name": "toast_v3",
-        "cacheable_result": {"ok": True},
-    }
+    assert result == _with_tool_result(
+        {
+            "tool_name": "toast_v3",
+            "cacheable_result": {"ok": True},
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -469,13 +746,15 @@ async def test_append_tool_result_writes_sanitized_payload_and_expiry(
     )
 
     assert fake_client.rpush_calls[0][0] == "tool-results:v1:conversation-1"
-    assert json.loads(fake_client.rpush_calls[0][1]) == {
-        "tool_name": "toast_takeout_create_order_v1",
-        "input_summary": "Create order",
-        "result_summary": "Order created",
-        "status": "success",
-        "cacheable_result": {"order_state": "pending_payment"},
-    }
+    assert json.loads(fake_client.rpush_calls[0][1]) == _with_tool_result(
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "input_summary": "Create order",
+            "result_summary": "Order created",
+            "status": "success",
+            "cacheable_result": {"order_state": "pending_payment"},
+        }
+    )
     assert fake_client.expire_calls == [("tool-results:v1:conversation-1", 1800)]
     assert fake_client.pipeline_transactions == [True]
     assert fake_client.pipeline_execute_count == 1
@@ -583,11 +862,13 @@ async def test_append_tool_result_applies_allowlist_before_size_limit(
         },
     )
 
-    assert json.loads(fake_client.rpush_calls[0][1]) == {
-        "tool_name": "toast_takeout_create_order_v1",
-        "result_summary": "Order created",
-        "cacheable_result": {"order_state": "created"},
-    }
+    assert json.loads(fake_client.rpush_calls[0][1]) == _with_tool_result(
+        {
+            "tool_name": "toast_takeout_create_order_v1",
+            "result_summary": "Order created",
+            "cacheable_result": {"order_state": "created"},
+        }
+    )
     assert metrics[-1] == (
         "tool_result_cache.operation",
         {"operation": "append", "outcome": "success"},
@@ -641,15 +922,17 @@ async def test_tool_results_can_be_written_and_read_by_separate_clients(
     assert writer_client.rpush_calls
     assert reader_client.lrange_calls == [("tool-results:v1:conversation-1", 0, -1)]
     assert results == [
-        {
-            "tool_name": "adora_process_order",
-            "result_summary": "Order was submitted.",
-            "status": "success",
-            "cacheable_result": {
-                "orderID": 12345,
-                "processStatus": "paid",
-            },
-        }
+        _with_tool_result(
+            {
+                "tool_name": "adora_process_order",
+                "result_summary": "Order was submitted.",
+                "status": "success",
+                "cacheable_result": {
+                    "orderID": 12345,
+                    "processStatus": "paid",
+                },
+            }
+        )
     ]
 
 
@@ -748,7 +1031,9 @@ async def test_get_tool_results_parses_valid_entries_and_drops_malformed(
     assert fake_client.lrange_calls == [("tool-results:v1:conversation-1", 0, -1)]
     assert results == [
         {"tool_name": "toast_v3", "result_summary": "Order created"},
-        {"tool_name": "adora_v3", "cacheable_result": {"status": "success"}},
+        _with_tool_result(
+            {"tool_name": "adora_v3", "cacheable_result": {"status": "success"}}
+        ),
     ]
     assert metrics[-1] == (
         "tool_result_cache.operation",
