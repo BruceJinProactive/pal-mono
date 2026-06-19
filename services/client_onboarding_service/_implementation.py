@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any, Protocol
 
 from sqlalchemy.orm import Session
 
@@ -22,6 +25,8 @@ from db.tables import (
     ClientOnboardingActorType,
     ClientOnboardingLifecycle,
     ClientOnboardingStatus,
+    ClientOnboardingSyncJobStatus,
+    ClientOnboardingSyncTarget,
     UserInvitation,
 )
 from db.tables.accounts import AccountStatus, OnboardingMethod
@@ -31,6 +36,7 @@ from services.account_service import AccountParams
 from services.auth_types import UserContext
 
 from .schema import (
+    ClientOnboardingFolkSyncResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
@@ -52,6 +58,22 @@ POST_PASSWORD_STATUSES = {
     ClientOnboardingStatus.handoff_created,
     ClientOnboardingStatus.activation_ready,
 }
+DATABASE_CONTRACT_ACCEPTANCE_JOB_TYPE = "record_contract_acceptance"
+FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE = "update_contract_acceptance"
+
+
+class FolkContractAcceptanceClient(Protocol):
+    async def update_company(
+        self,
+        company_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+    async def update_contact(
+        self,
+        contact_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
 
 
 def create_client_onboarding_account(
@@ -398,6 +420,11 @@ def reconcile_client_onboarding_docusign_completion(
                 ),
                 occurred_at=completed_at,
             )
+            _enqueue_post_signature_sync_jobs(
+                onboarding_repo,
+                lifecycle,
+                occurred_at=completed_at,
+            )
             session.commit()
         elif lifecycle.status not in POST_SIGNATURE_STATUSES:
             raise ClientOnboardingInviteInvalidError(
@@ -410,6 +437,137 @@ def reconcile_client_onboarding_docusign_completion(
         docusign_signed_at=lifecycle.docusign_signed_at,
         password_setup_available=lifecycle.status in POST_SIGNATURE_STATUSES,
         transition_recorded=transition_recorded,
+    )
+
+
+def sync_client_onboarding_contract_acceptance_to_folk(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+    *,
+    folk_client: FolkContractAcceptanceClient | None = None,
+) -> ClientOnboardingFolkSyncResult:
+    onboarding_repo = ClientOnboardingRepository(session)
+    lifecycle = onboarding_repo.get_by_id(lifecycle_id)
+    if not lifecycle:
+        raise ClientOnboardingInviteNotFoundError(
+            "Client onboarding lifecycle not found"
+        )
+    if lifecycle.status not in POST_SIGNATURE_STATUSES:
+        raise ClientOnboardingInviteInvalidError(
+            "DocuSign completion is required before syncing contract acceptance to Folk"
+        )
+    if lifecycle.docusign_signed_at is None:
+        raise ClientOnboardingInviteInvalidError(
+            "Client onboarding lifecycle is missing DocuSign signed timestamp"
+        )
+
+    job = onboarding_repo.upsert_sync_job(
+        lifecycle_id=lifecycle.id,
+        target=ClientOnboardingSyncTarget.folk,
+        job_type=FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE,
+        idempotency_key=_post_signature_sync_idempotency_key(
+            lifecycle,
+            ClientOnboardingSyncTarget.folk,
+            FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE,
+        ),
+        payload=_post_signature_sync_payload(lifecycle),
+    )
+    if job.status in {
+        ClientOnboardingSyncJobStatus.completed,
+        ClientOnboardingSyncJobStatus.cancelled,
+    }:
+        result_payload = job.result_payload or {}
+        return ClientOnboardingFolkSyncResult(
+            lifecycle_id=lifecycle.id,
+            folk_company_id=lifecycle.folk_company_id,
+            folk_contact_id=lifecycle.folk_contact_id,
+            updated_company=result_payload.get("updated_company") is True,
+            updated_contact=result_payload.get("updated_contact") is True,
+            skipped_reason=(
+                "Folk contract acceptance sync job is cancelled"
+                if job.status == ClientOnboardingSyncJobStatus.cancelled
+                else None
+            ),
+        )
+
+    if not lifecycle.folk_company_id and not lifecycle.folk_contact_id:
+        skipped_reason = "No Folk company or contact ID is linked to this lifecycle"
+        onboarding_repo.mark_sync_job_failed(
+            job.id,
+            last_error=skipped_reason,
+            result_payload={"skipped_reason": skipped_reason},
+        )
+        onboarding_repo.append_activity(
+            lifecycle_id=lifecycle.id,
+            activity_type="folk_contract_acceptance_sync_skipped",
+            actor_type=ClientOnboardingActorType.system,
+            source=ClientOnboardingActivitySource.folk,
+            description=skipped_reason,
+            payload_diff={"sync_job_id": str(job.id)},
+        )
+        session.commit()
+        return ClientOnboardingFolkSyncResult(
+            lifecycle_id=lifecycle.id,
+            folk_company_id=lifecycle.folk_company_id,
+            folk_contact_id=lifecycle.folk_contact_id,
+            updated_company=False,
+            updated_contact=False,
+            skipped_reason=skipped_reason,
+        )
+
+    try:
+        payload = _folk_contract_acceptance_payload(lifecycle)
+        client = folk_client or _build_folk_contract_acceptance_client()
+        updated_company, updated_contact = _run_async(
+            _update_folk_contract_acceptance(
+                client,
+                lifecycle,
+                payload,
+            )
+        )
+    except Exception as exc:
+        onboarding_repo.mark_sync_job_failed(
+            job.id,
+            last_error=str(exc),
+            result_payload={"error": str(exc)},
+        )
+        onboarding_repo.append_activity(
+            lifecycle_id=lifecycle.id,
+            activity_type="folk_contract_acceptance_sync_failed",
+            actor_type=ClientOnboardingActorType.system,
+            source=ClientOnboardingActivitySource.folk,
+            description="Folk contract acceptance update failed",
+            payload_diff={"sync_job_id": str(job.id), "error": str(exc)},
+        )
+        session.commit()
+        raise
+
+    onboarding_repo.mark_sync_job_completed(
+        job.id,
+        result_payload={
+            "updated_company": updated_company,
+            "updated_contact": updated_contact,
+        },
+    )
+    onboarding_repo.append_activity(
+        lifecycle_id=lifecycle.id,
+        activity_type="folk_contract_acceptance_synced",
+        actor_type=ClientOnboardingActorType.system,
+        source=ClientOnboardingActivitySource.folk,
+        description="Folk contract acceptance fields updated",
+        payload_diff={
+            "sync_job_id": str(job.id),
+            "folk_company_id": lifecycle.folk_company_id,
+            "folk_contact_id": lifecycle.folk_contact_id,
+        },
+    )
+    session.commit()
+    return ClientOnboardingFolkSyncResult(
+        lifecycle_id=lifecycle.id,
+        folk_company_id=lifecycle.folk_company_id,
+        folk_contact_id=lifecycle.folk_contact_id,
+        updated_company=updated_company,
+        updated_contact=updated_contact,
     )
 
 
@@ -525,6 +683,139 @@ def _docusign_completion_payload(
         "docusign_event_id": _clean_optional_text(params.docusign_event_id),
     }
     return payload | {key: value for key, value in optional_values.items() if value}
+
+
+def _enqueue_post_signature_sync_jobs(
+    onboarding_repo: ClientOnboardingRepository,
+    lifecycle: ClientOnboardingLifecycle,
+    *,
+    occurred_at: datetime,
+) -> None:
+    payload = _post_signature_sync_payload(lifecycle)
+    database_job = onboarding_repo.upsert_sync_job(
+        lifecycle_id=lifecycle.id,
+        target=ClientOnboardingSyncTarget.database,
+        job_type=DATABASE_CONTRACT_ACCEPTANCE_JOB_TYPE,
+        idempotency_key=_post_signature_sync_idempotency_key(
+            lifecycle,
+            ClientOnboardingSyncTarget.database,
+            DATABASE_CONTRACT_ACCEPTANCE_JOB_TYPE,
+        ),
+        payload=payload,
+        available_at=occurred_at,
+    )
+    onboarding_repo.mark_sync_job_completed(
+        database_job.id,
+        result_payload={"contract_acceptance_recorded": True},
+        occurred_at=occurred_at,
+    )
+    onboarding_repo.upsert_sync_job(
+        lifecycle_id=lifecycle.id,
+        target=ClientOnboardingSyncTarget.folk,
+        job_type=FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE,
+        idempotency_key=_post_signature_sync_idempotency_key(
+            lifecycle,
+            ClientOnboardingSyncTarget.folk,
+            FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE,
+        ),
+        payload=payload,
+        available_at=occurred_at,
+    )
+
+
+def _post_signature_sync_idempotency_key(
+    lifecycle: ClientOnboardingLifecycle,
+    target: ClientOnboardingSyncTarget,
+    job_type: str,
+) -> str:
+    return f"client-onboarding:{lifecycle.id}:{target.value}:{job_type}"
+
+
+def _post_signature_sync_payload(
+    lifecycle: ClientOnboardingLifecycle,
+) -> dict[str, str]:
+    payload = {
+        "lifecycle_id": str(lifecycle.id),
+        "client_company_name": lifecycle.client_company_name,
+        "signer_email": lifecycle.signer_email,
+        "contract_type": lifecycle.contract_type.value,
+    }
+    optional_values = {
+        "account_id": _optional_uuid(lifecycle.account_id),
+        "manage_app_account_name": lifecycle.manage_app_account_name,
+        "signer_name": lifecycle.signer_name,
+        "docusign_contract_id": lifecycle.docusign_contract_id,
+        "docusign_envelope_id": lifecycle.docusign_envelope_id,
+        "docusign_contract_url": lifecycle.docusign_contract_url,
+        "docusign_signed_at": _optional_datetime(lifecycle.docusign_signed_at),
+        "ae_owner_user_id": _optional_uuid(lifecycle.ae_owner_user_id),
+        "fde_owner_user_id": _optional_uuid(lifecycle.fde_owner_user_id),
+        "folk_company_id": lifecycle.folk_company_id,
+        "folk_contact_id": lifecycle.folk_contact_id,
+    }
+    return payload | {key: value for key, value in optional_values.items() if value}
+
+
+def _folk_contract_acceptance_payload(
+    lifecycle: ClientOnboardingLifecycle,
+) -> dict[str, Any]:
+    from services.folk_notion_sync._settings import get_folk_notion_sync_settings
+
+    settings = get_folk_notion_sync_settings()
+    field_values = {
+        "Account Name": lifecycle.manage_app_account_name,
+        "Contract Signed Date": _optional_date(lifecycle.docusign_signed_at),
+        "Contract Accepted At": _optional_datetime(lifecycle.docusign_signed_at),
+        "Contract Accepted By": lifecycle.signer_email,
+        "DocuSign Contract ID": lifecycle.docusign_contract_id,
+        "DocuSign Envelope ID": lifecycle.docusign_envelope_id,
+        "DocuSign Contract URL": lifecycle.docusign_contract_url,
+        "Manage App Account ID": _optional_uuid(lifecycle.account_id),
+        "Manage App Account Name": lifecycle.manage_app_account_name,
+        "Signer Name": lifecycle.signer_name,
+        "Signer Email": lifecycle.signer_email,
+        "AE Owner User ID": _optional_uuid(lifecycle.ae_owner_user_id),
+        "FDE Owner User ID": _optional_uuid(lifecycle.fde_owner_user_id),
+        "Contract Type": lifecycle.contract_type.value,
+    }
+    clean_field_values = {
+        key: value for key, value in field_values.items() if value is not None
+    }
+    return {"customFieldValues": {settings.folk_group_id: clean_field_values}}
+
+
+def _build_folk_contract_acceptance_client() -> FolkContractAcceptanceClient:
+    from services.folk_notion_sync._folk import FolkClient
+    from services.folk_notion_sync._settings import get_folk_notion_sync_settings
+
+    return FolkClient(get_folk_notion_sync_settings())
+
+
+async def _update_folk_contract_acceptance(
+    client: FolkContractAcceptanceClient,
+    lifecycle: ClientOnboardingLifecycle,
+    payload: dict[str, Any],
+) -> tuple[bool, bool]:
+    updated_company = False
+    updated_contact = False
+    if lifecycle.folk_company_id:
+        await client.update_company(lifecycle.folk_company_id, payload)
+        updated_company = True
+    if lifecycle.folk_contact_id:
+        await client.update_contact(lifecycle.folk_contact_id, payload)
+        updated_contact = True
+    return updated_company, updated_contact
+
+
+def _run_async(
+    coro: Coroutine[Any, Any, tuple[bool, bool]],
+) -> tuple[bool, bool]:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    coro.close()
+    raise RuntimeError("Cannot run Folk sync while an event loop is already running")
 
 
 def _raise_for_docusign_reference_mismatch(
@@ -702,3 +993,15 @@ def _coerce_event_time(value: datetime | None) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value
+
+
+def _optional_uuid(value: uuid.UUID | None) -> str | None:
+    return str(value) if value else None
+
+
+def _optional_datetime(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def _optional_date(value: datetime | None) -> str | None:
+    return value.date().isoformat() if value else None

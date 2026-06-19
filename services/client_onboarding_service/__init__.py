@@ -1,8 +1,11 @@
+from uuid import UUID
+
 from sqlalchemy.orm import Session
 
 from services.auth_types import UserContext
 
 from .schema import (
+    ClientOnboardingFolkSyncResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
@@ -63,7 +66,19 @@ def reconcile_client_onboarding_docusign_completion(
     return _reconcile(session=session, params=params)
 
 
+def sync_client_onboarding_contract_acceptance_to_folk(
+    session: Session,
+    lifecycle_id: UUID,
+) -> ClientOnboardingFolkSyncResult:
+    from ._implementation import (
+        sync_client_onboarding_contract_acceptance_to_folk as _sync,
+    )
+
+    return _sync(session=session, lifecycle_id=lifecycle_id)
+
+
 __all__ = [
+    "ClientOnboardingFolkSyncResult",
     "ClientOnboardingInviteInvalidError",
     "ClientOnboardingInviteNotFoundError",
     "ClientOnboardingInviteStepResult",
@@ -77,4 +92,5 @@ __all__ = [
     "mark_client_onboarding_docusign_viewed",
     "mark_client_onboarding_password_set",
     "reconcile_client_onboarding_docusign_completion",
+    "sync_client_onboarding_contract_acceptance_to_folk",
 ]

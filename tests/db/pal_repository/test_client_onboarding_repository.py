@@ -22,6 +22,9 @@ from db.tables import (
     ClientOnboardingContractType,
     ClientOnboardingLifecycle,
     ClientOnboardingStatus,
+    ClientOnboardingSyncJob,
+    ClientOnboardingSyncJobStatus,
+    ClientOnboardingSyncTarget,
 )
 
 ACCOUNT_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
@@ -185,6 +188,29 @@ def test_get_by_invite_id_rolls_back_on_sqlalchemy_error() -> None:
 
     with pytest.raises(SQLAlchemyError):
         repo.get_by_invite_id(INVITATION_ID)
+
+    session.rollback.assert_called_once()
+
+
+def test_get_by_id_returns_matching_lifecycle() -> None:
+    lifecycle = ClientOnboardingLifecycle(id=LIFECYCLE_ID)
+    session = MagicMock()
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.get_by_id(LIFECYCLE_ID)
+
+    assert result is lifecycle
+    session.get.assert_called_once_with(ClientOnboardingLifecycle, LIFECYCLE_ID)
+
+
+def test_get_by_id_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.get.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.get_by_id(LIFECYCLE_ID)
 
     session.rollback.assert_called_once()
 
@@ -1251,3 +1277,217 @@ def test_async_status_updates_roll_back_on_lifecycle_lookup_error() -> None:
         asyncio.run(repo.mark_invite_sent(LIFECYCLE_ID, invite_id=INVITATION_ID))
 
     assert session.rollback.await_count == 2
+
+
+def test_upsert_sync_job_creates_pending_job() -> None:
+    existing = ClientOnboardingSyncJob(
+        id=UUID("cccccccc-dddd-eeee-ffff-000000000000"),
+        lifecycle_id=LIFECYCLE_ID,
+        target=ClientOnboardingSyncTarget.folk,
+        job_type="update_contract_acceptance",
+        idempotency_key="sync-key",
+        status=ClientOnboardingSyncJobStatus.pending,
+        payload={"account_id": str(ACCOUNT_ID)},
+        result_payload={},
+        available_at=OCCURRED_AT,
+    )
+    session = MagicMock()
+    session.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = (
+        existing
+    )
+    repo = ClientOnboardingRepository(session)
+
+    job = repo.upsert_sync_job(
+        lifecycle_id=LIFECYCLE_ID,
+        target=ClientOnboardingSyncTarget.folk,
+        job_type="update_contract_acceptance",
+        idempotency_key="sync-key",
+        payload={"account_id": str(ACCOUNT_ID)},
+        available_at=OCCURRED_AT,
+    )
+
+    assert job is existing
+    assert job.lifecycle_id == LIFECYCLE_ID
+    assert job.target == ClientOnboardingSyncTarget.folk
+    assert job.status == ClientOnboardingSyncJobStatus.pending
+    assert job.payload == {"account_id": str(ACCOUNT_ID)}
+    assert job.available_at == OCCURRED_AT
+    session.execute.assert_called_once()
+    session.add.assert_not_called()
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(job)
+
+
+def test_upsert_sync_job_resets_retryable_existing_job() -> None:
+    existing = ClientOnboardingSyncJob(
+        id=UUID("cccccccc-dddd-eeee-ffff-000000000000"),
+        lifecycle_id=LIFECYCLE_ID,
+        target=ClientOnboardingSyncTarget.folk,
+        job_type="update_contract_acceptance",
+        idempotency_key="sync-key",
+        status=ClientOnboardingSyncJobStatus.failed,
+        payload={"old": "value"},
+        result_payload={"error": "old"},
+        last_error="old failure",
+        completed_at=OCCURRED_AT,
+        locked_at=OCCURRED_AT,
+        locked_by="worker-1",
+    )
+    session = MagicMock()
+    session.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = (
+        existing
+    )
+    repo = ClientOnboardingRepository(session)
+
+    job = repo.upsert_sync_job(
+        lifecycle_id=LIFECYCLE_ID,
+        target=ClientOnboardingSyncTarget.folk,
+        job_type="update_contract_acceptance",
+        idempotency_key="sync-key",
+        payload={"new": "value"},
+        available_at=OCCURRED_AT,
+    )
+
+    assert job is existing
+    assert job.status == ClientOnboardingSyncJobStatus.pending
+    assert job.payload == {"new": "value"}
+    assert job.result_payload == {}
+    assert job.last_error is None
+    assert job.completed_at is None
+    assert job.locked_at is None
+    assert job.locked_by is None
+    session.add.assert_not_called()
+    session.execute.assert_called_once()
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(existing)
+
+
+def test_upsert_sync_job_preserves_terminal_existing_job() -> None:
+    existing = ClientOnboardingSyncJob(
+        id=UUID("cccccccc-dddd-eeee-ffff-000000000000"),
+        lifecycle_id=LIFECYCLE_ID,
+        target=ClientOnboardingSyncTarget.folk,
+        job_type="update_contract_acceptance",
+        idempotency_key="sync-key",
+        status=ClientOnboardingSyncJobStatus.completed,
+        payload={"old": "value"},
+        result_payload={"updated_company": True},
+        completed_at=OCCURRED_AT,
+    )
+    session = MagicMock()
+    session.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = (
+        existing
+    )
+    repo = ClientOnboardingRepository(session)
+
+    job = repo.upsert_sync_job(
+        lifecycle_id=LIFECYCLE_ID,
+        target=ClientOnboardingSyncTarget.folk,
+        job_type="update_contract_acceptance",
+        idempotency_key="sync-key",
+        payload={"new": "value"},
+        available_at=OCCURRED_AT,
+    )
+
+    assert job is existing
+    assert job.status == ClientOnboardingSyncJobStatus.completed
+    assert job.payload == {"old": "value"}
+    assert job.result_payload == {"updated_company": True}
+    assert job.completed_at == OCCURRED_AT
+    session.execute.assert_called_once()
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(existing)
+
+
+def test_upsert_sync_job_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.upsert_sync_job(
+            lifecycle_id=LIFECYCLE_ID,
+            target=ClientOnboardingSyncTarget.folk,
+            job_type="update_contract_acceptance",
+            idempotency_key="sync-key",
+            payload={},
+        )
+
+    session.rollback.assert_called_once()
+
+
+def test_mark_sync_job_completed_updates_existing_job() -> None:
+    job = ClientOnboardingSyncJob(
+        id=UUID("cccccccc-dddd-eeee-ffff-000000000000"),
+        lifecycle_id=LIFECYCLE_ID,
+        target=ClientOnboardingSyncTarget.database,
+        job_type="record_contract_acceptance",
+        idempotency_key="sync-key",
+        status=ClientOnboardingSyncJobStatus.pending,
+        payload={},
+        locked_at=OCCURRED_AT,
+        locked_by="worker-1",
+        last_error="old failure",
+    )
+    session = MagicMock()
+    session.get.return_value = job
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_sync_job_completed(
+        job.id,
+        result_payload={"ok": True},
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is job
+    assert job.status == ClientOnboardingSyncJobStatus.completed
+    assert job.result_payload == {"ok": True}
+    assert job.completed_at == OCCURRED_AT
+    assert job.locked_at is None
+    assert job.locked_by is None
+    assert job.last_error is None
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(job)
+
+
+def test_mark_sync_job_completed_raises_when_job_missing() -> None:
+    session = MagicMock()
+    session.get.return_value = None
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(ValueError, match="Client onboarding sync job"):
+        repo.mark_sync_job_completed(
+            UUID("cccccccc-dddd-eeee-ffff-000000000000"),
+        )
+
+
+def test_mark_sync_job_failed_updates_existing_job() -> None:
+    job = ClientOnboardingSyncJob(
+        id=UUID("cccccccc-dddd-eeee-ffff-000000000000"),
+        lifecycle_id=LIFECYCLE_ID,
+        target=ClientOnboardingSyncTarget.folk,
+        job_type="update_contract_acceptance",
+        idempotency_key="sync-key",
+        status=ClientOnboardingSyncJobStatus.pending,
+        payload={},
+        locked_at=OCCURRED_AT,
+        locked_by="worker-1",
+    )
+    session = MagicMock()
+    session.get.return_value = job
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_sync_job_failed(
+        job.id,
+        last_error="Folk unavailable",
+        result_payload={"retryable": True},
+        available_at=OCCURRED_AT,
+    )
+
+    assert result is job
+    assert job.status == ClientOnboardingSyncJobStatus.failed
+    assert job.result_payload == {"retryable": True}
+    assert job.last_error == "Folk unavailable"
+    assert job.available_at == OCCURRED_AT
+    assert job.locked_at is None
+    assert job.locked_by is None

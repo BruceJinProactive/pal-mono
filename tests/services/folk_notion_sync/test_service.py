@@ -250,6 +250,40 @@ async def test_folk_client_lists_paginated_deals_and_filters_non_objects(
 
 
 @pytest.mark.asyncio
+async def test_folk_client_updates_company_and_contact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_secret_stub(monkeypatch)
+    monkeypatch.delitem(sys.modules, "services.folk_notion_sync._folk", raising=False)
+    folk_module: Any = importlib.import_module("services.folk_notion_sync._folk")
+    folk_client_class: Any = folk_module.FolkClient
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"data": {"id": "updated"}}, request=request)
+
+    payload = {"customFieldValues": {"grp_test": {"Account Name": "acme"}}}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        folk_client = folk_client_class(
+            _settings(),
+            api_key="folk-test-key",
+            http_client=client,
+        )
+
+        company = await folk_client.update_company("com_123", payload)
+        contact = await folk_client.update_contact("per_123", payload)
+
+    assert company == {"id": "updated"}
+    assert contact == {"id": "updated"}
+    assert [request.method for request in requests] == ["PATCH", "PATCH"]
+    assert requests[0].url.path == "/v1/companies/com_123"
+    assert requests[1].url.path == "/v1/contacts/per_123"
+    assert json_body(requests[0]) == payload
+    assert json_body(requests[1]) == payload
+
+
+@pytest.mark.asyncio
 async def test_folk_client_retries_retryable_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

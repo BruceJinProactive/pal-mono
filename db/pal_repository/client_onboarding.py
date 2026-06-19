@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import case, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -17,6 +18,9 @@ from db.tables import (
     ClientOnboardingContractType,
     ClientOnboardingLifecycle,
     ClientOnboardingStatus,
+    ClientOnboardingSyncJob,
+    ClientOnboardingSyncJobStatus,
+    ClientOnboardingSyncTarget,
 )
 from utils.log import logger
 
@@ -129,6 +133,14 @@ class ClientOnboardingRepository:
         except SQLAlchemyError as exc:
             self.session.rollback()
             logger.exception(f"Error retrieving client onboarding by invite id: {exc}")
+            raise
+
+    def get_by_id(self, lifecycle_id: uuid.UUID) -> ClientOnboardingLifecycle | None:
+        try:
+            return self.session.get(ClientOnboardingLifecycle, lifecycle_id)
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error retrieving client onboarding lifecycle: {exc}")
             raise
 
     def create_lifecycle(
@@ -430,6 +442,116 @@ class ClientOnboardingRepository:
             logger.exception(f"Error appending client onboarding activity: {exc}")
             raise
 
+    def upsert_sync_job(
+        self,
+        *,
+        lifecycle_id: uuid.UUID,
+        target: ClientOnboardingSyncTarget,
+        job_type: str,
+        idempotency_key: str,
+        payload: dict[str, Any],
+        available_at: datetime | None = None,
+    ) -> ClientOnboardingSyncJob:
+        try:
+            now = available_at or datetime.now(timezone.utc)
+            inserted_id = uuid.uuid4()
+            insert_stmt = (
+                pg_insert(ClientOnboardingSyncJob)
+                .values(
+                    id=inserted_id,
+                    lifecycle_id=lifecycle_id,
+                    target=target,
+                    job_type=job_type,
+                    idempotency_key=idempotency_key,
+                    status=ClientOnboardingSyncJobStatus.pending,
+                    payload=payload,
+                    result_payload={},
+                    available_at=now,
+                )
+                .on_conflict_do_nothing(
+                    constraint="uq_client_onboarding_sync_jobs_idempotency_key"
+                )
+            )
+            self.session.execute(insert_stmt)
+            job = self._get_sync_job_by_idempotency_key_for_update(idempotency_key)
+            if not job:
+                raise ValueError(
+                    f"Client onboarding sync job {idempotency_key} not found after upsert"
+                )
+
+            if job.id != inserted_id and job.status not in {
+                ClientOnboardingSyncJobStatus.completed,
+                ClientOnboardingSyncJobStatus.cancelled,
+            }:
+                job.lifecycle_id = lifecycle_id
+                job.target = target
+                job.job_type = job_type
+                job.payload = payload
+                job.status = ClientOnboardingSyncJobStatus.pending
+                job.result_payload = {}
+                job.available_at = now
+                job.locked_at = None
+                job.locked_by = None
+                job.completed_at = None
+                job.last_error = None
+            self.session.flush()
+            self.session.refresh(job)
+            return job
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error upserting client onboarding sync job: {exc}")
+            raise
+
+    def mark_sync_job_completed(
+        self,
+        job_id: uuid.UUID,
+        *,
+        result_payload: dict[str, Any] | None = None,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingSyncJob:
+        try:
+            completed_at = occurred_at or datetime.now(timezone.utc)
+            job = self._require_sync_job(job_id)
+            job.status = ClientOnboardingSyncJobStatus.completed
+            job.result_payload = result_payload or {}
+            job.completed_at = completed_at
+            job.locked_at = None
+            job.locked_by = None
+            job.last_error = None
+            self.session.flush()
+            self.session.refresh(job)
+            return job
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(
+                f"Error marking client onboarding sync job completed: {exc}"
+            )
+            raise
+
+    def mark_sync_job_failed(
+        self,
+        job_id: uuid.UUID,
+        *,
+        last_error: str,
+        result_payload: dict[str, Any] | None = None,
+        available_at: datetime | None = None,
+    ) -> ClientOnboardingSyncJob:
+        try:
+            job = self._require_sync_job(job_id)
+            job.status = ClientOnboardingSyncJobStatus.failed
+            job.result_payload = result_payload or {}
+            job.last_error = last_error
+            job.available_at = available_at or datetime.now(timezone.utc)
+            job.locked_at = None
+            job.locked_by = None
+            self.session.flush()
+            self.session.refresh(job)
+            return job
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error marking client onboarding sync job failed: {exc}")
+            raise
+
     def _require_lifecycle(self, lifecycle_id: uuid.UUID) -> ClientOnboardingLifecycle:
         try:
             lifecycle = self.session.get(ClientOnboardingLifecycle, lifecycle_id)
@@ -441,6 +563,29 @@ class ClientOnboardingRepository:
         if not lifecycle:
             raise ValueError(f"Client onboarding lifecycle {lifecycle_id} not found")
         return lifecycle
+
+    def _require_sync_job(self, job_id: uuid.UUID) -> ClientOnboardingSyncJob:
+        try:
+            job = self.session.get(ClientOnboardingSyncJob, job_id)
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error retrieving client onboarding sync job: {exc}")
+            raise
+
+        if not job:
+            raise ValueError(f"Client onboarding sync job {job_id} not found")
+        return job
+
+    def _get_sync_job_by_idempotency_key_for_update(
+        self,
+        idempotency_key: str,
+    ) -> ClientOnboardingSyncJob | None:
+        return (
+            self.session.query(ClientOnboardingSyncJob)
+            .filter(ClientOnboardingSyncJob.idempotency_key == idempotency_key)
+            .with_for_update()
+            .first()
+        )
 
     def _mark_docusign_viewed_from_status(
         self,

@@ -16,12 +16,15 @@ from db.tables import (
     ClientOnboardingActorType,
     ClientOnboardingContractType,
     ClientOnboardingStatus,
+    ClientOnboardingSyncJobStatus,
+    ClientOnboardingSyncTarget,
 )
 from db.tables.accounts import AccountStatus, OnboardingMethod
 from db.tables.types import AccountUserStatus, InvitationStatus
 from services.auth_types import UserContext, UserRole
 from services.client_onboarding_service import _implementation as svc
 from services.client_onboarding_service.schema import (
+    ClientOnboardingFolkSyncResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
@@ -809,7 +812,12 @@ def _docusign_completion_dependencies(
     lifecycle = MagicMock()
     lifecycle.id = LIFECYCLE_ID
     lifecycle.status = lifecycle_status
+    lifecycle.account_id = ACCOUNT_ID
+    lifecycle.manage_app_account_name = "acme"
+    lifecycle.client_company_name = "Acme Inc."
+    lifecycle.signer_name = "Client Signer"
     lifecycle.signer_email = signer_email
+    lifecycle.contract_type = ClientOnboardingContractType.order_form_tos
     lifecycle.docusign_contract_id = "contract-123"
     lifecycle.docusign_envelope_id = "envelope-123"
     lifecycle.docusign_contract_url = "https://docusign.example/sign/123"
@@ -822,6 +830,10 @@ def _docusign_completion_dependencies(
         }
         else None
     )
+    lifecycle.ae_owner_user_id = AE_USER_ID
+    lifecycle.fde_owner_user_id = FDE_USER_ID
+    lifecycle.folk_company_id = "folk-company-123"
+    lifecycle.folk_contact_id = "folk-contact-123"
 
     onboarding_repo = mocker.patch.object(
         svc, "ClientOnboardingRepository"
@@ -881,6 +893,15 @@ def test_reconcile_client_onboarding_docusign_completion_records_signed_event(
     assert activity["next_status"] == ClientOnboardingStatus.docusign_signed
     assert activity["payload_diff"]["docusign_event_id"] == "event-123"
     assert activity["payload_diff"]["docusign_status"] == "completed"
+    upsert_calls = deps["onboarding_repo"].upsert_sync_job.call_args_list
+    assert [call.kwargs["target"] for call in upsert_calls] == [
+        ClientOnboardingSyncTarget.database,
+        ClientOnboardingSyncTarget.folk,
+    ]
+    assert upsert_calls[0].kwargs["job_type"] == "record_contract_acceptance"
+    assert upsert_calls[1].kwargs["job_type"] == "update_contract_acceptance"
+    assert upsert_calls[1].kwargs["payload"]["folk_company_id"] == "folk-company-123"
+    deps["onboarding_repo"].mark_sync_job_completed.assert_called_once()
     session.commit.assert_called_once()
 
 
@@ -904,6 +925,7 @@ def test_reconcile_client_onboarding_docusign_completion_is_idempotent_when_sign
     assert result.password_setup_available is True
     deps["onboarding_repo"].mark_docusign_signed.assert_not_called()
     deps["onboarding_repo"].append_activity.assert_not_called()
+    deps["onboarding_repo"].upsert_sync_job.assert_not_called()
     session.commit.assert_not_called()
 
 
@@ -986,6 +1008,214 @@ def test_public_reconcile_client_onboarding_docusign_completion_wrapper_delegate
     reconcile.assert_called_once_with(session=session, params=params)
 
 
+def test_sync_client_onboarding_contract_acceptance_to_folk_updates_records(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    folk_client = _FakeFolkContractAcceptanceClient()
+
+    result = svc.sync_client_onboarding_contract_acceptance_to_folk(
+        session,
+        LIFECYCLE_ID,
+        folk_client=folk_client,
+    )
+
+    assert result == ClientOnboardingFolkSyncResult(
+        lifecycle_id=LIFECYCLE_ID,
+        folk_company_id="folk-company-123",
+        folk_contact_id="folk-contact-123",
+        updated_company=True,
+        updated_contact=True,
+    )
+    assert folk_client.company_updates[0][0] == "folk-company-123"
+    company_payload = folk_client.company_updates[0][1]
+    field_values = company_payload["customFieldValues"][
+        "grp_3454c312-a64a-47c7-af0c-098c5fa9e9f9"
+    ]
+    assert field_values["Contract Signed Date"] == "2026-06-19"
+    assert field_values["Contract Accepted By"] == "signer@example.com"
+    assert field_values["DocuSign Envelope ID"] == "envelope-123"
+    assert field_values["Manage App Account ID"] == str(ACCOUNT_ID)
+    assert folk_client.contact_updates[0][0] == "folk-contact-123"
+    onboarding_repo.mark_sync_job_completed.assert_called_once_with(
+        job.id,
+        result_payload={"updated_company": True, "updated_contact": True},
+    )
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "folk_contract_acceptance_synced"
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_contract_acceptance_to_folk_skips_completed_job(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.status = ClientOnboardingSyncJobStatus.completed
+    job.result_payload = {"updated_company": True, "updated_contact": False}
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    folk_client = _FakeFolkContractAcceptanceClient()
+
+    result = svc.sync_client_onboarding_contract_acceptance_to_folk(
+        session,
+        LIFECYCLE_ID,
+        folk_client=folk_client,
+    )
+
+    assert result == ClientOnboardingFolkSyncResult(
+        lifecycle_id=LIFECYCLE_ID,
+        folk_company_id="folk-company-123",
+        folk_contact_id="folk-contact-123",
+        updated_company=True,
+        updated_contact=False,
+    )
+    assert folk_client.company_updates == []
+    assert folk_client.contact_updates == []
+    onboarding_repo.mark_sync_job_completed.assert_not_called()
+    onboarding_repo.mark_sync_job_failed.assert_not_called()
+    onboarding_repo.append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_sync_client_onboarding_contract_acceptance_to_folk_marks_missing_ids_skipped(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.folk_company_id = None
+    lifecycle.folk_contact_id = None
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+
+    result = svc.sync_client_onboarding_contract_acceptance_to_folk(
+        session,
+        LIFECYCLE_ID,
+        folk_client=_FakeFolkContractAcceptanceClient(),
+    )
+
+    assert result.updated_company is False
+    assert result.updated_contact is False
+    assert result.skipped_reason == (
+        "No Folk company or contact ID is linked to this lifecycle"
+    )
+    onboarding_repo.mark_sync_job_failed.assert_called_once()
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "folk_contract_acceptance_sync_skipped"
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_contract_acceptance_to_folk_rejects_missing_lifecycle(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = None
+
+    with pytest.raises(ClientOnboardingInviteNotFoundError):
+        svc.sync_client_onboarding_contract_acceptance_to_folk(
+            session,
+            LIFECYCLE_ID,
+            folk_client=_FakeFolkContractAcceptanceClient(),
+        )
+
+    onboarding_repo.upsert_sync_job.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_sync_client_onboarding_contract_acceptance_to_folk_rejects_before_signature(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.status = ClientOnboardingStatus.docusign_viewed
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+
+    with pytest.raises(ClientOnboardingInviteInvalidError):
+        svc.sync_client_onboarding_contract_acceptance_to_folk(
+            session,
+            LIFECYCLE_ID,
+            folk_client=_FakeFolkContractAcceptanceClient(),
+        )
+
+    onboarding_repo.upsert_sync_job.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_sync_client_onboarding_contract_acceptance_to_folk_records_folk_failure(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+
+    with pytest.raises(RuntimeError, match="Folk unavailable"):
+        svc.sync_client_onboarding_contract_acceptance_to_folk(
+            session,
+            LIFECYCLE_ID,
+            folk_client=_FailingFolkContractAcceptanceClient(),
+        )
+
+    onboarding_repo.mark_sync_job_failed.assert_called_once()
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "folk_contract_acceptance_sync_failed"
+    assert activity["payload_diff"]["error"] == "Folk unavailable"
+    session.commit.assert_called_once()
+
+
+def test_public_sync_client_onboarding_contract_acceptance_to_folk_wrapper_delegates(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    expected = ClientOnboardingFolkSyncResult(
+        lifecycle_id=LIFECYCLE_ID,
+        folk_company_id="folk-company-123",
+        folk_contact_id="folk-contact-123",
+        updated_company=True,
+        updated_contact=True,
+    )
+    sync = mocker.patch(
+        "services.client_onboarding_service._implementation.sync_client_onboarding_contract_acceptance_to_folk",
+        return_value=expected,
+    )
+
+    result = public_svc.sync_client_onboarding_contract_acceptance_to_folk(
+        session,
+        LIFECYCLE_ID,
+    )
+
+    assert result is expected
+    sync.assert_called_once_with(session=session, lifecycle_id=LIFECYCLE_ID)
+
+
 class _InvitationParams:
     def __init__(
         self,
@@ -997,3 +1227,62 @@ class _InvitationParams:
         self.email = email
         self.account_role = account_role
         self.project_ids = project_ids
+
+
+def _signed_lifecycle() -> MagicMock:
+    lifecycle = MagicMock()
+    lifecycle.id = LIFECYCLE_ID
+    lifecycle.status = ClientOnboardingStatus.docusign_signed
+    lifecycle.account_id = ACCOUNT_ID
+    lifecycle.manage_app_account_name = "acme"
+    lifecycle.client_company_name = "Acme Inc."
+    lifecycle.signer_name = "Client Signer"
+    lifecycle.signer_email = "signer@example.com"
+    lifecycle.contract_type = ClientOnboardingContractType.order_form_tos
+    lifecycle.docusign_contract_id = "contract-123"
+    lifecycle.docusign_envelope_id = "envelope-123"
+    lifecycle.docusign_contract_url = "https://docusign.example/sign/123"
+    lifecycle.docusign_signed_at = COMPLETED_AT
+    lifecycle.ae_owner_user_id = AE_USER_ID
+    lifecycle.fde_owner_user_id = FDE_USER_ID
+    lifecycle.folk_company_id = "folk-company-123"
+    lifecycle.folk_contact_id = "folk-contact-123"
+    return lifecycle
+
+
+class _FakeFolkContractAcceptanceClient:
+    def __init__(self) -> None:
+        self.company_updates: list[tuple[str, dict[str, Any]]] = []
+        self.contact_updates: list[tuple[str, dict[str, Any]]] = []
+
+    async def update_company(
+        self,
+        company_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self.company_updates.append((company_id, payload))
+        return {"id": company_id}
+
+    async def update_contact(
+        self,
+        contact_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self.contact_updates.append((contact_id, payload))
+        return {"id": contact_id}
+
+
+class _FailingFolkContractAcceptanceClient:
+    async def update_company(
+        self,
+        company_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        raise RuntimeError("Folk unavailable")
+
+    async def update_contact(
+        self,
+        contact_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        raise RuntimeError("Folk unavailable")

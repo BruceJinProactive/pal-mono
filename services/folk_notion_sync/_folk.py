@@ -33,6 +33,30 @@ class FolkClient:
         )
         return _data_object(data)
 
+    async def update_company(
+        self,
+        company_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "PATCH",
+            f"{self._settings.folk_base_url}/v1/companies/{company_id}",
+            json_payload=payload,
+        )
+        return _data_object(data)
+
+    async def update_contact(
+        self,
+        contact_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "PATCH",
+            f"{self._settings.folk_base_url}/v1/contacts/{contact_id}",
+            json_payload=payload,
+        )
+        return _data_object(data)
+
     async def list_deals(self) -> list[dict[str, Any]]:
         path = (
             f"/v1/groups/{self._settings.folk_group_id}/"
@@ -56,7 +80,13 @@ class FolkClient:
             )
         return items
 
-    async def _request(self, method: str, url: str) -> dict[str, Any]:
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        json_payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         headers = {"Authorization": f"Bearer {self._api_key}"}
         last_error: Exception | None = None
         for attempt in range(self._settings.max_retries + 1):
@@ -66,13 +96,19 @@ class FolkClient:
                         method,
                         url,
                         headers=headers,
+                        json=json_payload,
                         timeout=self._settings.request_timeout_seconds,
                     )
                 else:
                     async with httpx.AsyncClient(
                         timeout=self._settings.request_timeout_seconds
                     ) as client:
-                        response = await client.request(method, url, headers=headers)
+                        response = await client.request(
+                            method,
+                            url,
+                            headers=headers,
+                            json=json_payload,
+                        )
 
                 if (
                     _should_retry_response(response)

@@ -89,3 +89,13 @@ class ReconcileClientOnboardingDocusignCompletionResult:
     docusign_signed_at: datetime | None
     password_setup_available: bool
     transition_recorded: bool
+
+
+@dataclass
+class ClientOnboardingFolkSyncResult:
+    lifecycle_id: UUID
+    folk_company_id: str | None
+    folk_contact_id: str | None
+    updated_company: bool
+    updated_contact: bool
+    skipped_reason: str | None = None
