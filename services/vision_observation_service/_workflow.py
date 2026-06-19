@@ -89,6 +89,10 @@ def _duration_minutes(started_at: datetime | None, ended_at: datetime) -> Decima
     return minutes.quantize(_DURATION_QUANTUM)
 
 
+def _observed_before(value: datetime, before: datetime) -> bool:
+    return _as_utc(value) < _as_utc(before)
+
+
 def _uuid_matches(raw_value: object, expected: uuid.UUID | None) -> bool:
     if expected is None:
         return True
@@ -158,8 +162,13 @@ async def _previous_state_interval(
             before=state_change_event.observed_at,
             definition_type=definition_type,
         )
-        if started_at is None and start_event is not None:
+        if start_event is not None:
             started_at = start_event.observed_at
+
+    if started_at is not None and not _observed_before(
+        started_at, state_change_event.observed_at
+    ):
+        started_at = None
 
     return (
         started_at,

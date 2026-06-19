@@ -233,6 +233,126 @@ class TestHandleStateChangeRules:
             state_change.id,
         )
 
+    @pytest.mark.asyncio
+    async def test_duration_prefers_state_event_when_entity_start_is_after_end(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        entity = _make_entity()
+        rule = _make_rule(project_id=entity.project_id, rule_type="glove_usage")
+        state_change = _make_state_change(entity_id=entity.id)
+        assert state_change.previous_state_id is not None
+        future_metadata_start = state_change.observed_at + timedelta(
+            minutes=1, seconds=23, milliseconds=500
+        )
+        previous_event = VisionStateChangeEventData(
+            id=uuid.uuid4(),
+            entity_id=entity.id,
+            new_state_id=state_change.previous_state_id,
+            observed_at=state_change.observed_at - timedelta(seconds=48),
+            event_metadata={"definition_type": "glove_usage"},
+        )
+        _set_current_state_since(
+            entity=entity,
+            definition_type="glove_usage",
+            state_id=state_change.previous_state_id,
+            state_name="without_gloves",
+            since=future_metadata_start,
+        )
+        object.__setattr__(
+            state_change, "event_metadata", {"definition_type": "glove_usage"}
+        )
+        event: object | None = None
+
+        with (
+            patch(f"{MODULE}.VisionRuleRepository") as rule_repo_cls,
+            patch(f"{MODULE}.VisionRuleEventRepository") as event_repo_cls,
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as state_repo_cls,
+        ):
+            rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
+            event_repo_cls.return_value.create = AsyncMock()
+            state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
+                return_value=previous_event
+            )
+
+            await handle_state_change_rules(
+                session,
+                entity,
+                state_change,
+                "with_gloves",
+                previous_state_name="without_gloves",
+                entity_type_name="staff",
+            )
+
+            event_repo_cls.return_value.create.assert_awaited_once()
+            event = event_repo_cls.return_value.create.call_args.args[0]
+
+        assert isinstance(event, VisionRuleEventData)
+        assert event.duration == Decimal("0.8000")
+        assert event.event_metadata == _duration_metadata(
+            "without_gloves",
+            "with_gloves",
+            previous_event.observed_at,
+            state_change.observed_at,
+            previous_event.id,
+            state_change.id,
+        )
+
+    @pytest.mark.asyncio
+    async def test_duration_ignores_future_entity_start_without_state_event(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        entity = _make_entity()
+        rule = _make_rule(project_id=entity.project_id, rule_type="glove_usage")
+        state_change = _make_state_change(entity_id=entity.id)
+        assert state_change.previous_state_id is not None
+        future_metadata_start = state_change.observed_at + timedelta(minutes=1)
+        _set_current_state_since(
+            entity=entity,
+            definition_type="glove_usage",
+            state_id=state_change.previous_state_id,
+            state_name="without_gloves",
+            since=future_metadata_start,
+        )
+        object.__setattr__(
+            state_change, "event_metadata", {"definition_type": "glove_usage"}
+        )
+        event: object | None = None
+
+        with (
+            patch(f"{MODULE}.VisionRuleRepository") as rule_repo_cls,
+            patch(f"{MODULE}.VisionRuleEventRepository") as event_repo_cls,
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as state_repo_cls,
+        ):
+            rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
+            event_repo_cls.return_value.create = AsyncMock()
+            state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
+                return_value=None
+            )
+
+            await handle_state_change_rules(
+                session,
+                entity,
+                state_change,
+                "with_gloves",
+                previous_state_name="without_gloves",
+                entity_type_name="staff",
+            )
+
+            event_repo_cls.return_value.create.assert_awaited_once()
+            event = event_repo_cls.return_value.create.call_args.args[0]
+
+        assert isinstance(event, VisionRuleEventData)
+        assert event.duration == Decimal("0.0")
+        assert event.event_metadata == {
+            "duration_state": "without_gloves",
+            "proof_state": "without_gloves",
+            "trigger_state": "with_gloves",
+            "duration_end_state_change_event_id": str(state_change.id),
+            "duration_ended_at": state_change.observed_at.isoformat(),
+        }
+
     @pytest.mark.parametrize(
         (
             "rule_type",
