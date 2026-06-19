@@ -14,6 +14,9 @@ from pydantic import BaseModel
 
 from db.tables import ClientOnboardingContractType, ClientOnboardingStatus
 from services.client_onboarding_service import (
+    ClientOnboardingInviteInvalidError,
+    ClientOnboardingInviteNotFoundError,
+    ClientOnboardingInviteStepResult,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
 )
@@ -72,6 +75,8 @@ def _load_onboarding_schema_module(monkeypatch: Any) -> Any:
 
 
 def _load_client_onboarding_route_module(monkeypatch: Any) -> Any:
+    _load_onboarding_schema_module(monkeypatch)
+
     admin_package = ModuleType("api.routes.admin")
     admin_package.__dict__["__path__"] = []
     utils_module = ModuleType("api.routes.admin._utils")
@@ -132,6 +137,30 @@ def service_result() -> CreateClientOnboardingAccountResult:
     )
 
 
+@pytest.fixture
+def invite_step_result() -> ClientOnboardingInviteStepResult:
+    return ClientOnboardingInviteStepResult(
+        lifecycle_id=LIFECYCLE_ID,
+        lifecycle_status=ClientOnboardingStatus.invite_opened,
+        account_id=ACCOUNT_ID,
+        account_name="acme",
+        account_display_name="Acme",
+        client_company_name="Acme Inc.",
+        signer_name="Client Signer",
+        signer_email="signer@example.com",
+        docusign_required=True,
+        docusign_embed_url="https://docusign.example/sign/123",
+        docusign_contract_url="https://docusign.example/sign/123",
+        docusign_contract_id="contract-123",
+        docusign_envelope_id="envelope-123",
+        docusign_sender_name="AE User",
+        fallback_message=(
+            "Please check your email for a contract from AE User via DocuSign."
+        ),
+        password_setup_available=False,
+    )
+
+
 def test_create_client_onboarding_account_returns_service_response(
     onboarding_request: Any,
     service_result: CreateClientOnboardingAccountResult,
@@ -161,6 +190,54 @@ def test_create_client_onboarding_account_returns_service_response(
     assert service_params.docusign_envelope_id == "envelope-123"
 
 
+def test_get_client_onboarding_invite_step_returns_service_response(
+    invite_step_result: ClientOnboardingInviteStepResult,
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client_onboarding_route = _load_client_onboarding_route_module(monkeypatch)
+    get_step = mocker.patch.object(
+        client_onboarding_route.client_onboarding_service,
+        "get_client_onboarding_invite_step",
+        return_value=invite_step_result,
+    )
+
+    response = client_onboarding_route.get_client_onboarding_invite_step(
+        "invite-token",
+        MagicMock(),
+    )
+
+    assert response.lifecycle_id == LIFECYCLE_ID
+    assert response.lifecycle_status == ClientOnboardingStatus.invite_opened
+    assert response.docusign_embed_url == "https://docusign.example/sign/123"
+    assert response.password_setup_available is False
+    get_step.assert_called_once()
+    assert get_step.call_args.kwargs["invitation_token"] == "invite-token"
+
+
+def test_mark_client_onboarding_docusign_viewed_returns_service_response(
+    invite_step_result: ClientOnboardingInviteStepResult,
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client_onboarding_route = _load_client_onboarding_route_module(monkeypatch)
+    mark_viewed = mocker.patch.object(
+        client_onboarding_route.client_onboarding_service,
+        "mark_client_onboarding_docusign_viewed",
+        return_value=invite_step_result,
+    )
+
+    response = client_onboarding_route.mark_client_onboarding_docusign_viewed(
+        "invite-token",
+        MagicMock(),
+    )
+
+    assert response.lifecycle_id == LIFECYCLE_ID
+    assert response.docusign_required is True
+    mark_viewed.assert_called_once()
+    assert mark_viewed.call_args.kwargs["invitation_token"] == "invite-token"
+
+
 def test_create_client_onboarding_account_maps_duplicates_to_conflict(
     onboarding_request: Any,
     mocker: Any,
@@ -182,6 +259,48 @@ def test_create_client_onboarding_account_maps_duplicates_to_conflict(
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.detail == "duplicate onboarding"
+
+
+def test_get_client_onboarding_invite_step_maps_not_found(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client_onboarding_route = _load_client_onboarding_route_module(monkeypatch)
+    mocker.patch.object(
+        client_onboarding_route.client_onboarding_service,
+        "get_client_onboarding_invite_step",
+        side_effect=ClientOnboardingInviteNotFoundError("not found"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        client_onboarding_route.get_client_onboarding_invite_step(
+            "invite-token",
+            MagicMock(),
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "not found"
+
+
+def test_mark_client_onboarding_docusign_viewed_maps_invalid(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client_onboarding_route = _load_client_onboarding_route_module(monkeypatch)
+    mocker.patch.object(
+        client_onboarding_route.client_onboarding_service,
+        "mark_client_onboarding_docusign_viewed",
+        side_effect=ClientOnboardingInviteInvalidError("invalid invite"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        client_onboarding_route.mark_client_onboarding_docusign_viewed(
+            "invite-token",
+            MagicMock(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "invalid invite"
 
 
 def test_create_client_onboarding_account_maps_value_error_to_bad_request(

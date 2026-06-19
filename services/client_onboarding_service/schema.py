@@ -40,3 +40,31 @@ class CreateClientOnboardingAccountResult:
 
 class DuplicateClientOnboardingError(ValueError):
     pass
+
+
+class ClientOnboardingInviteNotFoundError(ValueError):
+    pass
+
+
+class ClientOnboardingInviteInvalidError(ValueError):
+    pass
+
+
+@dataclass
+class ClientOnboardingInviteStepResult:
+    lifecycle_id: UUID
+    lifecycle_status: ClientOnboardingStatus
+    account_id: UUID
+    account_name: str
+    account_display_name: str | None
+    client_company_name: str
+    signer_name: str | None
+    signer_email: str
+    docusign_required: bool
+    docusign_embed_url: str | None
+    docusign_contract_url: str | None
+    docusign_contract_id: str | None
+    docusign_envelope_id: str | None
+    docusign_sender_name: str
+    fallback_message: str
+    password_setup_available: bool

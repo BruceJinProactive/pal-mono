@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from db.pal_repository.client_onboarding import ClientOnboardingRepository
+from db.pal_repository.client_onboarding import (
+    ClientOnboardingRepository,
+    client_onboarding_transition_changed,
+    client_onboarding_transition_previous_status,
+)
 from db.repositories.account_user_repository import AccountUserRepository
 from db.repositories.resource_role_assignment_repository import (
     ResourceRoleAssignmentRepository,
@@ -15,20 +20,31 @@ from db.tables import (
     Account,
     ClientOnboardingActivitySource,
     ClientOnboardingActorType,
+    ClientOnboardingLifecycle,
     ClientOnboardingStatus,
     UserInvitation,
 )
 from db.tables.accounts import AccountStatus, OnboardingMethod
-from db.tables.types import AccountUserStatus
+from db.tables.types import AccountUserStatus, InvitationStatus
 from services import account_service
 from services.account_service import AccountParams
 from services.auth_types import UserContext
 
 from .schema import (
+    ClientOnboardingInviteInvalidError,
+    ClientOnboardingInviteNotFoundError,
+    ClientOnboardingInviteStepResult,
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
 )
+
+POST_SIGNATURE_STATUSES = {
+    ClientOnboardingStatus.docusign_signed,
+    ClientOnboardingStatus.password_set,
+    ClientOnboardingStatus.handoff_created,
+    ClientOnboardingStatus.activation_ready,
+}
 
 
 def create_client_onboarding_account(
@@ -185,6 +201,83 @@ def create_client_onboarding_account(
     )
 
 
+def get_client_onboarding_invite_step(
+    session: Session,
+    invitation_token: str,
+) -> ClientOnboardingInviteStepResult:
+    resolved = _resolve_client_onboarding_invite(session, invitation_token)
+    onboarding_repo = ClientOnboardingRepository(session)
+    lifecycle = resolved.lifecycle
+
+    if lifecycle.status == ClientOnboardingStatus.invite_sent:
+        opened_at = datetime.now(timezone.utc)
+        lifecycle = onboarding_repo.mark_invite_opened(
+            lifecycle.id,
+            occurred_at=opened_at,
+        )
+        if client_onboarding_transition_changed(lifecycle):
+            onboarding_repo.append_activity(
+                lifecycle_id=lifecycle.id,
+                activity_type=ClientOnboardingStatus.invite_opened.value,
+                actor_type=ClientOnboardingActorType.client,
+                source=ClientOnboardingActivitySource.admin_console,
+                previous_status=ClientOnboardingStatus.invite_sent,
+                next_status=ClientOnboardingStatus.invite_opened,
+                actor_display_name=lifecycle.signer_email,
+                description="Client opened Admin Console invite",
+                occurred_at=opened_at,
+            )
+            session.commit()
+
+    return _build_invite_step_result(resolved, lifecycle)
+
+
+def mark_client_onboarding_docusign_viewed(
+    session: Session,
+    invitation_token: str,
+) -> ClientOnboardingInviteStepResult:
+    resolved = _resolve_client_onboarding_invite(session, invitation_token)
+    lifecycle = resolved.lifecycle
+
+    if not lifecycle.docusign_contract_url and lifecycle.status not in {
+        ClientOnboardingStatus.docusign_viewed,
+        *POST_SIGNATURE_STATUSES,
+    }:
+        raise ClientOnboardingInviteInvalidError("DocuSign embed URL is not available")
+
+    if lifecycle.status in {
+        ClientOnboardingStatus.invite_sent,
+        ClientOnboardingStatus.invite_opened,
+    }:
+        viewed_at = datetime.now(timezone.utc)
+        previous_status = lifecycle.status
+        onboarding_repo = ClientOnboardingRepository(session)
+        lifecycle = onboarding_repo.mark_docusign_viewed(
+            lifecycle.id,
+            occurred_at=viewed_at,
+        )
+        if client_onboarding_transition_changed(lifecycle):
+            onboarding_repo.append_activity(
+                lifecycle_id=lifecycle.id,
+                activity_type=ClientOnboardingStatus.docusign_viewed.value,
+                actor_type=ClientOnboardingActorType.client,
+                source=ClientOnboardingActivitySource.admin_console,
+                previous_status=client_onboarding_transition_previous_status(lifecycle)
+                or previous_status,
+                next_status=ClientOnboardingStatus.docusign_viewed,
+                actor_display_name=lifecycle.signer_email,
+                description="Client-visible DocuSign embed loaded in Admin Console",
+                payload_diff={
+                    "docusign_contract_url": lifecycle.docusign_contract_url,
+                    "docusign_envelope_id": lifecycle.docusign_envelope_id,
+                },
+                occurred_at=viewed_at,
+            )
+            session.commit()
+
+    return _build_invite_step_result(resolved, lifecycle)
+
+
 def _attach_ae_as_owner(
     session: Session,
     account: Account,
@@ -276,6 +369,87 @@ def _contract_payload(params: CreateClientOnboardingAccountParams) -> dict[str, 
         "scoping_doc_url": params.scoping_doc_url,
     }
     return payload | {key: value for key, value in optional_values.items() if value}
+
+
+@dataclass(frozen=True)
+class _ResolvedClientOnboardingInvite:
+    lifecycle: ClientOnboardingLifecycle
+    account_name: str
+    account_display_name: str | None
+    docusign_sender_name: str
+
+
+def _resolve_client_onboarding_invite(
+    session: Session,
+    invitation_token: str,
+) -> _ResolvedClientOnboardingInvite:
+    from services import team_service
+
+    invitation_details = team_service.get_invitation_details(session, invitation_token)
+    if not invitation_details:
+        raise ClientOnboardingInviteNotFoundError("Invitation not found")
+
+    invitation, account_name, account_display_name, inviter_name = invitation_details
+    if invitation.status != InvitationStatus.pending:
+        raise ClientOnboardingInviteInvalidError(
+            f"Invitation is {invitation.status.value}"
+        )
+
+    onboarding_repo = ClientOnboardingRepository(session)
+    lifecycle = onboarding_repo.get_by_invite_id(invitation.id)
+    if not lifecycle:
+        raise ClientOnboardingInviteNotFoundError(
+            "Client onboarding lifecycle not found for invitation"
+        )
+
+    if lifecycle.status in {
+        ClientOnboardingStatus.blocked,
+        ClientOnboardingStatus.cancelled,
+    }:
+        raise ClientOnboardingInviteInvalidError(
+            f"Client onboarding lifecycle is {lifecycle.status.value}"
+        )
+
+    return _ResolvedClientOnboardingInvite(
+        lifecycle=lifecycle,
+        account_name=account_name,
+        account_display_name=account_display_name,
+        docusign_sender_name=inviter_name,
+    )
+
+
+def _build_invite_step_result(
+    resolved: _ResolvedClientOnboardingInvite,
+    lifecycle: ClientOnboardingLifecycle,
+) -> ClientOnboardingInviteStepResult:
+    if lifecycle.account_id is None:
+        raise ClientOnboardingInviteInvalidError(
+            "Client onboarding lifecycle is missing account id"
+        )
+
+    status = lifecycle.status
+    docusign_required = status not in POST_SIGNATURE_STATUSES
+    docusign_embed_url = lifecycle.docusign_contract_url if docusign_required else None
+    sender_name = resolved.docusign_sender_name or "your Palona AE"
+
+    return ClientOnboardingInviteStepResult(
+        lifecycle_id=lifecycle.id,
+        lifecycle_status=status,
+        account_id=lifecycle.account_id,
+        account_name=resolved.account_name,
+        account_display_name=resolved.account_display_name,
+        client_company_name=lifecycle.client_company_name,
+        signer_name=lifecycle.signer_name,
+        signer_email=lifecycle.signer_email,
+        docusign_required=docusign_required,
+        docusign_embed_url=docusign_embed_url,
+        docusign_contract_url=lifecycle.docusign_contract_url,
+        docusign_contract_id=lifecycle.docusign_contract_id,
+        docusign_envelope_id=lifecycle.docusign_envelope_id,
+        docusign_sender_name=sender_name,
+        fallback_message=f"Please check your email for a contract from {sender_name} via DocuSign.",
+        password_setup_available=status in POST_SIGNATURE_STATUSES,
+    )
 
 
 def _parse_user_id(username: str) -> uuid.UUID:

@@ -12,10 +12,12 @@ import services.client_onboarding_service as public_svc
 from db.repositories.resource_role_assignment_repository import ResourceType
 from db.tables import ClientOnboardingContractType, ClientOnboardingStatus
 from db.tables.accounts import AccountStatus, OnboardingMethod
-from db.tables.types import AccountUserStatus
+from db.tables.types import AccountUserStatus, InvitationStatus
 from services.auth_types import UserContext, UserRole
 from services.client_onboarding_service import _implementation as svc
 from services.client_onboarding_service.schema import (
+    ClientOnboardingInviteInvalidError,
+    ClientOnboardingInviteNotFoundError,
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
@@ -372,6 +374,227 @@ def test_create_signer_invitation_uses_owner_role(
     assert invite_params.email == "signer@example.com"
     assert invite_params.account_role == "owner"
     assert invite_params.project_ids is None
+
+
+def _client_onboarding_invite_dependencies(
+    mocker: Any,
+    monkeypatch: Any,
+    *,
+    lifecycle_status: ClientOnboardingStatus = ClientOnboardingStatus.invite_sent,
+    docusign_contract_url: str | None = "https://docusign.example/sign/123",
+) -> dict[str, MagicMock]:
+    invitation = MagicMock()
+    invitation.id = INVITATION_ID
+    invitation.status = InvitationStatus.pending
+
+    lifecycle = MagicMock()
+    lifecycle.id = LIFECYCLE_ID
+    lifecycle.status = lifecycle_status
+    lifecycle.account_id = ACCOUNT_ID
+    lifecycle.client_company_name = "Acme Inc."
+    lifecycle.signer_name = "Client Signer"
+    lifecycle.signer_email = "signer@example.com"
+    lifecycle.docusign_contract_url = docusign_contract_url
+    lifecycle.docusign_contract_id = "contract-123"
+    lifecycle.docusign_envelope_id = "envelope-123"
+
+    team_service = ModuleType("services.team_service")
+    team_service.__dict__["get_invitation_details"] = MagicMock(
+        return_value=(invitation, "acme", "Acme", "AE User")
+    )
+    monkeypatch.setitem(sys.modules, "services.team_service", team_service)
+    monkeypatch.setattr(
+        sys.modules["services"],
+        "team_service",
+        team_service,
+        raising=False,
+    )
+
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_invite_id.return_value = lifecycle
+
+    def mark_invite_opened(*args: object, **kwargs: object) -> MagicMock:
+        setattr(lifecycle, "_client_onboarding_transition_changed", True)
+        setattr(
+            lifecycle,
+            "_client_onboarding_transition_previous_status",
+            ClientOnboardingStatus.invite_sent,
+        )
+        lifecycle.status = ClientOnboardingStatus.invite_opened
+        return lifecycle
+
+    def mark_docusign_viewed(*args: object, **kwargs: object) -> MagicMock:
+        previous_status = lifecycle.status
+        setattr(lifecycle, "_client_onboarding_transition_changed", True)
+        setattr(
+            lifecycle,
+            "_client_onboarding_transition_previous_status",
+            previous_status,
+        )
+        lifecycle.status = ClientOnboardingStatus.docusign_viewed
+        return lifecycle
+
+    onboarding_repo.mark_invite_opened.side_effect = mark_invite_opened
+    onboarding_repo.mark_docusign_viewed.side_effect = mark_docusign_viewed
+
+    return {
+        "invitation": invitation,
+        "lifecycle": lifecycle,
+        "onboarding_repo": onboarding_repo,
+    }
+
+
+def test_get_client_onboarding_invite_step_marks_invite_opened(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    session = MagicMock()
+    deps = _client_onboarding_invite_dependencies(mocker, monkeypatch)
+
+    result = svc.get_client_onboarding_invite_step(session, "invite-token")
+
+    assert result.lifecycle_id == LIFECYCLE_ID
+    assert result.lifecycle_status == ClientOnboardingStatus.invite_opened
+    assert result.account_name == "acme"
+    assert result.account_display_name == "Acme"
+    assert result.docusign_required is True
+    assert result.docusign_embed_url == "https://docusign.example/sign/123"
+    assert result.password_setup_available is False
+    assert result.fallback_message == (
+        "Please check your email for a contract from AE User via DocuSign."
+    )
+    deps["onboarding_repo"].mark_invite_opened.assert_called_once()
+    activity = deps["onboarding_repo"].append_activity.call_args.kwargs
+    assert activity["activity_type"] == "invite_opened"
+    assert activity["previous_status"] == ClientOnboardingStatus.invite_sent
+    assert activity["next_status"] == ClientOnboardingStatus.invite_opened
+    session.commit.assert_called_once()
+
+
+def test_get_client_onboarding_invite_step_returns_password_setup_when_signed(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    session = MagicMock()
+    deps = _client_onboarding_invite_dependencies(
+        mocker,
+        monkeypatch,
+        lifecycle_status=ClientOnboardingStatus.docusign_signed,
+    )
+
+    result = svc.get_client_onboarding_invite_step(session, "invite-token")
+
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_signed
+    assert result.docusign_required is False
+    assert result.docusign_embed_url is None
+    assert result.password_setup_available is True
+    deps["onboarding_repo"].mark_invite_opened.assert_not_called()
+    deps["onboarding_repo"].append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_get_client_onboarding_invite_step_skips_activity_when_transition_lost(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    session = MagicMock()
+    deps = _client_onboarding_invite_dependencies(mocker, monkeypatch)
+    lifecycle = deps["lifecycle"]
+
+    def mark_invite_opened(*args: object, **kwargs: object) -> MagicMock:
+        setattr(lifecycle, "_client_onboarding_transition_changed", False)
+        lifecycle.status = ClientOnboardingStatus.invite_opened
+        return lifecycle
+
+    deps["onboarding_repo"].mark_invite_opened.side_effect = mark_invite_opened
+
+    result = svc.get_client_onboarding_invite_step(session, "invite-token")
+
+    assert result.lifecycle_status == ClientOnboardingStatus.invite_opened
+    deps["onboarding_repo"].append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_mark_client_onboarding_docusign_viewed_records_visible_load(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    session = MagicMock()
+    deps = _client_onboarding_invite_dependencies(
+        mocker,
+        monkeypatch,
+        lifecycle_status=ClientOnboardingStatus.invite_opened,
+    )
+
+    result = svc.mark_client_onboarding_docusign_viewed(session, "invite-token")
+
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_viewed
+    deps["onboarding_repo"].mark_docusign_viewed.assert_called_once()
+    activity = deps["onboarding_repo"].append_activity.call_args.kwargs
+    assert activity["activity_type"] == "docusign_viewed"
+    assert activity["previous_status"] == ClientOnboardingStatus.invite_opened
+    assert activity["next_status"] == ClientOnboardingStatus.docusign_viewed
+    session.commit.assert_called_once()
+
+
+def test_mark_client_onboarding_docusign_viewed_skips_activity_when_transition_lost(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    session = MagicMock()
+    deps = _client_onboarding_invite_dependencies(
+        mocker,
+        monkeypatch,
+        lifecycle_status=ClientOnboardingStatus.invite_opened,
+    )
+    lifecycle = deps["lifecycle"]
+
+    def mark_docusign_viewed(*args: object, **kwargs: object) -> MagicMock:
+        setattr(lifecycle, "_client_onboarding_transition_changed", False)
+        lifecycle.status = ClientOnboardingStatus.docusign_viewed
+        return lifecycle
+
+    deps["onboarding_repo"].mark_docusign_viewed.side_effect = mark_docusign_viewed
+
+    result = svc.mark_client_onboarding_docusign_viewed(session, "invite-token")
+
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_viewed
+    deps["onboarding_repo"].append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_mark_client_onboarding_docusign_viewed_rejects_missing_embed_url(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    session = MagicMock()
+    deps = _client_onboarding_invite_dependencies(
+        mocker,
+        monkeypatch,
+        lifecycle_status=ClientOnboardingStatus.invite_opened,
+        docusign_contract_url=None,
+    )
+
+    with pytest.raises(ClientOnboardingInviteInvalidError):
+        svc.mark_client_onboarding_docusign_viewed(session, "invite-token")
+
+    deps["onboarding_repo"].mark_docusign_viewed.assert_not_called()
+    deps["onboarding_repo"].append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_get_client_onboarding_invite_step_raises_when_no_lifecycle(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    session = MagicMock()
+    deps = _client_onboarding_invite_dependencies(mocker, monkeypatch)
+    deps["onboarding_repo"].get_by_invite_id.return_value = None
+
+    with pytest.raises(ClientOnboardingInviteNotFoundError):
+        svc.get_client_onboarding_invite_step(session, "team-invite-token")
 
 
 class _InvitationParams:

@@ -12,6 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from db.pal_repository.client_onboarding import (
     ClientOnboardingRepository,
     ClientOnboardingRepositoryAsync,
+    client_onboarding_transition_changed,
+    client_onboarding_transition_previous_status,
 )
 from db.tables import (
     ClientOnboardingActivity,
@@ -165,6 +167,28 @@ def test_get_active_by_docusign_reference_rolls_back_on_sqlalchemy_error() -> No
     session.rollback.assert_called_once()
 
 
+def test_get_by_invite_id_returns_matching_lifecycle() -> None:
+    lifecycle = ClientOnboardingLifecycle(id=LIFECYCLE_ID)
+    repo, session, query = _repository_with_query_result(lifecycle)
+
+    result = repo.get_by_invite_id(INVITATION_ID)
+
+    assert result is lifecycle
+    session.query.assert_called_once_with(ClientOnboardingLifecycle)
+    query.filter.assert_called_once()
+
+
+def test_get_by_invite_id_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.query.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.get_by_invite_id(INVITATION_ID)
+
+    session.rollback.assert_called_once()
+
+
 def test_create_lifecycle_persists_account_created_lifecycle() -> None:
     session = MagicMock()
     repo = ClientOnboardingRepository(session)
@@ -217,6 +241,7 @@ def test_mark_invite_sent_updates_existing_lifecycle() -> None:
         status=ClientOnboardingStatus.account_created,
     )
     session = MagicMock()
+    session.execute.return_value.rowcount = 1
     session.get.return_value = lifecycle
     repo = ClientOnboardingRepository(session)
 
@@ -231,6 +256,115 @@ def test_mark_invite_sent_updates_existing_lifecycle() -> None:
     assert lifecycle.status == ClientOnboardingStatus.invite_sent
     assert lifecycle.invite_sent_at == OCCURRED_AT
     session.get.assert_called_once_with(ClientOnboardingLifecycle, LIFECYCLE_ID)
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_mark_invite_opened_advances_from_invite_sent() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.invite_sent,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 1
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_invite_opened(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.invite_opened
+    assert lifecycle.invite_opened_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.invite_sent
+    )
+    session.execute.assert_called_once()
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_mark_invite_opened_does_not_downgrade_later_status() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_signed,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 0
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_invite_opened(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_signed
+    assert lifecycle.invite_opened_at is None
+    assert client_onboarding_transition_changed(result) is False
+
+
+def test_mark_docusign_viewed_advances_after_visible_load() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.invite_opened,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 1
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_docusign_viewed(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_viewed
+    assert lifecycle.docusign_viewed_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.invite_opened
+    )
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_mark_docusign_viewed_backfills_invite_opened_from_invite_sent() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.invite_sent,
+    )
+    first_update = MagicMock()
+    first_update.rowcount = 0
+    second_update = MagicMock()
+    second_update.rowcount = 1
+    session = MagicMock()
+    session.execute.side_effect = [first_update, second_update]
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_docusign_viewed(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_viewed
+    assert lifecycle.docusign_viewed_at == OCCURRED_AT
+    assert lifecycle.invite_opened_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.invite_sent
+    )
+    assert session.execute.call_count == 2
     session.flush.assert_called_once()
     session.refresh.assert_called_once_with(lifecycle)
 
@@ -423,6 +557,29 @@ def test_async_get_active_by_docusign_reference_rolls_back_on_sqlalchemy_error()
     session.rollback.assert_awaited_once()
 
 
+def test_async_get_by_invite_id_returns_matching_lifecycle() -> None:
+    lifecycle = ClientOnboardingLifecycle(id=LIFECYCLE_ID)
+    repo, session, query_result = _async_repository_with_execute_result(lifecycle)
+
+    result = asyncio.run(repo.get_by_invite_id(INVITATION_ID))
+
+    assert result is lifecycle
+    session.execute.assert_awaited_once()
+    query_result.scalars.return_value.first.assert_called_once()
+
+
+def test_async_get_by_invite_id_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(repo.get_by_invite_id(INVITATION_ID))
+
+    session.rollback.assert_awaited_once()
+
+
 def test_async_get_by_idempotency_key_rolls_back_on_sqlalchemy_error() -> None:
     session = MagicMock()
     session.execute = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
@@ -491,6 +648,9 @@ def test_async_mark_invite_sent_updates_existing_lifecycle() -> None:
     )
     session = MagicMock()
     session.get = AsyncMock(return_value=lifecycle)
+    execute_result = MagicMock()
+    execute_result.rowcount = 1
+    session.execute = AsyncMock(return_value=execute_result)
     session.flush = AsyncMock()
     session.refresh = AsyncMock()
     repo = ClientOnboardingRepositoryAsync(session)
@@ -528,6 +688,110 @@ def test_async_mark_invite_sent_rolls_back_on_sqlalchemy_error() -> None:
         )
 
     session.rollback.assert_awaited_once()
+
+
+def test_async_mark_invite_opened_advances_from_invite_sent() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.invite_sent,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    execute_result = MagicMock()
+    execute_result.rowcount = 1
+    session.execute = AsyncMock(return_value=execute_result)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_invite_opened(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.invite_opened
+    assert lifecycle.invite_opened_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.invite_sent
+    )
+    session.execute.assert_awaited_once()
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_mark_docusign_viewed_advances_after_visible_load() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.invite_opened,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    execute_result = MagicMock()
+    execute_result.rowcount = 1
+    session.execute = AsyncMock(return_value=execute_result)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_docusign_viewed(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_viewed
+    assert lifecycle.docusign_viewed_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.invite_opened
+    )
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_mark_docusign_viewed_backfills_invite_opened_from_invite_sent() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.invite_sent,
+    )
+    first_update = MagicMock()
+    first_update.rowcount = 0
+    second_update = MagicMock()
+    second_update.rowcount = 1
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.execute = AsyncMock(side_effect=[first_update, second_update])
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_docusign_viewed(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_viewed
+    assert lifecycle.docusign_viewed_at == OCCURRED_AT
+    assert lifecycle.invite_opened_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.invite_sent
+    )
+    assert session.execute.await_count == 2
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
 
 
 def test_async_mark_blocked_updates_status_reason() -> None:

@@ -114,6 +114,7 @@ from api.schemas.admin.lead import (
 from api.schemas.admin.onboarding import (
     BuildMenuRequest,
     BuildMenuResponse,
+    ClientOnboardingInviteStepResponse,
     CreateClientOnboardingAccountRequest,
     CreateClientOnboardingAccountResponse,
     GenerateAgentPromptsRequest,
@@ -2750,6 +2751,40 @@ async def delete_lead(
 ---------- Onboarding Endpoint ----------
 ---------------------------------------
 """
+
+
+@admin_router.get(
+    "/onboarding/client-invites/{invitation_token}",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_client_onboarding_invite_step(
+    invitation_token: str,
+    session: Session = Depends(db.get_db),
+) -> ClientOnboardingInviteStepResponse:
+    """
+    Validate a client onboarding invite and return the next DocuSign-first step.
+    """
+    return _client_onboarding.get_client_onboarding_invite_step(
+        invitation_token,
+        session,
+    )
+
+
+@admin_router.post(
+    "/onboarding/client-invites/{invitation_token}/docusign-viewed",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def mark_client_onboarding_docusign_viewed(
+    invitation_token: str,
+    session: Session = Depends(db.get_db),
+) -> ClientOnboardingInviteStepResponse:
+    """
+    Record DocuSign viewed only after the signer-visible embed has loaded.
+    """
+    return _client_onboarding.mark_client_onboarding_docusign_viewed(
+        invitation_token,
+        session,
+    )
 
 
 @admin_router.post(

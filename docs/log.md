@@ -8,6 +8,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 - **Client onboarding lifecycle storage schema.** Added schema-only storage for the contract-to-account onboarding MVP: `client_onboarding_lifecycles` for canonical lifecycle state, `client_onboarding_activity` for append-only activity history, and `client_onboarding_sync_jobs` for idempotent external sync work. Migration: `128e03e17ca5`.
 - **Manage App AE account creation backend.** Added the admin onboarding endpoint for AE-created client accounts, attaching the logged-in AE as account owner, creating/linking the account without project or agent creation, sending the signer invite, and writing lifecycle/activity state through `invite_sent`.
+- **Client onboarding DocuSign-first invite API.** Added public Admin Console onboarding invite endpoints that resolve a signer invitation to its client onboarding lifecycle, advance `invite_opened`, return the DocuSign step payload, and record `docusign_viewed` only after the signer-visible embed has loaded.
 - **Empty tray vision rule workflow.** `empty_tray` rules now create rule events
   for `food_tray` entities when the observed state transitions from `not_empty`
   to `empty`; the workflow uses the event's `definition_type` for prior-state
