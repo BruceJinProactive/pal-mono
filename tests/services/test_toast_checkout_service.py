@@ -302,6 +302,10 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
             "gratuity_fees": [],
             "store_id": "toast-store",
             "store_name": "Toast Store",
+            "toast_order_payload": {
+                "externalId": "PALONA:test-session",
+                "checks": [{"selections": [{"item": {"guid": "item-guid"}}]}],
+            },
         },
     }
 
@@ -340,6 +344,10 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
             {"name": "Pizza", "quantity": 1, "totalcost": 3000},
             {"name": "Coke", "quantity": 2, "totalcost": 500},
         ],
+        "toastOrderPayload": {
+            "externalId": "PALONA:test-session",
+            "checks": [{"selections": [{"item": {"guid": "item-guid"}}]}],
+        },
         "expiresAt": session_payload["expiresAt"],
     }
     assert isinstance(stored_sessions[0].token, uuid.UUID)
@@ -754,3 +762,66 @@ async def test_get_checkout_session_payload_requires_ready_session(monkeypatch):
         await service.get_checkout_session_payload_async(
             cast(AsyncSession, object()), uuid.uuid4()
         )
+
+
+@pytest.mark.asyncio
+async def test_get_checkout_session_payload_filters_backend_toast_payload(monkeypatch):
+    from services.toast_checkout_service import _implementation as service
+
+    expires_at = int(datetime.now(timezone.utc).timestamp()) + 600
+    stored_payload = {
+        "email": "orderingagent@example.com",
+        "name": "John Doe",
+        "phone": "+15551234567",
+        "storeId": "toast-store",
+        "storeName": "Toast Store",
+        "orderExternalId": "PALONA:test-session",
+        "paymentIntentId": "pi_123",
+        "paymentIntentExternalReferenceId": "8f2ddc2f-25fd-4c55-943f-04162c43e571",
+        "subtotal": 3000,
+        "tax": 500,
+        "gratuityFees": [],
+        "total": 3500,
+        "tips": 0,
+        "sessionSecret": "session-secret",
+        "iframeBearerToken": "iframe-token",
+        "orderItems": [{"name": "Pizza", "quantity": 1}],
+        "toastOrderPayload": {"externalId": "PALONA:test-session"},
+        "expiresAt": expires_at,
+    }
+
+    class FakeSessionRepository:
+        def __init__(self, _session):
+            return
+
+        async def get_by_token(self, _token):
+            return SimpleNamespace(status="ready", session_payload=stored_payload)
+
+    monkeypatch.setattr(
+        service, "ToastCheckoutSessionRepository", FakeSessionRepository
+    )
+
+    payload = await service.get_checkout_session_payload_async(
+        cast(AsyncSession, object()), uuid.uuid4()
+    )
+
+    assert "toastOrderPayload" not in payload
+    assert payload == {
+        "email": "orderingagent@example.com",
+        "name": "John Doe",
+        "phone": "+15551234567",
+        "storeId": "toast-store",
+        "storeName": "Toast Store",
+        "orderExternalId": "PALONA:test-session",
+        "paymentIntentId": "pi_123",
+        "paymentIntentExternalReferenceId": "8f2ddc2f-25fd-4c55-943f-04162c43e571",
+        "subtotal": 3000,
+        "tax": 500,
+        "gratuityFees": [],
+        "total": 3500,
+        "tips": 0,
+        "sessionSecret": "session-secret",
+        "iframeBearerToken": "iframe-token",
+        "orderItems": [{"name": "Pizza", "quantity": 1}],
+        "expiresAt": expires_at,
+    }

@@ -52,6 +52,7 @@ class ToastCheckoutPayload(BaseModel):
     customer_name: str
     customer_phone: str
     order_items: list[dict[str, Any]] = Field(default_factory=list)
+    toast_order_payload: dict[str, Any] | None = None
     subtotal_cents: int
     tax_cents: int
     gratuity_fees: list[dict[str, Any]] = Field(default_factory=list)
@@ -90,6 +91,31 @@ def _validate_session_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+_PUBLIC_SESSION_PAYLOAD_KEYS = (
+    "email",
+    "name",
+    "phone",
+    "storeId",
+    "storeName",
+    "orderExternalId",
+    "paymentIntentId",
+    "paymentIntentExternalReferenceId",
+    "subtotal",
+    "tax",
+    "gratuityFees",
+    "total",
+    "tips",
+    "sessionSecret",
+    "iframeBearerToken",
+    "orderItems",
+    "expiresAt",
+)
+
+
+def _build_public_session_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {key: payload[key] for key in _PUBLIC_SESSION_PAYLOAD_KEYS if key in payload}
+
+
 def _build_session_payload(
     *,
     payload: ToastCheckoutPayload,
@@ -100,7 +126,7 @@ def _build_session_payload(
     iframe_bearer_token: str,
     expires_at: datetime,
 ) -> dict[str, Any]:
-    return {
+    session_payload = {
         "email": payload.customer_email,
         "name": payload.customer_name,
         "phone": payload.customer_phone,
@@ -119,6 +145,9 @@ def _build_session_payload(
         "orderItems": payload.order_items,
         "expiresAt": int(expires_at.timestamp()),
     }
+    if payload.toast_order_payload is not None:
+        session_payload["toastOrderPayload"] = payload.toast_order_payload
+    return session_payload
 
 
 def _format_payment_amount(amount_cents: int) -> str:
@@ -465,4 +494,5 @@ async def get_checkout_session_payload_async(
     checkout_session = await repo.get_by_token(token)
     if checkout_session is None or checkout_session.status != "ready":
         raise ToastCheckoutSessionNotFoundError("Checkout session not found")
-    return _validate_session_payload(dict(checkout_session.session_payload))
+    session_payload = _validate_session_payload(dict(checkout_session.session_payload))
+    return _build_public_session_payload(session_payload)
