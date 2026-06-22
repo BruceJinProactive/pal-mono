@@ -179,8 +179,16 @@ def list_conversations_in_account(
         )
     else:
         filtered_session_ids = all_session_ids
+    offset = (page - 1) * page_size
+    limit = page_size
+    total, sessions = conversation_repository.get_paginated_sessions_by_ids(
+        filtered_session_ids,
+        offset=offset,
+        limit=limit,
+    )
+
     selected_conversation = None
-    if conversation_id is not None:
+    if conversation_id is not None and page == 1:
         candidate = conversation_repository.get_conversation_by_id(conversation_id)
         if (
             candidate is not None
@@ -188,29 +196,22 @@ def list_conversations_in_account(
             == account_id
         ):
             selected_conversation = candidate
-
-    if selected_conversation is not None:
-        filtered_session_ids = [
-            session_id
-            for session_id in filtered_session_ids
-            if session_id != selected_conversation.id
-        ]
-        offset = 0 if page == 1 else max((page - 1) * page_size - 1, 0)
-        limit = max(page_size - 1, 0) if page == 1 else page_size
-    else:
-        offset = (page - 1) * page_size
-        limit = page_size
-
-    total, sessions = conversation_repository.get_paginated_sessions_by_ids(
-        filtered_session_ids,
-        offset=offset,
-        limit=limit,
-    )
-
-    if selected_conversation is not None:
-        total += 1
-        if page == 1:
-            sessions = [selected_conversation, *sessions][:page_size]
+            selected_is_visible = any(
+                session.id == selected_conversation.id for session in sessions
+            )
+            if not selected_is_visible:
+                filtered_session_ids = [
+                    session_id
+                    for session_id in filtered_session_ids
+                    if session_id != selected_conversation.id
+                ]
+                total, sessions = conversation_repository.get_paginated_sessions_by_ids(
+                    filtered_session_ids,
+                    offset=0,
+                    limit=max(page_size - 1, 0),
+                )
+                total += 1
+                sessions = [selected_conversation, *sessions][:page_size]
 
     order_repository = db.OrderRepository(db_session, auto_commit=False)
     latest_orders_by_conversation_id = (

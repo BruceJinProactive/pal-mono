@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import ANY, MagicMock
+from unittest.mock import ANY, MagicMock, call
 from uuid import UUID, uuid4
 
 import pytest
@@ -338,17 +338,212 @@ def test_list_conversations_in_account_pins_selected_conversation(
     )
 
 
+def test_list_conversations_in_account_does_not_reorder_visible_selection(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test list_conversations_in_account leaves visible selected conversations in place.
+
+    Expected result: selecting a conversation already on the first page does not
+    pin it to the top and reshuffle the list.
+    """
+    account_id = uuid4()
+    recent_conversation_id = uuid4()
+    selected_conversation_id = uuid4()
+    user = SimpleNamespace(id=uuid4())
+
+    recent_conversation = MagicMock()
+    recent_conversation.id = recent_conversation_id
+
+    selected_conversation = MagicMock()
+    selected_conversation.id = selected_conversation_id
+    selected_conversation.user.account_id = account_id
+
+    message_repository = MagicMock()
+    message_repository.get_last_user_message_by_conversation.return_value = None
+    message_repository.get_last_message_by_conversation.return_value = MagicMock()
+    message_repository.get_message_count_by_conversation.return_value = 3
+
+    conversation_repository = MagicMock()
+    conversation_repository.get_conversation_ids_by_user_ids.return_value = [
+        recent_conversation_id,
+        selected_conversation_id,
+    ]
+    conversation_repository.get_paginated_sessions_by_ids.return_value = (
+        2,
+        [recent_conversation, selected_conversation],
+    )
+    conversation_repository.get_conversation_by_id.return_value = selected_conversation
+
+    order_repository = MagicMock()
+    order_repository.get_latest_orders_by_conversation_ids.return_value = {}
+
+    mocker.patch(
+        "services.admin_service._implementation.user_service.get_users_by_account_id",
+        return_value=[user],
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.MessageRepository",
+        return_value=message_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.ConversationRepository",
+        return_value=conversation_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.OrderRepository",
+        return_value=order_repository,
+    )
+
+    total, previews = list_conversations_in_account(
+        account_id=account_id,
+        keyword="",
+        channel=None,
+        language=None,
+        purpose=None,
+        ended_reason=None,
+        customer_converted=None,
+        project_id=None,
+        start_date=None,
+        end_date=datetime.now(timezone.utc),
+        page=1,
+        page_size=10,
+        escalated=False,
+        hide_testing_sessions=True,
+        db_session=mock_session,
+        conversation_id=selected_conversation_id,
+    )
+
+    assert total == 2
+    assert [preview.conversation.id for preview in previews] == [
+        recent_conversation_id,
+        selected_conversation_id,
+    ]
+    conversation_repository.get_paginated_sessions_by_ids.assert_called_once_with(
+        [recent_conversation_id, selected_conversation_id],
+        offset=0,
+        limit=10,
+    )
+    order_repository.get_latest_orders_by_conversation_ids.assert_called_once_with(
+        [recent_conversation_id, selected_conversation_id]
+    )
+
+
+def test_list_conversations_in_account_uses_actual_page_for_pin_decision(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test list_conversations_in_account checks the fetched first page before pinning.
+
+    Expected result: a deep-linked conversation is pinned when the raw ID list
+    position suggests it is visible but the repository-ordered first page excludes it.
+    """
+    account_id = uuid4()
+    selected_conversation_id = uuid4()
+    recent_conversation_id = uuid4()
+    other_conversation_id = uuid4()
+    user = SimpleNamespace(id=uuid4())
+
+    selected_conversation = MagicMock()
+    selected_conversation.id = selected_conversation_id
+    selected_conversation.user.account_id = account_id
+
+    recent_conversation = MagicMock()
+    recent_conversation.id = recent_conversation_id
+
+    other_conversation = MagicMock()
+    other_conversation.id = other_conversation_id
+
+    message_repository = MagicMock()
+    message_repository.get_last_user_message_by_conversation.return_value = None
+    message_repository.get_last_message_by_conversation.return_value = MagicMock()
+    message_repository.get_message_count_by_conversation.return_value = 3
+
+    conversation_repository = MagicMock()
+    conversation_repository.get_conversation_ids_by_user_ids.return_value = [
+        selected_conversation_id,
+        recent_conversation_id,
+        other_conversation_id,
+    ]
+    conversation_repository.get_paginated_sessions_by_ids.side_effect = [
+        (3, [recent_conversation, other_conversation]),
+        (2, [recent_conversation]),
+    ]
+    conversation_repository.get_conversation_by_id.return_value = selected_conversation
+
+    order_repository = MagicMock()
+    order_repository.get_latest_orders_by_conversation_ids.return_value = {}
+
+    mocker.patch(
+        "services.admin_service._implementation.user_service.get_users_by_account_id",
+        return_value=[user],
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.MessageRepository",
+        return_value=message_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.ConversationRepository",
+        return_value=conversation_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.OrderRepository",
+        return_value=order_repository,
+    )
+
+    total, previews = list_conversations_in_account(
+        account_id=account_id,
+        keyword="",
+        channel=None,
+        language=None,
+        purpose=None,
+        ended_reason=None,
+        customer_converted=None,
+        project_id=None,
+        start_date=None,
+        end_date=datetime.now(timezone.utc),
+        page=1,
+        page_size=2,
+        escalated=False,
+        hide_testing_sessions=True,
+        db_session=mock_session,
+        conversation_id=selected_conversation_id,
+    )
+
+    assert total == 3
+    assert [preview.conversation.id for preview in previews] == [
+        selected_conversation_id,
+        recent_conversation_id,
+    ]
+    assert conversation_repository.get_paginated_sessions_by_ids.call_args_list == [
+        call(
+            [selected_conversation_id, recent_conversation_id, other_conversation_id],
+            offset=0,
+            limit=2,
+        ),
+        call(
+            [recent_conversation_id, other_conversation_id],
+            offset=0,
+            limit=1,
+        ),
+    ]
+    order_repository.get_latest_orders_by_conversation_ids.assert_called_once_with(
+        [selected_conversation_id, recent_conversation_id]
+    )
+
+
 def test_list_conversations_in_account_does_not_repin_after_first_page(
     mocker: MockerFixture,
 ) -> None:
     """
-    Test list_conversations_in_account only pins the requested conversation once.
+    Test list_conversations_in_account only pins on the first page.
 
-    Expected result: later pages page through the remaining conversations with an
-    adjusted offset so the pinned conversation is not duplicated.
+    Expected result: later pages keep normal pagination so browsing through
+    visible conversations does not reshuffle the list.
     """
     account_id = uuid4()
     selected_conversation_id = uuid4()
+    first_page_conversation_ids = [uuid4() for _ in range(10)]
     page_two_conversation_id = uuid4()
     user = SimpleNamespace(id=uuid4())
 
@@ -366,12 +561,13 @@ def test_list_conversations_in_account_does_not_repin_after_first_page(
 
     conversation_repository = MagicMock()
     conversation_repository.get_conversation_ids_by_user_ids.return_value = [
+        *first_page_conversation_ids,
         selected_conversation_id,
         page_two_conversation_id,
     ]
     conversation_repository.get_paginated_sessions_by_ids.return_value = (
-        1,
-        [page_two_conversation],
+        12,
+        [selected_conversation, page_two_conversation],
     )
     conversation_repository.get_conversation_by_id.return_value = selected_conversation
 
@@ -414,15 +610,21 @@ def test_list_conversations_in_account_does_not_repin_after_first_page(
         conversation_id=selected_conversation_id,
     )
 
-    assert total == 2
+    assert total == 12
     assert [preview.conversation.id for preview in previews] == [
-        page_two_conversation_id
+        selected_conversation_id,
+        page_two_conversation_id,
     ]
     conversation_repository.get_paginated_sessions_by_ids.assert_called_once_with(
-        [page_two_conversation_id],
-        offset=9,
+        [
+            *first_page_conversation_ids,
+            selected_conversation_id,
+            page_two_conversation_id,
+        ],
+        offset=10,
         limit=10,
     )
+    conversation_repository.get_conversation_by_id.assert_not_called()
 
 
 def test_list_conversations_in_account_does_not_pin_wrong_account(
