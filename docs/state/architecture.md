@@ -266,7 +266,9 @@ keeps the `0.0` default. Rule events generated from manually created
 state-change events inherit `manually_adjusted=true`; otherwise generated rule
 events remain false. `GET /accounts/{account_name}/rule-events` returns all
 rule events matching the account, optional rule/entity filters, and the time
-window; it has no pagination or `limit` query parameter. `PATCH
+window; callers can pass `manually_adjusted=true` or `false` to filter review
+views by human-adjusted status. It has no pagination or `limit` query
+parameter. `PATCH
 /accounts/{account_name}/rule-events/{event_id}` is account-scoped and lets
 authorized operations callers correct a rule event's `triggered_at` timestamp
 and `duration` in minutes, marking `manually_adjusted=true` by default without

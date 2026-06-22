@@ -136,6 +136,43 @@ class TestListRuleEvents:
                 entity_id=None,
                 start=None,
                 end=None,
+                manually_adjusted=None,
+            )
+
+    @pytest.mark.asyncio
+    async def test_passes_manual_adjustment_filter(self) -> None:
+        session = AsyncMock()
+        event_data = _make_event_data(manually_adjusted=True)
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionRuleEventRepository") as mock_repo_cls,
+        ):
+            repo = AsyncMock()
+            repo.list_by_account.return_value = [event_data]
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._rule_events import list_rule_events
+
+            result = await list_rule_events(
+                session,
+                ACCOUNT_NAME,
+                manually_adjusted=True,
+            )
+
+            assert result.total == 1
+            assert result.items[0].manually_adjusted is True
+            repo.list_by_account.assert_awaited_once_with(
+                account_id=ACCOUNT_ID,
+                rule_id=None,
+                entity_id=None,
+                start=None,
+                end=None,
+                manually_adjusted=True,
             )
 
     @pytest.mark.asyncio

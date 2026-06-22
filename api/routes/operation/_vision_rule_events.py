@@ -57,6 +57,7 @@ async def list_rule_events(
     entity_id: uuid.UUID | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
+    manually_adjusted: bool | None = None,
 ) -> ListVisionRuleEventsResponse:
     try:
         return await vision_event_service.list_rule_events(
@@ -66,6 +67,7 @@ async def list_rule_events(
             entity_id=entity_id,
             start=start,
             end=end,
+            manually_adjusted=manually_adjusted,
         )
     except ValueError as e:
         raise HTTPException(

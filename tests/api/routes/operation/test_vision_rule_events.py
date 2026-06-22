@@ -110,6 +110,36 @@ class TestListRuleEvents:
             entity_id=None,
             start=None,
             end=None,
+            manually_adjusted=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_passes_manual_adjustment_filter(self) -> None:
+        from api.routes.operation._vision_rule_events import list_rule_events
+
+        session = AsyncMock()
+        expected = ListVisionRuleEventsResponse(items=[], total=0)
+
+        with patch(
+            f"{MODULE}.vision_event_service.list_rule_events",
+            new_callable=AsyncMock,
+            return_value=expected,
+        ) as mock_list:
+            result = await list_rule_events(
+                session=session,
+                account_name=ACCOUNT_NAME,
+                manually_adjusted=True,
+            )
+
+        assert result.total == 0
+        mock_list.assert_awaited_once_with(
+            session=session,
+            account_name=ACCOUNT_NAME,
+            rule_id=None,
+            entity_id=None,
+            start=None,
+            end=None,
+            manually_adjusted=True,
         )
 
     @pytest.mark.asyncio

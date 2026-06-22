@@ -208,6 +208,28 @@ class TestListByAccount:
         assert len(results) == 1
 
     @pytest.mark.asyncio
+    async def test_filters_by_manual_adjustment_state(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [sample_orm_row]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        results = await repo.list_by_account(
+            uuid.uuid4(),
+            manually_adjusted=True,
+        )
+
+        assert len(results) == 1
+        statement = mock_session.execute.await_args.args[0]
+        assert "manually_adjusted" in str(statement)
+
+    @pytest.mark.asyncio
     async def test_returns_empty_on_db_error(
         self,
         repo: VisionRuleEventRepository,

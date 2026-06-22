@@ -7,6 +7,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-06-20
 
 - **Vision rule event manual adjustment flag.** Added `vision_rule_event.manually_adjusted` with default `false`, exposed it on rule-event responses, and mark manual rule-event corrections plus manually created state-change-derived rule events as adjusted. Migration: `3fa8e1aa036a`. -> `docs/records/2026-06-20-vision-rule-event-manual-adjusted.md`
+- **Vision rule event manual adjustment filtering.** Added optional `manually_adjusted=true|false` filtering to `GET /accounts/{account_name}/rule-events` so portfolio views can request only human-adjusted or generated rule events.
 
 ## 2026-06-19
 

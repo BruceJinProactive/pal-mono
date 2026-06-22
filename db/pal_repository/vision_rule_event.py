@@ -80,6 +80,7 @@ class VisionRuleEventRepository:
         entity_id: uuid.UUID | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
+        manually_adjusted: bool | None = None,
     ) -> list[VisionRuleEventData]:
         try:
             query = (
@@ -96,6 +97,10 @@ class VisionRuleEventRepository:
                 query = query.filter(VisionRuleEvent.triggered_at >= start)
             if end is not None:
                 query = query.filter(VisionRuleEvent.triggered_at <= end)
+            if manually_adjusted is not None:
+                query = query.filter(
+                    VisionRuleEvent.manually_adjusted.is_(manually_adjusted)
+                )
             query = query.order_by(VisionRuleEvent.triggered_at.desc())
             result = await self.session.execute(query)
             return [_to_data(row) for row in result.scalars().all()]

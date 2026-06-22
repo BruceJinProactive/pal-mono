@@ -4140,6 +4140,9 @@ async def list_rule_events(
     account_name: str,
     rule_id: uuid.UUID | None = Query(default=None, description="Filter by rule"),
     entity_id: uuid.UUID | None = Query(default=None, description="Filter by entity"),
+    manually_adjusted: bool | None = Query(
+        default=None, description="Filter by manual adjustment state"
+    ),
     start: datetime | None = Query(
         default=None, description="Start time filter (defaults to 24 hours ago)"
     ),
@@ -4161,6 +4164,7 @@ async def list_rule_events(
     Query Parameters:
     - rule_id (optional): Filter by rule
     - entity_id (optional): Filter by entity
+    - manually_adjusted (optional): Filter by manual adjustment state
     - start (optional): Filter events triggered after this time (default: 24h ago)
     - end (optional): Filter events triggered before this time
     """
@@ -4175,6 +4179,7 @@ async def list_rule_events(
         entity_id=entity_id,
         start=effective_start,
         end=end,
+        manually_adjusted=manually_adjusted,
     )
 
 

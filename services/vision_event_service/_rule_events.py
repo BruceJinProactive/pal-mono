@@ -53,6 +53,7 @@ async def list_rule_events(
     entity_id: uuid.UUID | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
+    manually_adjusted: bool | None = None,
 ) -> ListVisionRuleEventsResponse:
     account = await account_service.get_account_async(session, account_name)
     if not account:
@@ -65,6 +66,7 @@ async def list_rule_events(
         entity_id=entity_id,
         start=start,
         end=end,
+        manually_adjusted=manually_adjusted,
     )
     items = [_build_response(e) for e in events]
     return ListVisionRuleEventsResponse(items=items, total=len(items))
