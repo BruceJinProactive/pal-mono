@@ -9,8 +9,10 @@ import pytest
 import utils.cache.tool_result_cache as tool_result_cache
 from utils.cache.redis import RedisCacheSettings
 from utils.cache.tool_result_cache import (
+    PREVIOUS_TOOL_RESULT_SCHEMA,
     append_tool_result,
     build_cacheable_tool_result,
+    build_raw_tool_result,
     build_tool_result_cache_key,
     close_tool_result_cache_client,
     get_tool_result_cache_client,
@@ -25,10 +27,65 @@ def _with_tool_result(expected: dict[str, Any]) -> dict[str, Any]:
     return {**expected, "tool_result": cacheable_result}
 
 
+def _raw_payload(
+    *,
+    tool_name: str = "toast_takeout_create_order_v1",
+    raw_result: str = '{"status":"success"}',
+    captured_at: str = "2026-06-22T20:00:00Z",
+) -> dict[str, Any]:
+    return {
+        "schema": PREVIOUS_TOOL_RESULT_SCHEMA,
+        "tool_name": tool_name,
+        "raw_result": raw_result,
+        "captured_at": captured_at,
+    }
+
+
 def test_build_tool_result_cache_key() -> None:
     assert (
         build_tool_result_cache_key("conversation-1")
         == "tool-results:v1:conversation-1"
+    )
+
+
+def test_build_raw_tool_result_preserves_exact_output() -> None:
+    payload = {
+        "schema": PREVIOUS_TOOL_RESULT_SCHEMA,
+        "tool_name": " send_support_email ",
+        "raw_result": "Email sent successfully.",
+        "captured_at": "2026-06-22T20:00:00Z",
+        "ignored": {"customer_phone": "+15551234567"},
+    }
+
+    assert build_raw_tool_result(payload) == {
+        "schema": PREVIOUS_TOOL_RESULT_SCHEMA,
+        "tool_name": "send_support_email",
+        "raw_result": "Email sent successfully.",
+        "captured_at": "2026-06-22T20:00:00Z",
+    }
+
+
+def test_build_raw_tool_result_rejects_invalid_payloads() -> None:
+    assert build_raw_tool_result({"tool_name": "x", "raw_result": "ok"}) is None
+    assert (
+        build_raw_tool_result(
+            {
+                "schema": PREVIOUS_TOOL_RESULT_SCHEMA,
+                "tool_name": "",
+                "raw_result": "ok",
+            }
+        )
+        is None
+    )
+    assert (
+        build_raw_tool_result(
+            {
+                "schema": PREVIOUS_TOOL_RESULT_SCHEMA,
+                "tool_name": "x",
+                "raw_result": {"status": "ok"},
+            }
+        )
+        is None
     )
 
 
@@ -723,38 +780,19 @@ async def test_close_tool_result_cache_client_delegates(
 
 
 @pytest.mark.asyncio
-async def test_append_tool_result_writes_sanitized_payload_and_expiry(
+async def test_append_tool_result_writes_raw_payload_and_expiry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_client = _FakeRedisClient()
     metrics: list[tuple[str, dict[str, str]]] = []
     _install_cache_fakes(monkeypatch, fake_client, metrics=metrics)
 
-    await append_tool_result(
-        "conversation-1",
-        {
-            "tool_name": "toast_takeout_create_order_v1",
-            "input_summary": "Create order",
-            "result_summary": "Order created",
-            "status": "success",
-            "raw_result": {"password": "drop"},
-            "cacheable_result": {
-                "order_state": "pending_payment",
-                "phone_number": "drop",
-            },
-        },
-    )
+    payload = _raw_payload(raw_result='{"status":"success","phone":"+15551234567"}')
+
+    await append_tool_result("conversation-1", payload)
 
     assert fake_client.rpush_calls[0][0] == "tool-results:v1:conversation-1"
-    assert json.loads(fake_client.rpush_calls[0][1]) == _with_tool_result(
-        {
-            "tool_name": "toast_takeout_create_order_v1",
-            "input_summary": "Create order",
-            "result_summary": "Order created",
-            "status": "success",
-            "cacheable_result": {"order_state": "pending_payment"},
-        }
-    )
+    assert json.loads(fake_client.rpush_calls[0][1]) == payload
     assert fake_client.expire_calls == [("tool-results:v1:conversation-1", 1800)]
     assert fake_client.pipeline_transactions == [True]
     assert fake_client.pipeline_execute_count == 1
@@ -774,7 +812,7 @@ async def test_append_tool_result_skips_missing_conversation_id(
 
     await append_tool_result(
         "",
-        {"tool_name": "toast_v3", "result_summary": "Order created"},
+        _raw_payload(),
     )
 
     assert fake_client.rpush_calls == []
@@ -820,10 +858,7 @@ async def test_append_tool_result_skips_oversized_payload(
 
     await append_tool_result(
         "conversation-1",
-        {
-            "tool_name": "toast_v3",
-            "result_summary": "This result is too large for the tiny test limit",
-        },
+        _raw_payload(raw_result="x" * 100),
     )
 
     assert fake_client.rpush_calls == []
@@ -834,7 +869,7 @@ async def test_append_tool_result_skips_oversized_payload(
 
 
 @pytest.mark.asyncio
-async def test_append_tool_result_applies_allowlist_before_size_limit(
+async def test_append_tool_result_ignores_unrelated_fields_before_size_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_client = _FakeRedisClient()
@@ -853,22 +888,12 @@ async def test_append_tool_result_applies_allowlist_before_size_limit(
     await append_tool_result(
         "conversation-1",
         {
-            "tool_name": "toast_takeout_create_order_v1",
-            "result_summary": "Order created",
-            "cacheable_result": {
-                "order_state": "created",
-                "raw_payload": "x" * 5000,
-            },
+            **_raw_payload(raw_result="ok"),
+            "ignored_large_field": "x" * 5000,
         },
     )
 
-    assert json.loads(fake_client.rpush_calls[0][1]) == _with_tool_result(
-        {
-            "tool_name": "toast_takeout_create_order_v1",
-            "result_summary": "Order created",
-            "cacheable_result": {"order_state": "created"},
-        }
-    )
+    assert json.loads(fake_client.rpush_calls[0][1]) == _raw_payload(raw_result="ok")
     assert metrics[-1] == (
         "tool_result_cache.operation",
         {"operation": "append", "outcome": "success"},
@@ -903,37 +928,18 @@ async def test_tool_results_can_be_written_and_read_by_separate_clients(
         fake_get_redis_cache_settings,
     )
 
-    await append_tool_result(
-        "conversation-1",
-        {
-            "tool_name": "adora_process_order",
-            "result_summary": "Order was submitted.",
-            "status": "success",
-            "cacheable_result": {
-                "orderID": 12345,
-                "processStatus": "paid",
-                "paymentToken": "drop-sensitive-token",
-            },
-        },
+    payload = _raw_payload(
+        tool_name="adora_process_order",
+        raw_result='{"orderID":12345,"processStatus":"paid","paymentToken":"kept"}',
     )
+
+    await append_tool_result("conversation-1", payload)
 
     results = await get_tool_results("conversation-1")
 
     assert writer_client.rpush_calls
     assert reader_client.lrange_calls == [("tool-results:v1:conversation-1", 0, -1)]
-    assert results == [
-        _with_tool_result(
-            {
-                "tool_name": "adora_process_order",
-                "result_summary": "Order was submitted.",
-                "status": "success",
-                "cacheable_result": {
-                    "orderID": 12345,
-                    "processStatus": "paid",
-                },
-            }
-        )
-    ]
+    assert results == [payload]
 
 
 @pytest.mark.asyncio
@@ -945,7 +951,7 @@ async def test_append_tool_result_skips_when_cache_disabled(
 
     await append_tool_result(
         "conversation-1",
-        {"tool_name": "toast_v3", "result_summary": "Order created"},
+        _raw_payload(),
     )
 
     assert metrics[-1] == (
@@ -964,7 +970,7 @@ async def test_append_tool_result_best_effort_on_redis_failure(
 
     await append_tool_result(
         "conversation-1",
-        {"tool_name": "toast_v3", "result_summary": "Order created"},
+        _raw_payload(),
     )
 
     assert metrics[-1] == (
@@ -995,7 +1001,7 @@ async def test_append_tool_result_best_effort_on_settings_failure(
 
     await append_tool_result(
         "conversation-1",
-        {"tool_name": "toast_v3", "result_summary": "Order created"},
+        _raw_payload(),
     )
 
     assert metrics[-1] == (
@@ -1011,11 +1017,7 @@ async def test_get_tool_results_parses_valid_entries_and_drops_malformed(
     fake_client = _FakeRedisClient(
         lrange_items=[
             json.dumps(
-                {
-                    "tool_name": "toast_v3",
-                    "result_summary": "Order created",
-                    "raw_result": {"secret": "drop"},
-                }
+                _raw_payload(tool_name="send_support_email", raw_result="Sent.")
             ),
             "not-json",
             json.dumps(["not", "an", "object"]),
@@ -1030,7 +1032,7 @@ async def test_get_tool_results_parses_valid_entries_and_drops_malformed(
 
     assert fake_client.lrange_calls == [("tool-results:v1:conversation-1", 0, -1)]
     assert results == [
-        {"tool_name": "toast_v3", "result_summary": "Order created"},
+        _raw_payload(tool_name="send_support_email", raw_result="Sent."),
         _with_tool_result(
             {"tool_name": "adora_v3", "cacheable_result": {"status": "success"}}
         ),

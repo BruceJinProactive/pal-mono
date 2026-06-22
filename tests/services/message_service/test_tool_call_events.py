@@ -182,6 +182,7 @@ async def test_tool_result_cache_write_scheduler_skips_non_tool_events(
         [
             {"type": "sms_followup", "payload": {"message": "send update"}},
             {"type": "tool_call", "payload": None},
+            {"type": "tool_result_cache", "payload": None},
         ],
     )
     await _drain_background_tasks(_implementation)
@@ -212,7 +213,16 @@ def test_tool_result_cache_write_scheduler_handles_schedule_failure(
 
     _implementation._schedule_tool_result_cache_writes(
         uuid.uuid4(),
-        [{"type": "tool_call", "payload": {"tool_name": "check_hours"}}],
+        [
+            {
+                "type": "tool_result_cache",
+                "payload": {
+                    "schema": "previous_tool_result.v1",
+                    "tool_name": "check_hours",
+                    "raw_result": '{"open":true}',
+                },
+            }
+        ],
     )
 
     assert _implementation._background_tasks == set()
@@ -317,11 +327,29 @@ async def test_streaming_tool_call_events_attached_to_message(
             },
         },
         {
+            "type": "tool_result_cache",
+            "payload": {
+                "schema": "previous_tool_result.v1",
+                "tool_name": "lookup_menu",
+                "raw_result": '{"items": ["pepperoni", "margherita"]}',
+                "captured_at": "2026-06-22T20:00:00Z",
+            },
+        },
+        {
             "type": "tool_call",
             "payload": {
                 "tool_name": "place_order",
                 "arguments": {"item": "pepperoni"},
                 "result": '{"status": "success"}',
+            },
+        },
+        {
+            "type": "tool_result_cache",
+            "payload": {
+                "schema": "previous_tool_result.v1",
+                "tool_name": "place_order",
+                "raw_result": '{"status": "success"}',
+                "captured_at": "2026-06-22T20:00:01Z",
             },
         },
     ]
@@ -331,11 +359,12 @@ async def test_streaming_tool_call_events_attached_to_message(
         "payload": {"item_recap": "1 large pepperoni pizza."},
     }
     prefetch_event = {
-        "type": "tool_call",
+        "type": "tool_result_cache",
         "payload": {
+            "schema": "previous_tool_result.v1",
             "tool_name": "adora_wait_time_prefetch_v1",
-            "cacheable": True,
-            "cacheable_result": {"takeout_minutes": 20},
+            "raw_result": '{"takeout_minutes":20}',
+            "captured_at": "2026-06-22T20:00:02Z",
         },
     }
     collected_sms_events: list[dict] = []
@@ -454,11 +483,11 @@ async def test_streaming_tool_call_events_attached_to_message(
     assert len(append_calls) == 3
     assert (
         str(message_repo.saved_conversation_id),
-        tool_events[0]["payload"],
+        tool_events[1]["payload"],
     ) in append_calls
     assert (
         str(message_repo.saved_conversation_id),
-        tool_events[1]["payload"],
+        tool_events[3]["payload"],
     ) in append_calls
     assert (
         str(message_repo.saved_conversation_id),
@@ -622,14 +651,24 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
                 "arguments": {"store_id": "123"},
                 "result": '{"open": true}',
             },
-        }
+        },
+        {
+            "type": "tool_result_cache",
+            "payload": {
+                "schema": "previous_tool_result.v1",
+                "tool_name": "check_hours",
+                "raw_result": '{"open": true}',
+                "captured_at": "2026-06-22T20:00:00Z",
+            },
+        },
     ]
     prefetch_event = {
-        "type": "tool_call",
+        "type": "tool_result_cache",
         "payload": {
+            "schema": "previous_tool_result.v1",
             "tool_name": "toast_wait_time_prefetch_v1",
-            "cacheable": True,
-            "cacheable_result": {"takeout_minutes": 15},
+            "raw_result": '{"takeout_minutes":15}',
+            "captured_at": "2026-06-22T20:00:01Z",
         },
     }
     captured_prefetch_sinks: list[Any] = []
@@ -740,7 +779,7 @@ async def test_nonstreaming_tool_call_events_attached_to_first_message(
     assert len(append_calls) == 2
     assert (
         str(message_repo.request_conversation_id),
-        tool_events[0]["payload"],
+        tool_events[1]["payload"],
     ) in append_calls
     assert (
         str(message_repo.request_conversation_id),

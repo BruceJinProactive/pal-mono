@@ -45,7 +45,11 @@ from services import (
     transaction_service,
     user_service,
 )
-from utils.cache.tool_result_cache import append_tool_result, get_tool_results
+from utils.cache.tool_result_cache import (
+    RAW_TOOL_RESULT_EVENT_TYPE,
+    append_tool_result,
+    get_tool_results,
+)
 from utils.eval_safety import apply_eval_safety
 from utils.log import logger
 from utils.otel import record_duration, trace_async_block
@@ -64,13 +68,13 @@ def _schedule_tool_result_cache_writes(
     events: list[dict[str, Any]],
 ) -> None:
     for event in events:
-        if event.get("type") != "tool_call":
+        if event.get("type") != RAW_TOOL_RESULT_EVENT_TYPE:
             continue
 
         payload = event.get("payload")
         if not isinstance(payload, dict):
             logger.info(
-                "[tool_result_cache] Skipping tool_call event without dict payload",
+                "[tool_result_cache] Skipping raw cache event without dict payload",
                 extra={"conversation_id": str(conversation_id)},
             )
             continue
@@ -89,6 +93,10 @@ def _schedule_tool_result_cache_writes(
 
         _background_tasks.add(task)
         task.add_done_callback(_handle_tool_result_cache_write_done)
+
+
+def _is_persistable_tool_event(event: dict[str, Any]) -> bool:
+    return event.get("type") not in {"sms_followup", RAW_TOOL_RESULT_EVENT_TYPE}
 
 
 def _handle_tool_result_cache_write_done(task: asyncio.Task[None]) -> None:
@@ -786,8 +794,7 @@ async def _dispatch_agent_async(
         # Persist catering_details if present
         # (guarded by hasattr — field added in pal-agents catering migration)
         if (
-            hasattr(pal_output, "catering_details")
-            and pal_output.catering_details  # type: ignore[reportAttributeAccessIssue]
+            hasattr(pal_output, "catering_details") and pal_output.catering_details  # type: ignore[reportAttributeAccessIssue]
         ):
             cd = pal_output.catering_details  # type: ignore[reportAttributeAccessIssue]
             logger.info(
@@ -835,10 +842,13 @@ async def _dispatch_agent_async(
 
         # Collect generic tool call events
         if hasattr(pal_output, "events") and pal_output.events:  # type: ignore[reportAttributeAccessIssue]
-            collected_events = [
+            output_events = [
                 event
                 for event in pal_output.events  # type: ignore[reportAttributeAccessIssue]
-                if isinstance(event, dict) and event.get("type") != "sms_followup"
+                if isinstance(event, dict)
+            ]
+            collected_events = [
+                event for event in output_events if _is_persistable_tool_event(event)
             ]
             logger.info(
                 "[tool_call_events] Collected %d events from pal-agents output",
@@ -848,7 +858,7 @@ async def _dispatch_agent_async(
                     "conversation_id": str(conversation_id),
                 },
             )
-            _schedule_tool_result_cache_writes(conversation_id, collected_events)
+            _schedule_tool_result_cache_writes(conversation_id, output_events)
 
         output = Output(
             content=pal_output.content,
@@ -1548,7 +1558,9 @@ async def get_chat_response_stream(
                                 if (
                                     hasattr(chunk, "checkout_request")
                                     and chunk.checkout_request  # type: ignore[reportAttributeAccessIssue]
-                                    and _is_toast_checkout_request(chunk.checkout_request)  # type: ignore[reportAttributeAccessIssue]
+                                    and _is_toast_checkout_request(
+                                        chunk.checkout_request
+                                    )  # type: ignore[reportAttributeAccessIssue]
                                 ):
                                     logger.info(
                                         "[ToastCheckout] Checkout request received in stream",
@@ -1582,13 +1594,13 @@ async def get_chat_response_stream(
                                         if event.get("type") == "sms_followup":
                                             if event_collector:
                                                 event_collector(event)
-                                        else:
+                                        elif _is_persistable_tool_event(event):
                                             persistable_events.append(event)
 
                                     collected_events.extend(persistable_events)
                                     _schedule_tool_result_cache_writes(
                                         request_conversation_id,
-                                        persistable_events,
+                                        chunk_events,
                                     )
                                     logger.info(
                                         "[tool_call_events] Collected %d events from stream chunk",

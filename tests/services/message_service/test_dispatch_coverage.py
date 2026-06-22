@@ -594,9 +594,10 @@ async def test_pal_agents_path_attaches_external_previous_tool_results(
 
     previous_tool_results: list[dict[str, object]] = [
         {
+            "schema": "previous_tool_result.v1",
             "tool_name": "toast_takeout_create_order_v1",
-            "cacheable_result": {"status": "success", "order_state": "created"},
-            "status": "success",
+            "raw_result": '{"status":"success","order_state":"created"}',
+            "captured_at": "2026-06-22T20:00:00Z",
         }
     ]
     captured_previous_results: list[object | None] = []
@@ -819,9 +820,10 @@ async def test_streaming_pal_agents_path_attaches_external_previous_tool_results
 
     previous_tool_results: list[dict[str, object]] = [
         {
+            "schema": "previous_tool_result.v1",
             "tool_name": "adora_process_order",
-            "cacheable_result": {"status": "success", "order_status": "pending"},
-            "status": "success",
+            "raw_result": '{"status":"success","order_status":"pending"}',
+            "captured_at": "2026-06-22T20:00:00Z",
         }
     ]
     captured_previous_results: list[object | None] = []

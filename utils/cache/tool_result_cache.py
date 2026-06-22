@@ -19,6 +19,8 @@ logger = logging.getLogger("pal-mono")
 
 TOOL_RESULT_CACHE_KEY_PREFIX = "tool-results:v1"
 TOOL_RESULT_CACHE_OPERATION_METRIC = "tool_result_cache.operation"
+PREVIOUS_TOOL_RESULT_SCHEMA = "previous_tool_result.v1"
+RAW_TOOL_RESULT_EVENT_TYPE = "tool_result_cache"
 
 _ALLOWED_TOP_LEVEL_FIELDS = {
     "tool_name",
@@ -292,13 +294,13 @@ async def append_tool_result(
             return
 
         settings = get_redis_cache_settings()
-        cacheable_payload = build_cacheable_tool_result(payload)
-        if cacheable_payload is None:
+        raw_payload = build_raw_tool_result(payload)
+        if raw_payload is None:
             _log_cache_event("append", "skipped", reason="not_cacheable")
             return
 
         serialized = json.dumps(
-            cacheable_payload,
+            raw_payload,
             ensure_ascii=True,
             separators=(",", ":"),
             allow_nan=False,
@@ -414,6 +416,28 @@ def build_cacheable_tool_result(payload: Mapping[str, Any]) -> dict[str, Any] | 
     return result
 
 
+def build_raw_tool_result(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    if payload.get("schema") != PREVIOUS_TOOL_RESULT_SCHEMA:
+        return None
+
+    tool_name = _sanitize_text(payload.get("tool_name"))
+    raw_result = payload.get("raw_result")
+    if not tool_name or not isinstance(raw_result, str):
+        return None
+
+    result: dict[str, Any] = {
+        "schema": PREVIOUS_TOOL_RESULT_SCHEMA,
+        "tool_name": tool_name,
+        "raw_result": raw_result,
+    }
+
+    captured_at = payload.get("captured_at")
+    if isinstance(captured_at, str) and captured_at:
+        result["captured_at"] = captured_at
+
+    return result
+
+
 def _parse_cached_item(raw_item: str | bytes) -> dict[str, Any] | None:
     try:
         if isinstance(raw_item, bytes):
@@ -424,6 +448,10 @@ def _parse_cached_item(raw_item: str | bytes) -> dict[str, Any] | None:
 
     if not isinstance(parsed, Mapping):
         return None
+
+    raw_result = build_raw_tool_result(parsed)
+    if raw_result is not None:
+        return raw_result
 
     return build_cacheable_tool_result(parsed)
 
