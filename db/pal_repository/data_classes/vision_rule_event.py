@@ -16,4 +16,5 @@ class VisionRuleEventData:
     severity: str
     triggered_at: datetime
     duration: Decimal = Decimal("0.0")
+    manually_adjusted: bool = False
     event_metadata: dict[str, Any] = field(default_factory=dict)

@@ -26,6 +26,10 @@ class VisionRuleEventResponse(BaseModel):
         default=Decimal("0.0"),
         description="Duration of the prior state in minutes",
     )
+    manually_adjusted: bool = Field(
+        default=False,
+        description="Whether the rule event was manually added or corrected",
+    )
     triggered_at: datetime = Field(description="When the rule was triggered")
     event_metadata: dict[str, Any] = Field(description="Arbitrary event metadata")
 
@@ -37,6 +41,10 @@ class UpdateVisionRuleEventRequest(BaseModel):
     duration: Decimal = Field(
         ge=Decimal("0.0"),
         description="Duration of the prior state in minutes",
+    )
+    manually_adjusted: bool = Field(
+        default=True,
+        description="Whether this update should mark the event as manually adjusted",
     )
 
 

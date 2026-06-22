@@ -41,6 +41,7 @@ def sample_orm_row(sample_id: uuid.UUID, sample_rule_id: uuid.UUID) -> MagicMock
     row.state_change_event_id = uuid.uuid4()
     row.severity = "high"
     row.duration = Decimal("2.5000")
+    row.manually_adjusted = False
     row.triggered_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
     row.event_metadata = {"detail": "dirty"}
     return row
@@ -73,6 +74,7 @@ class TestCreate:
         mock_session.add.assert_called_once()
         row = mock_session.add.call_args.args[0]
         assert row.duration == Decimal("2.5000")
+        assert row.manually_adjusted is False
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -278,6 +280,7 @@ class TestUpdateForAccount:
         updated_row.state_change_event_id = sample_orm_row.state_change_event_id
         updated_row.severity = sample_orm_row.severity
         updated_row.duration = Decimal("3.0000")
+        updated_row.manually_adjusted = True
         updated_row.triggered_at = datetime(2026, 5, 1, 12, 30, tzinfo=timezone.utc)
         updated_row.event_metadata = sample_orm_row.event_metadata
 
@@ -303,6 +306,7 @@ class TestUpdateForAccount:
         assert result is not None
         assert result.triggered_at == updated_row.triggered_at
         assert result.duration == Decimal("3.0000")
+        assert result.manually_adjusted is True
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio

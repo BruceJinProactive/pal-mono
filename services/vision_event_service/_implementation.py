@@ -133,6 +133,9 @@ async def create_state_change_event(
         metadata["is_test"] = request.is_test
     if request.test_group is not None:
         metadata["test_group"] = request.test_group
+    manually_adjusted = request.manually_adjusted or (
+        metadata.get("manually_adjusted") is True
+    )
 
     record = VisionStateChangeEventData(
         id=uuid.uuid4(),
@@ -163,6 +166,7 @@ async def create_state_change_event(
                 and previous_state_def.entity_type_id == entity.entity_type_id
                 else None
             ),
+            manually_adjusted=manually_adjusted,
         )
     logger.info(
         "[Vision Event] Created state change event",

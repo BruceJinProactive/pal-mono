@@ -3775,6 +3775,9 @@ async def create_state_change_event(
 
     Path Parameters:
     - account_name: Account identifier
+
+    Body:
+    - manually_adjusted: Whether generated rule events should be marked manually adjusted
     """
     _ = context
     return await _vision_state_change_events.create_state_change_event(
@@ -4236,6 +4239,7 @@ async def update_rule_event(
     Body:
     - triggered_at: Updated event timestamp
     - duration: Updated event duration in minutes
+    - manually_adjusted: Whether the event should be marked manually adjusted
     """
     _ = context
     return await _vision_rule_events.update_rule_event(

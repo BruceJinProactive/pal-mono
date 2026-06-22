@@ -42,6 +42,7 @@ class RuleWorkflow:
             str,
             str | None,
             VisionRuleData,
+            bool,
             RuleWorkflow,
         ],
         Awaitable[None],
@@ -205,6 +206,7 @@ async def _handle_state_transition_rule(
     state_name: str,
     previous_state_name: str | None,
     rule: VisionRuleData,
+    manually_adjusted: bool,
     workflow: RuleWorkflow,
 ) -> None:
     if (
@@ -236,6 +238,7 @@ async def _handle_state_transition_rule(
             state_change_event_id=state_change_event.id,
             severity=rule.severity,
             duration=duration,
+            manually_adjusted=manually_adjusted,
             triggered_at=state_change_event.observed_at,
             event_metadata=_duration_event_metadata(
                 workflow,
@@ -362,10 +365,14 @@ async def handle_state_change_rules(
     state_name: str,
     previous_state_name: str | None = None,
     entity_type_name: str | None = None,
+    manually_adjusted: bool = False,
 ) -> None:
     event_metadata = state_change_event.event_metadata or {}
     if event_metadata.get("is_test") is True:
         return
+    rule_event_manually_adjusted = (
+        manually_adjusted or event_metadata.get("manually_adjusted") is True
+    )
 
     resolved_entity_type_name = await _resolve_entity_type_name(
         session=session,
@@ -404,5 +411,6 @@ async def handle_state_change_rules(
             state_name,
             previous_state_name,
             rule,
+            rule_event_manually_adjusted,
             workflow,
         )

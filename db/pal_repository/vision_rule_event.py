@@ -21,6 +21,7 @@ def _to_data(row: VisionRuleEvent) -> VisionRuleEventData:
         severity=row.severity,
         triggered_at=row.triggered_at,
         duration=row.duration,
+        manually_adjusted=row.manually_adjusted,
         event_metadata=dict(row.event_metadata) if row.event_metadata else {},
     )
 
@@ -38,6 +39,7 @@ class VisionRuleEventRepository:
                 state_change_event_id=record.state_change_event_id,
                 severity=record.severity,
                 duration=record.duration,
+                manually_adjusted=record.manually_adjusted,
                 triggered_at=record.triggered_at,
                 event_metadata=record.event_metadata,
             )
@@ -134,6 +136,7 @@ class VisionRuleEventRepository:
         account_id: uuid.UUID,
         triggered_at: datetime,
         duration: Decimal,
+        manually_adjusted: bool = True,
     ) -> VisionRuleEventData | None:
         try:
             current_result = await self.session.execute(
@@ -155,7 +158,11 @@ class VisionRuleEventRepository:
                     VisionRuleEvent.id == event_id,
                     VisionRuleEvent.triggered_at == current_row.triggered_at,
                 )
-                .values(triggered_at=triggered_at, duration=duration)
+                .values(
+                    triggered_at=triggered_at,
+                    duration=duration,
+                    manually_adjusted=manually_adjusted,
+                )
             )
             await self.session.commit()
 

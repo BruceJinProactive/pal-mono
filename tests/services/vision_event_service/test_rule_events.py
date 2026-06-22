@@ -33,6 +33,7 @@ def _make_event_data(**overrides: object) -> VisionRuleEventData:
         "state_change_event_id": uuid.uuid4(),
         "severity": "high",
         "duration": Decimal("4.2500"),
+        "manually_adjusted": False,
         "triggered_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
         "event_metadata": {},
     }
@@ -66,6 +67,7 @@ class TestGetRuleEvent:
             assert result.id == event_id
             assert result.rule_id == RULE_ID
             assert result.duration == Decimal("4.2500")
+            assert result.manually_adjusted is False
 
     @pytest.mark.asyncio
     async def test_raises_when_account_not_found(self) -> None:
@@ -224,6 +226,7 @@ class TestUpdateRuleEvent:
             id=event_id,
             triggered_at=triggered_at,
             duration=Decimal("2.5000"),
+            manually_adjusted=True,
         )
 
         with (
@@ -250,11 +253,13 @@ class TestUpdateRuleEvent:
             assert result.id == event_id
             assert result.triggered_at == triggered_at
             assert result.duration == Decimal("2.5000")
+            assert result.manually_adjusted is True
             repo.update_for_account.assert_awaited_once_with(
                 event_id=event_id,
                 account_id=ACCOUNT_ID,
                 triggered_at=triggered_at,
                 duration=Decimal("2.5000"),
+                manually_adjusted=True,
             )
 
     @pytest.mark.asyncio

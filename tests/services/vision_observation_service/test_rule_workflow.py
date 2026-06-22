@@ -168,6 +168,7 @@ class TestHandleStateChangeRules:
         assert event.severity == rule.severity
         assert event.triggered_at == state_change.observed_at
         assert event.duration == Decimal("12.5000")
+        assert event.manually_adjusted is False
         assert event.event_metadata == _duration_metadata(
             "dirty",
             "clean",
@@ -232,6 +233,51 @@ class TestHandleStateChangeRules:
             previous_event.id,
             state_change.id,
         )
+
+    @pytest.mark.asyncio
+    async def test_manual_state_change_creates_manually_adjusted_rule_event(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        entity = _make_entity()
+        rule = _make_rule(project_id=entity.project_id)
+        state_change = _make_state_change(entity_id=entity.id)
+        assert state_change.previous_state_id is not None
+        previous_event = VisionStateChangeEventData(
+            id=uuid.uuid4(),
+            entity_id=entity.id,
+            new_state_id=state_change.previous_state_id,
+            observed_at=state_change.observed_at - timedelta(minutes=3),
+            event_metadata={"definition_type": "cleanliness"},
+        )
+        event: object | None = None
+
+        with (
+            patch(f"{MODULE}.VisionRuleRepository") as rule_repo_cls,
+            patch(f"{MODULE}.VisionRuleEventRepository") as event_repo_cls,
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as state_repo_cls,
+        ):
+            rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
+            event_repo_cls.return_value.create = AsyncMock()
+            state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
+                return_value=previous_event
+            )
+
+            await handle_state_change_rules(
+                session,
+                entity,
+                state_change,
+                "clean",
+                previous_state_name="dirty",
+                entity_type_name="table",
+                manually_adjusted=True,
+            )
+
+            event_repo_cls.return_value.create.assert_awaited_once()
+            event = event_repo_cls.return_value.create.call_args.args[0]
+
+        assert isinstance(event, VisionRuleEventData)
+        assert event.manually_adjusted is True
 
     @pytest.mark.asyncio
     async def test_duration_prefers_state_event_when_entity_start_is_after_end(
@@ -502,6 +548,7 @@ class TestHandleStateChangeRules:
         assert event.severity == rule.severity
         assert event.triggered_at == state_change.observed_at
         assert event.duration == Decimal("5.0000")
+        assert event.manually_adjusted is False
         assert event.event_metadata == _duration_metadata(
             previous_state_name,
             state_name,

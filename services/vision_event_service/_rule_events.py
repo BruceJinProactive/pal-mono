@@ -24,6 +24,7 @@ def _build_response(data: VisionRuleEventData) -> VisionRuleEventResponse:
         state_change_event_id=data.state_change_event_id,
         severity=data.severity,
         duration=data.duration,
+        manually_adjusted=data.manually_adjusted,
         triggered_at=data.triggered_at,
         event_metadata=data.event_metadata,
     )
@@ -104,6 +105,7 @@ async def update_rule_event(
         account_id=account.id,
         triggered_at=request.triggered_at,
         duration=request.duration,
+        manually_adjusted=request.manually_adjusted,
     )
     if not data:
         raise ValueError(f"Rule event {event_id} not found")

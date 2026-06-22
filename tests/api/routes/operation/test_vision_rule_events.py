@@ -29,6 +29,7 @@ def _make_response(**overrides: object) -> VisionRuleEventResponse:
         "state_change_event_id": uuid.uuid4(),
         "severity": "high",
         "duration": Decimal("3.7500"),
+        "manually_adjusted": False,
         "triggered_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
         "event_metadata": {},
     }

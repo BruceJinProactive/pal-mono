@@ -32,6 +32,10 @@ class CreateStateChangeEventRequest(BaseModel):
     event_metadata: dict[str, Any] = Field(
         default_factory=dict, description="Arbitrary event metadata"
     )
+    manually_adjusted: bool = Field(
+        default=False,
+        description="Whether rule events generated from this state change were manually added",
+    )
     is_test: bool | None = Field(
         default=None, description="Whether this event is from a test run"
     )

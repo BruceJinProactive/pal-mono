@@ -140,6 +140,56 @@ class TestCreateStateChangeEvent:
             assert call_kwargs["entity"] == entity
             assert call_kwargs["state_name"] == "clean"
             assert call_kwargs["previous_state_name"] == "dirty"
+            assert call_kwargs["manually_adjusted"] is False
+
+    @pytest.mark.asyncio
+    async def test_manual_state_change_marks_generated_rule_events_manual(self) -> None:
+        session = AsyncMock()
+        entity_type_id = uuid.uuid4()
+        entity = MagicMock()
+        entity.id = ENTITY_ID
+        entity.entity_type_id = entity_type_id
+        state_def = MagicMock()
+        state_def.id = NEW_STATE_ID
+        state_def.entity_type_id = entity_type_id
+        state_def.name = "clean"
+        request = CreateStateChangeEventRequest(
+            entity_id=ENTITY_ID,
+            new_state_id=NEW_STATE_ID,
+            manually_adjusted=True,
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(f"{MODULE}.VisionEntityRepository") as mock_entity_repo_cls,
+            patch(
+                f"{MODULE}.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                f"{MODULE}.handle_state_change_rules",
+                new_callable=AsyncMock,
+            ) as mock_handle_rules,
+        ):
+            repo = AsyncMock()
+            repo.verify_entity_belongs_to_account.return_value = True
+            repo.create.return_value = None
+            mock_repo_cls.return_value = repo
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(return_value=entity)
+            mock_sd_repo_cls.return_value.get_by_id = AsyncMock(return_value=state_def)
+
+            from services.vision_event_service._implementation import (
+                create_state_change_event,
+            )
+
+            await create_state_change_event(session, request, ACCOUNT_NAME)
+
+            mock_handle_rules.assert_awaited_once()
+            assert mock_handle_rules.call_args.kwargs["manually_adjusted"] is True
 
     @pytest.mark.asyncio
     async def test_uses_provided_observed_at(self) -> None:
