@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-22
 
+- **Client onboarding post-signature Slack handoff.** DocuSign completion now triggers a post-signature Slack handoff that creates or reuses the dedicated client channel, resolves AE/FDE owners to Slack users, posts the contract acceptance handoff message, and stores the channel ID on the onboarding lifecycle. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Admin conversation selection stability.** `conversationId` pinning on `GET /accounts/{account_name}/conversations` now only moves a conversation when it is absent from the first returned page, so normal row selection no longer reshuffles the visible conversation list while preserving deep-link landing behavior.
 
 ## 2026-06-20

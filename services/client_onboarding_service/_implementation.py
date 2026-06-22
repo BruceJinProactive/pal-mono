@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from collections.abc import Coroutine
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 from sqlalchemy.orm import Session
 
@@ -34,12 +35,14 @@ from db.tables.types import AccountUserStatus, InvitationStatus
 from services import account_service
 from services.account_service import AccountParams
 from services.auth_types import UserContext
+from utils.log import logger
 
 from .schema import (
     ClientOnboardingFolkSyncResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
+    ClientOnboardingSlackHandoffResult,
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
@@ -60,6 +63,8 @@ POST_PASSWORD_STATUSES = {
 }
 DATABASE_CONTRACT_ACCEPTANCE_JOB_TYPE = "record_contract_acceptance"
 FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE = "update_contract_acceptance"
+SLACK_HANDOFF_JOB_TYPE = "create_handoff_channel"
+T = TypeVar("T")
 
 
 class FolkContractAcceptanceClient(Protocol):
@@ -74,6 +79,74 @@ class FolkContractAcceptanceClient(Protocol):
         contact_id: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]: ...
+
+
+class SlackHandoffClient(Protocol):
+    async def create_channel(
+        self,
+        *,
+        name: str,
+        is_private: bool,
+    ) -> dict[str, Any]: ...
+
+    async def invite_users(
+        self,
+        *,
+        channel_id: str,
+        user_ids: list[str],
+    ) -> dict[str, Any]: ...
+
+    async def post_message(
+        self,
+        *,
+        channel_id: str,
+        text: str,
+        blocks: list[dict[str, Any]],
+    ) -> dict[str, Any]: ...
+
+    async def lookup_user_id_by_email(
+        self,
+        *,
+        email: str,
+    ) -> str | None: ...
+
+    async def find_channel_id_by_name(
+        self,
+        *,
+        name: str,
+    ) -> str | None: ...
+
+
+@dataclass(frozen=True)
+class _OwnerContact:
+    role: str
+    user_id: uuid.UUID
+    email: str | None
+    name: str | None
+
+
+@dataclass(frozen=True)
+class _SlackHandoffMessage:
+    text: str
+    blocks: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class _SlackHandoffChannel:
+    channel_id: str
+    channel_name: str
+    created: bool
+
+
+@dataclass(frozen=True)
+class _SlackHandoffOutcome:
+    channel_id: str
+    channel_name: str
+    created_channel: bool
+    invited_user_ids: list[str]
+    unresolved_owner_user_ids: list[str]
+    message_ts: str | None
+    invite_error: str | None = None
 
 
 def create_client_onboarding_account(
@@ -426,6 +499,7 @@ def reconcile_client_onboarding_docusign_completion(
                 occurred_at=completed_at,
             )
             session.commit()
+            _attempt_post_signature_slack_handoff(session, lifecycle.id)
         elif lifecycle.status not in POST_SIGNATURE_STATUSES:
             raise ClientOnboardingInviteInvalidError(
                 f"DocuSign completion cannot advance lifecycle from {lifecycle.status.value}"
@@ -438,6 +512,20 @@ def reconcile_client_onboarding_docusign_completion(
         password_setup_available=lifecycle.status in POST_SIGNATURE_STATUSES,
         transition_recorded=transition_recorded,
     )
+
+
+def _attempt_post_signature_slack_handoff(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+) -> None:
+    try:
+        sync_client_onboarding_slack_handoff(session, lifecycle_id)
+    except Exception:
+        logger.exception(
+            "Client onboarding Slack handoff failed after DocuSign completion",
+            extra={"lifecycle_id": str(lifecycle_id)},
+        )
+        return
 
 
 def sync_client_onboarding_contract_acceptance_to_folk(
@@ -568,6 +656,137 @@ def sync_client_onboarding_contract_acceptance_to_folk(
         folk_contact_id=lifecycle.folk_contact_id,
         updated_company=updated_company,
         updated_contact=updated_contact,
+    )
+
+
+def sync_client_onboarding_slack_handoff(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+    *,
+    slack_client: SlackHandoffClient | None = None,
+) -> ClientOnboardingSlackHandoffResult:
+    onboarding_repo = ClientOnboardingRepository(session)
+    lifecycle = onboarding_repo.get_by_id(lifecycle_id)
+    if not lifecycle:
+        raise ClientOnboardingInviteNotFoundError(
+            "Client onboarding lifecycle not found"
+        )
+    if lifecycle.status not in POST_SIGNATURE_STATUSES:
+        raise ClientOnboardingInviteInvalidError(
+            "DocuSign completion is required before creating Slack handoff"
+        )
+    if lifecycle.docusign_signed_at is None:
+        raise ClientOnboardingInviteInvalidError(
+            "Client onboarding lifecycle is missing DocuSign signed timestamp"
+        )
+
+    job = onboarding_repo.upsert_sync_job(
+        lifecycle_id=lifecycle.id,
+        target=ClientOnboardingSyncTarget.slack,
+        job_type=SLACK_HANDOFF_JOB_TYPE,
+        idempotency_key=_post_signature_sync_idempotency_key(
+            lifecycle,
+            ClientOnboardingSyncTarget.slack,
+            SLACK_HANDOFF_JOB_TYPE,
+        ),
+        payload=_post_signature_sync_payload(lifecycle),
+    )
+    if job.status in {
+        ClientOnboardingSyncJobStatus.completed,
+        ClientOnboardingSyncJobStatus.cancelled,
+    }:
+        result_payload = job.result_payload or {}
+        return ClientOnboardingSlackHandoffResult(
+            lifecycle_id=lifecycle.id,
+            slack_channel_id=_payload_text(result_payload, "slack_channel_id")
+            or lifecycle.slack_channel_id,
+            slack_channel_name=_payload_text(result_payload, "slack_channel_name"),
+            created_channel=result_payload.get("created_channel") is True,
+            invited_user_ids=_payload_text_list(
+                result_payload,
+                "invited_user_ids",
+            ),
+            posted_message=result_payload.get("posted_message") is True,
+            message_ts=_payload_text(result_payload, "message_ts"),
+            skipped_reason=(
+                "Slack handoff sync job is cancelled"
+                if job.status == ClientOnboardingSyncJobStatus.cancelled
+                else None
+            ),
+        )
+
+    owner_contacts = _resolve_handoff_owner_contacts(session, lifecycle)
+    try:
+        client = slack_client or _build_slack_handoff_client()
+        channel = _run_async(_ensure_slack_handoff_channel(client, lifecycle))
+        if lifecycle.slack_channel_id != channel.channel_id:
+            lifecycle = onboarding_repo.set_slack_channel_id(
+                lifecycle.id,
+                slack_channel_id=channel.channel_id,
+            )
+            session.commit()
+        outcome = _run_async(
+            _post_slack_handoff(
+                client,
+                lifecycle,
+                owner_contacts,
+                channel_id=channel.channel_id,
+                channel_name=channel.channel_name,
+                created_channel=channel.created,
+            )
+        )
+    except Exception as exc:
+        onboarding_repo.mark_sync_job_failed(
+            job.id,
+            last_error=str(exc),
+            result_payload={"error": str(exc)},
+        )
+        onboarding_repo.append_activity(
+            lifecycle_id=lifecycle.id,
+            activity_type="slack_handoff_sync_failed",
+            actor_type=ClientOnboardingActorType.system,
+            source=ClientOnboardingActivitySource.slack,
+            description="Slack handoff creation failed",
+            payload_diff={"sync_job_id": str(job.id), "error": str(exc)},
+        )
+        session.commit()
+        raise
+
+    result_payload = {
+        "slack_channel_id": outcome.channel_id,
+        "slack_channel_name": outcome.channel_name,
+        "created_channel": outcome.created_channel,
+        "invited_user_ids": outcome.invited_user_ids,
+        "unresolved_owner_user_ids": outcome.unresolved_owner_user_ids,
+        "posted_message": True,
+        "message_ts": outcome.message_ts,
+    }
+    if outcome.invite_error:
+        result_payload["invite_error"] = outcome.invite_error
+    onboarding_repo.mark_sync_job_completed(job.id, result_payload=result_payload)
+    onboarding_repo.append_activity(
+        lifecycle_id=lifecycle.id,
+        activity_type="slack_handoff_created",
+        actor_type=ClientOnboardingActorType.system,
+        source=ClientOnboardingActivitySource.slack,
+        description="Slack handoff channel created and contract acceptance posted",
+        payload_diff={
+            "sync_job_id": str(job.id),
+            "slack_channel_id": outcome.channel_id,
+            "slack_channel_name": outcome.channel_name,
+            "invited_user_ids": outcome.invited_user_ids,
+            "unresolved_owner_user_ids": outcome.unresolved_owner_user_ids,
+        },
+    )
+    session.commit()
+    return ClientOnboardingSlackHandoffResult(
+        lifecycle_id=lifecycle.id,
+        slack_channel_id=outcome.channel_id,
+        slack_channel_name=outcome.channel_name,
+        created_channel=outcome.created_channel,
+        invited_user_ids=outcome.invited_user_ids,
+        posted_message=True,
+        message_ts=outcome.message_ts,
     )
 
 
@@ -721,6 +940,18 @@ def _enqueue_post_signature_sync_jobs(
         payload=payload,
         available_at=occurred_at,
     )
+    onboarding_repo.upsert_sync_job(
+        lifecycle_id=lifecycle.id,
+        target=ClientOnboardingSyncTarget.slack,
+        job_type=SLACK_HANDOFF_JOB_TYPE,
+        idempotency_key=_post_signature_sync_idempotency_key(
+            lifecycle,
+            ClientOnboardingSyncTarget.slack,
+            SLACK_HANDOFF_JOB_TYPE,
+        ),
+        payload=payload,
+        available_at=occurred_at,
+    )
 
 
 def _post_signature_sync_idempotency_key(
@@ -752,6 +983,9 @@ def _post_signature_sync_payload(
         "fde_owner_user_id": _optional_uuid(lifecycle.fde_owner_user_id),
         "folk_company_id": lifecycle.folk_company_id,
         "folk_contact_id": lifecycle.folk_contact_id,
+        "slack_channel_id": lifecycle.slack_channel_id,
+        "notion_page_id": lifecycle.notion_page_id,
+        "scoping_doc_url": lifecycle.scoping_doc_url,
     }
     return payload | {key: value for key, value in optional_values.items() if value}
 
@@ -807,15 +1041,428 @@ async def _update_folk_contract_acceptance(
     return updated_company, updated_contact
 
 
+def _build_slack_handoff_client() -> SlackHandoffClient:
+    from services.slack_service._client import get_slack_client
+
+    return _SlackHandoffClientAdapter(get_slack_client())
+
+
+class _SlackHandoffClientAdapter:
+    def __init__(self, client: Any) -> None:
+        self.client = client
+
+    async def create_channel(
+        self,
+        *,
+        name: str,
+        is_private: bool,
+    ) -> dict[str, Any]:
+        response = await self.client.conversations_create(
+            name=name,
+            is_private=is_private,
+        )
+        return _slack_response_to_dict(response)
+
+    async def invite_users(
+        self,
+        *,
+        channel_id: str,
+        user_ids: list[str],
+    ) -> dict[str, Any]:
+        response = await self.client.conversations_invite(
+            channel=channel_id,
+            users=user_ids,
+        )
+        return _slack_response_to_dict(response)
+
+    async def post_message(
+        self,
+        *,
+        channel_id: str,
+        text: str,
+        blocks: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        response = await self.client.chat_postMessage(
+            channel=channel_id,
+            text=text,
+            blocks=blocks,
+            mrkdwn=True,
+        )
+        return _slack_response_to_dict(response)
+
+    async def lookup_user_id_by_email(
+        self,
+        *,
+        email: str,
+    ) -> str | None:
+        try:
+            response = await self.client.users_lookupByEmail(email=email)
+        except Exception:
+            return None
+        data = _slack_response_to_dict(response)
+        if data.get("ok") is False:
+            return None
+        user = data.get("user")
+        if not isinstance(user, dict):
+            return None
+        slack_user_id = user.get("id")
+        return slack_user_id if isinstance(slack_user_id, str) else None
+
+    async def find_channel_id_by_name(
+        self,
+        *,
+        name: str,
+    ) -> str | None:
+        cursor = None
+        while True:
+            response = await self.client.conversations_list(
+                exclude_archived=True,
+                limit=200,
+                types="public_channel,private_channel",
+                cursor=cursor,
+            )
+            data = _slack_response_to_dict(response)
+            if data.get("ok") is False:
+                return None
+            channels = data.get("channels")
+            if isinstance(channels, list):
+                for channel in channels:
+                    if not isinstance(channel, dict):
+                        continue
+                    if channel.get("name") != name:
+                        continue
+                    channel_id = channel.get("id")
+                    return channel_id if isinstance(channel_id, str) else None
+            metadata = data.get("response_metadata")
+            next_cursor = (
+                metadata.get("next_cursor") if isinstance(metadata, dict) else None
+            )
+            if not isinstance(next_cursor, str) or not next_cursor:
+                return None
+            cursor = next_cursor
+
+
+async def _ensure_slack_handoff_channel(
+    client: SlackHandoffClient,
+    lifecycle: ClientOnboardingLifecycle,
+) -> _SlackHandoffChannel:
+    channel_name = _slack_channel_name(lifecycle)
+    if lifecycle.slack_channel_id:
+        return _SlackHandoffChannel(
+            channel_id=lifecycle.slack_channel_id,
+            channel_name=channel_name,
+            created=False,
+        )
+
+    response = await client.create_channel(name=channel_name, is_private=False)
+    if response.get("ok") is False and response.get("error") == "name_taken":
+        existing_channel_id = await client.find_channel_id_by_name(name=channel_name)
+        if existing_channel_id:
+            return _SlackHandoffChannel(
+                channel_id=existing_channel_id,
+                channel_name=channel_name,
+                created=False,
+            )
+    _raise_for_slack_error(response, "create handoff channel")
+    channel = response.get("channel")
+    if not isinstance(channel, dict):
+        raise RuntimeError("Slack channel creation response did not include channel")
+    channel_id = channel.get("id")
+    if not isinstance(channel_id, str) or not channel_id.strip():
+        raise RuntimeError("Slack channel creation response did not include channel id")
+    response_channel_name = channel.get("name")
+    return _SlackHandoffChannel(
+        channel_id=channel_id,
+        channel_name=(
+            response_channel_name
+            if isinstance(response_channel_name, str) and response_channel_name
+            else channel_name
+        ),
+        created=True,
+    )
+
+
+async def _post_slack_handoff(
+    client: SlackHandoffClient,
+    lifecycle: ClientOnboardingLifecycle,
+    owner_contacts: list[_OwnerContact],
+    *,
+    channel_id: str,
+    channel_name: str,
+    created_channel: bool,
+) -> _SlackHandoffOutcome:
+    slack_user_ids_by_owner = await _resolve_slack_user_ids_by_owner(
+        client,
+        owner_contacts,
+    )
+    invited_user_ids = list(dict.fromkeys(slack_user_ids_by_owner.values()))
+    invite_error = None
+    if invited_user_ids:
+        try:
+            invite_response = await client.invite_users(
+                channel_id=channel_id,
+                user_ids=invited_user_ids,
+            )
+            _raise_for_slack_error(invite_response, "invite handoff owners")
+        except Exception as exc:
+            invite_error = str(exc)
+
+    message = _slack_handoff_message(
+        lifecycle,
+        owner_contacts,
+        slack_user_ids_by_owner,
+        channel_name=channel_name,
+    )
+    message_response = await client.post_message(
+        channel_id=channel_id,
+        text=message.text,
+        blocks=message.blocks,
+    )
+    _raise_for_slack_error(message_response, "post handoff message")
+    return _SlackHandoffOutcome(
+        channel_id=channel_id,
+        channel_name=channel_name,
+        created_channel=created_channel,
+        invited_user_ids=invited_user_ids,
+        unresolved_owner_user_ids=[
+            str(owner.user_id)
+            for owner in owner_contacts
+            if str(owner.user_id) not in slack_user_ids_by_owner
+        ],
+        message_ts=_payload_text(message_response, "ts"),
+        invite_error=invite_error,
+    )
+
+
+async def _resolve_slack_user_ids_by_owner(
+    client: SlackHandoffClient,
+    owner_contacts: list[_OwnerContact],
+) -> dict[str, str]:
+    slack_user_ids: dict[str, str] = {}
+    for owner in owner_contacts:
+        if not owner.email:
+            continue
+        slack_user_id = await client.lookup_user_id_by_email(email=owner.email)
+        if slack_user_id:
+            slack_user_ids[str(owner.user_id)] = slack_user_id
+    return slack_user_ids
+
+
+def _slack_handoff_message(
+    lifecycle: ClientOnboardingLifecycle,
+    owner_contacts: list[_OwnerContact],
+    slack_user_ids_by_owner: dict[str, str],
+    *,
+    channel_name: str,
+) -> _SlackHandoffMessage:
+    company_name = lifecycle.client_company_name
+    owner_line = _slack_owner_mentions(owner_contacts, slack_user_ids_by_owner)
+    fields = _slack_handoff_fields(lifecycle, channel_name=channel_name)
+    text = f"Contract signed for {company_name}. {owner_line}"
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": _truncate_slack_text(f"{company_name} contract signed", 150),
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"{owner_line}\n"
+                    "The client contract is signed. Continue the internal handoff "
+                    "from the records below."
+                ),
+            },
+        },
+    ]
+    if fields:
+        blocks.append({"type": "section", "fields": fields})
+    return _SlackHandoffMessage(text=text, blocks=blocks)
+
+
+def _slack_owner_mentions(
+    owner_contacts: list[_OwnerContact],
+    slack_user_ids_by_owner: dict[str, str],
+) -> str:
+    labels: list[str] = []
+    for owner in owner_contacts:
+        slack_user_id = slack_user_ids_by_owner.get(str(owner.user_id))
+        if slack_user_id:
+            labels.append(f"{owner.role}: <@{slack_user_id}>")
+        elif owner.name:
+            labels.append(f"{owner.role}: {owner.name}")
+        elif owner.email:
+            labels.append(f"{owner.role}: {owner.email}")
+        else:
+            labels.append(f"{owner.role}: {owner.user_id}")
+    return " | ".join(labels) if labels else "No AE/FDE owner was linked."
+
+
+def _slack_handoff_fields(
+    lifecycle: ClientOnboardingLifecycle,
+    *,
+    channel_name: str,
+) -> list[dict[str, Any]]:
+    values = {
+        "Slack channel": f"#{channel_name}",
+        "Signer": _signer_label(lifecycle),
+        "Signed at": _optional_datetime(lifecycle.docusign_signed_at),
+        "Contract type": lifecycle.contract_type.value,
+        "Manage App account": _manage_app_account_label(lifecycle),
+        "DocuSign": _slack_link(
+            lifecycle.docusign_contract_url,
+            lifecycle.docusign_envelope_id or lifecycle.docusign_contract_id,
+        ),
+        "Folk company": _slack_link(
+            _folk_company_url(lifecycle.folk_company_id),
+            lifecycle.folk_company_id,
+        ),
+        "Folk contact": lifecycle.folk_contact_id,
+        "Notion": _slack_link(
+            _notion_page_url(lifecycle.notion_page_id),
+            lifecycle.notion_page_id,
+        ),
+        "Scoping doc": _slack_link(lifecycle.scoping_doc_url, "Open scoping doc"),
+    }
+    return [
+        {"type": "mrkdwn", "text": f"*{key}:*\n{value}"}
+        for key, value in values.items()
+        if value
+    ]
+
+
+def _resolve_handoff_owner_contacts(
+    session: Session,
+    lifecycle: ClientOnboardingLifecycle,
+) -> list[_OwnerContact]:
+    account_user_repo = AccountUserRepository(session, auto_commit=False)
+    contacts: list[_OwnerContact] = []
+    for role, user_id in (
+        ("AE", lifecycle.ae_owner_user_id),
+        ("FDE", lifecycle.fde_owner_user_id),
+    ):
+        if user_id is None:
+            continue
+        account_user = None
+        if lifecycle.account_id is not None:
+            account_user = account_user_repo.get_by_user_and_account(
+                user_id,
+                lifecycle.account_id,
+            )
+        if account_user is None:
+            account_user = account_user_repo.get_by_user_id(user_id)
+        contacts.append(
+            _OwnerContact(
+                role=role,
+                user_id=user_id,
+                email=_account_user_text(account_user, "email"),
+                name=_account_user_text(account_user, "name"),
+            )
+        )
+    return contacts
+
+
+def _slack_channel_name(lifecycle: ClientOnboardingLifecycle) -> str:
+    base_name = lifecycle.manage_app_account_name or lifecycle.client_company_name
+    normalized = base_name.casefold().replace("&", " and ")
+    normalized = re.sub(r"[^a-z0-9_-]+", "-", normalized)
+    normalized = re.sub(r"-+", "-", normalized).strip("-_")
+    if not normalized:
+        normalized = "client"
+    channel_name = f"client-{normalized}"
+    return channel_name[:80].rstrip("-_") or "client-onboarding"
+
+
+def _raise_for_slack_error(response: dict[str, Any], action: str) -> None:
+    if response.get("ok") is False:
+        error = response.get("error")
+        raise RuntimeError(
+            f"Slack failed to {action}: {error if isinstance(error, str) else 'unknown error'}"
+        )
+
+
+def _slack_response_to_dict(response: Any) -> dict[str, Any]:
+    if isinstance(response, dict):
+        return response
+    data = getattr(response, "data", None)
+    if isinstance(data, dict):
+        return data
+    try:
+        return dict(response)
+    except (TypeError, ValueError):
+        return {}
+
+
+def _payload_text(payload: dict[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _payload_text_list(payload: dict[str, Any], key: str) -> list[str]:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _account_user_text(account_user: Any, field_name: str) -> str | None:
+    value = getattr(account_user, field_name, None)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _signer_label(lifecycle: ClientOnboardingLifecycle) -> str:
+    if lifecycle.signer_name:
+        return f"{lifecycle.signer_name} <{lifecycle.signer_email}>"
+    return lifecycle.signer_email
+
+
+def _manage_app_account_label(lifecycle: ClientOnboardingLifecycle) -> str | None:
+    if lifecycle.manage_app_account_name and lifecycle.account_id:
+        return f"{lifecycle.manage_app_account_name} ({lifecycle.account_id})"
+    return lifecycle.manage_app_account_name or _optional_uuid(lifecycle.account_id)
+
+
+def _slack_link(url: str | None, label: str | None) -> str | None:
+    if not url or not label:
+        return label
+    return f"<{url}|{label}>"
+
+
+def _folk_company_url(folk_company_id: str | None) -> str | None:
+    if not folk_company_id:
+        return None
+    return f"https://app.folk.app/apps/contacts/companies/{folk_company_id}"
+
+
+def _notion_page_url(notion_page_id: str | None) -> str | None:
+    if not notion_page_id:
+        return None
+    return f"https://www.notion.so/{notion_page_id}"
+
+
+def _truncate_slack_text(value: str, max_length: int) -> str:
+    if len(value) <= max_length:
+        return value
+    if max_length <= 3:
+        return value[:max_length]
+    return value[: max_length - 3].rstrip() + "..."
+
+
 def _run_async(
-    coro: Coroutine[Any, Any, tuple[bool, bool]],
-) -> tuple[bool, bool]:
+    coro: Coroutine[Any, Any, T],
+) -> T:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
     coro.close()
-    raise RuntimeError("Cannot run Folk sync while an event loop is already running")
+    raise RuntimeError(
+        "Cannot run client onboarding sync while an event loop is already running"
+    )
 
 
 def _raise_for_docusign_reference_mismatch(

@@ -9,6 +9,7 @@ from .schema import (
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
+    ClientOnboardingSlackHandoffResult,
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
@@ -77,11 +78,21 @@ def sync_client_onboarding_contract_acceptance_to_folk(
     return _sync(session=session, lifecycle_id=lifecycle_id)
 
 
+def sync_client_onboarding_slack_handoff(
+    session: Session,
+    lifecycle_id: UUID,
+) -> ClientOnboardingSlackHandoffResult:
+    from ._implementation import sync_client_onboarding_slack_handoff as _sync
+
+    return _sync(session=session, lifecycle_id=lifecycle_id)
+
+
 __all__ = [
     "ClientOnboardingFolkSyncResult",
     "ClientOnboardingInviteInvalidError",
     "ClientOnboardingInviteNotFoundError",
     "ClientOnboardingInviteStepResult",
+    "ClientOnboardingSlackHandoffResult",
     "CreateClientOnboardingAccountParams",
     "CreateClientOnboardingAccountResult",
     "DuplicateClientOnboardingError",
@@ -93,4 +104,5 @@ __all__ = [
     "mark_client_onboarding_password_set",
     "reconcile_client_onboarding_docusign_completion",
     "sync_client_onboarding_contract_acceptance_to_folk",
+    "sync_client_onboarding_slack_handoff",
 ]

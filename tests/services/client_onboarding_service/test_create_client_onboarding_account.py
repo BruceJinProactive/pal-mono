@@ -28,6 +28,7 @@ from services.client_onboarding_service.schema import (
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
+    ClientOnboardingSlackHandoffResult,
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
     DuplicateClientOnboardingError,
@@ -834,6 +835,9 @@ def _docusign_completion_dependencies(
     lifecycle.fde_owner_user_id = FDE_USER_ID
     lifecycle.folk_company_id = "folk-company-123"
     lifecycle.folk_contact_id = "folk-contact-123"
+    lifecycle.slack_channel_id = None
+    lifecycle.notion_page_id = None
+    lifecycle.scoping_doc_url = None
 
     onboarding_repo = mocker.patch.object(
         svc, "ClientOnboardingRepository"
@@ -861,6 +865,10 @@ def test_reconcile_client_onboarding_docusign_completion_records_signed_event(
 ) -> None:
     session = MagicMock()
     deps = _docusign_completion_dependencies(mocker)
+    slack_handoff = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_slack_handoff",
+    )
     params = ReconcileClientOnboardingDocusignCompletionParams(
         docusign_envelope_id=" envelope-123 ",
         signer_email="Signer@Example.com",
@@ -897,11 +905,39 @@ def test_reconcile_client_onboarding_docusign_completion_records_signed_event(
     assert [call.kwargs["target"] for call in upsert_calls] == [
         ClientOnboardingSyncTarget.database,
         ClientOnboardingSyncTarget.folk,
+        ClientOnboardingSyncTarget.slack,
     ]
     assert upsert_calls[0].kwargs["job_type"] == "record_contract_acceptance"
     assert upsert_calls[1].kwargs["job_type"] == "update_contract_acceptance"
+    assert upsert_calls[2].kwargs["job_type"] == "create_handoff_channel"
     assert upsert_calls[1].kwargs["payload"]["folk_company_id"] == "folk-company-123"
     deps["onboarding_repo"].mark_sync_job_completed.assert_called_once()
+    slack_handoff.assert_called_once_with(session, LIFECYCLE_ID)
+    session.commit.assert_called_once()
+
+
+def test_reconcile_client_onboarding_docusign_completion_continues_when_slack_handoff_fails(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    _docusign_completion_dependencies(mocker)
+    slack_handoff = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_slack_handoff",
+        side_effect=RuntimeError("Slack unavailable"),
+    )
+    logger = mocker.patch.object(svc.logger, "exception")
+    params = ReconcileClientOnboardingDocusignCompletionParams(
+        docusign_envelope_id="envelope-123",
+        completed_at=COMPLETED_AT,
+    )
+
+    result = svc.reconcile_client_onboarding_docusign_completion(session, params)
+
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_signed
+    assert result.transition_recorded is True
+    slack_handoff.assert_called_once_with(session, LIFECYCLE_ID)
+    logger.assert_called_once()
     session.commit.assert_called_once()
 
 
@@ -1191,6 +1227,276 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_records_folk_failure
     session.commit.assert_called_once()
 
 
+def test_sync_client_onboarding_slack_handoff_creates_channel_invites_and_posts(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+
+    def set_slack_channel_id(*args: object, **kwargs: object) -> MagicMock:
+        lifecycle.slack_channel_id = kwargs["slack_channel_id"]
+        return lifecycle
+
+    onboarding_repo.set_slack_channel_id.side_effect = set_slack_channel_id
+    _patch_handoff_owner_contacts(mocker)
+    sdk_client = _FakeSlackSdkClient(
+        {"ae@palona.ai": "UAE123", "fde@palona.ai": "UFDE456"}
+    )
+
+    result = svc.sync_client_onboarding_slack_handoff(
+        session,
+        LIFECYCLE_ID,
+        slack_client=svc._SlackHandoffClientAdapter(sdk_client),
+    )
+
+    assert result == ClientOnboardingSlackHandoffResult(
+        lifecycle_id=LIFECYCLE_ID,
+        slack_channel_id="C123",
+        slack_channel_name="client-acme",
+        created_channel=True,
+        invited_user_ids=["UAE123", "UFDE456"],
+        posted_message=True,
+        message_ts="1718820000.000100",
+    )
+    assert sdk_client.created_channels == [{"name": "client-acme", "is_private": False}]
+    assert sdk_client.invites == [
+        {"channel_id": "C123", "user_ids": ["UAE123", "UFDE456"]}
+    ]
+    assert sdk_client.messages[0]["channel_id"] == "C123"
+    message_blocks = str(sdk_client.messages[0]["blocks"])
+    assert "<@UAE123>" in message_blocks
+    assert "<@UFDE456>" in message_blocks
+    assert "https://app.folk.app/apps/contacts/companies/folk-company-123" in (
+        message_blocks
+    )
+    assert "https://www.notion.so/notion-page-123" in message_blocks
+    onboarding_repo.set_slack_channel_id.assert_called_once_with(
+        LIFECYCLE_ID,
+        slack_channel_id="C123",
+    )
+    onboarding_repo.mark_sync_job_completed.assert_called_once()
+    result_payload = onboarding_repo.mark_sync_job_completed.call_args.kwargs[
+        "result_payload"
+    ]
+    assert result_payload["slack_channel_id"] == "C123"
+    assert result_payload["created_channel"] is True
+    assert result_payload["invited_user_ids"] == ["UAE123", "UFDE456"]
+    assert result_payload["unresolved_owner_user_ids"] == []
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "slack_handoff_created"
+    assert session.commit.call_count == 2
+
+
+def test_sync_client_onboarding_slack_handoff_reuses_completed_job(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.status = ClientOnboardingSyncJobStatus.completed
+    job.result_payload = {
+        "slack_channel_id": "C123",
+        "slack_channel_name": "client-acme",
+        "created_channel": True,
+        "invited_user_ids": ["UAE123"],
+        "posted_message": True,
+        "message_ts": "1718820000.000100",
+    }
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    account_user_repo = mocker.patch.object(svc, "AccountUserRepository")
+
+    result = svc.sync_client_onboarding_slack_handoff(
+        session,
+        LIFECYCLE_ID,
+        slack_client=_FailingSlackHandoffClient(),
+    )
+
+    assert result == ClientOnboardingSlackHandoffResult(
+        lifecycle_id=LIFECYCLE_ID,
+        slack_channel_id="C123",
+        slack_channel_name="client-acme",
+        created_channel=True,
+        invited_user_ids=["UAE123"],
+        posted_message=True,
+        message_ts="1718820000.000100",
+    )
+    account_user_repo.assert_not_called()
+    onboarding_repo.mark_sync_job_completed.assert_not_called()
+    onboarding_repo.append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_sync_client_onboarding_slack_handoff_reuses_existing_channel(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.slack_channel_id = "CEXISTING"
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    _patch_handoff_owner_contacts(mocker)
+    sdk_client = _FakeSlackSdkClient(
+        {"ae@palona.ai": "UAE123", "fde@palona.ai": "UFDE456"}
+    )
+
+    result = svc.sync_client_onboarding_slack_handoff(
+        session,
+        LIFECYCLE_ID,
+        slack_client=svc._SlackHandoffClientAdapter(sdk_client),
+    )
+
+    assert result.slack_channel_id == "CEXISTING"
+    assert result.created_channel is False
+    assert sdk_client.created_channels == []
+    assert sdk_client.messages[0]["channel_id"] == "CEXISTING"
+    onboarding_repo.set_slack_channel_id.assert_not_called()
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_slack_handoff_recovers_name_taken_channel(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+
+    def set_slack_channel_id(*args: object, **kwargs: object) -> MagicMock:
+        lifecycle.slack_channel_id = kwargs["slack_channel_id"]
+        return lifecycle
+
+    onboarding_repo.set_slack_channel_id.side_effect = set_slack_channel_id
+    _patch_handoff_owner_contacts(mocker)
+    sdk_client = _FakeSlackSdkClient(
+        {"ae@palona.ai": "UAE123", "fde@palona.ai": "UFDE456"},
+        create_error="name_taken",
+        channels_by_name={"client-acme": "CEXISTING"},
+    )
+
+    result = svc.sync_client_onboarding_slack_handoff(
+        session,
+        LIFECYCLE_ID,
+        slack_client=svc._SlackHandoffClientAdapter(sdk_client),
+    )
+
+    assert result.slack_channel_id == "CEXISTING"
+    assert result.created_channel is False
+    assert sdk_client.channel_list_requests == [None]
+    assert sdk_client.messages[0]["channel_id"] == "CEXISTING"
+    onboarding_repo.set_slack_channel_id.assert_called_once_with(
+        LIFECYCLE_ID,
+        slack_channel_id="CEXISTING",
+    )
+    result_payload = onboarding_repo.mark_sync_job_completed.call_args.kwargs[
+        "result_payload"
+    ]
+    assert result_payload["slack_channel_id"] == "CEXISTING"
+    assert result_payload["created_channel"] is False
+    assert session.commit.call_count == 2
+
+
+def test_sync_client_onboarding_slack_handoff_records_slack_failure(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    _patch_handoff_owner_contacts(mocker)
+
+    with pytest.raises(RuntimeError, match="missing_scope"):
+        svc.sync_client_onboarding_slack_handoff(
+            session,
+            LIFECYCLE_ID,
+            slack_client=_FailingSlackHandoffClient(),
+        )
+
+    onboarding_repo.mark_sync_job_failed.assert_called_once()
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "slack_handoff_sync_failed"
+    assert activity["payload_diff"]["error"].endswith("missing_scope")
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_slack_handoff_rejects_before_signature(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.status = ClientOnboardingStatus.docusign_viewed
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+
+    with pytest.raises(ClientOnboardingInviteInvalidError):
+        svc.sync_client_onboarding_slack_handoff(
+            session,
+            LIFECYCLE_ID,
+            slack_client=_FakeSlackHandoffClient(),
+        )
+
+    onboarding_repo.upsert_sync_job.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_public_sync_client_onboarding_slack_handoff_wrapper_delegates(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    expected = ClientOnboardingSlackHandoffResult(
+        lifecycle_id=LIFECYCLE_ID,
+        slack_channel_id="C123",
+        slack_channel_name="client-acme",
+        created_channel=True,
+        invited_user_ids=["UAE123"],
+        posted_message=True,
+        message_ts="1718820000.000100",
+    )
+    sync = mocker.patch(
+        "services.client_onboarding_service._implementation.sync_client_onboarding_slack_handoff",
+        return_value=expected,
+    )
+
+    result = public_svc.sync_client_onboarding_slack_handoff(
+        session,
+        LIFECYCLE_ID,
+    )
+
+    assert result is expected
+    sync.assert_called_once_with(session=session, lifecycle_id=LIFECYCLE_ID)
+
+
 def test_public_sync_client_onboarding_contract_acceptance_to_folk_wrapper_delegates(
     mocker: Any,
 ) -> None:
@@ -1247,7 +1553,158 @@ def _signed_lifecycle() -> MagicMock:
     lifecycle.fde_owner_user_id = FDE_USER_ID
     lifecycle.folk_company_id = "folk-company-123"
     lifecycle.folk_contact_id = "folk-contact-123"
+    lifecycle.slack_channel_id = None
+    lifecycle.notion_page_id = "notion-page-123"
+    lifecycle.scoping_doc_url = "https://notion.example/scoping"
     return lifecycle
+
+
+def _patch_handoff_owner_contacts(mocker: Any) -> MagicMock:
+    ae_account_user = MagicMock()
+    ae_account_user.email = "ae@palona.ai"
+    ae_account_user.name = "AE User"
+    fde_account_user = MagicMock()
+    fde_account_user.email = "fde@palona.ai"
+    fde_account_user.name = "FDE User"
+    account_users = {
+        AE_USER_ID: ae_account_user,
+        FDE_USER_ID: fde_account_user,
+    }
+    account_user_repo = mocker.patch.object(svc, "AccountUserRepository").return_value
+    account_user_repo.get_by_user_and_account.side_effect = (
+        lambda user_id, account_id: account_users.get(user_id)
+    )
+    account_user_repo.get_by_user_id.return_value = None
+    return account_user_repo
+
+
+class _SlackResponse:
+    def __init__(self, data: dict[str, Any]) -> None:
+        self.data = data
+
+
+class _FakeSlackSdkClient:
+    def __init__(
+        self,
+        user_ids_by_email: dict[str, str],
+        *,
+        create_error: str | None = None,
+        channels_by_name: dict[str, str] | None = None,
+    ) -> None:
+        self.user_ids_by_email = user_ids_by_email
+        self.create_error = create_error
+        self.channels_by_name = channels_by_name or {}
+        self.created_channels: list[dict[str, Any]] = []
+        self.channel_list_requests: list[str | None] = []
+        self.invites: list[dict[str, Any]] = []
+        self.messages: list[dict[str, Any]] = []
+        setattr(self, "chat_postMessage", self._chat_post_message)
+        setattr(self, "users_lookupByEmail", self._users_lookup_by_email)
+
+    async def conversations_create(
+        self,
+        *,
+        name: str,
+        is_private: bool,
+    ) -> _SlackResponse:
+        self.created_channels.append({"name": name, "is_private": is_private})
+        if self.create_error:
+            return _SlackResponse({"ok": False, "error": self.create_error})
+        return _SlackResponse({"ok": True, "channel": {"id": "C123", "name": name}})
+
+    async def conversations_list(
+        self,
+        *,
+        exclude_archived: bool,
+        limit: int,
+        types: str,
+        cursor: str | None,
+    ) -> dict[str, Any]:
+        self.channel_list_requests.append(cursor)
+        return {
+            "ok": True,
+            "channels": [
+                {"id": channel_id, "name": channel_name}
+                for channel_name, channel_id in self.channels_by_name.items()
+            ],
+            "response_metadata": {"next_cursor": ""},
+        }
+
+    async def conversations_invite(
+        self,
+        *,
+        channel: str,
+        users: list[str],
+    ) -> dict[str, Any]:
+        self.invites.append({"channel_id": channel, "user_ids": users})
+        return {"ok": True}
+
+    async def _chat_post_message(
+        self,
+        *,
+        channel: str,
+        text: str,
+        blocks: list[dict[str, Any]],
+        mrkdwn: bool,
+    ) -> dict[str, Any]:
+        self.messages.append(
+            {
+                "channel_id": channel,
+                "text": text,
+                "blocks": blocks,
+                "mrkdwn": mrkdwn,
+            }
+        )
+        return {"ok": True, "ts": "1718820000.000100"}
+
+    async def _users_lookup_by_email(self, *, email: str) -> dict[str, Any]:
+        slack_user_id = self.user_ids_by_email.get(email)
+        if slack_user_id is None:
+            return {"ok": False, "error": "users_not_found"}
+        return {"ok": True, "user": {"id": slack_user_id}}
+
+
+class _FakeSlackHandoffClient:
+    async def create_channel(
+        self,
+        *,
+        name: str,
+        is_private: bool,
+    ) -> dict[str, Any]:
+        return {"ok": True, "channel": {"id": "C123", "name": name}}
+
+    async def invite_users(
+        self,
+        *,
+        channel_id: str,
+        user_ids: list[str],
+    ) -> dict[str, Any]:
+        return {"ok": True}
+
+    async def post_message(
+        self,
+        *,
+        channel_id: str,
+        text: str,
+        blocks: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return {"ok": True, "ts": "1718820000.000100"}
+
+    async def lookup_user_id_by_email(self, *, email: str) -> str | None:
+        return None
+
+    async def find_channel_id_by_name(self, *, name: str) -> str | None:
+        return None
+
+
+class _FailingSlackHandoffClient(_FakeSlackHandoffClient):
+    async def create_channel(
+        self,
+        *,
+        name: str,
+        is_private: bool,
+    ) -> dict[str, Any]:
+        return {"ok": False, "error": "missing_scope"}
 
 
 class _FakeFolkContractAcceptanceClient:

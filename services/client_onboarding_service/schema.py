@@ -99,3 +99,15 @@ class ClientOnboardingFolkSyncResult:
     updated_company: bool
     updated_contact: bool
     skipped_reason: str | None = None
+
+
+@dataclass
+class ClientOnboardingSlackHandoffResult:
+    lifecycle_id: UUID
+    slack_channel_id: str | None
+    slack_channel_name: str | None
+    created_channel: bool
+    invited_user_ids: list[str]
+    posted_message: bool
+    message_ts: str | None = None
+    skipped_reason: str | None = None

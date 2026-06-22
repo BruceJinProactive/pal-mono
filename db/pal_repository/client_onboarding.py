@@ -402,6 +402,25 @@ class ClientOnboardingRepository:
             logger.exception(f"Error marking client onboarding blocked: {exc}")
             raise
 
+    def set_slack_channel_id(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        slack_channel_id: str,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            lifecycle = self._require_lifecycle(lifecycle_id)
+            lifecycle.slack_channel_id = slack_channel_id
+            lifecycle.updated_at = occurred_at or datetime.now(timezone.utc)
+            self.session.flush()
+            self.session.refresh(lifecycle)
+            return lifecycle
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error setting client onboarding Slack channel id: {exc}")
+            raise
+
     def append_activity(
         self,
         *,
@@ -996,6 +1015,25 @@ class ClientOnboardingRepositoryAsync:
         except SQLAlchemyError as exc:
             await self.session.rollback()
             logger.exception(f"Error marking client onboarding blocked: {exc}")
+            raise
+
+    async def set_slack_channel_id(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        slack_channel_id: str,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            lifecycle = await self._require_lifecycle(lifecycle_id)
+            lifecycle.slack_channel_id = slack_channel_id
+            lifecycle.updated_at = occurred_at or datetime.now(timezone.utc)
+            await self.session.flush()
+            await self.session.refresh(lifecycle)
+            return lifecycle
+        except SQLAlchemyError as exc:
+            await self.session.rollback()
+            logger.exception(f"Error setting client onboarding Slack channel id: {exc}")
             raise
 
     async def append_activity(
