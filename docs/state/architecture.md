@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-19
+> **Last updated:** 2026-06-20
 
 ## Quick Reference
 
@@ -257,8 +257,9 @@ remove old keys.
 grouping every rule under each label in its list; rules without labels appear
 under `no-labeld`.
 Rule events store a non-null fixed-scale numeric `duration` in minutes that
-defaults to `0.0`. State-transition workflows set that duration to the elapsed
-time spent in the prior state before the trigger state was observed. For example,
+defaults to `0.0` and a non-null `manually_adjusted` storage flag that defaults
+to `false`. State-transition workflows set duration to the elapsed time spent in
+the prior state before the trigger state was observed. For example,
 `table_cleanness` records how many minutes a table stayed `dirty` when it
 transitions to `clean`; if no prior-state start time can be resolved, the event
 keeps the `0.0` default. `GET /accounts/{account_name}/rule-events` returns all
@@ -266,8 +267,9 @@ rule events matching the account, optional rule/entity filters, and the time
 window; it has no pagination or `limit` query parameter. `PATCH
 /accounts/{account_name}/rule-events/{event_id}` is account-scoped and lets
 authorized operations callers correct a rule event's `triggered_at` timestamp
-and `duration` in minutes without changing the linked rule, entity, state-change
-event, severity, or metadata.
+and `duration` in minutes without changing the linked rule, entity,
+state-change event, severity, or metadata. The `manually_adjusted` API/service
+writes are tracked as a follow-up implementation after the schema-only PR.
 
 Vision V2 observations derive `observed_at` from the image path when the
 filename matches the UTC snapshot format `YYYY-MM-DD_HH-MM-SS.jpg`, including

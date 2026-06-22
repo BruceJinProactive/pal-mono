@@ -4,6 +4,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-20
+
+- **Vision rule event manual adjustment schema.** Added the `vision_rule_event.manually_adjusted` storage column with default `false` so a follow-up implementation can mark human-adjusted rows without a later data migration. Migration: `3fa8e1aa036a`. -> `docs/records/2026-06-20-vision-rule-event-manual-adjusted.md`
+
 ## 2026-06-19
 
 - **Vision rule event timing edits.** Added account-scoped `PATCH /accounts/{account_name}/rule-events/{event_id}` support so Admin Console can correct Vision AI rule event `triggered_at` and `duration` values while preserving the event's rule/entity linkage and metadata. -> `docs/records/2026-06-19-vision-rule-event-editing.md`

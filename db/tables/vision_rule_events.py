@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.expression import text
-from sqlalchemy.types import DateTime, Numeric, String
+from sqlalchemy.types import Boolean, DateTime, Numeric, String
 
 from .base import Base
 
@@ -49,6 +49,10 @@ class VisionRuleEvent(Base):
 
     duration: Mapped[Decimal] = mapped_column(
         Numeric(12, 4), nullable=False, server_default=text("0.0")
+    )
+
+    manually_adjusted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
     )
 
     triggered_at: Mapped[datetime] = mapped_column(
