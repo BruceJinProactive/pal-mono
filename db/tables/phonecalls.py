@@ -10,7 +10,13 @@ from sqlalchemy.sql.expression import text
 from sqlalchemy.types import ARRAY, Boolean, DateTime, Enum, Float, String
 
 from .base import Base
-from .types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
+from .types import (
+    CallEndedReason,
+    CallLanguage,
+    CallPurpose,
+    CallQualityLabel,
+    UserSatisfaction,
+)
 
 
 class PhoneCall(Base):
@@ -60,6 +66,12 @@ class PhoneCall(Base):
     )
     transfer_agent_was_at_fault: Mapped[Optional[bool]] = mapped_column(
         Boolean, nullable=True
+    )
+    call_quality_label: Mapped[Optional[CallQualityLabel]] = mapped_column(
+        Enum(CallQualityLabel), nullable=True
+    )
+    call_quality_reason_codes: Mapped[Optional[list[str]]] = mapped_column(
+        ARRAY(String), nullable=True
     )
 
     # Metadata

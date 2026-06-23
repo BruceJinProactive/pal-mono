@@ -68,6 +68,15 @@ class CallEndedReason(str, enum.Enum):
     other = "other"
 
 
+class CallQualityLabel(str, enum.Enum):
+    legitimate_restaurant_call = "legitimate_restaurant_call"
+    robot_prerecorded = "robot_prerecorded"
+    promotional_sales = "promotional_sales"
+    spam_scam = "spam_scam"
+    prank_or_abusive = "prank_or_abusive"
+    unknown_unclear = "unknown_unclear"
+
+
 class CallPurpose(str, enum.Enum):
     """User call purposes (for routing & escalation rules)."""
 

@@ -7,6 +7,9 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-06-23
 
 - **Account switcher access filtering.** User account-list responses now only include active memberships with an effective account-level or project-level role, so accounts with stale membership rows and no role no longer appear in Admin Console account switching or Manage App user account lookup lists.
+- **Voice call-quality storage schema.** Added phone call columns for post-call
+  quality classification output: `call_quality_label` and
+  `call_quality_reason_codes`. Migration: `f2fc2243cb69`.
 - **Catering menu items API.** Added project-scoped listing and item update
   endpoints for catering menu rows, backed by an async repository and explicit
   catering menu DTO/schema types. -> `docs/records/2026-06-23-catering-menu-items-api.md`

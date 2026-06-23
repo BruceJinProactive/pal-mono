@@ -71,6 +71,7 @@ from .types import (
     CallEndedReason,
     CallLanguage,
     CallPurpose,
+    CallQualityLabel,
     CameraSubtype,
     CaptureMode,
     Channel,
