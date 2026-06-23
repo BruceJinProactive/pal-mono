@@ -157,15 +157,15 @@ def _video_window_for_event(
 
     if start_time is not None:
         window_start_time = _as_utc_datetime(start_time)
-        if end_time is not None:
-            window_end_time = _as_utc_datetime(end_time)
-            if window_start_time < window_end_time:
-                return window_start_time, window_end_time
         if duration_seconds is not None:
             return (
                 window_start_time,
                 window_start_time + timedelta(seconds=duration_seconds),
             )
+        if end_time is not None:
+            window_end_time = _as_utc_datetime(end_time)
+            if window_start_time < window_end_time:
+                return window_start_time, window_end_time
 
     observed_at = _as_utc_datetime(data.observed_at)
     window_start_time = observed_at.replace(second=0, microsecond=0)

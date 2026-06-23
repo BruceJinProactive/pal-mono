@@ -498,6 +498,79 @@ class TestGetStateChangeEvent:
             )
 
     @pytest.mark.asyncio
+    async def test_uses_start_plus_duration_when_end_time_also_present(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            frame_s3_key=(
+                "security/cameras/account/project/camera/"
+                "images/2026-06-23/2026-06-23_14-05-37.jpg"
+            ),
+            event_metadata={
+                "start_time": "2026-06-23T14:05:37Z",
+                "duration_seconds": 120,
+                "end_time": "2026-06-23T14:30:00Z",
+            },
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(
+                f"{MODULE}.map_uri_to_s3_url",
+                return_value="https://example.com/frame.jpg",
+            ),
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as mock_lookup,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.video_count == 0
+            mock_lookup.assert_awaited_once()
+            lookup_args = mock_lookup.await_args
+            assert lookup_args is not None
+            lookup_kwargs = lookup_args.kwargs
+            assert lookup_kwargs["start_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                5,
+                37,
+                tzinfo=timezone.utc,
+            )
+            assert lookup_kwargs["end_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                7,
+                37,
+                tzinfo=timezone.utc,
+            )
+
+    @pytest.mark.asyncio
     async def test_invalid_metadata_window_falls_back_to_observed_minute(self) -> None:
         session = AsyncMock()
         event_id = uuid.uuid4()
