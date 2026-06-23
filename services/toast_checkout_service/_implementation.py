@@ -375,6 +375,19 @@ async def process_checkout_request_async(
             checkout_url=checkout_session.checkout_url,
         )
 
+    if not created_session and checkout_session.status == "paid":
+        logger.info(
+            "[ToastCheckout] Checkout session is already paid",
+            extra={
+                "conversation_id": str(conversation_id),
+                "order_external_id": payload.order_external_id,
+            },
+        )
+        return ProcessCheckoutResult(
+            token=checkout_session.token,
+            checkout_url=checkout_session.checkout_url,
+        )
+
     needs_payment_processing = checkout_session.status != "delivery_failed"
 
     try:

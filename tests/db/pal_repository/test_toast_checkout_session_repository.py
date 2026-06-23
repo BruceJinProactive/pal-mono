@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,15 +15,15 @@ from db.tables.toast_checkout_sessions import ToastCheckoutSession
 
 
 class _FakeScalarResult:
-    def __init__(self, row):
+    def __init__(self, row: Any) -> None:
         self.row = row
 
-    def scalar_one_or_none(self):
+    def scalar_one_or_none(self) -> Any:
         return self.row
 
 
 @pytest.mark.asyncio
-async def test_toast_checkout_session_repository_writes_and_reads_session():
+async def test_toast_checkout_session_repository_writes_and_reads_session() -> None:
     fake_session = SimpleNamespace(
         add=MagicMock(),
         flush=AsyncMock(),
@@ -65,7 +65,10 @@ async def test_toast_checkout_session_repository_writes_and_reads_session():
 
     await repo.mark_failed(row, status="delivery_failed")
     assert row.status == "delivery_failed"
-    assert fake_session.flush.await_count == 3
+    paid_row = await repo.mark_paid(row)
+    assert paid_row is row
+    assert row.status == "paid"
+    assert fake_session.flush.await_count == 4
 
     fake_session.execute.return_value = _FakeScalarResult(row)
     assert await repo.get_by_external_reference_id("ref-123") is row
@@ -73,7 +76,21 @@ async def test_toast_checkout_session_repository_writes_and_reads_session():
 
 
 @pytest.mark.asyncio
-async def test_toast_checkout_session_repository_rolls_back_create_errors():
+async def test_toast_checkout_session_repository_claims_processing_session() -> None:
+    row = cast(
+        ToastCheckoutSession,
+        SimpleNamespace(status="processing", external_reference_id="ref-123"),
+    )
+    fake_session = SimpleNamespace(
+        execute=AsyncMock(return_value=_FakeScalarResult(row))
+    )
+    repo = ToastCheckoutSessionRepository(cast(AsyncSession, fake_session))
+
+    assert await repo.claim_processing_by_external_reference_id("ref-123") is row
+
+
+@pytest.mark.asyncio
+async def test_toast_checkout_session_repository_rolls_back_create_errors() -> None:
     fake_session = SimpleNamespace(
         add=MagicMock(),
         flush=AsyncMock(side_effect=SQLAlchemyError("flush failed")),
@@ -97,7 +114,7 @@ async def test_toast_checkout_session_repository_rolls_back_create_errors():
 
 
 @pytest.mark.asyncio
-async def test_toast_checkout_session_repository_rolls_back_update_errors():
+async def test_toast_checkout_session_repository_rolls_back_update_errors() -> None:
     fake_session = SimpleNamespace(
         flush=AsyncMock(side_effect=SQLAlchemyError("flush failed")),
         rollback=AsyncMock(),
@@ -116,5 +133,21 @@ async def test_toast_checkout_session_repository_rolls_back_update_errors():
         )
     with pytest.raises(SQLAlchemyError):
         await repo.mark_failed(row, status="delivery_failed")
+    with pytest.raises(SQLAlchemyError):
+        await repo.mark_paid(row)
 
-    assert fake_session.rollback.await_count == 2
+    assert fake_session.rollback.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_toast_checkout_session_repository_rolls_back_claim_errors() -> None:
+    fake_session = SimpleNamespace(
+        execute=AsyncMock(side_effect=SQLAlchemyError("update failed")),
+        rollback=AsyncMock(),
+    )
+    repo = ToastCheckoutSessionRepository(cast(AsyncSession, fake_session))
+
+    with pytest.raises(SQLAlchemyError):
+        await repo.claim_processing_by_external_reference_id("ref-123")
+
+    fake_session.rollback.assert_awaited_once()

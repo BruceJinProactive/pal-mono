@@ -21,6 +21,40 @@ from .schema import OrderData
 OrderStatusUpdateResult = _implementation.OrderStatusUpdateResult
 
 
+async def get_toast_checkout_session_snapshot(
+    external_reference_id: str,
+) -> tuple[str | None, dict[str, Any], str | None]:
+    """
+    Return checkout session status, payload, and order external ID.
+
+    The returned values are detached from the DB session so callers do not hold
+    a transaction while performing external API work.
+    """
+    return await _implementation.get_toast_checkout_session_snapshot(
+        external_reference_id
+    )
+
+
+async def claim_toast_checkout_session_processing(
+    external_reference_id: str,
+) -> str | None:
+    """
+    Atomically claim a ready Toast checkout session for processing.
+
+    Returns "claimed" when this caller won the claim, the existing session
+    status when another request already claimed or completed it, or None when
+    no checkout session exists.
+    """
+    return await _implementation.claim_toast_checkout_session_processing(
+        external_reference_id
+    )
+
+
+async def mark_toast_checkout_session_paid(external_reference_id: str) -> None:
+    """Mark a Toast checkout session paid if it exists."""
+    await _implementation.mark_toast_checkout_session_paid(external_reference_id)
+
+
 def create_order(
     session: Session,
     order_data: OrderData,

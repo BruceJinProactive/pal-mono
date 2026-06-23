@@ -17,15 +17,21 @@ from services.toast_checkout_service import (
     ToastCheckoutSessionNotFoundError,
     get_checkout_session_payload_async,
 )
-from services.transaction_service import update_order_by_order_id
+from services.transaction_service import (
+    claim_toast_checkout_session_processing,
+    get_toast_checkout_session_snapshot,
+    mark_toast_checkout_session_paid,
+    update_order_by_order_id,
+)
 from tools.toast_tool._apis import (
     connect_toast_order_hub,
     get_existing_order,
     post_payment_to_order,
+    submit_order,
     update_payment_intent,
 )
 from tools.toast_tool._utils import get_toast_access_token_from_aws
-from tools.toast_tool.classes import ToastPayment
+from tools.toast_tool.classes import OrderInput, Payment, PaymentType, ToastPayment
 from tools.utils.ordering.classes import HttpMethod
 from utils.log import logger
 
@@ -334,6 +340,64 @@ async def checkout_complete(request: Request) -> JSONResponse:
                     "error": "Missing required fields: storeId, orderExternalId, paymentExternalReferenceId"
                 },
             )
+        (
+            checkout_session_status,
+            checkout_session_payload,
+            checkout_session_order_external_id,
+        ) = await get_toast_checkout_session_snapshot(payment_external_reference_id)
+        if checkout_session_status == "paid":
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "message": "Payment processed successfully",
+                    "testMode": test_mode,
+                    "amountMismatch": False,
+                },
+            )
+        checkout_session_store_id = checkout_session_payload.get("storeId")
+        if (
+            checkout_session_order_external_id is not None
+            and checkout_session_order_external_id != order_external_id
+        ):
+            logger.error(
+                "[ToastAPIIntegration.checkout_complete] checkout session order mismatch",
+                extra={
+                    "callback_order_external_id": order_external_id,
+                    "session_order_external_id": checkout_session_order_external_id,
+                },
+            )
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": "Checkout session does not match callback order"},
+            )
+        if (
+            isinstance(checkout_session_store_id, str)
+            and checkout_session_store_id != store_id
+        ):
+            logger.error(
+                "[ToastAPIIntegration.checkout_complete] checkout session store mismatch",
+                extra={
+                    "callback_store_id": store_id,
+                    "session_store_id": checkout_session_store_id,
+                },
+            )
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={"error": "Checkout session does not match callback store"},
+            )
+        claim_status = await claim_toast_checkout_session_processing(
+            payment_external_reference_id
+        )
+        if claim_status in {"paid", "processing"}:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "message": "Payment processed successfully",
+                    "testMode": test_mode,
+                    "amountMismatch": False,
+                },
+            )
+
         if test_mode:
             toast_bearer_token = get_toast_access_token_from_aws(
                 token_api_endpoint="ws-sandbox-api.eng.toasttab.com",
@@ -362,13 +426,87 @@ async def checkout_complete(request: Request) -> JSONResponse:
                 content={"error": f"Failed to get order: {str(e)}"},
             )
         if not order:
-            logger.error(
-                f"[ToastAPIIntegration.checkout_complete] order {order_external_id} not found"
+            if charged_amount_cents is None:
+                logger.error(
+                    "[ToastAPIIntegration.checkout_complete] missing charged amount for deferred Toast order submission"
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "error": "chargedAmountCents is required when submitting a stored Toast order"
+                    },
+                )
+
+            toast_order_payload = checkout_session_payload.get("toastOrderPayload")
+            if not isinstance(toast_order_payload, dict):
+                logger.error(
+                    f"[ToastAPIIntegration.checkout_complete] order {order_external_id} not found and no stored Toast payload is available"
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "error": f"Order with ID {order_external_id} not found, cannot add payment to order. Contact the store owner to verify the order exists."
+                    },
+                )
+
+            try:
+                stored_order = OrderInput.model_validate(toast_order_payload)
+            except ValidationError as exc:
+                logger.error(
+                    "[ToastAPIIntegration.checkout_complete] stored Toast order payload is invalid",
+                    exc_info=exc,
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={"error": "Stored Toast order payload is invalid"},
+                )
+
+            if not stored_order.checks:
+                logger.error(
+                    f"[ToastAPIIntegration.checkout_complete] stored order {order_external_id} has no checks"
+                )
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "error": f"Order with ID {order_external_id} has no checks, cannot submit payment with order."
+                    },
+                )
+
+            order_amount_cents = charged_amount_cents - tip_amount_cents
+            stored_payment = Payment(
+                guid=payment_external_reference_id,
+                amount=order_amount_cents / 100,
+                tipAmount=tip_amount_cents / 100,
+                type=PaymentType.CREDIT,
             )
+            first_check = stored_order.checks[0]
+            first_check.payments = [*(first_check.payments or []), stored_payment]
+
+            submitted_order = submit_order(
+                bearer_token=toast_bearer_token,
+                store_id=store_id,
+                order=stored_order,
+                general_api_endpoint=(
+                    "ws-sandbox-api.eng.toasttab.com" if test_mode else None
+                ),
+            )
+            order_updated = update_order_by_order_id(
+                store_id=store_id,
+                vendor=IntegrationProvider.toast,
+                new_status="paid",
+                order_id=order_external_id,
+            )
+            if not order_updated:
+                logger.warning(
+                    f"[ToastAPIIntegration.checkout_complete] Failed to update order {submitted_order.guid} status to paid - order may not exist in database"
+                )
+            await mark_toast_checkout_session_paid(payment_external_reference_id)
             return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=status.HTTP_200_OK,
                 content={
-                    "error": f"Order with ID {order_external_id} not found, cannot add payment to order. Contact the store owner to verify the order exists."
+                    "message": "Payment processed successfully",
+                    "testMode": test_mode,
+                    "amountMismatch": False,
                 },
             )
         if not order.checks or len(order.checks) == 0:
@@ -460,6 +598,7 @@ async def checkout_complete(request: Request) -> JSONResponse:
             logger.warning(
                 f"[ToastAPIIntegration.checkout_complete] Failed to update order {order.guid} status to paid - order may not exist in database"  # type: ignore
             )
+        await mark_toast_checkout_session_paid(payment_external_reference_id)
 
         # 6. Return success response to Toast Iframe UI
         response_content = {

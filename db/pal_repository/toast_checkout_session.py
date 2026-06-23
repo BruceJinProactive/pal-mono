@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -102,4 +102,33 @@ class ToastCheckoutSessionRepository:
         except SQLAlchemyError:
             await self.session.rollback()
             logger.exception("Error marking Toast checkout session failed")
+            raise
+
+    async def claim_processing_by_external_reference_id(
+        self, external_reference_id: str
+    ) -> ToastCheckoutSession | None:
+        try:
+            result = await self.session.execute(
+                update(ToastCheckoutSession)
+                .where(
+                    ToastCheckoutSession.external_reference_id == external_reference_id,
+                    ToastCheckoutSession.status == "ready",
+                )
+                .values(status="processing")
+                .returning(ToastCheckoutSession)
+            )
+            return result.scalar_one_or_none()
+        except SQLAlchemyError:
+            await self.session.rollback()
+            logger.exception("Error claiming Toast checkout session processing")
+            raise
+
+    async def mark_paid(self, row: ToastCheckoutSession) -> ToastCheckoutSession:
+        try:
+            row.status = "paid"
+            await self.session.flush()
+            return row
+        except SQLAlchemyError:
+            await self.session.rollback()
+            logger.exception("Error marking Toast checkout session paid")
             raise

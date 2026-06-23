@@ -391,6 +391,84 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_process_checkout_request_reuses_paid_session_without_reprocessing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.toast_checkout_service import _implementation as service
+
+    existing_session = SimpleNamespace(
+        token=uuid.uuid4(),
+        checkout_url="https://checkout.test/paid",
+        status="paid",
+        session_payload={"expiresAt": 9999999999},
+        expires_at=datetime.now(timezone.utc),
+    )
+
+    class FakeSessionRepository:
+        def __init__(self, _session: AsyncSession) -> None:
+            return
+
+        async def get_by_external_reference_id(
+            self, _external_reference_id: str
+        ) -> SimpleNamespace:
+            return existing_session
+
+        async def create(self, **_kwargs: Any) -> None:
+            raise AssertionError("paid checkout session should be reused")
+
+        async def mark_ready(self, *_args: Any, **_kwargs: Any) -> None:
+            raise AssertionError("paid checkout session should not be marked ready")
+
+        async def mark_failed(self, *_args: Any, **_kwargs: Any) -> None:
+            raise AssertionError("paid checkout session should not be marked failed")
+
+    monkeypatch.setattr(
+        service, "ToastCheckoutSessionRepository", FakeSessionRepository
+    )
+    monkeypatch.setattr(
+        service,
+        "create_payment_intent",
+        lambda **_kwargs: pytest.fail("paid session should not create payment intent"),
+    )
+    monkeypatch.setattr(
+        service,
+        "send_message",
+        lambda _message: pytest.fail("paid session should not send another SMS"),
+    )
+
+    request = {
+        "type": "payment_checkout",
+        "provider": "toast",
+        "payload": {
+            "amount_cents": 3500,
+            "tip_cents": 0,
+            "external_reference_id": "8f2ddc2f-25fd-4c55-943f-04162c43e571",
+            "order_external_id": "PALONA:test-session",
+            "customer_email": "orderingagent+5145609523@palona.ai",
+            "customer_name": "John Doe",
+            "customer_phone": "5145609523",
+            "order_items": [],
+            "subtotal_cents": 3000,
+            "tax_cents": 500,
+            "gratuity_fees": [],
+            "store_id": "toast-store",
+            "store_name": "Toast Store",
+        },
+    }
+
+    result = await service.process_checkout_request_async(
+        session=cast(AsyncSession, SimpleNamespace()),
+        checkout_request=request,
+        conversation_id=uuid.uuid4(),
+        sender_identifier="+15551230000",
+        recipient_identifier="+15550000000",
+    )
+
+    assert result.token == existing_session.token
+    assert result.checkout_url == existing_session.checkout_url
+
+
+@pytest.mark.asyncio
 async def test_process_checkout_request_refreshes_session_after_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

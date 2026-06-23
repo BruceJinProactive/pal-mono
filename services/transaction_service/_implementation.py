@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from agent.tool import ToolMetadata
+from db.pal_repository.toast_checkout_session import ToastCheckoutSessionRepository
 from db.repositories import ConversationRepository
 from db.repositories.conversation_repository import ConversationUpdate
 from db.repositories.order_repository import OrderRepository
-from db.session import SyncSessionLocal
+from db.session import AsyncSessionLocal, SyncSessionLocal
 from db.tables.orders import Order
 from db.tables.types import IntegrationProvider
 from utils.log import logger
@@ -49,6 +50,61 @@ def _to_order_status_update_result(order: Order) -> OrderStatusUpdateResult:
         status=order.status,
         vendor=order.vendor,
     )
+
+
+async def get_toast_checkout_session_snapshot(
+    external_reference_id: str,
+) -> tuple[str | None, dict[str, Any], str | None]:
+    async with AsyncSessionLocal() as session:
+        checkout_session = await ToastCheckoutSessionRepository(
+            session
+        ).get_by_external_reference_id(external_reference_id)
+        if checkout_session is None:
+            return None, {}, None
+        return (
+            checkout_session.status,
+            dict(checkout_session.session_payload),
+            checkout_session.order_external_id,
+        )
+
+
+async def claim_toast_checkout_session_processing(
+    external_reference_id: str,
+) -> str | None:
+    async with AsyncSessionLocal() as session:
+        repo = ToastCheckoutSessionRepository(session)
+        claimed_session = await repo.claim_processing_by_external_reference_id(
+            external_reference_id
+        )
+        if claimed_session is not None:
+            await session.commit()
+            return "claimed"
+        checkout_session = await repo.get_by_external_reference_id(
+            external_reference_id
+        )
+        if checkout_session is None:
+            return None
+        if checkout_session.status in {"paid", "processing"}:
+            return checkout_session.status
+        return checkout_session.status
+
+
+async def mark_toast_checkout_session_paid(external_reference_id: str) -> None:
+    try:
+        async with AsyncSessionLocal() as session:
+            repo = ToastCheckoutSessionRepository(session)
+            checkout_session = await repo.get_by_external_reference_id(
+                external_reference_id
+            )
+            if checkout_session is None:
+                return
+            await repo.mark_paid(checkout_session)
+            await session.commit()
+    except SQLAlchemyError:
+        logger.exception(
+            "[TransactionService] Failed to mark Toast checkout session paid",
+            extra={"external_reference_id": external_reference_id},
+        )
 
 
 def _normalize_us_phone_number(phone_number: str | None) -> str | None:
