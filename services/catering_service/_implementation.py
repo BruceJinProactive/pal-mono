@@ -14,12 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.schemas.chat.message import AuthorType, Broker, Extras
 from api.schemas.chat.message import Message as RelayMessage
 from api.schemas.chat.message import Metadata, TextObject, Type
+from db.pal_repository.catering_menu import CateringMenuRepository
 from db.pal_repository.catering_request import (
     CateringRequestRepository as CateringRequestRepositoryNew,
 )
 from db.pal_repository.catering_request_activity import (
     CateringRequestActivityRepository,
 )
+from db.pal_repository.data_classes.catering_menu import CateringMenuData
 from db.pal_repository.data_classes.catering_request import CateringRequestData
 from db.pal_repository.data_classes.catering_request_activity import (
     CateringRequestActivityData,
@@ -716,6 +718,35 @@ async def list_contacts(
         List[ContactData]: List of contacts associated with the project
     """
     return await contact_service.list_by_project(session, project_id)
+
+
+async def list_catering_menu_items_by_project_id(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+) -> list[CateringMenuData]:
+    """List all catering menu items for a project."""
+    return await CateringMenuRepository(session).list_by_project_id(project_id)
+
+
+async def update_catering_menu_item(
+    session: AsyncSession,
+    menu_item_id: uuid.UUID,
+    project_id: uuid.UUID | None = None,
+    item_name: str | None = None,
+    item_price: Decimal | None = None,
+) -> CateringMenuData | None:
+    """Update a catering menu item."""
+    update_kwargs: dict[str, Any] = {}
+    if item_name is not None:
+        update_kwargs["item_name"] = item_name
+    if item_price is not None:
+        update_kwargs["item_price"] = item_price
+
+    return await CateringMenuRepository(session).update(
+        menu_item_id,
+        project_id=project_id,
+        **update_kwargs,
+    )
 
 
 async def delete_contact(

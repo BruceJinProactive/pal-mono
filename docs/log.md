@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-23
+
+- **Catering menu items API.** Added project-scoped listing and item update
+  endpoints for catering menu rows, backed by an async repository and explicit
+  catering menu DTO/schema types. -> `docs/records/2026-06-23-catering-menu-items-api.md`
+
 ## 2026-06-22
 
 - **Client onboarding post-signature Notion CMD entry.** DocuSign completion now queues and best-effort runs a Notion Client Master Database sync that creates or updates the client page after signature, stores the Notion page ID on the onboarding lifecycle, and includes onboarding handoff references in the created page body. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`

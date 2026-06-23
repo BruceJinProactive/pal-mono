@@ -7,6 +7,8 @@ import db
 from api.routes.admin._auth import authenticate_user
 from api.routes.endpoints import endpoints
 from api.schemas.catering.catering import (
+    CateringMenuItem,
+    CateringMenuItemListResponse,
     CateringRequest,
     CateringRequestListResponse,
     Contact,
@@ -15,9 +17,11 @@ from api.schemas.catering.catering import (
     CreateContactRequest,
     EventBridgeEvent,
     PublicCateringRequest,
+    UpdateCateringMenuItemRequest,
     UpdateCateringRequestRequest,
     UpdateContactRequest,
 )
+from api.schemas.error.error import ErrorResponse
 from services.auth_service.dependencies import require_project_permission
 from services.auth_types import UserContext
 
@@ -75,6 +79,28 @@ async def list_project_catering_requests(
     )
 
 
+@catering_router.get(
+    endpoints.CATERING_PROJECT_MENU_ITEMS,
+    responses={
+        403: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def list_project_catering_menu_items(
+    project_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_project_permission("project.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CateringMenuItemListResponse:
+    """
+    List catering menu items for a project.
+    """
+    return await _implementation.list_project_catering_menu_items(
+        project_id, context, session
+    )
+
+
 @catering_router.get("/requests/{catering_request_id}/public")
 async def get_public_catering_request(
     catering_request_id: uuid.UUID,
@@ -102,6 +128,32 @@ async def update_catering_request(
     """
     return await _implementation.update_catering_request(
         catering_request_id, request, context, session
+    )
+
+
+@catering_router.patch(
+    endpoints.CATERING_PROJECT_MENU_ITEM,
+    status_code=status.HTTP_200_OK,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def update_catering_menu_item(
+    project_id: uuid.UUID,
+    menu_item_id: uuid.UUID,
+    request: UpdateCateringMenuItemRequest,
+    context: UserContext = Depends(
+        require_project_permission("project.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CateringMenuItem:
+    """
+    Update an existing catering menu item.
+    """
+    return await _implementation.update_catering_menu_item(
+        project_id, menu_item_id, request, context, session
     )
 
 

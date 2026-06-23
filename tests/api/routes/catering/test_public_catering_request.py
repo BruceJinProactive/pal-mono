@@ -3,6 +3,7 @@
 import sys
 import uuid
 from datetime import date, datetime, time, timezone
+from decimal import Decimal
 from types import ModuleType
 from unittest.mock import AsyncMock, patch
 
@@ -42,10 +43,12 @@ sqlalchemy.ext.asyncio.async_sessionmaker = (
 
 import api.routes.catering as catering_routes  # noqa: E402
 from api.routes.catering import _implementation  # noqa: E402
+from db.pal_repository.data_classes.catering_menu import CateringMenuData  # noqa: E402
 from db.pal_repository.data_classes.catering_request import (  # noqa: E402
     CateringRequestData,
 )
 from db.tables.catering_requests import FulfillmentType, RequestStatus  # noqa: E402
+from services.auth_types import UserContext, UserRole  # noqa: E402
 from services.catering_service._implementation import (  # noqa: E402
     PublicCateringRequestDetails,
 )
@@ -95,6 +98,32 @@ def _make_catering_request_data(
     )
 
 
+def _make_catering_menu_data(
+    *,
+    menu_item_id: uuid.UUID,
+    project_id: uuid.UUID,
+) -> CateringMenuData:
+    return CateringMenuData(
+        id=menu_item_id,
+        project_id=project_id,
+        account_id=uuid.uuid4(),
+        item_name="Sandwich platter",
+        item_price=Decimal("145.50"),
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+
+
+def _make_user_context() -> UserContext:
+    return UserContext(
+        username=str(uuid.uuid4()),
+        email="manager@example.com",
+        groups=[],
+        display_name="Catering Manager",
+        role=UserRole.AccountManager,
+    )
+
+
 @pytest.mark.asyncio
 async def test_get_public_catering_request_returns_public_safe_fields() -> None:
     session = AsyncMock()
@@ -132,6 +161,153 @@ async def test_get_public_catering_request_returns_public_safe_fields() -> None:
     assert "idempotency_key" not in public_payload
     assert "created_at" not in public_payload
     assert "updated_at" not in public_payload
+
+
+@pytest.mark.asyncio
+async def test_list_project_catering_menu_items_returns_project_items() -> None:
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+    menu_item_id = uuid.uuid4()
+    menu_item = _make_catering_menu_data(
+        menu_item_id=menu_item_id,
+        project_id=project_id,
+    )
+
+    with patch(
+        "api.routes.catering._implementation.list_catering_menu_items_by_project_id",
+        return_value=[menu_item],
+    ):
+        result = await _implementation.list_project_catering_menu_items(
+            project_id=project_id,
+            context=AsyncMock(),
+            session=session,
+        )
+
+    assert result.menu_items[0].id == menu_item_id
+    assert result.menu_items[0].project_id == project_id
+    assert result.menu_items[0].item_name == "Sandwich platter"
+    assert result.menu_items[0].item_price == Decimal("145.50")
+
+
+@pytest.mark.asyncio
+async def test_update_catering_menu_item_returns_updated_item() -> None:
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+    menu_item_id = uuid.uuid4()
+    menu_item = _make_catering_menu_data(
+        menu_item_id=menu_item_id,
+        project_id=project_id,
+    )
+
+    with patch(
+        "api.routes.catering._implementation.update_catering_menu_item_impl",
+        return_value=menu_item,
+    ) as update_impl:
+        result = await _implementation.update_catering_menu_item(
+            project_id=project_id,
+            menu_item_id=menu_item_id,
+            request=_implementation.UpdateCateringMenuItemRequest(
+                item_name="Sandwich platter",
+                item_price=Decimal("145.50"),
+            ),
+            context=AsyncMock(),
+            session=session,
+        )
+
+    update_impl.assert_awaited_once_with(
+        session=session,
+        project_id=project_id,
+        menu_item_id=menu_item_id,
+        item_name="Sandwich platter",
+        item_price=Decimal("145.50"),
+    )
+    assert result.id == menu_item_id
+    assert result.item_price == Decimal("145.50")
+
+
+@pytest.mark.asyncio
+async def test_update_catering_menu_item_raises_not_found() -> None:
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+    menu_item_id = uuid.uuid4()
+
+    with patch(
+        "api.routes.catering._implementation.update_catering_menu_item_impl",
+        return_value=None,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await _implementation.update_catering_menu_item(
+                project_id=project_id,
+                menu_item_id=menu_item_id,
+                request=_implementation.UpdateCateringMenuItemRequest(
+                    item_name="Missing item",
+                ),
+                context=AsyncMock(),
+                session=session,
+            )
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_project_catering_menu_items_route_delegates_to_implementation() -> (
+    None
+):
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+    context = _make_user_context()
+    response = _implementation.CateringMenuItemListResponse(menu_items=[])
+
+    with patch(
+        "api.routes.catering._implementation.list_project_catering_menu_items",
+        return_value=response,
+    ) as mock_list:
+        result = await catering_routes.list_project_catering_menu_items(
+            project_id=project_id,
+            context=context,
+            session=session,
+        )
+
+    assert result is response
+    mock_list.assert_awaited_once_with(project_id, context, session)
+
+
+@pytest.mark.asyncio
+async def test_update_catering_menu_item_route_delegates_to_implementation() -> None:
+    session = AsyncMock()
+    project_id = uuid.uuid4()
+    menu_item_id = uuid.uuid4()
+    context = _make_user_context()
+    request = _implementation.UpdateCateringMenuItemRequest(
+        item_name="New platter",
+        item_price=Decimal("155.00"),
+    )
+    response = _implementation.CateringMenuItem(
+        id=menu_item_id,
+        project_id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        item_name="New platter",
+        item_price=Decimal("155.00"),
+        created_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+    )
+
+    with patch(
+        "api.routes.catering._implementation.update_catering_menu_item",
+        return_value=response,
+    ) as mock_update:
+        result = await catering_routes.update_catering_menu_item(
+            project_id=project_id,
+            menu_item_id=menu_item_id,
+            request=request,
+            context=context,
+            session=session,
+        )
+
+    assert result is response
+    mock_update.assert_awaited_once_with(
+        project_id, menu_item_id, request, context, session
+    )
 
 
 @pytest.mark.asyncio

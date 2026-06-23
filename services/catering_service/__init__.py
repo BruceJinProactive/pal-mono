@@ -5,6 +5,7 @@ from ._implementation import (
     create_contact,
     delete_contact,
     get_public_catering_request_by_id,
+    list_catering_menu_items_by_project_id,
     list_catering_request_activities,
     list_catering_requests_by_project_id,
     list_catering_requests_with_activities_by_project_id,
@@ -13,6 +14,7 @@ from ._implementation import (
     send_catering_inquiry_apologies,
     send_catering_inquiry_reminders,
     send_sms_notification,
+    update_catering_menu_item,
     update_catering_request,
 )
 
@@ -22,6 +24,7 @@ __all__ = [
     "create_catering_request_async",
     "create_contact",
     "get_public_catering_request_by_id",
+    "list_catering_menu_items_by_project_id",
     "list_catering_request_activities",
     "list_catering_requests_with_activities_by_project_id",
     "list_contacts",
@@ -30,6 +33,7 @@ __all__ = [
     "delete_contact",
     "send_catering_inquiry_apologies",
     "send_catering_inquiry_reminders",
+    "update_catering_menu_item",
     "update_catering_request",
     "send_sms_notification",
 ]

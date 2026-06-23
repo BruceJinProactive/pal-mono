@@ -145,6 +145,41 @@ class CateringRequestListResponse(BaseModel):
     catering_requests: List[CateringRequest]
 
 
+class CateringMenuItem(BaseModel):
+    """Response schema for a catering menu item."""
+
+    id: uuid.UUID = Field(..., description="Unique catering menu item ID.")
+    project_id: uuid.UUID = Field(
+        ..., description="Project that owns this catering menu item."
+    )
+    account_id: Optional[uuid.UUID] = Field(
+        None, description="Account associated with this catering menu item, if set."
+    )
+    item_name: str = Field(..., description="Display name of the catering menu item.")
+    item_price: Decimal = Field(..., description="Price of the catering menu item.")
+    created_at: datetime = Field(
+        ..., description="Timestamp when the catering menu item was created."
+    )
+    updated_at: datetime = Field(
+        ..., description="Timestamp when the catering menu item was last updated."
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CateringMenuItemListResponse(BaseModel):
+    """Response schema for listing catering menu items."""
+
+    menu_items: List[CateringMenuItem]
+
+
+class UpdateCateringMenuItemRequest(BaseModel):
+    """Request schema for updating a catering menu item."""
+
+    item_name: Optional[str] = None
+    item_price: Optional[Decimal] = None
+
+
 class CateringRequestActivityListResponse(BaseModel):
     """
     Response schema for listing catering request activities.

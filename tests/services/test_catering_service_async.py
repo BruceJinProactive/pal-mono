@@ -41,6 +41,7 @@ sqlalchemy.ext.asyncio.async_sessionmaker = (
     lambda *args, **kwargs: lambda *a, **kw: None
 )
 
+from db.pal_repository.data_classes.catering_menu import CateringMenuData  # noqa: E402
 from db.pal_repository.data_classes.catering_request import (  # noqa: E402
     CateringRequestData,
 )
@@ -55,8 +56,10 @@ from services.catering_service._implementation import (  # noqa: E402
     delete_catering_request,
     get_catering_request_by_id,
     get_public_catering_request_by_id,
+    list_catering_menu_items_by_project_id,
     list_catering_request_activities,
     list_catering_requests_with_activities_by_project_id,
+    update_catering_menu_item,
     update_catering_request,
 )
 
@@ -89,6 +92,20 @@ def _make_catering_request_data(**overrides) -> CateringRequestData:
     return CateringRequestData(**defaults)
 
 
+def _make_catering_menu_data(**overrides: Any) -> CateringMenuData:
+    defaults = {
+        "id": uuid.uuid4(),
+        "project_id": uuid.uuid4(),
+        "account_id": uuid.uuid4(),
+        "item_name": "Sandwich platter",
+        "item_price": Decimal("145.50"),
+        "created_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+        "updated_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+    }
+    defaults.update(overrides)
+    return CateringMenuData(**defaults)
+
+
 def _make_session() -> AsyncMock:
     session = AsyncMock()
     session.add = MagicMock()
@@ -112,6 +129,53 @@ def _patch_empty_order_history() -> Any:
     return patch(
         "services.catering_service._implementation.OrderRepositoryNew",
         return_value=order_repo,
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_catering_menu_items_by_project_id_uses_repository() -> None:
+    session = _make_session()
+    project_id = uuid.uuid4()
+    menu_item = _make_catering_menu_data(project_id=project_id)
+    repo = AsyncMock()
+    repo.list_by_project_id.return_value = [menu_item]
+
+    with patch(
+        "services.catering_service._implementation.CateringMenuRepository",
+        return_value=repo,
+    ) as repo_cls:
+        result = await list_catering_menu_items_by_project_id(session, project_id)
+
+    assert result == [menu_item]
+    repo_cls.assert_called_once_with(session)
+    repo.list_by_project_id.assert_awaited_once_with(project_id)
+
+
+@pytest.mark.asyncio
+async def test_update_catering_menu_item_passes_only_provided_fields() -> None:
+    session = _make_session()
+    project_id = uuid.uuid4()
+    menu_item_id = uuid.uuid4()
+    menu_item = _make_catering_menu_data(id=menu_item_id)
+    repo = AsyncMock()
+    repo.update.return_value = menu_item
+
+    with patch(
+        "services.catering_service._implementation.CateringMenuRepository",
+        return_value=repo,
+    ):
+        result = await update_catering_menu_item(
+            session,
+            menu_item_id,
+            project_id=project_id,
+            item_price=Decimal("155.00"),
+        )
+
+    assert result == menu_item
+    repo.update.assert_awaited_once_with(
+        menu_item_id,
+        project_id=project_id,
+        item_price=Decimal("155.00"),
     )
 
 

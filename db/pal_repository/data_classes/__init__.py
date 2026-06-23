@@ -14,6 +14,7 @@ from .analytics import (
 )
 from .campaign import CampaignData, CampaignMessageData
 from .capability_action import CapabilityActionData
+from .catering_menu import CateringMenuData
 from .catering_request import CateringRequestData
 from .catering_request_activity import CateringRequestActivityData
 from .change_field import ChangeFieldData
@@ -79,8 +80,9 @@ __all__ = [
     "CampaignData",
     "CampaignMessageData",
     "CapabilityActionData",
-    "CateringRequestData",
+    "CateringMenuData",
     "CateringRequestActivityData",
+    "CateringRequestData",
     "ChangeFieldData",
     "ChangeLogData",
     "ContactData",

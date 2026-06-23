@@ -5,6 +5,8 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.catering.catering import (
+    CateringMenuItem,
+    CateringMenuItemListResponse,
     CateringRequest,
     CateringRequestActivity,
     CateringRequestListResponse,
@@ -14,9 +16,11 @@ from api.schemas.catering.catering import (
     CreateContactRequest,
     EventBridgeEvent,
     PublicCateringRequest,
+    UpdateCateringMenuItemRequest,
     UpdateCateringRequestRequest,
     UpdateContactRequest,
 )
+from api.schemas.error.error import ErrorResponse
 from db.tables.catering_request_activities import (
     CateringRequestActivityActorType,
     CateringRequestActivitySource,
@@ -34,9 +38,13 @@ from services.catering_service._implementation import (
     get_catering_request_by_id,
     get_public_catering_request_by_id,
     handle_catering_request_created_event,
+    list_catering_menu_items_by_project_id,
     list_catering_requests_by_project_id,
     list_catering_requests_with_activities_by_project_id,
     list_contacts,
+)
+from services.catering_service._implementation import (
+    update_catering_menu_item as update_catering_menu_item_impl,
 )
 from services.catering_service._implementation import (
     update_catering_request as update_catering_request_impl,
@@ -205,6 +213,22 @@ async def list_project_catering_requests(
     return CateringRequestListResponse(catering_requests=response_requests)
 
 
+async def list_project_catering_menu_items(
+    project_id: uuid.UUID,
+    context: UserContext,
+    session: AsyncSession,
+) -> CateringMenuItemListResponse:
+    """List catering menu items for a project."""
+    del context
+    menu_items = await list_catering_menu_items_by_project_id(
+        session=session,
+        project_id=project_id,
+    )
+    return CateringMenuItemListResponse(
+        menu_items=[CateringMenuItem.model_validate(item) for item in menu_items]
+    )
+
+
 async def get_public_catering_request(
     catering_request_id: uuid.UUID,
     session: AsyncSession,
@@ -269,6 +293,35 @@ async def update_catering_request(
     )
 
     return CateringRequest.model_validate(updated_request)
+
+
+async def update_catering_menu_item(
+    project_id: uuid.UUID,
+    menu_item_id: uuid.UUID,
+    request: UpdateCateringMenuItemRequest,
+    context: UserContext,
+    session: AsyncSession,
+) -> CateringMenuItem:
+    """Update an existing catering menu item."""
+    del context
+    updated_item = await update_catering_menu_item_impl(
+        session=session,
+        project_id=project_id,
+        menu_item_id=menu_item_id,
+        item_name=request.item_name,
+        item_price=request.item_price,
+    )
+    if updated_item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ErrorResponse(
+                error_code="CATERING_MENU_ITEM_NOT_FOUND",
+                error_message=f"Catering menu item {menu_item_id} not found",
+            ).model_dump(),
+            headers={"Content-Type": "application/json"},
+        )
+
+    return CateringMenuItem.model_validate(updated_item)
 
 
 async def delete_catering_request(
