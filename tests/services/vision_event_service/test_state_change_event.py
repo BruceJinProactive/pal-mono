@@ -14,6 +14,7 @@ from db.pal_repository.data_classes.vision_state_change_event import (
     VisionStateChangeEventData,
     VisionStateChangeEventPage,
 )
+from services.monitoring_service._video import CameraVideoSegment
 from services.vision_event_service._implementation import _presign_frame_s3_key
 
 MODULE = "services.vision_event_service._implementation"
@@ -44,6 +45,19 @@ def _make_event_data(**overrides: object) -> VisionStateChangeEventData:
     }
     defaults.update(overrides)
     return VisionStateChangeEventData(**defaults)  # type: ignore[arg-type]
+
+
+def _make_video_segment() -> CameraVideoSegment:
+    segment_start_time = datetime(2026, 6, 23, 14, 5, 3, tzinfo=timezone.utc)
+    return CameraVideoSegment(
+        s3_key=(
+            "security/cameras/account/project/camera/videos/"
+            "2026-06-23/2026-06-23_14-05-03.mp4"
+        ),
+        url="https://example.com/video.mp4",
+        segment_start_time=segment_start_time,
+        segment_end_time=datetime(2026, 6, 23, 14, 6, 3, tzinfo=timezone.utc),
+    )
 
 
 class TestCreateStateChangeEvent:
@@ -269,6 +283,10 @@ class TestGetStateChangeEvent:
             ),
             patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
             patch(f"{MODULE}.map_uri_to_s3_url") as mock_map_uri,
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+            ) as mock_lookup,
         ):
             repo = AsyncMock()
             repo.get_by_id_for_account.return_value = event_data
@@ -281,16 +299,21 @@ class TestGetStateChangeEvent:
             result = await get_state_change_event(session, event_id, ACCOUNT_NAME)
 
             assert result.id == event_id
-            assert result.video_url is None
+            assert result.videos == []
+            assert result.video_count == 0
             mock_map_uri.assert_not_called()
+            mock_lookup.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_omits_video_url_by_default(self) -> None:
+    async def test_omits_videos_by_default(self) -> None:
         session = AsyncMock()
         event_id = uuid.uuid4()
         event_data = _make_event_data(
             id=event_id,
-            event_metadata={"video_url": "security/cameras/video.mp4"},
+            frame_s3_key=(
+                "security/cameras/account/project/camera/"
+                "images/2026-06-23/2026-06-23_14-05-37.jpg"
+            ),
         )
 
         with (
@@ -302,8 +325,13 @@ class TestGetStateChangeEvent:
             patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
             patch(
                 f"{MODULE}.map_uri_to_s3_url",
-                return_value="https://s3.amazonaws.com/bucket/video.mp4",
+                return_value="https://example.com/frame.jpg",
             ),
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+                return_value=[_make_video_segment()],
+            ) as mock_lookup,
         ):
             repo = AsyncMock()
             repo.get_by_id_for_account.return_value = event_data
@@ -315,10 +343,294 @@ class TestGetStateChangeEvent:
 
             result = await get_state_change_event(session, event_id, ACCOUNT_NAME)
 
-            assert result.video_url is None
+            assert result.videos == []
+            assert result.video_count == 0
+            mock_lookup.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_returns_presigned_video_url_when_included(self) -> None:
+    async def test_returns_presigned_video_list_when_included(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            frame_s3_key=(
+                "security/cameras/account/project/camera/"
+                "images/2026-06-23/2026-06-23_14-05-37.jpg"
+            ),
+            event_metadata={
+                "start_time": "2026-06-23T14:05:37Z",
+                "duration_seconds": 1026,
+            },
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(
+                f"{MODULE}.map_uri_to_s3_url",
+                return_value="https://example.com/frame.jpg",
+            ),
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+                return_value=[_make_video_segment()],
+            ) as mock_lookup,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.video_count == 1
+            assert len(result.videos) == 1
+            assert result.videos[0].s3_key.endswith("2026-06-23_14-05-03.mp4")
+            assert result.videos[0].url == "https://example.com/video.mp4"
+            mock_lookup.assert_awaited_once()
+            lookup_args = mock_lookup.await_args
+            assert lookup_args is not None
+            lookup_kwargs = lookup_args.kwargs
+            assert lookup_kwargs["video_prefix"] == (
+                "security/cameras/account/project/camera/videos/"
+            )
+            assert lookup_kwargs["start_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                5,
+                37,
+                tzinfo=timezone.utc,
+            )
+            assert lookup_kwargs["end_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                22,
+                43,
+                tzinfo=timezone.utc,
+            )
+
+    @pytest.mark.asyncio
+    async def test_uses_metadata_datetime_end_time_window(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            frame_s3_key=(
+                "security/cameras/account/project/camera/"
+                "images/2026-06-23/2026-06-23_14-05-37.jpg"
+            ),
+            event_metadata={
+                "start_time": datetime(2026, 6, 23, 14, 5, 37),
+                "end_time": datetime(2026, 6, 23, 14, 22, 43, tzinfo=timezone.utc),
+            },
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(
+                f"{MODULE}.map_uri_to_s3_url",
+                return_value="https://example.com/frame.jpg",
+            ),
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as mock_lookup,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.video_count == 0
+            mock_lookup.assert_awaited_once()
+            lookup_args = mock_lookup.await_args
+            assert lookup_args is not None
+            lookup_kwargs = lookup_args.kwargs
+            assert lookup_kwargs["start_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                5,
+                37,
+                tzinfo=timezone.utc,
+            )
+            assert lookup_kwargs["end_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                22,
+                43,
+                tzinfo=timezone.utc,
+            )
+
+    @pytest.mark.asyncio
+    async def test_invalid_metadata_window_falls_back_to_observed_minute(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            observed_at=datetime(2026, 6, 23, 14, 5, 37, tzinfo=timezone.utc),
+            frame_s3_key=(
+                "security/cameras/account/project/camera/"
+                "images/2026-06-23/2026-06-23_14-05-37.jpg"
+            ),
+            event_metadata={
+                "start_time": "not-a-date",
+                "duration_seconds": "not-a-duration",
+            },
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(
+                f"{MODULE}.map_uri_to_s3_url",
+                return_value="https://example.com/frame.jpg",
+            ),
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as mock_lookup,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.video_count == 0
+            mock_lookup.assert_awaited_once()
+            lookup_args = mock_lookup.await_args
+            assert lookup_args is not None
+            lookup_kwargs = lookup_args.kwargs
+            assert lookup_kwargs["start_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                5,
+                tzinfo=timezone.utc,
+            )
+            assert lookup_kwargs["end_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                6,
+                tzinfo=timezone.utc,
+            )
+
+    @pytest.mark.asyncio
+    async def test_uses_string_duration_for_observed_window(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            observed_at=datetime(2026, 6, 23, 14, 5, 37, tzinfo=timezone.utc),
+            frame_s3_key=(
+                "security/cameras/account/project/camera/"
+                "images/2026-06-23/2026-06-23_14-05-37.jpg"
+            ),
+            event_metadata={"duration_seconds": "90"},
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(
+                f"{MODULE}.map_uri_to_s3_url",
+                return_value="https://example.com/frame.jpg",
+            ),
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as mock_lookup,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.video_count == 0
+            mock_lookup.assert_awaited_once()
+            lookup_args = mock_lookup.await_args
+            assert lookup_args is not None
+            lookup_kwargs = lookup_args.kwargs
+            assert lookup_kwargs["end_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                6,
+                30,
+                tzinfo=timezone.utc,
+            )
+
+    @pytest.mark.asyncio
+    async def test_ignores_metadata_video_url_when_included(self) -> None:
         session = AsyncMock()
         event_id = uuid.uuid4()
         event_data = _make_event_data(
@@ -333,59 +645,61 @@ class TestGetStateChangeEvent:
                 return_value=_mock_account(),
             ),
             patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(f"{MODULE}.map_uri_to_s3_url") as mock_map_uri,
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+            ) as mock_lookup,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.videos == []
+            assert result.video_count == 0
+            mock_map_uri.assert_not_called()
+            mock_lookup.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_uses_observed_minute_when_metadata_window_missing(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        event_data = _make_event_data(
+            id=event_id,
+            observed_at=datetime(2026, 6, 23, 14, 5, 37, tzinfo=timezone.utc),
+            frame_s3_key=(
+                "security/cameras/account/project/camera/"
+                "images/2026-06-23/2026-06-23_14-05-37.jpg"
+            ),
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
             patch(
                 f"{MODULE}.map_uri_to_s3_url",
-                return_value="https://s3.amazonaws.com/bucket/video.mp4",
+                return_value="https://example.com/frame.jpg",
             ),
-        ):
-            repo = AsyncMock()
-            repo.get_by_id_for_account.return_value = event_data
-            mock_repo_cls.return_value = repo
-
-            from services.vision_event_service._implementation import (
-                get_state_change_event,
-            )
-
-            result = await get_state_change_event(
-                session,
-                event_id,
-                ACCOUNT_NAME,
-                include_video=True,
-            )
-
-            assert result.video_url == "https://s3.amazonaws.com/bucket/video.mp4"
-
-    @pytest.mark.asyncio
-    async def test_derives_video_url_from_frame_s3_key_when_included(self) -> None:
-        session = AsyncMock()
-        event_id = uuid.uuid4()
-        event_data = _make_event_data(
-            id=event_id,
-            frame_s3_key=(
-                "security/cameras/70a60d3d-5af8-4dbd-9b14-5a6c1f99076b/"
-                "704652fc-01d2-4e21-95d0-c9c9df56fd75/chica-cam-08/"
-                "images/2026-06-11/2026-06-11_16-20-15.jpg"
-            ),
-        )
-        expected_video_key = (
-            "security/cameras/70a60d3d-5af8-4dbd-9b14-5a6c1f99076b/"
-            "704652fc-01d2-4e21-95d0-c9c9df56fd75/chica-cam-08/"
-            "videos/2026-06-11/2026-06-11_16-20-00.mp4"
-        )
-
-        def fake_map_uri_to_s3_url(uri: str | None) -> str:
-            if uri == expected_video_key:
-                return "https://s3.amazonaws.com/bucket/video.mp4"
-            return ""
-
-        with (
             patch(
-                f"{MODULE}.account_service.get_account_async",
+                f"{MODULE}.lookup_camera_video_segments",
                 new_callable=AsyncMock,
-                return_value=_mock_account(),
-            ),
-            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
-            patch(f"{MODULE}.map_uri_to_s3_url", side_effect=fake_map_uri_to_s3_url),
+                return_value=[],
+            ) as mock_lookup,
         ):
             repo = AsyncMock()
             repo.get_by_id_for_account.return_value = event_data
@@ -402,15 +716,35 @@ class TestGetStateChangeEvent:
                 include_video=True,
             )
 
-            assert result.video_url == "https://s3.amazonaws.com/bucket/video.mp4"
+            assert result.video_count == 0
+            mock_lookup.assert_awaited_once()
+            lookup_args = mock_lookup.await_args
+            assert lookup_args is not None
+            lookup_kwargs = lookup_args.kwargs
+            assert lookup_kwargs["start_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                5,
+                tzinfo=timezone.utc,
+            )
+            assert lookup_kwargs["end_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                6,
+                tzinfo=timezone.utc,
+            )
 
     @pytest.mark.asyncio
-    async def test_returns_none_for_non_string_video_url_metadata(self) -> None:
+    async def test_returns_empty_for_non_image_frame_key_when_included(self) -> None:
         session = AsyncMock()
         event_id = uuid.uuid4()
         event_data = _make_event_data(
             id=event_id,
-            event_metadata={"video_url": 123},
+            frame_s3_key="security/cameras/account/project/camera/video.mp4",
         )
 
         with (
@@ -420,7 +754,14 @@ class TestGetStateChangeEvent:
                 return_value=_mock_account(),
             ),
             patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
-            patch(f"{MODULE}.map_uri_to_s3_url") as mock_map_uri,
+            patch(
+                f"{MODULE}.map_uri_to_s3_url",
+                return_value="https://example.com/frame.jpg",
+            ),
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+            ) as mock_lookup,
         ):
             repo = AsyncMock()
             repo.get_by_id_for_account.return_value = event_data
@@ -437,8 +778,9 @@ class TestGetStateChangeEvent:
                 include_video=True,
             )
 
-            assert result.video_url is None
-            mock_map_uri.assert_not_called()
+            assert result.videos == []
+            assert result.video_count == 0
+            mock_lookup.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_not_found_raises(self) -> None:

@@ -11,6 +11,7 @@ from api.schemas.operations.vision_state_change_event import (
     CreateStateChangeEventRequest,
     ListStateChangeEventsResponse,
     StateChangeEventResponse,
+    StateChangeEventVideo,
     UpdateStateChangeEventRequest,
 )
 
@@ -136,7 +137,16 @@ class TestGetStateChangeEvent:
 
         session = AsyncMock()
         event_id = uuid.uuid4()
-        expected = _make_response(id=event_id, video_url="https://example.com/v.mp4")
+        video = StateChangeEventVideo(
+            s3_key=(
+                "security/cameras/account/project/camera/videos/"
+                "2026-06-23/2026-06-23_14-05-03.mp4"
+            ),
+            url="https://example.com/v.mp4",
+            segment_start_time=datetime(2026, 6, 23, 14, 5, 3, tzinfo=timezone.utc),
+            segment_end_time=datetime(2026, 6, 23, 14, 6, 3, tzinfo=timezone.utc),
+        )
+        expected = _make_response(id=event_id, videos=[video], video_count=1)
 
         with patch(
             f"{MODULE}.vision_event_service.get_state_change_event",
@@ -150,7 +160,8 @@ class TestGetStateChangeEvent:
                 include_video=True,
             )
 
-        assert result.video_url == "https://example.com/v.mp4"
+        assert result.video_count == 1
+        assert result.videos[0].url == "https://example.com/v.mp4"
         mock_get.assert_awaited_once_with(
             session=session,
             event_id=event_id,

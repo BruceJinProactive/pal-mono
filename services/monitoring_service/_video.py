@@ -9,7 +9,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+import re
 import tempfile
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import Any
 
@@ -26,6 +29,22 @@ ONE_MINUTE_VIDEO_SECONDS = 60.0
 ONE_MINUTE_VIDEO_MIN_SECONDS = 59.0
 ONE_MINUTE_VIDEO_MAX_SECONDS = 65.0
 END_FRAME_SAFETY_MARGIN_SECONDS = 0.5
+VIDEO_LOOKUP_PRESIGN_EXPIRES_SECONDS = 3600
+_VIDEO_FILENAME_RE = re.compile(
+    r"^(?P<timestamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})"
+    r"\.(?:mp4|mov|mkv|avi|webm)$",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class CameraVideoSegment:
+    """Presigned camera video segment discovered from archive storage."""
+
+    s3_key: str
+    url: str
+    segment_start_time: datetime
+    segment_end_time: datetime
 
 
 def _duration_seconds(container: Any, stream: Any) -> float:
@@ -190,6 +209,161 @@ def remux_to_mp4(src: bytes) -> bytes:
 # AWS Configuration (reuse same env vars as _llm.py)
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 AWS_ASSET_BUCKET_NAME = os.getenv("AWS_ASSET_BUCKET_NAME")
+
+
+def _create_video_s3_client() -> Any:
+    return (
+        boto3.client(
+            "s3",
+            region_name=AWS_REGION,
+            aws_access_key_id=os.getenv("LOCAL_AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("LOCAL_AWS_SECRET_ACCESS_KEY"),
+            aws_session_token=os.getenv("LOCAL_AWS_SESSION_TOKEN"),
+        )
+        if os.getenv("LOCAL_AWS_ACCESS_KEY_ID")
+        else boto3.client("s3", region_name=AWS_REGION)
+    )
+
+
+def _as_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _normalize_video_prefix(video_prefix: str) -> str:
+    return video_prefix if video_prefix.endswith("/") else f"{video_prefix}/"
+
+
+def _video_date_prefixes(
+    video_prefix: str,
+    start_time: datetime,
+    end_time: datetime,
+) -> list[str]:
+    prefix = _normalize_video_prefix(video_prefix)
+    current_date = start_time.date()
+    end_date = end_time.date()
+    prefixes: list[str] = []
+
+    while current_date <= end_date:
+        prefixes.append(f"{prefix}{current_date.isoformat()}/")
+        current_date += timedelta(days=1)
+
+    return prefixes
+
+
+def _parse_video_segment_start(s3_key: str) -> datetime | None:
+    filename = s3_key.rsplit("/", 1)[-1]
+    match = _VIDEO_FILENAME_RE.match(filename)
+    if match is None:
+        return None
+
+    try:
+        return datetime.strptime(
+            match.group("timestamp"),
+            "%Y-%m-%d_%H-%M-%S",
+        ).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _segments_overlap(
+    segment_start_time: datetime,
+    segment_end_time: datetime,
+    window_start_time: datetime,
+    window_end_time: datetime,
+) -> bool:
+    return segment_start_time < window_end_time and segment_end_time > window_start_time
+
+
+def _lookup_camera_video_segments_sync(
+    s3_client: Any,
+    bucket_name: str,
+    video_prefix: str,
+    start_time: datetime,
+    end_time: datetime,
+    segment_duration_seconds: float,
+) -> list[CameraVideoSegment]:
+    search_start_time = start_time - timedelta(seconds=segment_duration_seconds)
+    prefixes = _video_date_prefixes(video_prefix, search_start_time, end_time)
+    paginator = s3_client.get_paginator("list_objects_v2")
+    videos: list[CameraVideoSegment] = []
+
+    for prefix in prefixes:
+        for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+            for item in page.get("Contents", []):
+                key = item.get("Key")
+                if not isinstance(key, str):
+                    continue
+
+                segment_start_time = _parse_video_segment_start(key)
+                if segment_start_time is None:
+                    continue
+
+                segment_end_time = segment_start_time + timedelta(
+                    seconds=segment_duration_seconds
+                )
+                if not _segments_overlap(
+                    segment_start_time,
+                    segment_end_time,
+                    start_time,
+                    end_time,
+                ):
+                    continue
+
+                url = s3_client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": bucket_name, "Key": key},
+                    ExpiresIn=VIDEO_LOOKUP_PRESIGN_EXPIRES_SECONDS,
+                )
+                if not isinstance(url, str) or not url:
+                    continue
+
+                videos.append(
+                    CameraVideoSegment(
+                        s3_key=key,
+                        url=url,
+                        segment_start_time=segment_start_time,
+                        segment_end_time=segment_end_time,
+                    )
+                )
+
+    return sorted(videos, key=lambda video: (video.segment_start_time, video.s3_key))
+
+
+async def lookup_camera_video_segments(
+    video_prefix: str,
+    start_time: datetime,
+    end_time: datetime,
+    segment_duration_seconds: float = ONE_MINUTE_VIDEO_SECONDS,
+) -> list[CameraVideoSegment]:
+    """Find archived camera videos whose segment windows overlap the event window."""
+    bucket_name = AWS_ASSET_BUCKET_NAME
+    if not bucket_name:
+        logger.warning("[Video Lookup] AWS_ASSET_BUCKET_NAME is not configured")
+        return []
+    if segment_duration_seconds <= 0:
+        return []
+
+    window_start_time = _as_utc_datetime(start_time)
+    window_end_time = _as_utc_datetime(end_time)
+    if window_start_time >= window_end_time:
+        return []
+
+    s3_client = _create_video_s3_client()
+    try:
+        return await asyncio.to_thread(
+            _lookup_camera_video_segments_sync,
+            s3_client,
+            bucket_name,
+            video_prefix,
+            window_start_time,
+            window_end_time,
+            segment_duration_seconds,
+        )
+    except Exception as e:
+        logger.warning(f"[Video Lookup] Failed to find matching videos: {e}")
+        return []
 
 
 def _extract_frames_sync(

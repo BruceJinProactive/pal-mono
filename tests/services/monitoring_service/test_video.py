@@ -1,21 +1,45 @@
 """Tests for video frame extraction logic."""
 
 import base64
-from unittest.mock import MagicMock
+from datetime import datetime, timezone
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
 
 from services.monitoring_service._video import (
     _MP4_COMPATIBLE_CODECS,
+    _create_video_s3_client,
     _extract_frames_at_timestamps_sync,
     _extract_frames_sync,
+    _lookup_camera_video_segments_sync,
     _validate_one_minute_duration,
     download_video_bytes,
     extract_one_minute_video_frames_from_bytes,
     extract_video_frames,
+    lookup_camera_video_segments,
     remux_to_mp4,
 )
+
+
+def _mock_s3_client(
+    pages_by_call: list[list[dict[str, Any]]],
+) -> tuple[MagicMock, MagicMock]:
+    s3_client = MagicMock()
+    paginator = MagicMock()
+    paginator.paginate.side_effect = pages_by_call
+    s3_client.get_paginator.return_value = paginator
+
+    def fake_generate_presigned_url(
+        _client_method: str,
+        Params: dict[str, str],
+        ExpiresIn: int,
+    ) -> str:
+        return f"https://example.com/{ExpiresIn}/{Params['Key']}"
+
+    s3_client.generate_presigned_url.side_effect = fake_generate_presigned_url
+    return s3_client, paginator
 
 
 class TestExtractFramesSync:
@@ -944,3 +968,309 @@ class TestRemuxToMp4:
 
         mock_input_container.close.assert_called_once()
         mock_output_container.close.assert_called_once()
+
+
+class TestLookupCameraVideoSegments:
+    """Tests for archive video lookup by event window."""
+
+    def test_create_video_s3_client_uses_local_credentials(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker,
+    ) -> None:
+        monkeypatch.setenv("LOCAL_AWS_ACCESS_KEY_ID", "access-key")
+        monkeypatch.setenv("LOCAL_AWS_SECRET_ACCESS_KEY", "secret-key")
+        monkeypatch.setenv("LOCAL_AWS_SESSION_TOKEN", "session-token")
+        mock_client = MagicMock()
+        mock_boto_client = mocker.patch(
+            "services.monitoring_service._video.boto3.client",
+            return_value=mock_client,
+        )
+
+        result = _create_video_s3_client()
+
+        assert result is mock_client
+        mock_boto_client.assert_called_once_with(
+            "s3",
+            region_name="us-east-1",
+            aws_access_key_id="access-key",
+            aws_secret_access_key="secret-key",
+            aws_session_token="session-token",
+        )
+
+    def test_includes_timestamped_videos_with_nonzero_seconds(self) -> None:
+        s3_client, _paginator = _mock_s3_client(
+            [
+                [
+                    {
+                        "Contents": [
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-06-23_14-04-37.mp4"
+                                )
+                            },
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-06-23_14-05-03.mp4"
+                                )
+                            },
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-06-23_14-22-03.mp4"
+                                )
+                            },
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-06-23_14-22-43.mp4"
+                                )
+                            },
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/not-a-timestamp.mp4"
+                                )
+                            },
+                        ]
+                    }
+                ]
+            ]
+        )
+
+        videos = _lookup_camera_video_segments_sync(
+            s3_client=s3_client,
+            bucket_name="bucket",
+            video_prefix="security/cameras/account/project/camera/videos/",
+            start_time=datetime(2026, 6, 23, 14, 5, 37, tzinfo=timezone.utc),
+            end_time=datetime(2026, 6, 23, 14, 22, 43, tzinfo=timezone.utc),
+            segment_duration_seconds=60.0,
+        )
+
+        assert [video.s3_key.rsplit("/", 1)[-1] for video in videos] == [
+            "2026-06-23_14-05-03.mp4",
+            "2026-06-23_14-22-03.mp4",
+        ]
+        assert videos[0].segment_start_time == datetime(
+            2026,
+            6,
+            23,
+            14,
+            5,
+            3,
+            tzinfo=timezone.utc,
+        )
+        assert videos[0].url.endswith("2026-06-23_14-05-03.mp4")
+
+    def test_lists_previous_day_for_segments_that_overlap_midnight(self) -> None:
+        s3_client, paginator = _mock_s3_client(
+            [
+                [
+                    {
+                        "Contents": [
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-06-23_23-59-30.mp4"
+                                )
+                            }
+                        ]
+                    }
+                ],
+                [
+                    {
+                        "Contents": [
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-24/2026-06-24_00-00-30.mp4"
+                                )
+                            }
+                        ]
+                    }
+                ],
+            ]
+        )
+
+        videos = _lookup_camera_video_segments_sync(
+            s3_client=s3_client,
+            bucket_name="bucket",
+            video_prefix="security/cameras/account/project/camera/videos",
+            start_time=datetime(2026, 6, 24, 0, 0, 15, tzinfo=timezone.utc),
+            end_time=datetime(2026, 6, 24, 0, 1, 15, tzinfo=timezone.utc),
+            segment_duration_seconds=60.0,
+        )
+
+        assert len(videos) == 2
+        assert (
+            paginator.paginate.call_args_list[0]
+            .kwargs["Prefix"]
+            .endswith("videos/2026-06-23/")
+        )
+        assert (
+            paginator.paginate.call_args_list[1]
+            .kwargs["Prefix"]
+            .endswith("videos/2026-06-24/")
+        )
+
+    def test_skips_invalid_keys_and_unusable_presigned_urls(self) -> None:
+        s3_client, _paginator = _mock_s3_client(
+            [
+                [
+                    {
+                        "Contents": [
+                            {"Key": None},
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-13-23_14-05-03.mp4"
+                                )
+                            },
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-06-23_14-05-03.mp4"
+                                )
+                            },
+                        ]
+                    }
+                ]
+            ]
+        )
+        s3_client.generate_presigned_url.return_value = ""
+        s3_client.generate_presigned_url.side_effect = None
+
+        videos = _lookup_camera_video_segments_sync(
+            s3_client=s3_client,
+            bucket_name="bucket",
+            video_prefix="security/cameras/account/project/camera/videos/",
+            start_time=datetime(2026, 6, 23, 14, 5, tzinfo=timezone.utc),
+            end_time=datetime(2026, 6, 23, 14, 6, tzinfo=timezone.utc),
+            segment_duration_seconds=60.0,
+        )
+
+        assert videos == []
+
+    @pytest.mark.asyncio
+    async def test_async_lookup_returns_empty_without_bucket(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            None,
+        )
+
+        videos = await lookup_camera_video_segments(
+            video_prefix="security/cameras/account/project/camera/videos/",
+            start_time=datetime(2026, 6, 23, 14, 5, tzinfo=timezone.utc),
+            end_time=datetime(2026, 6, 23, 14, 6, tzinfo=timezone.utc),
+        )
+
+        assert videos == []
+
+    @pytest.mark.asyncio
+    async def test_async_lookup_returns_empty_for_invalid_duration(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "bucket",
+        )
+
+        videos = await lookup_camera_video_segments(
+            video_prefix="security/cameras/account/project/camera/videos/",
+            start_time=datetime(2026, 6, 23, 14, 5, tzinfo=timezone.utc),
+            end_time=datetime(2026, 6, 23, 14, 6, tzinfo=timezone.utc),
+            segment_duration_seconds=0,
+        )
+
+        assert videos == []
+
+    @pytest.mark.asyncio
+    async def test_async_lookup_returns_empty_for_invalid_window(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "bucket",
+        )
+
+        videos = await lookup_camera_video_segments(
+            video_prefix="security/cameras/account/project/camera/videos/",
+            start_time=datetime(2026, 6, 23, 14, 5, tzinfo=timezone.utc),
+            end_time=datetime(2026, 6, 23, 14, 5, tzinfo=timezone.utc),
+        )
+
+        assert videos == []
+
+    @pytest.mark.asyncio
+    async def test_async_lookup_normalizes_times_and_delegates(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker,
+    ) -> None:
+        monkeypatch.setattr(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "bucket",
+        )
+        s3_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._video._create_video_s3_client",
+            return_value=s3_client,
+        )
+        mock_to_thread = mocker.patch(
+            "services.monitoring_service._video.asyncio.to_thread",
+            new_callable=AsyncMock,
+            return_value=[],
+        )
+
+        videos = await lookup_camera_video_segments(
+            video_prefix="security/cameras/account/project/camera/videos/",
+            start_time=datetime(2026, 6, 23, 14, 5),
+            end_time=datetime(2026, 6, 23, 14, 6, tzinfo=timezone.utc),
+        )
+
+        assert videos == []
+        mock_to_thread.assert_awaited_once()
+        call_args = mock_to_thread.await_args
+        assert call_args is not None
+        assert call_args.args[1] is s3_client
+        assert call_args.args[2] == "bucket"
+        assert call_args.args[4] == datetime(
+            2026,
+            6,
+            23,
+            14,
+            5,
+            tzinfo=timezone.utc,
+        )
+
+    @pytest.mark.asyncio
+    async def test_async_lookup_returns_empty_when_lookup_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker,
+    ) -> None:
+        monkeypatch.setattr(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "bucket",
+        )
+        mocker.patch("services.monitoring_service._video._create_video_s3_client")
+        mocker.patch(
+            "services.monitoring_service._video.asyncio.to_thread",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("s3 failed"),
+        )
+
+        videos = await lookup_camera_video_segments(
+            video_prefix="security/cameras/account/project/camera/videos/",
+            start_time=datetime(2026, 6, 23, 14, 5, tzinfo=timezone.utc),
+            end_time=datetime(2026, 6, 23, 14, 6, tzinfo=timezone.utc),
+        )
+
+        assert videos == []

@@ -58,6 +58,19 @@ class UpdateStateChangeEventRequest(BaseModel):
     )
 
 
+class StateChangeEventVideo(BaseModel):
+    """Presigned video segment associated with a state change event."""
+
+    s3_key: str = Field(..., description="S3 key of the matching video segment")
+    url: str = Field(..., description="Presigned URL for the video segment")
+    segment_start_time: datetime = Field(
+        ..., description="Timestamp parsed from the video filename"
+    )
+    segment_end_time: datetime = Field(
+        ..., description="End timestamp inferred from the segment duration"
+    )
+
+
 class StateChangeEventResponse(BaseModel):
     """Response model for a vision state change event."""
 
@@ -71,9 +84,13 @@ class StateChangeEventResponse(BaseModel):
     previous_state_id: uuid.UUID | None
     confidence: float | None
     frame_s3_key: str | None
-    video_url: str | None = Field(
-        default=None,
-        description="Presigned video URL associated with the event, when available",
+    videos: list[StateChangeEventVideo] = Field(
+        default_factory=list,
+        description="Presigned video segments associated with the event",
+    )
+    video_count: int = Field(
+        default=0,
+        description="Number of video segments returned",
     )
     event_metadata: dict[str, Any]
     is_test: bool | None = Field(

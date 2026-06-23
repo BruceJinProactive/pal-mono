@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,7 @@ from api.schemas.operations.vision_state_change_event import (
     CreateStateChangeEventRequest,
     ListStateChangeEventsResponse,
     StateChangeEventResponse,
+    StateChangeEventVideo,
     UpdateStateChangeEventRequest,
 )
 from db.pal_repository import (
@@ -23,6 +24,11 @@ from db.pal_repository.data_classes.vision_state_change_event import (
 )
 from services import account_service
 from services.asset_service._utils import map_uri_to_s3_url
+from services.monitoring_service._video import (
+    ONE_MINUTE_VIDEO_SECONDS,
+    CameraVideoSegment,
+    lookup_camera_video_segments,
+)
 from services.vision_observation_service._workflow import handle_state_change_rules
 from utils.log import logger
 
@@ -43,36 +49,128 @@ async def _presign_frame_s3_key(frame_s3_key: str | None) -> str | None:
     return await _presign_asset_uri(frame_s3_key)
 
 
-def _metadata_video_url(metadata: dict[str, Any]) -> str | None:
-    video_url = metadata.get("video_url")
-    return video_url if isinstance(video_url, str) else None
+def _parse_metadata_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
 
 
-def _video_uri_for_frame_s3_key(frame_s3_key: str | None) -> str | None:
+def _parse_metadata_duration_seconds(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float) and value > 0:
+        return float(value)
+    if isinstance(value, str):
+        try:
+            parsed_value = float(value)
+        except ValueError:
+            return None
+        return parsed_value if parsed_value > 0 else None
+    return None
+
+
+def _metadata_datetime(
+    metadata: dict[str, Any],
+    keys: tuple[str, ...],
+) -> datetime | None:
+    for key in keys:
+        parsed_value = _parse_metadata_datetime(metadata.get(key))
+        if parsed_value is not None:
+            return parsed_value
+    return None
+
+
+def _metadata_duration_seconds(metadata: dict[str, Any]) -> float | None:
+    for key in ("duration_seconds", "duration", "event_duration_seconds"):
+        parsed_value = _parse_metadata_duration_seconds(metadata.get(key))
+        if parsed_value is not None:
+            return parsed_value
+    return None
+
+
+def _as_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _video_prefix_for_frame_s3_key(frame_s3_key: str | None) -> str | None:
     if not frame_s3_key or "/images/" not in frame_s3_key:
         return None
 
-    path, filename = frame_s3_key.rsplit("/", 1)
-    stem, _, _extension = filename.rpartition(".")
-    try:
-        captured_at = datetime.strptime(stem, "%Y-%m-%d_%H-%M-%S")
-    except ValueError:
-        return None
-
-    video_start = captured_at.replace(second=0, microsecond=0)
-    video_path = path.replace("/images/", "/videos/", 1)
-    video_filename = f"{video_start.strftime('%Y-%m-%d_%H-%M')}-00.mp4"
-    return f"{video_path}/{video_filename}"
+    camera_prefix, _separator, _image_path = frame_s3_key.partition("/images/")
+    return f"{camera_prefix}/videos/"
 
 
-async def _video_url_for_event(
+def _video_window_for_event(
     data: VisionStateChangeEventData,
     metadata: dict[str, Any],
-) -> str | None:
-    video_uri = _metadata_video_url(metadata) or _video_uri_for_frame_s3_key(
-        data.frame_s3_key
+) -> tuple[datetime, datetime]:
+    start_time = _metadata_datetime(
+        metadata,
+        (
+            "start_time",
+            "event_start_time",
+            "duration_start_time",
+            "duration_started_at",
+        ),
     )
-    return await _presign_asset_uri(video_uri)
+    end_time = _metadata_datetime(
+        metadata,
+        ("end_time", "event_end_time", "duration_end_time", "duration_ended_at"),
+    )
+    duration_seconds = _metadata_duration_seconds(metadata)
+
+    if start_time is not None:
+        window_start_time = _as_utc_datetime(start_time)
+        if end_time is not None:
+            window_end_time = _as_utc_datetime(end_time)
+            if window_start_time < window_end_time:
+                return window_start_time, window_end_time
+        if duration_seconds is not None:
+            return (
+                window_start_time,
+                window_start_time + timedelta(seconds=duration_seconds),
+            )
+
+    observed_at = _as_utc_datetime(data.observed_at)
+    window_start_time = observed_at.replace(second=0, microsecond=0)
+    window_duration_seconds = duration_seconds or ONE_MINUTE_VIDEO_SECONDS
+    return (
+        window_start_time,
+        window_start_time + timedelta(seconds=window_duration_seconds),
+    )
+
+
+def _video_response(segment: CameraVideoSegment) -> StateChangeEventVideo:
+    return StateChangeEventVideo(
+        s3_key=segment.s3_key,
+        url=segment.url,
+        segment_start_time=segment.segment_start_time,
+        segment_end_time=segment.segment_end_time,
+    )
+
+
+async def _videos_for_event(
+    data: VisionStateChangeEventData,
+    metadata: dict[str, Any],
+) -> list[StateChangeEventVideo]:
+    video_prefix = _video_prefix_for_frame_s3_key(data.frame_s3_key)
+    if video_prefix is None:
+        return []
+
+    start_time, end_time = _video_window_for_event(data, metadata)
+    segments = await lookup_camera_video_segments(
+        video_prefix=video_prefix,
+        start_time=start_time,
+        end_time=end_time,
+    )
+    return [_video_response(segment) for segment in segments]
 
 
 async def _build_response(
@@ -81,7 +179,7 @@ async def _build_response(
 ) -> StateChangeEventResponse:
     frame_url = await _presign_frame_s3_key(data.frame_s3_key)
     metadata = data.event_metadata
-    video_url = await _video_url_for_event(data, metadata) if include_video else None
+    videos = await _videos_for_event(data, metadata) if include_video else []
     return StateChangeEventResponse(
         id=data.id,
         entity_id=data.entity_id,
@@ -91,7 +189,8 @@ async def _build_response(
         previous_state_id=data.previous_state_id,
         confidence=data.confidence,
         frame_s3_key=frame_url,
-        video_url=video_url,
+        videos=videos,
+        video_count=len(videos),
         event_metadata=metadata,
         is_test=metadata.get("is_test"),
         test_group=metadata.get("test_group"),
