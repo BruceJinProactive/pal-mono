@@ -111,3 +111,12 @@ class ClientOnboardingSlackHandoffResult:
     posted_message: bool
     message_ts: str | None = None
     skipped_reason: str | None = None
+
+
+@dataclass
+class ClientOnboardingNotionSyncResult:
+    lifecycle_id: UUID
+    notion_page_id: str | None
+    created_page: bool
+    updated_page: bool
+    skipped_reason: str | None = None

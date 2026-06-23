@@ -421,6 +421,25 @@ class ClientOnboardingRepository:
             logger.exception(f"Error setting client onboarding Slack channel id: {exc}")
             raise
 
+    def set_notion_page_id(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        notion_page_id: str,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            lifecycle = self._require_lifecycle(lifecycle_id)
+            lifecycle.notion_page_id = notion_page_id
+            lifecycle.updated_at = occurred_at or datetime.now(timezone.utc)
+            self.session.flush()
+            self.session.refresh(lifecycle)
+            return lifecycle
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error setting client onboarding Notion page id: {exc}")
+            raise
+
     def append_activity(
         self,
         *,
@@ -1034,6 +1053,25 @@ class ClientOnboardingRepositoryAsync:
         except SQLAlchemyError as exc:
             await self.session.rollback()
             logger.exception(f"Error setting client onboarding Slack channel id: {exc}")
+            raise
+
+    async def set_notion_page_id(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        notion_page_id: str,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            lifecycle = await self._require_lifecycle(lifecycle_id)
+            lifecycle.notion_page_id = notion_page_id
+            lifecycle.updated_at = occurred_at or datetime.now(timezone.utc)
+            await self.session.flush()
+            await self.session.refresh(lifecycle)
+            return lifecycle
+        except SQLAlchemyError as exc:
+            await self.session.rollback()
+            logger.exception(f"Error setting client onboarding Notion page id: {exc}")
             raise
 
     async def append_activity(

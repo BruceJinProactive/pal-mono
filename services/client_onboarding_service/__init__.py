@@ -9,6 +9,7 @@ from .schema import (
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
+    ClientOnboardingNotionSyncResult,
     ClientOnboardingSlackHandoffResult,
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
@@ -87,11 +88,21 @@ def sync_client_onboarding_slack_handoff(
     return _sync(session=session, lifecycle_id=lifecycle_id)
 
 
+def sync_client_onboarding_notion_cmd_entry(
+    session: Session,
+    lifecycle_id: UUID,
+) -> ClientOnboardingNotionSyncResult:
+    from ._implementation import sync_client_onboarding_notion_cmd_entry as _sync
+
+    return _sync(session=session, lifecycle_id=lifecycle_id)
+
+
 __all__ = [
     "ClientOnboardingFolkSyncResult",
     "ClientOnboardingInviteInvalidError",
     "ClientOnboardingInviteNotFoundError",
     "ClientOnboardingInviteStepResult",
+    "ClientOnboardingNotionSyncResult",
     "ClientOnboardingSlackHandoffResult",
     "CreateClientOnboardingAccountParams",
     "CreateClientOnboardingAccountResult",
@@ -104,5 +115,6 @@ __all__ = [
     "mark_client_onboarding_password_set",
     "reconcile_client_onboarding_docusign_completion",
     "sync_client_onboarding_contract_acceptance_to_folk",
+    "sync_client_onboarding_notion_cmd_entry",
     "sync_client_onboarding_slack_handoff",
 ]

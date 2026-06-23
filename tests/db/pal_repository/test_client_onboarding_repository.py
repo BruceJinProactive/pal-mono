@@ -620,6 +620,40 @@ def test_set_slack_channel_id_rolls_back_on_sqlalchemy_error() -> None:
     session.rollback.assert_called_once()
 
 
+def test_set_notion_page_id_updates_existing_lifecycle() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_signed,
+    )
+    session = MagicMock()
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.set_notion_page_id(
+        LIFECYCLE_ID,
+        notion_page_id="notion-page-123",
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.notion_page_id == "notion-page-123"
+    assert lifecycle.updated_at == OCCURRED_AT
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
+def test_set_notion_page_id_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.get.return_value = _lifecycle()
+    session.flush.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.set_notion_page_id(LIFECYCLE_ID, notion_page_id="notion-page-123")
+
+    session.rollback.assert_called_once()
+
+
 def test_append_activity_defaults_payloads_and_persists_activity() -> None:
     session = MagicMock()
     repo = ClientOnboardingRepository(session)
@@ -1278,6 +1312,47 @@ def test_async_set_slack_channel_id_rolls_back_on_sqlalchemy_error() -> None:
 
     with pytest.raises(SQLAlchemyError):
         asyncio.run(repo.set_slack_channel_id(LIFECYCLE_ID, slack_channel_id="C123"))
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_set_notion_page_id_updates_existing_lifecycle() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_signed,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.set_notion_page_id(
+            LIFECYCLE_ID,
+            notion_page_id="notion-page-123",
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.notion_page_id == "notion-page-123"
+    assert lifecycle.updated_at == OCCURRED_AT
+    session.flush.assert_awaited_once()
+    session.refresh.assert_awaited_once_with(lifecycle)
+
+
+def test_async_set_notion_page_id_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.get = AsyncMock(return_value=_lifecycle())
+    session.flush = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(
+            repo.set_notion_page_id(LIFECYCLE_ID, notion_page_id="notion-page-123")
+        )
 
     session.rollback.assert_awaited_once()
 

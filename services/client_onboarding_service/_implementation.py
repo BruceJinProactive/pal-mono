@@ -35,6 +35,12 @@ from db.tables.types import AccountUserStatus, InvitationStatus
 from services import account_service
 from services.account_service import AccountParams
 from services.auth_types import UserContext
+from services.folk_notion_sync._mapping import (
+    CompanyProjection,
+    DealProjection,
+    build_notion_properties,
+    select_property,
+)
 from utils.log import logger
 
 from .schema import (
@@ -42,6 +48,7 @@ from .schema import (
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
+    ClientOnboardingNotionSyncResult,
     ClientOnboardingSlackHandoffResult,
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
@@ -64,6 +71,7 @@ POST_PASSWORD_STATUSES = {
 DATABASE_CONTRACT_ACCEPTANCE_JOB_TYPE = "record_contract_acceptance"
 FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE = "update_contract_acceptance"
 SLACK_HANDOFF_JOB_TYPE = "create_handoff_channel"
+NOTION_CMD_ENTRY_JOB_TYPE = "upsert_cmd_entry"
 T = TypeVar("T")
 
 
@@ -117,6 +125,22 @@ class SlackHandoffClient(Protocol):
     ) -> str | None: ...
 
 
+class NotionCmdEntryClient(Protocol):
+    async def find_page(self, company: CompanyProjection) -> dict[str, Any] | None: ...
+
+    async def create_page(
+        self,
+        properties: dict[str, Any],
+        children: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]: ...
+
+    async def update_page(
+        self,
+        page_id: str,
+        properties: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+
 @dataclass(frozen=True)
 class _OwnerContact:
     role: str
@@ -147,6 +171,13 @@ class _SlackHandoffOutcome:
     unresolved_owner_user_ids: list[str]
     message_ts: str | None
     invite_error: str | None = None
+
+
+@dataclass(frozen=True)
+class _NotionCmdEntryOutcome:
+    notion_page_id: str
+    created_page: bool
+    updated_page: bool
 
 
 def create_client_onboarding_account(
@@ -500,6 +531,7 @@ def reconcile_client_onboarding_docusign_completion(
             )
             session.commit()
             _attempt_post_signature_slack_handoff(session, lifecycle.id)
+            _attempt_post_signature_notion_cmd_entry(session, lifecycle.id)
         elif lifecycle.status not in POST_SIGNATURE_STATUSES:
             raise ClientOnboardingInviteInvalidError(
                 f"DocuSign completion cannot advance lifecycle from {lifecycle.status.value}"
@@ -523,6 +555,20 @@ def _attempt_post_signature_slack_handoff(
     except Exception:
         logger.exception(
             "Client onboarding Slack handoff failed after DocuSign completion",
+            extra={"lifecycle_id": str(lifecycle_id)},
+        )
+        return
+
+
+def _attempt_post_signature_notion_cmd_entry(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+) -> None:
+    try:
+        sync_client_onboarding_notion_cmd_entry(session, lifecycle_id)
+    except Exception:
+        logger.exception(
+            "Client onboarding Notion CMD sync failed after DocuSign completion",
             extra={"lifecycle_id": str(lifecycle_id)},
         )
         return
@@ -790,6 +836,116 @@ def sync_client_onboarding_slack_handoff(
     )
 
 
+def sync_client_onboarding_notion_cmd_entry(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+    *,
+    notion_client: NotionCmdEntryClient | None = None,
+) -> ClientOnboardingNotionSyncResult:
+    onboarding_repo = ClientOnboardingRepository(session)
+    lifecycle = onboarding_repo.get_by_id(lifecycle_id)
+    if not lifecycle:
+        raise ClientOnboardingInviteNotFoundError(
+            "Client onboarding lifecycle not found"
+        )
+    if lifecycle.status not in POST_SIGNATURE_STATUSES:
+        raise ClientOnboardingInviteInvalidError(
+            "DocuSign completion is required before creating the Notion CMD entry"
+        )
+    if lifecycle.docusign_signed_at is None:
+        raise ClientOnboardingInviteInvalidError(
+            "Client onboarding lifecycle is missing DocuSign signed timestamp"
+        )
+
+    job = onboarding_repo.upsert_sync_job(
+        lifecycle_id=lifecycle.id,
+        target=ClientOnboardingSyncTarget.notion,
+        job_type=NOTION_CMD_ENTRY_JOB_TYPE,
+        idempotency_key=_post_signature_sync_idempotency_key(
+            lifecycle,
+            ClientOnboardingSyncTarget.notion,
+            NOTION_CMD_ENTRY_JOB_TYPE,
+        ),
+        payload=_post_signature_sync_payload(lifecycle),
+    )
+    if job.status in {
+        ClientOnboardingSyncJobStatus.completed,
+        ClientOnboardingSyncJobStatus.cancelled,
+    }:
+        result_payload = job.result_payload or {}
+        return ClientOnboardingNotionSyncResult(
+            lifecycle_id=lifecycle.id,
+            notion_page_id=_payload_text(result_payload, "notion_page_id")
+            or lifecycle.notion_page_id,
+            created_page=result_payload.get("created_page") is True,
+            updated_page=result_payload.get("updated_page") is True,
+            skipped_reason=(
+                "Notion CMD sync job is cancelled"
+                if job.status == ClientOnboardingSyncJobStatus.cancelled
+                else None
+            ),
+        )
+
+    try:
+        owner_contacts = _resolve_handoff_owner_contacts(session, lifecycle)
+        client = notion_client or _build_notion_cmd_entry_client()
+        outcome = _run_async(
+            _upsert_notion_cmd_entry(
+                client,
+                lifecycle,
+                owner_contacts,
+            )
+        )
+        if lifecycle.notion_page_id != outcome.notion_page_id:
+            lifecycle = onboarding_repo.set_notion_page_id(
+                lifecycle.id,
+                notion_page_id=outcome.notion_page_id,
+            )
+    except Exception as exc:
+        onboarding_repo.mark_sync_job_failed(
+            job.id,
+            last_error=str(exc),
+            result_payload={"error": str(exc)},
+        )
+        onboarding_repo.append_activity(
+            lifecycle_id=lifecycle.id,
+            activity_type="notion_cmd_entry_sync_failed",
+            actor_type=ClientOnboardingActorType.system,
+            source=ClientOnboardingActivitySource.notion,
+            description="Notion CMD entry sync failed",
+            payload_diff={"sync_job_id": str(job.id), "error": str(exc)},
+        )
+        session.commit()
+        raise
+
+    result_payload = {
+        "notion_page_id": outcome.notion_page_id,
+        "created_page": outcome.created_page,
+        "updated_page": outcome.updated_page,
+    }
+    onboarding_repo.mark_sync_job_completed(job.id, result_payload=result_payload)
+    onboarding_repo.append_activity(
+        lifecycle_id=lifecycle.id,
+        activity_type="notion_cmd_entry_synced",
+        actor_type=ClientOnboardingActorType.system,
+        source=ClientOnboardingActivitySource.notion,
+        description="Notion Client Master Database entry synced",
+        payload_diff={
+            "sync_job_id": str(job.id),
+            "notion_page_id": outcome.notion_page_id,
+            "created_page": outcome.created_page,
+            "updated_page": outcome.updated_page,
+        },
+    )
+    session.commit()
+    return ClientOnboardingNotionSyncResult(
+        lifecycle_id=lifecycle.id,
+        notion_page_id=outcome.notion_page_id,
+        created_page=outcome.created_page,
+        updated_page=outcome.updated_page,
+    )
+
+
 def _attach_ae_as_owner(
     session: Session,
     account: Account,
@@ -952,6 +1108,18 @@ def _enqueue_post_signature_sync_jobs(
         payload=payload,
         available_at=occurred_at,
     )
+    onboarding_repo.upsert_sync_job(
+        lifecycle_id=lifecycle.id,
+        target=ClientOnboardingSyncTarget.notion,
+        job_type=NOTION_CMD_ENTRY_JOB_TYPE,
+        idempotency_key=_post_signature_sync_idempotency_key(
+            lifecycle,
+            ClientOnboardingSyncTarget.notion,
+            NOTION_CMD_ENTRY_JOB_TYPE,
+        ),
+        payload=payload,
+        available_at=occurred_at,
+    )
 
 
 def _post_signature_sync_idempotency_key(
@@ -1039,6 +1207,212 @@ async def _update_folk_contract_acceptance(
         await client.update_contact(lifecycle.folk_contact_id, payload)
         updated_contact = True
     return updated_company, updated_contact
+
+
+def _build_notion_cmd_entry_client() -> NotionCmdEntryClient:
+    from services.folk_notion_sync._notion import NotionDataSourceClient
+    from services.folk_notion_sync._settings import get_folk_notion_sync_settings
+
+    return NotionDataSourceClient(get_folk_notion_sync_settings())
+
+
+async def _upsert_notion_cmd_entry(
+    client: NotionCmdEntryClient,
+    lifecycle: ClientOnboardingLifecycle,
+    owner_contacts: list[_OwnerContact],
+) -> _NotionCmdEntryOutcome:
+    company = _notion_company_projection(lifecycle, owner_contacts)
+    if lifecycle.notion_page_id:
+        await _update_existing_notion_cmd_entry(
+            client, lifecycle.notion_page_id, lifecycle
+        )
+        return _NotionCmdEntryOutcome(
+            notion_page_id=lifecycle.notion_page_id,
+            created_page=False,
+            updated_page=True,
+        )
+
+    page = await client.find_page(company)
+    if page is not None:
+        page_id = _notion_page_id_from_response(page)
+        await _update_existing_notion_cmd_entry(client, page_id, lifecycle)
+        return _NotionCmdEntryOutcome(
+            notion_page_id=page_id,
+            created_page=False,
+            updated_page=True,
+        )
+
+    created_page = await client.create_page(
+        _notion_cmd_entry_create_properties(lifecycle, company),
+        children=_notion_cmd_entry_children(lifecycle, owner_contacts),
+    )
+    return _NotionCmdEntryOutcome(
+        notion_page_id=_notion_page_id_from_response(created_page),
+        created_page=True,
+        updated_page=False,
+    )
+
+
+async def _update_existing_notion_cmd_entry(
+    client: NotionCmdEntryClient,
+    page_id: str,
+    lifecycle: ClientOnboardingLifecycle,
+) -> None:
+    properties = _notion_cmd_entry_update_properties(lifecycle)
+    if properties:
+        await client.update_page(page_id, properties)
+
+
+def _notion_cmd_entry_create_properties(
+    lifecycle: ClientOnboardingLifecycle,
+    company: CompanyProjection,
+) -> dict[str, Any]:
+    properties = build_notion_properties(
+        company,
+        source="client_onboarding",
+        include_title=True,
+    )
+    if lifecycle.manage_app_account_name:
+        properties["account_name"] = select_property(lifecycle.manage_app_account_name)
+    return properties
+
+
+def _notion_cmd_entry_update_properties(
+    lifecycle: ClientOnboardingLifecycle,
+) -> dict[str, Any]:
+    properties: dict[str, Any] = {}
+    if lifecycle.manage_app_account_name:
+        properties["account_name"] = select_property(lifecycle.manage_app_account_name)
+    return properties
+
+
+def _notion_company_projection(
+    lifecycle: ClientOnboardingLifecycle,
+    owner_contacts: list[_OwnerContact],
+) -> CompanyProjection:
+    deal = DealProjection(
+        id="",
+        name=lifecycle.client_company_name,
+        company_id=lifecycle.folk_company_id or "",
+        company_name=lifecycle.client_company_name,
+        stage="6. Onboarding",
+        ae=_owner_contact_name(owner_contacts, "AE"),
+        fde=_owner_contact_name(owner_contacts, "FDE"),
+        product="",
+        vendors="",
+        total_locations="",
+        deal_locations="",
+        live_locations="",
+        contract_signed_date=_optional_date(lifecycle.docusign_signed_at) or "",
+        go_live_date="",
+        lead_source="",
+        billing_details="",
+        billing_method="",
+        billing_status="",
+        brand_structure="",
+        key_account="",
+        carr="",
+        price_per_month_per_location="",
+    )
+    return CompanyProjection(
+        key=lifecycle.folk_company_id or str(lifecycle.id),
+        name=lifecycle.client_company_name,
+        company_id=lifecycle.folk_company_id or "",
+        deals=[deal],
+        industry="",
+        cuisine_type="",
+        description="",
+        addresses="",
+        emails=lifecycle.signer_email,
+        phones="",
+        urls="",
+        primary_contacts=_signer_label(lifecycle),
+    )
+
+
+def _notion_cmd_entry_children(
+    lifecycle: ClientOnboardingLifecycle,
+    owner_contacts: list[_OwnerContact],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "text": {"content": "Client onboarding handoff"},
+                    }
+                ]
+            },
+        },
+        {
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "text": {
+                            "content": _notion_cmd_entry_summary(
+                                lifecycle,
+                                owner_contacts,
+                            )
+                        },
+                    }
+                ]
+            },
+        },
+    ]
+
+
+def _notion_cmd_entry_summary(
+    lifecycle: ClientOnboardingLifecycle,
+    owner_contacts: list[_OwnerContact],
+) -> str:
+    values = {
+        "Manage App account": _manage_app_account_label(lifecycle),
+        "Signer": _signer_label(lifecycle),
+        "Signed at": _optional_datetime(lifecycle.docusign_signed_at),
+        "Contract type": lifecycle.contract_type.value,
+        "DocuSign envelope": lifecycle.docusign_envelope_id,
+        "DocuSign contract": lifecycle.docusign_contract_id,
+        "DocuSign URL": lifecycle.docusign_contract_url,
+        "Scoping doc": lifecycle.scoping_doc_url,
+        "Slack channel ID": lifecycle.slack_channel_id,
+        "Folk company ID": lifecycle.folk_company_id,
+        "Folk contact ID": lifecycle.folk_contact_id,
+        "Owners": _notion_owner_summary(owner_contacts),
+    }
+    lines = [f"{key}: {value}" for key, value in values.items() if value]
+    return "\n".join(lines)[:2000]
+
+
+def _notion_page_id_from_response(response: dict[str, Any]) -> str:
+    page_id = response.get("id")
+    if not isinstance(page_id, str) or not page_id.strip():
+        raise RuntimeError("Notion page response did not include page id")
+    return page_id
+
+
+def _notion_owner_summary(owner_contacts: list[_OwnerContact]) -> str | None:
+    values: list[str] = []
+    for owner in owner_contacts:
+        if owner.name:
+            values.append(f"{owner.role}: {owner.name}")
+        elif owner.email:
+            values.append(f"{owner.role}: {owner.email}")
+        else:
+            values.append(f"{owner.role}: {owner.user_id}")
+    return " | ".join(values) if values else None
+
+
+def _owner_contact_name(owner_contacts: list[_OwnerContact], role: str) -> str:
+    for owner in owner_contacts:
+        if owner.role == role:
+            return owner.name or owner.email or ""
+    return ""
 
 
 def _build_slack_handoff_client() -> SlackHandoffClient:

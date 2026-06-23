@@ -28,6 +28,7 @@ from services.client_onboarding_service.schema import (
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
+    ClientOnboardingNotionSyncResult,
     ClientOnboardingSlackHandoffResult,
     CreateClientOnboardingAccountParams,
     CreateClientOnboardingAccountResult,
@@ -869,6 +870,10 @@ def test_reconcile_client_onboarding_docusign_completion_records_signed_event(
         svc,
         "sync_client_onboarding_slack_handoff",
     )
+    notion_sync = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_notion_cmd_entry",
+    )
     params = ReconcileClientOnboardingDocusignCompletionParams(
         docusign_envelope_id=" envelope-123 ",
         signer_email="Signer@Example.com",
@@ -906,13 +911,16 @@ def test_reconcile_client_onboarding_docusign_completion_records_signed_event(
         ClientOnboardingSyncTarget.database,
         ClientOnboardingSyncTarget.folk,
         ClientOnboardingSyncTarget.slack,
+        ClientOnboardingSyncTarget.notion,
     ]
     assert upsert_calls[0].kwargs["job_type"] == "record_contract_acceptance"
     assert upsert_calls[1].kwargs["job_type"] == "update_contract_acceptance"
     assert upsert_calls[2].kwargs["job_type"] == "create_handoff_channel"
+    assert upsert_calls[3].kwargs["job_type"] == "upsert_cmd_entry"
     assert upsert_calls[1].kwargs["payload"]["folk_company_id"] == "folk-company-123"
     deps["onboarding_repo"].mark_sync_job_completed.assert_called_once()
     slack_handoff.assert_called_once_with(session, LIFECYCLE_ID)
+    notion_sync.assert_called_once_with(session, LIFECYCLE_ID)
     session.commit.assert_called_once()
 
 
@@ -926,6 +934,10 @@ def test_reconcile_client_onboarding_docusign_completion_continues_when_slack_ha
         "sync_client_onboarding_slack_handoff",
         side_effect=RuntimeError("Slack unavailable"),
     )
+    notion_sync = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_notion_cmd_entry",
+    )
     logger = mocker.patch.object(svc.logger, "exception")
     params = ReconcileClientOnboardingDocusignCompletionParams(
         docusign_envelope_id="envelope-123",
@@ -937,6 +949,37 @@ def test_reconcile_client_onboarding_docusign_completion_continues_when_slack_ha
     assert result.lifecycle_status == ClientOnboardingStatus.docusign_signed
     assert result.transition_recorded is True
     slack_handoff.assert_called_once_with(session, LIFECYCLE_ID)
+    notion_sync.assert_called_once_with(session, LIFECYCLE_ID)
+    logger.assert_called_once()
+    session.commit.assert_called_once()
+
+
+def test_reconcile_client_onboarding_docusign_completion_continues_when_notion_sync_fails(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    _docusign_completion_dependencies(mocker)
+    slack_handoff = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_slack_handoff",
+    )
+    notion_sync = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_notion_cmd_entry",
+        side_effect=RuntimeError("Notion unavailable"),
+    )
+    logger = mocker.patch.object(svc.logger, "exception")
+    params = ReconcileClientOnboardingDocusignCompletionParams(
+        docusign_envelope_id="envelope-123",
+        completed_at=COMPLETED_AT,
+    )
+
+    result = svc.reconcile_client_onboarding_docusign_completion(session, params)
+
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_signed
+    assert result.transition_recorded is True
+    slack_handoff.assert_called_once_with(session, LIFECYCLE_ID)
+    notion_sync.assert_called_once_with(session, LIFECYCLE_ID)
     logger.assert_called_once()
     session.commit.assert_called_once()
 
@@ -1470,6 +1513,236 @@ def test_sync_client_onboarding_slack_handoff_rejects_before_signature(
     session.commit.assert_not_called()
 
 
+def test_sync_client_onboarding_notion_cmd_entry_creates_page_and_links_lifecycle(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.notion_page_id = None
+    lifecycle.slack_channel_id = "C123"
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+
+    def set_notion_page_id(*args: object, **kwargs: object) -> MagicMock:
+        lifecycle.notion_page_id = kwargs["notion_page_id"]
+        return lifecycle
+
+    onboarding_repo.set_notion_page_id.side_effect = set_notion_page_id
+    _patch_handoff_owner_contacts(mocker)
+    notion_client = _FakeNotionCmdEntryClient(created_page_id="notion-page-new")
+
+    result = svc.sync_client_onboarding_notion_cmd_entry(
+        session,
+        LIFECYCLE_ID,
+        notion_client=notion_client,
+    )
+
+    assert result == ClientOnboardingNotionSyncResult(
+        lifecycle_id=LIFECYCLE_ID,
+        notion_page_id="notion-page-new",
+        created_page=True,
+        updated_page=False,
+    )
+    assert notion_client.find_page_requests[0].name == "Acme Inc."
+    created_page = notion_client.created_pages[0]
+    assert created_page["properties"]["Name"]["title"][0]["text"]["content"] == (
+        "Acme Inc."
+    )
+    assert created_page["properties"]["account_name"]["select"]["name"] == "acme"
+    summary = created_page["children"][1]["paragraph"]["rich_text"][0]["text"][
+        "content"
+    ]
+    assert "DocuSign envelope: envelope-123" in summary
+    assert "Slack channel ID: C123" in summary
+    assert "Folk company ID: folk-company-123" in summary
+    onboarding_repo.set_notion_page_id.assert_called_once_with(
+        LIFECYCLE_ID,
+        notion_page_id="notion-page-new",
+    )
+    result_payload = onboarding_repo.mark_sync_job_completed.call_args.kwargs[
+        "result_payload"
+    ]
+    assert result_payload == {
+        "notion_page_id": "notion-page-new",
+        "created_page": True,
+        "updated_page": False,
+    }
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "notion_cmd_entry_synced"
+    assert session.commit.call_count == 1
+
+
+def test_sync_client_onboarding_notion_cmd_entry_updates_matched_page(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.notion_page_id = None
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+
+    def set_notion_page_id(*args: object, **kwargs: object) -> MagicMock:
+        lifecycle.notion_page_id = kwargs["notion_page_id"]
+        return lifecycle
+
+    onboarding_repo.set_notion_page_id.side_effect = set_notion_page_id
+    _patch_handoff_owner_contacts(mocker)
+    notion_client = _FakeNotionCmdEntryClient(found_page={"id": "notion-page-existing"})
+
+    result = svc.sync_client_onboarding_notion_cmd_entry(
+        session,
+        LIFECYCLE_ID,
+        notion_client=notion_client,
+    )
+
+    assert result == ClientOnboardingNotionSyncResult(
+        lifecycle_id=LIFECYCLE_ID,
+        notion_page_id="notion-page-existing",
+        created_page=False,
+        updated_page=True,
+    )
+    assert notion_client.created_pages == []
+    assert notion_client.updated_pages[0]["page_id"] == "notion-page-existing"
+    assert "Name" not in notion_client.updated_pages[0]["properties"]
+    onboarding_repo.set_notion_page_id.assert_called_once_with(
+        LIFECYCLE_ID,
+        notion_page_id="notion-page-existing",
+    )
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_notion_cmd_entry_reuses_completed_job(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.status = ClientOnboardingSyncJobStatus.completed
+    job.result_payload = {
+        "notion_page_id": "notion-page-123",
+        "created_page": True,
+        "updated_page": False,
+    }
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    account_user_repo = mocker.patch.object(svc, "AccountUserRepository")
+
+    result = svc.sync_client_onboarding_notion_cmd_entry(
+        session,
+        LIFECYCLE_ID,
+        notion_client=_FailingNotionCmdEntryClient(),
+    )
+
+    assert result == ClientOnboardingNotionSyncResult(
+        lifecycle_id=LIFECYCLE_ID,
+        notion_page_id="notion-page-123",
+        created_page=True,
+        updated_page=False,
+    )
+    account_user_repo.assert_not_called()
+    onboarding_repo.mark_sync_job_completed.assert_not_called()
+    onboarding_repo.append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_sync_client_onboarding_notion_cmd_entry_records_notion_failure(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.notion_page_id = None
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    _patch_handoff_owner_contacts(mocker)
+
+    with pytest.raises(RuntimeError, match="Notion unavailable"):
+        svc.sync_client_onboarding_notion_cmd_entry(
+            session,
+            LIFECYCLE_ID,
+            notion_client=_FailingNotionCmdEntryClient(),
+        )
+
+    onboarding_repo.mark_sync_job_failed.assert_called_once()
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "notion_cmd_entry_sync_failed"
+    assert activity["payload_diff"]["error"] == "Notion unavailable"
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_notion_cmd_entry_records_owner_resolution_failure(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.notion_page_id = None
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    account_user_repo = mocker.patch.object(svc, "AccountUserRepository")
+    account_user_repo.side_effect = RuntimeError("owner lookup failed")
+
+    with pytest.raises(RuntimeError, match="owner lookup failed"):
+        svc.sync_client_onboarding_notion_cmd_entry(
+            session,
+            LIFECYCLE_ID,
+            notion_client=_FakeNotionCmdEntryClient(),
+        )
+
+    onboarding_repo.mark_sync_job_failed.assert_called_once()
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "notion_cmd_entry_sync_failed"
+    assert activity["payload_diff"]["error"] == "owner lookup failed"
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_notion_cmd_entry_rejects_before_signature(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.status = ClientOnboardingStatus.docusign_viewed
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+
+    with pytest.raises(ClientOnboardingInviteInvalidError):
+        svc.sync_client_onboarding_notion_cmd_entry(
+            session,
+            LIFECYCLE_ID,
+            notion_client=_FakeNotionCmdEntryClient(),
+        )
+
+    onboarding_repo.upsert_sync_job.assert_not_called()
+    session.commit.assert_not_called()
+
+
 def test_public_sync_client_onboarding_slack_handoff_wrapper_delegates(
     mocker: Any,
 ) -> None:
@@ -1489,6 +1762,30 @@ def test_public_sync_client_onboarding_slack_handoff_wrapper_delegates(
     )
 
     result = public_svc.sync_client_onboarding_slack_handoff(
+        session,
+        LIFECYCLE_ID,
+    )
+
+    assert result is expected
+    sync.assert_called_once_with(session=session, lifecycle_id=LIFECYCLE_ID)
+
+
+def test_public_sync_client_onboarding_notion_cmd_entry_wrapper_delegates(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    expected = ClientOnboardingNotionSyncResult(
+        lifecycle_id=LIFECYCLE_ID,
+        notion_page_id="notion-page-123",
+        created_page=True,
+        updated_page=False,
+    )
+    sync = mocker.patch(
+        "services.client_onboarding_service._implementation.sync_client_onboarding_notion_cmd_entry",
+        return_value=expected,
+    )
+
+    result = public_svc.sync_client_onboarding_notion_cmd_entry(
         session,
         LIFECYCLE_ID,
     )
@@ -1705,6 +2002,47 @@ class _FailingSlackHandoffClient(_FakeSlackHandoffClient):
         is_private: bool,
     ) -> dict[str, Any]:
         return {"ok": False, "error": "missing_scope"}
+
+
+class _FakeNotionCmdEntryClient:
+    def __init__(
+        self,
+        *,
+        found_page: dict[str, Any] | None = None,
+        created_page_id: str = "notion-page-123",
+    ) -> None:
+        self.found_page = found_page
+        self.created_page_id = created_page_id
+        self.find_page_requests: list[Any] = []
+        self.created_pages: list[dict[str, Any]] = []
+        self.updated_pages: list[dict[str, Any]] = []
+
+    async def find_page(self, company: Any) -> dict[str, Any] | None:
+        self.find_page_requests.append(company)
+        return self.found_page
+
+    async def create_page(
+        self,
+        properties: dict[str, Any],
+        children: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        self.created_pages.append(
+            {"properties": properties, "children": children or []}
+        )
+        return {"id": self.created_page_id}
+
+    async def update_page(
+        self,
+        page_id: str,
+        properties: dict[str, Any],
+    ) -> dict[str, Any]:
+        self.updated_pages.append({"page_id": page_id, "properties": properties})
+        return {"id": page_id}
+
+
+class _FailingNotionCmdEntryClient(_FakeNotionCmdEntryClient):
+    async def find_page(self, company: Any) -> dict[str, Any] | None:
+        raise RuntimeError("Notion unavailable")
 
 
 class _FakeFolkContractAcceptanceClient:
