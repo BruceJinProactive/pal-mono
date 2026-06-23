@@ -1150,7 +1150,7 @@ def list_user_accounts(
     List all accounts the user has access to.
 
     Steps:
-    1. Get all account memberships for current user
+    1. Get active account memberships for current user
     2. For each membership, get account details and role
     3. Return list of (account, role, last_accessed) tuples
 
@@ -1162,10 +1162,12 @@ def list_user_accounts(
         List of tuples: (account, primary_role, last_accessed)
         Role is the highest precedence role from account-level or project-level.
     """
-    # 1. Get all account memberships for current user
+    # 1. Get active account memberships for current user
     account_user_repo = AccountUserRepository(session)
     user_id = UUID(context.username)
-    account_memberships = account_user_repo.get_accounts_for_user(user_id)
+    account_memberships = account_user_repo.get_accounts_for_user(
+        user_id, status=AccountUserStatus.active
+    )
 
     # 2. For each membership, get account details and role
     account_repo = AccountRepository(session)
@@ -1202,6 +1204,9 @@ def list_user_accounts(
                 all_project_roles, PROJECT_ROLE_PRECEDENCE
             )
 
+        if primary_role is None:
+            continue
+
         # TODO: Track actual last access
         last_accessed = membership.added_at
 
@@ -1225,7 +1230,7 @@ def list_user_accounts_by_email(
     1. Verify caller is an admin
     2. Verify AWS Cognito user pool is configured
     3. Get user_id from Cognito by email
-    4. Get all account memberships for user
+    4. Get active account memberships for user
     5. For each membership, get account details and role
     6. Return list of (user_id, account, role, last_accessed) tuples
 
@@ -1280,9 +1285,11 @@ def list_user_accounts_by_email(
             logger.error(f"Error retrieving user from Cognito: {e}")
             raise ValueError(f"Failed to retrieve user: {e}") from e
 
-    # 4. Get all account memberships for user
+    # 4. Get active account memberships for user
     account_user_repo = AccountUserRepository(session)
-    account_memberships = account_user_repo.get_accounts_for_user(user_id)
+    account_memberships = account_user_repo.get_accounts_for_user(
+        user_id, status=AccountUserStatus.active
+    )
 
     # 5. For each membership, get account details and role
     account_repo = AccountRepository(session)
@@ -1318,6 +1325,9 @@ def list_user_accounts_by_email(
             primary_role = _get_highest_precedence_role(
                 all_project_roles, PROJECT_ROLE_PRECEDENCE
             )
+
+        if primary_role is None:
+            continue
 
         # TODO: Track actual last access
         last_accessed = membership.added_at
