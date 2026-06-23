@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy.exc import MissingGreenlet
@@ -187,6 +187,7 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
     created_payment_intents: list[Any] = []
     tracking_updates: list[dict[str, Any]] = []
     sessions_by_reference: dict[str, SimpleNamespace] = {}
+    log_info = Mock()
 
     class FakeSessionRepository:
         def __init__(self, _session):
@@ -281,6 +282,7 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
         "_update_order_tracking_link_async",
         _fake_update_order_tracking_link_async,
     )
+    monkeypatch.setattr(service.logger, "info", log_info)
 
     request = {
         "type": "payment_checkout",
@@ -374,6 +376,18 @@ async def test_process_checkout_request_creates_session_and_sends_sms(monkeypatc
             "checkout_url": result.checkout_url,
         }
     ]
+    log_info.assert_any_call(
+        "[ToastCheckout] Checkout session payload saved",
+        extra={
+            "conversation_id": str(stored_sessions[0].conversation_id),
+            "order_external_id": "PALONA:test-session",
+            "store_id": "toast-store",
+            "has_toast_order_payload": True,
+            "order_items_count": 2,
+            "toast_order_selections_count": 1,
+            "checkout_session_status": "ready",
+        },
+    )
 
     duplicate_result = await service.process_checkout_request_async(
         session=fake_session,

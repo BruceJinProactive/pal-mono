@@ -150,6 +150,24 @@ def _build_session_payload(
     return session_payload
 
 
+def _count_toast_order_selections(toast_order_payload: Any) -> int | None:
+    if not isinstance(toast_order_payload, dict):
+        return None
+
+    checks = toast_order_payload.get("checks")
+    if not isinstance(checks, list):
+        return None
+
+    selections_count = 0
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        selections = check.get("selections")
+        if isinstance(selections, list):
+            selections_count += len(selections)
+    return selections_count
+
+
 def _format_payment_amount(amount_cents: int) -> str:
     dollars, cents = divmod(amount_cents, 100)
     return f"${dollars}.{cents:02d}"
@@ -439,6 +457,21 @@ async def process_checkout_request_async(
                 checkout_session,
                 session_payload=session_payload,
                 expires_at=expires_at,
+            )
+            toast_order_payload = session_payload.get("toastOrderPayload")
+            logger.info(
+                "[ToastCheckout] Checkout session payload saved",
+                extra={
+                    "conversation_id": str(conversation_id),
+                    "order_external_id": payload.order_external_id,
+                    "store_id": payload.store_id,
+                    "has_toast_order_payload": isinstance(toast_order_payload, dict),
+                    "order_items_count": len(payload.order_items),
+                    "toast_order_selections_count": _count_toast_order_selections(
+                        toast_order_payload
+                    ),
+                    "checkout_session_status": checkout_session.status,
+                },
             )
             await _update_order_tracking_link_async(
                 session=session,
