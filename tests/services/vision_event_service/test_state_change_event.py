@@ -739,6 +739,80 @@ class TestGetStateChangeEvent:
             )
 
     @pytest.mark.asyncio
+    async def test_returns_video_frame_key_when_lookup_is_empty(self) -> None:
+        session = AsyncMock()
+        event_id = uuid.uuid4()
+        video_key = (
+            "security/cameras/account/project/camera/"
+            "videos/2026-06-23/2026-06-23_14-05-03.mp4"
+        )
+        event_data = _make_event_data(
+            id=event_id,
+            observed_at=datetime(2026, 6, 23, 14, 5, 37, tzinfo=timezone.utc),
+            frame_s3_key=video_key,
+        )
+
+        with (
+            patch(
+                f"{MODULE}.account_service.get_account_async",
+                new_callable=AsyncMock,
+                return_value=_mock_account(),
+            ),
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as mock_repo_cls,
+            patch(
+                f"{MODULE}.map_uri_to_s3_url",
+                return_value="https://example.com/video.mp4",
+            ),
+            patch(
+                f"{MODULE}.lookup_camera_video_segments",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as mock_lookup,
+        ):
+            repo = AsyncMock()
+            repo.get_by_id_for_account.return_value = event_data
+            mock_repo_cls.return_value = repo
+
+            from services.vision_event_service._implementation import (
+                get_state_change_event,
+            )
+
+            result = await get_state_change_event(
+                session,
+                event_id,
+                ACCOUNT_NAME,
+                include_video=True,
+            )
+
+            assert result.video_count == 1
+            assert result.videos[0].s3_key == video_key
+            assert result.videos[0].url == "https://example.com/video.mp4"
+            assert result.videos[0].segment_start_time == datetime(
+                2026,
+                6,
+                23,
+                14,
+                5,
+                3,
+                tzinfo=timezone.utc,
+            )
+            mock_lookup.assert_awaited_once()
+            lookup_args = mock_lookup.await_args
+            assert lookup_args is not None
+            lookup_kwargs = lookup_args.kwargs
+            assert lookup_kwargs["video_prefix"] == (
+                "security/cameras/account/project/camera/videos/"
+            )
+            assert lookup_kwargs["start_time"] == datetime(
+                2026,
+                6,
+                23,
+                14,
+                5,
+                tzinfo=timezone.utc,
+            )
+
+    @pytest.mark.asyncio
     async def test_returns_empty_for_non_image_frame_key_when_included(self) -> None:
         session = AsyncMock()
         event_id = uuid.uuid4()

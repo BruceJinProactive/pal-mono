@@ -32,6 +32,8 @@ from services.monitoring_service._video import (
 from services.vision_observation_service._workflow import handle_state_change_rules
 from utils.log import logger
 
+_VIDEO_FILE_EXTENSIONS = (".mp4", ".mov", ".mkv", ".avi", ".webm")
+
 
 async def _presign_asset_uri(uri: str | None) -> str | None:
     if not uri:
@@ -100,11 +102,38 @@ def _as_utc_datetime(value: datetime) -> datetime:
 
 
 def _video_prefix_for_frame_s3_key(frame_s3_key: str | None) -> str | None:
-    if not frame_s3_key or "/images/" not in frame_s3_key:
+    if not frame_s3_key:
         return None
 
-    camera_prefix, _separator, _image_path = frame_s3_key.partition("/images/")
-    return f"{camera_prefix}/videos/"
+    if "/images/" in frame_s3_key:
+        camera_prefix, _separator, _image_path = frame_s3_key.partition("/images/")
+        return f"{camera_prefix}/videos/"
+
+    if "/videos/" in frame_s3_key:
+        camera_prefix, _separator, _video_path = frame_s3_key.partition("/videos/")
+        return f"{camera_prefix}/videos/"
+
+    return None
+
+
+def _video_key_for_frame_s3_key(frame_s3_key: str | None) -> str | None:
+    if not frame_s3_key or "/videos/" not in frame_s3_key:
+        return None
+
+    filename = frame_s3_key.rsplit("/", 1)[-1]
+    if not filename.lower().endswith(_VIDEO_FILE_EXTENSIONS):
+        return None
+
+    return frame_s3_key
+
+
+def _video_segment_start_time_for_key(video_key: str) -> datetime | None:
+    filename = video_key.rsplit("/", 1)[-1]
+    stem, _separator, _extension = filename.rpartition(".")
+    try:
+        return datetime.strptime(stem, "%Y-%m-%d_%H-%M-%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 
 def _video_window_for_event(
@@ -156,6 +185,29 @@ def _video_response(segment: CameraVideoSegment) -> StateChangeEventVideo:
     )
 
 
+async def _direct_video_response_for_key(
+    video_key: str | None,
+) -> StateChangeEventVideo | None:
+    if video_key is None:
+        return None
+
+    segment_start_time = _video_segment_start_time_for_key(video_key)
+    if segment_start_time is None:
+        return None
+
+    url = await _presign_asset_uri(video_key)
+    if not url:
+        return None
+
+    return StateChangeEventVideo(
+        s3_key=video_key,
+        url=url,
+        segment_start_time=segment_start_time,
+        segment_end_time=segment_start_time
+        + timedelta(seconds=ONE_MINUTE_VIDEO_SECONDS),
+    )
+
+
 async def _videos_for_event(
     data: VisionStateChangeEventData,
     metadata: dict[str, Any],
@@ -170,7 +222,16 @@ async def _videos_for_event(
         start_time=start_time,
         end_time=end_time,
     )
-    return [_video_response(segment) for segment in segments]
+    videos = [_video_response(segment) for segment in segments]
+    direct_video = await _direct_video_response_for_key(
+        _video_key_for_frame_s3_key(data.frame_s3_key)
+    )
+    if direct_video is not None and all(
+        video.s3_key != direct_video.s3_key for video in videos
+    ):
+        videos.append(direct_video)
+
+    return sorted(videos, key=lambda video: (video.segment_start_time, video.s3_key))
 
 
 async def _build_response(
