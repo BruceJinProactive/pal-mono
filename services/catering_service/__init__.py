@@ -1,10 +1,13 @@
 from ._implementation import (
+    CateringMenuImportItem,
+    CateringMenuImportStats,
     CateringReminderResult,
     create_catering_request,
     create_catering_request_async,
     create_contact,
     delete_contact,
     get_public_catering_request_by_id,
+    import_account_catering_menu_items,
     list_catering_menu_items_by_project_id,
     list_catering_request_activities,
     list_catering_requests_by_project_id,
@@ -19,11 +22,14 @@ from ._implementation import (
 )
 
 __all__ = [
+    "CateringMenuImportItem",
+    "CateringMenuImportStats",
     "CateringReminderResult",
     "create_catering_request",
     "create_catering_request_async",
     "create_contact",
     "get_public_catering_request_by_id",
+    "import_account_catering_menu_items",
     "list_catering_menu_items_by_project_id",
     "list_catering_request_activities",
     "list_catering_requests_with_activities_by_project_id",

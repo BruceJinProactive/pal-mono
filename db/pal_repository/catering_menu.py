@@ -47,6 +47,44 @@ class CateringMenuRepository:
             logger.exception("Error retrieving catering menu items by project")
             raise
 
+    async def list_by_account_and_project_ids(
+        self,
+        account_id: uuid.UUID,
+        project_ids: list[uuid.UUID],
+    ) -> list[CateringMenu]:
+        """Retrieve catering menu ORM rows for an account across projects."""
+        if not project_ids:
+            return []
+
+        try:
+            result = await self.session.execute(
+                select(CateringMenu)
+                .filter(CateringMenu.account_id == account_id)
+                .filter(CateringMenu.project_id.in_(project_ids))
+            )
+            return list(result.scalars().all())
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Error retrieving catering menu items by account")
+            raise
+
+    def add(
+        self,
+        account_id: uuid.UUID,
+        project_id: uuid.UUID,
+        item_name: str,
+        item_price: Decimal,
+    ) -> CateringMenu:
+        """Stage a new catering menu item for insertion."""
+        row = CateringMenu(
+            account_id=account_id,
+            project_id=project_id,
+            item_name=item_name,
+            item_price=item_price,
+        )
+        self.session.add(row)
+        return row
+
     async def update(
         self,
         menu_item_id: uuid.UUID,

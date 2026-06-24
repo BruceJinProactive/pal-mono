@@ -32,6 +32,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 - **Voice call-quality storage schema.** Added phone call columns for post-call
   quality classification output: `call_quality_label` and
   `call_quality_reason_codes`. Migration: `f2fc2243cb69`.
+- **Account catering menu import.** Added an account-scoped admin CSV upload
+  endpoint that parses catering item names/prices and inserts or updates
+  `catering_menus` rows for the account's projects without requiring callers to
+  provide project IDs. -> `docs/records/2026-06-23-catering-menu-import.md`
 - **Catering menu items API.** Added project-scoped listing and item update
   endpoints for catering menu rows, backed by an async repository and explicit
   catering menu DTO/schema types. -> `docs/records/2026-06-23-catering-menu-items-api.md`

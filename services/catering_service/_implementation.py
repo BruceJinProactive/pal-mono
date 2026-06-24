@@ -83,6 +83,24 @@ class PublicCateringRequestDetails:
     catering_ai_phone_number: str | None = None
 
 
+@dataclasses.dataclass(frozen=True)
+class CateringMenuImportItem:
+    """Catering menu item parsed from an account import CSV."""
+
+    item_name: str
+    item_price: Decimal
+
+
+@dataclasses.dataclass(frozen=True)
+class CateringMenuImportStats:
+    """Counters produced by importing catering menu items for an account."""
+
+    inserted_items: int
+    projects_updated: int
+    rows_received: int
+    updated_items: int
+
+
 def _serialize_activity_value(value: object) -> object:
     if isinstance(value, enum.Enum):
         return value.value
@@ -746,6 +764,72 @@ async def update_catering_menu_item(
         menu_item_id,
         project_id=project_id,
         **update_kwargs,
+    )
+
+
+async def import_account_catering_menu_items(
+    session: AsyncSession,
+    account_id: uuid.UUID,
+    rows: list[CateringMenuImportItem],
+) -> CateringMenuImportStats:
+    """Import flat catering menu items into every project for an account."""
+    projects = await ProjectRepositoryAsync(session).list_projects_by_account_id(
+        account_id
+    )
+    if not projects:
+        return CateringMenuImportStats(
+            inserted_items=0,
+            projects_updated=0,
+            rows_received=len(rows),
+            updated_items=0,
+        )
+
+    menu_repository = CateringMenuRepository(session)
+    project_ids = [project.id for project in projects]
+    existing_rows = await menu_repository.list_by_account_and_project_ids(
+        account_id,
+        project_ids,
+    )
+
+    def item_key(project_id: uuid.UUID, item_name: str) -> tuple[uuid.UUID, str]:
+        return (project_id, item_name.casefold())
+
+    existing_by_key = {
+        item_key(project_id, row.item_name): []
+        for project_id in project_ids
+        for row in rows
+    }
+    for item in existing_rows:
+        key = item_key(item.project_id, item.item_name)
+        if key in existing_by_key:
+            existing_by_key[key].append(item)
+
+    inserted_items = 0
+    updated_items = 0
+
+    for project in projects:
+        for row in rows:
+            existing_items = existing_by_key[item_key(project.id, row.item_name)]
+            if existing_items:
+                for item in existing_items:
+                    item.item_price = row.item_price
+                updated_items += len(existing_items)
+                continue
+
+            menu_repository.add(
+                account_id=account_id,
+                project_id=project.id,
+                item_name=row.item_name,
+                item_price=row.item_price,
+            )
+            inserted_items += 1
+
+    await session.commit()
+    return CateringMenuImportStats(
+        inserted_items=inserted_items,
+        projects_updated=len(projects),
+        rows_received=len(rows),
+        updated_items=updated_items,
     )
 
 

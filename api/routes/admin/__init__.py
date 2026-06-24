@@ -59,6 +59,7 @@ from api.schemas.admin.billing import (
     UpdatePaymentMethodResponse,
 )
 from api.schemas.admin.campaign import CreateCampaignResponse, ListCampaignsResponse
+from api.schemas.admin.catering import CateringMenuImportResponse
 from api.schemas.admin.conversation import (
     DEFAULT_STATS_AGE,
     ConversationAccountLookupResponse,
@@ -282,6 +283,7 @@ from . import (
     _billing,
     _campaign,
     _capabilities,
+    _catering,
     _client_onboarding,
     _conversation,
     _email,
@@ -430,6 +432,27 @@ async def update_account(
     Update the account based on the provided request data.
     """
     return await _account.update_account(account_name, account, context, session)
+
+
+@admin_router.post(
+    endpoints.ADMIN_ACCOUNT_CATERING_MENU_IMPORT,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+async def import_account_catering_menu_items(
+    account_name: str,
+    file: UploadFile = File(...),
+    context: UserContext = Depends(
+        require_account_permission("account.write", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> CateringMenuImportResponse:
+    """
+    Import a flat catering menu CSV for all projects in an account.
+    """
+    del context
+    return await _catering.import_account_catering_menu_items(
+        account_name, file, session
+    )
 
 
 @admin_router.delete("/accounts/{account_name}")

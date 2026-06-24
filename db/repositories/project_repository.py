@@ -231,6 +231,29 @@ class ProjectRepositoryAsync:
             logger.error(f"Error listing projects by IDs: {e}")
             raise
 
+    async def list_projects_by_account_id(self, account_id: uuid.UUID) -> list[Project]:
+        """
+        Retrieve all projects belonging to a specific account asynchronously.
+
+        Args:
+            account_id: The unique identifier of the account.
+
+        Returns:
+            list[Project]: Projects belonging to the account, sorted by name.
+        """
+        try:
+            query = (
+                select(Project)
+                .filter(Project.account_id == account_id)
+                .order_by(Project.name.asc())
+            )
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except SQLAlchemyError as e:
+            await self.session.rollback()
+            logger.error(f"Error listing projects by account ID: {e}")
+            raise
+
     async def delete_project(self, project_id: uuid.UUID) -> None:
         """
         Delete a project from the database asynchronously.
