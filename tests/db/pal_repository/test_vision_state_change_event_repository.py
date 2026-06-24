@@ -230,6 +230,71 @@ class TestGetLatestByEntityStateBefore:
         mock_session.rollback.assert_awaited_once()
 
 
+class TestGetByEntityStateObservedAt:
+
+    @pytest.mark.asyncio
+    async def test_returns_matching_event(
+        self,
+        repo: VisionStateChangeEventRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_entity_id: uuid.UUID,
+        sample_new_state_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.get_by_entity_state_observed_at(
+            entity_id=sample_entity_id,
+            state_id=sample_new_state_id,
+            observed_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            definition_type="cleanliness",
+        )
+
+        assert isinstance(data, VisionStateChangeEventData)
+        assert data.id == sample_orm_row.id
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found(
+        self,
+        repo: VisionStateChangeEventRepository,
+        mock_session: AsyncMock,
+        sample_entity_id: uuid.UUID,
+        sample_new_state_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.get_by_entity_state_observed_at(
+            entity_id=sample_entity_id,
+            state_id=sample_new_state_id,
+            observed_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        )
+
+        assert data is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_db_error(
+        self,
+        repo: VisionStateChangeEventRepository,
+        mock_session: AsyncMock,
+        sample_entity_id: uuid.UUID,
+        sample_new_state_id: uuid.UUID,
+    ) -> None:
+        mock_session.execute.side_effect = Exception("connection lost")
+
+        data = await repo.get_by_entity_state_observed_at(
+            entity_id=sample_entity_id,
+            state_id=sample_new_state_id,
+            observed_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        )
+
+        assert data is None
+        mock_session.rollback.assert_awaited_once()
+
+
 class TestListByAccount:
 
     @pytest.mark.asyncio

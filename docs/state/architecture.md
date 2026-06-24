@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-20
+> **Last updated:** 2026-06-24
 
 ## Quick Reference
 
@@ -281,6 +281,30 @@ under `security/cameras/.../images/YYYY-MM-DD/`. If the filename does not carry
 that format, Vision logs a warning and falls back to backend processing time.
 The resolved `observed_at` is reused for entity current-state metadata,
 state-change events, and downstream rule-event trigger time.
+
+Vision rule metadata can opt matching state-definition updates into centered
+majority smoothing before entity state changes are persisted. The supported
+configuration lives under `vision_rule.rule_metadata.event_generation` with
+`strategy` values `single_frame` or `centered_majority_vote`; centered voting
+supports `window_frames` of `3` or `5`, requiring `2/3` or `3/5` votes. Raw
+votes are stored as a bounded per-entity/per-camera/per-definition buffer in the
+shared Redis/ElastiCache cache using `vision-smoothing:v1` keys. The
+observation list, finalized pointer, and lock keys for one buffer share a Redis
+Cluster hash tag so transactional saves stay in one hash slot. Durable current
+state still lives in `vision_entity.metadata.current_states`; the temporary
+smoothing buffer is not written to `vision_entity.metadata`. The frame that
+completes a window triggers finalization, but any resulting
+`vision_state_change_event.observed_at` and `frame_s3_key` use the finalized
+center frame. If a cache-save failure causes a finalized decision to be replayed
+later, pal-mono skips older decisions, and for the current stored `observed_at`
+it checks whether the state-change event/workflow needs recovery before moving
+the Redis finalized pointer forward. Smoothed current-state metadata stores the
+state-change event id plus previous state context for that recovery path. Frame
+gaps over 1 hour reset the buffer so overnight camera shutdowns do not connect
+yesterday's final frame to today's first frame. Start-of-session partial windows
+can finalize once enough future neighboring frames exist. There is no
+grace-period finalization for tail windows; tail frames wait for enough future
+neighbors before a decision is emitted.
 
 The `empty_tray` workflow matches `food_tray` entities transitioning from
 `not_empty` to `empty` and uses the event's `definition_type` when resolving

@@ -4,8 +4,29 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-24
+
+- **Vision smoothing replay recovery.** Smoothed state updates now store recovery
+  context in current-state metadata, replay already-applied center-frame
+  decisions through an exact state-change event lookup before finalizing Redis,
+  and make rule-event workflow replay idempotent by rule/state-change event.
+  The smoothing Redis lock TTL is now 5 minutes to reduce mid-finalization lock
+  expiry risk during DB/workflow stalls. -> `docs/state/architecture.md`
+- **Shared Redis cluster-mode client switch.** Added
+  `REDIS_CACHE_CLUSTER_MODE=false` as the default shared Redis/Valkey cache
+  behavior, with an opt-in `redis.asyncio.cluster.RedisCluster` path for future
+  Redis Cluster, ElastiCache cluster-mode enabled, or ElastiCache Serverless
+  endpoints. Existing node-based ElastiCache deployments continue using the
+  single-endpoint Redis client. -> `docs/plans/tool-result-elasticache.md`
+
 ## 2026-06-23
 
+- **Vision smoothing Redis hardening.** Vision smoothing cache keys now use a
+  shared Redis Cluster hash tag across the observation, finalized-pointer, and
+  lock keys for one entity/camera/state-definition buffer. Replayed finalized
+  decisions at or before the entity's current observed timestamp are skipped so
+  cache-save failures cannot reapply older smoothed state changes. ->
+  `docs/state/architecture.md`
 - **Client onboarding post-signature FDE owner assignment.** DocuSign completion now queues and best-effort runs a Manage App sync that adds or reactivates the selected FDE on the account, grants account owner role idempotently, and records skipped or failed assignment state for retries. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Account switcher access filtering.** User account-list responses now only include active memberships with an effective account-level or project-level role, so accounts with stale membership rows and no role no longer appear in Admin Console account switching or Manage App user account lookup lists.
 - **Voice call-quality storage schema.** Added phone call columns for post-call
@@ -28,6 +49,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-19
 
+- **Vision centered-window smoothing.** Vision rule metadata can now opt state
+  updates into centered majority smoothing with 3-frame or 5-frame windows.
+  Temporary raw votes are buffered in Redis/ElastiCache, do not use
+  grace-period tail finalization, and reset across frame gaps over 1 hour so
+  overnight camera shutdowns do not bridge sessions. Durable current state
+  remains in `vision_entity.metadata.current_states`. -> `docs/state/architecture.md`
 - **Vision rule event timing edits.** Added account-scoped `PATCH /accounts/{account_name}/rule-events/{event_id}` support so Admin Console can correct Vision AI rule event `triggered_at` and `duration` values while preserving the event's rule/entity linkage and metadata. -> `docs/records/2026-06-19-vision-rule-event-editing.md`
 - **Client onboarding post-signature DB and Folk sync.** DocuSign completion now records durable post-signature sync jobs for database contract acceptance and Folk contract field updates, with a retryable Folk processor that updates linked company/contact records from the onboarding lifecycle. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Catering customer contact numbers.** Public catering request responses now include

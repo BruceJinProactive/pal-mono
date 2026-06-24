@@ -31,8 +31,10 @@ Add the Redis Python client:
 "redis>=5,<7"
 ```
 
-Use `redis.asyncio.Redis` for the async `pal-mono` request path. For cluster
-mode, use the Redis cluster client instead of the single-endpoint client.
+Use `redis.asyncio.Redis` for the async `pal-mono` request path by default.
+Set `REDIS_CACHE_CLUSTER_MODE=true` only for Redis Cluster, ElastiCache
+cluster-mode enabled, or ElastiCache Serverless endpoints so the shared client
+uses `redis.asyncio.cluster.RedisCluster` instead of the single-endpoint client.
 
 ## Configuration
 
@@ -45,6 +47,7 @@ REDIS_CACHE_PORT=6379
 REDIS_CACHE_USERNAME=...
 REDIS_CACHE_AUTH_MODE=secrets_manager
 REDIS_CACHE_SECRET_KEY=REDIS_CACHE_AUTH_TOKEN
+REDIS_CACHE_CLUSTER_MODE=false
 REDIS_CACHE_SSL=true
 REDIS_CACHE_DEFAULT_TTL_SECONDS=1800
 REDIS_CACHE_MAX_ITEM_BYTES=32768

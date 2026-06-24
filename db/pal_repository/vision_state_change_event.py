@@ -102,6 +102,35 @@ class VisionStateChangeEventRepository:
             )
             return None
 
+    async def get_by_entity_state_observed_at(
+        self,
+        entity_id: uuid.UUID,
+        state_id: uuid.UUID,
+        observed_at: datetime,
+        definition_type: str | None = None,
+    ) -> VisionStateChangeEventData | None:
+        try:
+            query = select(VisionStateChangeEvent).filter(
+                VisionStateChangeEvent.entity_id == entity_id,
+                VisionStateChangeEvent.new_state_id == state_id,
+                VisionStateChangeEvent.observed_at == observed_at,
+            )
+            if definition_type is not None:
+                query = query.filter(
+                    VisionStateChangeEvent.event_metadata["definition_type"].as_string()
+                    == definition_type
+                )
+            result = await self.session.execute(query.limit(1))
+            row = result.scalar_one_or_none()
+            return _to_data(row) if row else None
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision StateChangeEvent] DB error getting event by entity state time",
+                exc_info=True,
+            )
+            return None
+
     async def get_by_id_for_account(
         self, event_id: uuid.UUID, account_id: uuid.UUID
     ) -> VisionStateChangeEventData | None:

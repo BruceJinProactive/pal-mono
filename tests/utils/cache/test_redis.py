@@ -31,6 +31,7 @@ def test_redis_cache_settings_defaults_disabled(
     assert settings.username == ""
     assert settings.secret_key == "REDIS_CACHE_AUTH_TOKEN"
     assert settings.auth_mode == CacheAuthMode.SECRETS_MANAGER
+    assert settings.cluster_mode is False
     assert settings.ssl is True
     assert settings.default_ttl_seconds == 1800
     assert settings.max_item_bytes == 32768
@@ -46,6 +47,7 @@ def test_redis_cache_settings_parse_env(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("REDIS_CACHE_USERNAME", "shared-cache-user")
     monkeypatch.setenv("REDIS_CACHE_SECRET_KEY", "CUSTOM_CACHE_TOKEN")
     monkeypatch.setenv("REDIS_CACHE_AUTH_MODE", "secrets_manager")
+    monkeypatch.setenv("REDIS_CACHE_CLUSTER_MODE", "true")
     monkeypatch.setenv("REDIS_CACHE_SSL", "false")
     monkeypatch.setenv("REDIS_CACHE_DEFAULT_TTL_SECONDS", "900")
     monkeypatch.setenv("REDIS_CACHE_MAX_ITEM_BYTES", "65536")
@@ -61,6 +63,7 @@ def test_redis_cache_settings_parse_env(monkeypatch: pytest.MonkeyPatch) -> None
     assert settings.username == "shared-cache-user"
     assert settings.secret_key == "CUSTOM_CACHE_TOKEN"
     assert settings.auth_mode == CacheAuthMode.SECRETS_MANAGER
+    assert settings.cluster_mode is True
     assert settings.ssl is False
     assert settings.default_ttl_seconds == 900
     assert settings.max_item_bytes == 65536
@@ -201,10 +204,10 @@ async def test_redis_cache_client_passes_connection_options(
             return None
 
     redis_module = ModuleType("redis")
-    redis_module.__path__ = []  # type: ignore[attr-defined]
+    setattr(redis_module, "__path__", [])
     redis_asyncio_module = ModuleType("redis.asyncio")
-    redis_asyncio_module.Redis = FakeRedis  # type: ignore[attr-defined]
-    redis_module.asyncio = redis_asyncio_module  # type: ignore[attr-defined]
+    setattr(redis_asyncio_module, "Redis", FakeRedis)
+    setattr(redis_module, "asyncio", redis_asyncio_module)
     monkeypatch.setitem(sys.modules, "redis", redis_module)
     monkeypatch.setitem(sys.modules, "redis.asyncio", redis_asyncio_module)
 
@@ -233,6 +236,68 @@ async def test_redis_cache_client_passes_connection_options(
     assert isinstance(client, FakeRedis)
     assert captured_kwargs == {
         "host": "cache.example.local",
+        "port": 6380,
+        "username": "shared-cache-user",
+        "password": "redis-password",
+        "ssl": True,
+        "decode_responses": True,
+        "socket_connect_timeout": 1.5,
+        "socket_timeout": 3.5,
+        "health_check_interval": 45,
+    }
+
+
+@pytest.mark.asyncio
+async def test_redis_cache_client_uses_cluster_client_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_kwargs: dict[str, Any] = {}
+
+    class FakeRedisCluster:
+        def __init__(self, **kwargs: Any) -> None:
+            captured_kwargs.update(kwargs)
+
+        async def aclose(self) -> None:
+            return None
+
+    redis_module = ModuleType("redis")
+    setattr(redis_module, "__path__", [])
+    redis_asyncio_module = ModuleType("redis.asyncio")
+    setattr(redis_asyncio_module, "__path__", [])
+    redis_cluster_module = ModuleType("redis.asyncio.cluster")
+    setattr(redis_cluster_module, "RedisCluster", FakeRedisCluster)
+    setattr(redis_asyncio_module, "cluster", redis_cluster_module)
+    setattr(redis_module, "asyncio", redis_asyncio_module)
+    monkeypatch.setitem(sys.modules, "redis", redis_module)
+    monkeypatch.setitem(sys.modules, "redis.asyncio", redis_asyncio_module)
+    monkeypatch.setitem(sys.modules, "redis.asyncio.cluster", redis_cluster_module)
+
+    async def fake_password(_: RedisCacheSettings) -> str:
+        return "redis-password"
+
+    monkeypatch.setattr(
+        redis_cache,
+        "get_redis_cache_password",
+        fake_password,
+    )
+
+    settings = RedisCacheSettings(
+        enabled=True,
+        host="cluster-cache.example.local",
+        port=6380,
+        username="shared-cache-user",
+        cluster_mode=True,
+        ssl=True,
+        socket_connect_timeout_seconds=1.5,
+        socket_timeout_seconds=3.5,
+        health_check_interval_seconds=45,
+    )
+
+    client = await build_redis_cache_client(settings)
+
+    assert isinstance(client, FakeRedisCluster)
+    assert captured_kwargs == {
+        "host": "cluster-cache.example.local",
         "port": 6380,
         "username": "shared-cache-user",
         "password": "redis-password",

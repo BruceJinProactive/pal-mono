@@ -1,7 +1,7 @@
 """Tests for typed vision state metadata helpers."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from services.vision_state_metadata import (
     CURRENT_STATES_METADATA_KEY,
@@ -95,6 +95,35 @@ def test_set_current_state_metadata_preserves_existing_metadata() -> None:
         "confidence": 0.8,
     }
     assert CURRENT_STATES_METADATA_KEY in result
+
+
+def test_set_current_state_metadata_can_store_recovery_fields() -> None:
+    state_id = uuid.uuid4()
+    previous_state_id = uuid.uuid4()
+    event_id = uuid.uuid4()
+    observed_at = datetime(2026, 6, 1, 12, tzinfo=timezone.utc)
+    previous_since = observed_at - timedelta(minutes=5)
+
+    result = set_current_state_metadata(
+        {},
+        "cleanliness",
+        state_id,
+        "clean",
+        observed_at,
+        observed_at,
+        0.9,
+        state_change_event_id=event_id,
+        previous_state_id=previous_state_id,
+        previous_state_name="dirty",
+        previous_state_since=previous_since,
+    )
+
+    current_state = get_current_states_metadata(result)["cleanliness"]
+    assert isinstance(current_state, dict)
+    assert current_state["state_change_event_id"] == str(event_id)
+    assert current_state["previous_state_definition_id"] == str(previous_state_id)
+    assert current_state["previous_state"] == "dirty"
+    assert current_state["previous_state_since"] == previous_since.isoformat()
 
 
 def test_clear_current_state_metadata_removes_one_state_type() -> None:

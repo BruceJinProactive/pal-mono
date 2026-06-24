@@ -73,6 +73,28 @@ class VisionRuleEventRepository:
             )
             return None
 
+    async def get_by_rule_state_change_event(
+        self,
+        rule_id: uuid.UUID,
+        state_change_event_id: uuid.UUID,
+    ) -> VisionRuleEventData | None:
+        try:
+            result = await self.session.execute(
+                select(VisionRuleEvent).filter(
+                    VisionRuleEvent.rule_id == rule_id,
+                    VisionRuleEvent.state_change_event_id == state_change_event_id,
+                )
+            )
+            row = result.scalar_one_or_none()
+            return _to_data(row) if row else None
+        except Exception:
+            await self.session.rollback()
+            logger.error(
+                "[Vision RuleEvent] DB error getting event by rule and state change",
+                exc_info=True,
+            )
+            return None
+
     async def list_by_account(
         self,
         account_id: uuid.UUID,

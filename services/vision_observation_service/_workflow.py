@@ -230,6 +230,13 @@ async def _handle_state_transition_rule(
         definition_type=definition_type,
     )
 
+    existing_rule_event = await rule_event_repo.get_by_rule_state_change_event(
+        rule.id,
+        state_change_event.id,
+    )
+    if existing_rule_event is not None:
+        return
+
     await rule_event_repo.create(
         VisionRuleEventData(
             id=uuid.uuid4(),

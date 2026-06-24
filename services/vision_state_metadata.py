@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 
 CURRENT_STATES_METADATA_KEY = "current_states"
 LEGACY_CURRENT_STATE_TYPE = "state"
@@ -53,6 +53,25 @@ def current_state_id_from_metadata(
     return None
 
 
+def current_state_observed_at_from_metadata(
+    current_states: dict[str, object],
+    definition_type: str,
+) -> datetime | None:
+    current_state = current_states.get(definition_type)
+    if not isinstance(current_state, Mapping):
+        return None
+
+    raw_observed_at = current_state.get("observed_at")
+    if isinstance(raw_observed_at, datetime):
+        return _as_utc(raw_observed_at)
+    if isinstance(raw_observed_at, str):
+        try:
+            return _as_utc(datetime.fromisoformat(raw_observed_at))
+        except ValueError:
+            return None
+    return None
+
+
 def set_current_state_metadata(
     entity_metadata: dict[str, object],
     definition_type: str,
@@ -61,6 +80,10 @@ def set_current_state_metadata(
     current_state_since: datetime,
     observed_at: datetime,
     confidence: float | None,
+    state_change_event_id: uuid.UUID | None = None,
+    previous_state_id: uuid.UUID | None = None,
+    previous_state_name: str | None = None,
+    previous_state_since: datetime | None = None,
 ) -> dict[str, object]:
     updated_metadata = dict(entity_metadata)
     current_states = get_current_states_metadata(updated_metadata)
@@ -72,10 +95,24 @@ def set_current_state_metadata(
     }
     if confidence is not None:
         current_state["confidence"] = confidence
+    if state_change_event_id is not None:
+        current_state["state_change_event_id"] = str(state_change_event_id)
+    if previous_state_id is not None:
+        current_state["previous_state_definition_id"] = str(previous_state_id)
+    if previous_state_name is not None:
+        current_state["previous_state"] = previous_state_name
+    if previous_state_since is not None:
+        current_state["previous_state_since"] = previous_state_since.isoformat()
 
     current_states[definition_type] = current_state
     updated_metadata[CURRENT_STATES_METADATA_KEY] = current_states
     return updated_metadata
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def clear_current_state_metadata(

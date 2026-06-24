@@ -21,6 +21,7 @@ from services.vision_observation_service._implementation import (
     generate_observation,
     get_configuration_prompt,
 )
+from services.vision_observation_service._smoothing import SmoothingDecision
 
 
 def _test_image_bytes(
@@ -198,7 +199,6 @@ class TestNormalizeImageBytesForLlm:
 
 
 class TestLegacyObservationParsing:
-
     def test_top_level_state_without_marker_is_not_legacy(self):
         assert _is_legacy_observation({"state": "clean", "confidence": 0.9}) is False
 
@@ -212,7 +212,6 @@ class TestLegacyObservationParsing:
 
 
 class TestStateDefinitionType:
-
     def test_missing_or_blank_definition_type_returns_none(self):
         missing_type = MagicMock()
         missing_type.definition_type = None
@@ -1373,11 +1372,14 @@ class TestGenerateObservation:
             mock_event_repo_cls.return_value.create.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_observation_uses_active_state_definitions_grouped_by_type(self):
+    async def test_observation_uses_active_state_definitions_grouped_by_type(
+        self,
+    ) -> None:
         session = AsyncMock()
         config_id = uuid.uuid4()
         entity_id = uuid.uuid4()
         entity_type_id = uuid.uuid4()
+        project_id = uuid.uuid4()
 
         mock_config = MagicMock()
         mock_config.enabled = True
@@ -1392,6 +1394,7 @@ class TestGenerateObservation:
 
         mock_entity = MagicMock()
         mock_entity.id = entity_id
+        mock_entity.project_id = project_id
         mock_entity.name = "table_1"
         mock_entity.is_active = True
         mock_entity.entity_type_id = entity_type_id
@@ -1446,6 +1449,9 @@ class TestGenerateObservation:
             patch(
                 "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
             ) as mock_event_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionRuleRepository"
+            ) as mock_rule_repo_cls,
             patch("services.vision_observation_service._implementation.init_s3"),
             patch(
                 "services.vision_observation_service._implementation.create_monitoring_llm_provider",
@@ -1484,6 +1490,7 @@ class TestGenerateObservation:
                 return_value=mock_entity_type
             )
             mock_event_repo_cls.return_value.create = AsyncMock()
+            mock_rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[])
 
             result = await generate_observation(
                 session, config_id, image_bytes=_test_image_bytes()
@@ -1520,6 +1527,10 @@ class TestGenerateObservation:
                 }
             }
             assert mock_event_repo_cls.return_value.create.await_count == 2
+            mock_rule_repo_cls.return_value.list_by_project.assert_awaited_once_with(
+                project_id,
+                is_active=True,
+            )
             event_definition_types = [
                 call.args[0].event_metadata["definition_type"]
                 for call in mock_event_repo_cls.return_value.create.await_args_list
@@ -1865,6 +1876,808 @@ class TestGenerateObservation:
             assert result is not None
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].entity_name == "light_1"
+
+    @pytest.mark.asyncio
+    async def test_smoothed_observation_uses_cache_without_raw_metadata_write(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        state_id_dirty = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.enabled = True
+        mock_config.llm_prompt = ""
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.project_id = project_id
+        mock_entity.name = "table_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
+        mock_entity.current_state_since = None
+        mock_entity.entity_metadata = {}
+
+        mock_state_def = MagicMock()
+        mock_state_def.id = state_id_dirty
+        mock_state_def.name = "dirty"
+        mock_state_def.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "table"
+        mock_entity_type.display_name = "Table"
+
+        mock_rule = MagicMock()
+        mock_rule.type = "table_cleanness"
+        mock_rule.rule_metadata = {
+            "event_generation": {
+                "strategy": "centered_majority_vote",
+                "window_frames": 5,
+            }
+        }
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = {
+            "result": {
+                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
+            },
+            "token_usage": {},
+        }
+        smoothing_buffer = _FakeSmoothingBuffer(decisions=[])
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionRuleRepository"
+            ) as mock_rule_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.acquire_smoothing_cache_buffer",
+                AsyncMock(return_value=smoothing_buffer),
+            ) as mock_acquire_buffer,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+            mock_event_repo_cls.return_value.create = AsyncMock()
+            mock_rule_repo_cls.return_value.list_by_project = AsyncMock(
+                return_value=[mock_rule]
+            )
+
+            result = await generate_observation(
+                session,
+                config_id,
+                image_bytes=_test_image_bytes(),
+            )
+
+            assert result is not None
+            assert result.entity_observations[0].state == "dirty"
+            mock_acquire_buffer.assert_awaited_once()
+            acquire_args = mock_acquire_buffer.await_args
+            assert acquire_args is not None
+            assert acquire_args.args[1] == config_id
+            mock_entity_repo_cls.return_value.update.assert_not_awaited()
+            mock_event_repo_cls.return_value.create.assert_not_awaited()
+            smoothing_buffer.save.assert_awaited_once()
+            smoothing_buffer.release.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_smoothed_observation_finalized_vote_updates_entity_and_event(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        center_config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        clean_id = uuid.uuid4()
+        dirty_id = uuid.uuid4()
+        observed_at = datetime(2026, 6, 19, 9, 0, 30, tzinfo=timezone.utc)
+        center_observed_at = datetime(2026, 6, 19, 9, 0, tzinfo=timezone.utc)
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.enabled = True
+        mock_config.llm_prompt = ""
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.project_id = project_id
+        mock_entity.name = "table_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = clean_id
+        mock_entity.current_state_since = None
+        mock_entity.entity_metadata = {
+            "current_states": {
+                "cleanliness": {
+                    "state_definition_id": str(clean_id),
+                    "state": "clean",
+                    "current_state_since": "2026-06-19T08:59:00+00:00",
+                    "observed_at": "2026-06-19T08:59:00+00:00",
+                }
+            }
+        }
+
+        clean_state = MagicMock()
+        clean_state.id = clean_id
+        clean_state.name = "clean"
+        clean_state.definition_type = "cleanliness"
+        dirty_state = MagicMock()
+        dirty_state.id = dirty_id
+        dirty_state.name = "dirty"
+        dirty_state.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "table"
+        mock_entity_type.display_name = "Table"
+
+        mock_rule = MagicMock()
+        mock_rule.type = "table_cleanness"
+        mock_rule.rule_metadata = {
+            "event_generation": {
+                "strategy": "centered_majority_vote",
+                "window_frames": 5,
+            }
+        }
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = {
+            "result": {
+                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
+            },
+            "token_usage": {},
+        }
+        decision = SmoothingDecision(
+            center_observed_at=center_observed_at,
+            center_frame_s3_key="frame-0.jpg",
+            center_camera_config_id=center_config_id,
+            state_id=dirty_id,
+            state="dirty",
+            confidence=0.88,
+            metadata={"strategy": "centered_majority_vote", "window_frames": 5},
+        )
+        smoothing_buffer = _FakeSmoothingBuffer(decisions=[decision])
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionRuleRepository"
+            ) as mock_rule_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.acquire_smoothing_cache_buffer",
+                AsyncMock(return_value=smoothing_buffer),
+            ),
+            patch(
+                "services.vision_observation_service._implementation.handle_state_change_rules",
+                AsyncMock(),
+            ),
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+
+            async def update_entity(
+                entity_id_arg: uuid.UUID, **kwargs: object
+            ) -> MagicMock:
+                assert entity_id_arg == entity_id
+                for key, value in kwargs.items():
+                    setattr(mock_entity, key, value)
+                return mock_entity
+
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                side_effect=update_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[clean_state, dirty_state]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+            mock_event_repo_cls.return_value.create = AsyncMock()
+            mock_rule_repo_cls.return_value.list_by_project = AsyncMock(
+                return_value=[mock_rule]
+            )
+
+            await generate_observation(
+                session,
+                config_id,
+                image_bytes=_test_image_bytes(),
+                observed_at=observed_at,
+            )
+
+            update_args = mock_entity_repo_cls.return_value.update.await_args
+            assert update_args is not None
+            update_kwargs = update_args.kwargs
+            assert update_kwargs["entity_metadata"]["current_states"]["cleanliness"][
+                "state_definition_id"
+            ] == str(dirty_id)
+            event_create_args = mock_event_repo_cls.return_value.create.await_args
+            assert event_create_args is not None
+            event = event_create_args.args[0]
+            assert event.observed_at == center_observed_at
+            assert event.frame_s3_key == "frame-0.jpg"
+            assert event.camera_config_id == center_config_id
+            assert event.event_metadata["smoothing"] == decision.metadata
+            assert smoothing_buffer.finalized_observed_at == [center_observed_at]
+            smoothing_buffer.save.assert_awaited_once()
+            smoothing_buffer.release.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_smoothed_observation_skips_replayed_decision_at_current_observed_at(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        center_config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        clean_id = uuid.uuid4()
+        dirty_id = uuid.uuid4()
+        observed_at = datetime(2026, 6, 19, 9, 1, 30, tzinfo=timezone.utc)
+        center_observed_at = datetime(2026, 6, 19, 9, 0, tzinfo=timezone.utc)
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.enabled = True
+        mock_config.llm_prompt = ""
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.project_id = project_id
+        mock_entity.name = "table_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = clean_id
+        mock_entity.current_state_since = None
+        mock_entity.entity_metadata = {
+            "current_states": {
+                "cleanliness": {
+                    "state_definition_id": str(clean_id),
+                    "state": "clean",
+                    "current_state_since": "2026-06-19T08:59:00+00:00",
+                    "observed_at": "2026-06-19T09:01:00+00:00",
+                }
+            }
+        }
+
+        clean_state = MagicMock()
+        clean_state.id = clean_id
+        clean_state.name = "clean"
+        clean_state.definition_type = "cleanliness"
+        dirty_state = MagicMock()
+        dirty_state.id = dirty_id
+        dirty_state.name = "dirty"
+        dirty_state.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "table"
+        mock_entity_type.display_name = "Table"
+
+        mock_rule = MagicMock()
+        mock_rule.type = "table_cleanness"
+        mock_rule.rule_metadata = {
+            "event_generation": {
+                "strategy": "centered_majority_vote",
+                "window_frames": 5,
+            }
+        }
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = {
+            "result": {
+                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
+            },
+            "token_usage": {},
+        }
+        decision = SmoothingDecision(
+            center_observed_at=center_observed_at,
+            center_frame_s3_key="frame-0.jpg",
+            center_camera_config_id=center_config_id,
+            state_id=dirty_id,
+            state="dirty",
+            confidence=0.88,
+            metadata={"strategy": "centered_majority_vote", "window_frames": 5},
+        )
+        smoothing_buffer = _FakeSmoothingBuffer(decisions=[decision])
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionRuleRepository"
+            ) as mock_rule_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.acquire_smoothing_cache_buffer",
+                AsyncMock(return_value=smoothing_buffer),
+            ),
+            patch(
+                "services.vision_observation_service._implementation.handle_state_change_rules",
+                AsyncMock(),
+            ),
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[clean_state, dirty_state]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+            mock_event_repo_cls.return_value.create = AsyncMock()
+            mock_rule_repo_cls.return_value.list_by_project = AsyncMock(
+                return_value=[mock_rule]
+            )
+
+            await generate_observation(
+                session,
+                config_id,
+                image_bytes=_test_image_bytes(),
+                observed_at=observed_at,
+            )
+
+            mock_entity_repo_cls.return_value.update.assert_not_awaited()
+            mock_event_repo_cls.return_value.create.assert_not_awaited()
+            assert smoothing_buffer.finalized_observed_at == [center_observed_at]
+            smoothing_buffer.save.assert_awaited_once()
+            smoothing_buffer.release.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_smoothed_replay_recovers_missing_state_change_event(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        center_config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        event_id = uuid.uuid4()
+        clean_id = uuid.uuid4()
+        dirty_id = uuid.uuid4()
+        observed_at = datetime(2026, 6, 19, 9, 1, 30, tzinfo=timezone.utc)
+        center_observed_at = datetime(2026, 6, 19, 9, 0, tzinfo=timezone.utc)
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.enabled = True
+        mock_config.llm_prompt = ""
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.project_id = project_id
+        mock_entity.name = "table_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = dirty_id
+        mock_entity.current_state_since = center_observed_at
+        mock_entity.entity_metadata = {
+            "current_states": {
+                "cleanliness": {
+                    "state_definition_id": str(dirty_id),
+                    "state": "dirty",
+                    "current_state_since": center_observed_at.isoformat(),
+                    "observed_at": center_observed_at.isoformat(),
+                    "state_change_event_id": str(event_id),
+                    "previous_state_definition_id": str(clean_id),
+                    "previous_state": "clean",
+                    "previous_state_since": "2026-06-19T08:59:00+00:00",
+                }
+            }
+        }
+
+        clean_state = MagicMock()
+        clean_state.id = clean_id
+        clean_state.name = "clean"
+        clean_state.definition_type = "cleanliness"
+        dirty_state = MagicMock()
+        dirty_state.id = dirty_id
+        dirty_state.name = "dirty"
+        dirty_state.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "table"
+        mock_entity_type.display_name = "Table"
+
+        mock_rule = MagicMock()
+        mock_rule.type = "table_cleanness"
+        mock_rule.rule_metadata = {
+            "event_generation": {
+                "strategy": "centered_majority_vote",
+                "window_frames": 5,
+            }
+        }
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = {
+            "result": {
+                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
+            },
+            "token_usage": {},
+        }
+        decision = SmoothingDecision(
+            center_observed_at=center_observed_at,
+            center_frame_s3_key="frame-0.jpg",
+            center_camera_config_id=center_config_id,
+            state_id=dirty_id,
+            state="dirty",
+            confidence=0.88,
+            metadata={"strategy": "centered_majority_vote", "window_frames": 5},
+        )
+        smoothing_buffer = _FakeSmoothingBuffer(decisions=[decision])
+        mock_handle_state_change_rules = AsyncMock()
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionRuleRepository"
+            ) as mock_rule_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.acquire_smoothing_cache_buffer",
+                AsyncMock(return_value=smoothing_buffer),
+            ),
+            patch(
+                "services.vision_observation_service._implementation.handle_state_change_rules",
+                mock_handle_state_change_rules,
+            ),
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[clean_state, dirty_state]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+            mock_event_repo_cls.return_value.get_by_entity_state_observed_at = (
+                AsyncMock(return_value=None)
+            )
+            mock_event_repo_cls.return_value.create = AsyncMock()
+            mock_rule_repo_cls.return_value.list_by_project = AsyncMock(
+                return_value=[mock_rule]
+            )
+
+            await generate_observation(
+                session,
+                config_id,
+                image_bytes=_test_image_bytes(),
+                observed_at=observed_at,
+            )
+
+            mock_entity_repo_cls.return_value.update.assert_not_awaited()
+            event_create_args = mock_event_repo_cls.return_value.create.await_args
+            assert event_create_args is not None
+            event = event_create_args.args[0]
+            assert event.id == event_id
+            assert event.entity_id == entity_id
+            assert event.previous_state_id == clean_id
+            assert event.new_state_id == dirty_id
+            assert event.observed_at == center_observed_at
+            assert event.event_metadata["smoothing"] == decision.metadata
+            mock_handle_state_change_rules.assert_awaited_once()
+            assert smoothing_buffer.finalized_observed_at == [center_observed_at]
+            smoothing_buffer.save.assert_awaited_once()
+            smoothing_buffer.release.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_smoothed_observation_skips_state_update_when_cache_unavailable(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        state_id_dirty = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.enabled = True
+        mock_config.llm_prompt = ""
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.project_id = project_id
+        mock_entity.name = "table_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
+        mock_entity.current_state_since = None
+        mock_entity.entity_metadata = {}
+
+        mock_state_def = MagicMock()
+        mock_state_def.id = state_id_dirty
+        mock_state_def.name = "dirty"
+        mock_state_def.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "table"
+        mock_entity_type.display_name = "Table"
+
+        mock_rule = MagicMock()
+        mock_rule.type = "table_cleanness"
+        mock_rule.rule_metadata = {
+            "event_generation": {
+                "strategy": "centered_majority_vote",
+                "window_frames": 5,
+            }
+        }
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = {
+            "result": {
+                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
+            },
+            "token_usage": {},
+        }
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionRuleRepository"
+            ) as mock_rule_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.acquire_smoothing_cache_buffer",
+                AsyncMock(return_value=None),
+            ),
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+            mock_event_repo_cls.return_value.create = AsyncMock()
+            mock_rule_repo_cls.return_value.list_by_project = AsyncMock(
+                return_value=[mock_rule]
+            )
+
+            await generate_observation(
+                session,
+                config_id,
+                image_bytes=_test_image_bytes(),
+            )
+
+            mock_entity_repo_cls.return_value.update.assert_not_awaited()
+            mock_event_repo_cls.return_value.create.assert_not_awaited()
+
+
+class _FakeSmoothingBuffer:
+    def __init__(self, decisions: list[SmoothingDecision]) -> None:
+        self.decisions = decisions
+        self.finalized_observed_at: list[datetime] = []
+        self.save = AsyncMock()
+        self.release = AsyncMock()
+
+    def collect_ready_decisions(self, now: datetime) -> list[SmoothingDecision]:
+        del now
+        return self.decisions
+
+    def mark_finalized(self, observed_at: datetime) -> None:
+        self.finalized_observed_at.append(observed_at)
 
 
 class TestGetConfigurationPrompt:

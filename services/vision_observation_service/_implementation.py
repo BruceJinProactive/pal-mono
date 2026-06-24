@@ -4,6 +4,8 @@ import ast
 import asyncio
 import base64
 import uuid
+from collections.abc import Mapping
+from dataclasses import is_dataclass, replace
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any
@@ -21,6 +23,7 @@ from db.pal_repository import (
     VisionEntityRepository,
     VisionEntityStateDefinitionRepository,
     VisionEntityTypeRepository,
+    VisionRuleRepository,
     VisionStateChangeEventRepository,
 )
 from db.pal_repository.data_classes.vision_state_change_event import (
@@ -33,11 +36,26 @@ from services.monitoring_service._providers import (
     MonitoringLLMProvider,
     create_monitoring_llm_provider,
 )
-from services.vision_observation_service._workflow import handle_state_change_rules
+from services.vision_observation_service._smoothing import (
+    EventGenerationConfig,
+    SmoothingDecision,
+    SmoothingObservation,
+    is_smoothing_enabled,
+    parse_event_generation_config,
+    single_frame_event_generation_config,
+)
+from services.vision_observation_service._smoothing_cache import (
+    acquire_smoothing_cache_buffer,
+)
+from services.vision_observation_service._workflow import (
+    RULE_TYPE_WORKFLOWS,
+    handle_state_change_rules,
+)
 from services.vision_state_metadata import (
     LEGACY_CURRENT_STATE_TYPE,
     current_state_id_from_metadata,
     current_state_metadata_key,
+    current_state_observed_at_from_metadata,
     get_current_states_metadata,
     set_current_state_metadata,
 )
@@ -360,6 +378,304 @@ def _extract_camera_name_from_s3_key(image_url: str) -> str | None:
     if len(parts) >= 2 and parts[0] == "cameras":
         return parts[1]
     return None
+
+
+def _parse_metadata_uuid(value: object) -> uuid.UUID | None:
+    if isinstance(value, uuid.UUID):
+        return value
+    if isinstance(value, str):
+        try:
+            return uuid.UUID(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_metadata_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return (
+            value.astimezone(timezone.utc)
+            if value.tzinfo
+            else value.replace(tzinfo=timezone.utc)
+        )
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        return (
+            parsed.astimezone(timezone.utc)
+            if parsed.tzinfo
+            else parsed.replace(tzinfo=timezone.utc)
+        )
+    return None
+
+
+def _current_state_for_definition(
+    entity_metadata: dict[str, object],
+    definition_type: str,
+) -> Mapping[str, object] | None:
+    current_state = get_current_states_metadata(entity_metadata).get(definition_type)
+    return current_state if isinstance(current_state, Mapping) else None
+
+
+def _metadata_state_matches_decision(
+    current_state: Mapping[str, object],
+    decision: SmoothingDecision,
+) -> bool:
+    return (
+        _parse_metadata_uuid(current_state.get("state_definition_id"))
+        == decision.state_id
+        and _parse_metadata_datetime(current_state.get("observed_at"))
+        == decision.center_observed_at
+    )
+
+
+def _entity_for_recovered_workflow(
+    entity: Any,
+    entity_metadata: dict[str, object],
+    definition_type: str,
+    current_state: Mapping[str, object],
+) -> Any:
+    previous_state_id = _parse_metadata_uuid(
+        current_state.get("previous_state_definition_id")
+    )
+    previous_state_name = current_state.get("previous_state")
+    previous_state_since = _parse_metadata_datetime(
+        current_state.get("previous_state_since")
+    )
+    if previous_state_id is None or not isinstance(previous_state_name, str):
+        return entity
+
+    previous_metadata = set_current_state_metadata(
+        entity_metadata,
+        definition_type,
+        previous_state_id,
+        previous_state_name,
+        previous_state_since or datetime.now(timezone.utc),
+        previous_state_since or datetime.now(timezone.utc),
+        None,
+    )
+    if is_dataclass(entity) and not isinstance(entity, type):
+        return replace(
+            entity,
+            entity_metadata=previous_metadata,
+            current_state_id=previous_state_id,
+            current_state_since=previous_state_since,
+        )
+
+    return entity
+
+
+async def _recover_applied_smoothing_decision(
+    *,
+    session: AsyncSession,
+    event_repo: VisionStateChangeEventRepository,
+    entity: Any,
+    entity_metadata: dict[str, object],
+    entity_id: uuid.UUID,
+    decision: SmoothingDecision,
+    definition_type: str,
+    lookup_info: dict[str, Any],
+) -> None:
+    if (
+        decision.state_id is None
+        or decision.state is None
+        or decision.confidence is None
+    ):
+        return
+
+    current_state = _current_state_for_definition(entity_metadata, definition_type)
+    if current_state is None or not _metadata_state_matches_decision(
+        current_state,
+        decision,
+    ):
+        return
+
+    state_change_event = await event_repo.get_by_entity_state_observed_at(
+        entity_id=entity_id,
+        state_id=decision.state_id,
+        observed_at=decision.center_observed_at,
+        definition_type=definition_type,
+    )
+    if state_change_event is None:
+        state_change_event = VisionStateChangeEventData(
+            id=_parse_metadata_uuid(current_state.get("state_change_event_id"))
+            or uuid.uuid4(),
+            entity_id=entity_id,
+            new_state_id=decision.state_id,
+            observed_at=decision.center_observed_at,
+            event_metadata={
+                "definition_type": definition_type,
+                "smoothing": decision.metadata,
+            },
+            camera_config_id=decision.center_camera_config_id,
+            previous_state_id=_parse_metadata_uuid(
+                current_state.get("previous_state_definition_id")
+            ),
+            confidence=decision.confidence,
+            frame_s3_key=decision.center_frame_s3_key,
+        )
+        await event_repo.create(state_change_event)
+
+    previous_state_name = current_state.get("previous_state")
+    await handle_state_change_rules(
+        session=session,
+        entity=_entity_for_recovered_workflow(
+            entity,
+            entity_metadata,
+            definition_type,
+            current_state,
+        ),
+        state_change_event=state_change_event,
+        state_name=decision.state,
+        previous_state_name=(
+            previous_state_name if isinstance(previous_state_name, str) else None
+        ),
+        entity_type_name=lookup_info["entity_type_name"],
+    )
+
+
+def _select_event_generation_config(
+    rules: list[Any],
+    entity_type_name: str,
+    definition_type: str,
+) -> EventGenerationConfig:
+    selected = single_frame_event_generation_config()
+
+    for rule in rules:
+        workflow = RULE_TYPE_WORKFLOWS.get(rule.type)
+        if workflow is None:
+            continue
+        if workflow.entity_type_name != entity_type_name:
+            continue
+        if (
+            workflow.state_definition_type is not None
+            and workflow.state_definition_type != definition_type
+        ):
+            continue
+
+        event_generation = rule.rule_metadata.get("event_generation")
+        config = parse_event_generation_config(event_generation)
+        if not is_smoothing_enabled(config):
+            continue
+        if (
+            not is_smoothing_enabled(selected)
+            or config.window_frames > selected.window_frames
+        ):
+            selected = config
+
+    return selected
+
+
+async def _apply_state_decision(
+    session: AsyncSession,
+    entity_repo: VisionEntityRepository,
+    event_repo: VisionStateChangeEventRepository,
+    entity: Any,
+    entity_metadata: dict[str, object],
+    entity_id: uuid.UUID,
+    camera_config_id: uuid.UUID,
+    state_id: uuid.UUID,
+    state_name: str,
+    confidence: float,
+    observed_at: datetime,
+    frame_s3_key: str | None,
+    definition_type: str,
+    lookup_info: dict[str, Any],
+    event_metadata: dict[str, Any],
+    include_recovery_metadata: bool = False,
+) -> tuple[Any, dict[str, object]]:
+    current_states = get_current_states_metadata(entity_metadata)
+    previous_state_id = current_state_id_from_metadata(current_states, definition_type)
+    if (
+        previous_state_id is None
+        and entity.current_state_id is not None
+        and lookup_info["state_id_to_definition_type"].get(entity.current_state_id)
+        == definition_type
+    ):
+        previous_state_id = entity.current_state_id
+
+    state_changed = state_id != previous_state_id
+    metadata_missing = definition_type not in current_states
+    if not state_changed and not metadata_missing:
+        return entity, entity_metadata
+
+    previous_state_name = None
+    if previous_state_id is not None:
+        previous_state_name = lookup_info["state_id_to_name"].get(previous_state_id)
+    previous_state_since = None
+    previous_current_state = current_states.get(definition_type)
+    if isinstance(previous_current_state, Mapping):
+        previous_state_since = _parse_metadata_datetime(
+            previous_current_state.get("current_state_since")
+        )
+
+    current_state_since = (
+        observed_at if state_changed else entity.current_state_since or observed_at
+    )
+    state_change_event = None
+    if state_changed:
+        state_change_event = VisionStateChangeEventData(
+            id=uuid.uuid4(),
+            entity_id=entity_id,
+            new_state_id=state_id,
+            observed_at=observed_at,
+            event_metadata=event_metadata,
+            camera_config_id=camera_config_id,
+            previous_state_id=previous_state_id,
+            confidence=confidence,
+            frame_s3_key=frame_s3_key,
+        )
+    updated_metadata = set_current_state_metadata(
+        entity_metadata,
+        definition_type,
+        state_id,
+        state_name,
+        current_state_since,
+        observed_at,
+        confidence,
+        state_change_event_id=(
+            state_change_event.id
+            if state_change_event and include_recovery_metadata
+            else None
+        ),
+        previous_state_id=(
+            previous_state_id if state_changed and include_recovery_metadata else None
+        ),
+        previous_state_name=(
+            previous_state_name if state_changed and include_recovery_metadata else None
+        ),
+        previous_state_since=(
+            previous_state_since
+            if state_changed and include_recovery_metadata
+            else None
+        ),
+    )
+    updates: dict[str, object] = {"entity_metadata": updated_metadata}
+    if len(lookup_info["state_name_to_id_by_type"]) == 1:
+        updates["current_state_id"] = state_id
+        updates["current_state_since"] = current_state_since
+
+    entity_before_update = entity
+    updated_entity = await entity_repo.update(entity_id, **updates)
+    if updated_entity is not None:
+        entity = updated_entity
+
+    if not state_changed:
+        return entity, updated_metadata
+
+    assert state_change_event is not None
+    await event_repo.create(state_change_event)
+    await handle_state_change_rules(
+        session=session,
+        entity=entity_before_update,
+        state_change_event=state_change_event,
+        state_name=state_name,
+        previous_state_name=previous_state_name,
+        entity_type_name=lookup_info["entity_type_name"],
+    )
+    return entity, updated_metadata
 
 
 class ConfigurationPromptResult:
@@ -777,6 +1093,11 @@ async def generate_observation(
 
     if image_relevant and not is_test:
         event_repo = VisionStateChangeEventRepository(session)
+        active_rules_by_project: dict[uuid.UUID, list[Any]] = {}
+        event_generation_configs: dict[
+            tuple[uuid.UUID, str, str],
+            EventGenerationConfig,
+        ] = {}
         for obs in entity_observations:
             if obs.state_id is None:
                 continue
@@ -791,74 +1112,133 @@ async def generate_observation(
                 obs.state_id,
                 lookup_info["state_id_to_definition_type"],
             )
-            current_states = get_current_states_metadata(fresh_entity.entity_metadata)
-            previous_state_id = current_state_id_from_metadata(
-                current_states, definition_type
-            )
-            if (
-                previous_state_id is None
-                and fresh_entity.current_state_id is not None
-                and lookup_info["state_id_to_definition_type"].get(
-                    fresh_entity.current_state_id
-                )
-                == definition_type
-            ):
-                previous_state_id = fresh_entity.current_state_id
-
-            state_changed = obs.state_id != previous_state_id
-            metadata_missing = definition_type not in current_states
-            if not state_changed and not metadata_missing:
-                continue
-
-            current_state_since = (
-                observed_at
-                if state_changed
-                else fresh_entity.current_state_since or observed_at
-            )
-            entity_metadata = set_current_state_metadata(
-                fresh_entity.entity_metadata,
+            config_cache_key = (
+                fresh_entity.project_id,
+                lookup_info["entity_type_name"],
                 definition_type,
-                obs.state_id,
-                obs.state,
-                current_state_since,
-                observed_at,
-                obs.confidence,
             )
-            updates: dict[str, object] = {"entity_metadata": entity_metadata}
-            if len(lookup_info["state_name_to_id_by_type"]) == 1:
-                updates["current_state_id"] = obs.state_id
-                updates["current_state_since"] = current_state_since
-            await entity_repo.update(
-                obs.entity_id,
-                **updates,
-            )
-            if not state_changed:
-                continue
-            state_change_event = VisionStateChangeEventData(
-                id=uuid.uuid4(),
-                entity_id=obs.entity_id,
-                new_state_id=obs.state_id,
-                observed_at=observed_at,
-                event_metadata={"definition_type": definition_type},
-                camera_config_id=camera_config_id,
-                previous_state_id=previous_state_id,
-                confidence=obs.confidence,
-                frame_s3_key=image_url,
-            )
-            await event_repo.create(state_change_event)
-            previous_state_name = None
-            if previous_state_id is not None:
-                previous_state_name = lookup_info["state_id_to_name"].get(
-                    previous_state_id
+            event_generation_config = event_generation_configs.get(config_cache_key)
+            if event_generation_config is None:
+                active_rules = active_rules_by_project.get(fresh_entity.project_id)
+                if active_rules is None:
+                    rule_repo = VisionRuleRepository(session)
+                    active_rules = await rule_repo.list_by_project(
+                        fresh_entity.project_id,
+                        is_active=True,
+                    )
+                    active_rules_by_project[fresh_entity.project_id] = active_rules
+                event_generation_config = _select_event_generation_config(
+                    active_rules,
+                    lookup_info["entity_type_name"],
+                    definition_type,
                 )
-            await handle_state_change_rules(
-                session=session,
-                entity=fresh_entity,
-                state_change_event=state_change_event,
-                state_name=obs.state,
-                previous_state_name=previous_state_name,
-                entity_type_name=lookup_info["entity_type_name"],
+                event_generation_configs[config_cache_key] = event_generation_config
+
+            if not is_smoothing_enabled(event_generation_config):
+                await _apply_state_decision(
+                    session=session,
+                    entity_repo=entity_repo,
+                    event_repo=event_repo,
+                    entity=fresh_entity,
+                    entity_metadata=fresh_entity.entity_metadata,
+                    entity_id=obs.entity_id,
+                    camera_config_id=camera_config_id,
+                    state_id=obs.state_id,
+                    state_name=obs.state,
+                    confidence=obs.confidence,
+                    observed_at=observed_at,
+                    frame_s3_key=image_url,
+                    definition_type=definition_type,
+                    lookup_info=lookup_info,
+                    event_metadata={"definition_type": definition_type},
+                )
+                continue
+
+            smoothing_buffer = await acquire_smoothing_cache_buffer(
+                obs.entity_id,
+                camera_config_id,
+                definition_type,
+                SmoothingObservation(
+                    observed_at=observed_at,
+                    state_id=obs.state_id,
+                    state=obs.state,
+                    confidence=obs.confidence,
+                    frame_s3_key=image_url,
+                    camera_config_id=camera_config_id,
+                ),
+                event_generation_config,
             )
+            if smoothing_buffer is None:
+                continue
+
+            try:
+                decisions = smoothing_buffer.collect_ready_decisions(
+                    datetime.now(timezone.utc),
+                )
+                entity_for_decisions = fresh_entity
+                entity_metadata = fresh_entity.entity_metadata
+                for decision in decisions:
+                    smoothing_buffer.mark_finalized(decision.center_observed_at)
+                    current_observed_at = current_state_observed_at_from_metadata(
+                        get_current_states_metadata(entity_metadata),
+                        definition_type,
+                    )
+                    if (
+                        current_observed_at is not None
+                        and decision.center_observed_at <= current_observed_at
+                    ):
+                        if decision.center_observed_at == current_observed_at:
+                            await _recover_applied_smoothing_decision(
+                                session=session,
+                                event_repo=event_repo,
+                                entity=entity_for_decisions,
+                                entity_metadata=entity_metadata,
+                                entity_id=obs.entity_id,
+                                decision=decision,
+                                definition_type=definition_type,
+                                lookup_info=lookup_info,
+                            )
+                        continue
+                    if (
+                        decision.state_id is None
+                        or decision.state is None
+                        or decision.confidence is None
+                    ):
+                        continue
+                    entity_for_decisions, entity_metadata = await _apply_state_decision(
+                        session=session,
+                        entity_repo=entity_repo,
+                        event_repo=event_repo,
+                        entity=entity_for_decisions,
+                        entity_metadata=entity_metadata,
+                        entity_id=obs.entity_id,
+                        camera_config_id=decision.center_camera_config_id,
+                        state_id=decision.state_id,
+                        state_name=decision.state,
+                        confidence=decision.confidence,
+                        observed_at=decision.center_observed_at,
+                        frame_s3_key=decision.center_frame_s3_key,
+                        definition_type=definition_type,
+                        lookup_info=lookup_info,
+                        event_metadata={
+                            "definition_type": definition_type,
+                            "smoothing": decision.metadata,
+                        },
+                        include_recovery_metadata=True,
+                    )
+                try:
+                    await smoothing_buffer.save()
+                except Exception:
+                    logger.warning(
+                        "[Vision Observation] Failed to persist smoothing cache buffer",
+                        extra={
+                            "entity_id": str(obs.entity_id),
+                            "definition_type": definition_type,
+                        },
+                        exc_info=True,
+                    )
+            finally:
+                await smoothing_buffer.release()
 
     token_usage["observed"] = True
     token_usage["image_relevant"] = image_relevant

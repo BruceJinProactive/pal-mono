@@ -115,6 +115,7 @@ REDIS_CACHE_PORT=6379
 REDIS_CACHE_USERNAME=...
 REDIS_CACHE_AUTH_MODE=secrets_manager
 REDIS_CACHE_SECRET_KEY=REDIS_CACHE_AUTH_TOKEN
+REDIS_CACHE_CLUSTER_MODE=false
 REDIS_CACHE_SSL=true
 REDIS_CACHE_DEFAULT_TTL_SECONDS=1800
 REDIS_CACHE_MAX_ITEM_BYTES=32768
@@ -137,6 +138,11 @@ Files to modify:
 - `local.env.example` - document cache config
 - deployment/config files - provide ElastiCache endpoint and secret keys
 - `utils/cache/redis.py` - parse env config and create the Redis client
+
+Keep `REDIS_CACHE_CLUSTER_MODE=false` for node-based ElastiCache replication
+groups with cluster mode disabled. Set it to `true` only when the configured
+endpoint is Redis Cluster, ElastiCache cluster-mode enabled, or ElastiCache
+Serverless.
 
 ### Phase 2: Add A Cache Adapter In pal-mono
 

@@ -141,6 +141,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
             state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
                 return_value=previous_event
             )
@@ -179,6 +182,67 @@ class TestHandleStateChangeRules:
         )
 
     @pytest.mark.asyncio
+    async def test_existing_rule_event_is_not_duplicated(self) -> None:
+        session = AsyncMock()
+        entity = _make_entity()
+        rule = _make_rule(project_id=entity.project_id)
+        state_change = _make_state_change(entity_id=entity.id)
+        assert state_change.previous_state_id is not None
+        started_at = state_change.observed_at - timedelta(minutes=12, seconds=30)
+        previous_event = VisionStateChangeEventData(
+            id=uuid.uuid4(),
+            entity_id=entity.id,
+            new_state_id=state_change.previous_state_id,
+            observed_at=started_at,
+            event_metadata={"definition_type": "cleanliness"},
+        )
+        existing_rule_event = VisionRuleEventData(
+            id=uuid.uuid4(),
+            rule_id=rule.id,
+            entity_id=entity.id,
+            state_change_event_id=state_change.id,
+            severity=rule.severity,
+            triggered_at=state_change.observed_at,
+            duration=Decimal("12.5000"),
+        )
+        _set_current_state_since(
+            entity=entity,
+            definition_type="cleanliness",
+            state_id=state_change.previous_state_id,
+            state_name="dirty",
+            since=started_at,
+        )
+
+        with (
+            patch(f"{MODULE}.VisionRuleRepository") as rule_repo_cls,
+            patch(f"{MODULE}.VisionRuleEventRepository") as event_repo_cls,
+            patch(f"{MODULE}.VisionStateChangeEventRepository") as state_repo_cls,
+        ):
+            rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
+            event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=existing_rule_event
+            )
+            state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
+                return_value=previous_event
+            )
+
+            await handle_state_change_rules(
+                session,
+                entity,
+                state_change,
+                "clean",
+                previous_state_name="dirty",
+                entity_type_name="table",
+            )
+
+            event_repo_cls.return_value.get_by_rule_state_change_event.assert_awaited_once_with(
+                rule.id,
+                state_change.id,
+            )
+            event_repo_cls.return_value.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_duration_falls_back_to_previous_state_change_event(self) -> None:
         session = AsyncMock()
         entity = _make_entity()
@@ -201,6 +265,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
             state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
                 return_value=previous_event
             )
@@ -259,6 +326,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
             state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
                 return_value=previous_event
             )
@@ -317,6 +387,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
             state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
                 return_value=previous_event
             )
@@ -373,6 +446,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
             state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
                 return_value=None
             )
@@ -521,6 +597,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
             state_repo_cls.return_value.get_latest_by_entity_state_before = AsyncMock(
                 return_value=previous_event
             )
@@ -573,6 +652,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
 
             await handle_state_change_rules(
                 session,
@@ -598,6 +680,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
 
             await handle_state_change_rules(
                 session,
@@ -623,6 +708,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
 
             await handle_state_change_rules(
                 session,
@@ -655,6 +743,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
 
             await handle_state_change_rules(
                 session,
@@ -689,6 +780,9 @@ class TestHandleStateChangeRules:
         ):
             rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[rule])
             event_repo_cls.return_value.create = AsyncMock()
+            event_repo_cls.return_value.get_by_rule_state_change_event = AsyncMock(
+                return_value=None
+            )
 
             await handle_state_change_rules(
                 session,

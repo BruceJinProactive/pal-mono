@@ -37,6 +37,7 @@ class RedisCacheSettings(BaseSettings):
     username: str = ""
     secret_key: str = "REDIS_CACHE_AUTH_TOKEN"  # noqa: S105
     auth_mode: CacheAuthMode = CacheAuthMode.SECRETS_MANAGER
+    cluster_mode: bool = False
     ssl: bool = True
     default_ttl_seconds: int = Field(default=1800, ge=1)
     max_item_bytes: int = Field(default=32768, ge=1)
@@ -93,6 +94,25 @@ async def build_redis_cache_client(
         )
 
     password = await get_redis_cache_password(settings)
+
+    if settings.cluster_mode:
+        from redis.asyncio.cluster import RedisCluster
+
+        return cast(
+            RedisClient,
+            RedisCluster(
+                host=settings.host,
+                port=settings.port,
+                username=settings.username or None,
+                password=password,
+                ssl=settings.ssl,
+                decode_responses=True,
+                socket_connect_timeout=settings.socket_connect_timeout_seconds,
+                socket_timeout=settings.socket_timeout_seconds,
+                health_check_interval=settings.health_check_interval_seconds,
+            ),
+        )
+
     from redis.asyncio import Redis
 
     return cast(

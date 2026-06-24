@@ -136,6 +136,64 @@ class TestGetByIdForAccount:
         mock_session.rollback.assert_awaited_once()
 
 
+class TestGetByRuleStateChangeEvent:
+
+    @pytest.mark.asyncio
+    async def test_returns_matching_event(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_orm_row: MagicMock,
+        sample_rule_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_orm_row
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.get_by_rule_state_change_event(
+            rule_id=sample_rule_id,
+            state_change_event_id=sample_orm_row.state_change_event_id,
+        )
+
+        assert isinstance(data, VisionRuleEventData)
+        assert data.id == sample_orm_row.id
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_rule_id: uuid.UUID,
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        data = await repo.get_by_rule_state_change_event(
+            rule_id=sample_rule_id,
+            state_change_event_id=uuid.uuid4(),
+        )
+
+        assert data is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_db_error(
+        self,
+        repo: VisionRuleEventRepository,
+        mock_session: AsyncMock,
+        sample_rule_id: uuid.UUID,
+    ) -> None:
+        mock_session.execute.side_effect = Exception("connection lost")
+
+        data = await repo.get_by_rule_state_change_event(
+            rule_id=sample_rule_id,
+            state_change_event_id=uuid.uuid4(),
+        )
+
+        assert data is None
+        mock_session.rollback.assert_awaited_once()
+
+
 class TestListByAccount:
     @pytest.mark.asyncio
     async def test_returns_list(
