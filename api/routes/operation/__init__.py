@@ -107,6 +107,7 @@ from api.schemas.operations.vision_rule_event import (
     ListVisionRuleEventsResponse,
     UpdateVisionRuleEventRequest,
     VisionRuleEventResponse,
+    VisionRuleEventVideoLookupResponse,
 )
 from api.schemas.operations.vision_state_change_event import (
     CreateStateChangeEventRequest,
@@ -3855,10 +3856,6 @@ async def list_state_change_events(
 async def get_state_change_event(
     account_name: str,
     event_id: uuid.UUID,
-    include_video: bool = Query(
-        default=False,
-        description="Include presigned videos overlapping the event window",
-    ),
     context: UserContext = Depends(
         require_account_permission("account.read", authenticate_user)
     ),
@@ -3870,16 +3867,12 @@ async def get_state_change_event(
     Path Parameters:
     - account_name: Account identifier
     - event_id: UUID of the event
-
-    Query Parameters:
-    - include_video (optional): Include presigned videos overlapping the event window
     """
     _ = context
     return await _vision_state_change_events.get_state_change_event(
         session=session,
         event_id=event_id,
         account_name=account_name,
-        include_video=include_video,
     )
 
 
@@ -4209,6 +4202,38 @@ async def get_rule_event(
     """
     _ = context
     return await _vision_rule_events.get_rule_event(
+        session=session,
+        event_id=event_id,
+        account_name=account_name,
+    )
+
+
+@operation_router.get(
+    "/accounts/{account_name}/rule-events/{event_id}/lookup",
+    response_model=VisionRuleEventVideoLookupResponse,
+    responses={
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+async def lookup_rule_event_videos(
+    account_name: str,
+    event_id: uuid.UUID,
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: AsyncSession = Depends(db.get_db_async),
+) -> VisionRuleEventVideoLookupResponse:
+    """
+    Lookup presigned videos for a vision rule event.
+
+    Path Parameters:
+    - account_name: Account identifier
+    - event_id: UUID of the rule event
+    """
+    _ = context
+    return await _vision_rule_events.lookup_rule_event_videos(
         session=session,
         event_id=event_id,
         account_name=account_name,

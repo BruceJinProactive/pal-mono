@@ -231,11 +231,8 @@ window. The endpoint defaults `start` to the past 24 hours when omitted and
 paginates returned rows with `page` (default `1`) and `limit` (default `100`,
 max `1000`); `total` reports the full filtered match count before pagination.
 `GET /accounts/{account_name}/state-change-events/{event_id}` accepts
-`include_video` (default `false`). When requested, the response includes
-nullable `video_url`; the service first uses `event_metadata.video_url` when it
-contains a video asset URI, otherwise it derives the matching one-minute video
-from `frame_s3_key` by replacing `/images/` with `/videos/` and flooring the
-timestamped image filename to `YYYY-MM-DD_HH-MM-00.mp4`.
+only the path `event_id` and returns the persisted state-change event. It does
+not perform video lookup or include presigned video segment fields.
 
 Vision state-change events also drive lightweight rule workflows in
 `services/vision_observation_service/_workflow.py`. Each workflow is selected by
@@ -273,6 +270,16 @@ parameter. `PATCH
 authorized operations callers correct a rule event's `triggered_at` timestamp
 and `duration` in minutes, marking `manually_adjusted=true` by default without
 changing the linked rule, entity, state-change event, severity, or metadata.
+`GET /accounts/{account_name}/rule-events/{event_id}/lookup` returns presigned
+camera video segments for the rule event. The lookup loads the rule event,
+loads its linked state-change event, derives the camera video prefix from the
+state-change event's `frame_s3_key`, and searches S3 for archived video
+segments overlapping the window from `vision_rule_event.triggered_at -
+vision_rule_event.duration` through `vision_rule_event.triggered_at`, rounded
+outward to full-minute boundaries before searching S3. The lookup enforces a
+product ceiling of 120 duration minutes and 122 returned video segments before
+or during S3 scanning; over-limit stored durations or manual edits return a
+400-style validation error rather than running an unbounded lookup.
 
 Vision V2 observations derive `observed_at` from the image path when the
 filename matches the UTC snapshot format `YYYY-MM-DD_HH-MM-SS.jpg`, including

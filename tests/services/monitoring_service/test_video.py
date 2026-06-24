@@ -1064,6 +1064,52 @@ class TestLookupCameraVideoSegments:
         )
         assert videos[0].url.endswith("2026-06-23_14-05-03.mp4")
 
+    def test_stops_after_max_segments(self) -> None:
+        s3_client, _paginator = _mock_s3_client(
+            [
+                [
+                    {
+                        "Contents": [
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-06-23_14-05-00.mp4"
+                                )
+                            },
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-06-23_14-06-00.mp4"
+                                )
+                            },
+                            {
+                                "Key": (
+                                    "security/cameras/account/project/camera/videos/"
+                                    "2026-06-23/2026-06-23_14-07-00.mp4"
+                                )
+                            },
+                        ]
+                    }
+                ]
+            ]
+        )
+
+        videos = _lookup_camera_video_segments_sync(
+            s3_client=s3_client,
+            bucket_name="bucket",
+            video_prefix="security/cameras/account/project/camera/videos/",
+            start_time=datetime(2026, 6, 23, 14, 5, tzinfo=timezone.utc),
+            end_time=datetime(2026, 6, 23, 14, 8, tzinfo=timezone.utc),
+            segment_duration_seconds=60.0,
+            max_segments=2,
+        )
+
+        assert [video.s3_key.rsplit("/", 1)[-1] for video in videos] == [
+            "2026-06-23_14-05-00.mp4",
+            "2026-06-23_14-06-00.mp4",
+        ]
+        assert s3_client.generate_presigned_url.call_count == 2
+
     def test_lists_previous_day_for_segments_that_overlap_midnight(self) -> None:
         s3_client, paginator = _mock_s3_client(
             [
@@ -1189,6 +1235,30 @@ class TestLookupCameraVideoSegments:
         )
 
         assert videos == []
+
+    @pytest.mark.asyncio
+    async def test_async_lookup_returns_empty_for_invalid_max_segments(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mocker,
+    ) -> None:
+        monkeypatch.setattr(
+            "services.monitoring_service._video.AWS_ASSET_BUCKET_NAME",
+            "bucket",
+        )
+        mock_create_client = mocker.patch(
+            "services.monitoring_service._video._create_video_s3_client"
+        )
+
+        videos = await lookup_camera_video_segments(
+            video_prefix="security/cameras/account/project/camera/videos/",
+            start_time=datetime(2026, 6, 23, 14, 5, tzinfo=timezone.utc),
+            end_time=datetime(2026, 6, 23, 14, 6, tzinfo=timezone.utc),
+            max_segments=0,
+        )
+
+        assert videos == []
+        mock_create_client.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_async_lookup_returns_empty_for_invalid_window(

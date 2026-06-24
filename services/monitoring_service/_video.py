@@ -283,6 +283,7 @@ def _lookup_camera_video_segments_sync(
     start_time: datetime,
     end_time: datetime,
     segment_duration_seconds: float,
+    max_segments: int | None = None,
 ) -> list[CameraVideoSegment]:
     search_start_time = start_time - timedelta(seconds=segment_duration_seconds)
     prefixes = _video_date_prefixes(video_prefix, search_start_time, end_time)
@@ -327,6 +328,11 @@ def _lookup_camera_video_segments_sync(
                         segment_end_time=segment_end_time,
                     )
                 )
+                if max_segments is not None and len(videos) >= max_segments:
+                    return sorted(
+                        videos,
+                        key=lambda video: (video.segment_start_time, video.s3_key),
+                    )
 
     return sorted(videos, key=lambda video: (video.segment_start_time, video.s3_key))
 
@@ -336,6 +342,7 @@ async def lookup_camera_video_segments(
     start_time: datetime,
     end_time: datetime,
     segment_duration_seconds: float = ONE_MINUTE_VIDEO_SECONDS,
+    max_segments: int | None = None,
 ) -> list[CameraVideoSegment]:
     """Find archived camera videos whose segment windows overlap the event window."""
     bucket_name = AWS_ASSET_BUCKET_NAME
@@ -343,6 +350,8 @@ async def lookup_camera_video_segments(
         logger.warning("[Video Lookup] AWS_ASSET_BUCKET_NAME is not configured")
         return []
     if segment_duration_seconds <= 0:
+        return []
+    if max_segments is not None and max_segments <= 0:
         return []
 
     window_start_time = _as_utc_datetime(start_time)
@@ -360,6 +369,7 @@ async def lookup_camera_video_segments(
             window_start_time,
             window_end_time,
             segment_duration_seconds,
+            max_segments,
         )
     except Exception as e:
         logger.warning(f"[Video Lookup] Failed to find matching videos: {e}")

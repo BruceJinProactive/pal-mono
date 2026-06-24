@@ -6,6 +6,23 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-24
 
+- **Anchor rule-event video lookup to rule-event time.** Rule-event video lookup
+  now uses corrected `vision_rule_event.triggered_at` plus duration for the S3
+  search window, while the linked state-change event only supplies the camera
+  `frame_s3_key`. -> `docs/state/architecture.md`
+- **Bound rule-event video lookup size.** Rule-event video lookup now rejects
+  over-limit stored or patched durations before S3 lookup, caps returned
+  presigned video segments, and documents the 120-minute / 122-segment product
+  ceiling. -> `docs/state/architecture.md`
+
+## 2026-06-23
+
+- **Vision rule-event video lookup endpoint.** Removed video lookup from
+  `GET /accounts/{account_name}/state-change-events/{event_id}` and added
+  `GET /accounts/{account_name}/rule-events/{event_id}/lookup`, which returns
+  presigned video segments for the rule event using the linked state-change
+  event's camera key and the rule event's duration, rounded outward to
+  full-minute lookup bounds. -> `docs/state/architecture.md`
 - **Pal agents stream error bridge classification.** `agent_stream_error`
   events from pal-agents streaming fallback chunks now flow through
   `message_service` to chat completions, are excluded from persisted

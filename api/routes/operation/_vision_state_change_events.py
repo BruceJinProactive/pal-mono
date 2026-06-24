@@ -54,14 +54,12 @@ async def get_state_change_event(
     session: AsyncSession,
     event_id: uuid.UUID,
     account_name: str,
-    include_video: bool = False,
 ) -> StateChangeEventResponse:
     try:
         return await vision_event_service.get_state_change_event(
             session=session,
             event_id=event_id,
             account_name=account_name,
-            include_video=include_video,
         )
     except ValueError as e:
         raise HTTPException(
