@@ -61,6 +61,7 @@ from ._store_status import compute_store_status
 from ._tracing import langfuse_message_span
 
 _background_tasks: set[asyncio.Task[None]] = set()
+AGENT_STREAM_ERROR_EVENT_TYPE = "agent_stream_error"
 
 
 def _schedule_tool_result_cache_writes(
@@ -96,7 +97,11 @@ def _schedule_tool_result_cache_writes(
 
 
 def _is_persistable_tool_event(event: dict[str, Any]) -> bool:
-    return event.get("type") not in {"sms_followup", RAW_TOOL_RESULT_EVENT_TYPE}
+    return event.get("type") not in {
+        "sms_followup",
+        AGENT_STREAM_ERROR_EVENT_TYPE,
+        RAW_TOOL_RESULT_EVENT_TYPE,
+    }
 
 
 def _handle_tool_result_cache_write_done(task: asyncio.Task[None]) -> None:
@@ -1592,6 +1597,12 @@ async def get_chat_response_stream(
                                     persistable_events = []
                                     for event in chunk_events:
                                         if event.get("type") == "sms_followup":
+                                            if event_collector:
+                                                event_collector(event)
+                                        elif (
+                                            event.get("type")
+                                            == AGENT_STREAM_ERROR_EVENT_TYPE
+                                        ):
                                             if event_collector:
                                                 event_collector(event)
                                         elif _is_persistable_tool_event(event):

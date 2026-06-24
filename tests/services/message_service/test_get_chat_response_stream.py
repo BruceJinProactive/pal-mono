@@ -535,6 +535,125 @@ async def test_get_chat_response_stream_passes_context_fields_to_runtime_context
 
 
 @pytest.mark.asyncio
+async def test_get_chat_response_stream_forwards_agent_stream_error_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_knowledge_shim_if_needed(monkeypatch)
+    _install_agent_shims_if_needed(monkeypatch)
+    _install_services_shims_if_needed(monkeypatch)
+    from services.message_service import _implementation
+
+    message_repo = _FakeMessageRepo()
+    agent_repo = _FakeAgentRepo()
+    user = SimpleNamespace(id=uuid.uuid4())
+    project = SimpleNamespace(
+        id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
+        raw_config={"use_pal_agents": True},
+        agent_id=uuid.uuid4(),
+        account=SimpleNamespace(name="test-account"),
+        agent=SimpleNamespace(filler_words=None),
+        timezone="America/Los_Angeles",
+        name="test-project",
+    )
+    error_event = {"type": "agent_stream_error", "error_type": "RuntimeError"}
+    collected_events: list[dict[str, Any]] = []
+
+    @asynccontextmanager
+    async def _fake_trace_async_block(
+        name: str,
+        resource: str | None = None,
+        service: str | None = None,
+        tags: dict[str, str] | None = None,
+    ) -> AsyncIterator[None]:
+        yield None
+
+    async def _fake_get_project_async(
+        session: object, message: Message
+    ) -> SimpleNamespace:
+        return project
+
+    async def _fake_get_user_async(
+        session: object, project: SimpleNamespace, message: Message
+    ) -> tuple[SimpleNamespace, bool]:
+        return user, False
+
+    async def _fake_construct_agent_spec(**kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace()
+
+    async def _fake_query_history_messages(*args: object, **kwargs: object) -> list:
+        return []
+
+    class _AgentStreamErrorPalAgent:
+        def __init__(self, spec: object | None = None) -> None:
+            self.spec = spec
+
+        async def run(
+            self,
+            pal_input: object,
+            stream: bool = False,
+            **_kwargs: Any,
+        ) -> object:
+            async def _stream() -> AsyncIterator[SimpleNamespace]:
+                yield SimpleNamespace(
+                    content="Sorry, I had trouble hearing what you said. Could you repeat that?",
+                    events=[error_event],
+                )
+
+            return _stream()
+
+    monkeypatch.setattr(_implementation, "trace_async_block", _fake_trace_async_block)
+    monkeypatch.setattr(
+        _implementation.db, "MessageRepositoryAsync", lambda session: message_repo
+    )
+    monkeypatch.setattr(
+        _implementation.db, "AgentRepositoryAsync", lambda session: agent_repo
+    )
+    monkeypatch.setattr(
+        _implementation.project_service, "get_project_async", _fake_get_project_async
+    )
+    monkeypatch.setattr(
+        _implementation.user_service, "get_user_async", _fake_get_user_async
+    )
+    monkeypatch.setattr(
+        _implementation.agent_service,
+        "construct_agent_spec",
+        _fake_construct_agent_spec,
+    )
+    monkeypatch.setattr(_implementation, "PalAgent", _AgentStreamErrorPalAgent)
+    monkeypatch.setattr(
+        _implementation, "query_history_messages", _fake_query_history_messages
+    )
+    monkeypatch.setattr(_implementation, "record_duration", lambda *a, **kw: None)
+
+    message = Message(
+        author_type=AuthorType.USER,
+        sender_identifier="+15550001111",
+        recipient_identifier="+15550002222",
+        channel=Channel.VOICE,
+        text=TextObject(body="Hello there"),
+        metadata=Metadata(testing=True),
+    )
+
+    chunks = [
+        chunk
+        async for chunk in _implementation.get_chat_response_stream(
+            session=AsyncMock(),
+            message=message,
+            request_context=RequestContext(),
+            event_collector=collected_events.append,
+        )
+    ]
+
+    assert collected_events == [error_event]
+    assert chunks[0].choices[0].delta.content == (
+        "Sorry, I had trouble hearing what you said. Could you repeat that?"
+    )
+    assert message_repo.saved_message_body is not None
+    assert "tool_calls" not in message_repo.saved_message_body
+
+
+@pytest.mark.asyncio
 async def test_get_chat_response_stream_pal_agents_none_stream_ends_cleanly(
     monkeypatch,
 ):

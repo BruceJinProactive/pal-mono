@@ -30,6 +30,7 @@ from utils.request_context import RequestContext
 
 _CHAT_COMPLETIONS_TURN_BRIDGE_METRIC = "chat.completions.turn.bridge"
 _CHAT_COMPLETIONS_TURN_BRIDGE_DURATION_METRIC = "chat.completions.turn.bridge.duration"
+AGENT_STREAM_ERROR_EVENT_TYPE = "agent_stream_error"
 
 
 # Request model with FastAPI validation
@@ -538,6 +539,7 @@ async def chat_completions_agno(
                 bridge_outcome_recorded = False
                 bridge_had_content = False
                 bridge_error_chunk_seen = False
+                bridge_agent_stream_error_seen = False
                 bridge_framework = "unknown"
 
                 def record_bridge_outcome(outcome: str, reason: str) -> None:
@@ -560,11 +562,14 @@ async def chat_completions_agno(
                     sms_item_recap: str | None = None
 
                     def collect_stream_event(event: Dict[str, Any]) -> None:
-                        nonlocal bridge_framework, sms_item_recap
+                        nonlocal bridge_agent_stream_error_seen, bridge_framework, sms_item_recap
                         if event.get("type") == "bridge_framework":
                             framework = event.get("framework")
                             if isinstance(framework, str) and framework:
                                 bridge_framework = framework
+                            return
+                        if event.get("type") == AGENT_STREAM_ERROR_EVENT_TYPE:
+                            bridge_agent_stream_error_seen = True
                             return
                         if event.get("type") != "sms_followup" or sms_item_recap:
                             return
@@ -672,7 +677,9 @@ async def chat_completions_agno(
                             item_recap=sms_item_recap,
                         )
 
-                        if bridge_error_chunk_seen:
+                        if bridge_agent_stream_error_seen:
+                            record_bridge_outcome("failure", "agent_stream_error")
+                        elif bridge_error_chunk_seen:
                             if bridge_had_content:
                                 record_bridge_outcome(
                                     "failure", "response_persist_failed"

@@ -6,6 +6,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-24
 
+- **Pal agents stream error bridge classification.** `agent_stream_error`
+  events from pal-agents streaming fallback chunks now flow through
+  `message_service` to chat completions, are excluded from persisted
+  `tool_calls`, and record the voice chat bridge outcome as
+  `failure/agent_stream_error` instead of `success/completed` when fallback
+  content reaches the caller.
 - **Vision smoothing replay recovery.** Smoothed state updates now store recovery
   context in current-state metadata, replay already-applied center-frame
   decisions through an exact state-change event lookup before finalizing Redis,

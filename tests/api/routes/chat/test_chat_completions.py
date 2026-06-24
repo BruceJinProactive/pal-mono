@@ -1116,6 +1116,59 @@ class TestChatCompletionsAgno:
         )
 
     @pytest.mark.asyncio
+    async def test_stream_records_agent_stream_error_metric(self) -> None:
+        """Record failure when pal-agents emits fallback content from a stream error."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        async def mock_get_chat_response_stream(
+            *args: Any, **kwargs: Any
+        ) -> AsyncGenerator[SimpleNamespace, None]:
+            event_collector: Callable[[dict[str, Any]], None] = kwargs[
+                "event_collector"
+            ]
+            framework_collector: Callable[[str], None] = kwargs["framework_collector"]
+            event_collector(
+                {"type": "agent_stream_error", "error_type": "RuntimeError"}
+            )
+            framework_collector("pal_agents")
+
+            async def mock_stream() -> AsyncGenerator[SimpleNamespace, None]:
+                yield _make_stream_chunk(
+                    "Sorry, I had trouble hearing what you said. Could you repeat that?"
+                )
+
+            return mock_stream()
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                side_effect=mock_get_chat_response_stream,
+            ),
+            patch("api.routes.chat.chat_completions._send_urls_via_sms"),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "failure",
+            "agent_stream_error",
+            request_context.request_time,
+            "pal_agents",
+        )
+
+    @pytest.mark.asyncio
     async def test_stream_records_response_persist_failure_metric(self) -> None:
         """Record failure when the service emits an error chunk after content."""
         request = ChatCompletionRequest(
