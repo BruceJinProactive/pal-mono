@@ -3,7 +3,7 @@ import json
 import re
 import threading
 from datetime import datetime
-from typing import List
+from typing import Any, List
 from zoneinfo import ZoneInfo
 
 from agno.tools.toolkit import Toolkit
@@ -35,6 +35,13 @@ from . import _apis, _llm, _query_engine, _utils
 ADORA_QA_STORE = "UQ5ZT"
 ADORA_QA_STORE_2 = "LE5AR"
 VIA_AGENT_SUFFIX = "(via PalonaAI)"
+
+
+def _adora_order_key_to_order_id(order_key: Any) -> str:
+    """Convert an Adora order key to the order ID we persist locally."""
+    if order_key is None:
+        return ""
+    return str(order_key).strip()
 
 
 class AdoraTool(Toolkit):
@@ -510,7 +517,7 @@ class AdoraTool(Toolkit):
             order_db_id = save_order(
                 tool_metadata=self.tool_metadata,
                 vendor=IntegrationProvider.adora,
-                order_id=(str(validated_order.key) if validated_order.key else ""),
+                order_id=_adora_order_key_to_order_id(validated_order.key),
                 store_id=self.store_id,
                 status="pending",
                 fulfillment_strategy=order.order_type,
@@ -568,8 +575,8 @@ class AdoraTool(Toolkit):
 
         if type(validated_order) is str:
             return f"Failed to validate order due to {validated_order}"
-        elif (
-            type(validated_order) is AdoraOrderCalculationResult and validated_order.key
+        elif type(validated_order) is AdoraOrderCalculationResult and (
+            _adora_order_key_to_order_id(validated_order.key)
         ):
             # Attempt to save order to database
             try:

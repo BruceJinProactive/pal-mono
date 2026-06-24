@@ -44,7 +44,6 @@ def sample_orm_row(sample_id: uuid.UUID) -> MagicMock:
     row.conversation_id = uuid.uuid4()
     row.created_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
     row.order_id = "ORD-001"
-    row.idempotency_key = "order:external:v1:toast:STORE-1:ORD-001"
     row.store_id = "STORE-1"
     row.user_phone_number = "+15551234567"
     row.store_phone_number = "+15559876543"
@@ -119,7 +118,6 @@ class TestToData:
         assert data.id == sample_orm_row.id
         assert data.conversation_id == sample_orm_row.conversation_id
         assert data.order_id == "ORD-001"
-        assert data.idempotency_key == "order:external:v1:toast:STORE-1:ORD-001"
         assert data.store_id == "STORE-1"
         assert data.user_phone_number == "+15551234567"
         assert data.store_phone_number == "+15559876543"
@@ -277,52 +275,6 @@ class TestGetById:
         mock_session.execute.side_effect = SQLAlchemyError("db error")
         with pytest.raises(SQLAlchemyError):
             await repo.get_by_id(uuid.uuid4())
-        mock_session.rollback.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# get_by_idempotency_key
-# ---------------------------------------------------------------------------
-
-
-class TestGetByIdempotencyKey:
-    @pytest.mark.asyncio
-    async def test_found(
-        self,
-        repo: OrderRepository,
-        mock_session: AsyncMock,
-        sample_orm_row: MagicMock,
-    ) -> None:
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = sample_orm_row
-        mock_session.execute.return_value = mock_result
-
-        data = await repo.get_by_idempotency_key(
-            "order:external:v1:toast:STORE-1:ORD-001"
-        )
-
-        assert isinstance(data, OrderData)
-        assert data.idempotency_key == "order:external:v1:toast:STORE-1:ORD-001"
-
-    @pytest.mark.asyncio
-    async def test_not_found(
-        self, repo: OrderRepository, mock_session: AsyncMock
-    ) -> None:
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
-
-        assert await repo.get_by_idempotency_key("missing-key") is None
-
-    @pytest.mark.asyncio
-    async def test_error_rolls_back(
-        self, repo: OrderRepository, mock_session: AsyncMock
-    ) -> None:
-        mock_session.execute.side_effect = SQLAlchemyError("db error")
-
-        with pytest.raises(SQLAlchemyError):
-            await repo.get_by_idempotency_key("order:external:v1:toast:STORE-1:ORD-001")
-
         mock_session.rollback.assert_awaited_once()
 
 

@@ -1,6 +1,7 @@
 """Tests for tools.adora_tool._implementation — Langfuse migration paths."""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -317,6 +318,41 @@ class TestFulfillOrder:
 
         assert "Failed to validate order" in result
 
+    @patch("tools.adora_tool._implementation.get_client")
+    @patch("tools.adora_tool._implementation._apis")
+    @patch("tools.adora_tool._implementation._utils")
+    def test_saves_zero_order_key(self, mock_utils, mock_apis, mock_get_client) -> None:
+        from tools.adora_tool.classes import AdoraOrderCalculationResult
+
+        tool = _make_adora_tool()
+        mock_token = MagicMock()
+
+        mock_order = MagicMock()
+        mock_order.promise_date_time = None
+        mock_order.model_dump_json.return_value = (
+            '{"customer": {"phone": "1234567890"}}'
+        )
+        mock_order.order_type = "takeout"
+        mock_order.order_items = "1x Pizza"
+
+        validated_order = AdoraOrderCalculationResult.model_construct(
+            key=0,
+            paymentUrl="https://example.com/pay",
+            subTotal=Decimal("10.00"),
+            taxAmount=Decimal("0.80"),
+            total=Decimal("10.80"),
+            deliveryCharge=None,
+            discount=Decimal("0.00"),
+        )
+        mock_utils.is_valid_phone_number.return_value = True
+        mock_apis.validate_order.return_value = validated_order
+
+        with patch.object(tool, "_save_order_to_db") as mock_save_order_to_db:
+            result = tool._fulfill_order(mock_order, mock_token)
+
+        mock_save_order_to_db.assert_called_once_with(mock_order, validated_order)
+        assert "Your order is pending!" in result
+
 
 class TestSaveOrderToDb:
     """Covers line 599: session.close() in finally block."""
@@ -346,6 +382,32 @@ class TestSaveOrderToDb:
 
         tool._save_order_to_db(mock_order, mock_validated)
 
+        mock_session.close.assert_called_once()
+
+    @patch("tools.adora_tool._implementation.get_client")
+    @patch("tools.adora_tool._implementation.SyncSessionLocal")
+    @patch("tools.adora_tool._implementation.save_order")
+    def test_persists_zero_order_id(
+        self, mock_save_order, mock_session_local, mock_get_client
+    ) -> None:
+        mock_session = MagicMock()
+        mock_session_local.return_value = mock_session
+        mock_save_order.return_value = "txn-123"
+
+        tool = _make_adora_tool()
+        tool.tool_metadata.timezone = "America/Los_Angeles"
+
+        mock_order = MagicMock()
+        mock_order.order_type = "takeout"
+        mock_order.order_items = "1x Pizza"
+
+        mock_validated = MagicMock()
+        mock_validated.key = 0
+        mock_validated.subTotal = Decimal("15.99")
+
+        tool._save_order_to_db(mock_order, mock_validated)
+
+        assert mock_save_order.call_args.kwargs["order_id"] == "0"
         mock_session.close.assert_called_once()
 
 

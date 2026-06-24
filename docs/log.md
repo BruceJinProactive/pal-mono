@@ -14,6 +14,10 @@ Chronological record of significant changes. Each entry links to the relevant do
   over-limit stored or patched durations before S3 lookup, caps returned
   presigned video segments, and documents the 120-minute / 122-segment product
   ceiling. -> `docs/state/architecture.md`
+- **Order runtime lookup reverts to external IDs.** Order creation no longer
+  derives or searches `orders.idempotency_key`; Adora still persists POS order
+  ID `"0"`, and paid webhooks use the existing external-ID-first lookup with
+  phone/date fallback. -> `docs/records/2026-05-31-order-idempotent-writes.md`
 
 ## 2026-06-23
 

@@ -29,7 +29,6 @@ def _to_data(row: Order) -> OrderData:
         conversation_id=row.conversation_id,
         created_at=row.created_at,
         order_id=row.order_id,
-        idempotency_key=row.idempotency_key,
         store_id=row.store_id,
         user_phone_number=row.user_phone_number,
         store_phone_number=row.store_phone_number,
@@ -90,19 +89,6 @@ class OrderRepository:
         except SQLAlchemyError:
             await self.session.rollback()
             logger.exception("Error retrieving order by ID")
-            raise
-
-    async def get_by_idempotency_key(self, idempotency_key: str) -> OrderData | None:
-        """Retrieve an order by its canonical idempotency key."""
-        try:
-            result = await self.session.execute(
-                select(Order).filter(Order.idempotency_key == idempotency_key)
-            )
-            row = result.scalar_one_or_none()
-            return _to_data(row) if row else None
-        except SQLAlchemyError:
-            await self.session.rollback()
-            logger.exception("Error retrieving order by idempotency key")
             raise
 
     async def get_by_conversation_id(

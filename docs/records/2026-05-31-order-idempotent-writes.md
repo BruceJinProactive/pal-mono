@@ -25,3 +25,9 @@ so production can deploy before a separate cleanup of historical duplicate rows.
 
 Orders without a complete external identity keep the previous insert behavior.
 Fallback keys for missing external IDs are intentionally left for a later task.
+
+2026-06-24 update: Runtime order creation no longer derives or searches
+`orders.idempotency_key`. Adora may return `0` for online-payment-link orders
+before payment, and that `orders.order_id` value is still persisted as `"0"`.
+Webhook updates use the existing external-ID-first lookup with phone/date
+fallback rather than an idempotency-key lookup.

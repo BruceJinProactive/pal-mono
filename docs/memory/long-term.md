@@ -2,7 +2,7 @@
 
 Institutional knowledge for the pal-mono codebase. Every entry has a rationale — no rules without "because."
 
-Last curated: 2026-04-27
+Last curated: 2026-06-24
 
 ---
 
@@ -88,6 +88,7 @@ API → Service → Database
 - **Stripe webhooks** can fire multiple times for the same event — always check idempotency
 - **Square OAuth tokens** expire every 30 days — `SQUARE_TOKEN_REFRESHER` handles automatic refresh
 - **Toast API** menu data can be very large — use the indexer pipeline (Toast → Pinecone) rather than returning raw data
+- **Adora `order_id = 0` must still be persisted** — Adora can return `0` for online-payment-link orders and later paid webhooks can omit a usable order ID. Persist the Adora `orders.order_id` value, including `"0"`. Order runtime code does not derive or search `orders.idempotency_key`; paid webhooks use the existing external-ID-first lookup with phone/date fallback.
 - **`pal_agents.AdoraSpec` rejects `lookup_menu_data`** — treat ProjectIntegration-backed specs as the source of truth for Adora configuration and ignore stale raw_config-only lookup payloads, because Pydantic now forbids that extra field
 - **Vapi** is fully removed from code — `tools/vapi_tool/`, `api/routes/integrations/vapi/`, and the `assistant-request` webhook are gone; `VoiceProvider` enum is LiveKit-only and explicitly rejects `"vapi"`. Residual legacy only: the `conversations.vapi_control_url` column (historical data; still threaded through DTOs/repos/admin schema/`message_service` for back-compat) and a few stale docstrings/log strings. Do not build new voice functionality against a Vapi code path — none exists.
 - **`api` is not a `customer_phone` channel** (2026-04-25, PR #4086): API-channel requests no longer have `customer_phone` auto-populated from email-derived values. Eval flows that simulate phone customers over API must inject `customer_phone` through the `context_modifier` pattern (see active work), not through `Message.Metadata`.

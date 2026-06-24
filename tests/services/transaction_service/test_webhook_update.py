@@ -44,7 +44,7 @@ class _FakeOrderRepository:
         self.external_calls.append(
             {"store_id": store_id, "vendor": vendor, "order_ids": list(order_ids)}
         )
-        return self.external_order
+        return self.external_order if order_ids else None
 
     def get_latest_order_by_phone_since(
         self,
@@ -83,8 +83,49 @@ def _order() -> SimpleNamespace:
     )
 
 
-def test_update_order_from_webhook_prefers_external_order_ids() -> None:
-    """Stable webhook IDs should be tried before phone/date fallback."""
+def test_update_order_from_webhook_prefers_external_order_ids_for_non_adora() -> None:
+    """Stable non-Adora webhook IDs should be tried before phone/date fallback."""
+    session = MagicMock()
+    order = _order()
+    order.vendor = IntegrationProvider.toast
+    fake_repo = _FakeOrderRepository(external_order=order)
+
+    with (
+        patch(
+            "services.transaction_service._implementation.SyncSessionLocal",
+            return_value=session,
+        ),
+        patch(
+            "services.transaction_service._implementation.OrderRepository",
+            return_value=fake_repo,
+        ),
+        patch(
+            "services.transaction_service._implementation._update_customer_converted",
+            return_value=True,
+        ),
+    ):
+        result = update_order_from_webhook(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.toast,
+            new_status="paid",
+            order_id="ORD-789",
+            alternate_order_id="txn-456",
+            user_phone_number="5551234567",
+            order_date="03/19/2026 12:30:00 PM",
+            tracking_link="https://example.com/track",
+        )
+
+    assert result is not None
+    assert result.id == order.id
+    assert order.status == "paid"
+    assert order.tracking_link == "https://example.com/track"
+    assert fake_repo.external_calls[0]["order_ids"] == ["ORD-789", "txn-456"]
+    assert fake_repo.phone_calls == []
+    session.commit.assert_called_once()
+
+
+def test_update_order_from_webhook_prefers_non_zero_adora_order_id() -> None:
+    """Adora non-zero order IDs should use external-ID matching first."""
     session = MagicMock()
     order = _order()
     fake_repo = _FakeOrderRepository(external_order=order)
@@ -111,20 +152,16 @@ def test_update_order_from_webhook_prefers_external_order_ids() -> None:
             alternate_order_id="txn-456",
             user_phone_number="5551234567",
             order_date="03/19/2026 12:30:00 PM",
-            tracking_link="https://example.com/track",
         )
 
     assert result is not None
     assert result.id == order.id
-    assert order.status == "paid"
-    assert order.tracking_link == "https://example.com/track"
     assert fake_repo.external_calls[0]["order_ids"] == ["ORD-789", "txn-456"]
     assert fake_repo.phone_calls == []
-    session.commit.assert_called_once()
 
 
 def test_update_order_from_webhook_falls_back_to_normalized_phone() -> None:
-    """Phone/date matching remains as fallback for webhooks without matching IDs."""
+    """Adora non-zero order IDs should fall back to phone/date when not found."""
     session = MagicMock()
     order = _order()
     fake_repo = _FakeOrderRepository(phone_order=order)
@@ -154,9 +191,50 @@ def test_update_order_from_webhook_falls_back_to_normalized_phone() -> None:
         )
 
     assert result is not None
+    assert fake_repo.external_calls[0]["order_ids"] == ["missing-order"]
     assert fake_repo.phone_calls[0]["user_phone_number"] == "+15551234567"
     assert fake_repo.phone_calls[0]["pending_only"] is True
     assert fake_repo.phone_calls[0]["order_time_start"] == datetime(2026, 3, 19)
+
+
+def test_update_order_from_webhook_adora_zero_order_id_uses_external_id_first() -> None:
+    """Adora order ID 0 should use the same external-ID-first lookup path."""
+    session = MagicMock()
+    order = _order()
+    order.order_id = "0"
+    fake_repo = _FakeOrderRepository(
+        external_order=order,
+        phone_order=_order(),
+    )
+
+    with (
+        patch(
+            "services.transaction_service._implementation.SyncSessionLocal",
+            return_value=session,
+        ),
+        patch(
+            "services.transaction_service._implementation.OrderRepository",
+            return_value=fake_repo,
+        ),
+        patch(
+            "services.transaction_service._implementation._update_customer_converted",
+            return_value=True,
+        ),
+    ):
+        result = update_order_from_webhook(
+            store_id="STORE-1",
+            vendor=IntegrationProvider.adora,
+            new_status="paid",
+            order_id="0",
+            alternate_order_id="txn-456",
+            user_phone_number="(555) 123-4567",
+            order_date="03/19/2026 12:30:00 PM",
+        )
+
+    assert result is not None
+    assert result.id == order.id
+    assert fake_repo.external_calls[0]["order_ids"] == ["0", "txn-456"]
+    assert fake_repo.phone_calls == []
 
 
 def test_update_order_from_webhook_returns_none_when_no_order_matches() -> None:
@@ -236,7 +314,7 @@ def test_update_order_from_webhook_rolls_back_on_database_error() -> None:
     ):
         result = update_order_from_webhook(
             store_id="STORE-1",
-            vendor=IntegrationProvider.adora,
+            vendor=IntegrationProvider.toast,
             new_status="paid",
             order_id="ORD-789",
         )
@@ -265,7 +343,7 @@ def test_update_order_from_webhook_reraises_unexpected_errors() -> None:
     ):
         update_order_from_webhook(
             store_id="STORE-1",
-            vendor=IntegrationProvider.adora,
+            vendor=IntegrationProvider.toast,
             new_status="paid",
             order_id="ORD-789",
         )

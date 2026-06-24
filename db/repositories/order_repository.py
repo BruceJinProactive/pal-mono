@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Any, Optional, Sequence
 
 from sqlalchemy import case, func, select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from db.pal_repository.data_classes.order import LatestOrderData, OrderDetailsData
@@ -50,33 +50,6 @@ class OrderRepository:
         self.session = session
         self.auto_commit = auto_commit
 
-    @staticmethod
-    def _escape_idempotency_key_part(value: str) -> str:
-        """Escape separators in external identifiers before key concatenation."""
-        return value.replace("\\", "\\\\").replace(":", "\\:")
-
-    @staticmethod
-    def build_external_idempotency_key(
-        vendor: Optional[IntegrationProvider],
-        store_id: Optional[str],
-        order_id: Optional[str],
-    ) -> Optional[str]:
-        """Build the canonical idempotency key for vendor-backed order writes."""
-        if vendor is None or store_id is None or order_id is None:
-            return None
-
-        normalized_store_id = store_id.strip()
-        normalized_order_id = order_id.strip()
-        if not normalized_store_id or not normalized_order_id:
-            return None
-
-        return (
-            "order:external:v1:"
-            f"{vendor.value}:"
-            f"{OrderRepository._escape_idempotency_key_part(normalized_store_id)}:"
-            f"{OrderRepository._escape_idempotency_key_part(normalized_order_id)}"
-        )
-
     def create_order(
         self,
         conversation_id: uuid.UUID,
@@ -91,15 +64,9 @@ class OrderRepository:
         subtotal: Optional[Decimal] = None,
         order_items: Optional[list] = None,
         order_time: Optional[datetime] = None,
-        idempotency_key: Optional[str] = None,
     ) -> Order:
         """
-        Create an order record or return the existing row for the same order.
-
-        When vendor, store ID, and external order ID are present, this method
-        computes a canonical idempotency key and enforces create-or-return-existing
-        semantics. Orders without external identity keep the previous insert
-        behavior until fallback keys are introduced.
+        Create an order record.
 
         Args:
             conversation_id: The conversation this order belongs to (required)
@@ -114,26 +81,11 @@ class OrderRepository:
             subtotal: Order subtotal amount
             order_items: List of items in the order
             order_time: When the order was placed
-            idempotency_key: Optional explicit key for future non-external identities
         Returns:
-            Order: The created order record, or the existing record for this key
+            Order: The created order record
         """
-        resolved_idempotency_key = (
-            idempotency_key
-            or self.build_external_idempotency_key(
-                vendor=vendor,
-                store_id=store_id,
-                order_id=order_id,
-            )
-        )
-        if resolved_idempotency_key:
-            existing_order = self.get_order_by_idempotency_key(resolved_idempotency_key)
-            if existing_order:
-                return existing_order
-
         order = Order(
             order_id=order_id,
-            idempotency_key=resolved_idempotency_key,
             store_id=store_id,
             user_phone_number=user_phone_number,
             store_phone_number=store_phone_number,
@@ -147,23 +99,6 @@ class OrderRepository:
             order_time=order_time,
         )
 
-        if resolved_idempotency_key:
-            try:
-                with self.session.begin_nested():
-                    self.session.add(order)
-                    self.session.flush()
-            except IntegrityError:
-                existing_order = self.get_order_by_idempotency_key(
-                    resolved_idempotency_key
-                )
-                if existing_order:
-                    return existing_order
-                raise
-
-            if self.auto_commit:
-                self.session.commit()
-            return order
-
         self.session.add(order)
         if self.auto_commit:
             self.session.commit()
@@ -172,17 +107,6 @@ class OrderRepository:
     def get_order_by_id(self, order_id: uuid.UUID) -> Optional[Order]:
         """Get an order by its ID."""
         return self.session.query(Order).filter(Order.id == order_id).first()
-
-    def get_order_by_idempotency_key(
-        self,
-        idempotency_key: str,
-    ) -> Optional[Order]:
-        """Get an order by its canonical idempotency key."""
-        return (
-            self.session.query(Order)
-            .filter(Order.idempotency_key == idempotency_key)
-            .first()
-        )
 
     def get_order_by_order_id_store_vendor(
         self,
