@@ -21,6 +21,10 @@ from services.vision_observation_service._implementation import (
     generate_observation,
     get_configuration_prompt,
 )
+from services.vision_observation_service._roi_overlay import (
+    draw_roi_labels_on_image_bytes as _draw_roi_labels_on_image_bytes,
+)
+from services.vision_observation_service._roi_overlay import roi_label_font_size
 from services.vision_observation_service._smoothing import SmoothingDecision
 
 
@@ -50,11 +54,17 @@ class TestBuildEntityStateSchema:
             "open",
             "closed",
         ]
+        assert "reason" in schema["properties"]["front_door"]["properties"]
         assert schema["properties"]["front_door"]["properties"]["confidence"] == {
             "type": "number",
             "minimum": 0.0,
             "maximum": 1.0,
         }
+        assert schema["properties"]["front_door"]["required"] == [
+            "reason",
+            "state",
+            "confidence",
+        ]
         assert set(schema["required"]) == {"front_door", "image_relevant"}
         assert schema["properties"]["image_relevant"] == {"type": "boolean"}
         assert schema["additionalProperties"] is False
@@ -106,6 +116,11 @@ class TestBuildEntityStateSchema:
         assert table_schema["properties"]["occupation"]["properties"]["state"][
             "enum"
         ] == ["occupied", "empty"]
+        assert table_schema["properties"]["cleanliness"]["required"] == [
+            "reason",
+            "state",
+            "confidence",
+        ]
 
 
 class TestFormatRoiHint:
@@ -129,6 +144,11 @@ class TestFormatRoiHint:
 
     def test_with_w_h_keys(self):
         roi: dict[str, object] = {"x": 100, "y": 200, "w": 300, "h": 400}
+        result = _format_roi_hint(roi)
+        assert result == "[100, 200, 300, 400]"
+
+    def test_with_fractional_coordinates(self) -> None:
+        roi: dict[str, object] = {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}
         result = _format_roi_hint(roi)
         assert result == "[100, 200, 300, 400]"
 
@@ -169,10 +189,160 @@ class TestExtractCameraNameFromS3Key:
         assert _extract_camera_name_from_s3_key("") is None
 
 
+class TestDrawRoiLabelsOnImageBytes:
+    """Tests for ROI label overlay rendering."""
+
+    def test_draws_labeled_roi_box(self) -> None:
+        image_bytes = _normalize_image_bytes_for_llm(
+            _test_image_bytes(size=(100, 100)),
+            "test image",
+        )
+        labeled_bytes = _draw_roi_labels_on_image_bytes(
+            image_bytes,
+            [
+                {
+                    "name": "Table 1",
+                    "roi_hint": {"x": 100, "y": 200, "width": 300, "height": 400},
+                }
+            ],
+            "test image",
+        )
+
+        assert labeled_bytes.startswith(b"\xff\xd8")
+        assert labeled_bytes != image_bytes
+        with Image.open(BytesIO(image_bytes)) as baseline_image:
+            baseline_pixel = baseline_image.getpixel((10, 20))
+        with Image.open(BytesIO(labeled_bytes)) as image:
+            overlay_pixel = image.getpixel((10, 20))
+
+        assert isinstance(baseline_pixel, tuple)
+        assert isinstance(overlay_pixel, tuple)
+        assert overlay_pixel != baseline_pixel
+
+    def test_draws_multiple_roi_boxes_with_distinct_colors(self) -> None:
+        image_bytes = _normalize_image_bytes_for_llm(
+            _test_image_bytes(size=(100, 100)),
+            "test image",
+        )
+        labeled_bytes = _draw_roi_labels_on_image_bytes(
+            image_bytes,
+            [
+                {
+                    "name": "Table 1",
+                    "roi_hint": {"x": 100, "y": 100, "width": 200, "height": 200},
+                },
+                {
+                    "name": "Table 2",
+                    "roi_hint": {"x": 500, "y": 100, "width": 200, "height": 200},
+                },
+            ],
+            "test image",
+        )
+
+        with Image.open(BytesIO(labeled_bytes)) as image:
+            first_box_pixel = image.getpixel((10, 10))
+            second_box_pixel = image.getpixel((50, 10))
+
+        assert isinstance(first_box_pixel, tuple)
+        assert isinstance(second_box_pixel, tuple)
+        assert first_box_pixel != second_box_pixel
+
+    def test_returns_original_when_no_valid_roi(self) -> None:
+        image_bytes = _normalize_image_bytes_for_llm(
+            _test_image_bytes(size=(100, 100)),
+            "test image",
+        )
+
+        assert (
+            _draw_roi_labels_on_image_bytes(
+                image_bytes,
+                [{"name": "Table 1", "roi_hint": {"x": 100}}],
+                "test image",
+            )
+            == image_bytes
+        )
+
+    def test_skips_malformed_roi_entities_without_aborting(self) -> None:
+        image_bytes = _normalize_image_bytes_for_llm(
+            _test_image_bytes(size=(100, 100)),
+            "test image",
+        )
+
+        labeled_bytes = _draw_roi_labels_on_image_bytes(
+            image_bytes,
+            [
+                {"roi_hint": {"x": 100, "y": 100, "width": 200, "height": 200}},
+                {
+                    "name": "Bad ROI",
+                    "roi_hint": {
+                        "x": "inf",
+                        "y": 100,
+                        "width": 200,
+                        "height": 200,
+                    },
+                },
+                {
+                    "name": "Table 1",
+                    "roi_hint": {"x": 500, "y": 100, "width": 200, "height": 200},
+                },
+            ],
+            "test image",
+        )
+
+        assert labeled_bytes != image_bytes
+        with Image.open(BytesIO(image_bytes)) as baseline_image:
+            baseline_pixel = baseline_image.getpixel((50, 10))
+        with Image.open(BytesIO(labeled_bytes)) as image:
+            overlay_pixel = image.getpixel((50, 10))
+
+        assert isinstance(baseline_pixel, tuple)
+        assert isinstance(overlay_pixel, tuple)
+        assert overlay_pixel != baseline_pixel
+
+    @pytest.mark.parametrize(
+        ("size", "expected_min_font_size"),
+        [
+            ((1920, 1080), 20),
+            ((3840, 2160), 40),
+        ],
+    )
+    def test_scales_label_text_for_hd_frames(
+        self,
+        size: tuple[int, int],
+        expected_min_font_size: int,
+    ) -> None:
+        assert roi_label_font_size(*size) >= expected_min_font_size
+
+        image_bytes = _normalize_image_bytes_for_llm(
+            _test_image_bytes(image_format="PNG", size=size),
+            "test image",
+        )
+        labeled_bytes = _draw_roi_labels_on_image_bytes(
+            image_bytes,
+            [
+                {
+                    "name": "Table 1",
+                    "roi_hint": {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4},
+                }
+            ],
+            "test image",
+        )
+
+        roi_edge_pixel = (round(size[0] * 0.1), round(size[1] * 0.2))
+        with Image.open(BytesIO(image_bytes)) as baseline_image:
+            baseline_pixel = baseline_image.getpixel(roi_edge_pixel)
+        with Image.open(BytesIO(labeled_bytes)) as image:
+            overlay_pixel = image.getpixel(roi_edge_pixel)
+
+        assert isinstance(baseline_pixel, tuple)
+        assert isinstance(overlay_pixel, tuple)
+        assert overlay_pixel != baseline_pixel
+
+
 class TestNormalizeImageBytesForLlm:
     """Tests for preparing images before they are sent to multimodal providers."""
 
-    def test_converts_png_to_verified_jpeg(self):
+    def test_converts_png_to_verified_jpeg(self) -> None:
         normalized = _normalize_image_bytes_for_llm(
             _test_image_bytes(image_format="PNG"),
             "test image",
@@ -184,7 +354,7 @@ class TestNormalizeImageBytesForLlm:
             assert image.mode == "RGB"
             assert image.size == (20, 20)
 
-    def test_downscales_large_images(self):
+    def test_downscales_large_images(self) -> None:
         normalized = _normalize_image_bytes_for_llm(
             _test_image_bytes(size=(5000, 20)),
             "large test image",
@@ -193,7 +363,7 @@ class TestNormalizeImageBytesForLlm:
         with Image.open(BytesIO(normalized)) as image:
             assert max(image.size) <= 4096
 
-    def test_rejects_invalid_image_bytes(self):
+    def test_rejects_invalid_image_bytes(self) -> None:
         with pytest.raises(ValueError, match="not a valid processable image"):
             _normalize_image_bytes_for_llm(b"not-an-image", "bad test image")
 
@@ -295,6 +465,7 @@ class TestBuildSystemPrompt:
             entities,
         )
         assert "ROI: [100, 200, 300, 400]" in prompt
+        assert "identity anchors, not hard segmentation masks" in prompt
 
     def test_includes_entity_names(self):
         entities = [
@@ -380,6 +551,28 @@ class TestBuildSystemPrompt:
             '- cleanliness: "clean" | "dirty" (dishes or trash are visible)' in prompt
         )
         assert '- occupation: "occupied" (a customer is seated) | "empty"' in prompt
+
+    def test_includes_dishes_present_business_definition(self) -> None:
+        prompt = _build_system_prompt(
+            "",
+            {
+                "table": {
+                    "display_name": "Table",
+                    "state_names": ["dishes-present", "dishes-absent"],
+                }
+            },
+            [
+                {
+                    "name": "Table 1",
+                    "type_name": "table",
+                    "state_names": ["dishes-present", "dishes-absent"],
+                    "roi_hint": None,
+                }
+            ],
+        )
+
+        assert "active dining or dirty/used tableware" in prompt
+        assert "clean preset tableware" in prompt
 
 
 class TestGenerateObservation:
@@ -913,7 +1106,15 @@ class TestGenerateObservation:
         mock_entity_type.display_name = "Oven"
 
         llm_result = {
-            "result": {"oven_1": {"cleanliness": {"state": "on", "confidence": 0.95}}},
+            "result": {
+                "oven_1": {
+                    "cleanliness": {
+                        "reason": "The oven indicator light is visibly on.",
+                        "state": "on",
+                        "confidence": 0.95,
+                    }
+                }
+            },
             "token_usage": {"prompt_tokens": 100, "completion_tokens": 20},
         }
 
@@ -924,6 +1125,11 @@ class TestGenerateObservation:
             "2026-02-13/2026-02-12_16-51-55.mkv"
         )
         observed_at = datetime(2026, 2, 12, 16, 52, 25, tzinfo=timezone.utc)
+        uploaded_image_bytes = _test_image_bytes(image_format="PNG")
+        baseline_image_bytes = _normalize_image_bytes_for_llm(
+            uploaded_image_bytes,
+            "baseline uploaded image",
+        )
 
         with (
             patch(
@@ -948,7 +1154,7 @@ class TestGenerateObservation:
             patch(
                 "services.vision_observation_service._implementation.create_monitoring_llm_provider",
                 return_value=mock_llm_provider,
-            ),
+            ) as mock_create_monitoring_llm_provider,
             patch(
                 "services.vision_observation_service._implementation.asyncio.to_thread",
                 side_effect=_sync_to_thread,
@@ -987,7 +1193,7 @@ class TestGenerateObservation:
                 session,
                 config_id,
                 image_url=image_url,
-                image_bytes=_test_image_bytes(image_format="PNG"),
+                image_bytes=uploaded_image_bytes,
                 observed_at=observed_at,
             )
 
@@ -1001,7 +1207,13 @@ class TestGenerateObservation:
             assert result.entity_observations[0].confidence == 0.95
             assert result.entity_observations[0].entity_id == entity_id
             assert result.raw_llm_response == {
-                "oven_1": {"cleanliness": {"state": "on", "confidence": 0.95}}
+                "oven_1": {
+                    "cleanliness": {
+                        "reason": "The oven indicator light is visibly on.",
+                        "state": "on",
+                        "confidence": 0.95,
+                    }
+                }
             }
             assert result.token_usage == {
                 "prompt_tokens": 100,
@@ -1029,10 +1241,20 @@ class TestGenerateObservation:
             assert event_create_args is not None
             event = event_create_args.args[0]
             assert event.observed_at == observed_at
+            assert event.event_metadata == {"definition_type": "cleanliness"}
             assert event.frame_s3_key == image_url
             analyze_args = mock_llm_provider.analyze_image.call_args.args
             camera_image_bytes = base64.b64decode(analyze_args[3])
             assert camera_image_bytes.startswith(b"\xff\xd8")
+            with Image.open(BytesIO(baseline_image_bytes)) as baseline_image:
+                baseline_pixel = baseline_image.getpixel((2, 4))
+            with Image.open(BytesIO(camera_image_bytes)) as image:
+                overlay_pixel = image.getpixel((2, 4))
+            assert isinstance(baseline_pixel, tuple)
+            assert isinstance(overlay_pixel, tuple)
+            assert overlay_pixel != baseline_pixel
+            llm_config = mock_create_monitoring_llm_provider.call_args.args[0]
+            assert llm_config.temperature is None
 
     @pytest.mark.asyncio
     async def test_unprocessable_gemini_image_returns_skipped_observation(self):

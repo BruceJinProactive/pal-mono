@@ -131,6 +131,7 @@ class TestMonitoringLLMConfig:
         assert config.provider == MonitoringLLMProvider.AZURE
         assert config.model == "gpt-4o"
         assert config.max_tokens == 2000
+        assert config.temperature == 0.0
 
     def test_google_provider_default_model(self):
         """Should default to gemini-3-flash-preview for Google provider."""
@@ -150,6 +151,11 @@ class TestMonitoringLLMConfig:
         """Should allow custom max_tokens."""
         config = MonitoringLLMConfig(max_tokens=4000)
         assert config.max_tokens == 4000
+
+    def test_provider_default_temperature(self) -> None:
+        """Should allow leaving temperature unset for provider defaults."""
+        config = MonitoringLLMConfig(temperature=None)
+        assert config.temperature is None
 
 
 class TestParseGeminiJsonResponse:
@@ -741,6 +747,53 @@ class TestGoogleMonitoringProviderAnalyzeImage:
             "completion_tokens": 90,
             "total_tokens": 390,
         }
+        call_kwargs = mock_client.models.generate_content.call_args
+        gen_config = call_kwargs.kwargs.get("config") or call_kwargs[1].get("config")
+        assert gen_config.temperature == 0.0
+
+    def test_can_leave_temperature_unset(self, mocker) -> None:
+        """Should omit temperature when config requests provider default behavior."""
+        mocker.patch(
+            "services.monitoring_service._providers.get_server_secret_with_fallback",
+            return_value="test-key",
+        )
+
+        mock_client = MagicMock()
+        mocker.patch(
+            "services.monitoring_service._providers.genai.Client",
+            return_value=mock_client,
+        )
+
+        mock_response = MagicMock()
+        mock_response.text = '{"result": "pass"}'
+        mock_response.usage_metadata = None
+        mock_candidate = MagicMock()
+        mock_candidate.finish_reason = "STOP"
+        mock_response.candidates = [mock_candidate]
+        mock_client.models.generate_content.return_value = mock_response
+
+        mocker.patch(
+            "services.monitoring_service._providers.Part.from_bytes",
+            return_value=MagicMock(),
+        )
+
+        config = MonitoringLLMConfig(
+            provider=MonitoringLLMProvider.GOOGLE,
+            temperature=None,
+        )
+        provider = GoogleMonitoringProvider(config)
+
+        camera_b64 = base64.b64encode(b"camera-image").decode()
+        provider.analyze_image(
+            system_instruction="Test instruction",
+            analysis_task="Test task",
+            reference_images=[],
+            camera_image_base64=camera_b64,
+        )
+
+        call_kwargs = mock_client.models.generate_content.call_args
+        gen_config = call_kwargs.kwargs.get("config") or call_kwargs[1].get("config")
+        assert getattr(gen_config, "temperature", None) is None
 
 
 class TestGoogleMonitoringProviderAnalyzeVideoFrames:

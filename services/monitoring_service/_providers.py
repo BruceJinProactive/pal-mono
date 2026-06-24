@@ -157,7 +157,8 @@ class MonitoringLLMConfig:
         provider: MonitoringLLMProvider | None = None,
         model: str | None = None,
         max_tokens: int = 2000,
-    ):
+        temperature: float | None = 0.0,
+    ) -> None:
         """
         Initialize monitoring LLM configuration.
 
@@ -165,6 +166,7 @@ class MonitoringLLMConfig:
             provider: LLM provider to use (defaults to "azure")
             model: Model identifier (defaults to provider default)
             max_tokens: Maximum tokens for response (default: 2000)
+            temperature: Sampling temperature; None leaves provider default unset
         """
         # Default to Azure if no provider specified
         self.provider = provider or MonitoringLLMProvider.AZURE
@@ -180,6 +182,7 @@ class MonitoringLLMConfig:
                 self.model = "gemini-3-flash-preview"
 
         self.max_tokens = max_tokens
+        self.temperature = temperature
 
 
 class MonitoringLLMProviderBase(ABC):
@@ -571,6 +574,15 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
 
         self.client = genai.Client(api_key=api_key)
 
+    def _generation_config_params(self) -> dict[str, Any]:
+        generation_config_params = {
+            "max_output_tokens": self.config.max_tokens,
+            "response_mime_type": "application/json",
+        }
+        if self.config.temperature is not None:
+            generation_config_params["temperature"] = self.config.temperature
+        return generation_config_params
+
     def _parse_response(
         self,
         response: Any,
@@ -704,11 +716,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
         )
 
         # Configure generation with JSON schema support
-        generation_config_params = {
-            "max_output_tokens": self.config.max_tokens,
-            "temperature": 0.0,  # Deterministic for monitoring
-            "response_mime_type": "application/json",
-        }
+        generation_config_params = self._generation_config_params()
 
         # Gemini supports native JSON schema via response_schema parameter
         # This is similar to OpenAI's structured outputs
@@ -843,11 +851,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
         )
 
         # Configure generation with JSON schema support
-        generation_config_params = {
-            "max_output_tokens": self.config.max_tokens,
-            "temperature": 0.0,
-            "response_mime_type": "application/json",
-        }
+        generation_config_params = self._generation_config_params()
 
         if response_format:
             if isinstance(response_format, dict) and "type" in response_format:
@@ -975,11 +979,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
         )
 
         # Configure generation with JSON schema support
-        generation_config_params = {
-            "max_output_tokens": self.config.max_tokens,
-            "temperature": 0.0,
-            "response_mime_type": "application/json",
-        }
+        generation_config_params = self._generation_config_params()
 
         if response_format:
             if isinstance(response_format, dict) and "type" in response_format:

@@ -11,6 +11,7 @@ from io import BytesIO
 from typing import Any
 
 from PIL import Image, ImageOps
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.vision_observation import (
@@ -35,6 +36,12 @@ from services.monitoring_service._providers import (
     MonitoringLLMConfig,
     MonitoringLLMProvider,
     create_monitoring_llm_provider,
+)
+from services.vision_observation_service._roi_overlay import (
+    draw_roi_labels_on_image_bytes as _draw_roi_labels_on_image_bytes,
+)
+from services.vision_observation_service._roi_overlay import (
+    roi_hint_value as _roi_hint_value,
 )
 from services.vision_observation_service._smoothing import (
     EventGenerationConfig,
@@ -125,6 +132,31 @@ def _normalize_image_bytes_for_llm(image_bytes: bytes, image_label: str) -> byte
         raise ValueError(f"{image_label} is not a valid processable image") from e
 
 
+def _build_state_observation_schema(state_names: list[str]) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "reason": {
+                "type": "string",
+                "description": (
+                    "Briefly explain the visible cues used for this state."
+                ),
+            },
+            "state": {
+                "type": "string",
+                "enum": state_names,
+            },
+            "confidence": {
+                "type": "number",
+                "minimum": 0.0,
+                "maximum": 1.0,
+            },
+        },
+        "required": ["reason", "state", "confidence"],
+        "additionalProperties": False,
+    }
+
+
 def _build_entity_state_schema(
     entities_with_states: list[dict[str, Any]],
 ) -> dict[str, Any]:
@@ -137,22 +169,9 @@ def _build_entity_state_schema(
         if state_definition_groups:
             group_properties: dict[str, Any] = {}
             for definition_type, group_info in state_definition_groups.items():
-                group_properties[definition_type] = {
-                    "type": "object",
-                    "properties": {
-                        "state": {
-                            "type": "string",
-                            "enum": group_info["state_names"],
-                        },
-                        "confidence": {
-                            "type": "number",
-                            "minimum": 0.0,
-                            "maximum": 1.0,
-                        },
-                    },
-                    "required": ["state", "confidence"],
-                    "additionalProperties": False,
-                }
+                group_properties[definition_type] = _build_state_observation_schema(
+                    group_info["state_names"]
+                )
 
             properties[entity_name] = {
                 "type": "object",
@@ -163,22 +182,7 @@ def _build_entity_state_schema(
             continue
 
         state_names = entity_info["state_names"]
-        properties[entity_name] = {
-            "type": "object",
-            "properties": {
-                "state": {
-                    "type": "string",
-                    "enum": state_names,
-                },
-                "confidence": {
-                    "type": "number",
-                    "minimum": 0.0,
-                    "maximum": 1.0,
-                },
-            },
-            "required": ["state", "confidence"],
-            "additionalProperties": False,
-        }
+        properties[entity_name] = _build_state_observation_schema(state_names)
 
     properties["image_relevant"] = {
         "type": "boolean",
@@ -269,20 +273,31 @@ def _format_roi_hint(roi_hint: dict[str, object] | None) -> str | None:
     if not roi_hint:
         return None
 
-    x_val = roi_hint.get("x")
-    y_val = roi_hint.get("y")
-    w_val = roi_hint.get("width") or roi_hint.get("w")
-    h_val = roi_hint.get("height") or roi_hint.get("h")
-
-    if x_val is None or y_val is None or w_val is None or h_val is None:
+    x = _roi_hint_value(roi_hint, "x")
+    y = _roi_hint_value(roi_hint, "y")
+    w = _roi_hint_value(roi_hint, "width")
+    h = _roi_hint_value(roi_hint, "height")
+    if x is None or y is None or w is None or h is None:
         return None
 
-    x = int(float(str(x_val)))
-    y = int(float(str(y_val)))
-    w = int(float(str(w_val)))
-    h = int(float(str(h_val)))
+    values = (x, y, w, h)
+    if all(0 <= value <= 1 for value in values):
+        values = tuple(value * 1000 for value in values)
 
-    return f"[{x}, {y}, {w}, {h}]"
+    x_text, y_text, w_text, h_text = (int(value) for value in values)
+    return f"[{x_text}, {y_text}, {w_text}, {h_text}]"
+
+
+def _entities_include_state(
+    entities_with_states: list[dict[str, Any]], state_name: str
+) -> bool:
+    for entity_info in entities_with_states:
+        if state_name in entity_info.get("state_names", []):
+            return True
+        for group_info in entity_info.get("state_definition_groups", {}).values():
+            if state_name in group_info.get("state_names", []):
+                return True
+    return False
 
 
 def _build_system_prompt(
@@ -309,10 +324,26 @@ def _build_system_prompt(
         "irrelevant to the reference images or the monitored environment "
         "(e.g. a broken feed, black screen, unrelated scene). "
         "Otherwise set image_relevant to true",
-        "- For entities with ROI coordinates, focus on the specific area defined "
-        "by the normalized coordinates [x, y, width, height] (scale 0-1000). "
-        "Investigate this region only",
+        "- For every entity and state definition type, write reason first: "
+        "a concise image-grounded explanation for the selected state",
+        "- ROI coordinates are normalized [x, y, width, height] (scale 0-1000); "
+        "the same ROI may also be drawn as a labeled box on the image",
+        "- Box colors are visual aids only; identify entities by the box label text, "
+        "not by color semantics",
+        "- Use ROI coordinates and labels as entity identity anchors, not hard "
+        "segmentation masks. Consider people or objects just outside the box "
+        "when posture, contact, gaze, or scene context ties them to that entity",
+        "- For table-like entities, reason by seating, body orientation, gaze, "
+        "hands, chairs, table contact, and nearby context rather than proximity "
+        "alone",
     ]
+
+    if _entities_include_state(entities_with_states, "dishes-present"):
+        lines.append(
+            "- The dishes-present state means active dining or dirty/used "
+            "tableware on the relevant table; do not count clean preset "
+            "tableware, decorations, signage, or unrelated objects"
+        )
 
     if user_prompt:
         lines.append("")
@@ -951,12 +982,24 @@ async def generate_observation(
             image_bytes,
             "uploaded camera image",
         )
+        camera_image_bytes = await asyncio.to_thread(
+            _draw_roi_labels_on_image_bytes,
+            camera_image_bytes,
+            entities_with_states,
+            "uploaded camera image",
+        )
         camera_image_base64 = base64.b64encode(camera_image_bytes).decode("utf-8")
     elif image_url:
         camera_image_raw = await _fetch_s3_bytes(s3_client, image_url)
         camera_image_bytes = await asyncio.to_thread(
             _normalize_image_bytes_for_llm,
             camera_image_raw,
+            f"camera image {image_url}",
+        )
+        camera_image_bytes = await asyncio.to_thread(
+            _draw_roi_labels_on_image_bytes,
+            camera_image_bytes,
+            entities_with_states,
             f"camera image {image_url}",
         )
         camera_image_base64 = base64.b64encode(camera_image_bytes).decode("utf-8")
@@ -967,6 +1010,7 @@ async def generate_observation(
     llm_config = MonitoringLLMConfig(
         provider=provider_enum,
         model=llm_model,
+        temperature=None,
     )
     llm_provider = await asyncio.to_thread(create_monitoring_llm_provider, llm_config)
     parsed_observed_at = parse_utc_capture_time_from_path(image_url)
@@ -1228,7 +1272,7 @@ async def generate_observation(
                     )
                 try:
                     await smoothing_buffer.save()
-                except Exception:
+                except (OSError, RedisError, TypeError, ValueError):
                     logger.warning(
                         "[Vision Observation] Failed to persist smoothing cache buffer",
                         extra={

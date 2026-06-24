@@ -41,9 +41,12 @@ Chronological record of significant changes. Each entry links to the relevant do
   Redis Cluster, ElastiCache cluster-mode enabled, or ElastiCache Serverless
   endpoints. Existing node-based ElastiCache deployments continue using the
   single-endpoint Redis client. -> `docs/plans/tool-result-elasticache.md`
-
-## 2026-06-23
-
+- **Vision V2 ROI reason prompting.** Vision observations now draw labeled ROI
+  boxes onto the camera frame before VLM analysis, request per-state `reason`
+  before `state`/`confidence`, treat ROI boxes as identity anchors instead of
+  hard segmentation masks, and leave Gemini temperature unset for this
+  observation path so the provider default applies. ->
+  `docs/state/architecture.md`
 - **Vision smoothing Redis hardening.** Vision smoothing cache keys now use a
   shared Redis Cluster hash tag across the observation, finalized-pointer, and
   lock keys for one entity/camera/state-definition buffer. Replayed finalized

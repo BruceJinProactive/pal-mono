@@ -289,6 +289,17 @@ that format, Vision logs a warning and falls back to backend processing time.
 The resolved `observed_at` is reused for entity current-state metadata,
 state-change events, and downstream rule-event trigger time.
 
+Vision V2 draws labeled ROI boxes onto the current camera image before VLM
+analysis when camera-entity mappings provide ROI hints. The prompt presents
+those boxes as identity anchors rather than hard segmentation masks, asks the
+model to produce `reason` before each `state` and `confidence`, and keeps the
+reason in `raw_llm_response` for debugging. `reason` is intentionally not
+copied into `EntityObservation`, entity current-state metadata, or
+`VisionStateChangeEventData`; the persisted observation/event state remains the
+selected state and confidence. This observation path leaves Gemini temperature
+unset so Gemini uses its provider default; other monitoring LLM calls still
+default to deterministic temperature configuration.
+
 Vision rule metadata can opt matching state-definition updates into centered
 majority smoothing before entity state changes are persisted. The supported
 configuration lives under `vision_rule.rule_metadata.event_generation` with
