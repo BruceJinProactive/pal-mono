@@ -346,32 +346,124 @@ class ClientOnboardingRepository:
     ) -> ClientOnboardingLifecycle:
         try:
             password_set_at = occurred_at or datetime.now(timezone.utc)
+            previous_status = self._mark_password_set_from_status(
+                lifecycle_id,
+                previous_status=ClientOnboardingStatus.docusign_signed,
+                occurred_at=password_set_at,
+                next_status=ClientOnboardingStatus.password_set,
+            )
+            if previous_status is None:
+                previous_status = self._mark_password_set_from_status(
+                    lifecycle_id,
+                    previous_status=ClientOnboardingStatus.handoff_created,
+                    occurred_at=password_set_at,
+                    next_status=ClientOnboardingStatus.handoff_created,
+                )
+            transition_changed = previous_status is not None
+            lifecycle = self._require_lifecycle(lifecycle_id)
+            if transition_changed:
+                lifecycle.password_set_at = password_set_at
+                if previous_status == ClientOnboardingStatus.docusign_signed:
+                    lifecycle.status = ClientOnboardingStatus.password_set
+            self.session.flush()
+            self.session.refresh(lifecycle)
+            _annotate_transition(
+                lifecycle,
+                changed=transition_changed,
+                previous_status=previous_status,
+            )
+            return lifecycle
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error marking client onboarding password set: {exc}")
+            raise
+
+    def mark_handoff_created(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            handoff_created_at = occurred_at or datetime.now(timezone.utc)
             result = self.session.execute(
                 update(ClientOnboardingLifecycle)
                 .where(
                     ClientOnboardingLifecycle.id == lifecycle_id,
-                    ClientOnboardingLifecycle.status
-                    == ClientOnboardingStatus.docusign_signed,
+                    ClientOnboardingLifecycle.status.in_(
+                        {
+                            ClientOnboardingStatus.docusign_signed,
+                            ClientOnboardingStatus.password_set,
+                        }
+                    ),
                 )
                 .values(
-                    status=ClientOnboardingStatus.password_set,
-                    password_set_at=password_set_at,
-                    updated_at=password_set_at,
+                    status=ClientOnboardingStatus.handoff_created,
+                    handoff_created_at=handoff_created_at,
+                    updated_at=handoff_created_at,
                 )
                 .execution_options(synchronize_session="fetch")
             )
             transition_changed = _rowcount_changed(result)
             lifecycle = self._require_lifecycle(lifecycle_id)
             if transition_changed:
-                lifecycle.status = ClientOnboardingStatus.password_set
-                lifecycle.password_set_at = password_set_at
+                previous_status = (
+                    ClientOnboardingStatus.password_set
+                    if lifecycle.password_set_at is not None
+                    else ClientOnboardingStatus.docusign_signed
+                )
+                lifecycle.status = ClientOnboardingStatus.handoff_created
+                lifecycle.handoff_created_at = handoff_created_at
+            else:
+                previous_status = None
+            self.session.flush()
+            self.session.refresh(lifecycle)
+            _annotate_transition(
+                lifecycle,
+                changed=transition_changed,
+                previous_status=previous_status,
+            )
+            return lifecycle
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error marking client onboarding handoff created: {exc}")
+            raise
+
+    def mark_activation_ready(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            activation_ready_at = occurred_at or datetime.now(timezone.utc)
+            result = self.session.execute(
+                update(ClientOnboardingLifecycle)
+                .where(
+                    ClientOnboardingLifecycle.id == lifecycle_id,
+                    ClientOnboardingLifecycle.status
+                    == ClientOnboardingStatus.handoff_created,
+                    ClientOnboardingLifecycle.password_set_at.is_not(None),
+                )
+                .values(
+                    status=ClientOnboardingStatus.activation_ready,
+                    activation_ready_at=activation_ready_at,
+                    updated_at=activation_ready_at,
+                )
+                .execution_options(synchronize_session="fetch")
+            )
+            transition_changed = _rowcount_changed(result)
+            lifecycle = self._require_lifecycle(lifecycle_id)
+            if transition_changed:
+                lifecycle.status = ClientOnboardingStatus.activation_ready
+                lifecycle.activation_ready_at = activation_ready_at
             self.session.flush()
             self.session.refresh(lifecycle)
             _annotate_transition(
                 lifecycle,
                 changed=transition_changed,
                 previous_status=(
-                    ClientOnboardingStatus.docusign_signed
+                    ClientOnboardingStatus.handoff_created
                     if transition_changed
                     else None
                 ),
@@ -379,7 +471,7 @@ class ClientOnboardingRepository:
             return lifecycle
         except SQLAlchemyError as exc:
             self.session.rollback()
-            logger.exception(f"Error marking client onboarding password set: {exc}")
+            logger.exception(f"Error marking client onboarding activation ready: {exc}")
             raise
 
     def mark_blocked(
@@ -438,6 +530,23 @@ class ClientOnboardingRepository:
         except SQLAlchemyError as exc:
             self.session.rollback()
             logger.exception(f"Error setting client onboarding Notion page id: {exc}")
+            raise
+
+    def get_sync_jobs_for_lifecycle(
+        self,
+        lifecycle_id: uuid.UUID,
+    ) -> list[ClientOnboardingSyncJob]:
+        try:
+            return (
+                self.session.query(ClientOnboardingSyncJob)
+                .filter(ClientOnboardingSyncJob.lifecycle_id == lifecycle_id)
+                .all()
+            )
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(
+                f"Error retrieving client onboarding sync jobs for lifecycle: {exc}"
+            )
             raise
 
     def append_activity(
@@ -684,6 +793,30 @@ class ClientOnboardingRepository:
                     ),
                     else_=ClientOnboardingLifecycle.invite_opened_at,
                 ),
+                updated_at=occurred_at,
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        return previous_status if _rowcount_changed(result) else None
+
+    def _mark_password_set_from_status(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        previous_status: ClientOnboardingStatus,
+        occurred_at: datetime,
+        next_status: ClientOnboardingStatus,
+    ) -> ClientOnboardingStatus | None:
+        result = self.session.execute(
+            update(ClientOnboardingLifecycle)
+            .where(
+                ClientOnboardingLifecycle.id == lifecycle_id,
+                ClientOnboardingLifecycle.status == previous_status,
+                ClientOnboardingLifecycle.password_set_at.is_(None),
+            )
+            .values(
+                status=next_status,
+                password_set_at=occurred_at,
                 updated_at=occurred_at,
             )
             .execution_options(synchronize_session="fetch")
@@ -980,32 +1113,124 @@ class ClientOnboardingRepositoryAsync:
     ) -> ClientOnboardingLifecycle:
         try:
             password_set_at = occurred_at or datetime.now(timezone.utc)
+            previous_status = await self._mark_password_set_from_status(
+                lifecycle_id,
+                previous_status=ClientOnboardingStatus.docusign_signed,
+                occurred_at=password_set_at,
+                next_status=ClientOnboardingStatus.password_set,
+            )
+            if previous_status is None:
+                previous_status = await self._mark_password_set_from_status(
+                    lifecycle_id,
+                    previous_status=ClientOnboardingStatus.handoff_created,
+                    occurred_at=password_set_at,
+                    next_status=ClientOnboardingStatus.handoff_created,
+                )
+            transition_changed = previous_status is not None
+            lifecycle = await self._require_lifecycle(lifecycle_id)
+            if transition_changed:
+                lifecycle.password_set_at = password_set_at
+                if previous_status == ClientOnboardingStatus.docusign_signed:
+                    lifecycle.status = ClientOnboardingStatus.password_set
+            await self.session.flush()
+            await self.session.refresh(lifecycle)
+            _annotate_transition(
+                lifecycle,
+                changed=transition_changed,
+                previous_status=previous_status,
+            )
+            return lifecycle
+        except SQLAlchemyError as exc:
+            await self.session.rollback()
+            logger.exception(f"Error marking client onboarding password set: {exc}")
+            raise
+
+    async def mark_handoff_created(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            handoff_created_at = occurred_at or datetime.now(timezone.utc)
             result = await self.session.execute(
                 update(ClientOnboardingLifecycle)
                 .where(
                     ClientOnboardingLifecycle.id == lifecycle_id,
-                    ClientOnboardingLifecycle.status
-                    == ClientOnboardingStatus.docusign_signed,
+                    ClientOnboardingLifecycle.status.in_(
+                        {
+                            ClientOnboardingStatus.docusign_signed,
+                            ClientOnboardingStatus.password_set,
+                        }
+                    ),
                 )
                 .values(
-                    status=ClientOnboardingStatus.password_set,
-                    password_set_at=password_set_at,
-                    updated_at=password_set_at,
+                    status=ClientOnboardingStatus.handoff_created,
+                    handoff_created_at=handoff_created_at,
+                    updated_at=handoff_created_at,
                 )
                 .execution_options(synchronize_session="fetch")
             )
             transition_changed = _rowcount_changed(result)
             lifecycle = await self._require_lifecycle(lifecycle_id)
             if transition_changed:
-                lifecycle.status = ClientOnboardingStatus.password_set
-                lifecycle.password_set_at = password_set_at
+                previous_status = (
+                    ClientOnboardingStatus.password_set
+                    if lifecycle.password_set_at is not None
+                    else ClientOnboardingStatus.docusign_signed
+                )
+                lifecycle.status = ClientOnboardingStatus.handoff_created
+                lifecycle.handoff_created_at = handoff_created_at
+            else:
+                previous_status = None
+            await self.session.flush()
+            await self.session.refresh(lifecycle)
+            _annotate_transition(
+                lifecycle,
+                changed=transition_changed,
+                previous_status=previous_status,
+            )
+            return lifecycle
+        except SQLAlchemyError as exc:
+            await self.session.rollback()
+            logger.exception(f"Error marking client onboarding handoff created: {exc}")
+            raise
+
+    async def mark_activation_ready(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        occurred_at: datetime | None = None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            activation_ready_at = occurred_at or datetime.now(timezone.utc)
+            result = await self.session.execute(
+                update(ClientOnboardingLifecycle)
+                .where(
+                    ClientOnboardingLifecycle.id == lifecycle_id,
+                    ClientOnboardingLifecycle.status
+                    == ClientOnboardingStatus.handoff_created,
+                    ClientOnboardingLifecycle.password_set_at.is_not(None),
+                )
+                .values(
+                    status=ClientOnboardingStatus.activation_ready,
+                    activation_ready_at=activation_ready_at,
+                    updated_at=activation_ready_at,
+                )
+                .execution_options(synchronize_session="fetch")
+            )
+            transition_changed = _rowcount_changed(result)
+            lifecycle = await self._require_lifecycle(lifecycle_id)
+            if transition_changed:
+                lifecycle.status = ClientOnboardingStatus.activation_ready
+                lifecycle.activation_ready_at = activation_ready_at
             await self.session.flush()
             await self.session.refresh(lifecycle)
             _annotate_transition(
                 lifecycle,
                 changed=transition_changed,
                 previous_status=(
-                    ClientOnboardingStatus.docusign_signed
+                    ClientOnboardingStatus.handoff_created
                     if transition_changed
                     else None
                 ),
@@ -1013,7 +1238,7 @@ class ClientOnboardingRepositoryAsync:
             return lifecycle
         except SQLAlchemyError as exc:
             await self.session.rollback()
-            logger.exception(f"Error marking client onboarding password set: {exc}")
+            logger.exception(f"Error marking client onboarding activation ready: {exc}")
             raise
 
     async def mark_blocked(
@@ -1072,6 +1297,24 @@ class ClientOnboardingRepositoryAsync:
         except SQLAlchemyError as exc:
             await self.session.rollback()
             logger.exception(f"Error setting client onboarding Notion page id: {exc}")
+            raise
+
+    async def get_sync_jobs_for_lifecycle(
+        self,
+        lifecycle_id: uuid.UUID,
+    ) -> list[ClientOnboardingSyncJob]:
+        try:
+            result = await self.session.execute(
+                select(ClientOnboardingSyncJob).filter(
+                    ClientOnboardingSyncJob.lifecycle_id == lifecycle_id
+                )
+            )
+            return list(result.scalars().all())
+        except SQLAlchemyError as exc:
+            await self.session.rollback()
+            logger.exception(
+                f"Error retrieving client onboarding sync jobs for lifecycle: {exc}"
+            )
             raise
 
     async def append_activity(
@@ -1187,6 +1430,30 @@ class ClientOnboardingRepositoryAsync:
                     ),
                     else_=ClientOnboardingLifecycle.invite_opened_at,
                 ),
+                updated_at=occurred_at,
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        return previous_status if _rowcount_changed(result) else None
+
+    async def _mark_password_set_from_status(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        previous_status: ClientOnboardingStatus,
+        occurred_at: datetime,
+        next_status: ClientOnboardingStatus,
+    ) -> ClientOnboardingStatus | None:
+        result = await self.session.execute(
+            update(ClientOnboardingLifecycle)
+            .where(
+                ClientOnboardingLifecycle.id == lifecycle_id,
+                ClientOnboardingLifecycle.status == previous_status,
+                ClientOnboardingLifecycle.password_set_at.is_(None),
+            )
+            .values(
+                status=next_status,
+                password_set_at=occurred_at,
                 updated_at=occurred_at,
             )
             .execution_options(synchronize_session="fetch")

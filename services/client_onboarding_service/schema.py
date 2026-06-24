@@ -131,3 +131,12 @@ class ClientOnboardingFdeOwnerAssignmentResult:
     membership_reactivated: bool
     owner_role_assigned: bool
     skipped_reason: str | None = None
+
+
+@dataclass
+class ClientOnboardingHandoffCompletionResult:
+    lifecycle_id: UUID
+    lifecycle_status: ClientOnboardingStatus
+    handoff_created: bool
+    activation_ready: bool
+    pending_sync_jobs: list[str]

@@ -26,6 +26,7 @@ from services.client_onboarding_service import _implementation as svc
 from services.client_onboarding_service.schema import (
     ClientOnboardingFdeOwnerAssignmentResult,
     ClientOnboardingFolkSyncResult,
+    ClientOnboardingHandoffCompletionResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
@@ -453,17 +454,40 @@ def _client_onboarding_invite_dependencies(
         previous_status = lifecycle.status
         lifecycle._client_onboarding_transition_changed = True
         lifecycle._client_onboarding_transition_previous_status = previous_status
-        lifecycle.status = ClientOnboardingStatus.password_set
+        lifecycle.password_set_at = kwargs["occurred_at"]
+        if previous_status == ClientOnboardingStatus.docusign_signed:
+            lifecycle.status = ClientOnboardingStatus.password_set
         return lifecycle
 
     onboarding_repo.mark_invite_opened.side_effect = mark_invite_opened
     onboarding_repo.mark_docusign_viewed.side_effect = mark_docusign_viewed
     onboarding_repo.mark_password_set.side_effect = mark_password_set
+    handoff_completion = mocker.patch.object(
+        svc,
+        "orchestrate_client_onboarding_handoff_completion",
+    )
+
+    def complete_handoff(*args: object, **kwargs: object) -> Any:
+        return ClientOnboardingHandoffCompletionResult(
+            lifecycle_id=LIFECYCLE_ID,
+            lifecycle_status=lifecycle.status,
+            handoff_created=lifecycle.status
+            in {
+                ClientOnboardingStatus.handoff_created,
+                ClientOnboardingStatus.activation_ready,
+            },
+            activation_ready=lifecycle.status
+            == ClientOnboardingStatus.activation_ready,
+            pending_sync_jobs=[],
+        )
+
+    handoff_completion.side_effect = complete_handoff
 
     return {
         "invitation": invitation,
         "lifecycle": lifecycle,
         "onboarding_repo": onboarding_repo,
+        "handoff_completion": handoff_completion,
     }
 
 
@@ -792,6 +816,31 @@ def test_public_mark_client_onboarding_password_set_wrapper_delegates(
         context=context,
         invitation_token="invite-token",
     )
+
+
+def test_public_orchestrate_client_onboarding_handoff_completion_wrapper_delegates(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    expected = ClientOnboardingHandoffCompletionResult(
+        lifecycle_id=LIFECYCLE_ID,
+        lifecycle_status=ClientOnboardingStatus.handoff_created,
+        handoff_created=True,
+        activation_ready=False,
+        pending_sync_jobs=[],
+    )
+    orchestrate = mocker.patch(
+        "services.client_onboarding_service._implementation.orchestrate_client_onboarding_handoff_completion",
+        return_value=expected,
+    )
+
+    result = public_svc.orchestrate_client_onboarding_handoff_completion(
+        session,
+        LIFECYCLE_ID,
+    )
+
+    assert result is expected
+    orchestrate.assert_called_once_with(session=session, lifecycle_id=LIFECYCLE_ID)
 
 
 def test_get_client_onboarding_invite_step_raises_when_no_lifecycle(
@@ -1153,6 +1202,10 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_updates_records(
     onboarding_repo.get_by_id.return_value = lifecycle
     onboarding_repo.upsert_sync_job.return_value = job
     folk_client = _FakeFolkContractAcceptanceClient()
+    handoff_completion = mocker.patch.object(
+        svc,
+        "orchestrate_client_onboarding_handoff_completion",
+    )
 
     result = svc.sync_client_onboarding_contract_acceptance_to_folk(
         session,
@@ -1184,6 +1237,7 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_updates_records(
     activity = onboarding_repo.append_activity.call_args.kwargs
     assert activity["activity_type"] == "folk_contract_acceptance_synced"
     session.commit.assert_called_once()
+    handoff_completion.assert_called_once_with(session, LIFECYCLE_ID)
 
 
 def test_sync_client_onboarding_contract_acceptance_to_folk_skips_completed_job(
@@ -1200,6 +1254,10 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_skips_completed_job(
     onboarding_repo.get_by_id.return_value = lifecycle
     onboarding_repo.upsert_sync_job.return_value = job
     folk_client = _FakeFolkContractAcceptanceClient()
+    handoff_completion = mocker.patch.object(
+        svc,
+        "orchestrate_client_onboarding_handoff_completion",
+    )
 
     result = svc.sync_client_onboarding_contract_acceptance_to_folk(
         session,
@@ -1219,6 +1277,7 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_skips_completed_job(
     onboarding_repo.mark_sync_job_completed.assert_not_called()
     onboarding_repo.mark_sync_job_failed.assert_not_called()
     onboarding_repo.append_activity.assert_not_called()
+    handoff_completion.assert_called_once_with(session, LIFECYCLE_ID)
     session.commit.assert_not_called()
 
 
@@ -1248,7 +1307,13 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_marks_missing_ids_sk
     assert result.skipped_reason == (
         "No Folk company or contact ID is linked to this lifecycle"
     )
-    onboarding_repo.mark_sync_job_failed.assert_called_once()
+    onboarding_repo.mark_sync_job_completed.assert_called_once_with(
+        job.id,
+        result_payload={
+            "skipped_reason": "No Folk company or contact ID is linked to this lifecycle"
+        },
+    )
+    onboarding_repo.mark_sync_job_failed.assert_not_called()
     activity = onboarding_repo.append_activity.call_args.kwargs
     assert activity["activity_type"] == "folk_contract_acceptance_sync_skipped"
     session.commit.assert_called_once()
@@ -1412,6 +1477,10 @@ def test_sync_client_onboarding_slack_handoff_reuses_completed_job(
     onboarding_repo.get_by_id.return_value = lifecycle
     onboarding_repo.upsert_sync_job.return_value = job
     account_user_repo = mocker.patch.object(svc, "AccountUserRepository")
+    handoff_completion = mocker.patch.object(
+        svc,
+        "orchestrate_client_onboarding_handoff_completion",
+    )
 
     result = svc.sync_client_onboarding_slack_handoff(
         session,
@@ -1431,6 +1500,7 @@ def test_sync_client_onboarding_slack_handoff_reuses_completed_job(
     account_user_repo.assert_not_called()
     onboarding_repo.mark_sync_job_completed.assert_not_called()
     onboarding_repo.append_activity.assert_not_called()
+    handoff_completion.assert_called_once_with(session, LIFECYCLE_ID)
     session.commit.assert_not_called()
 
 
@@ -1694,6 +1764,10 @@ def test_sync_client_onboarding_notion_cmd_entry_reuses_completed_job(
     onboarding_repo.get_by_id.return_value = lifecycle
     onboarding_repo.upsert_sync_job.return_value = job
     account_user_repo = mocker.patch.object(svc, "AccountUserRepository")
+    handoff_completion = mocker.patch.object(
+        svc,
+        "orchestrate_client_onboarding_handoff_completion",
+    )
 
     result = svc.sync_client_onboarding_notion_cmd_entry(
         session,
@@ -1710,6 +1784,7 @@ def test_sync_client_onboarding_notion_cmd_entry_reuses_completed_job(
     account_user_repo.assert_not_called()
     onboarding_repo.mark_sync_job_completed.assert_not_called()
     onboarding_repo.append_activity.assert_not_called()
+    handoff_completion.assert_called_once_with(session, LIFECYCLE_ID)
     session.commit.assert_not_called()
 
 
@@ -1921,6 +1996,10 @@ def test_sync_client_onboarding_fde_owner_assignment_reuses_completed_job(
     onboarding_repo.upsert_sync_job.return_value = job
     account_user_repo = mocker.patch.object(svc, "AccountUserRepository")
     role_repo = mocker.patch.object(svc, "ResourceRoleAssignmentRepository")
+    handoff_completion = mocker.patch.object(
+        svc,
+        "orchestrate_client_onboarding_handoff_completion",
+    )
 
     result = svc.sync_client_onboarding_fde_owner_assignment(
         session,
@@ -1940,6 +2019,7 @@ def test_sync_client_onboarding_fde_owner_assignment_reuses_completed_job(
     role_repo.assert_not_called()
     onboarding_repo.mark_sync_job_completed.assert_not_called()
     onboarding_repo.append_activity.assert_not_called()
+    handoff_completion.assert_called_once_with(session, LIFECYCLE_ID)
     session.commit.assert_not_called()
 
 
@@ -2033,6 +2113,240 @@ def test_sync_client_onboarding_fde_owner_assignment_rejects_before_signature(
 
     onboarding_repo.upsert_sync_job.assert_not_called()
     session.commit.assert_not_called()
+
+
+def test_orchestrate_client_onboarding_handoff_completion_waits_for_pending_jobs(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.get_sync_jobs_for_lifecycle.return_value = [
+        *_completed_handoff_jobs()[:-1],
+        _handoff_job(
+            ClientOnboardingSyncTarget.manage_app,
+            "add_fde_owner",
+            ClientOnboardingSyncJobStatus.pending,
+        ),
+    ]
+
+    result = svc.orchestrate_client_onboarding_handoff_completion(
+        session,
+        LIFECYCLE_ID,
+    )
+
+    assert result == ClientOnboardingHandoffCompletionResult(
+        lifecycle_id=LIFECYCLE_ID,
+        lifecycle_status=ClientOnboardingStatus.docusign_signed,
+        handoff_created=False,
+        activation_ready=False,
+        pending_sync_jobs=["manage_app:add_fde_owner"],
+    )
+    onboarding_repo.mark_handoff_created.assert_not_called()
+    onboarding_repo.mark_activation_ready.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_orchestrate_client_onboarding_handoff_completion_rejects_missing_lifecycle(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = None
+
+    with pytest.raises(ClientOnboardingInviteNotFoundError):
+        svc.orchestrate_client_onboarding_handoff_completion(session, LIFECYCLE_ID)
+
+    onboarding_repo.get_sync_jobs_for_lifecycle.assert_not_called()
+
+
+def test_orchestrate_client_onboarding_handoff_completion_rejects_before_signature(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.status = ClientOnboardingStatus.docusign_viewed
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+
+    with pytest.raises(ClientOnboardingInviteInvalidError):
+        svc.orchestrate_client_onboarding_handoff_completion(session, LIFECYCLE_ID)
+
+    onboarding_repo.get_sync_jobs_for_lifecycle.assert_not_called()
+
+
+def test_orchestrate_client_onboarding_handoff_completion_rejects_missing_signed_time(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.docusign_signed_at = None
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+
+    with pytest.raises(ClientOnboardingInviteInvalidError):
+        svc.orchestrate_client_onboarding_handoff_completion(session, LIFECYCLE_ID)
+
+    onboarding_repo.get_sync_jobs_for_lifecycle.assert_not_called()
+
+
+def test_orchestrate_client_onboarding_handoff_completion_marks_handoff_created(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.get_sync_jobs_for_lifecycle.return_value = _completed_handoff_jobs()
+
+    def mark_handoff_created(*args: object, **kwargs: object) -> MagicMock:
+        lifecycle._client_onboarding_transition_changed = True
+        lifecycle._client_onboarding_transition_previous_status = (
+            ClientOnboardingStatus.docusign_signed
+        )
+        lifecycle.status = ClientOnboardingStatus.handoff_created
+        lifecycle.handoff_created_at = kwargs["occurred_at"]
+        return lifecycle
+
+    onboarding_repo.mark_handoff_created.side_effect = mark_handoff_created
+
+    result = svc.orchestrate_client_onboarding_handoff_completion(
+        session,
+        LIFECYCLE_ID,
+    )
+
+    assert result.lifecycle_status == ClientOnboardingStatus.handoff_created
+    assert result.handoff_created is True
+    assert result.activation_ready is False
+    onboarding_repo.mark_handoff_created.assert_called_once()
+    onboarding_repo.mark_activation_ready.assert_not_called()
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "handoff_created"
+    assert activity["previous_status"] == ClientOnboardingStatus.docusign_signed
+    assert activity["next_status"] == ClientOnboardingStatus.handoff_created
+    assert session.commit.call_count == 1
+
+
+def test_orchestrate_client_onboarding_handoff_completion_marks_activation_ready(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.status = ClientOnboardingStatus.password_set
+    lifecycle.password_set_at = COMPLETED_AT
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.get_sync_jobs_for_lifecycle.return_value = _completed_handoff_jobs()
+
+    def mark_handoff_created(*args: object, **kwargs: object) -> MagicMock:
+        lifecycle._client_onboarding_transition_changed = True
+        lifecycle._client_onboarding_transition_previous_status = (
+            ClientOnboardingStatus.password_set
+        )
+        lifecycle.status = ClientOnboardingStatus.handoff_created
+        lifecycle.handoff_created_at = kwargs["occurred_at"]
+        return lifecycle
+
+    def mark_activation_ready(*args: object, **kwargs: object) -> MagicMock:
+        lifecycle._client_onboarding_transition_changed = True
+        lifecycle._client_onboarding_transition_previous_status = (
+            ClientOnboardingStatus.handoff_created
+        )
+        lifecycle.status = ClientOnboardingStatus.activation_ready
+        lifecycle.activation_ready_at = kwargs["occurred_at"]
+        return lifecycle
+
+    onboarding_repo.mark_handoff_created.side_effect = mark_handoff_created
+    onboarding_repo.mark_activation_ready.side_effect = mark_activation_ready
+
+    result = svc.orchestrate_client_onboarding_handoff_completion(
+        session,
+        LIFECYCLE_ID,
+    )
+
+    assert result.lifecycle_status == ClientOnboardingStatus.activation_ready
+    assert result.handoff_created is True
+    assert result.activation_ready is True
+    assert [
+        call.kwargs["activity_type"]
+        for call in onboarding_repo.append_activity.call_args_list
+    ] == [
+        "handoff_created",
+        "activation_ready",
+    ]
+    assert session.commit.call_count == 2
+
+
+def test_attempt_handoff_completion_logs_failure(mocker: Any) -> None:
+    session = MagicMock()
+    orchestrate = mocker.patch.object(
+        svc,
+        "orchestrate_client_onboarding_handoff_completion",
+        side_effect=RuntimeError("orchestration failed"),
+    )
+    logger = mocker.patch.object(svc.logger, "exception")
+
+    svc._attempt_handoff_completion(session, LIFECYCLE_ID)
+
+    orchestrate.assert_called_once_with(session, LIFECYCLE_ID)
+    logger.assert_called_once()
+
+
+def test_mark_client_onboarding_password_set_after_handoff_marks_activation_ready(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    session = MagicMock()
+    context = MagicMock(
+        username=str(AE_USER_ID),
+        email="signer@example.com",
+    )
+    deps = _client_onboarding_invite_dependencies(
+        mocker,
+        monkeypatch,
+        lifecycle_status=ClientOnboardingStatus.handoff_created,
+    )
+    lifecycle = deps["lifecycle"]
+    lifecycle.handoff_created_at = COMPLETED_AT
+
+    def complete_handoff(*args: object, **kwargs: object) -> Any:
+        lifecycle.status = ClientOnboardingStatus.activation_ready
+        return ClientOnboardingHandoffCompletionResult(
+            lifecycle_id=LIFECYCLE_ID,
+            lifecycle_status=ClientOnboardingStatus.activation_ready,
+            handoff_created=True,
+            activation_ready=True,
+            pending_sync_jobs=[],
+        )
+
+    deps["handoff_completion"].side_effect = complete_handoff
+
+    result = svc.mark_client_onboarding_password_set(
+        session,
+        context,
+        "invite-token",
+    )
+
+    assert result.lifecycle_status == ClientOnboardingStatus.activation_ready
+    deps["onboarding_repo"].mark_password_set.assert_called_once()
+    deps["handoff_completion"].assert_called_once_with(session, LIFECYCLE_ID)
+    activity = deps["onboarding_repo"].append_activity.call_args.kwargs
+    assert activity["activity_type"] == "password_set"
+    assert activity["previous_status"] == ClientOnboardingStatus.handoff_created
+    assert activity["next_status"] == ClientOnboardingStatus.handoff_created
 
 
 def test_sync_client_onboarding_fde_owner_assignment_rejects_missing_lifecycle(
@@ -2419,6 +2733,7 @@ def _signed_lifecycle() -> MagicMock:
     lifecycle.docusign_envelope_id = "envelope-123"
     lifecycle.docusign_contract_url = "https://docusign.example/sign/123"
     lifecycle.docusign_signed_at = COMPLETED_AT
+    lifecycle.password_set_at = None
     lifecycle.ae_owner_user_id = AE_USER_ID
     lifecycle.fde_owner_user_id = FDE_USER_ID
     lifecycle.folk_company_id = "folk-company-123"
@@ -2426,7 +2741,46 @@ def _signed_lifecycle() -> MagicMock:
     lifecycle.slack_channel_id = None
     lifecycle.notion_page_id = "notion-page-123"
     lifecycle.scoping_doc_url = "https://notion.example/scoping"
+    lifecycle.handoff_created_at = None
+    lifecycle.activation_ready_at = None
     return lifecycle
+
+
+def _handoff_job(
+    target: ClientOnboardingSyncTarget,
+    job_type: str,
+    status: ClientOnboardingSyncJobStatus = ClientOnboardingSyncJobStatus.completed,
+) -> MagicMock:
+    job = MagicMock()
+    job.target = target
+    job.job_type = job_type
+    job.status = status
+    return job
+
+
+def _completed_handoff_jobs() -> list[MagicMock]:
+    return [
+        _handoff_job(
+            ClientOnboardingSyncTarget.database,
+            "record_contract_acceptance",
+        ),
+        _handoff_job(
+            ClientOnboardingSyncTarget.folk,
+            "update_contract_acceptance",
+        ),
+        _handoff_job(
+            ClientOnboardingSyncTarget.slack,
+            "create_handoff_channel",
+        ),
+        _handoff_job(
+            ClientOnboardingSyncTarget.notion,
+            "upsert_cmd_entry",
+        ),
+        _handoff_job(
+            ClientOnboardingSyncTarget.manage_app,
+            "add_fde_owner",
+        ),
+    ]
 
 
 def _patch_handoff_owner_contacts(mocker: Any) -> MagicMock:

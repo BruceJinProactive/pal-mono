@@ -7,6 +7,7 @@ from services.auth_types import UserContext
 from .schema import (
     ClientOnboardingFdeOwnerAssignmentResult,
     ClientOnboardingFolkSyncResult,
+    ClientOnboardingHandoffCompletionResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
@@ -107,9 +108,21 @@ def sync_client_onboarding_fde_owner_assignment(
     return _sync(session=session, lifecycle_id=lifecycle_id)
 
 
+def orchestrate_client_onboarding_handoff_completion(
+    session: Session,
+    lifecycle_id: UUID,
+) -> ClientOnboardingHandoffCompletionResult:
+    from ._implementation import (
+        orchestrate_client_onboarding_handoff_completion as _orchestrate,
+    )
+
+    return _orchestrate(session=session, lifecycle_id=lifecycle_id)
+
+
 __all__ = [
     "ClientOnboardingFdeOwnerAssignmentResult",
     "ClientOnboardingFolkSyncResult",
+    "ClientOnboardingHandoffCompletionResult",
     "ClientOnboardingInviteInvalidError",
     "ClientOnboardingInviteNotFoundError",
     "ClientOnboardingInviteStepResult",
@@ -124,6 +137,7 @@ __all__ = [
     "get_client_onboarding_invite_step",
     "mark_client_onboarding_docusign_viewed",
     "mark_client_onboarding_password_set",
+    "orchestrate_client_onboarding_handoff_completion",
     "reconcile_client_onboarding_docusign_completion",
     "sync_client_onboarding_contract_acceptance_to_folk",
     "sync_client_onboarding_fde_owner_assignment",

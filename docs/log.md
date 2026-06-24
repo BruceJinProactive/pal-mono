@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-24
 
+- **Client onboarding handoff completion orchestration.** Post-signature sync completion now advances client onboarding to `handoff_created` once database, Folk, Slack, Notion, and Manage App jobs are complete, then to `activation_ready` after password setup is also recorded. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Anchor rule-event video lookup to rule-event time.** Rule-event video lookup
   now uses corrected `vision_rule_event.triggered_at` plus duration for the S3
   search window, while the linked state-change event only supplies the camera

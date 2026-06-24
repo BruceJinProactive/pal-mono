@@ -47,6 +47,7 @@ from utils.secret import get_client_secret_with_fallback
 from .schema import (
     ClientOnboardingFdeOwnerAssignmentResult,
     ClientOnboardingFolkSyncResult,
+    ClientOnboardingHandoffCompletionResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
     ClientOnboardingInviteStepResult,
@@ -75,6 +76,13 @@ FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE = "update_contract_acceptance"
 SLACK_HANDOFF_JOB_TYPE = "create_handoff_channel"
 NOTION_CMD_ENTRY_JOB_TYPE = "upsert_cmd_entry"
 MANAGE_APP_FDE_OWNER_JOB_TYPE = "add_fde_owner"
+REQUIRED_HANDOFF_SYNC_JOBS = (
+    (ClientOnboardingSyncTarget.database, DATABASE_CONTRACT_ACCEPTANCE_JOB_TYPE),
+    (ClientOnboardingSyncTarget.folk, FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE),
+    (ClientOnboardingSyncTarget.slack, SLACK_HANDOFF_JOB_TYPE),
+    (ClientOnboardingSyncTarget.notion, NOTION_CMD_ENTRY_JOB_TYPE),
+    (ClientOnboardingSyncTarget.manage_app, MANAGE_APP_FDE_OWNER_JOB_TYPE),
+)
 COGNITO_FDE_OWNER_CONNECT_TIMEOUT_SECONDS = 2
 COGNITO_FDE_OWNER_READ_TIMEOUT_SECONDS = 3
 COGNITO_FDE_OWNER_MAX_ATTEMPTS = 3
@@ -456,7 +464,10 @@ def mark_client_onboarding_password_set(
             "DocuSign completion is required before password setup"
         )
 
-    if lifecycle.status == ClientOnboardingStatus.docusign_signed:
+    if lifecycle.status in {
+        ClientOnboardingStatus.docusign_signed,
+        ClientOnboardingStatus.handoff_created,
+    }:
         password_set_at = datetime.now(timezone.utc)
         onboarding_repo = ClientOnboardingRepository(session)
         lifecycle = onboarding_repo.mark_password_set(
@@ -473,7 +484,7 @@ def mark_client_onboarding_password_set(
                 source=ClientOnboardingActivitySource.admin_console,
                 previous_status=client_onboarding_transition_previous_status(lifecycle)
                 or ClientOnboardingStatus.docusign_signed,
-                next_status=ClientOnboardingStatus.password_set,
+                next_status=lifecycle.status,
                 description="Client completed password setup after DocuSign signature",
                 payload_diff={
                     "invite_id": (
@@ -484,6 +495,11 @@ def mark_client_onboarding_password_set(
                 occurred_at=password_set_at,
             )
             session.commit()
+            completion = orchestrate_client_onboarding_handoff_completion(
+                session,
+                lifecycle.id,
+            )
+            lifecycle.status = completion.lifecycle_status
 
     return _build_invite_step_result(resolved, lifecycle)
 
@@ -651,6 +667,7 @@ def sync_client_onboarding_contract_acceptance_to_folk(
         ClientOnboardingSyncJobStatus.cancelled,
     }:
         result_payload = job.result_payload or {}
+        _attempt_handoff_completion(session, lifecycle.id)
         return ClientOnboardingFolkSyncResult(
             lifecycle_id=lifecycle.id,
             folk_company_id=lifecycle.folk_company_id,
@@ -666,9 +683,8 @@ def sync_client_onboarding_contract_acceptance_to_folk(
 
     if not lifecycle.folk_company_id and not lifecycle.folk_contact_id:
         skipped_reason = "No Folk company or contact ID is linked to this lifecycle"
-        onboarding_repo.mark_sync_job_failed(
+        onboarding_repo.mark_sync_job_completed(
             job.id,
-            last_error=skipped_reason,
             result_payload={"skipped_reason": skipped_reason},
         )
         onboarding_repo.append_activity(
@@ -680,6 +696,7 @@ def sync_client_onboarding_contract_acceptance_to_folk(
             payload_diff={"sync_job_id": str(job.id)},
         )
         session.commit()
+        _attempt_handoff_completion(session, lifecycle.id)
         return ClientOnboardingFolkSyncResult(
             lifecycle_id=lifecycle.id,
             folk_company_id=lifecycle.folk_company_id,
@@ -736,6 +753,7 @@ def sync_client_onboarding_contract_acceptance_to_folk(
         },
     )
     session.commit()
+    _attempt_handoff_completion(session, lifecycle.id)
     return ClientOnboardingFolkSyncResult(
         lifecycle_id=lifecycle.id,
         folk_company_id=lifecycle.folk_company_id,
@@ -782,6 +800,7 @@ def sync_client_onboarding_slack_handoff(
         ClientOnboardingSyncJobStatus.cancelled,
     }:
         result_payload = job.result_payload or {}
+        _attempt_handoff_completion(session, lifecycle.id)
         return ClientOnboardingSlackHandoffResult(
             lifecycle_id=lifecycle.id,
             slack_channel_id=_payload_text(result_payload, "slack_channel_id")
@@ -865,6 +884,7 @@ def sync_client_onboarding_slack_handoff(
         },
     )
     session.commit()
+    _attempt_handoff_completion(session, lifecycle.id)
     return ClientOnboardingSlackHandoffResult(
         lifecycle_id=lifecycle.id,
         slack_channel_id=outcome.channel_id,
@@ -913,6 +933,7 @@ def sync_client_onboarding_notion_cmd_entry(
         ClientOnboardingSyncJobStatus.cancelled,
     }:
         result_payload = job.result_payload or {}
+        _attempt_handoff_completion(session, lifecycle.id)
         return ClientOnboardingNotionSyncResult(
             lifecycle_id=lifecycle.id,
             notion_page_id=_payload_text(result_payload, "notion_page_id")
@@ -978,6 +999,7 @@ def sync_client_onboarding_notion_cmd_entry(
         },
     )
     session.commit()
+    _attempt_handoff_completion(session, lifecycle.id)
     return ClientOnboardingNotionSyncResult(
         lifecycle_id=lifecycle.id,
         notion_page_id=outcome.notion_page_id,
@@ -1023,6 +1045,7 @@ def sync_client_onboarding_fde_owner_assignment(
         ClientOnboardingSyncJobStatus.cancelled,
     }:
         result_payload = job.result_payload or {}
+        _attempt_handoff_completion(session, lifecycle.id)
         return ClientOnboardingFdeOwnerAssignmentResult(
             lifecycle_id=lifecycle.id,
             account_id=lifecycle.account_id,
@@ -1052,6 +1075,7 @@ def sync_client_onboarding_fde_owner_assignment(
             payload_diff={"sync_job_id": str(job.id)},
         )
         session.commit()
+        _attempt_handoff_completion(session, lifecycle.id)
         return ClientOnboardingFdeOwnerAssignmentResult(
             lifecycle_id=lifecycle.id,
             account_id=lifecycle.account_id,
@@ -1109,6 +1133,7 @@ def sync_client_onboarding_fde_owner_assignment(
         },
     )
     session.commit()
+    _attempt_handoff_completion(session, lifecycle.id)
     return ClientOnboardingFdeOwnerAssignmentResult(
         lifecycle_id=lifecycle.id,
         account_id=outcome.account_id,
@@ -1117,6 +1142,134 @@ def sync_client_onboarding_fde_owner_assignment(
         membership_reactivated=outcome.membership_reactivated,
         owner_role_assigned=outcome.owner_role_assigned,
     )
+
+
+def orchestrate_client_onboarding_handoff_completion(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+) -> ClientOnboardingHandoffCompletionResult:
+    onboarding_repo = ClientOnboardingRepository(session)
+    lifecycle = onboarding_repo.get_by_id(lifecycle_id)
+    if not lifecycle:
+        raise ClientOnboardingInviteNotFoundError(
+            "Client onboarding lifecycle not found"
+        )
+    if lifecycle.status not in POST_SIGNATURE_STATUSES:
+        raise ClientOnboardingInviteInvalidError(
+            "DocuSign completion is required before handoff completion"
+        )
+    if lifecycle.docusign_signed_at is None:
+        raise ClientOnboardingInviteInvalidError(
+            "Client onboarding lifecycle is missing DocuSign signed timestamp"
+        )
+
+    pending_sync_jobs = _pending_handoff_sync_jobs(
+        onboarding_repo.get_sync_jobs_for_lifecycle(lifecycle.id)
+    )
+    if pending_sync_jobs:
+        return ClientOnboardingHandoffCompletionResult(
+            lifecycle_id=lifecycle.id,
+            lifecycle_status=lifecycle.status,
+            handoff_created=lifecycle.handoff_created_at is not None,
+            activation_ready=lifecycle.status
+            == ClientOnboardingStatus.activation_ready,
+            pending_sync_jobs=pending_sync_jobs,
+        )
+
+    if lifecycle.status in {
+        ClientOnboardingStatus.docusign_signed,
+        ClientOnboardingStatus.password_set,
+    }:
+        occurred_at = datetime.now(timezone.utc)
+        previous_status = lifecycle.status
+        lifecycle = onboarding_repo.mark_handoff_created(
+            lifecycle.id,
+            occurred_at=occurred_at,
+        )
+        if client_onboarding_transition_changed(lifecycle):
+            onboarding_repo.append_activity(
+                lifecycle_id=lifecycle.id,
+                activity_type=ClientOnboardingStatus.handoff_created.value,
+                actor_type=ClientOnboardingActorType.system,
+                source=ClientOnboardingActivitySource.system_job,
+                previous_status=client_onboarding_transition_previous_status(lifecycle)
+                or previous_status,
+                next_status=ClientOnboardingStatus.handoff_created,
+                description="Post-signature handoff artifacts completed",
+                payload_diff={
+                    "completed_sync_jobs": [
+                        _handoff_sync_job_key(target, job_type)
+                        for target, job_type in REQUIRED_HANDOFF_SYNC_JOBS
+                    ],
+                },
+                occurred_at=occurred_at,
+            )
+            session.commit()
+
+    if (
+        lifecycle.status == ClientOnboardingStatus.handoff_created
+        and lifecycle.password_set_at is not None
+    ):
+        occurred_at = datetime.now(timezone.utc)
+        lifecycle = onboarding_repo.mark_activation_ready(
+            lifecycle.id,
+            occurred_at=occurred_at,
+        )
+        if client_onboarding_transition_changed(lifecycle):
+            onboarding_repo.append_activity(
+                lifecycle_id=lifecycle.id,
+                activity_type=ClientOnboardingStatus.activation_ready.value,
+                actor_type=ClientOnboardingActorType.system,
+                source=ClientOnboardingActivitySource.system_job,
+                previous_status=client_onboarding_transition_previous_status(lifecycle)
+                or ClientOnboardingStatus.handoff_created,
+                next_status=ClientOnboardingStatus.activation_ready,
+                description="Client onboarding is ready for activation",
+                occurred_at=occurred_at,
+            )
+            session.commit()
+
+    return ClientOnboardingHandoffCompletionResult(
+        lifecycle_id=lifecycle.id,
+        lifecycle_status=lifecycle.status,
+        handoff_created=lifecycle.handoff_created_at is not None,
+        activation_ready=lifecycle.status == ClientOnboardingStatus.activation_ready,
+        pending_sync_jobs=[],
+    )
+
+
+def _attempt_handoff_completion(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+) -> None:
+    try:
+        orchestrate_client_onboarding_handoff_completion(session, lifecycle_id)
+    # Best-effort lifecycle advancement must not fail artifact syncs.
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Client onboarding handoff completion orchestration failed",
+            extra={"lifecycle_id": str(lifecycle_id)},
+        )
+        return
+
+
+def _pending_handoff_sync_jobs(jobs: list[Any]) -> list[str]:
+    jobs_by_key = {
+        (job.target, job.job_type): job
+        for job in jobs
+        if isinstance(getattr(job, "target", None), ClientOnboardingSyncTarget)
+        and isinstance(getattr(job, "job_type", None), str)
+    }
+    pending: list[str] = []
+    for target, job_type in REQUIRED_HANDOFF_SYNC_JOBS:
+        job = jobs_by_key.get((target, job_type))
+        if not job or job.status != ClientOnboardingSyncJobStatus.completed:
+            pending.append(_handoff_sync_job_key(target, job_type))
+    return pending
+
+
+def _handoff_sync_job_key(target: ClientOnboardingSyncTarget, job_type: str) -> str:
+    return f"{target.value}:{job_type}"
 
 
 def _attach_ae_as_owner(

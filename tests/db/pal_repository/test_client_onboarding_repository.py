@@ -530,13 +530,16 @@ def test_mark_password_set_does_not_advance_before_signature() -> None:
     assert client_onboarding_transition_changed(result) is False
 
 
-def test_mark_password_set_does_not_downgrade_later_status() -> None:
+def test_mark_password_set_records_timestamp_after_handoff_created() -> None:
     lifecycle = ClientOnboardingLifecycle(
         id=LIFECYCLE_ID,
         status=ClientOnboardingStatus.handoff_created,
     )
     session = MagicMock()
-    session.execute.return_value.rowcount = 0
+    session.execute.side_effect = [
+        MagicMock(rowcount=0),
+        MagicMock(rowcount=1),
+    ]
     session.get.return_value = lifecycle
     repo = ClientOnboardingRepository(session)
 
@@ -547,7 +550,128 @@ def test_mark_password_set_does_not_downgrade_later_status() -> None:
 
     assert result is lifecycle
     assert lifecycle.status == ClientOnboardingStatus.handoff_created
+    assert lifecycle.password_set_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.handoff_created
+    )
+    assert session.execute.call_count == 2
+
+
+def test_mark_handoff_created_advances_from_password_set() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.password_set,
+        password_set_at=OCCURRED_AT,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 1
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_handoff_created(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.handoff_created
+    assert lifecycle.handoff_created_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.password_set
+    )
+
+
+def test_mark_activation_ready_requires_handoff_and_password() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.handoff_created,
+        password_set_at=OCCURRED_AT,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 1
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_activation_ready(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.activation_ready
+    assert lifecycle.activation_ready_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.handoff_created
+    )
+
+
+def test_mark_handoff_created_noops_for_later_status() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.activation_ready,
+    )
+    session = MagicMock()
+    session.execute.return_value.rowcount = 0
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_handoff_created(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.activation_ready
     assert client_onboarding_transition_changed(result) is False
+    assert client_onboarding_transition_previous_status(result) is None
+
+
+def test_mark_password_set_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.mark_password_set(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+
+    session.rollback.assert_called_once()
+
+
+def test_mark_handoff_created_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.mark_handoff_created(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+
+    session.rollback.assert_called_once()
+
+
+def test_mark_activation_ready_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.mark_activation_ready(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+
+    session.rollback.assert_called_once()
 
 
 def test_mark_blocked_updates_status_reason() -> None:
@@ -1206,16 +1330,19 @@ def test_async_mark_password_set_does_not_advance_before_signature() -> None:
     assert client_onboarding_transition_changed(result) is False
 
 
-def test_async_mark_password_set_does_not_downgrade_later_status() -> None:
+def test_async_mark_password_set_records_timestamp_after_handoff_created() -> None:
     lifecycle = ClientOnboardingLifecycle(
         id=LIFECYCLE_ID,
         status=ClientOnboardingStatus.handoff_created,
     )
-    execute_result = MagicMock()
-    execute_result.rowcount = 0
     session = MagicMock()
     session.get = AsyncMock(return_value=lifecycle)
-    session.execute = AsyncMock(return_value=execute_result)
+    session.execute = AsyncMock(
+        side_effect=[
+            MagicMock(rowcount=0),
+            MagicMock(rowcount=1),
+        ]
+    )
     session.flush = AsyncMock()
     session.refresh = AsyncMock()
     repo = ClientOnboardingRepositoryAsync(session)
@@ -1229,7 +1356,184 @@ def test_async_mark_password_set_does_not_downgrade_later_status() -> None:
 
     assert result is lifecycle
     assert lifecycle.status == ClientOnboardingStatus.handoff_created
+    assert lifecycle.password_set_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.handoff_created
+    )
+    assert session.execute.await_count == 2
+
+
+def test_async_mark_handoff_created_advances_from_password_set() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.password_set,
+        password_set_at=OCCURRED_AT,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.execute = AsyncMock(return_value=MagicMock(rowcount=1))
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_handoff_created(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.handoff_created
+    assert lifecycle.handoff_created_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.password_set
+    )
+
+
+def test_async_mark_activation_ready_requires_handoff_and_password() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.handoff_created,
+        password_set_at=OCCURRED_AT,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.execute = AsyncMock(return_value=MagicMock(rowcount=1))
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_activation_ready(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.activation_ready
+    assert lifecycle.activation_ready_at == OCCURRED_AT
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.handoff_created
+    )
+
+
+def test_async_mark_handoff_created_noops_for_later_status() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.activation_ready,
+    )
+    session = MagicMock()
+    session.get = AsyncMock(return_value=lifecycle)
+    session.execute = AsyncMock(return_value=MagicMock(rowcount=0))
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(
+        repo.mark_handoff_created(
+            LIFECYCLE_ID,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.activation_ready
     assert client_onboarding_transition_changed(result) is False
+    assert client_onboarding_transition_previous_status(result) is None
+
+
+def test_async_mark_password_set_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(
+            repo.mark_password_set(
+                LIFECYCLE_ID,
+                occurred_at=OCCURRED_AT,
+            )
+        )
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_mark_handoff_created_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(
+            repo.mark_handoff_created(
+                LIFECYCLE_ID,
+                occurred_at=OCCURRED_AT,
+            )
+        )
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_mark_activation_ready_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(
+            repo.mark_activation_ready(
+                LIFECYCLE_ID,
+                occurred_at=OCCURRED_AT,
+            )
+        )
+
+    session.rollback.assert_awaited_once()
+
+
+def test_async_get_sync_jobs_for_lifecycle_returns_jobs() -> None:
+    jobs = [
+        ClientOnboardingSyncJob(
+            id=UUID("cccccccc-dddd-eeee-ffff-000000000000"),
+            lifecycle_id=LIFECYCLE_ID,
+            target=ClientOnboardingSyncTarget.database,
+            job_type="record_contract_acceptance",
+            idempotency_key="sync-key",
+            status=ClientOnboardingSyncJobStatus.completed,
+            payload={},
+        )
+    ]
+    query_result = MagicMock()
+    query_result.scalars.return_value.all.return_value = jobs
+    session = MagicMock()
+    session.execute = AsyncMock(return_value=query_result)
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    result = asyncio.run(repo.get_sync_jobs_for_lifecycle(LIFECYCLE_ID))
+
+    assert result == jobs
+
+
+def test_async_get_sync_jobs_for_lifecycle_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=SQLAlchemyError("database unavailable"))
+    session.rollback = AsyncMock()
+    repo = ClientOnboardingRepositoryAsync(session)
+
+    with pytest.raises(SQLAlchemyError):
+        asyncio.run(repo.get_sync_jobs_for_lifecycle(LIFECYCLE_ID))
+
+    session.rollback.assert_awaited_once()
 
 
 def test_async_mark_blocked_updates_status_reason() -> None:
@@ -1639,3 +1943,35 @@ def test_mark_sync_job_failed_updates_existing_job() -> None:
     assert job.available_at == OCCURRED_AT
     assert job.locked_at is None
     assert job.locked_by is None
+
+
+def test_get_sync_jobs_for_lifecycle_returns_jobs() -> None:
+    jobs = [
+        ClientOnboardingSyncJob(
+            id=UUID("cccccccc-dddd-eeee-ffff-000000000000"),
+            lifecycle_id=LIFECYCLE_ID,
+            target=ClientOnboardingSyncTarget.database,
+            job_type="record_contract_acceptance",
+            idempotency_key="sync-key",
+            status=ClientOnboardingSyncJobStatus.completed,
+            payload={},
+        )
+    ]
+    session = MagicMock()
+    session.query.return_value.filter.return_value.all.return_value = jobs
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.get_sync_jobs_for_lifecycle(LIFECYCLE_ID)
+
+    assert result == jobs
+
+
+def test_get_sync_jobs_for_lifecycle_rolls_back_on_sqlalchemy_error() -> None:
+    session = MagicMock()
+    session.query.side_effect = SQLAlchemyError("database unavailable")
+    repo = ClientOnboardingRepository(session)
+
+    with pytest.raises(SQLAlchemyError):
+        repo.get_sync_jobs_for_lifecycle(LIFECYCLE_ID)
+
+    session.rollback.assert_called_once()
