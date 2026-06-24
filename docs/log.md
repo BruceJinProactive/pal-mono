@@ -6,6 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-23
 
+- **Client onboarding post-signature FDE owner assignment.** DocuSign completion now queues and best-effort runs a Manage App sync that adds or reactivates the selected FDE on the account, grants account owner role idempotently, and records skipped or failed assignment state for retries. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 - **Account switcher access filtering.** User account-list responses now only include active memberships with an effective account-level or project-level role, so accounts with stale membership rows and no role no longer appear in Admin Console account switching or Manage App user account lookup lists.
 - **Voice call-quality storage schema.** Added phone call columns for post-call
   quality classification output: `call_quality_label` and

@@ -24,6 +24,7 @@ from db.tables.types import AccountUserStatus, InvitationStatus
 from services.auth_types import UserContext, UserRole
 from services.client_onboarding_service import _implementation as svc
 from services.client_onboarding_service.schema import (
+    ClientOnboardingFdeOwnerAssignmentResult,
     ClientOnboardingFolkSyncResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
@@ -874,6 +875,10 @@ def test_reconcile_client_onboarding_docusign_completion_records_signed_event(
         svc,
         "sync_client_onboarding_notion_cmd_entry",
     )
+    fde_owner_sync = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_fde_owner_assignment",
+    )
     params = ReconcileClientOnboardingDocusignCompletionParams(
         docusign_envelope_id=" envelope-123 ",
         signer_email="Signer@Example.com",
@@ -912,15 +917,18 @@ def test_reconcile_client_onboarding_docusign_completion_records_signed_event(
         ClientOnboardingSyncTarget.folk,
         ClientOnboardingSyncTarget.slack,
         ClientOnboardingSyncTarget.notion,
+        ClientOnboardingSyncTarget.manage_app,
     ]
     assert upsert_calls[0].kwargs["job_type"] == "record_contract_acceptance"
     assert upsert_calls[1].kwargs["job_type"] == "update_contract_acceptance"
     assert upsert_calls[2].kwargs["job_type"] == "create_handoff_channel"
     assert upsert_calls[3].kwargs["job_type"] == "upsert_cmd_entry"
+    assert upsert_calls[4].kwargs["job_type"] == "add_fde_owner"
     assert upsert_calls[1].kwargs["payload"]["folk_company_id"] == "folk-company-123"
     deps["onboarding_repo"].mark_sync_job_completed.assert_called_once()
     slack_handoff.assert_called_once_with(session, LIFECYCLE_ID)
     notion_sync.assert_called_once_with(session, LIFECYCLE_ID)
+    fde_owner_sync.assert_called_once_with(session, LIFECYCLE_ID)
     session.commit.assert_called_once()
 
 
@@ -938,6 +946,10 @@ def test_reconcile_client_onboarding_docusign_completion_continues_when_slack_ha
         svc,
         "sync_client_onboarding_notion_cmd_entry",
     )
+    fde_owner_sync = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_fde_owner_assignment",
+    )
     logger = mocker.patch.object(svc.logger, "exception")
     params = ReconcileClientOnboardingDocusignCompletionParams(
         docusign_envelope_id="envelope-123",
@@ -950,6 +962,7 @@ def test_reconcile_client_onboarding_docusign_completion_continues_when_slack_ha
     assert result.transition_recorded is True
     slack_handoff.assert_called_once_with(session, LIFECYCLE_ID)
     notion_sync.assert_called_once_with(session, LIFECYCLE_ID)
+    fde_owner_sync.assert_called_once_with(session, LIFECYCLE_ID)
     logger.assert_called_once()
     session.commit.assert_called_once()
 
@@ -968,6 +981,10 @@ def test_reconcile_client_onboarding_docusign_completion_continues_when_notion_s
         "sync_client_onboarding_notion_cmd_entry",
         side_effect=RuntimeError("Notion unavailable"),
     )
+    fde_owner_sync = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_fde_owner_assignment",
+    )
     logger = mocker.patch.object(svc.logger, "exception")
     params = ReconcileClientOnboardingDocusignCompletionParams(
         docusign_envelope_id="envelope-123",
@@ -980,6 +997,42 @@ def test_reconcile_client_onboarding_docusign_completion_continues_when_notion_s
     assert result.transition_recorded is True
     slack_handoff.assert_called_once_with(session, LIFECYCLE_ID)
     notion_sync.assert_called_once_with(session, LIFECYCLE_ID)
+    fde_owner_sync.assert_called_once_with(session, LIFECYCLE_ID)
+    logger.assert_called_once()
+    session.commit.assert_called_once()
+
+
+def test_reconcile_client_onboarding_docusign_completion_continues_when_fde_owner_sync_fails(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    _docusign_completion_dependencies(mocker)
+    slack_handoff = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_slack_handoff",
+    )
+    notion_sync = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_notion_cmd_entry",
+    )
+    fde_owner_sync = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_fde_owner_assignment",
+        side_effect=RuntimeError("FDE owner unavailable"),
+    )
+    logger = mocker.patch.object(svc.logger, "exception")
+    params = ReconcileClientOnboardingDocusignCompletionParams(
+        docusign_envelope_id="envelope-123",
+        completed_at=COMPLETED_AT,
+    )
+
+    result = svc.reconcile_client_onboarding_docusign_completion(session, params)
+
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_signed
+    assert result.transition_recorded is True
+    slack_handoff.assert_called_once_with(session, LIFECYCLE_ID)
+    notion_sync.assert_called_once_with(session, LIFECYCLE_ID)
+    fde_owner_sync.assert_called_once_with(session, LIFECYCLE_ID)
     logger.assert_called_once()
     session.commit.assert_called_once()
 
@@ -1743,6 +1796,500 @@ def test_sync_client_onboarding_notion_cmd_entry_rejects_before_signature(
     session.commit.assert_not_called()
 
 
+def test_sync_client_onboarding_fde_owner_assignment_creates_membership_and_owner_role(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    account_user_repo = mocker.patch.object(svc, "AccountUserRepository").return_value
+    account_user_repo.get_by_user_and_account.return_value = None
+    account_user_repo.get_by_user_id.return_value = None
+    role_repo = mocker.patch.object(
+        svc, "ResourceRoleAssignmentRepository"
+    ).return_value
+    role_repo.has_role.return_value = False
+
+    result = svc.sync_client_onboarding_fde_owner_assignment(
+        session,
+        LIFECYCLE_ID,
+        identity_provider=_FakeFdeOwnerIdentityProvider(
+            email="fde@palona.ai",
+            name="FDE User",
+        ),
+    )
+
+    assert result == ClientOnboardingFdeOwnerAssignmentResult(
+        lifecycle_id=LIFECYCLE_ID,
+        account_id=ACCOUNT_ID,
+        fde_owner_user_id=FDE_USER_ID,
+        membership_created=True,
+        membership_reactivated=False,
+        owner_role_assigned=True,
+    )
+    account_user_repo.create.assert_called_once_with(
+        account_id=ACCOUNT_ID,
+        user_id=FDE_USER_ID,
+        email="fde@palona.ai",
+        name="FDE User",
+        added_by=AE_USER_ID,
+        status=AccountUserStatus.active,
+    )
+    role_repo.add_role.assert_called_once_with(
+        user_id=FDE_USER_ID,
+        resource_type=ResourceType.ACCOUNT,
+        resource_id=ACCOUNT_ID,
+        role="owner",
+        assigned_by=AE_USER_ID,
+        reason="Client onboarding post-signature FDE ownership",
+    )
+    onboarding_repo.mark_sync_job_completed.assert_called_once()
+    result_payload = onboarding_repo.mark_sync_job_completed.call_args.kwargs[
+        "result_payload"
+    ]
+    assert result_payload["membership_created"] is True
+    assert result_payload["owner_role_assigned"] is True
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "fde_owner_assigned"
+    assert session.commit.call_count == 1
+
+
+def test_sync_client_onboarding_fde_owner_assignment_reactivates_existing_member(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    existing_member = MagicMock()
+    existing_member.status = AccountUserStatus.deactivated
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    account_user_repo = mocker.patch.object(svc, "AccountUserRepository").return_value
+    account_user_repo.get_by_user_and_account.return_value = existing_member
+    role_repo = mocker.patch.object(
+        svc, "ResourceRoleAssignmentRepository"
+    ).return_value
+    role_repo.has_role.return_value = True
+
+    result = svc.sync_client_onboarding_fde_owner_assignment(
+        session,
+        LIFECYCLE_ID,
+        identity_provider=_FailingFdeOwnerIdentityProvider(),
+    )
+
+    assert result.membership_created is False
+    assert result.membership_reactivated is True
+    assert result.owner_role_assigned is False
+    account_user_repo.update_status.assert_called_once_with(
+        FDE_USER_ID,
+        ACCOUNT_ID,
+        AccountUserStatus.active,
+    )
+    account_user_repo.create.assert_not_called()
+    role_repo.add_role.assert_not_called()
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_fde_owner_assignment_reuses_completed_job(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.status = ClientOnboardingSyncJobStatus.completed
+    job.result_payload = {
+        "membership_created": True,
+        "membership_reactivated": False,
+        "owner_role_assigned": True,
+    }
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    account_user_repo = mocker.patch.object(svc, "AccountUserRepository")
+    role_repo = mocker.patch.object(svc, "ResourceRoleAssignmentRepository")
+
+    result = svc.sync_client_onboarding_fde_owner_assignment(
+        session,
+        LIFECYCLE_ID,
+        identity_provider=_FailingFdeOwnerIdentityProvider(),
+    )
+
+    assert result == ClientOnboardingFdeOwnerAssignmentResult(
+        lifecycle_id=LIFECYCLE_ID,
+        account_id=ACCOUNT_ID,
+        fde_owner_user_id=FDE_USER_ID,
+        membership_created=True,
+        membership_reactivated=False,
+        owner_role_assigned=True,
+    )
+    account_user_repo.assert_not_called()
+    role_repo.assert_not_called()
+    onboarding_repo.mark_sync_job_completed.assert_not_called()
+    onboarding_repo.append_activity.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_sync_client_onboarding_fde_owner_assignment_skips_missing_fde_owner(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.fde_owner_user_id = None
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    account_user_repo = mocker.patch.object(svc, "AccountUserRepository")
+
+    result = svc.sync_client_onboarding_fde_owner_assignment(
+        session,
+        LIFECYCLE_ID,
+        identity_provider=_FailingFdeOwnerIdentityProvider(),
+    )
+
+    assert result.membership_created is False
+    assert result.owner_role_assigned is False
+    assert result.skipped_reason == "No FDE owner user ID is linked to this lifecycle"
+    account_user_repo.assert_not_called()
+    onboarding_repo.mark_sync_job_completed.assert_called_once()
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "fde_owner_assignment_skipped"
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_fde_owner_assignment_records_failure(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    job = MagicMock()
+    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
+    job.status = ClientOnboardingSyncJobStatus.pending
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+    onboarding_repo.upsert_sync_job.return_value = job
+    account_user_repo = mocker.patch.object(svc, "AccountUserRepository").return_value
+    account_user_repo.get_by_user_and_account.return_value = None
+    account_user_repo.get_by_user_id.return_value = None
+    role_repo = mocker.patch.object(
+        svc, "ResourceRoleAssignmentRepository"
+    ).return_value
+    role_repo.has_role.return_value = False
+
+    with pytest.raises(RuntimeError, match="Identity lookup failed"):
+        svc.sync_client_onboarding_fde_owner_assignment(
+            session,
+            LIFECYCLE_ID,
+            identity_provider=_FailingFdeOwnerIdentityProvider(),
+        )
+
+    onboarding_repo.mark_sync_job_failed.assert_called_once()
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "fde_owner_assignment_failed"
+    assert activity["payload_diff"]["error"] == "Identity lookup failed"
+    session.commit.assert_called_once()
+
+
+def test_sync_client_onboarding_fde_owner_assignment_rejects_before_signature(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.status = ClientOnboardingStatus.docusign_viewed
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+
+    with pytest.raises(ClientOnboardingInviteInvalidError):
+        svc.sync_client_onboarding_fde_owner_assignment(
+            session,
+            LIFECYCLE_ID,
+            identity_provider=_FakeFdeOwnerIdentityProvider(
+                email="fde@palona.ai",
+                name="FDE User",
+            ),
+        )
+
+    onboarding_repo.upsert_sync_job.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_sync_client_onboarding_fde_owner_assignment_rejects_missing_lifecycle(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = None
+
+    with pytest.raises(
+        ClientOnboardingInviteNotFoundError,
+        match="Client onboarding lifecycle not found",
+    ):
+        svc.sync_client_onboarding_fde_owner_assignment(
+            session,
+            LIFECYCLE_ID,
+            identity_provider=_FakeFdeOwnerIdentityProvider(
+                email="fde@palona.ai",
+                name="FDE User",
+            ),
+        )
+
+    onboarding_repo.upsert_sync_job.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_sync_client_onboarding_fde_owner_assignment_rejects_missing_signed_time(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    lifecycle = _signed_lifecycle()
+    lifecycle.docusign_signed_at = None
+    onboarding_repo = mocker.patch.object(
+        svc, "ClientOnboardingRepository"
+    ).return_value
+    onboarding_repo.get_by_id.return_value = lifecycle
+
+    with pytest.raises(
+        ClientOnboardingInviteInvalidError,
+        match="missing DocuSign signed timestamp",
+    ):
+        svc.sync_client_onboarding_fde_owner_assignment(
+            session,
+            LIFECYCLE_ID,
+            identity_provider=_FakeFdeOwnerIdentityProvider(
+                email="fde@palona.ai",
+                name="FDE User",
+            ),
+        )
+
+    onboarding_repo.upsert_sync_job.assert_not_called()
+    session.commit.assert_not_called()
+
+
+def test_add_fde_owner_to_manage_app_account_requires_account_id() -> None:
+    lifecycle = _signed_lifecycle()
+    lifecycle.account_id = None
+
+    with pytest.raises(
+        ClientOnboardingInviteInvalidError,
+        match="missing account id",
+    ):
+        svc._add_fde_owner_to_manage_app_account(
+            MagicMock(),
+            lifecycle,
+            identity_provider=_FakeFdeOwnerIdentityProvider(
+                email="fde@palona.ai",
+                name="FDE User",
+            ),
+        )
+
+
+def test_add_fde_owner_to_manage_app_account_requires_fde_owner() -> None:
+    lifecycle = _signed_lifecycle()
+    lifecycle.fde_owner_user_id = None
+
+    with pytest.raises(
+        ClientOnboardingInviteInvalidError,
+        match="missing FDE owner user id",
+    ):
+        svc._add_fde_owner_to_manage_app_account(
+            MagicMock(),
+            lifecycle,
+            identity_provider=_FakeFdeOwnerIdentityProvider(
+                email="fde@palona.ai",
+                name="FDE User",
+            ),
+        )
+
+
+def test_resolve_fde_owner_identity_reuses_existing_membership() -> None:
+    account_user_repo = MagicMock()
+    existing_member = MagicMock()
+    existing_member.email = " fde@palona.ai "
+    existing_member.name = " FDE User "
+    account_user_repo.get_by_user_id.return_value = existing_member
+
+    identity = svc._resolve_fde_owner_identity(
+        account_user_repo,
+        FDE_USER_ID,
+        identity_provider=_FailingFdeOwnerIdentityProvider(),
+    )
+
+    assert identity == svc._FdeOwnerIdentity(
+        email="fde@palona.ai",
+        name="FDE User",
+    )
+
+
+def test_resolve_fde_owner_identity_rejects_missing_email() -> None:
+    account_user_repo = MagicMock()
+    account_user_repo.get_by_user_id.return_value = None
+
+    with pytest.raises(ValueError, match=f"FDE owner {FDE_USER_ID} does not have"):
+        svc._resolve_fde_owner_identity(
+            account_user_repo,
+            FDE_USER_ID,
+            identity_provider=_FakeFdeOwnerIdentityProvider(email="   ", name=None),
+        )
+
+
+def test_build_fde_owner_identity_provider_returns_cognito_provider() -> None:
+    assert isinstance(
+        svc._build_fde_owner_identity_provider(),
+        svc._CognitoFdeOwnerIdentityProvider,
+    )
+
+
+def test_cognito_fde_owner_identity_provider_reads_user(monkeypatch: Any) -> None:
+    fake_client = MagicMock()
+    fake_client.list_users.return_value = {
+        "Users": [
+            {
+                "Attributes": [
+                    {"Name": "email", "Value": "fde@palona.ai"},
+                    {"Name": "name", "Value": "FDE User"},
+                ]
+            }
+        ]
+    }
+    boto3_module = _install_fake_boto3(monkeypatch, fake_client)
+    monkeypatch.setattr(
+        svc,
+        "get_client_secret_with_fallback",
+        MagicMock(return_value="pool-123"),
+    )
+    monkeypatch.setenv("AWS_REGION", "us-west-2")
+
+    identity = svc._CognitoFdeOwnerIdentityProvider().get_identity(FDE_USER_ID)
+
+    assert identity == svc._FdeOwnerIdentity(
+        email="fde@palona.ai",
+        name="FDE User",
+    )
+    client_config = boto3_module.client.call_args.kwargs["config"]
+    boto3_module.client.assert_called_once_with(
+        "cognito-idp",
+        region_name="us-west-2",
+        config=client_config,
+    )
+    assert (
+        client_config.connect_timeout == svc.COGNITO_FDE_OWNER_CONNECT_TIMEOUT_SECONDS
+    )
+    assert client_config.read_timeout == svc.COGNITO_FDE_OWNER_READ_TIMEOUT_SECONDS
+    assert client_config.retries == {
+        "max_attempts": svc.COGNITO_FDE_OWNER_MAX_ATTEMPTS,
+        "mode": "standard",
+    }
+    fake_client.list_users.assert_called_once_with(
+        UserPoolId="pool-123",
+        Filter=f'sub="{FDE_USER_ID}"',
+    )
+
+
+def test_cognito_fde_owner_identity_provider_requires_user_pool(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        svc,
+        "get_client_secret_with_fallback",
+        MagicMock(side_effect=ValueError("missing secret")),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="AWS_ADMIN_CONSOLE_USER_POOL_ID is not configured",
+    ):
+        svc._CognitoFdeOwnerIdentityProvider().get_identity(FDE_USER_ID)
+
+
+def test_cognito_fde_owner_identity_provider_rejects_blank_user_pool(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        svc,
+        "get_client_secret_with_fallback",
+        MagicMock(return_value=""),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="AWS_ADMIN_CONSOLE_USER_POOL_ID is not configured",
+    ):
+        svc._CognitoFdeOwnerIdentityProvider().get_identity(FDE_USER_ID)
+
+
+def test_cognito_fde_owner_identity_provider_rejects_missing_user(
+    monkeypatch: Any,
+) -> None:
+    fake_client = MagicMock()
+    fake_client.list_users.return_value = {"Users": []}
+    _install_fake_boto3(monkeypatch, fake_client)
+    monkeypatch.setattr(
+        svc,
+        "get_client_secret_with_fallback",
+        MagicMock(return_value="pool-123"),
+    )
+
+    with pytest.raises(ValueError, match=f"FDE owner {FDE_USER_ID} was not found"):
+        svc._CognitoFdeOwnerIdentityProvider().get_identity(FDE_USER_ID)
+
+
+def test_cognito_fde_owner_identity_provider_rejects_missing_email(
+    monkeypatch: Any,
+) -> None:
+    fake_client = MagicMock()
+    fake_client.list_users.return_value = {
+        "Users": [{"Attributes": [{"Name": "name", "Value": "FDE User"}]}]
+    }
+    _install_fake_boto3(monkeypatch, fake_client)
+    monkeypatch.setattr(
+        svc,
+        "get_client_secret_with_fallback",
+        MagicMock(return_value="pool-123"),
+    )
+
+    with pytest.raises(ValueError, match="does not have an email in Cognito"):
+        svc._CognitoFdeOwnerIdentityProvider().get_identity(FDE_USER_ID)
+
+
+def test_cognito_attribute_handles_invalid_values() -> None:
+    assert svc._cognito_attribute("not-a-list", "email") is None
+    assert (
+        svc._cognito_attribute(
+            [
+                object(),
+                {"Name": "name", "Value": "FDE User"},
+            ],
+            "email",
+        )
+        is None
+    )
+    assert svc._cognito_attribute([{"Name": "email", "Value": ""}], "email") is None
+
+
 def test_public_sync_client_onboarding_slack_handoff_wrapper_delegates(
     mocker: Any,
 ) -> None:
@@ -1786,6 +2333,32 @@ def test_public_sync_client_onboarding_notion_cmd_entry_wrapper_delegates(
     )
 
     result = public_svc.sync_client_onboarding_notion_cmd_entry(
+        session,
+        LIFECYCLE_ID,
+    )
+
+    assert result is expected
+    sync.assert_called_once_with(session=session, lifecycle_id=LIFECYCLE_ID)
+
+
+def test_public_sync_client_onboarding_fde_owner_assignment_wrapper_delegates(
+    mocker: Any,
+) -> None:
+    session = MagicMock()
+    expected = ClientOnboardingFdeOwnerAssignmentResult(
+        lifecycle_id=LIFECYCLE_ID,
+        account_id=ACCOUNT_ID,
+        fde_owner_user_id=FDE_USER_ID,
+        membership_created=True,
+        membership_reactivated=False,
+        owner_role_assigned=True,
+    )
+    sync = mocker.patch(
+        "services.client_onboarding_service._implementation.sync_client_onboarding_fde_owner_assignment",
+        return_value=expected,
+    )
+
+    result = public_svc.sync_client_onboarding_fde_owner_assignment(
         session,
         LIFECYCLE_ID,
     )
@@ -2043,6 +2616,27 @@ class _FakeNotionCmdEntryClient:
 class _FailingNotionCmdEntryClient(_FakeNotionCmdEntryClient):
     async def find_page(self, company: Any) -> dict[str, Any] | None:
         raise RuntimeError("Notion unavailable")
+
+
+class _FakeFdeOwnerIdentityProvider:
+    def __init__(self, *, email: str, name: str | None) -> None:
+        self.email = email
+        self.name = name
+
+    def get_identity(self, user_id: UUID) -> svc._FdeOwnerIdentity:
+        return svc._FdeOwnerIdentity(email=self.email, name=self.name)
+
+
+class _FailingFdeOwnerIdentityProvider:
+    def get_identity(self, user_id: UUID) -> svc._FdeOwnerIdentity:
+        raise RuntimeError("Identity lookup failed")
+
+
+def _install_fake_boto3(monkeypatch: Any, fake_client: MagicMock) -> Any:
+    boto3_module: Any = ModuleType("boto3")
+    boto3_module.client = MagicMock(return_value=fake_client)
+    monkeypatch.setitem(sys.modules, "boto3", boto3_module)
+    return boto3_module
 
 
 class _FakeFolkContractAcceptanceClient:

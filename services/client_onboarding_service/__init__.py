@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from services.auth_types import UserContext
 
 from .schema import (
+    ClientOnboardingFdeOwnerAssignmentResult,
     ClientOnboardingFolkSyncResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
@@ -97,7 +98,17 @@ def sync_client_onboarding_notion_cmd_entry(
     return _sync(session=session, lifecycle_id=lifecycle_id)
 
 
+def sync_client_onboarding_fde_owner_assignment(
+    session: Session,
+    lifecycle_id: UUID,
+) -> ClientOnboardingFdeOwnerAssignmentResult:
+    from ._implementation import sync_client_onboarding_fde_owner_assignment as _sync
+
+    return _sync(session=session, lifecycle_id=lifecycle_id)
+
+
 __all__ = [
+    "ClientOnboardingFdeOwnerAssignmentResult",
     "ClientOnboardingFolkSyncResult",
     "ClientOnboardingInviteInvalidError",
     "ClientOnboardingInviteNotFoundError",
@@ -115,6 +126,7 @@ __all__ = [
     "mark_client_onboarding_password_set",
     "reconcile_client_onboarding_docusign_completion",
     "sync_client_onboarding_contract_acceptance_to_folk",
+    "sync_client_onboarding_fde_owner_assignment",
     "sync_client_onboarding_notion_cmd_entry",
     "sync_client_onboarding_slack_handoff",
 ]

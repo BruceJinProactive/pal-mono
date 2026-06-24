@@ -42,8 +42,10 @@ from services.folk_notion_sync._mapping import (
     select_property,
 )
 from utils.log import logger
+from utils.secret import get_client_secret_with_fallback
 
 from .schema import (
+    ClientOnboardingFdeOwnerAssignmentResult,
     ClientOnboardingFolkSyncResult,
     ClientOnboardingInviteInvalidError,
     ClientOnboardingInviteNotFoundError,
@@ -72,6 +74,10 @@ DATABASE_CONTRACT_ACCEPTANCE_JOB_TYPE = "record_contract_acceptance"
 FOLK_CONTRACT_ACCEPTANCE_JOB_TYPE = "update_contract_acceptance"
 SLACK_HANDOFF_JOB_TYPE = "create_handoff_channel"
 NOTION_CMD_ENTRY_JOB_TYPE = "upsert_cmd_entry"
+MANAGE_APP_FDE_OWNER_JOB_TYPE = "add_fde_owner"
+COGNITO_FDE_OWNER_CONNECT_TIMEOUT_SECONDS = 2
+COGNITO_FDE_OWNER_READ_TIMEOUT_SECONDS = 3
+COGNITO_FDE_OWNER_MAX_ATTEMPTS = 3
 T = TypeVar("T")
 
 
@@ -141,6 +147,10 @@ class NotionCmdEntryClient(Protocol):
     ) -> dict[str, Any]: ...
 
 
+class FdeOwnerIdentityProvider(Protocol):
+    def get_identity(self, user_id: uuid.UUID) -> "_FdeOwnerIdentity": ...
+
+
 @dataclass(frozen=True)
 class _OwnerContact:
     role: str
@@ -178,6 +188,21 @@ class _NotionCmdEntryOutcome:
     notion_page_id: str
     created_page: bool
     updated_page: bool
+
+
+@dataclass(frozen=True)
+class _FdeOwnerIdentity:
+    email: str
+    name: str | None
+
+
+@dataclass(frozen=True)
+class _FdeOwnerAssignmentOutcome:
+    account_id: uuid.UUID
+    fde_owner_user_id: uuid.UUID
+    membership_created: bool
+    membership_reactivated: bool
+    owner_role_assigned: bool
 
 
 def create_client_onboarding_account(
@@ -532,6 +557,7 @@ def reconcile_client_onboarding_docusign_completion(
             session.commit()
             _attempt_post_signature_slack_handoff(session, lifecycle.id)
             _attempt_post_signature_notion_cmd_entry(session, lifecycle.id)
+            _attempt_post_signature_fde_owner_assignment(session, lifecycle.id)
         elif lifecycle.status not in POST_SIGNATURE_STATUSES:
             raise ClientOnboardingInviteInvalidError(
                 f"DocuSign completion cannot advance lifecycle from {lifecycle.status.value}"
@@ -569,6 +595,20 @@ def _attempt_post_signature_notion_cmd_entry(
     except Exception:
         logger.exception(
             "Client onboarding Notion CMD sync failed after DocuSign completion",
+            extra={"lifecycle_id": str(lifecycle_id)},
+        )
+        return
+
+
+def _attempt_post_signature_fde_owner_assignment(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+) -> None:
+    try:
+        sync_client_onboarding_fde_owner_assignment(session, lifecycle_id)
+    except Exception:
+        logger.exception(
+            "Client onboarding FDE owner assignment failed after DocuSign completion",
             extra={"lifecycle_id": str(lifecycle_id)},
         )
         return
@@ -946,6 +986,139 @@ def sync_client_onboarding_notion_cmd_entry(
     )
 
 
+def sync_client_onboarding_fde_owner_assignment(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+    *,
+    identity_provider: FdeOwnerIdentityProvider | None = None,
+) -> ClientOnboardingFdeOwnerAssignmentResult:
+    onboarding_repo = ClientOnboardingRepository(session)
+    lifecycle = onboarding_repo.get_by_id(lifecycle_id)
+    if not lifecycle:
+        raise ClientOnboardingInviteNotFoundError(
+            "Client onboarding lifecycle not found"
+        )
+    if lifecycle.status not in POST_SIGNATURE_STATUSES:
+        raise ClientOnboardingInviteInvalidError(
+            "DocuSign completion is required before assigning the FDE owner"
+        )
+    if lifecycle.docusign_signed_at is None:
+        raise ClientOnboardingInviteInvalidError(
+            "Client onboarding lifecycle is missing DocuSign signed timestamp"
+        )
+
+    job = onboarding_repo.upsert_sync_job(
+        lifecycle_id=lifecycle.id,
+        target=ClientOnboardingSyncTarget.manage_app,
+        job_type=MANAGE_APP_FDE_OWNER_JOB_TYPE,
+        idempotency_key=_post_signature_sync_idempotency_key(
+            lifecycle,
+            ClientOnboardingSyncTarget.manage_app,
+            MANAGE_APP_FDE_OWNER_JOB_TYPE,
+        ),
+        payload=_post_signature_sync_payload(lifecycle),
+    )
+    if job.status in {
+        ClientOnboardingSyncJobStatus.completed,
+        ClientOnboardingSyncJobStatus.cancelled,
+    }:
+        result_payload = job.result_payload or {}
+        return ClientOnboardingFdeOwnerAssignmentResult(
+            lifecycle_id=lifecycle.id,
+            account_id=lifecycle.account_id,
+            fde_owner_user_id=lifecycle.fde_owner_user_id,
+            membership_created=result_payload.get("membership_created") is True,
+            membership_reactivated=(
+                result_payload.get("membership_reactivated") is True
+            ),
+            owner_role_assigned=result_payload.get("owner_role_assigned") is True,
+            skipped_reason=(
+                "FDE owner assignment sync job is cancelled"
+                if job.status == ClientOnboardingSyncJobStatus.cancelled
+                else _payload_text(result_payload, "skipped_reason")
+            ),
+        )
+
+    if lifecycle.fde_owner_user_id is None:
+        skipped_reason = "No FDE owner user ID is linked to this lifecycle"
+        result_payload = {"skipped_reason": skipped_reason}
+        onboarding_repo.mark_sync_job_completed(job.id, result_payload=result_payload)
+        onboarding_repo.append_activity(
+            lifecycle_id=lifecycle.id,
+            activity_type="fde_owner_assignment_skipped",
+            actor_type=ClientOnboardingActorType.system,
+            source=ClientOnboardingActivitySource.manage_app,
+            description=skipped_reason,
+            payload_diff={"sync_job_id": str(job.id)},
+        )
+        session.commit()
+        return ClientOnboardingFdeOwnerAssignmentResult(
+            lifecycle_id=lifecycle.id,
+            account_id=lifecycle.account_id,
+            fde_owner_user_id=None,
+            membership_created=False,
+            membership_reactivated=False,
+            owner_role_assigned=False,
+            skipped_reason=skipped_reason,
+        )
+
+    try:
+        outcome = _add_fde_owner_to_manage_app_account(
+            session,
+            lifecycle,
+            identity_provider=identity_provider or _build_fde_owner_identity_provider(),
+        )
+    except Exception as exc:
+        onboarding_repo.mark_sync_job_failed(
+            job.id,
+            last_error=str(exc),
+            result_payload={"error": str(exc)},
+        )
+        onboarding_repo.append_activity(
+            lifecycle_id=lifecycle.id,
+            activity_type="fde_owner_assignment_failed",
+            actor_type=ClientOnboardingActorType.system,
+            source=ClientOnboardingActivitySource.manage_app,
+            description="FDE account owner assignment failed",
+            payload_diff={"sync_job_id": str(job.id), "error": str(exc)},
+        )
+        session.commit()
+        raise
+
+    result_payload = {
+        "account_id": str(outcome.account_id),
+        "fde_owner_user_id": str(outcome.fde_owner_user_id),
+        "membership_created": outcome.membership_created,
+        "membership_reactivated": outcome.membership_reactivated,
+        "owner_role_assigned": outcome.owner_role_assigned,
+    }
+    onboarding_repo.mark_sync_job_completed(job.id, result_payload=result_payload)
+    onboarding_repo.append_activity(
+        lifecycle_id=lifecycle.id,
+        activity_type="fde_owner_assigned",
+        actor_type=ClientOnboardingActorType.system,
+        source=ClientOnboardingActivitySource.manage_app,
+        description="FDE added to account as owner",
+        payload_diff={
+            "sync_job_id": str(job.id),
+            "account_id": str(outcome.account_id),
+            "fde_owner_user_id": str(outcome.fde_owner_user_id),
+            "membership_created": outcome.membership_created,
+            "membership_reactivated": outcome.membership_reactivated,
+            "owner_role_assigned": outcome.owner_role_assigned,
+        },
+    )
+    session.commit()
+    return ClientOnboardingFdeOwnerAssignmentResult(
+        lifecycle_id=lifecycle.id,
+        account_id=outcome.account_id,
+        fde_owner_user_id=outcome.fde_owner_user_id,
+        membership_created=outcome.membership_created,
+        membership_reactivated=outcome.membership_reactivated,
+        owner_role_assigned=outcome.owner_role_assigned,
+    )
+
+
 def _attach_ae_as_owner(
     session: Session,
     account: Account,
@@ -1120,6 +1293,18 @@ def _enqueue_post_signature_sync_jobs(
         payload=payload,
         available_at=occurred_at,
     )
+    onboarding_repo.upsert_sync_job(
+        lifecycle_id=lifecycle.id,
+        target=ClientOnboardingSyncTarget.manage_app,
+        job_type=MANAGE_APP_FDE_OWNER_JOB_TYPE,
+        idempotency_key=_post_signature_sync_idempotency_key(
+            lifecycle,
+            ClientOnboardingSyncTarget.manage_app,
+            MANAGE_APP_FDE_OWNER_JOB_TYPE,
+        ),
+        payload=payload,
+        available_at=occurred_at,
+    )
 
 
 def _post_signature_sync_idempotency_key(
@@ -1207,6 +1392,173 @@ async def _update_folk_contract_acceptance(
         await client.update_contact(lifecycle.folk_contact_id, payload)
         updated_contact = True
     return updated_company, updated_contact
+
+
+def _add_fde_owner_to_manage_app_account(
+    session: Session,
+    lifecycle: ClientOnboardingLifecycle,
+    *,
+    identity_provider: FdeOwnerIdentityProvider,
+) -> _FdeOwnerAssignmentOutcome:
+    if lifecycle.account_id is None:
+        raise ClientOnboardingInviteInvalidError(
+            "Client onboarding lifecycle is missing account id"
+        )
+    if lifecycle.fde_owner_user_id is None:
+        raise ClientOnboardingInviteInvalidError(
+            "Client onboarding lifecycle is missing FDE owner user id"
+        )
+
+    account_user_repo = AccountUserRepository(session, auto_commit=False)
+    role_repo = ResourceRoleAssignmentRepository(session, auto_commit=False)
+    existing_membership = account_user_repo.get_by_user_and_account(
+        lifecycle.fde_owner_user_id,
+        lifecycle.account_id,
+    )
+    membership_created = False
+    membership_reactivated = False
+
+    if existing_membership is not None:
+        if existing_membership.status != AccountUserStatus.active:
+            account_user_repo.update_status(
+                lifecycle.fde_owner_user_id,
+                lifecycle.account_id,
+                AccountUserStatus.active,
+            )
+            membership_reactivated = True
+    else:
+        identity = _resolve_fde_owner_identity(
+            account_user_repo,
+            lifecycle.fde_owner_user_id,
+            identity_provider=identity_provider,
+        )
+        account_user_repo.create(
+            account_id=lifecycle.account_id,
+            user_id=lifecycle.fde_owner_user_id,
+            email=identity.email,
+            name=identity.name or identity.email,
+            added_by=lifecycle.ae_owner_user_id,
+            status=AccountUserStatus.active,
+        )
+        membership_created = True
+
+    owner_role_assigned = not role_repo.has_role(
+        lifecycle.fde_owner_user_id,
+        ResourceType.ACCOUNT,
+        lifecycle.account_id,
+        "owner",
+    )
+    if owner_role_assigned:
+        role_repo.add_role(
+            user_id=lifecycle.fde_owner_user_id,
+            resource_type=ResourceType.ACCOUNT,
+            resource_id=lifecycle.account_id,
+            role="owner",
+            assigned_by=lifecycle.ae_owner_user_id,
+            reason="Client onboarding post-signature FDE ownership",
+        )
+
+    return _FdeOwnerAssignmentOutcome(
+        account_id=lifecycle.account_id,
+        fde_owner_user_id=lifecycle.fde_owner_user_id,
+        membership_created=membership_created,
+        membership_reactivated=membership_reactivated,
+        owner_role_assigned=owner_role_assigned,
+    )
+
+
+def _resolve_fde_owner_identity(
+    account_user_repo: AccountUserRepository,
+    user_id: uuid.UUID,
+    *,
+    identity_provider: FdeOwnerIdentityProvider,
+) -> _FdeOwnerIdentity:
+    existing_membership = account_user_repo.get_by_user_id(user_id)
+    existing_email = _account_user_text(existing_membership, "email")
+    if existing_email:
+        return _FdeOwnerIdentity(
+            email=existing_email,
+            name=_account_user_text(existing_membership, "name"),
+        )
+
+    identity = identity_provider.get_identity(user_id)
+    email = _clean_optional_text(identity.email)
+    if not email:
+        raise ValueError(f"FDE owner {user_id} does not have an email")
+    return _FdeOwnerIdentity(
+        email=email,
+        name=_clean_optional_text(identity.name),
+    )
+
+
+def _build_fde_owner_identity_provider() -> FdeOwnerIdentityProvider:
+    return _CognitoFdeOwnerIdentityProvider()
+
+
+class _CognitoFdeOwnerIdentityProvider:
+    def get_identity(self, user_id: uuid.UUID) -> _FdeOwnerIdentity:
+        import importlib
+        import os
+
+        try:
+            user_pool_id = get_client_secret_with_fallback(
+                "AWS_ADMIN_CONSOLE_USER_POOL_ID"
+            )
+        except ValueError as exc:
+            raise RuntimeError(
+                "AWS_ADMIN_CONSOLE_USER_POOL_ID is not configured"
+            ) from exc
+        if not user_pool_id:
+            raise RuntimeError("AWS_ADMIN_CONSOLE_USER_POOL_ID is not configured")
+
+        boto3 = importlib.import_module("boto3")
+        response = boto3.client(
+            "cognito-idp",
+            region_name=os.environ.get("AWS_REGION", "us-east-1"),
+            config=_build_cognito_fde_owner_client_config(),
+        ).list_users(
+            UserPoolId=user_pool_id,
+            Filter=f'sub="{user_id}"',
+        )
+        users = response.get("Users", [])
+        if not users:
+            raise ValueError(f"FDE owner {user_id} was not found in Cognito")
+        attributes = users[0].get("Attributes", [])
+        email = _cognito_attribute(attributes, "email")
+        if not email:
+            raise ValueError(f"FDE owner {user_id} does not have an email in Cognito")
+        return _FdeOwnerIdentity(
+            email=email,
+            name=_cognito_attribute(attributes, "name"),
+        )
+
+
+def _build_cognito_fde_owner_client_config() -> Any:
+    import importlib
+
+    config_module = importlib.import_module("botocore.config")
+    config_class = getattr(config_module, "Config")
+    return config_class(
+        connect_timeout=COGNITO_FDE_OWNER_CONNECT_TIMEOUT_SECONDS,
+        read_timeout=COGNITO_FDE_OWNER_READ_TIMEOUT_SECONDS,
+        retries={
+            "max_attempts": COGNITO_FDE_OWNER_MAX_ATTEMPTS,
+            "mode": "standard",
+        },
+    )
+
+
+def _cognito_attribute(attributes: Any, key: str) -> str | None:
+    if not isinstance(attributes, list):
+        return None
+    for attribute in attributes:
+        if not isinstance(attribute, dict):
+            continue
+        if attribute.get("Name") != key:
+            continue
+        value = attribute.get("Value")
+        return value if isinstance(value, str) and value else None
+    return None
 
 
 def _build_notion_cmd_entry_client() -> NotionCmdEntryClient:

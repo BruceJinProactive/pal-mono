@@ -120,3 +120,14 @@ class ClientOnboardingNotionSyncResult:
     created_page: bool
     updated_page: bool
     skipped_reason: str | None = None
+
+
+@dataclass
+class ClientOnboardingFdeOwnerAssignmentResult:
+    lifecycle_id: UUID
+    account_id: UUID | None
+    fde_owner_user_id: UUID | None
+    membership_created: bool
+    membership_reactivated: bool
+    owner_role_assigned: bool
+    skipped_reason: str | None = None
