@@ -14,7 +14,7 @@ from services.asset_service._utils import AWS_ASSET_BUCKET_NAME
 from utils.log import logger, request_id_ctx
 
 _TRACE_PREFIX = "debug/vision_inference_traces"
-_TRACE_SAMPLE_RATE = 1.0
+_TRACE_SAMPLE_RATE = 0.005
 _IMAGE_BODY_KEYS = {
     "base64",
     "base64_data",

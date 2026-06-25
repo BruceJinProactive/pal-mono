@@ -30,10 +30,10 @@ def test_trace_uses_hardcoded_sample_rate_in_all_envs(
         patch.dict(os.environ, env, clear=True),
         patch("services.vision_observation_service._trace_sink.random.random") as rand,
     ):
-        rand.return_value = 0.999
+        rand.return_value = 0.004
         assert should_write_vision_inference_trace(camera_config_id) is True
 
-        rand.return_value = 1.0
+        rand.return_value = 0.005
         assert should_write_vision_inference_trace(camera_config_id) is False
 
 
