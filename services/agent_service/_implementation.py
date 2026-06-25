@@ -236,6 +236,7 @@ def _build_adora_spec_from_raw_config(raw_config: dict) -> AdoraSpec:
         "lookup_tool_name",
         "debug",
         "loyalty_points_per_dollar",
+        "enable_customer_discounts",
     ]:
         if field in adora_config:
             adora_spec_kwargs[field] = adora_config[field]

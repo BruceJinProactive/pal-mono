@@ -376,10 +376,21 @@ def test_build_cacheable_tool_result_preserves_prefetch_profile_context() -> Non
             "status": "success",
             "cacheable_result": {
                 "kind": "adora_customer_profile_prefetch_v1",
+                "customerPhone": "5182313313",
+                "customer_phone": "5182313313",
+                "store_id": "UGDX4",
                 "first_name": "Alice",
                 "last_name": "Jones",
                 "loyalty_member": True,
                 "loyalty_point_count": 50,
+                "available_loyalty_discounts": [
+                    {"loyalty_type": "Reward", "coupon_id": 201, "reward_id": 101},
+                    {
+                        "loyalty_type": "NextOrderCredit",
+                        "credit_id": 301,
+                        "coupon_id": 203,
+                    },
+                ],
                 "delivery_address": {
                     "address": "123 Main St",
                     "city": "Austin",
@@ -394,10 +405,21 @@ def test_build_cacheable_tool_result_preserves_prefetch_profile_context() -> Non
             "status": "success",
             "cacheable_result": {
                 "kind": "adora_customer_profile_prefetch_v1",
+                "customerPhone": "5182313313",
+                "customer_phone": "5182313313",
+                "store_id": "UGDX4",
                 "first_name": "Alice",
                 "last_name": "Jones",
                 "loyalty_member": True,
                 "loyalty_point_count": 50,
+                "available_loyalty_discounts": [
+                    {"loyalty_type": "Reward", "coupon_id": 201, "reward_id": 101},
+                    {
+                        "loyalty_type": "NextOrderCredit",
+                        "credit_id": 301,
+                        "coupon_id": 203,
+                    },
+                ],
                 "delivery_address": {
                     "address": "123 Main St",
                     "city": "Austin",

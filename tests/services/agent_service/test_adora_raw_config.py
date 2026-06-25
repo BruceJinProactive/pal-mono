@@ -74,6 +74,7 @@ def test_build_adora_spec_from_raw_config_ignores_lookup_menu_data():
             "menu_data": MENU_DATA,
             "lookup_menu_data": LOOKUP_MENU_DATA,
             "loyalty_points_per_dollar": 10,
+            "enable_customer_discounts": True,
         }
     }
 
@@ -82,6 +83,7 @@ def test_build_adora_spec_from_raw_config_ignores_lookup_menu_data():
     assert spec.enabled is True
     assert spec.menu_data == MENU_DATA
     assert spec.loyalty_points_per_dollar == 10
+    assert spec.enable_customer_discounts is True
     assert not hasattr(spec, "lookup_menu_data")
 
 

@@ -134,6 +134,7 @@ _ADORA_SPEC_FIELDS = [
     "force_payment_link",
     "no_delivery_entries",
     "loyalty_points_per_dollar",
+    "enable_customer_discounts",
 ]
 
 _ADORA_DEFAULT_TOKEN_URL = "https://identity.adorapos.net/connect/token"

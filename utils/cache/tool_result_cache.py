@@ -122,7 +122,10 @@ _TOAST_LOOKUP_CACHEABLE_RESULT_FIELDS = _TOAST_CACHEABLE_RESULT_FIELDS | frozens
 _ADORA_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
     {
         "available",
+        "available_loyalty_discounts",
         "availability",
+        "customerPhone",
+        "customer_phone",
         "delivery_minutes",
         "is_in_delivery_zone",
         "isInDeliveryZone",
@@ -145,6 +148,7 @@ _ADORA_CACHEABLE_RESULT_FIELDS = _COMMON_CACHEABLE_RESULT_FIELDS | frozenset(
         "paymentUrl",
         "process_status",
         "processStatus",
+        "store_id",
         "trackerURL",
         "tracking_link",
         "trackingLink",
@@ -237,6 +241,10 @@ _ALLOWED_SENSITIVE_CACHEABLE_RESULT_KEYS_BY_TOOL_NAME = {
     "adora_customer_profile_prefetch_v1": frozenset(
         {
             "address",
+            "credit_id",
+            "creditid",
+            "customer_phone",
+            "customerphone",
             "deliveryaddress",
             "delivery_address",
             "firstname",
