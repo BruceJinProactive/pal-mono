@@ -30,10 +30,10 @@ def test_trace_uses_hardcoded_sample_rate_in_all_envs(
         patch.dict(os.environ, env, clear=True),
         patch("services.vision_observation_service._trace_sink.random.random") as rand,
     ):
-        rand.return_value = 0.004
+        rand.return_value = 0.999
         assert should_write_vision_inference_trace(camera_config_id) is True
 
-        rand.return_value = 0.006
+        rand.return_value = 1.0
         assert should_write_vision_inference_trace(camera_config_id) is False
 
 
@@ -205,7 +205,7 @@ async def test_sample_miss_does_not_call_s3_upload_helper() -> None:
 
     with patch(
         "services.vision_observation_service._trace_sink.random.random",
-        return_value=0.006,
+        return_value=1.0,
     ):
         result = await maybe_write_vision_inference_trace(
             s3_client=s3_client,
