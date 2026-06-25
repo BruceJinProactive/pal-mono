@@ -399,6 +399,7 @@ def _client_onboarding_invite_dependencies(
     *,
     lifecycle_status: ClientOnboardingStatus = ClientOnboardingStatus.invite_sent,
     docusign_contract_url: str | None = "https://docusign.example/sign/123",
+    docusign_envelope_id: str | None = "envelope-123",
     invitation_status: InvitationStatus = InvitationStatus.pending,
 ) -> dict[str, MagicMock]:
     invitation = MagicMock()
@@ -415,7 +416,7 @@ def _client_onboarding_invite_dependencies(
     lifecycle.signer_email = "signer@example.com"
     lifecycle.docusign_contract_url = docusign_contract_url
     lifecycle.docusign_contract_id = "contract-123"
-    lifecycle.docusign_envelope_id = "envelope-123"
+    lifecycle.docusign_envelope_id = docusign_envelope_id
     lifecycle.invite_id = INVITATION_ID
 
     team_service = ModuleType("services.team_service")
@@ -462,6 +463,20 @@ def _client_onboarding_invite_dependencies(
     onboarding_repo.mark_invite_opened.side_effect = mark_invite_opened
     onboarding_repo.mark_docusign_viewed.side_effect = mark_docusign_viewed
     onboarding_repo.mark_password_set.side_effect = mark_password_set
+    docusign_client = MagicMock()
+    docusign_client.create_recipient_view.return_value = (
+        "https://docusign.example/embed/123"
+    )
+    build_docusign_client = mocker.patch.object(
+        svc,
+        "_build_docusign_embedded_signing_client",
+        return_value=docusign_client,
+    )
+    docusign_admin_base_url = mocker.patch.object(
+        svc,
+        "_docusign_admin_console_base_url",
+        return_value="https://admin.palona.ai",
+    )
     handoff_completion = mocker.patch.object(
         svc,
         "orchestrate_client_onboarding_handoff_completion",
@@ -487,6 +502,9 @@ def _client_onboarding_invite_dependencies(
         "invitation": invitation,
         "lifecycle": lifecycle,
         "onboarding_repo": onboarding_repo,
+        "docusign_client": docusign_client,
+        "build_docusign_client": build_docusign_client,
+        "docusign_admin_base_url": docusign_admin_base_url,
         "handoff_completion": handoff_completion,
     }
 
@@ -505,10 +523,20 @@ def test_get_client_onboarding_invite_step_marks_invite_opened(
     assert result.account_name == "acme"
     assert result.account_display_name == "Acme"
     assert result.docusign_required is True
-    assert result.docusign_embed_url == "https://docusign.example/sign/123"
+    assert result.docusign_embed_url == "https://docusign.example/embed/123"
     assert result.password_setup_available is False
     assert result.fallback_message == (
         "Please check your email for a contract from AE User via DocuSign."
+    )
+    deps["docusign_client"].create_recipient_view.assert_called_once_with(
+        envelope_id="envelope-123",
+        signer_email="signer@example.com",
+        signer_name="Client Signer",
+        client_user_id=str(INVITATION_ID),
+        return_url=(
+            "https://admin.palona.ai/accept-invitation"
+            "?invitation_token=invite-token&docusign_return=1"
+        ),
     )
     deps["onboarding_repo"].mark_invite_opened.assert_called_once()
     activity = deps["onboarding_repo"].append_activity.call_args.kwargs
@@ -535,6 +563,7 @@ def test_get_client_onboarding_invite_step_returns_password_setup_when_signed(
     assert result.docusign_required is False
     assert result.docusign_embed_url is None
     assert result.password_setup_available is True
+    deps["build_docusign_client"].assert_not_called()
     deps["onboarding_repo"].mark_invite_opened.assert_not_called()
     deps["onboarding_repo"].append_activity.assert_not_called()
     session.commit.assert_not_called()
@@ -560,6 +589,285 @@ def test_get_client_onboarding_invite_step_skips_activity_when_transition_lost(
     assert result.lifecycle_status == ClientOnboardingStatus.invite_opened
     deps["onboarding_repo"].append_activity.assert_not_called()
     session.commit.assert_not_called()
+
+
+def test_get_client_onboarding_invite_step_falls_back_without_embed_url(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    session = MagicMock()
+    deps = _client_onboarding_invite_dependencies(mocker, monkeypatch)
+    deps["build_docusign_client"].return_value = None
+
+    result = svc.get_client_onboarding_invite_step(session, "invite-token")
+
+    assert result.docusign_required is True
+    assert result.docusign_embed_url is None
+    assert result.docusign_contract_url == "https://docusign.example/sign/123"
+
+
+def test_create_docusign_embed_url_skips_without_envelope_id() -> None:
+    lifecycle = MagicMock()
+    lifecycle.docusign_envelope_id = " "
+
+    result = svc._create_docusign_embed_url(lifecycle, "invite-token")
+
+    assert result is None
+
+
+def test_create_docusign_embed_url_skips_without_admin_console_url(
+    mocker: Any,
+) -> None:
+    lifecycle = MagicMock()
+    lifecycle.docusign_envelope_id = "envelope-123"
+    docusign_client = MagicMock()
+    mocker.patch.object(
+        svc,
+        "_build_docusign_embedded_signing_client",
+        return_value=docusign_client,
+    )
+    mocker.patch.object(svc, "_docusign_admin_console_base_url", return_value=None)
+
+    result = svc._create_docusign_embed_url(lifecycle, "invite-token")
+
+    assert result is None
+    docusign_client.create_recipient_view.assert_not_called()
+
+
+def test_create_docusign_embed_url_returns_none_when_docusign_fails(
+    mocker: Any,
+) -> None:
+    lifecycle = MagicMock()
+    lifecycle.id = LIFECYCLE_ID
+    lifecycle.invite_id = INVITATION_ID
+    lifecycle.docusign_envelope_id = "envelope-123"
+    lifecycle.signer_email = "signer@example.com"
+    lifecycle.signer_name = None
+    docusign_client = MagicMock()
+    docusign_client.create_recipient_view.side_effect = RuntimeError("boom")
+    mocker.patch.object(
+        svc,
+        "_build_docusign_embedded_signing_client",
+        return_value=docusign_client,
+    )
+    mocker.patch.object(
+        svc,
+        "_docusign_admin_console_base_url",
+        return_value="https://admin.palona.ai",
+    )
+
+    result = svc._create_docusign_embed_url(lifecycle, "invite-token")
+
+    assert result is None
+    docusign_client.create_recipient_view.assert_called_once()
+
+
+def test_load_docusign_embedded_signing_config_cleans_values(
+    mocker: Any,
+) -> None:
+    values = {
+        "DOCUSIGN_ACCOUNT_ID": "account-123",
+        "DOCUSIGN_INTEGRATION_KEY": "integration-key",
+        "DOCUSIGN_IMPERSONATED_USER_ID": "user-123",
+        "DOCUSIGN_PRIVATE_KEY": "line-one\\nline-two",
+        "DOCUSIGN_AUTH_SERVER": "account-d.docusign.com",
+        "DOCUSIGN_REST_API_BASE_URL": "https://demo.docusign.net/restapi/",
+        "PAL_ADMIN_CONSOLE_BASE_URL": "https://admin.palona.ai/",
+    }
+    mocker.patch.object(svc, "_docusign_secret_value", side_effect=values.get)
+
+    config = svc._load_docusign_embedded_signing_config()
+
+    assert config == svc._DocusignEmbeddedSigningConfig(
+        account_id="account-123",
+        integration_key="integration-key",
+        impersonated_user_id="user-123",
+        private_key="line-one\nline-two",
+        auth_server="account-d.docusign.com",
+        rest_api_base_url="https://demo.docusign.net/restapi",
+    )
+
+
+def test_load_docusign_embedded_signing_config_returns_none_when_missing(
+    mocker: Any,
+) -> None:
+    mocker.patch.object(svc, "_docusign_secret_value", return_value=None)
+
+    assert svc._load_docusign_embedded_signing_config() is None
+
+
+def test_build_docusign_embedded_signing_client_returns_none_without_config(
+    mocker: Any,
+) -> None:
+    mocker.patch.object(
+        svc, "_load_docusign_embedded_signing_config", return_value=None
+    )
+
+    assert svc._build_docusign_embedded_signing_client() is None
+
+
+def test_docusign_secret_value_returns_cleaned_secret(
+    mocker: Any,
+) -> None:
+    get_secret = mocker.patch.object(
+        svc,
+        "get_server_secret_with_fallback",
+        return_value=" secret-value ",
+    )
+
+    assert svc._docusign_secret_value("DOCUSIGN_ACCOUNT_ID") == "secret-value"
+    get_secret.assert_called_once_with("DOCUSIGN_ACCOUNT_ID")
+
+
+def test_docusign_secret_value_returns_none_for_missing_secret(
+    mocker: Any,
+) -> None:
+    mocker.patch.object(
+        svc,
+        "get_server_secret_with_fallback",
+        side_effect=ValueError("missing"),
+    )
+
+    assert svc._docusign_secret_value("DOCUSIGN_ACCOUNT_ID") is None
+
+
+def test_docusign_admin_console_base_url_falls_back_to_console_base(
+    mocker: Any,
+) -> None:
+    mocker.patch.object(
+        svc,
+        "_docusign_secret_value",
+        side_effect=[None, "https://console.palona.ai"],
+    )
+
+    assert svc._docusign_admin_console_base_url() == "https://console.palona.ai"
+
+
+def test_build_docusign_return_url_encodes_invite_token() -> None:
+    assert svc._build_docusign_return_url(
+        "https://admin.palona.ai/",
+        "invite token+123",
+    ) == (
+        "https://admin.palona.ai/accept-invitation"
+        "?invitation_token=invite+token%2B123&docusign_return=1"
+    )
+
+
+def _docusign_config() -> Any:
+    return svc._DocusignEmbeddedSigningConfig(
+        account_id="account-123",
+        integration_key="integration-key",
+        impersonated_user_id="user-123",
+        private_key="private-key",
+        auth_server="account-d.docusign.com",
+        rest_api_base_url="https://demo.docusign.net/restapi",
+    )
+
+
+def test_docusign_http_client_creates_recipient_view(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client = svc._DocusignEmbeddedSigningHttpClient(_docusign_config())
+    create_access_token = mocker.patch.object(
+        client,
+        "_create_access_token",
+        return_value="access-token",
+    )
+    requests_module = ModuleType("requests")
+    response = MagicMock()
+    response.json.return_value = {"url": "https://docusign.example/embed"}
+    post_mock = MagicMock(return_value=response)
+    setattr(requests_module, "post", post_mock)
+    monkeypatch.setitem(sys.modules, "requests", requests_module)
+    monkeypatch.setitem(sys.modules, "jwt", ModuleType("jwt"))
+
+    result = client.create_recipient_view(
+        envelope_id="envelope-123",
+        signer_email="signer@example.com",
+        signer_name="Client Signer",
+        client_user_id="invite-id",
+        return_url="https://admin.palona.ai/accept-invitation",
+    )
+
+    assert result == "https://docusign.example/embed"
+    create_access_token.assert_called_once()
+    request_kwargs = post_mock.call_args.kwargs
+    assert request_kwargs["json"] == {
+        "returnUrl": "https://admin.palona.ai/accept-invitation",
+        "authenticationMethod": "none",
+        "email": "signer@example.com",
+        "userName": "Client Signer",
+        "clientUserId": "invite-id",
+    }
+    assert request_kwargs["headers"]["Authorization"] == "Bearer access-token"
+    assert request_kwargs["timeout"] == svc.DOCUSIGN_EMBED_HTTP_TIMEOUT_SECONDS
+
+
+def test_docusign_http_client_rejects_missing_recipient_view_url(
+    mocker: Any,
+    monkeypatch: Any,
+) -> None:
+    client = svc._DocusignEmbeddedSigningHttpClient(_docusign_config())
+    mocker.patch.object(client, "_create_access_token", return_value="access-token")
+    requests_module = ModuleType("requests")
+    response = MagicMock()
+    response.json.return_value = {"url": " "}
+    post_mock = MagicMock(return_value=response)
+    setattr(requests_module, "post", post_mock)
+    monkeypatch.setitem(sys.modules, "requests", requests_module)
+    monkeypatch.setitem(sys.modules, "jwt", ModuleType("jwt"))
+
+    with pytest.raises(
+        RuntimeError,
+        match="DocuSign recipient view response did not include url",
+    ):
+        client.create_recipient_view(
+            envelope_id="envelope-123",
+            signer_email="signer@example.com",
+            signer_name="Client Signer",
+            client_user_id="invite-id",
+            return_url="https://admin.palona.ai/accept-invitation",
+        )
+
+
+def test_docusign_http_client_creates_access_token() -> None:
+    client = svc._DocusignEmbeddedSigningHttpClient(_docusign_config())
+    jwt_module = MagicMock()
+    jwt_module.encode.return_value = "assertion"
+    requests_module = MagicMock()
+    response = MagicMock()
+    response.json.return_value = {"access_token": "access-token"}
+    requests_module.post.return_value = response
+
+    result = client._create_access_token(jwt_module, requests_module)
+
+    assert result == "access-token"
+    jwt_module.encode.assert_called_once()
+    requests_module.post.assert_called_once_with(
+        "https://account-d.docusign.com/oauth/token",
+        data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            "assertion": "assertion",
+        },
+        timeout=svc.DOCUSIGN_EMBED_HTTP_TIMEOUT_SECONDS,
+    )
+
+
+def test_docusign_http_client_rejects_missing_access_token() -> None:
+    client = svc._DocusignEmbeddedSigningHttpClient(_docusign_config())
+    jwt_module = MagicMock()
+    jwt_module.encode.return_value = "assertion"
+    requests_module = MagicMock()
+    response = MagicMock()
+    response.json.return_value = {"access_token": ""}
+    requests_module.post.return_value = response
+
+    with pytest.raises(
+        RuntimeError,
+        match="DocuSign OAuth response did not include access_token",
+    ):
+        client._create_access_token(jwt_module, requests_module)
 
 
 def test_mark_client_onboarding_docusign_viewed_records_visible_load(
@@ -620,6 +928,7 @@ def test_mark_client_onboarding_docusign_viewed_rejects_missing_embed_url(
         monkeypatch,
         lifecycle_status=ClientOnboardingStatus.invite_opened,
         docusign_contract_url=None,
+        docusign_envelope_id=None,
     )
 
     with pytest.raises(ClientOnboardingInviteInvalidError):

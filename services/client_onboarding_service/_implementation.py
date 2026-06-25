@@ -7,6 +7,7 @@ from collections.abc import Coroutine
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol, TypeVar
+from urllib.parse import urlencode
 
 from sqlalchemy.orm import Session
 
@@ -42,7 +43,10 @@ from services.folk_notion_sync._mapping import (
     select_property,
 )
 from utils.log import logger
-from utils.secret import get_client_secret_with_fallback
+from utils.secret import (
+    get_client_secret_with_fallback,
+    get_server_secret_with_fallback,
+)
 
 from .schema import (
     ClientOnboardingFdeOwnerAssignmentResult,
@@ -86,6 +90,9 @@ REQUIRED_HANDOFF_SYNC_JOBS = (
 COGNITO_FDE_OWNER_CONNECT_TIMEOUT_SECONDS = 2
 COGNITO_FDE_OWNER_READ_TIMEOUT_SECONDS = 3
 COGNITO_FDE_OWNER_MAX_ATTEMPTS = 3
+DOCUSIGN_EMBED_HTTP_TIMEOUT_SECONDS = 10
+DOCUSIGN_EMBED_OAUTH_SCOPE = "signature impersonation"
+DOCUSIGN_EMBED_RETURN_PATH = "/accept-invitation"
 T = TypeVar("T")
 
 
@@ -157,6 +164,28 @@ class NotionCmdEntryClient(Protocol):
 
 class FdeOwnerIdentityProvider(Protocol):
     def get_identity(self, user_id: uuid.UUID) -> "_FdeOwnerIdentity": ...
+
+
+class DocusignEmbeddedSigningClient(Protocol):
+    def create_recipient_view(
+        self,
+        *,
+        envelope_id: str,
+        signer_email: str,
+        signer_name: str,
+        client_user_id: str,
+        return_url: str,
+    ) -> str: ...
+
+
+@dataclass(frozen=True)
+class _DocusignEmbeddedSigningConfig:
+    account_id: str
+    integration_key: str
+    impersonated_user_id: str
+    private_key: str
+    auth_server: str
+    rest_api_base_url: str
 
 
 @dataclass(frozen=True)
@@ -395,7 +424,7 @@ def get_client_onboarding_invite_step(
             )
             session.commit()
 
-    return _build_invite_step_result(resolved, lifecycle)
+    return _build_invite_step_result(resolved, lifecycle, invitation_token)
 
 
 def mark_client_onboarding_docusign_viewed(
@@ -405,7 +434,9 @@ def mark_client_onboarding_docusign_viewed(
     resolved = _resolve_client_onboarding_invite(session, invitation_token)
     lifecycle = resolved.lifecycle
 
-    if not lifecycle.docusign_contract_url and lifecycle.status not in {
+    if not (
+        lifecycle.docusign_envelope_id or lifecycle.docusign_contract_url
+    ) and lifecycle.status not in {
         ClientOnboardingStatus.docusign_viewed,
         *POST_SIGNATURE_STATUSES,
     }:
@@ -441,7 +472,7 @@ def mark_client_onboarding_docusign_viewed(
             )
             session.commit()
 
-    return _build_invite_step_result(resolved, lifecycle)
+    return _build_invite_step_result(resolved, lifecycle, invitation_token)
 
 
 def mark_client_onboarding_password_set(
@@ -501,7 +532,7 @@ def mark_client_onboarding_password_set(
             )
             lifecycle.status = completion.lifecycle_status
 
-    return _build_invite_step_result(resolved, lifecycle)
+    return _build_invite_step_result(resolved, lifecycle, invitation_token)
 
 
 def reconcile_client_onboarding_docusign_completion(
@@ -2454,9 +2485,187 @@ def _resolve_client_onboarding_invite_for_password_set(
     return resolved
 
 
+def _create_docusign_embed_url(
+    lifecycle: ClientOnboardingLifecycle,
+    invitation_token: str,
+) -> str | None:
+    envelope_id = _clean_optional_text(lifecycle.docusign_envelope_id)
+    if not envelope_id:
+        return None
+
+    client = _build_docusign_embedded_signing_client()
+    if client is None:
+        return None
+    admin_console_base_url = _docusign_admin_console_base_url()
+    if admin_console_base_url is None:
+        return None
+
+    try:
+        return client.create_recipient_view(
+            envelope_id=envelope_id,
+            signer_email=lifecycle.signer_email,
+            signer_name=lifecycle.signer_name or lifecycle.signer_email,
+            client_user_id=str(lifecycle.invite_id or lifecycle.id),
+            return_url=_build_docusign_return_url(
+                admin_console_base_url,
+                invitation_token,
+            ),
+        )
+    except (
+        Exception
+    ) as exc:  # noqa: BLE001 - invite page must fall back to emailed DocuSign.
+        logger.warning(
+            "Unable to create DocuSign embedded signing URL",
+            extra={
+                "lifecycle_id": str(lifecycle.id),
+                "envelope_id": envelope_id,
+                "signer_email": lifecycle.signer_email,
+                "error": str(exc),
+            },
+        )
+        return None
+
+
+def _build_docusign_embedded_signing_client() -> DocusignEmbeddedSigningClient | None:
+    config = _load_docusign_embedded_signing_config()
+    if config is None:
+        return None
+    return _DocusignEmbeddedSigningHttpClient(config)
+
+
+def _load_docusign_embedded_signing_config() -> _DocusignEmbeddedSigningConfig | None:
+    account_id = _docusign_secret_value("DOCUSIGN_ACCOUNT_ID")
+    integration_key = _docusign_secret_value("DOCUSIGN_INTEGRATION_KEY")
+    impersonated_user_id = _docusign_secret_value("DOCUSIGN_IMPERSONATED_USER_ID")
+    private_key = _docusign_secret_value("DOCUSIGN_PRIVATE_KEY")
+    auth_server = _docusign_secret_value("DOCUSIGN_AUTH_SERVER")
+    rest_api_base_url = _docusign_secret_value("DOCUSIGN_REST_API_BASE_URL")
+    admin_console_base_url = _docusign_admin_console_base_url()
+
+    if (
+        account_id is None
+        or integration_key is None
+        or impersonated_user_id is None
+        or private_key is None
+        or auth_server is None
+        or rest_api_base_url is None
+        or admin_console_base_url is None
+    ):
+        return None
+
+    return _DocusignEmbeddedSigningConfig(
+        account_id=account_id,
+        integration_key=integration_key,
+        impersonated_user_id=impersonated_user_id,
+        private_key=private_key.replace("\\n", "\n"),
+        auth_server=auth_server,
+        rest_api_base_url=rest_api_base_url.rstrip("/"),
+    )
+
+
+def _docusign_secret_value(secret_key: str) -> str | None:
+    try:
+        value = get_server_secret_with_fallback(secret_key)
+    except ValueError:
+        return None
+    return _clean_optional_text(value)
+
+
+def _docusign_admin_console_base_url() -> str | None:
+    return _docusign_secret_value(
+        "PAL_ADMIN_CONSOLE_BASE_URL"
+    ) or _docusign_secret_value("PAL_CONSOLE_BASE_URL")
+
+
+def _build_docusign_return_url(
+    admin_console_base_url: str, invitation_token: str
+) -> str:
+    base_url = admin_console_base_url.rstrip("/")
+    query = urlencode(
+        {
+            "invitation_token": invitation_token,
+            "docusign_return": "1",
+        }
+    )
+    return f"{base_url}{DOCUSIGN_EMBED_RETURN_PATH}?{query}"
+
+
+class _DocusignEmbeddedSigningHttpClient:
+    def __init__(self, config: _DocusignEmbeddedSigningConfig) -> None:
+        self.config = config
+
+    def create_recipient_view(
+        self,
+        *,
+        envelope_id: str,
+        signer_email: str,
+        signer_name: str,
+        client_user_id: str,
+        return_url: str,
+    ) -> str:
+        import jwt
+        import requests
+
+        access_token = self._create_access_token(jwt, requests)
+        response = requests.post(
+            (
+                f"{self.config.rest_api_base_url}/v2.1/accounts/"
+                f"{self.config.account_id}/envelopes/{envelope_id}/views/recipient"
+            ),
+            json={
+                "returnUrl": return_url,
+                "authenticationMethod": "none",
+                "email": signer_email,
+                "userName": signer_name,
+                "clientUserId": client_user_id,
+            },
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            timeout=DOCUSIGN_EMBED_HTTP_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        url = payload.get("url")
+        if not isinstance(url, str) or not url.strip():
+            raise RuntimeError("DocuSign recipient view response did not include url")
+        return url
+
+    def _create_access_token(self, jwt_module: Any, requests_module: Any) -> str:
+        now = int(datetime.now(timezone.utc).timestamp())
+        assertion = jwt_module.encode(
+            {
+                "iss": self.config.integration_key,
+                "sub": self.config.impersonated_user_id,
+                "aud": self.config.auth_server,
+                "iat": now,
+                "exp": now + 300,
+                "scope": DOCUSIGN_EMBED_OAUTH_SCOPE,
+            },
+            self.config.private_key,
+            algorithm="RS256",
+        )
+        response = requests_module.post(
+            f"https://{self.config.auth_server}/oauth/token",
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": assertion,
+            },
+            timeout=DOCUSIGN_EMBED_HTTP_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        access_token = payload.get("access_token")
+        if not isinstance(access_token, str) or not access_token.strip():
+            raise RuntimeError("DocuSign OAuth response did not include access_token")
+        return access_token
+
+
 def _build_invite_step_result(
     resolved: _ResolvedClientOnboardingInvite,
     lifecycle: ClientOnboardingLifecycle,
+    invitation_token: str,
 ) -> ClientOnboardingInviteStepResult:
     if lifecycle.account_id is None:
         raise ClientOnboardingInviteInvalidError(
@@ -2465,7 +2674,11 @@ def _build_invite_step_result(
 
     status = lifecycle.status
     docusign_required = status not in POST_SIGNATURE_STATUSES
-    docusign_embed_url = lifecycle.docusign_contract_url if docusign_required else None
+    docusign_embed_url = (
+        _create_docusign_embed_url(lifecycle, invitation_token)
+        if docusign_required
+        else None
+    )
     sender_name = resolved.docusign_sender_name or "your Palona AE"
 
     return ClientOnboardingInviteStepResult(
