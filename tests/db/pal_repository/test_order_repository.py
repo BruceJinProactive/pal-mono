@@ -52,6 +52,7 @@ def sample_orm_row(sample_id: uuid.UUID) -> MagicMock:
     row.vendor = MagicMock(value="Toast")
     row.subtotal = Decimal("29.99")
     row.order_items = [{"name": "Pizza", "qty": 1}]
+    row.display_payload = {"summary": "Pizza x1"}
     row.fulfillment_strategy = "delivery"
     row.order_time = datetime(2025, 6, 1, 12, 0, tzinfo=timezone.utc)
     row.updated_at = datetime(2025, 6, 1, 12, 5, tzinfo=timezone.utc)
@@ -72,6 +73,7 @@ def _make_order_row(conversation_id: uuid.UUID, order_id: str) -> MagicMock:
     row.vendor = None
     row.subtotal = Decimal("29.99")
     row.order_items = []
+    row.display_payload = None
     row.fulfillment_strategy = "pickup"
     row.order_time = datetime(2025, 6, 1, 12, 0, tzinfo=timezone.utc)
     row.updated_at = datetime(2025, 6, 1, 12, 5, tzinfo=timezone.utc)
@@ -101,6 +103,7 @@ def _make_order_details_mapping(row: MagicMock) -> dict[str, object]:
         "vendor": row.vendor,
         "subtotal": row.subtotal,
         "order_items": row.order_items,
+        "display_payload": row.display_payload,
         "fulfillment_strategy": row.fulfillment_strategy,
         "updated_at": row.updated_at,
     }
@@ -127,6 +130,7 @@ class TestToData:
         assert data.subtotal == Decimal("29.99")
         assert isinstance(data.order_items, tuple)
         assert len(data.order_items) == 1
+        assert data.display_payload == {"summary": "Pizza x1"}
         assert data.fulfillment_strategy == "delivery"
 
     def test_converts_none_vendor(self, sample_orm_row: MagicMock) -> None:
@@ -455,8 +459,10 @@ class TestGetLatestOrderDetailsByConversationId:
         assert data.order_id == "ORD-001"
         assert data.vendor == "Toast"
         assert data.order_items == ({"name": "Pizza", "qty": 1},)
+        assert data.display_payload == {"summary": "Pizza x1"}
         statement = mock_session.execute.call_args.args[0]
         selected_keys = {column.key for column in statement.selected_columns}
+        assert "display_payload" in selected_keys
         assert "order_time" not in selected_keys
 
     @pytest.mark.asyncio

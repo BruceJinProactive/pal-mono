@@ -37,6 +37,7 @@ def _to_data(row: Order) -> OrderData:
         vendor=row.vendor.value if row.vendor else None,
         subtotal=row.subtotal,
         order_items=tuple(row.order_items) if row.order_items else (),
+        display_payload=row.display_payload,
         fulfillment_strategy=row.fulfillment_strategy,
         order_time=row.order_time,
         updated_at=row.updated_at,
@@ -67,6 +68,7 @@ def _to_details_data(row: RowMapping) -> OrderDetailsData:
         vendor=vendor.value if hasattr(vendor, "value") else vendor,
         subtotal=row["subtotal"],
         order_items=tuple(row["order_items"]) if row["order_items"] else (),
+        display_payload=row["display_payload"],
         fulfillment_strategy=row["fulfillment_strategy"],
         updated_at=row["updated_at"],
     )
@@ -249,6 +251,7 @@ class OrderRepository:
                     Order.vendor.label("vendor"),
                     Order.subtotal.label("subtotal"),
                     Order.order_items.label("order_items"),
+                    Order.display_payload.label("display_payload"),
                     Order.fulfillment_strategy.label("fulfillment_strategy"),
                     Order.updated_at.label("updated_at"),
                 )

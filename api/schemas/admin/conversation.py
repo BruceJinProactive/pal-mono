@@ -123,6 +123,7 @@ class OrderDetails(BaseModel):
     vendor: str | None = None
     subtotal: Decimal | None = None
     order_items: list[Any] = Field(default_factory=list)
+    display_payload: dict[str, Any] | None = None
     fulfillment_strategy: str | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime | None = None

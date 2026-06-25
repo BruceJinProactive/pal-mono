@@ -27,6 +27,7 @@ class OrderData:
     vendor: str | None = None
     subtotal: Decimal | None = None
     order_items: tuple[Any, ...] = ()
+    display_payload: dict[str, Any] | None = None
     fulfillment_strategy: str | None = None
     order_time: datetime | None = None
     updated_at: datetime | None = None
@@ -71,6 +72,7 @@ class OrderDetailsData:
     vendor: str | None = None
     subtotal: Decimal | None = None
     order_items: tuple[Any, ...] = ()
+    display_payload: dict[str, Any] | None = None
     fulfillment_strategy: str | None = None
     updated_at: datetime | None = None
 

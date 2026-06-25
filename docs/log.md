@@ -8,6 +8,11 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 - **Client onboarding embedded DocuSign signing URL.** Client onboarding invite step responses now mint a signer-specific DocuSign recipient-view URL from the stored envelope ID when DocuSign credentials are configured, while preserving the emailed-contract fallback if embedded signing is unavailable. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 
+- **Order display payload persistence.** Threaded `orders.display_payload`
+  through order repository creation, transaction-service order persistence,
+  async order projections, and admin order detail responses so the existing
+  JSONB column can be populated and read back.
+
 ## 2026-06-24
 
 - **Client onboarding handoff completion orchestration.** Post-signature sync completion now advances client onboarding to `handoff_created` once database, Folk, Slack, Notion, and Manage App jobs are complete, then to `activation_ready` after password setup is also recorded. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`

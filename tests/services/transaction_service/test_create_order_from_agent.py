@@ -26,6 +26,7 @@ class FakeOrderDetails:
         subtotal: float | None = 45.99,
         order_time: str | datetime | None = "2026-03-14T12:30:00",
         order_items: list | None = None,
+        display_payload: dict[str, object] | None = None,
     ):
         self.vendor = vendor
         self.order_id = order_id
@@ -39,6 +40,7 @@ class FakeOrderDetails:
         self.order_items = order_items or [
             {"item_id": "1", "item_name": "Burger", "quantity": 2}
         ]
+        self.display_payload = display_payload
 
 
 @pytest.fixture
@@ -316,6 +318,46 @@ class TestCreateOrderFromAgentAsync:
 
         # Assert
         assert captured_order_time == order_time
+
+    async def test_passes_display_payload_to_repository(
+        self, mock_session, mock_order, conversation_id
+    ):
+        """Test display payload is passed through to order persistence."""
+        display_payload = {
+            "summary": "Burger x2",
+            "items": [{"name": "Burger", "quantity": 2}],
+        }
+        order_details = FakeOrderDetails(display_payload=display_payload)
+
+        captured_display_payload = None
+
+        async def mock_run_sync(func):
+            nonlocal captured_display_payload
+            mock_sync_session = Mock()
+            mock_repo = Mock()
+
+            def capture_create_order(**kwargs):
+                nonlocal captured_display_payload
+                captured_display_payload = kwargs.get("display_payload")
+                return mock_order
+
+            mock_repo.create_order = Mock(side_effect=capture_create_order)
+
+            with patch(
+                "services.transaction_service._implementation.OrderRepository",
+                return_value=mock_repo,
+            ):
+                return func(mock_sync_session)
+
+        mock_session.run_sync = mock_run_sync
+
+        await create_order_from_agent_async(
+            session=mock_session,
+            order_details=order_details,
+            conversation_id=conversation_id,
+        )
+
+        assert captured_display_payload == display_payload
 
     async def test_error_handling_rollback(self, mock_session, conversation_id):
         """Test that errors trigger rollback and return None."""

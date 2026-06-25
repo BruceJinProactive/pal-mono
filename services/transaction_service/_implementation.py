@@ -206,6 +206,7 @@ def create_order(
         fulfillment_strategy=order_data.fulfillment_strategy,
         subtotal=order_data.subtotal,
         order_items=order_data.order_items,
+        display_payload=order_data.display_payload,
         order_time=order_data.order_time,
     )
 
@@ -279,6 +280,7 @@ async def create_order_from_agent_async(
                 fulfillment_strategy=order_details.fulfillment_strategy,
                 subtotal=subtotal_decimal,
                 order_items=order_details.order_items,
+                display_payload=getattr(order_details, "display_payload", None),
                 order_time=order_time_dt,
             )
             return order
@@ -367,6 +369,7 @@ def save_order(
     order_items: Optional[List[Any]] = None,
     order_time: Optional[datetime] = None,
     tracking_link: Optional[str] = None,
+    display_payload: Optional[dict[str, Any]] = None,
     session: Optional[Session] = None,
 ) -> Optional[uuid.UUID]:
     """
@@ -387,6 +390,7 @@ def save_order(
         order_items: List of ordered items (will be reconstructed to essential fields only)
         order_time: When the order occurred (default: now)
         tracking_link: Link to track the order
+        display_payload: Structured payload for order display surfaces
         session: Optional database session (creates one if not provided)
 
     Returns:
@@ -411,6 +415,7 @@ def save_order(
             fulfillment_strategy=fulfillment_strategy,
             subtotal=subtotal,
             order_items=reconstructed_order_items or [],
+            display_payload=display_payload,
             order_time=order_time or datetime.now(),
             tracking_link=tracking_link,
         )

@@ -329,6 +329,7 @@ def build_order_details(order: OrderDetailsData) -> OrderDetails:
         vendor=order.vendor,
         subtotal=order.subtotal,
         order_items=list(order.order_items),
+        display_payload=order.display_payload,
         fulfillment_strategy=order.fulfillment_strategy,
         created_at=order.created_at,
         updated_at=order.updated_at,

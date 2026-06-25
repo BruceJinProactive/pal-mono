@@ -32,9 +32,10 @@ class OrderData:
     # Order-specific fields
     subtotal: Optional[Decimal] = None
     order_items: Optional[List[Any]] = None
+    display_payload: Optional[dict[str, Any]] = None
     order_time: Optional[datetime] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate required fields and set defaults."""
         if not self.conversation_id:
             raise ValueError("conversation_id is required")

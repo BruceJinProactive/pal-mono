@@ -13,6 +13,10 @@ class TestCreateOrder:
     def test_inserts_order_without_dedup_lookup(self) -> None:
         session = MagicMock()
         repository = OrderRepository(session)
+        display_payload = {
+            "items": [{"name": "Pizza", "quantity": 1}],
+            "totals": {"subtotal": "15.99"},
+        }
 
         order_time = datetime(2026, 6, 24, 12, 30)
         order = repository.create_order(
@@ -27,6 +31,7 @@ class TestCreateOrder:
             fulfillment_strategy="takeout",
             subtotal=Decimal("15.99"),
             order_items=[{"name": "Pizza", "quantity": 1}],
+            display_payload=display_payload,
             order_time=order_time,
         )
 
@@ -35,6 +40,7 @@ class TestCreateOrder:
         assert order.store_id == "STORE-1"
         assert order.user_phone_number == "+15551234567"
         assert order.status == "pending"
+        assert order.display_payload == display_payload
         assert order.order_time == order_time
         session.query.assert_not_called()
         session.begin_nested.assert_not_called()

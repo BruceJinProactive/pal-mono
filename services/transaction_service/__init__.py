@@ -83,6 +83,7 @@ def save_order(
     order_items=None,
     order_time=None,
     tracking_link=None,
+    display_payload=None,
     session=None,
 ):
     """
@@ -99,6 +100,7 @@ def save_order(
         order_items: List of ordered items
         order_time: When the order occurred
         tracking_link: Link to track the order
+        display_payload: Structured payload for order display surfaces
         session: Optional database session
 
     Returns:
@@ -115,6 +117,7 @@ def save_order(
         order_items=order_items,
         order_time=order_time,
         tracking_link=tracking_link,
+        display_payload=display_payload,
         session=session,
     )
 

@@ -586,6 +586,7 @@ def test_order_repository_conversation_order_details_omits_order_time() -> None:
         vendor=IntegrationProvider.adora,
         subtotal=Decimal("22.99"),
         order_items=[{"name": "Pizza", "quantity": 1}],
+        display_payload=None,
         fulfillment_strategy="pickup",
         updated_at=datetime(2026, 3, 19, 1, 2, 3),
     )
@@ -606,6 +607,7 @@ def test_order_repository_conversation_order_details_omits_order_time() -> None:
     assert result.order_id == "ORD-789"
     assert result.vendor == "adora"
     assert result.order_items == ({"name": "Pizza", "quantity": 1},)
+    assert result.display_payload is None
     selected_columns = query.with_entities.call_args.args
     assert all(column is not Order.order_time for column in selected_columns)
     session.query.assert_called_once()

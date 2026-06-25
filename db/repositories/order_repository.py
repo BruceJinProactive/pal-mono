@@ -38,6 +38,7 @@ def _to_order_details_data(row: Any) -> OrderDetailsData:
         vendor=vendor,
         subtotal=row.subtotal,
         order_items=tuple(row.order_items) if row.order_items else (),
+        display_payload=row.display_payload,
         fulfillment_strategy=row.fulfillment_strategy,
         updated_at=row.updated_at,
     )
@@ -63,6 +64,7 @@ class OrderRepository:
         fulfillment_strategy: Optional[str] = None,
         subtotal: Optional[Decimal] = None,
         order_items: Optional[list] = None,
+        display_payload: Optional[dict[str, Any]] = None,
         order_time: Optional[datetime] = None,
     ) -> Order:
         """
@@ -80,6 +82,7 @@ class OrderRepository:
             fulfillment_strategy: Strategy for fulfilling the order
             subtotal: Order subtotal amount
             order_items: List of items in the order
+            display_payload: Structured payload for order display surfaces
             order_time: When the order was placed
         Returns:
             Order: The created order record
@@ -96,6 +99,7 @@ class OrderRepository:
             vendor=vendor,
             subtotal=subtotal,
             order_items=order_items or [],
+            display_payload=display_payload,
             order_time=order_time,
         )
 
@@ -279,6 +283,7 @@ class OrderRepository:
                     Order.vendor,
                     Order.subtotal,
                     Order.order_items,
+                    Order.display_payload,
                     Order.fulfillment_strategy,
                     Order.updated_at,
                 )
