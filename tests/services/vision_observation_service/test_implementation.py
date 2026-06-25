@@ -1381,6 +1381,303 @@ class TestGenerateObservation:
             mock_event_repo_cls.return_value.create.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_trace_receives_normalized_raw_and_overlay_llm_input_bytes(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        state_id_clean = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.enabled = True
+        mock_config.llm_prompt = "Watch tables"
+        mock_config.llm_provider = "google"
+        mock_config.llm_model = "gemini-2.5-flash"
+        mock_config.reference_images = [
+            {"url": "refs/table.jpg", "description": "Reference table"}
+        ]
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = {"x": 100, "y": 200, "width": 300, "height": 400}
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.name = "table_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
+        mock_entity.entity_metadata = {}
+
+        mock_state_def = MagicMock()
+        mock_state_def.id = state_id_clean
+        mock_state_def.name = "clean"
+        mock_state_def.definition_type = "cleanliness"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "table"
+        mock_entity_type.display_name = "Table"
+
+        llm_result = {
+            "result": {
+                "table_1": {
+                    "cleanliness": {
+                        "reason": "The table surface is clear.",
+                        "state": "clean",
+                        "confidence": 0.93,
+                    }
+                },
+                "image_relevant": True,
+            },
+            "token_usage": {"prompt_tokens": 123, "completion_tokens": 45},
+        }
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = llm_result
+        normalized_bytes = b"normalized-camera-bytes"
+        overlay_bytes = b"overlay-camera-bytes"
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation._fetch_s3_bytes",
+                AsyncMock(return_value=b"reference-image-bytes"),
+            ),
+            patch(
+                "services.vision_observation_service._implementation._normalize_image_bytes_for_llm",
+                return_value=normalized_bytes,
+            ),
+            patch(
+                "services.vision_observation_service._implementation._draw_roi_labels_on_image_bytes",
+                return_value=overlay_bytes,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.schedule_vision_inference_trace",
+            ) as mock_trace,
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+
+            result = await generate_observation(
+                session,
+                config_id,
+                image_bytes=_test_image_bytes(),
+                is_test=True,
+                observed_at=datetime(2026, 6, 25, 1, 2, 3, tzinfo=timezone.utc),
+            )
+
+        assert result is not None
+        analyze_args = mock_llm_provider.analyze_image.call_args.args
+        assert base64.b64decode(analyze_args[3]) == overlay_bytes
+        mock_trace.assert_called_once()
+        trace_call = mock_trace.call_args
+        assert trace_call is not None
+        trace_kwargs = trace_call.kwargs
+        assert trace_kwargs["raw_frame_bytes"] == normalized_bytes
+        assert trace_kwargs["llm_input_frame_bytes"] == overlay_bytes
+        assert trace_kwargs["system_prompt"] == analyze_args[0]
+        assert trace_kwargs["llm_prompt"] == "Watch tables"
+        assert trace_kwargs["structured_output_schema"]["type"] == "object"
+        assert trace_kwargs["reference_image_metadata"] == mock_config.reference_images
+        assert trace_kwargs["raw_llm_response"] == llm_result["result"]
+        assert trace_kwargs["token_usage"] == {
+            "prompt_tokens": 123,
+            "completion_tokens": 45,
+            "observed": True,
+            "image_relevant": True,
+        }
+        assert trace_kwargs["entity_observations"][0].state == "clean"
+        assert trace_kwargs["image_relevant"] is True
+        assert result.token_usage == {
+            "prompt_tokens": 123,
+            "completion_tokens": 45,
+            "observed": True,
+            "image_relevant": True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_trace_failure_does_not_block_state_update_or_event(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        state_id_open = uuid.uuid4()
+
+        mock_config = MagicMock()
+        mock_config.id = config_id
+        mock_config.enabled = True
+        mock_config.llm_prompt = "Watch the door"
+        mock_config.llm_provider = "azure"
+        mock_config.llm_model = "gpt-4o"
+        mock_config.reference_images = None
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.project_id = project_id
+        mock_entity.name = "door_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
+        mock_entity.current_state_since = None
+        mock_entity.entity_metadata = {}
+
+        mock_state_def = MagicMock()
+        mock_state_def.id = state_id_open
+        mock_state_def.name = "open"
+        mock_state_def.definition_type = "position"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "door"
+        mock_entity_type.display_name = "Door"
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = {
+            "result": {
+                "door_1": {
+                    "position": {
+                        "reason": "Door panel is visibly ajar.",
+                        "state": "open",
+                        "confidence": 0.96,
+                    }
+                }
+            },
+            "token_usage": {"prompt_tokens": 50},
+        }
+        observed_at = datetime(2026, 6, 25, 1, 2, 3, tzinfo=timezone.utc)
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionStateChangeEventRepository"
+            ) as mock_event_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionRuleRepository"
+            ) as mock_rule_repo_cls,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.schedule_vision_inference_trace",
+                side_effect=RuntimeError("trace failed"),
+            ),
+            patch(
+                "services.vision_observation_service._implementation.handle_state_change_rules",
+                AsyncMock(),
+            ),
+            patch(
+                "services.vision_observation_service._implementation.logger.warning"
+            ) as mock_warning,
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=mock_config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_entity_repo_cls.return_value.update = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+            mock_event_repo_cls.return_value.create = AsyncMock()
+            mock_rule_repo_cls.return_value.list_by_project = AsyncMock(return_value=[])
+
+            result = await generate_observation(
+                session,
+                config_id,
+                image_bytes=_test_image_bytes(),
+                observed_at=observed_at,
+            )
+
+        assert result is not None
+        assert result.entity_observations[0].state == "open"
+        mock_entity_repo_cls.return_value.update.assert_awaited_once()
+        mock_event_repo_cls.return_value.create.assert_awaited_once()
+        event_call = mock_event_repo_cls.return_value.create.await_args
+        assert event_call is not None
+        event = event_call.args[0]
+        assert event.new_state_id == state_id_open
+        assert event.observed_at == observed_at
+        assert event.event_metadata == {"definition_type": "position"}
+        warning_messages = [call.args[0] for call in mock_warning.call_args_list]
+        assert (
+            "[Vision Observation] Failed to schedule inference trace"
+            in warning_messages
+        )
+
+    @pytest.mark.asyncio
     async def test_observation_skips_when_current_metadata_matches(self):
         session = AsyncMock()
         config_id = uuid.uuid4()

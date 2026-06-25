@@ -54,6 +54,9 @@ from services.vision_observation_service._smoothing import (
 from services.vision_observation_service._smoothing_cache import (
     acquire_smoothing_cache_buffer,
 )
+from services.vision_observation_service._trace_sink import (
+    schedule_vision_inference_trace,
+)
 from services.vision_observation_service._workflow import (
     RULE_TYPE_WORKFLOWS,
     handle_state_change_rules,
@@ -977,28 +980,28 @@ async def generate_observation(
     if image_bytes is not None:
         if len(image_bytes) == 0:
             raise ValueError("Provided image bytes are empty (0 bytes)")
-        camera_image_bytes = await asyncio.to_thread(
+        raw_camera_image_bytes = await asyncio.to_thread(
             _normalize_image_bytes_for_llm,
             image_bytes,
             "uploaded camera image",
         )
         camera_image_bytes = await asyncio.to_thread(
             _draw_roi_labels_on_image_bytes,
-            camera_image_bytes,
+            raw_camera_image_bytes,
             entities_with_states,
             "uploaded camera image",
         )
         camera_image_base64 = base64.b64encode(camera_image_bytes).decode("utf-8")
     elif image_url:
         camera_image_raw = await _fetch_s3_bytes(s3_client, image_url)
-        camera_image_bytes = await asyncio.to_thread(
+        raw_camera_image_bytes = await asyncio.to_thread(
             _normalize_image_bytes_for_llm,
             camera_image_raw,
             f"camera image {image_url}",
         )
         camera_image_bytes = await asyncio.to_thread(
             _draw_roi_labels_on_image_bytes,
-            camera_image_bytes,
+            raw_camera_image_bytes,
             entities_with_states,
             f"camera image {image_url}",
         )
@@ -1286,6 +1289,37 @@ async def generate_observation(
 
     token_usage["observed"] = True
     token_usage["image_relevant"] = image_relevant
+
+    try:
+        schedule_vision_inference_trace(
+            s3_client=s3_client,
+            camera_id=camera_id,
+            camera_config_id=camera_config_id,
+            image_url=image_url,
+            observed_at=observed_at,
+            llm_provider=llm_provider_name,
+            llm_model=llm_model,
+            system_prompt=system_prompt,
+            llm_prompt=llm_prompt,
+            structured_output_schema=response_schema,
+            entities_with_states=entities_with_states,
+            reference_image_metadata=reference_image_configs,
+            raw_llm_response=raw_response,
+            entity_observations=entity_observations,
+            token_usage=dict(token_usage),
+            image_relevant=image_relevant,
+            raw_frame_bytes=raw_camera_image_bytes,
+            llm_input_frame_bytes=camera_image_bytes,
+        )
+    except Exception:
+        logger.warning(
+            "[Vision Observation] Failed to schedule inference trace",
+            extra={
+                "camera_id": str(camera_id),
+                "config_id": str(camera_config_id),
+            },
+            exc_info=True,
+        )
 
     return GenerateObservationResponse(
         camera_id=camera_id,
