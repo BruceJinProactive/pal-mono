@@ -8,7 +8,7 @@ Last updated: 2026-06-18
 
 ## Active Work
 
-- **Contract-to-account onboarding PRD and implementation plan** (started 2026-06-10, revised 2026-06-17) - Product and implementation plan for the comment-reviewed AE-led MVP flow: AE manually prepares the DocuSign contract/order form, creates the account and signer invite in Manage App, client completes DocuSign-first Admin Console onboarding before password setup, and post-signature automation creates Slack/Notion/Folk/FDE handoff artifacts. The implementation plan now separates MVP phases from post-MVP visibility, reminder, RBAC/location, and repair work. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
+- **Contract-to-account onboarding PRD and implementation plan** (started 2026-06-10, revised 2026-06-25) - Product and implementation plan for the corrected AE-led MVP flow: AE manually prepares and verifies the signed DocuSign contract/order form before creating the account in Manage App; Manage App account creation sends the client invite, records contract acceptance metadata, adds AE/FDE owners, and starts Slack/Notion/Folk handoff automation; Admin Console invite onboarding is password setup only. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 
 - **Tool-result ElastiCache migration** (started 2026-06-01) - Moving recent
   tool-result context from process-local `pal-agents` memory to shared

@@ -6,6 +6,8 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-25
 
+- **Contract-to-account onboarding manual DocuSign plan rewrite.** Reworked the PRD and implementation plan around the corrected MVP flow: AEs manually create and verify signed DocuSign contracts before Manage App account creation; Manage App submit is the system kickoff for invite send, AE/FDE ownership, contract metadata recording, and Slack/Notion/Folk handoff automation; Admin Console invite onboarding is password setup only. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
+
 - **Client onboarding embedded DocuSign signing URL.** Client onboarding invite step responses now mint a signer-specific DocuSign recipient-view URL from the stored envelope ID when DocuSign credentials are configured, while preserving the emailed-contract fallback if embedded signing is unavailable. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 
 - **Order display payload persistence.** Threaded `orders.display_payload`

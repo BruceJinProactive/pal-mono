@@ -4,7 +4,7 @@
 | ---------------- | ----------------------------------------------------------- |
 | **Status**       | Draft                                                       |
 | **PRD**          | `docs/plans/onboarding/contract-account-tos-handoff-prd.md` |
-| **Last Updated** | 2026-06-17                                                  |
+| **Last Updated** | 2026-06-25                                                  |
 
 ## Implementation Assumption
 
@@ -13,39 +13,46 @@ MVP flow:
 1. AE manually creates the DocuSign contract/order form package:
    - SMB: order form + ToS.
    - Enterprise: order form + MSA.
-2. AE creates the account in Manage App and sends an invite to the client's
-   email.
-3. The logged-in AE is attached to the account as owner and should not manually
-   accept an invite.
-4. Client opens the invite and sees DocuSign first in Admin Console.
-5. Client signs DocuSign, then sets a password.
-6. After password setup, the client is redirected to the Admin Console
-   dashboard.
-7. After contract signature, the system saves contract acceptance details,
-   updates Folk, creates the dedicated Slack channel, creates the Notion Client
-   Master Database entry, adds the FDE as owner, and pings the AE/FDE.
+2. AE waits for the customer to sign in DocuSign and manually verifies the
+   signature. There is no MVP DocuSign API integration, embedded signing,
+   webhook, or callback.
+3. Once signature is verified, AE creates the account in Manage App. The form
+   captures signer name/email and DocuSign envelope/contract/link references
+   for records.
+4. Manage App submit creates or links the account, sends the client invite, and
+   starts handoff automation.
+5. The logged-in AE and selected FDE are added as account owners without
+   manually accepting invites.
+6. The system saves contract acceptance details, updates Folk, creates the
+   dedicated Slack channel, creates the Notion Client Master Database entry,
+   and pings AE/FDE.
+7. Client opens the account invite in Admin Console, sets a password, and is
+   redirected to the Admin Console dashboard.
 
-The important dependency is contract signed, followed by password set where
-client account activation needs it.
+The system kickoff is Manage App account creation. Dashboard access is useful
+telemetry, but it is not a dependency for handoff automation.
 
 ## MVP vs Post-MVP
 
 ### MVP: end-to-end working onboarding flow
 
-MVP should prove the new onboarding path works from AE action through client
-signature/password setup and internal handoff.
+MVP should prove the new onboarding path works from AE account creation through
+client password setup and internal handoff.
 
 MVP phases:
 
 1. **Manage App AE account creation and lifecycle/activity foundation.**
-2. **DocuSign-first Admin Console invite and password setup.**
-3. **DocuSign completion handling plus post-signature handoff automation.**
+2. **Immediate contract-accepted handoff automation.**
+3. **Admin Console invite password setup.**
 4. **End-to-end hardening, tests, and rollout.**
 
 MVP intentionally avoids:
 
-- Full contract validation against DocuSign templates. AEs own contract creation
-  manually for now.
+- DocuSign API integration.
+- Embedded DocuSign in Admin Console.
+- DocuSign webhook/callback completion reconciliation.
+- Full contract validation against DocuSign templates. AEs own contract
+  creation and signature verification manually for now.
 - Full RBAC/location access modeling.
 - Rich Manage App sync dashboards and retry consoles.
 - Postmark reminder reactivation.
@@ -57,13 +64,17 @@ MVP intentionally avoids:
 Post-MVP work should make the system more observable, flexible, and scalable
 after the core flow is reliable.
 
+- Investigate whether DocuSign API/webhook integration should replace manual AE
+  monitoring.
+- Add embedded or linked DocuSign signing if PAL later owns legal signing
+  in-app.
 - Investigate whether Postmark invite reminders should be restored or replaced.
 - Remove any remaining temporary-password dependency if MVP has to reuse an
   existing password reset path.
 - Add Manage App visibility for sync status, partial failures, and safe retry
   actions.
-- Add Slackbot status commands such as `status <account>`,
-  `pending-docusign`, and `sync-errors`.
+- Add Slackbot status commands such as `status <account>`, `pending-invites`,
+  and `sync-errors`.
 - Add richer bidirectional Notion/Folk stage sync.
 - Add full RBAC and location/franchisee-aware contract coverage.
 - Add additional customer-user invite flows after the legal signer completes
@@ -77,8 +88,9 @@ after the core flow is reliable.
 ## Architecture Shape
 
 Use the database as the canonical onboarding lifecycle coordinator. Manage App,
-Admin Console, DocuSign, Folk, Slack, and Notion should write to or read from
-that lifecycle through APIs, webhooks, and small idempotent background jobs.
+Admin Console, Folk, Slack, and Notion should write to or read from that
+lifecycle through APIs and small idempotent background jobs. DocuSign is an
+external manual system in MVP; PAL stores DocuSign identifiers as references.
 
 Core concepts:
 
@@ -88,8 +100,8 @@ Core concepts:
 - **Integration mapping:** IDs for account, invite, DocuSign envelope/contract,
   Folk records, Slack channel, Notion page, and any source order form/scoping
   artifacts.
-- **Sync jobs:** retryable jobs for post-signature artifact creation and
-  external updates.
+- **Sync jobs:** retryable jobs for account-owner assignment, handoff artifact
+  creation, and external updates.
 
 ## Lifecycle State
 
@@ -97,21 +109,24 @@ Initial MVP statuses:
 
 - `contract_prepared`
 - `account_created`
+- `docusign_signed`
 - `invite_sent`
 - `invite_opened`
-- `docusign_viewed`
-- `docusign_signed`
 - `password_set`
 - `handoff_created`
 - `activation_ready`
 - `blocked`
 - `cancelled`
 
+`docusign_signed` means "AE has manually verified the signed DocuSign contract
+and submitted the Manage App account creation form." It is not written by a
+DocuSign webhook in MVP.
+
 Each activity entry should store:
 
 - Onboarding lifecycle ID.
 - Previous status and next status, when the activity is a transition.
-- Actor type: client, AE, FDE, system, webhook.
+- Actor type: client, AE, FDE, system.
 - Actor ID or external actor reference.
 - Timestamp.
 - Source system.
@@ -124,8 +139,9 @@ Build the MVP account creation entry point in Manage App for AEs.
 Flow:
 
 1. AE creates the contract/order form package in DocuSign manually.
-2. AE opens Manage App and clicks create account.
-3. AE enters or confirms:
+2. AE waits for customer signature and manually verifies signature in DocuSign.
+3. AE opens Manage App and clicks create account.
+4. AE enters or confirms:
    - Account name.
    - Client company name.
    - Signer name and email.
@@ -134,22 +150,26 @@ Flow:
    - FDE owner.
    - Folk ID, if already known.
    - Scoping document link, if already known.
-4. AE submits.
-5. Backend creates or links the account without creating project/agent records.
-6. Backend attaches the logged-in AE as account owner without invite
-   acceptance.
-7. Backend creates the onboarding lifecycle and activity rows.
-8. Backend creates and sends the client signer invite.
+5. AE submits.
+6. Backend creates or links the account without creating project/agent records.
+7. Backend attaches the logged-in AE as account owner without invite acceptance.
+8. Backend attaches the selected FDE as account owner without invite acceptance.
+9. Backend creates the onboarding lifecycle and activity rows.
+10. Backend records contract acceptance details because submit means AE has
+    verified signature.
+11. Backend creates and sends the client signer invite.
 
 Backend responsibilities:
 
 - Require the minimum fields needed to create the account and invite signer.
+- Keep DocuSign fields as record metadata; do not call DocuSign in MVP.
 - Do not validate contract contents against DocuSign templates in MVP; the AE
-  owns contract preparation manually.
-- Prevent duplicate active lifecycles for the same account, signer, or DocuSign
-  contract where practical.
-- Emit `account_created` and `invite_sent` activity.
-- Store the FDE owner for later post-signature ownership assignment.
+  owns contract preparation and signature verification manually.
+- Prevent duplicate active lifecycles for the same account, signer, or
+  DocuSign contract.
+- Emit activity for `account_created`, manual `docusign_signed`, and
+  `invite_sent`.
+- Store the FDE owner for account ownership and handoff messaging.
 - Keep project/agent creation out of this flow.
 
 Data model notes:
@@ -177,8 +197,8 @@ Data model notes:
   - `scoping_doc_url`
   - `status`
   - `status_reason`
-  - timestamps for account created, invite sent, invite opened, DocuSign
-    viewed, DocuSign signed, password set, handoff created, activation ready
+  - timestamps for account created, DocuSign signed/manual verified, invite
+    sent, invite opened, password set, handoff created, activation ready
 
 Future-proofing guardrail:
 
@@ -188,80 +208,26 @@ Future-proofing guardrail:
 
 Acceptance criteria:
 
-- AE can create an account and send a signer invite from Manage App.
+- AE can create an account and send a signer invite from Manage App after
+  manually verifying DocuSign signature.
 - The logged-in AE becomes owner without accepting an invite.
+- The selected FDE becomes owner without accepting an invite.
 - No project or agent is automatically created.
 - Lifecycle and activity records are durable before invite send side effects.
-- FDE owner is stored for post-signature account ownership.
+- DocuSign references are stored for recordkeeping.
 
-## Phase 2: DocuSign-First Admin Console Invite and Password Setup
+## Phase 2: Immediate Handoff Automation
 
-Replace the legal signer invite path with a DocuSign-first Admin Console flow.
-
-Flow:
-
-1. Client clicks the invite email.
-2. Admin Console validates invite token and lifecycle state.
-3. Lifecycle moves to `invite_opened`.
-4. If DocuSign is already complete, Admin Console skips signing and moves to
-   password setup.
-5. Otherwise, Admin Console renders embedded DocuSign as the first required
-   action.
-6. Lifecycle moves to `docusign_viewed` only after the signer-visible DocuSign
-   embed successfully loads. Creating an embedded signing session or URL alone
-   must not advance this state.
-7. DocuSign completion webhook or verified return callback moves lifecycle to
-   `docusign_signed`.
-8. Password setup becomes available.
-9. Client sets password.
-10. Lifecycle moves to `password_set`.
-11. Client is redirected to the Admin Console dashboard.
-
-Password strategy:
-
-- Target UX: the invite token takes the signer directly to DocuSign-first
-  onboarding and then password setup, without asking for a temporary password.
-- If removing the temporary password dependency is too large for MVP, use the
-  smallest existing password-reset/setup path that preserves the order:
-  DocuSign first, then password.
-
-Security and consistency:
-
-- Do not trust only the browser return from DocuSign. Confirm envelope
-  completion through DocuSign state or webhook reconciliation.
-- Gate password setup on canonical `docusign_signed`.
-- Gate active user/account access on password completion.
-- Do not gate post-signature handoff automation on dashboard access.
-- Expired or revoked invite tokens should show a recoverable error state and
-  notify internal owners where appropriate.
-
-Fallback:
-
-- If embedded DocuSign cannot be loaded, show an explicit message:
-  "Please check your email for a contract from [AE name] via DocuSign."
-- Continue syncing status from DocuSign webhooks.
-- If the signer signs directly in DocuSign before returning to Admin Console,
-  the webhook/reconciliation path should advance the lifecycle to
-  `docusign_signed`.
-- Do not unlock password setup until signing is confirmed.
-
-Acceptance criteria:
-
-- Invite opens to DocuSign-first onboarding.
-- A signer who already signed via DocuSign email can continue to password setup.
-- Password setup is inaccessible before confirmed signature.
-- The client is redirected to the dashboard after password setup.
-- Dashboard access is not required for Slack/Notion/Folk handoff automation.
-
-## Phase 3: DocuSign Completion and Post-Signature Handoff Automation
-
-Create the internal handoff artifacts only after the contract is confirmed
-signed. This phase is the MVP automation boundary.
+Create internal handoff artifacts from the Manage App account creation flow.
+This phase is the MVP automation boundary.
 
 Trigger:
 
-- Primary trigger: lifecycle reaches `docusign_signed`.
-- Secondary trigger: lifecycle reaches `password_set` for user activation state.
+- Primary trigger: successful Manage App client account creation after AE has
+  manually verified DocuSign signature.
+- `password_set` does not trigger Slack, Notion, Folk, or owner handoff fanout.
+  It only updates client activation readiness after the already-started handoff
+  pass has completed.
 
 Database and Folk:
 
@@ -272,16 +238,15 @@ Database and Folk:
 
 Slack:
 
-- Create the dedicated Slack channel after contract signature is confirmed.
+- Create the dedicated Slack channel after account creation.
 - Use a normalized account/client channel name.
 - Add or ping the AE and FDE.
-- Post a contract acceptance message.
+- Post a contract acceptance handoff message.
 - Include links to Manage App, DocuSign, Folk, and Notion when available.
 
 Notion:
 
-- Create the Notion Client Master Database entry after contract signature is
-  confirmed.
+- Create the Notion Client Master Database entry after account creation.
 - Populate from Folk and lifecycle data:
   - DocuSign/order form link.
   - Scoping document link.
@@ -297,19 +262,53 @@ Notion:
 
 Manage App:
 
-- Add the selected FDE to the account as owner after contract signature.
-- Keep the AE as owner.
+- Add the logged-in AE to the account as owner during account creation.
+- Add the selected FDE to the account as owner during account creation or the
+  immediate handoff job.
 - Mark handoff artifact creation with `handoff_created`.
 
 Acceptance criteria:
 
-- Slack, Notion, Folk, database, and Manage App are updated from the
-  post-signature lifecycle point.
+- Slack, Notion, Folk, database, and Manage App are updated from the Manage App
+  account creation point.
 - Retrying the automation updates existing artifacts instead of creating
   duplicates.
 - FDE and AE receive the Slack handoff message.
 - Folk contains the DocuSign contract ID/link and Manage App account name/ID.
-- Notion CMD entry is created only after contract signature.
+- Notion CMD entry is created after AE submits the account creation form.
+
+## Phase 3: Admin Console Invite Password Setup
+
+Keep the client account invite focused on password setup.
+
+Flow:
+
+1. Client clicks the invite email.
+2. Admin Console validates invite token.
+3. Client sets a password through the existing invite/password setup path.
+4. Lifecycle moves to `password_set`.
+5. Client is redirected to the Admin Console dashboard.
+
+Password strategy:
+
+- Target UX: the invite token takes the signer directly to password setup
+  without asking the client to manually type a temporary password.
+- If removing the temporary password dependency is too large for MVP, use the
+  smallest existing password-reset/setup path.
+
+Security and consistency:
+
+- Gate active user/account access on password completion.
+- Do not gate handoff automation on dashboard access.
+- Expired or revoked invite tokens should show a recoverable error state and
+  notify internal owners where appropriate.
+
+Acceptance criteria:
+
+- Invite opens to password setup.
+- No DocuSign step is shown in Admin Console for MVP.
+- The client is redirected to the dashboard after password setup.
+- Dashboard access is not required for Slack/Notion/Folk handoff automation.
 
 ## Phase 4: End-to-End Hardening, Tests, and Rollout
 
@@ -317,30 +316,30 @@ Make the MVP safe enough to pilot.
 
 Hardening:
 
-- Add idempotency around account creation, invite send, DocuSign completion,
-  Slack channel creation, Folk update, Notion creation, and FDE owner add.
-- Reconcile DocuSign webhooks by envelope/contract ID and signer email.
-- Handle duplicate webhook deliveries.
-- Handle signer flows that start in DocuSign email and later return to Admin
-  Console.
+- Add idempotency around account creation, invite send, Slack channel creation,
+  Folk update, Notion creation, and owner adds.
 - Keep any sync failure visible in logs and activity, even if full Manage App
   retry UI is post-MVP.
+- Ensure normal team invites still work after Admin Console invite
+  simplification.
+- Ensure Manage App copy makes it clear that account creation means AE has
+  manually verified DocuSign signature.
 
 Rollout:
 
-1. Ship behind an internal feature flag for test accounts.
-2. Run sandbox DocuSign end-to-end tests.
-3. Pilot with one AE and one FDE.
-4. Monitor duplicate creation, signature completion, password setup, and
-   handoff artifact creation.
-5. Expand to more AE-led onboardings after success criteria are met.
+1. Ship behind an internal feature flag for test accounts if needed.
+2. Pilot with one AE and one FDE.
+3. Monitor duplicate creation, invite/password setup, and handoff artifact
+   creation.
+4. Expand to more AE-led onboardings after success criteria are met.
 
 Acceptance criteria:
 
 - One AE can complete the full flow for a real pilot client.
-- Contract signature and password setup work in order.
+- Account creation, invite send, password setup, and handoff automation work in
+  order.
 - Slack, Notion, Folk, database, and Manage App handoff artifacts appear after
-  signature.
+  Manage App submit.
 - Duplicate/retry paths do not create duplicate accounts, channels, pages, or
   CRM entries.
 
@@ -349,22 +348,26 @@ Acceptance criteria:
 These are useful but not required for the first working onboarding path.
 
 - Investigate whether Postmark invite reminders should be restored or replaced.
-- Add Manage App sync status for Slack, Notion, Folk, DocuSign, Admin Console,
-  and database projections.
+- Add Manage App sync status for Slack, Notion, Folk, Admin Console, and
+  database projections.
 - Add safe retry actions for failed sync jobs.
 - Add Slackbot visibility commands:
   - `status <account>`
-  - `pending-docusign`
   - `pending-invites`
   - `sync-errors`
 - Add dashboard first-access tracking as analytics.
 - Add admin tools to resend invite, revoke invite, re-link external artifacts,
   and mark lifecycle blocked/cancelled with a reason.
 
-## Post-MVP Phase B: Contract Coverage, RBAC, and Additional Users
+## Post-MVP Phase B: Contract Coverage, DocuSign Automation, RBAC, and Additional Users
 
-Post-MVP expands contract coverage and access control beyond the MVP account-level signer model.
+Post-MVP expands contract coverage, signing automation, and access control
+beyond the MVP account-level signer model.
 
+- Add DocuSign webhook/callback reconciliation if manual AE verification is no
+  longer sufficient.
+- Add embedded DocuSign signing only if product chooses to own legal signing in
+  Admin Console.
 - Add contract coverage scope:
   - Entire corporate account.
   - Multiple franchisee locations.
@@ -382,13 +385,13 @@ Post-MVP expands contract coverage and access control beyond the MVP account-lev
 
 | State or value | Canonical writer | MVP fanout |
 | -------------- | ---------------- | ---------- |
+| Contract signed/manual verified | Manage App/API, from AE submit | Database lifecycle, activity, Folk |
 | Account created | Manage App/API | Database lifecycle, activity |
+| AE/FDE owners added | Manage App/API or immediate sync job | Manage App account membership/roles |
 | Invite sent | Manage App/API | Admin Console invite, activity |
 | Invite opened | Admin Console | Database activity |
-| DocuSign viewed | Admin Console visible embed load | Database activity |
-| DocuSign signed | DocuSign webhook or verified callback | Database, Folk, Slack, Notion, Manage App |
 | Password set | Admin Console/Auth | Database, Manage App user/account state |
-| Handoff created | Post-signature automation | Slack, Notion, Folk, Manage App |
+| Handoff created | Immediate handoff automation | Slack, Notion, Folk, Manage App |
 | Dashboard first accessed | Admin Console | Analytics only |
 
 ## Test Plan
@@ -398,39 +401,36 @@ Unit tests:
 - Lifecycle transition validation.
 - Activity write behavior.
 - Idempotency key behavior.
-- DocuSign webhook reconciliation.
-- Password gate checks.
-- Post-signature automation trigger rules.
+- Password setup marker.
+- Immediate handoff automation trigger rules.
 
 Integration tests:
 
-- Manage App AE account creation creates account, lifecycle, activity, owner,
-  and invite.
-- Invite opens DocuSign-first page.
-- DocuSign completion unlocks password setup.
-- Direct DocuSign-email signing advances lifecycle to `docusign_signed`.
+- Manage App AE account creation creates account, lifecycle, activity, AE owner,
+  FDE owner, contract-signed metadata, and invite.
+- Invite opens password setup without DocuSign UI.
 - Password setup activates the user and redirects to dashboard.
-- Post-signature automation creates/updates Slack, Notion, Folk, DB, and FDE
+- Immediate handoff automation creates/updates Slack, Notion, Folk, DB, and
   owner state.
 - Retry of handoff automation does not duplicate external artifacts.
 
 End-to-end tests:
 
-- Happy path from AE DocuSign contract creation reference through Manage App
-  account creation, invite, embedded signing, password setup, and handoff
-  artifact creation.
-- Embedded DocuSign fallback path with email-signing reconciliation.
+- Happy path from AE manual DocuSign verification through Manage App account
+  creation, invite, password setup, and handoff artifact creation.
 - Duplicate submission/retry path.
+- Normal non-onboarding team invite path.
 
 ## Completion Criteria
 
-- AE can create an account and send a signer invite from Manage App.
+- AE can create an account and send a signer invite from Manage App after
+  manually verifying DocuSign signature.
 - AE is account owner without manually accepting an invite.
+- FDE is account owner without manually accepting an invite.
 - No project or agent is automatically created.
-- Client invite opens to DocuSign-first onboarding.
-- Client signs, sets password, and reaches the Admin Console dashboard.
-- Contract signature saves acceptance details to database and Folk.
-- FDE is added as account owner after contract signature.
-- Slack channel and Notion CMD entry are created only after contract signature.
-- Post-signature values sync across Slack, Notion, Folk, Manage App, Admin
-  Console, the database, and DocuSign.
+- Client invite opens to password setup, not DocuSign.
+- Client sets password and reaches the Admin Console dashboard.
+- Contract signature metadata saves to database and Folk.
+- Slack channel and Notion CMD entry are created after Manage App submit.
+- MVP values sync across Slack, Notion, Folk, Manage App, Admin Console, and the
+  database.
